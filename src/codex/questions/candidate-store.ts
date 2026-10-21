@@ -2,6 +2,7 @@
 import { QuestionNotificationErrors } from "../../core/questions/notification-errors.ts";
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
+import { AnswerExpectations } from "./acceptance.ts";
 import {
   type AcceptedQueuedCandidate,
   availableAcceptedQueuedSnapshot,
@@ -12,6 +13,7 @@ import {
 } from "./candidate.ts";
 import { candidateCallAccepted } from "./candidate-acceptance.ts";
 import { CandidateAuthority } from "./candidate-authority.ts";
+import { finishCandidateDisable } from "./candidate-disable.ts";
 import { publishCandidateRequest } from "./candidate-publication.ts";
 import { hasCandidateReservation } from "./candidate-reservation.ts";
 import { QuestionBudget } from "./limits.ts";
@@ -22,6 +24,7 @@ export type { Candidate } from "./candidate.ts";
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
 
 export class CandidateStore {
+  protected readonly expectations = new AnswerExpectations();
   private readonly records = new Map<string, Mutable<Candidate>>();
   /** Live readonly catalog; candidate object identity survives acceptance/publication. */
   get candidates(): ReadonlyMap<string, Candidate> {
@@ -112,7 +115,10 @@ export class CandidateStore {
         bytes - (existing?.bytes ?? 0),
       );
       const candidate: Mutable<Candidate> = createCandidate(group, call.callId, accepted, bytes);
-      if (existing) this.unpublished.delete(existing);
+      if (existing) {
+        this.expectations.clear(existing);
+        this.unpublished.delete(existing);
+      }
       this.records.set(group.nativeKey, candidate);
       this.unpublished.add(candidate);
       this.accepted = undefined;
@@ -164,6 +170,7 @@ export class CandidateStore {
     const candidate = this.candidates.get(nativeKey);
     if (!candidate) return false;
     this.budget.replace(this.candidates.size, -candidate.bytes);
+    this.expectations.clear(candidate);
     this.records.delete(nativeKey);
     this.unpublished.delete(candidate);
     this.accepted = undefined;
@@ -176,19 +183,12 @@ export class CandidateStore {
     this.disabled = true;
     this.reserveOpaqueReservation();
     const keys = [...this.candidates.keys()];
+    for (const candidate of this.candidates.values()) this.expectations.clear(candidate);
     this.records.clear();
     this.unpublished.clear();
     this.accepted = undefined;
     this.budget.clear();
-    for (const nativeKey of keys) {
-      const request = this.registry.find(nativeKey);
-      if (request) this.closeRequest(request.id, "unavailable");
-    }
-    try {
-      this.onDisabled?.();
-    } catch {
-      // Diagnostic failure must not interrupt permanent automation disablement.
-    }
+    finishCandidateDisable(this.registry, this.notifications, keys, this.onDisabled);
     return true;
   }
   private closeRequest(id: string, reason: QuestionCloseReason): void {

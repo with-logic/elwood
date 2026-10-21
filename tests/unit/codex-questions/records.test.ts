@@ -6,10 +6,10 @@ import {
   questionMetadataLimitBytes,
 } from "../../../src/codex/questions/limits.ts";
 import {
-  answeredQuestionItemIds,
   jsonRecord,
   payloadOf,
   questionCall,
+  questionReplies,
 } from "../../../src/codex/questions/records.ts";
 
 test("mirrors native async suggestion limits and optional fields", () => {
@@ -109,10 +109,10 @@ test("recognizes native committed reply envelopes, never arbitrary prose", () =>
     role: "user",
     content: [{ type: "input_text", text }],
   });
-  expect(answeredQuestionItemIds({ type: "message", role: "assistant", content: [] })).toEqual([]);
-  expect(answeredQuestionItemIds({ type: "message", role: "user", content: null })).toEqual([]);
+  expect(questionReplies({ type: "message", role: "assistant", content: [] })).toEqual([]);
+  expect(questionReplies({ type: "message", role: "user", content: null })).toEqual([]);
   expect(
-    answeredQuestionItemIds({
+    questionReplies({
       type: "message",
       role: "user",
       content: [null, { type: "other" }, { type: "input_text", text: 3 }],
@@ -124,14 +124,31 @@ test("recognizes native committed reply envelopes, never arbitrary prose", () =>
     "<send_user_message_question_reply>{}</send_user_message_question_reply>",
     '<send_user_message_question_reply>[null,{"questionItemId":3},{"questionItemId":"id","answer":3}]</send_user_message_question_reply>',
   ])
-    expect(answeredQuestionItemIds(wrapped(body))).toEqual([]);
+    expect(questionReplies(wrapped(body))).toEqual([]);
   expect(
-    answeredQuestionItemIds(
+    questionReplies(
       wrapped(
         '<send_user_message_question_reply>[{"questionItemId":"id","answer":"A"}]</send_user_message_question_reply>',
       ),
     ),
-  ).toEqual(["id"]);
+  ).toEqual([{ questionItemId: "id", answer: "A" }]);
+});
+
+test("preserves independent valid reply content parts after a malformed envelope", () => {
+  const wrap = (value: unknown) => ({
+    type: "input_text",
+    text: `<send_user_message_question_reply>${JSON.stringify(value)}</send_user_message_question_reply>`,
+  });
+  expect(
+    questionReplies({
+      type: "message",
+      role: "user",
+      content: [
+        wrap([{ questionItemId: "id", answer: "A" }, null]),
+        wrap([{ questionItemId: "other", answer: "B" }]),
+      ],
+    }),
+  ).toEqual([{ questionItemId: "other", answer: "B" }]);
 });
 
 test.each([

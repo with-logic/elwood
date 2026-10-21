@@ -3,10 +3,10 @@ import { expect, expectTypeOf, test } from "vitest";
 import { parseQuestions } from "../../../src/codex/questions/definitions.ts";
 import { QuestionLimitError } from "../../../src/codex/questions/limits.ts";
 import {
-  answeredQuestionItemIds,
   payloadOf,
   type QuestionCall,
   questionCall,
+  questionReplies,
   queuedKey,
 } from "../../../src/codex/questions/records.ts";
 import { records } from "./fixtures.ts";
@@ -63,7 +63,7 @@ test("captured durable native calls and mirrors retain their acceptance distinct
   expect(call).toMatchObject({ callId: expectedCallId, accepted: false, queued: true });
   expect(mirror).toMatchObject({ callId: expectedCallId, accepted: true, queued: true });
   if (!(call?.queued && mirror?.queued)) throw new Error("Captured async requests must parse");
-  const replyIds = queued.flatMap(answeredQuestionItemIds);
+  const replyIds = queued.flatMap(questionReplies).map(({ questionItemId }) => questionItemId);
   expect(replyIds).toEqual(
     call.questions.map(({ questionIndex }) => queuedKey(call.callId, questionIndex)),
   );

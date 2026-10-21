@@ -5,7 +5,11 @@ import { harness } from "./adapter-helpers.ts";
 import { notesFrame } from "./editor-fixtures.ts";
 import { captured, frame, records, scriptedIo } from "./helpers.ts";
 
-test("exposes and answers native None alone and named choice plus notes", async () => {
+test.each([
+  "Detail",
+  "Different",
+  "Det",
+])("production modal answers require the complete committed notes %j", async (nativeNote) => {
   const h = harness();
   const native = records("blocking-records.json")[0] as {
     readonly payload: { readonly call_id: string };
@@ -61,13 +65,17 @@ test("exposes and answers native None alone and named choice plus notes", async 
       output: JSON.stringify({
         answers: {
           color: { answers: ["None of the above"] },
-          note: { answers: ["Standard", "user_note: Detail"] },
+          note: { answers: ["Standard", `user_note: ${nativeNote}`] },
         },
       }),
     },
   });
   expect(h.registry.list()).toEqual([]);
-  expect(h.events.at(-1)).toMatchObject({ phase: "closed", reason: "answered" });
+  expect(h.events.at(-1)).toMatchObject({
+    phase: "closed",
+    reason: nativeNote === "Detail" ? "answered" : "unavailable",
+  });
+  scripted.controller.abort();
 });
 test("text alone targets the real native modal alternative", () => {
   const h = harness();
