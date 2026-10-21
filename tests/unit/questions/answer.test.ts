@@ -1,29 +1,10 @@
-/** Native answers traverse captured stages without ordinary submission (C-QUESTION-02/03). */
+/** Native answers traverse captured stages without ordinary submission (PRD §4). */
 import { describe, expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
-import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { definitions, fixture, frame, nativeSnapshot, registry } from "./helpers.ts";
+import { scriptedQuestionIo as ioFor } from "./scripted-io.ts";
 
-function ioFor(initial: QuestionFrame, successors: readonly QuestionFrame[]) {
-  let current = initial;
-  const writes: string[] = [];
-  const io: QuestionIo = {
-    signal: new AbortController().signal,
-    frame: () => current,
-    wait: (predicate) => {
-      if (!predicate(current)) throw new Error("Unexpected native wait stage");
-      return Promise.resolve(current);
-    },
-    write: (input, expected) => {
-      if (!expected(current)) throw new Error("Native write was not authorized");
-      writes.push(input);
-      current = successors[writes.length - 1]!;
-      return Promise.resolve();
-    },
-  };
-  return { io, writes };
-}
-describe("C-QUESTION-03 Claude native answers", () => {
+describe("Claude native answers", () => {
   test("answers grouped single choice, both checkboxes and verified final review", async () => {
     const request = registry().publish("native", "blocking", definitions)!;
     const logging = fixture("features-logging");
@@ -82,7 +63,7 @@ describe("C-QUESTION-03 Claude native answers", () => {
       "\r",
     ]);
   });
-  test("refuses human-navigated unsupported initial stages and mismatched review values", async () => {
+  test("refuses human-navigated unsupported initial stages", async () => {
     const request = registry().publish("native", "blocking", definitions)!;
     const { io, writes } = ioFor(fixture("features-initial"), []);
     await expect(
@@ -98,7 +79,7 @@ describe("C-QUESTION-03 Claude native answers", () => {
     const first = ioFor(fixture("questions"), [fixture("color-blue-highlight"), unsupported]);
     await expect(
       answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }], first.io),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "question_answer_failed" });
     expect(first.writes).toEqual(["\x1b[B", "\r"]);
     const logging = fixture("features-logging");
     const metricsCursor = frame(
@@ -123,7 +104,7 @@ describe("C-QUESTION-03 Claude native answers", () => {
         [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }],
         mismatch.io,
       ),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "question_answer_failed" });
     expect(mismatch.writes.filter((key) => key === "\r")).toHaveLength(2);
   });
   test("preserves selected choices and safely unchecks an unrequested checkbox", async () => {
@@ -182,7 +163,18 @@ describe("C-QUESTION-03 Claude native answers", () => {
       [{ optionIndexes: [], text: "custom" }, { optionIndexes: [0, 1] }],
       io,
     );
-    expect(writes).toContain("\x1b[200~custom\x1b[201~");
-    expect(writes.filter((key) => key === "\r")).toHaveLength(3);
+    expect(writes).toEqual([
+      "\x1b[B",
+      "\x1b[B",
+      "\x1b[200~custom\x1b[201~",
+      "\r",
+      " ",
+      "\x1b[B",
+      " ",
+      "\x1b[B",
+      "\x1b[B",
+      "\r",
+      "\r",
+    ]);
   });
 });

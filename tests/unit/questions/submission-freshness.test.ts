@@ -1,4 +1,4 @@
-/** Revalidate native answer values at each submitting write (C-QUESTION-03). */
+/** Revalidate native answer values at each submitting write (PRD §4). */
 import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
@@ -31,7 +31,7 @@ function changingInput(
   return { io, writes };
 }
 
-test("C-QUESTION-03 rejects review values changed after the review wait", async () => {
+test("rejects review values changed after the review wait", async () => {
   const request = registry().publish("native", "blocking", definitions)!;
   const logging = fixture("features-logging");
   const metrics = frame(logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"));
@@ -70,7 +70,7 @@ test.each([
       frame(current.text.replace("❯    Submit", "     Submit").replace("  2. [✔]", "❯ 2. [✔]")),
   },
   { label: "layout", change: (_current: QuestionFrame) => frame("foreign") },
-])("C-QUESTION-03 rejects a changed $label at the submitting write", async ({ change }) => {
+])("rejects a changed $label at the submitting write", async ({ change }) => {
   const request = registry().publish("native", "blocking", [definitions[1]!])!;
   const logging = fixture("features-logging");
   const metrics = frame(logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"));
@@ -93,7 +93,7 @@ test.each([
   expect(writes).toEqual([" ", "\x1b[B", " ", "\x1b[B", "\x1b[B"]);
 });
 
-test("C-QUESTION-03 rejects Other text changed at the submitting write", async () => {
+test("rejects Other text changed at the submitting write", async () => {
   const request = registry().publish("note", "blocking", [
     {
       ...definitions[0]!,

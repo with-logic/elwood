@@ -1,6 +1,7 @@
 /** Private native Claude questionnaire grammar (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { CLAUDE_REVIEW_READY_LABEL, CLAUDE_REVIEW_TITLE } from "./review-labels.ts";
 import {
   normalizeClaudeQuestionText,
   OTHER_CONTINUATION_INDENT_COLUMNS,
@@ -46,8 +47,8 @@ export function parseClaudeQuestionScreen(
   if (first < 0) return undefined;
   const prompt = normalizeClaudeQuestionText(body.slice(0, first).join("\n"));
   if (
-    prompt.startsWith("Review your answers ") &&
-    body.some((line) => line === "Ready to submit your answers?")
+    prompt.startsWith(`${CLAUDE_REVIEW_TITLE} `) &&
+    body.some((line) => line === CLAUDE_REVIEW_READY_LABEL)
   ) {
     if (!questionCursor(frame)) return undefined;
     const questionRows = body.slice(first).filter((line) => line.trim());

@@ -1,10 +1,10 @@
-/** Navigation rejects lost ownership/layout and revisits a highlighted choice safely (C-QUESTION-02). */
+/** Navigation rejects lost ownership/layout and revisits a highlighted choice safely (PRD §4). */
 import { expect, test } from "vitest";
 import { questionNavigation } from "../../../src/claude/questions/navigation.ts";
 import type { QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { definitions, fixture, frame, registry } from "./helpers.ts";
 
-test("C-QUESTION-02 validates frames and uses Up for an earlier choice", async () => {
+test("validates frames and uses Up for an earlier choice", async () => {
   const request = registry().publish("native", "blocking", definitions)!;
   let current: ReturnType<typeof frame> | undefined = fixture("color-blue-highlight");
   const writes: string[] = [];
@@ -28,7 +28,9 @@ test("C-QUESTION-02 validates frames and uses Up for an earlier choice", async (
   await navigation.move(0);
   expect(writes).toEqual(["\x1b[A"]);
   current = undefined;
-  expect(() => navigation.read()).toThrow();
+  expect(() => navigation.read()).toThrowError(
+    expect.objectContaining({ code: "question_answer_failed" }),
+  );
   current = frame("foreign");
   await expect(navigation.move(0)).rejects.toMatchObject({ code: "question_answer_failed" });
 });

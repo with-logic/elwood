@@ -1,8 +1,11 @@
 /** Drive proven private Claude question stages and native review (PRD §4). */
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
+import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { type BoundClaudeQuestionAnswer, bindClaudeQuestionAnswers } from "./bind-answers.ts";
 import { questionLayoutFailed, questionNavigation } from "./navigation.ts";
+import { CLAUDE_REVIEW_READY_LABEL, CLAUDE_REVIEW_TITLE } from "./review-labels.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
@@ -11,11 +14,13 @@ export async function answerClaudeQuestions(
   answers: readonly ValidatedQuestionAnswer[],
   io: QuestionIo,
 ): Promise<void> {
+  const bound = bindClaudeQuestionAnswers(request, answers);
   const initial = io.frame();
   const first = initial && parseClaudeQuestionScreen(initial, request.questions);
   if (first?.kind !== "question" || first.questionIndex !== 0) throw questionLayoutFailed();
-  for (const [index, answer] of answers.entries()) {
-    await answerOne(request, index, answer, io);
+  for (const entry of bound) {
+    const index = entry.questionIndex;
+    await answerOne(request, entry, io);
     if (index + 1 < request.questions.length) {
       await io.wait((frame) => {
         const screen = parseClaudeQuestionScreen(frame, request.questions);
@@ -23,18 +28,17 @@ export async function answerClaudeQuestions(
       });
     }
   }
-  if (request.questions.length > 1) await submitReview(request, answers, io);
+  if (request.questions.length > 1) await submitReview(request, bound, io);
 }
 async function answerOne(
   request: ElwoodQuestionRequest,
-  index: number,
-  answer: ValidatedQuestionAnswer,
+  bound: BoundClaudeQuestionAnswer,
   io: QuestionIo,
 ): Promise<void> {
-  const question = request.questions[index]!;
-  const navigation = questionNavigation(request, index, io);
+  const { question, questionIndex, answer, target } = bound;
+  const navigation = questionNavigation(request, questionIndex, io);
   if (question.selection === "multiple") {
-    if (navigation.read().checked.at(-1)) throw questionLayoutFailed();
+    if (navigation.read().checked.at(-1)) throw questionAnswerFailed();
     for (let option = 0; option < question.options.length; option += 1) {
       const selected = answer.optionIndexes.includes(option);
       if (navigation.read().checked[option] === selected) continue;
@@ -51,15 +55,6 @@ async function answerOne(
     );
     await io.wait((frame) => navigation.at(frame)?.other === answer.text);
   }
-  let target: number;
-  if (question.selection === "multiple") {
-    // Checkbox dialogs place Submit after the additional Other row.
-    target = question.options.length + 1;
-  } else if (answer.text === undefined) {
-    target = answer.optionIndexes[0]!;
-  } else {
-    target = question.options.length; // Single-choice freeform submits from Other.
-  }
   await navigation.move(target);
   await io.write("\r", (frame) => {
     const current = navigation.at(frame);
@@ -74,7 +69,7 @@ async function answerOne(
 }
 async function submitReview(
   request: ElwoodQuestionRequest,
-  answers: readonly ValidatedQuestionAnswer[],
+  answers: readonly BoundClaudeQuestionAnswer[],
   io: QuestionIo,
 ): Promise<void> {
   const review = await io.wait(
@@ -82,17 +77,9 @@ async function submitReview(
   );
   const text = reviewText(review);
   const expected = normalizeClaudeQuestionText(
-    request.questions
-      .map((question, index) => {
-        const answer = answers[index]!;
-        const value =
-          answer.text ??
-          answer.optionIndexes.map((option) => question.options[option]!.label).join(", ");
-        return `● ${question.prompt} → ${value}`;
-      })
-      .join(" "),
+    answers.map(({ question, reviewValue }) => `● ${question.prompt} → ${reviewValue}`).join(" "),
   );
-  if (text !== expected) throw questionLayoutFailed();
+  if (text !== expected) throw questionAnswerFailed();
   await io.write("\r", (frame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
     return screen?.kind === "review" && screen.cursor === 0 && reviewText(frame) === expected;
@@ -100,7 +87,7 @@ async function submitReview(
 }
 
 function reviewText(frame: QuestionFrame): string {
-  const start = frame.lines.findLastIndex((line) => line.trim() === "Review your answers");
-  const end = frame.lines.findLastIndex((line) => line.trim() === "Ready to submit your answers?");
+  const start = frame.lines.findLastIndex((line) => line.trim() === CLAUDE_REVIEW_TITLE);
+  const end = frame.lines.findLastIndex((line) => line.trim() === CLAUDE_REVIEW_READY_LABEL);
   return normalizeClaudeQuestionText(frame.lines.slice(start + 1, end).join(" "));
 }
