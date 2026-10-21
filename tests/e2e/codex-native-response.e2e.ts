@@ -13,11 +13,11 @@ import { sessionSocketHome } from "../../src/state/socket-home.ts";
 import { readSessionRecord } from "../../src/state/store.ts";
 import { closeNativeResponse, trackResponseKill } from "./codex-response-cleanup.ts";
 import {
-  assertParentEnvironmentUnchanged,
   nativeResponseSandbox,
   noToolsResponseOptions,
   responseBinary,
 } from "./codex-response-sandbox.ts";
+import { assertParentEnvironmentUnchanged } from "./parent-environment.ts";
 
 const available = existsSync(responseBinary) && existsSync(join(homedir(), ".codex/auth.json"));
 const coldToken = "ELWOOD_COLD_7F29";

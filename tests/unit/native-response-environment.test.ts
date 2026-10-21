@@ -1,7 +1,7 @@
 /** Native response proof detects environment drift without secret-bearing diagnostics. */
 import { inspect } from "node:util";
 import { expect, test } from "vitest";
-import { assertParentEnvironmentUnchanged } from "../e2e/codex-response-sandbox.ts";
+import { assertParentEnvironmentUnchanged } from "../e2e/parent-environment.ts";
 
 const canary = "SYNTHETIC_PARENT_ENV_SECRET_CANARY";
 const before = { TOKEN: canary, OPTIONAL: undefined };
