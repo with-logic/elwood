@@ -15,7 +15,7 @@ import { nodePtyFactory } from "../../../src/pty/node.ts";
 import type { PtyExit } from "../../../src/pty/types.ts";
 import { runProbe } from "../../../src/runtime/probe.ts";
 import { attachPtyTerminal } from "../../../src/terminal/headless.ts";
-import { parentCodexConfiguration } from "../codex-parent-state.ts";
+import { parentCodexConfigurationFingerprint } from "../codex-parent-state.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 
 export const questionCodexBinary = join(homedir(), ".local/bin/codex");
@@ -29,7 +29,7 @@ const shutdownGraceMs = 2_000;
 
 export async function nativeCodexQuestionFiles() {
   const environment = { ...process.env };
-  const configuration = parentCodexConfiguration();
+  const configurationFingerprint = parentCodexConfigurationFingerprint();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_questions-")));
   const home = join(root, "home");
   const cwd = join(root, "project");
@@ -66,7 +66,7 @@ export async function nativeCodexQuestionFiles() {
         rmSync(root, { recursive: true, force: true });
         if (existsSync(root)) throw new Error("Private Codex question sandbox remains");
         assertParentEnvironmentUnchanged(environment, process.env);
-        if (configuration !== parentCodexConfiguration())
+        if (configurationFingerprint !== parentCodexConfigurationFingerprint())
           throw new Error("Parent Codex configuration changed");
       },
     };

@@ -4,7 +4,6 @@ import { codexEmptyInputFrame } from "../../../src/codex/screen/empty-input.ts";
 import { codexWorkingTitle } from "../../../src/codex/screen/working.ts";
 import { record } from "../../../src/core/activity/meta.ts";
 import type { TerminalSnapshot } from "../../../src/terminal/headless.ts";
-import type { NativeCodexRecord } from "./codex-records.ts";
 import type { nativeCodexQuestionSandbox } from "./codex-sandbox.ts";
 import { committedCodexQuestionRecords } from "./proof-files.ts";
 
@@ -14,6 +13,7 @@ const observationPollMs = 50;
 /** Pace physical keys so a native repaint can acknowledge each navigation step. */
 const inputRepaintMs = 100;
 
+type NativeCodexRecord = Readonly<Record<string, unknown>>;
 type Sandbox = Awaited<ReturnType<typeof nativeCodexQuestionSandbox>>;
 export type NativeCodexCapture = {
   readonly screens: Readonly<Record<string, TerminalSnapshot>>;
