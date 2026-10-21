@@ -32,6 +32,9 @@ test("post-write waits require a later completed render", async () => {
   });
   await vi.advanceTimersByTimeAsync(100);
   expect(observed).toBe(false);
+  h.terminal.resize({ cols: 139, rows: 44 });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(observed).toBe(false);
   const rendering = h.terminal.writeOutput(" accepted");
   await vi.advanceTimersByTimeAsync(0);
   await rendering;

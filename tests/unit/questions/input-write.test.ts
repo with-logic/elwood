@@ -77,3 +77,24 @@ test("a write that synchronously revokes authority cannot miss its pre-aborted s
   expect(h.failed).toHaveBeenCalledOnce();
   expect(h.writes).toEqual([]);
 });
+
+test.each([
+  "before write",
+  "inside predicate",
+])("cancellation %s prevents real terminal dispatch independently of assertLive", async (when) => {
+  const h = setup();
+  await h.terminal.writeOutput("question");
+  const send = vi.spyOn(h.input.automated, "sendInput");
+  if (when === "before write") h.operation.abort();
+  await expect(
+    h.track(
+      h.io.write("forbidden", () => {
+        if (when === "inside predicate") h.operation.abort();
+        return true;
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "question_answer_failed" });
+  expect(send).not.toHaveBeenCalled();
+  expect(h.writes).toEqual([]);
+  expect(h.started).not.toHaveBeenCalled();
+});

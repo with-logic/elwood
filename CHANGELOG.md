@@ -362,6 +362,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Contain clipboard pipe failures during Codex image attachment, and retain the
   clipboard lock until the restore process exits.
 
+- Reject cancelled native question writes before physical terminal dispatch.
+
 ## [0.1.3] - 2026-09-14
 
 - Keep live session warnings quiet in text and JSON CLI output, including model

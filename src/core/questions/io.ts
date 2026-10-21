@@ -4,6 +4,8 @@ import type { TerminalSnapshot } from "../../terminal/headless.ts";
 export type QuestionFrame = TerminalSnapshot & {
   /** Zero-based row in snapshot lines; cursorY=3, baseY=10, viewportY=8 gives row5. */
   readonly cursorRow: number;
+  /** Live completed frames supply visibility; partial/older captures may omit it.
+   * Unknown visibility never proves that a composer is clear. */
   readonly cursorVisible?: boolean;
 };
 export type QuestionIo = {

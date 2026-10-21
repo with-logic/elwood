@@ -37,9 +37,13 @@ export function questionInput(
   assertLive: () => void,
   observer: WriteObserver,
 ): QuestionIo {
-  let progressed: (() => boolean) | undefined;
-  const assertOwned = () => {
+  let hasOutputSinceWrite: (() => boolean) | undefined;
+  const assertActive = () => {
     assertLive();
+    if (signal.aborted) throw questionAnswerFailed();
+  };
+  const assertOwned = () => {
+    assertActive();
     if (registry.get(request.id) !== request) throw questionAnswerFailed();
   };
   const io: QuestionIo = {
@@ -57,10 +61,11 @@ export function questionInput(
       try {
         for (;;) {
           wakeup.consume();
-          assertLive();
+          assertActive();
           const frame = readQuestionFrame(terminal);
-          if (frame && (!progressed || progressed()) && test(frame)) return frame;
-          assertLive();
+          const postWriteProgressObserved = !hasOutputSinceWrite || hasOutputSinceWrite();
+          if (frame && postWriteProgressObserved && test(frame)) return frame;
+          assertActive();
           await wakeup.wait(signal);
         }
       } finally {
@@ -76,7 +81,8 @@ export function questionInput(
         frame = readQuestionFrame(terminal);
       }
       if (!(frame && matchesBeforeWrite(frame))) throw questionAnswerFailed();
-      progressed = captureRenderProgress(terminal);
+      assertOwned();
+      hasOutputSinceWrite = captureRenderProgress(terminal);
       observer.started();
       try {
         await untilQuestionAbort(terminal.sendInput(input), signal);
@@ -84,7 +90,7 @@ export function questionInput(
         observer.failed();
         throw questionAnswerFailed();
       }
-      assertLive();
+      assertActive();
     },
   };
   return io;

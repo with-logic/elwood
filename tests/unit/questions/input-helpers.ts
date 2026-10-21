@@ -1,6 +1,5 @@
 /** Real native input fixture without transaction ownership (PRD §4). */
 import { vi } from "vitest";
-import { questionAnswerFailed } from "../../../src/core/questions/errors.ts";
 import { questionInput } from "../../../src/core/questions/input.ts";
 import { PickerInputOwnership } from "../../../src/runtime/session/picker-input.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
@@ -23,16 +22,10 @@ export function inputHarness() {
   const signal = AbortSignal.any([closing.signal, operation.signal, input.signal()]);
   const started = vi.fn();
   const failed = vi.fn();
-  const io = questionInput(
-    input.automated,
-    requests,
-    request,
-    signal,
-    () => {
-      if (signal.aborted) throw questionAnswerFailed();
-    },
-    { started, failed },
-  );
+  const io = questionInput(input.automated, requests, request, signal, () => {}, {
+    started,
+    failed,
+  });
   const pending = new Set<Promise<unknown>>();
   const track = <T>(work: Promise<T>): Promise<T> => {
     pending.add(work);
