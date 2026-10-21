@@ -111,7 +111,7 @@ test("a modal notes page already owned by a human receives no input", async () =
   expect(scripted.writes).toEqual([]);
 });
 
-test("quoted expected text below a foreign heading grants no answer authority", async () => {
+test("expected prompt as a plain row below a foreign heading grants no answer authority", async () => {
   const queued = definitions("async-records.json");
   const text = captured("async-editor-first.txt")
     .text.replaceAll(queued[0]!.prompt, "Foreign heading")
