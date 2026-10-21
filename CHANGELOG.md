@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve in-flight question request IDs through same-key metadata redraws so late native acceptance closes the original request.
+
 - Keep native Claude questionnaires blocking when question text contains composer-like carets, fences, or navigation-footer copy.
 
 - Enforce the existing required payloads in transcript activity types: Codex progress carries text and its Codex/transcript identity, and Claude transcript projections retain their per-kind required fields.

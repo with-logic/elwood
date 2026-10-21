@@ -47,6 +47,10 @@ export class QuestionRegistry {
   find(nativeKey: string): ElwoodQuestionRequest | undefined {
     return this.byNativeKey.get(nativeKey)?.request;
   }
+  /** A retired request keeps its native reservation without answer authority. */
+  isRetired(nativeKey: string): boolean {
+    return this.byNativeKey.get(nativeKey)?.answerable === false;
+  }
   keyFor(requestId: string): string | undefined {
     return this.entries.get(requestId)?.nativeKey;
   }
