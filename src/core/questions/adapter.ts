@@ -7,7 +7,8 @@ import type { ValidatedQuestionAnswer } from "./validate.ts";
 export type { QuestionFrame, QuestionIo } from "./io.ts";
 
 export interface QuestionAdapter {
-  observe(event: ElwoodActivityEvent): void;
+  /** True only when native question state changed and needs the current frame. */
+  observe(event: ElwoodActivityEvent): boolean;
   render(frame: QuestionFrame): void;
   blocksInput(): boolean;
   /** Entry i answers request.questions[i], using indexes into that question's ordered options. */
