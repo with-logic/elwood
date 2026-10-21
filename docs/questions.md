@@ -108,7 +108,9 @@ single choice, checkboxes and alternative text on single-select questions.
 Checkbox questions currently advertise `textMode: "none"`. Elwood submits the group through
 its review page. A caller's direct Claude hook answer keeps precedence and does
 not create a phantom terminal question. The supported automation starts from the
-recognized first question; unsupported partial navigation fails safely.
+recognized first question; unsupported partial navigation fails safely. Completion
+hooks must match the native request ID, or its ordered question definitions when
+the hook omits that ID. Unrelated Claude hooks cannot acknowledge the request.
 
 Codex's modal `request_user_input` groups questions into one acceptance unit.
 Its current editor requires choices for every question; native Other/notes

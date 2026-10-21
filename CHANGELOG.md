@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [0.2.0] - 2026-10-20
 
+- Require request-correlated Claude question completion, preserving ID-less matching hooks while ignoring unrelated question metadata.
+
 - Reject malformed Codex native secret-input flags before exposing question requests for automation.
 
 - Bound Codex question metadata and replay protection; resource overflow retires exposed requests and disables question automation for that session while preserving human control, and unchanged redraws avoid repeated registry publication.

@@ -8,6 +8,7 @@ import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
+import { matchesNativeQuestions } from "./correlation.ts";
 import { claudeQuestionCandidate, parseClaudeQuestionScreen } from "./screen.ts";
 
 type Candidate = { readonly key: string; readonly questions: readonly QuestionDefinition[] };
@@ -34,7 +35,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     if (!isQuestions(input["questions"])) return;
     const questions = (input as AskUserQuestionInput).questions;
     const name = hook["hook_event_name"];
-    if (this.closeNativeHook(name, hook)) return;
+    if (this.closeNativeHook(name, hook, questions)) return;
     if (name !== "PreToolUse" && name !== "PermissionRequest") return;
     if (name === "PermissionRequest" && this.candidate) return;
     const key =
@@ -53,10 +54,17 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     };
     if (replacing) this.registry.clear("unavailable");
   }
-  private closeNativeHook(name: unknown, hook: Readonly<Record<string, unknown>>): boolean {
+  private closeNativeHook(
+    name: unknown,
+    hook: Readonly<Record<string, unknown>>,
+    questions: AskUserQuestionInput["questions"],
+  ): boolean {
     if (name !== "PostToolUse" && name !== "PostToolUseFailure" && name !== "PermissionDenied")
       return false;
-    if (typeof hook["tool_use_id"] === "string" && hook["tool_use_id"] !== this.candidate?.key)
+    const nativeId = hook["tool_use_id"];
+    if (typeof nativeId === "string") {
+      if (nativeId !== this.candidate?.key) return true;
+    } else if (!(this.candidate && matchesNativeQuestions(questions, this.candidate.questions)))
       return true;
     const request = this.candidate && this.registry.find(this.candidate.key);
     this.candidate = undefined;
