@@ -84,6 +84,8 @@ Images accept either `{ path: string }` or `{ data: Uint8Array, format }`. Byte 
 | `resize({ cols, rows })` | Change terminal dimensions |
 | `listModels(options?)` | Inspect the agent's model choices |
 | `setModel(id, options?)` | Switch model through the agent |
+| `listQuestions()` | Read an immutable snapshot of pending native question requests |
+| `answerQuestions(requestId, answers, options?)` | Submit one complete native question request |
 | `waitForStatus(predicate, timeoutMs?)` | Wait for a matching lifecycle status |
 | `waitForActivity(predicate, timeoutMs?)` | Wait for matching normalized activity |
 
@@ -91,11 +93,41 @@ Images accept either `{ path: string }` or `{ data: Uint8Array, format }`. Byte 
 
 ## Events and hooks
 
-`on(event, handler)` returns an unsubscribe function; `off(event, handler)` removes the matching subscription. Common events include `activity`, `status`, `warning`, `terminal:data`, `terminal:exit`, `hook` and `hookError`. Event names and payloads are typed per adapter.
+`on(event, handler)` returns an unsubscribe function; `off(event, handler)` removes the matching subscription. Common events include `activity`, `status`, `warning`, `question`, `terminal:data`, `terminal:exit`, `hook` and `hookError`. Event names and payloads are typed per adapter.
 
 Use constructor `hooks` when your application must respond to an agent hook. Use event subscriptions when it only needs to observe. Claude and Codex have different hook vocabularies and result types; do not reuse a handler blindly between agents.
 
 The classes also expose `createLoop()`, `listLoops()` and `cancelLoop()` for recurring prompts, plus raw `sendMessage()`, `sendPrompt()`, `sendGuidance()` and `sendKeys()` for direct control. Raw input bypasses the ergonomic turn queue. Start with `send()` and `stream()` unless you need to own that coordination.
+
+### Commentary and login renewal
+
+Committed Codex commentary produces `activity.kind: "assistant_progress"` with readable `text`. Final answers retain `assistant_message`. Progress does not finish the turn or enter `send()` results or `stream()` text events; a host can display it separately while keeping its working state.
+
+Claude's advance login-renewal notice produces a typed `login_expiring` warning with `expiresInDays` and `recoveryCommand: "/login"`, plus a matching warning activity. A host can offer renewal before the login expires. The notice does not change session status or start login automatically.
+
+## Native questions
+
+Both classes expose native question requests through typed `question` events and normalized activities with `kind: "question"`. A raised event contains the immutable request; a closed event identifies native acceptance, cancellation or unavailability. The host owns rendering and collecting answers.
+
+Each request has opaque live IDs and ordered questions. Render its advertised `selection`, `textMode` and `supportsSecretInput` capabilities, including choices, checkboxes and supported text. Claude and blocking Codex forms group questions into one request. Codex queued questions are independently answerable requests and can remain available while the agent works.
+
+Subscribe before starting a turn and keep the question handler active while awaiting `send()` or consuming `stream()`. `listQuestions()` supports late subscribers; subscribe first, buffer events during snapshot loading, install the snapshot, then apply the buffered lifecycle events in order by request ID, preserving each phase and closure reason.
+
+Pass `answerQuestions()` the request ID and one complete batch of `ElwoodQuestionAnswer` values. Each value uses `questionId`, optional `optionIds`, and optional `text`; include both choices and text only when `textMode` is `additional`. The default answer timeout is 20 seconds; options accept a positive finite `timeoutMs` and an `AbortSignal` as `signal`. A complete answer batch is limited to 8 MiB of UTF-8 question IDs, option IDs and text, excluding JSON syntax and unknown fields; malformed UTF-16 and unsupported control characters reject before input.
+
+Answering uses a dedicated input lane while the original turn remains open. Pending questions hold ordinary prompts and commands. Invalid or stale answers reject before typing, and an answer call resolves only after native acceptance. Human keyboard intervention revokes automation. Unrelated Claude completion hooks cannot acknowledge a question request. Unknown layouts remain visible through the terminal and receive no guessed answer keys. Codex metadata must omit `isSecret` or set it to boolean `false` for every question; unsupported or malformed flags prevent publication of the complete native request.
+
+Codex automation retains at most 256 pending native requests and 1 MiB of candidate metadata; each call is limited to 256 question definitions and 1 MiB of input metadata. Replay protection retains at most 4,096 retired identities and 1 MiB of key data. Overflow closes exposed requests as `unavailable` and disables question automation for the rest of that session. Overflow emits one content-free `question_automation_disabled` warning. Raw human control remains available; unsupported or opaque native identities hold ordinary automation until explicit native turn end. These limits do not add an expiry deadline.
+
+Codex text acceptance converts CRLF/CR to LF and trims outer Unicode White_Space, preserving interior whitespace. Long or clipped answers still require the full native accepted value to match.
+
+An interrupted answer that may have written input retires its request as `unavailable`; the old ID rejects with `question_not_found`. Native input remains held until correlated closure, and retrying the retired request cannot replay delivered input. Aborting does not undo native submission. A completed Claude final submission keeps its hold through a newly empty composer until matching native completion.
+
+Direct Claude hook answers take precedence over question publication. An unanswered hook decision requires a fresh completed terminal paint before discovery.
+
+Question and companion activity listener failures are contained. The first failure per session emits a content-free `question_observer_failed` warning with `phase: "question" | "activity"`; delivery and native ownership continue.
+
+Requests are live-only and are not added to Elwood's persisted state. Existing raw hooks and transcripts can still contain answers. See the [complete question contract](https://github.com/with-logic/elwood/blob/main/docs/questions.md) for errors, native differences and consumer examples.
 
 ## Errors
 
