@@ -24,6 +24,15 @@ export type ElwoodQuestionRequest = {
   readonly delivery: "blocking" | "queued";
   readonly questions: readonly ElwoodQuestion[];
 };
+export type ElwoodQuestionAnswer = {
+  readonly questionId: string;
+  readonly optionIds?: readonly string[];
+  readonly text?: string;
+};
+export type ElwoodQuestionAnswerOptions = {
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+};
 export type QuestionCloseReason = "answered" | "cancelled" | "unavailable";
 export type ElwoodQuestionEvent = {
   readonly elwoodSessionId: string;
