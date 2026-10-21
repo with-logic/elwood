@@ -1,14 +1,24 @@
 /** Read committed native requests and acceptance evidence for PRD §4 adapters. */
 import { isRecord } from "../../core/predicates.ts";
-import { type NativeQuestion, parseQuestions } from "./definitions.ts";
+import {
+  type ModalNativeQuestion,
+  parseQuestions,
+  type QueuedNativeQuestion,
+} from "./definitions.ts";
 import { checkQuestionArguments } from "./limits.ts";
 
-export type QuestionCall = {
-  readonly callId: string;
-  readonly queued: boolean;
-  readonly accepted: boolean;
-  readonly questions: readonly NativeQuestion[];
-};
+export type QuestionCall = { readonly callId: string } & (
+  | {
+      readonly queued: false;
+      readonly accepted: false;
+      readonly questions: readonly ModalNativeQuestion[];
+    }
+  | {
+      readonly queued: true;
+      readonly accepted: boolean;
+      readonly questions: readonly QueuedNativeQuestion[];
+    }
+);
 export function payloadOf(item: unknown): Record<string, unknown> | undefined {
   return isRecord(item) && isRecord(item["payload"]) ? item["payload"] : undefined;
 }
@@ -35,7 +45,7 @@ export function questionCall(payload: Record<string, unknown>): QuestionCall | u
     );
   }
   const item = payload["type"] === "item_completed" ? payload["item"] : payload;
-  if (!(isRecord(item) && nativeMessage(item) && isAsyncQuestionMessage(item))) return undefined;
+  if (!(isRecord(item) && nativeMessage(item) && hasAsyncQuestionMetadata(item))) return undefined;
   return parsedCall(item["id"], true, true, item["questions"]);
 }
 function nativeMessage(item: Record<string, unknown>): boolean {
@@ -51,11 +61,17 @@ function parsedCall(
   accepted: boolean,
   value: unknown,
 ): QuestionCall | undefined {
-  const questions = parseQuestions(value, queued, typeof id === "string" ? id : "");
+  const identity = typeof id === "string" ? id : "";
+  if (queued) {
+    const questions = parseQuestions(value, true, identity);
+    if (typeof id !== "string" || !id) return undefined;
+    return questions ? { callId: id, queued: true, accepted, questions } : undefined;
+  }
+  const questions = parseQuestions(value, false, identity);
   if (typeof id !== "string" || !id) return undefined;
-  return questions ? { callId: id, queued, accepted, questions } : undefined;
+  return questions ? { callId: id, queued: false, accepted: false, questions } : undefined;
 }
-export function isAsyncQuestionMessage(item: Record<string, unknown>): boolean {
+export function hasAsyncQuestionMetadata(item: Record<string, unknown>): boolean {
   return (
     item["delivery"] === "async" && Array.isArray(item["questions"]) && item["questions"].length > 0
   );

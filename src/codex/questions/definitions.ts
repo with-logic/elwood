@@ -3,10 +3,17 @@ import { isRecord } from "../../core/predicates.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { checkQuestionInput } from "./limits.ts";
 
-export type NativeQuestion = { readonly definition: QuestionDefinition } & (
-  | { readonly nativeId: string; readonly questionIndex?: never }
-  | { readonly questionIndex: number; readonly nativeId?: never }
-);
+export type ModalNativeQuestion = {
+  readonly definition: QuestionDefinition;
+  readonly nativeId: string;
+  readonly questionIndex?: never;
+};
+export type QueuedNativeQuestion = {
+  readonly definition: QuestionDefinition;
+  readonly questionIndex: number;
+  readonly nativeId?: never;
+};
+export type NativeQuestion = ModalNativeQuestion | QueuedNativeQuestion;
 // Codex limits queued suggestions before rendering its native question editor.
 const queuedOptionCountLimit = 32;
 const queuedOptionLabelLimitBytes = 512;
@@ -14,6 +21,21 @@ const modalOther = {
   label: "None of the above",
   description: "Optionally, add details in notes (tab)",
 };
+export function parseQuestions(
+  value: unknown,
+  queued: false,
+  identity?: string,
+): readonly ModalNativeQuestion[] | undefined;
+export function parseQuestions(
+  value: unknown,
+  queued: true,
+  identity?: string,
+): readonly QueuedNativeQuestion[] | undefined;
+export function parseQuestions(
+  value: unknown,
+  queued: boolean,
+  identity?: string,
+): readonly NativeQuestion[] | undefined;
 export function parseQuestions(
   value: unknown,
   queued: boolean,
@@ -40,7 +62,7 @@ function parseQuestion(item: unknown, index: number, queued: boolean): NativeQue
   if (typeof prompt !== "string" || !prompt.trim()) return undefined;
   if ("isSecret" in item && item["isSecret"] !== false) return undefined;
   const options = parseOptions(item["options"], queued);
-  if (!(options && validNativeId(item, queued, options.length))) return undefined;
+  if (!(options && hasSupportedIdentityAndOptions(item, queued, options.length))) return undefined;
   const header = item["header"];
   return {
     ...(queued ? { questionIndex: index } : { nativeId: String(item["id"]) }),
@@ -78,7 +100,7 @@ function parseOptions(value: unknown, queued: boolean): QuestionDefinition["opti
   return result;
 }
 
-function validNativeId(
+function hasSupportedIdentityAndOptions(
   item: Record<string, unknown>,
   queued: boolean,
   optionCount: number,

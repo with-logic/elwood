@@ -8,7 +8,7 @@ import {
 } from "../../../src/codex/questions/limits.ts";
 
 const mib = 1024 * 1024;
-test("C-QUESTION-05 decoded metadata includes UTF-8 identity bytes at its inclusive limit", () => {
+test("decoded metadata includes UTF-8 identity bytes at its inclusive limit", () => {
   const value = [{ title: "Q" }];
   const overhead = Buffer.byteLength(JSON.stringify(["", value]));
   const identity = "é".repeat((mib - overhead) / 2) + "x".repeat((mib - overhead) % 2);
@@ -21,12 +21,12 @@ test("C-QUESTION-05 decoded metadata includes UTF-8 identity bytes at its inclus
   );
   expect(() => checkQuestionInput(1n)).toThrow(QuestionLimitError);
 });
-test("C-QUESTION-05 raw argument bytes count the native identity before JSON parsing", () => {
+test("raw argument bytes count the native identity before JSON parsing", () => {
   expect(() => checkQuestionArguments("é".repeat(mib / 2 - 1), "é")).not.toThrow();
   expect(() => checkQuestionArguments("é".repeat(mib / 2), "x")).toThrow(QuestionLimitError);
   expect(() => checkQuestionArguments(undefined, undefined)).not.toThrow();
 });
-test("C-QUESTION-05 pending requests and their aggregate bytes have independent inclusive limits", () => {
+test("pending requests and their aggregate bytes have independent inclusive limits", () => {
   const budget = new QuestionBudget();
   budget.replace(256, mib);
   expect(() => budget.replace(257, 0)).toThrow(QuestionLimitError);
@@ -36,7 +36,7 @@ test("C-QUESTION-05 pending requests and their aggregate bytes have independent 
   budget.clear();
   expect(() => budget.replace(1, mib)).not.toThrow();
 });
-test("C-QUESTION-05 replay tombstones deduplicate and preserve a full 4096-identity history", () => {
+test("replay tombstones deduplicate and preserve a full 4096-identity history", () => {
   const budget = new QuestionBudget();
   expect(budget.hasRetired("0")).toBe(false);
   for (let index = 0; index < 4096; index++) budget.retire(String(index));
@@ -47,7 +47,7 @@ test("C-QUESTION-05 replay tombstones deduplicate and preserve a full 4096-ident
   expect(budget.hasRetired("0")).toBe(false);
   expect(() => budget.retire("4096")).not.toThrow();
 });
-test("C-QUESTION-05 retired UTF-8 identities accept exactly 1 MiB without evicting history", () => {
+test("retired UTF-8 identities accept exactly 1 MiB without evicting history", () => {
   const budget = new QuestionBudget();
   const key = "é".repeat(mib / 2);
   budget.retire(key);

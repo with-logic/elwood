@@ -13,7 +13,7 @@ const message = (text: string) => ({
   content: [{ type: "input_text", text }],
 });
 
-test("C-QUESTION-01 preserves choice and free-text capabilities", () => {
+test("preserves choice and free-text capabilities", () => {
   const queued = parseQuestions([{ title: "Q", options: ["A"] }, { title: "Text" }], true)!;
   expect(queued.map(({ definition }) => [definition.selection, definition.textMode])).toEqual([
     ["single", "alternative"],
@@ -23,17 +23,13 @@ test("C-QUESTION-01 preserves choice and free-text capabilities", () => {
   expect(modal[0]?.definition).toMatchObject({ selection: "single", textMode: "additional" });
 });
 
-test("C-QUESTION-01 rejects duplicate modal identities before acknowledgement is ambiguous", () => {
+test("rejects duplicate modal identities before acknowledgement is ambiguous", () => {
   const question = { id: "same", question: "First", options: [{ label: "A" }] };
   expect(parseQuestions([question, { ...question, question: "Second" }], false)).toBeUndefined();
   expect(parseQuestions([question, { ...question, id: "second" }], false)).toHaveLength(2);
 });
 
-test.each([
-  "",
-  "\n",
-  "\u00a0\ufeff\v\f",
-])("C-QUESTION-01 preserves native reply body whitespace %j", (space) => {
+test.each(["", "\n", "\u00a0\ufeff\v\f"])("preserves native reply body whitespace %j", (space) => {
   expect(answeredQuestionIds(message(`${open}${space}${body}${space}${close}`))).toEqual([
     "question",
   ]);
@@ -46,11 +42,11 @@ test.each([
   "\u2029",
   " ",
   "x",
-])("C-QUESTION-01 ignores text after the exact native reply wrapper %j", (suffix) => {
+])("ignores text after the exact native reply wrapper %j", (suffix) => {
   expect(answeredQuestionIds(message(`${open}${body}${close}${suffix}`))).toEqual([]);
 });
 
-test("C-QUESTION-01 incomplete whitespace-heavy replies finish within a process deadline", () => {
+test("incomplete whitespace-heavy replies finish within a process deadline", () => {
   const moduleUrl = new URL("../../../src/codex/questions/records.ts", import.meta.url).href;
   const script = `
     import { answeredQuestionIds } from ${JSON.stringify(moduleUrl)};

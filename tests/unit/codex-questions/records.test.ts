@@ -8,7 +8,7 @@ import {
   questionCall,
 } from "../../../src/codex/questions/records.ts";
 
-test("C-QUESTION-01 mirrors native async suggestion limits and optional fields", () => {
+test("mirrors native async suggestion limits and optional fields", () => {
   const options = ["é".repeat(257), "Blue", ...Array.from({ length: 31 }, (_, i) => String(i))];
   const result = parseQuestions(
     [
@@ -40,7 +40,7 @@ test.each([
   [{ title: "Q", options: [] }],
   [{ title: "Q", options: [null] }],
   [{ title: "Q", options: [""] }],
-])("C-QUESTION-01 rejects invalid async question metadata %j", (value) => {
+])("rejects invalid async question metadata %j", (value) => {
   expect(parseQuestions(value, true)).toBeUndefined();
 });
 test.each([
@@ -49,24 +49,20 @@ test.each([
   { id: "q", question: "Q", options: [{ label: 3 }] },
   { id: "q", question: "Q", options: [{ label: " " }] },
   { question: "Q", options: [{ label: "A" }] },
-])("C-QUESTION-01 rejects invalid modal metadata %j", (value) => {
+])("rejects invalid modal metadata %j", (value) => {
   expect(parseQuestions([value], false)).toBeUndefined();
 });
-test("C-QUESTION-01 parses only complete durable native call shapes", () => {
+test("parses only complete durable native call shapes", () => {
   expect(payloadOf(null)).toBeUndefined();
   expect(payloadOf({ payload: [] })).toBeUndefined();
   expect(jsonRecord(undefined)).toBeUndefined();
   expect(jsonRecord("{")).toBeUndefined();
   expect(jsonRecord("[]")).toBeUndefined();
   expect(questionCall({ type: "function_call", name: "other" })).toBeUndefined();
-  expect(
-    questionCall({
-      type: "function_call",
-      name: "request_user_input",
-      call_id: "id",
-      arguments: "{",
-    }),
-  ).toBeUndefined();
+  for (const name of ["request_user_input", "request_user_input_async"])
+    expect(
+      questionCall({ type: "function_call", name, call_id: "id", arguments: "{" }),
+    ).toBeUndefined();
   expect(questionCall({ type: "item_completed", item: null })).toBeUndefined();
   expect(
     questionCall({ type: "unknown", id: "id", delivery: "async", questions: [{ title: "Q" }] }),
@@ -100,7 +96,7 @@ test("C-QUESTION-01 parses only complete durable native call shapes", () => {
       ?.accepted,
   ).toBe(true);
 });
-test("C-QUESTION-01 recognizes native committed reply envelopes, never arbitrary prose", () => {
+test("recognizes native committed reply envelopes, never arbitrary prose", () => {
   const wrapped = (text: unknown) => ({
     type: "message",
     role: "user",
