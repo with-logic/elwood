@@ -8,6 +8,21 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+test("assertLive rejection prevents real terminal dispatch without signal abortion", async () => {
+  const failure = new Error("Session is no longer live.");
+  const h = setup(() => {
+    throw failure;
+  });
+  await h.terminal.writeOutput("question");
+  const send = vi.spyOn(h.input.automated, "sendInput");
+  expect(h.io.signal.aborted).toBe(false);
+  await expect(h.track(h.io.write("forbidden", () => true))).rejects.toBe(failure);
+  expect(h.io.signal.aborted).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(h.writes).toEqual([]);
+  expect(h.started).not.toHaveBeenCalled();
+});
+
 test("raw terminal errors never retain answer-bearing causes", async () => {
   const h = setup();
   await h.terminal.writeOutput("question");

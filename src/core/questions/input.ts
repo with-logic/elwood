@@ -63,8 +63,8 @@ export function questionInput(
           wakeup.consume();
           assertActive();
           const frame = readQuestionFrame(terminal);
-          const postWriteProgressObserved = !hasOutputSinceWrite || hasOutputSinceWrite();
-          if (frame && postWriteProgressObserved && test(frame)) return frame;
+          const postWriteProgressSatisfied = !hasOutputSinceWrite || hasOutputSinceWrite();
+          if (frame && postWriteProgressSatisfied && test(frame)) return frame;
           assertActive();
           await wakeup.wait(signal);
         }

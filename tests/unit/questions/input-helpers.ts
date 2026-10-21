@@ -9,7 +9,7 @@ const cleanups: Array<() => Promise<void>> = [];
 export async function disposeInputHarnesses(): Promise<void> {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 }
-export function inputHarness() {
+export function inputHarness(assertLive: () => void = () => {}) {
   const writes: string[] = [];
   const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, (input) =>
     writes.push(String(input)),
@@ -22,7 +22,7 @@ export function inputHarness() {
   const signal = AbortSignal.any([closing.signal, operation.signal, input.signal()]);
   const started = vi.fn();
   const failed = vi.fn();
-  const io = questionInput(input.automated, requests, request, signal, () => {}, {
+  const io = questionInput(input.automated, requests, request, signal, assertLive, {
     started,
     failed,
   });

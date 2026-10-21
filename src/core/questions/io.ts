@@ -11,7 +11,9 @@ export type QuestionFrame = TerminalSnapshot & {
 export type QuestionIo = {
   readonly signal: AbortSignal;
   frame(): QuestionFrame | undefined;
+  /** Recheck the predicate after completed renders or resize; abort rejects.
+   * After a write, require completed output progress before accepting a frame. */
   wait(test: (frame: QuestionFrame) => boolean): Promise<QuestionFrame>;
-  /** After a state-changing write, await native progress before writing again. */
+  /** Await only the send; callers must wait between state-changing writes. */
   write(input: string, matchesBeforeWrite: (frame: QuestionFrame) => boolean): Promise<void>;
 };
