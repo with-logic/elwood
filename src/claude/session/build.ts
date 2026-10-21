@@ -17,7 +17,7 @@ import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
 import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
-import { hasNativeRenewalFooter, LoginExpiringWatcher } from "../login/renewal.ts";
+import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
@@ -120,7 +120,8 @@ export async function buildClaudeSession(
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
-      latestRenderedText = renderedSnapshot(renderedTerminal).text;
+      const snapshot = renderedSnapshot(renderedTerminal);
+      latestRenderedText = snapshot.text;
       const frame = { text: latestRenderedText, title: renderedTerminal.title };
       const send = (input: string) =>
         withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
@@ -139,11 +140,7 @@ export async function buildClaudeSession(
       });
       frameObserver.observe(frame);
       warnGate.emitWarnings(
-        loginExpiring.observe(
-          frame.text,
-          record.elwoodSessionId,
-          hasNativeRenewalFooter(renderedTerminal),
-        ),
+        loginExpiring.observeFrame(snapshot, record.elwoodSessionId, renderedTerminal),
       );
       session?.noteLoginExpiry(frame.text);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });

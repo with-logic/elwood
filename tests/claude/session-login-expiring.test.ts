@@ -28,6 +28,11 @@ test("C-CLAUDE-23 observes renewal on resume without replaying to late listeners
   const warnings: unknown[] = [];
   resumed.on("warning", (event) => warnings.push(event));
   await expect.poll(() => warnings.length).toBe(1);
+  expect(warnings[0]).toMatchObject({
+    code: "login_expiring",
+    expiresInDays: 3,
+    elwoodSessionId: resumed.elwoodSessionId,
+  });
   const late: unknown[] = [];
   resumed.on("warning", (event) => late.push(event));
   ptys[1]!.emitData(notice(3));
@@ -114,4 +119,18 @@ test("C-CLAUDE-23 countdowns warn once each despite redraws, clearing and throwi
     { code: "login_expiring", expiresInDays: 2 },
   ]);
   expect(session.status).toBe("ready");
+  expect(ptys[0]!.writes.some((write) => write.includes("/login"))).toBe(false);
+  await session.sendMessage("continue after renewal notice");
+  expect(ptys[0]!.writes).toContain("\u001b[200~continue after renewal notice\u001b[201~");
+});
+
+test("C-CLAUDE-23 wrapped notices above the native composer preserve its cursor row", async () => {
+  installFakes();
+  const session = await startClaude({ cwd: tempDir() });
+  const warnings: unknown[] = [];
+  session.on("warning", (event) => warnings.push(event));
+  const screen =
+    "Claude Code v2.1.305\n⚠ Your login expires in\n3 days · run /login to renew\n───\n❯ \n───\n  ⏸ manual mode on\nYour login expires in\n1 day · run /login to renew";
+  ptys[0]!.emitData(`${asScreen(screen)}\u001b[?25h\u001b[5;3H`);
+  await expect.poll(() => warnings).toMatchObject([{ code: "login_expiring", expiresInDays: 1 }]);
 });

@@ -1,6 +1,7 @@
 /** Observe native empty Claude input without requiring an idle turn (PRD §5.3, C-API-56). */
 import { emptyInputFrame } from "../../core/input/empty-frame.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import { loginRenewalNotice } from "../login/notice.ts";
 import { claudeComposerRow } from "../screen-table.ts";
 
 const rule = /^[─━]{3,}\s*$/;
@@ -8,7 +9,6 @@ const mode =
   /^\s*(?:-- INSERT -- )?(?:⏵⏵ (?:bypass permissions|don['’]t ask|auto mode) on \(shift\+tab to cycle\)|⏸ manual mode on)(?: · ← for agents)?(?: +[\d,.]+[kKmM]? tokens)?\s*$/;
 // Separate effort footer captured below collapsed text in Claude 2.1.281.
 const effort = /^\s*◐ medium · \/effort\s*$/;
-const expiry = /^\s*Your login expires in \d+ days? · run \/login to renew\s*$/;
 
 export function claudeEmptyInputFrame(terminal: ElwoodTerminal) {
   return emptyInputFrame(terminal, claudeEmptyInputRows);
@@ -27,7 +27,11 @@ export function claudeEmptyInputRows(
     (rows.some((row) => /Claude Code v[\d.]+/.test(row)) ||
       below.some((row) => mode.test(row) || stagedFooter?.test(row))) &&
     below.every(
-      (row) => mode.test(row) || expiry.test(row) || effort.test(row) || stagedFooter?.test(row),
+      (row) =>
+        mode.test(row) ||
+        loginRenewalNotice.test(row) ||
+        effort.test(row) ||
+        stagedFooter?.test(row),
     )
   );
 }
