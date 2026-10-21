@@ -1336,6 +1336,7 @@ answer text; it cannot replace the native notes start after the option block.
 
 The snapshots, source hashes, expected inputs, and native acceptance evidence are
 in `tests/fixtures/codex-0.163.0/questions/editor/`. A viewport alone cannot establish
-complete logical equality of multirow or clipped drafts. The private exact-draft
-helper withholds that confirmation; full-answer verification must bind an owned
-paste to the native accepted payload rather than infer missing text from the screen.
+complete logical equality of multirow or clipped drafts. Cursor-cell style and a
+physical row prefix are partial evidence, so they must not confirm unshown answer
+text. Full-answer verification must bind an owned paste to the native accepted
+payload rather than infer missing text from the screen.
