@@ -51,7 +51,7 @@ describe("toTurnEvent (C-API-48)", () => {
   });
 
   test("every non-content kind maps to undefined (not yielded by stream)", () => {
-    const nonContent: ElwoodActivityKind[] = [
+    const nonContent = [
       "user_message",
       "web_search",
       "status",
@@ -64,7 +64,7 @@ describe("toTurnEvent (C-API-48)", () => {
       "hook_result",
       "hook_error",
       "other",
-    ];
+    ] as const satisfies readonly ElwoodActivityKind[];
     for (const kind of nonContent) {
       expect(toTurnEvent(activity({ kind }))).toBeUndefined();
     }

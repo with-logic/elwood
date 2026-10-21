@@ -90,7 +90,9 @@ export class FakeCliSession implements CliSessionFacade {
   preservedSessionId(): string | null {
     return this.resumable ? this.id : null;
   }
-  emitActivity(partial: Partial<ElwoodActivityEvent>): void {
+  emitActivity(
+    partial: Partial<Exclude<ElwoodActivityEvent, { readonly kind: "assistant_progress" }>>,
+  ): void {
     this.emitter.emit("activity", {
       elwoodSessionId: this.id,
       agent: this.agent,

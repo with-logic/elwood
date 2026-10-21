@@ -27,7 +27,13 @@ export function hookActivityBase(
   };
 }
 
-export function transcriptActivityMeta(event: CodexTranscriptEvent): Partial<ElwoodActivityEvent> {
+type OptionalTranscriptMeta = Pick<
+  ElwoodActivityEvent,
+  "turnId" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
+>;
+type TranscriptActivityMeta = OptionalTranscriptMeta & { readonly transcriptPath: string };
+
+export function transcriptActivityMeta(event: CodexTranscriptEvent): TranscriptActivityMeta {
   const item = record(event.item);
   const payload = record(item["payload"]);
   return {
@@ -42,7 +48,7 @@ export function transcriptActivityMeta(event: CodexTranscriptEvent): Partial<Elw
 function transcriptToolIo(
   event: CodexTranscriptEvent,
   payload: Record<string, unknown>,
-): Partial<ElwoodActivityEvent> {
+): Pick<ElwoodActivityEvent, "toolInput" | "toolOutput"> {
   // `toolInput` is the SAME unwrapped command the summary already extracted (the bare
   // command, not the CLI's JS/JSON harness), so both surfaces agree and the unwrap
   // logic has one home in the summarizer; it falls back to a generic serialization of
@@ -84,9 +90,9 @@ function transcriptToolUseId(
   return stringValue(payload["id"]) ?? stringValue(payload["call_id"]) ?? event.summary.label;
 }
 
-function optional<K extends keyof ElwoodActivityEvent>(
-  key: K,
-  value: ElwoodActivityEvent[K] | undefined,
-): Partial<ElwoodActivityEvent> {
+function optional(
+  key: keyof OptionalTranscriptMeta,
+  value: string | undefined,
+): OptionalTranscriptMeta {
   return value === undefined ? {} : { [key]: value };
 }

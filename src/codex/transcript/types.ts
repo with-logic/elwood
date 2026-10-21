@@ -13,27 +13,12 @@
  */
 export type CodexTranscriptSummary = {
   /**
-   * The kind of activity this item represents. Drives which fields downstream
-   * activity carries: `message` (assistant replies), `commentary` (user-facing progress),
-   * `tool_call` (a shell/exec
-   * or function invocation), `tool_result` (that call's output), `reasoning`
-   * (chain-of-thought summary text, when present), `web_search`, or `other` (any
-   * item type not specifically surfaced).
-   */
-  readonly kind:
-    | "message"
-    | "commentary"
-    | "tool_call"
-    | "tool_result"
-    | "reasoning"
-    | "web_search"
-    | "other";
-  /**
    * A short, human-readable label whose meaning depends on `kind`: the message
    * role (`assistant`) for `message`/`commentary`, the tool/function name for
    * `tool_call`, the correlating call id for `tool_result`, the web-search action
    * type (e.g. `search`/`open_page`) for `web_search`, the literal `"reasoning"`
-   * for `reasoning`, and the raw item `type` (or `"unknown"`) for `other`.
+   * for `reasoning`, and the payload item type, outer item type, role, or `"unknown"`
+   * for `other` (depending on the record being summarized).
    */
   readonly label: string;
   /**
@@ -43,11 +28,34 @@ export type CodexTranscriptSummary = {
    * sensitive (full assistant messages, tool output, file contents) — subscribers
    * must not treat it as a content-free channel. Absent when the item has no
    * readable text — the common case for an empty reasoning summary or a non-textual
-   * payload — so treat it as optional. Never carries encrypted reasoning content,
+   * payload. It is required for `commentary`, absent for `other`, and optional
+   * for the remaining variants. It never carries encrypted reasoning content,
    * which is deliberately not surfaced (§7A.4).
    */
   readonly text?: string;
-};
+} & (
+  | {
+      /** User-facing assistant progress, distinct from a final reply. */
+      readonly kind: "commentary";
+      readonly label: "assistant";
+      readonly text: string;
+    }
+  | {
+      readonly kind: "message";
+      readonly label: "assistant";
+    }
+  | {
+      readonly kind: "reasoning";
+      readonly label: "reasoning";
+    }
+  | {
+      readonly kind: "other";
+      readonly text?: never;
+    }
+  | {
+      readonly kind: "tool_call" | "tool_result" | "web_search";
+    }
+);
 
 /**
  * One live, best-effort observation of a committed Codex transcript item.

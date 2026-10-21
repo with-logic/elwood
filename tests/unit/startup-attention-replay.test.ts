@@ -12,7 +12,10 @@ import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 
 type Map = { activity: ElwoodActivityEvent };
-const event = (kind: ElwoodActivityEvent["kind"], label: string): ElwoodActivityEvent => ({
+const event = (
+  kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress">,
+  label: string,
+): ElwoodActivityEvent => ({
   elwoodSessionId: "s1",
   agent: "claude",
   source: "terminal",

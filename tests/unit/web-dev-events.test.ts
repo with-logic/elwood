@@ -148,7 +148,9 @@ const hooks = {
     }) satisfies ClaudeHookEventFor<"PostCompact">,
 } as const;
 
-function activity(kind: ElwoodActivityEvent["kind"]): ElwoodActivityEvent {
+function activity(
+  kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress">,
+): ElwoodActivityEvent {
   return {
     elwoodSessionId: "s1",
     agent: "codex",
