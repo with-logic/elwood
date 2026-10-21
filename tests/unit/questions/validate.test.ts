@@ -1,4 +1,4 @@
-/** Complete native answer validation before any physical write (C-QUESTION-02). */
+/** Complete native answer validation before any physical write (PRD §4). */
 import { describe, expect, test } from "vitest";
 import type { ElwoodQuestionAnswer } from "../../../src/core/questions/types.ts";
 import { questionTimeout, validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
@@ -10,7 +10,7 @@ const valid: readonly ElwoodQuestionAnswer[] = [
   { questionId: color!.id, optionIds: [color!.options[1]!.id] },
   { questionId: features!.id, optionIds: features!.options.map((option) => option.id) },
 ];
-describe("C-QUESTION-02 validation", () => {
+describe("private answer validation", () => {
   test("normalizes reordered complete answers and safe multiline alternative text", () => {
     expect(validateQuestionAnswers(request, [valid[1]!, valid[0]!])).toEqual([
       { optionIndexes: [1] },
@@ -76,5 +76,32 @@ describe("C-QUESTION-02 validation", () => {
     expect(() =>
       validateQuestionAnswers(note, [{ questionId: note.questions[0]!.id, optionIds: ["x"] }]),
     ).toThrow(expect.objectContaining({ code: "invalid_question_answer" }));
+  });
+  test("rejects even valid option IDs when the provider permits no selection", () => {
+    const none = registry().publish("none", "queued", [{ ...definitions[0]!, selection: "none" }])!;
+    const question = none.questions[0]!;
+    expect(() =>
+      validateQuestionAnswers(none, [
+        {
+          questionId: question.id,
+          optionIds: [question.options[0]!.id],
+        },
+      ]),
+    ).toThrow(expect.objectContaining({ code: "invalid_question_answer" }));
+  });
+  test("preserves selected options alongside additional text", () => {
+    const additional = registry().publish("additional", "queued", [
+      { ...definitions[0]!, textMode: "additional" },
+    ])!;
+    const question = additional.questions[0]!;
+    expect(
+      validateQuestionAnswers(additional, [
+        {
+          questionId: question.id,
+          optionIds: [question.options[1]!.id],
+          text: "additional note",
+        },
+      ]),
+    ).toEqual([{ optionIndexes: [1], text: "additional note" }]);
   });
 });

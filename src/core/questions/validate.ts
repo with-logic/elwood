@@ -9,12 +9,13 @@ import type {
   ElwoodQuestionRequest,
 } from "./types.ts";
 
+/** Entries follow request-question order; option indexes follow native option order. */
 export type ValidatedQuestionAnswer = {
   readonly optionIndexes: readonly number[];
   readonly text?: string;
 };
 const DEFAULT_QUESTION_TIMEOUT_MS = 20_000;
-const MAX_ANSWER_TEXT_BYTES = 8 * 1024 * 1024;
+const MAX_ANSWER_BATCH_TEXT_BYTES = 8 * 1024 * 1024;
 
 export function questionTimeout(options?: ElwoodQuestionAnswerOptions): number {
   if (options !== undefined && (typeof options !== "object" || options === null)) throw invalid();
@@ -32,15 +33,17 @@ export function validateQuestionAnswers(
   if (answerCount !== request.questions.length) throw invalid();
   let textBytes = 0;
   const validated = new Map<string, ValidatedQuestionAnswer>();
+  const questionsById = new Map(request.questions.map((question) => [question.id, question]));
   for (let index = 0; index < answerCount; index++) {
+    if (!Object.hasOwn(answers, index)) throw invalid();
     const answer = answers[index];
     if (!answer) throw invalid();
     const { questionId, optionIds, text } = answer;
-    const question = request.questions.find((item) => item.id === questionId);
+    const question = questionsById.get(questionId);
     if (!question || validated.has(questionId)) throw invalid();
     const indexes = questionOptionIndexes(question, optionIds === undefined ? [] : optionIds);
     if (typeof text === "string") textBytes += Buffer.byteLength(text, "utf8");
-    if (textBytes > MAX_ANSWER_TEXT_BYTES) throw invalid();
+    if (textBytes > MAX_ANSWER_BATCH_TEXT_BYTES) throw invalid();
     validated.set(questionId, validateAnswer(question, indexes, text));
   }
   return request.questions.map((question) => validated.get(question.id)!);
@@ -73,13 +76,14 @@ function validateAnswer(
 function questionOptionIndexes(question: ElwoodQuestion, ids: readonly string[]): number[] {
   if (!Array.isArray(ids)) throw invalid();
   const selected = new Set<string>();
+  const optionIndexesById = new Map(question.options.map((option, index) => [option.id, index]));
   const indexes: number[] = [];
   const length = ids.length;
   for (let index = 0; index < length; index++) {
     const id: unknown = ids[index];
     if (!Object.hasOwn(ids, index) || typeof id !== "string" || selected.has(id)) throw invalid();
     selected.add(id);
-    indexes.push(question.options.findIndex((option) => option.id === id));
+    indexes.push(optionIndexesById.get(id) ?? -1);
   }
   return indexes;
 }
