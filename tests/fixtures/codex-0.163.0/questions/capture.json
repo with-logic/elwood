@@ -1,0 +1,74 @@
+{
+  "version": "codex-cli 0.163.0",
+  "model": "gpt-6-luna",
+  "terminal": {
+    "cols": 140,
+    "rows": 45
+  },
+  "isolation": "Private copied CLI and auth, empty project, CODEX_HOME/ZDOTDIR confined to child; parent environment and auth/config/hooks hashes unchanged; PTYs and private homes cleaned.",
+  "async": {
+    "mode": "Default",
+    "effort": "low",
+    "records": "async-records.json",
+    "nativeActions": [
+      "Shift+Left opens question 1 of 2",
+      "Down selects Blue",
+      "Enter accepts only Color and leaves Note editor available",
+      "Bracketed paste ELWOOD_NOTE_74 into Note",
+      "Enter accepts Note"
+    ],
+    "acceptance": "Two committed user-message <send_user_message_question_reply> envelopes have independent questionItemId values with the same native call_id and indexes 0,1; native final confirms Color Blue and Note ELWOOD_NOTE_74.",
+    "otherTools": []
+  },
+  "blocking": {
+    "mode": "Plan",
+    "effort": "medium (native /plan changes low to medium)",
+    "records": "blocking-records.json",
+    "nativeActions": [
+      "Down selects Blue in Question 1/2",
+      "Enter commits first choice and advances",
+      "Down twice selects None of the above in Question 2/2",
+      "Tab opens notes",
+      "Bracketed paste ELWOOD_MODAL_NOTE_85",
+      "Enter submits whole request"
+    ],
+    "acceptance": {
+      "color": {
+        "answers": ["Blue"]
+      },
+      "note": {
+        "answers": ["None of the above", "user_note: ELWOOD_MODAL_NOTE_85"]
+      }
+    },
+    "otherTools": []
+  },
+  "rejectedFreeform": {
+    "records": "rejected-freeform-records.json",
+    "meaning": "A persisted request_user_input function call with a free-text-only question was rejected with request_user_input requires non-empty options for every question. No native modal was created. This is negative discovery evidence, not an answerable request."
+  },
+  "asyncLocalSkip": {
+    "records": "async-local-skip-records.json",
+    "nativeActions": [
+      "Shift+Left opens question 1 of 2",
+      "Ctrl+] skips Color locally and leaves Note editor available",
+      "Esc collapses Note editor to native ? 1 question badge"
+    ],
+    "acceptance": "No answer envelope or question-specific output is emitted by native local skip. Remaining pending request clears at task_complete. The characterization observer expected turn_aborted after Esc, timed out, and cleaned up; this failed interrupt expectation is retained as negative evidence, not a successful interrupt proof."
+  },
+  "asyncTurnEnd": {
+    "records": "async-turn-end-records.json",
+    "otherTools": ["One readonly /bin/sleep 40 command, waited via native exec/wait tooling."],
+    "observed": "With no editor input, two pending questions remained visible at Working/Waiting 37 seconds and 41 seconds, and disappeared at task_complete after about 45 seconds. No answer envelopes were written. No 30-second async expiry is established; retire on authoritative live evidence."
+  },
+  "unproven": [
+    "Blocking modal Escape cancellation remains for the public native proof. The direct capture attempt hit native startup /plan rejection before submitting a model prompt and was cleaned after its observation timeout.",
+    "Secret/masked input is not established by these native captures.",
+    "The synchronous request_user_input Default-mode nonblocking auto-resolution path was not characterized."
+  ],
+  "execution": {
+    "modelTurns": 6,
+    "readOnlyDelayCommands": 2,
+    "delayCommand": "/bin/sleep 40",
+    "notes": "Includes rejected empty-options modal and one missing-companion-host attempt; successful positive async/modal rounds use only their respective native question tool. Startup-only failed attempts and final sandbox smoke spent no model turn. Every private CLI/companion host/PTy and home was cleaned; parent state checks passed."
+  }
+}

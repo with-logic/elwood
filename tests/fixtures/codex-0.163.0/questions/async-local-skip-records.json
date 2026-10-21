@@ -1,0 +1,140 @@
+[
+  {
+    "timestamp": "2026-10-20T23:36:01.091Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call",
+      "status": "completed",
+      "id": "fc_02e982e85bca1be0016ad7fae0dea8819a9ecafedced8317d0",
+      "name": "request_user_input_async",
+      "arguments": "{\"questions\":[{\"title\":\"ELWOOD_ASYNC_COLOR: Which color?\",\"options\":[\"Amber\",\"Blue\"]},{\"title\":\"ELWOOD_ASYNC_NOTE: What note?\"}]}",
+      "call_id": "call_538c51551d0145b8b6d67374ef50110b",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+        "create_time": 1792539360.87209
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "user_input_order": 1
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:36:01.117Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "item_completed",
+      "thread_id": "01a15bab-efc5-7e62-9170-7a6443295ce6",
+      "turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+      "item": {
+        "type": "AgentMessage",
+        "id": "call_538c51551d0145b8b6d67374ef50110b",
+        "content": [
+          {
+            "type": "Text",
+            "text": "ELWOOD_ASYNC_COLOR: Which color?\n- Amber\n- Blue\n\nELWOOD_ASYNC_NOTE: What note?"
+          }
+        ],
+        "phase": "final_answer",
+        "delivery": "async",
+        "questions": [
+          {
+            "title": "ELWOOD_ASYNC_COLOR: Which color?",
+            "options": ["Amber", "Blue"]
+          },
+          {
+            "title": "ELWOOD_ASYNC_NOTE: What note?",
+            "options": null
+          }
+        ]
+      },
+      "started_at_ms": 1792539361117,
+      "completed_at_ms": 1792539361117
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:36:01.249Z",
+    "ordinal": 14,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call_output",
+      "id": "fco_01a15bab-ffe1-72f0-947e-480c157ad2fb",
+      "call_id": "call_538c51551d0145b8b6d67374ef50110b",
+      "output": "{\"accepted\":true}",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+        "create_time": 1792539361.249057
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:36:37.624Z",
+    "ordinal": 24,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call",
+      "status": "completed",
+      "id": "fc_02e982e85bca1be0016ad7fb0576a4819a82adbe1b17a16eac",
+      "name": "wait",
+      "arguments": "{\"cell_id\":\"2\",\"yield_time_ms\":20000,\"max_tokens\":1000}",
+      "call_id": "call_2f652ef41f324e3cb34e6b08ee8af1e6",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+        "create_time": 1792539397.4654982
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "user_input_order": 2
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:36:43.643Z",
+    "ordinal": 27,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call_output",
+      "id": "fco_01a15bac-a57b-7fa2-a638-98b440cef91e",
+      "call_id": "call_2f652ef41f324e3cb34e6b08ee8af1e6",
+      "output": [
+        {
+          "type": "input_text",
+          "text": "Script completed\nWall time 6.0 seconds\nOutput:\n"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"59b4c6\",\"wall_time_seconds\":37.939416417,\"exit_code\":0,\"original_token_count\":0,\"output\":\"\"}"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+        "create_time": 1792539403.643822
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:36:44.458Z",
+    "ordinal": 33,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "root_turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+      "turn_id": "01a15bab-f984-7d32-b406-7921bc0c0e4d",
+      "last_agent_message": "No color or note response was received.",
+      "started_at": 1792539359,
+      "completed_at": 1792539404,
+      "duration_ms": 44835,
+      "time_to_first_token_ms": 1262
+    }
+  }
+]

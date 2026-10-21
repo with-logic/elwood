@@ -1,0 +1,188 @@
+[
+  {
+    "timestamp": "2026-10-20T23:31:55.337Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call",
+      "status": "completed",
+      "id": "fc_01f2f7381abc4370016ad7f9eae328819bb4bdbeb6202d05b8",
+      "name": "request_user_input_async",
+      "arguments": "{\"questions\":[{\"title\":\"ELWOOD_ASYNC_COLOR: Which color?\",\"options\":[\"Amber\",\"Blue\"]},{\"title\":\"ELWOOD_ASYNC_NOTE: What note?\"}]}",
+      "call_id": "call_c54736dbd68049d192ab5f52ad2532f0",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+        "create_time": 1792539114.8896022
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "user_input_order": 1
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:31:55.376Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "item_completed",
+      "thread_id": "01a15ba8-2fb3-7023-a328-eda457de39d9",
+      "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+      "item": {
+        "type": "AgentMessage",
+        "id": "call_c54736dbd68049d192ab5f52ad2532f0",
+        "content": [
+          {
+            "type": "Text",
+            "text": "ELWOOD_ASYNC_COLOR: Which color?\n- Amber\n- Blue\n\nELWOOD_ASYNC_NOTE: What note?"
+          }
+        ],
+        "phase": "final_answer",
+        "delivery": "async",
+        "questions": [
+          {
+            "title": "ELWOOD_ASYNC_COLOR: Which color?",
+            "options": ["Amber", "Blue"]
+          },
+          {
+            "title": "ELWOOD_ASYNC_NOTE: What note?",
+            "options": null
+          }
+        ]
+      },
+      "started_at_ms": 1792539115375,
+      "completed_at_ms": 1792539115376
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:31:55.415Z",
+    "ordinal": 14,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call_output",
+      "id": "fco_01a15ba8-3f97-7db1-80b8-4c30de715d01",
+      "call_id": "call_c54736dbd68049d192ab5f52ad2532f0",
+      "output": "{\"accepted\":true}",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+        "create_time": 1792539115.415884
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:31:57.976Z",
+    "ordinal": 18,
+    "type": "response_item",
+    "payload": {
+      "type": "message",
+      "id": "msg_01a15ba8-4998-7e42-a0ef-06829346079e",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "<send_user_message_question_reply>\n[{\"answer\":\"Blue\",\"question\":\"ELWOOD_ASYNC_COLOR: Which color?\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_c54736dbd68049d192ab5f52ad2532f0\\\",0]\"}]\n</send_user_message_question_reply>"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+        "create_time": 1792539117.976692,
+        "content_item_kinds": ["user.text"]
+      }
+    },
+    "metadata": {
+      "retained_source": {
+        "id": {
+          "message_id": "msg_01a15ba8-4998-7e42-a0ef-06829346079e",
+          "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+          "role": "user"
+        },
+        "revision": "retained_01a15ba8-4998-7e42-a0ef-06a6d31787cd",
+        "complete": true
+      },
+      "client_authored": false,
+      "user_input_order": 2,
+      "mcp_attribution": {
+        "status": "none"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:31:59.210Z",
+    "ordinal": 22,
+    "type": "response_item",
+    "payload": {
+      "type": "message",
+      "id": "msg_01a15ba8-4e69-7043-85cf-aa12d62fb7e2",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "<send_user_message_question_reply>\n[{\"answer\":\"ELWOOD_NOTE_74\",\"question\":\"ELWOOD_ASYNC_NOTE: What note?\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_c54736dbd68049d192ab5f52ad2532f0\\\",1]\"}]\n</send_user_message_question_reply>"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+        "create_time": 1792539119.209942,
+        "content_item_kinds": ["user.text"]
+      }
+    },
+    "metadata": {
+      "retained_source": {
+        "id": {
+          "message_id": "msg_01a15ba8-4e69-7043-85cf-aa12d62fb7e2",
+          "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+          "role": "user"
+        },
+        "revision": "retained_01a15ba8-4e69-7043-85cf-aa31aaa2e6b2",
+        "complete": true
+      },
+      "client_authored": false,
+      "user_input_order": 3,
+      "mcp_attribution": {
+        "status": "none"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:32:00.347Z",
+    "ordinal": 24,
+    "type": "event_msg",
+    "payload": {
+      "type": "item_completed",
+      "thread_id": "01a15ba8-2fb3-7023-a328-eda457de39d9",
+      "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+      "item": {
+        "type": "AgentMessage",
+        "id": "msg_01f2f7381abc4370016ad7f9f02964819bb3203cb52fd8b428",
+        "content": [
+          {
+            "type": "Text",
+            "text": "Color: Blue  \nNote: ELWOOD_NOTE_74"
+          }
+        ],
+        "phase": "final_answer"
+      },
+      "started_at_ms": 1792539120295,
+      "completed_at_ms": 1792539120347
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:32:00.390Z",
+    "ordinal": 28,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "root_turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+      "turn_id": "01a15ba8-373a-77b1-a4dc-b8a59623c609",
+      "last_agent_message": "Color: Blue  \nNote: ELWOOD_NOTE_74",
+      "started_at": 1792539113,
+      "completed_at": 1792539120,
+      "duration_ms": 7113,
+      "time_to_first_token_ms": 1615
+    }
+  }
+]

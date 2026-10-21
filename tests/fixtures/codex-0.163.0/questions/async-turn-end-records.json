@@ -1,0 +1,226 @@
+[
+  {
+    "timestamp": "2026-10-20T23:34:59.054Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call",
+      "status": "completed",
+      "id": "fc_0cb8796e022f2659016ad7faa2d140819b9e498ad122963a3d",
+      "name": "request_user_input_async",
+      "arguments": "{\"questions\":[{\"title\":\"ELWOOD_ASYNC_COLOR: Which color?\",\"options\":[\"Amber\",\"Blue\"]},{\"title\":\"ELWOOD_ASYNC_NOTE: What note?\"}]}",
+      "call_id": "call_dec804ff19c14fa1ab2d91657464d78a",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539298.8215444
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "user_input_order": 1
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:34:59.056Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "item_completed",
+      "thread_id": "01a15baa-ffe8-7960-89fa-874f5a9a86af",
+      "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+      "item": {
+        "type": "AgentMessage",
+        "id": "call_dec804ff19c14fa1ab2d91657464d78a",
+        "content": [
+          {
+            "type": "Text",
+            "text": "ELWOOD_ASYNC_COLOR: Which color?\n- Amber\n- Blue\n\nELWOOD_ASYNC_NOTE: What note?"
+          }
+        ],
+        "phase": "final_answer",
+        "delivery": "async",
+        "questions": [
+          {
+            "title": "ELWOOD_ASYNC_COLOR: Which color?",
+            "options": ["Amber", "Blue"]
+          },
+          {
+            "title": "ELWOOD_ASYNC_NOTE: What note?",
+            "options": null
+          }
+        ]
+      },
+      "started_at_ms": 1792539299056,
+      "completed_at_ms": 1792539299056
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:34:59.123Z",
+    "ordinal": 14,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call_output",
+      "id": "fco_01a15bab-0d33-7ec1-acfe-b3dbd92070d0",
+      "call_id": "call_dec804ff19c14fa1ab2d91657464d78a",
+      "output": "{\"accepted\":true}",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539299.123737
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:00.072Z",
+    "ordinal": 16,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call",
+      "id": "ctc_0cb8796e022f2659016ad7faa3e2f8819bbcc714df4f9764da",
+      "status": "completed",
+      "call_id": "call_07f40fb86b5546ae9e325dfcb47f2339",
+      "name": "exec",
+      "input": "const r = await tools.exec_command({cmd:\"/bin/sleep 40\", yield_time_ms:1000});\ntext(JSON.stringify(r));\n",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539299.9502406
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:02.451Z",
+    "ordinal": 18,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call_output",
+      "id": "ctco_01a15bab-1a33-7243-88c1-cb17773f63b0",
+      "call_id": "call_07f40fb86b5546ae9e325dfcb47f2339",
+      "output": [
+        {
+          "type": "input_text",
+          "text": "Script completed\nWall time 1.2 seconds\nOutput:\n"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"a46649\",\"wall_time_seconds\":1.001875167,\"session_id\":75641,\"original_token_count\":0,\"output\":\"\"}"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539302.451204
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:03.642Z",
+    "ordinal": 20,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call",
+      "id": "ctc_0cb8796e022f2659016ad7faa74818819b8bf18176935f2c31",
+      "status": "completed",
+      "call_id": "call_e71eac6c9d1e423dad106b21ccab9d64",
+      "name": "exec",
+      "input": "const r = await tools.write_stdin({session_id:75641, yield_time_ms:30000});\ntext(JSON.stringify(r));\n",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539303.4712932
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:33.758Z",
+    "ordinal": 22,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call_output",
+      "id": "ctco_01a15bab-947e-71f1-8510-a448d1d8a693",
+      "call_id": "call_e71eac6c9d1e423dad106b21ccab9d64",
+      "output": [
+        {
+          "type": "input_text",
+          "text": "Script completed\nWall time 30.0 seconds\nOutput:\n"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"e076fb\",\"wall_time_seconds\":30.001625458,\"session_id\":75641,\"original_token_count\":0,\"output\":\"\"}"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539333.758087
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:34.716Z",
+    "ordinal": 24,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call",
+      "id": "ctc_0cb8796e022f2659016ad7fac689d0819bb56bf904f5edf4d8",
+      "status": "completed",
+      "call_id": "call_a5a7a95d356b47d3a9e3266bcadd6a7c",
+      "name": "exec",
+      "input": "const r = await tools.write_stdin({session_id:75641, yield_time_ms:15000});\ntext(JSON.stringify(r));\n",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539334.540801
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:41.392Z",
+    "ordinal": 27,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call_output",
+      "id": "ctco_01a15bab-b250-7e91-9303-d1352ef81fec",
+      "call_id": "call_a5a7a95d356b47d3a9e3266bcadd6a7c",
+      "output": [
+        {
+          "type": "input_text",
+          "text": "Script completed\nWall time 6.7 seconds\nOutput:\n"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"685e9e\",\"wall_time_seconds\":6.6672787079999996,\"exit_code\":0,\"original_token_count\":0,\"output\":\"\"}"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+        "create_time": 1792539341.392187
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:35:42.117Z",
+    "ordinal": 33,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "root_turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+      "turn_id": "01a15bab-0454-7343-9094-8ab8ef088809",
+      "last_agent_message": "I didn\u2019t receive a color or note.",
+      "started_at": 1792539296,
+      "completed_at": 1792539342,
+      "duration_ms": 45262,
+      "time_to_first_token_ms": 1998
+    }
+  }
+]
