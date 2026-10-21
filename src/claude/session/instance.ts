@@ -14,7 +14,6 @@ import type {
 import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
-import { AgentSessionBase } from "../../runtime/session/base.ts";
 import { runCleanupSteps } from "../../runtime/shutdown/teardown.ts";
 import { drainAndDisposeTerminal } from "../../runtime/shutdown/terminal.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
@@ -32,13 +31,14 @@ import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
+import { ClaudeQuestionsSession } from "./questions.ts";
 
 export type HookBridge = {
   readonly start: () => Promise<void>;
   readonly stop: () => Promise<void>;
 };
 
-export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSessionApi {
+export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
   protected readonly picker = {
     ...claudeModelPicker,
     isClear: liveClaudeClearance(() => this.terminal, claudeModelComposerClearance),
@@ -55,7 +55,6 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   private initialReadyDone = false;
   // Edge-detects a mid-session login-expiry banner so it warns once per occurrence.
   private readonly loginExpiredWatcher = new LoginExpiredWatcher();
-
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -79,6 +78,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       terminalReplay,
       loopDefinitions,
     );
+    this.configureClaudeQuestions();
     this.bridge = bridge;
     this.emitter = emitter;
     this.requestedSize = requestedSize;

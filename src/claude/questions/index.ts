@@ -1,4 +1,4 @@
-/** Correlate Claude hooks with native questionnaire ownership (PRD §4). */
+/** Correlate Claude hooks with native questionnaire ownership (PRD §5.10, §6.1; C-QUESTION-01). */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { record } from "../../core/activity/meta.ts";
 import type { QuestionAdapter, QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";

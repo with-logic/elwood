@@ -18,11 +18,11 @@ import {
 } from "./hook-fixtures.ts";
 
 /** Deliberately bypass hook validation to exercise the adapter's malformed-input guard. */
-function malformedQuestionHook(questions: unknown): ElwoodActivityEvent {
+function malformedQuestionHook(questions: unknown) {
   return {
     ...hook(preToolUse),
     raw: { ...preToolUse, tool_input: { questions } },
-  };
+  } satisfies ElwoodActivityEvent;
 }
 describe("Claude hook candidates", () => {
   test.each([

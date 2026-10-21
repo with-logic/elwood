@@ -3,7 +3,6 @@ import { subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../activity/index.ts";
 import type { Unsubscribe } from "../types.ts";
-import type { QuestionActivityEvent } from "./activity.ts";
 import type { QuestionAdapter } from "./adapter.ts";
 import { readQuestionFrame } from "./input.ts";
 import { type QuestionEmitter, QuestionRegistry } from "./registry.ts";
@@ -11,10 +10,7 @@ import { QuestionTransaction } from "./transaction.ts";
 import type { ElwoodQuestionAnswer, ElwoodQuestionAnswerOptions } from "./types.ts";
 
 type Events = QuestionEmitter & {
-  on(
-    event: "activity",
-    handler: (event: ElwoodActivityEvent | QuestionActivityEvent) => void,
-  ): Unsubscribe;
+  on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;
 };
 export class SessionQuestions {
   readonly registry: QuestionRegistry;

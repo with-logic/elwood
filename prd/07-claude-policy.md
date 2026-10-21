@@ -13,3 +13,5 @@ complementary:
 `AskUserQuestion` is explicitly in scope. Elwood must type it and allow a
 `PreToolUse` handler to answer it programmatically by returning an allowed
 decision with updated input containing answers.
+
+Native unanswered `AskUserQuestion` dialogs also support the live question discovery in §5.10. Caller hook decisions retain precedence; Elwood does not extend the hook deadline to await a host answer.

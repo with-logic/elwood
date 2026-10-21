@@ -1,4 +1,4 @@
-/** Shared live native question contract (PRD §4). */
+/** Shared live native question contract (PRD §5.10). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 
 export type ElwoodQuestionOption = {
@@ -42,6 +42,10 @@ export type ElwoodQuestionEvent = {
   | { readonly phase: "raised" }
   | { readonly phase: "closed"; readonly reason: QuestionCloseReason }
 );
+export interface QuestionControls {
+  /** List live request envelopes, each containing its ordered questions. */
+  listQuestions(): Promise<readonly ElwoodQuestionRequest[]>;
+}
 /** Adapters supply native content; the registry generates request, question, and option IDs. */
 export type QuestionDefinition = Omit<ElwoodQuestion, "id" | "options"> & {
   readonly options: readonly Omit<ElwoodQuestionOption, "id">[];

@@ -112,6 +112,13 @@ export type {
 } from "./core/loops/types.ts";
 export type { ListModelsOptions } from "./core/models/list.ts";
 export type { AgentModelOption } from "./core/models/rows.ts";
+export type {
+  ElwoodQuestion,
+  ElwoodQuestionEvent,
+  ElwoodQuestionOption,
+  ElwoodQuestionRequest,
+  QuestionCloseReason,
+} from "./core/questions/types.ts";
 export type { ClaudeReasoningEffort, CodexReasoningEffort } from "./core/reasoning-effort.ts";
 export type { TurnEvent } from "./core/simple/events.ts";
 export type { TurnOptions } from "./core/simple/session.ts";

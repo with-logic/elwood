@@ -17,3 +17,5 @@ concepts in this section, including the stable `ElwoodErrorName` union.
 - [5.7 CodexSessionApi (the raw live session)](5.7-codex-session-api.md)
 - [5.8 The session API — `ClaudeSession` / `CodexSession`](5.8-session-api.md)
 - [5.9 Recurring session loops](5.9-loops.md)
+
+- [5.10 Native questions](5.10-questions.md)

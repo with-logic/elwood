@@ -164,3 +164,5 @@ ordinary session record; a later resume has no loops.
 metadata, generated settings/config, bridge route records, sockets, and
 temporary files. It must not remove agent-owned global transcripts/auth state or
 project/user settings that Elwood did not create.
+
+Native question requests, opaque IDs and answers are live-only (§5.10); none is added to Elwood persistence.

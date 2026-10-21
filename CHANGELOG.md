@@ -14,6 +14,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Keep native Claude questionnaires blocking when question text contains composer-like carets, fences, or navigation-footer copy.
 
+- Expose live Claude and Codex questionnaires through typed `question` events,
+  structured normalized activity and immutable `listQuestions()` snapshots;
+  preserve native input holds and report budget disablement with a content-free
+  `question_automation_disabled` warning.
+
 - Enforce the existing required payloads in transcript activity types: Codex progress carries text and its Codex/transcript identity, and Claude transcript projections retain their per-kind required fields.
 
 - Keep Codex turns running through native working pulses and hold input at blocking modal and queued question editors; recognize the captured Plan mode footer when verifying an empty composer.

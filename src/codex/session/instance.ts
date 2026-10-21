@@ -23,6 +23,7 @@ import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { codexSessionQuestions } from "../questions/session.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
@@ -36,7 +37,6 @@ import {
   codexRestoreFailedWarning,
   codexRestoreSkippedWarning,
 } from "./warnings.ts";
-
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   protected readonly picker = {
     ...codexModelPicker,
@@ -48,7 +48,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit: CliExitBarrier;
-
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -73,6 +72,11 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       loopDefinitions,
     );
     registerNativeTurnReader(this, codexTurnIdentity);
+    this.configureQuestions((registry) =>
+      codexSessionQuestions(registry, this.elwoodSessionId, (warnings) =>
+        this.emitWarnings(warnings),
+      ),
+    );
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;

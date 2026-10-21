@@ -21,7 +21,18 @@ import type {
 } from "./reasons.ts";
 import type { TranscriptListenerErrorWarning } from "./transcript.ts";
 
+type QuestionAutomationDisabledWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "question_automation_disabled";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: string;
+};
+
 export type ElwoodWarningEvent =
+  | QuestionAutomationDisabledWarning
   | LoginExpiringWarning
   | TranscriptListenerErrorWarning
   | {

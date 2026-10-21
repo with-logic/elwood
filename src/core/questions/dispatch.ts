@@ -34,14 +34,18 @@ export class QuestionDispatch {
         const next = this.pending.shift()!;
         for (const listener of this.listeners) attempt(() => listener(next), errors);
         attempt(() => this.emitter.emit("question", next), errors);
-        const activity: QuestionActivityEvent = Object.freeze({
+        const activityBase = {
           elwoodSessionId: next.elwoodSessionId,
           agent: next.agent,
           source: "terminal",
           kind: "question",
-          label: next.phase,
-          question: next,
-        });
+        } as const;
+        // Construct each narrowed phase so the compiler checks its label/payload pair.
+        const activity: QuestionActivityEvent = Object.freeze(
+          next.phase === "raised"
+            ? { ...activityBase, label: next.phase, question: next }
+            : { ...activityBase, label: next.phase, question: next },
+        );
         attempt(() => this.emitter.emit("activity", activity), errors);
       }
       this.delivering = false;

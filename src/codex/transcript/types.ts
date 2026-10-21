@@ -18,7 +18,8 @@ export type CodexTranscriptSummary = {
    * `tool_call`, the correlating call id for `tool_result`, the web-search action
    * type (e.g. `search`/`open_page`) for `web_search`, the literal `"reasoning"`
    * for `reasoning`, and the payload item type, outer item type, role, or `"unknown"`
-   * for `other` (depending on the record being summarized).
+   * for `other` (depending on the record being summarized). Async native question
+   * records use the `"question"` label and have no normalized text.
    */
   readonly label: string;
   /**
