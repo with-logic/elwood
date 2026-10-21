@@ -11,14 +11,11 @@ import type { ElwoodActivityEvent } from "./index.ts";
 import * as meta from "./meta.ts";
 
 export function activityFromCodexTranscript(event: CodexTranscriptEvent): ElwoodActivityEvent {
-  const base = {
-    elwoodSessionId: event.elwoodSessionId,
-    agent: "codex",
-    source: "transcript",
-  } as const;
   if (event.summary.kind === "commentary")
     return {
-      ...base,
+      elwoodSessionId: event.elwoodSessionId,
+      agent: "codex",
+      source: "transcript",
       kind: transcriptActivityKind(event.summary.kind),
       label: event.summary.label,
       text: event.summary.text,
@@ -26,7 +23,9 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
       raw: event.item,
     };
   return {
-    ...base,
+    elwoodSessionId: event.elwoodSessionId,
+    agent: "codex",
+    source: "transcript",
     kind: transcriptActivityKind(event.summary.kind),
     label: event.summary.label,
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),

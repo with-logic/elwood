@@ -41,8 +41,19 @@ export type CodexTranscriptSummary = {
       readonly text: string;
     }
   | {
-      /** Final messages, tool calls/results, reasoning, searches, or unsurfaced items. */
-      readonly kind: "message" | "tool_call" | "tool_result" | "reasoning" | "web_search" | "other";
+      readonly kind: "message";
+      readonly label: "assistant";
+    }
+  | {
+      readonly kind: "reasoning";
+      readonly label: "reasoning";
+    }
+  | {
+      readonly kind: "other";
+      readonly text?: never;
+    }
+  | {
+      readonly kind: "tool_call" | "tool_result" | "web_search";
     }
 );
 

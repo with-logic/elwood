@@ -27,10 +27,11 @@ export function hookActivityBase(
   };
 }
 
-type TranscriptActivityMeta = Pick<
+type OptionalTranscriptMeta = Pick<
   ElwoodActivityEvent,
-  "transcriptPath" | "turnId" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
+  "turnId" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
 >;
+type TranscriptActivityMeta = OptionalTranscriptMeta & { readonly transcriptPath: string };
 
 export function transcriptActivityMeta(event: CodexTranscriptEvent): TranscriptActivityMeta {
   const item = record(event.item);
@@ -90,8 +91,8 @@ function transcriptToolUseId(
 }
 
 function optional(
-  key: keyof TranscriptActivityMeta,
+  key: keyof OptionalTranscriptMeta,
   value: string | undefined,
-): TranscriptActivityMeta {
+): OptionalTranscriptMeta {
   return value === undefined ? {} : { [key]: value };
 }

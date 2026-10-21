@@ -116,7 +116,7 @@ function message(payload: Item): CodexTranscriptSummary {
   if (value === undefined) return { kind: "other", label: role };
   return payload["phase"] === "commentary"
     ? { kind: "commentary", label: "assistant", text: value }
-    : { kind: "message", label: role, text: value };
+    : { kind: "message", label: "assistant", text: value };
 }
 
 function assistantMessageText(payload: Item, role: string): string | undefined {

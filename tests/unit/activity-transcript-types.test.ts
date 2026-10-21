@@ -13,9 +13,13 @@ test("C-CODEX-22 progress and commentary types require their documented identity
     label: "assistant",
   } as const;
   type Progress = Extract<ElwoodActivityEvent, { readonly kind: "assistant_progress" }>;
-  const progress: Progress = { ...base, text: "Working" };
+  const progress: Progress = { ...base, text: "Working", transcriptPath: "/codex.jsonl", raw: {} };
+  // @ts-expect-error Progress must identify its transcript path.
+  const missingPath: Progress = { ...base, text: "Working", raw: {} };
+  // @ts-expect-error Progress must include the raw source item, even when its value is unknown.
+  const missingRaw: Progress = { ...base, text: "Working", transcriptPath: "/codex.jsonl" };
   // @ts-expect-error Progress must contain readable text.
-  const missingText: Progress = base;
+  const missingText: Progress = { ...base, transcriptPath: "/codex.jsonl", raw: {} };
   // @ts-expect-error Progress is produced by Codex, not Claude.
   const wrongAgent: Progress = { ...progress, agent: "claude" };
   // @ts-expect-error Progress comes from committed transcript records.
@@ -27,7 +31,18 @@ test("C-CODEX-22 progress and commentary types require their documented identity
   const missingSummaryText: CodexTranscriptSummary = { kind: "commentary", label: "assistant" };
   // @ts-expect-error Commentary can only describe assistant messages.
   const wrongSummaryLabel: CodexTranscriptSummary = { ...commentary, label: "user" };
-  void [missingText, wrongAgent, wrongSource, wrongLabel, missingSummaryText, wrongSummaryLabel];
+  void [
+    missingText,
+    missingPath,
+    missingRaw,
+    wrongAgent,
+    wrongSource,
+    wrongLabel,
+    missingSummaryText,
+    wrongSummaryLabel,
+  ];
+  const transcriptPath: string = progress.transcriptPath;
+  expect(transcriptPath).toBe("/codex.jsonl");
   expect(progress.text).toBe(commentary.text);
 });
 
@@ -55,4 +70,18 @@ test("C-CLAUDE-15 normalized Claude transcript variants retain required payloads
   } else {
     throw new Error("Expected the assistant-message projection");
   }
+});
+
+test("Codex summaries exclude unsurfaced prose and require fixed message and reasoning labels", () => {
+  // @ts-expect-error Unsurfaced summaries never contain readable text.
+  const otherText: CodexTranscriptSummary = {
+    kind: "other",
+    label: "agent_message",
+    text: "hidden",
+  };
+  // @ts-expect-error Final messages have the validated assistant role.
+  const wrongMessageLabel: CodexTranscriptSummary = { kind: "message", label: "user" };
+  // @ts-expect-error Reasoning summaries have their fixed reasoning label.
+  const wrongReasoningLabel: CodexTranscriptSummary = { kind: "reasoning", label: "analysis" };
+  void [otherText, wrongMessageLabel, wrongReasoningLabel];
 });

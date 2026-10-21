@@ -60,6 +60,8 @@ export type ElwoodActivityEvent = ActivityFields &
         readonly source: "transcript";
         readonly label: "assistant";
         readonly text: string;
+        readonly transcriptPath: string;
+        readonly raw: unknown;
       }
   );
 
