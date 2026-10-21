@@ -42,6 +42,9 @@ test("a timed-out real write lane may complete late but cannot duplicate bytes o
     await entered.promise;
     const other = h.requests.publish("other", "queued", [definitions[0]!])!;
     h.requests.close(other.id, "unavailable");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toBe("pending");
+    expect(h.transaction.busy()).toBe(true);
     await vi.advanceTimersByTimeAsync(50);
     expect(outcome).toBe("failed");
     await failed;

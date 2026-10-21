@@ -27,8 +27,8 @@ test("synchronous transport throws settle the reservation without retaining nati
 test("native acceptance and adapter failure retain all pending physical writes", async () => {
   const entered = Promise.withResolvers<void>();
   const fail = Promise.withResolvers<void>();
-  const releases = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
-  const completed = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  const releases = [Promise.withResolvers<void>(), Promise.withResolvers<void>()] as const;
+  const completed = [Promise.withResolvers<void>(), Promise.withResolvers<void>()] as const;
   const h = setup(async (io) => {
     const writes = [io.write("first", () => true), io.write("last", () => true)];
     void Promise.allSettled(writes);
@@ -37,10 +37,10 @@ test("native acceptance and adapter failure retain all pending physical writes",
     throw new Error("PRIVATE_ADAPTER_ERROR");
   });
   const send = h.input.automated.sendInput.bind(h.input.automated);
-  const hold = (index: number) => async (input: Parameters<typeof send>[0]) => {
-    await releases[index]!.promise;
+  const hold = (index: 0 | 1) => async (input: Parameters<typeof send>[0]) => {
+    await releases[index].promise;
     await send(input);
-    completed[index]!.resolve();
+    completed[index].resolve();
   };
   vi.spyOn(h.input.automated, "sendInput")
     .mockImplementationOnce(hold(0))
@@ -59,13 +59,13 @@ test("native acceptance and adapter failure retain all pending physical writes",
     await rejected;
     expect(h.requests.hasPending()).toBe(false);
     expect(h.transaction.busy()).toBe(true);
-    releases[0]!.resolve();
-    await completed[0]!.promise;
+    releases[0].resolve();
+    await completed[0].promise;
     await vi.advanceTimersByTimeAsync(0);
     expect(h.writes).toEqual(["first"]);
     expect(h.transaction.busy()).toBe(true);
-    releases[1]!.resolve();
-    await completed[1]!.promise;
+    releases[1].resolve();
+    await completed[1].promise;
     await vi.advanceTimersByTimeAsync(0);
     expect(h.writes).toEqual(["first", "last"]);
     expect(h.transaction.busy()).toBe(false);

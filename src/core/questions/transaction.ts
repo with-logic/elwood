@@ -60,6 +60,7 @@ export class QuestionTransaction {
     if (this.busy() || !adapter) throw questionAnswerFailed();
     const operation = new AbortController();
     const signal = this.operationSignal(operation, options);
+    // Reading options.signal can reenter run() before this attempt installs its owner.
     if (this.busy()) throw questionAnswerFailed();
     this.active = operation;
     const reservation = { requestId, inFlightWrites: 0 };
@@ -79,8 +80,8 @@ export class QuestionTransaction {
     });
     const assertLive = () => {
       const requestAvailable = this.registry.get(requestId) !== undefined;
-      const requestLive = nativeAccepted || requestAvailable;
-      if (signal.aborted || !requestLive) throw questionAnswerFailed();
+      const requestAvailableOrAccepted = nativeAccepted || requestAvailable;
+      if (signal.aborted || !requestAvailableOrAccepted) throw questionAnswerFailed();
     };
     const io = questionInput(this.terminal, this.registry, request, signal, assertLive, {
       started: () => {

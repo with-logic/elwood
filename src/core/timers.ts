@@ -8,15 +8,16 @@ export type DeadlineClock = {
 };
 
 /** Keep an absolute deadline across capped timer intervals; cancellation clears the latest one.
+ * deadlineAtMs is an absolute millisecond reading in the supplied clock's time base.
  * The caller supplies its first delay to preserve when its deadline starts counting. */
 export function scheduleDeadline(
-  deadline: number,
+  deadlineAtMs: number,
   initialDelayMs: number,
   expire: () => void,
   clock: DeadlineClock,
 ): () => void {
   const tick = () => {
-    const remaining = deadline - clock.now();
+    const remaining = deadlineAtMs - clock.now();
     if (remaining > 0) timer = clock.setTimer(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
     else expire();
   };
