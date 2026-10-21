@@ -9,6 +9,8 @@ import {
   createCandidate,
   type QueuedCandidate,
 } from "./candidate.ts";
+import { candidateCallAccepted } from "./candidate-acceptance.ts";
+import { CandidateAuthority } from "./candidate-authority.ts";
 import { QuestionBudget } from "./limits.ts";
 import type { QuestionCall } from "./records.ts";
 
@@ -29,6 +31,7 @@ export class CandidateStore {
   protected disabled = false;
   protected mutationEpoch = 0;
   private opaqueReservation = false;
+  protected readonly authority = new CandidateAuthority();
   private readonly registry: QuestionRegistry;
   private readonly onDisabled: (() => void) | undefined;
   constructor(registry: QuestionRegistry, onDisabled?: () => void) {
@@ -73,12 +76,15 @@ export class CandidateStore {
     return true;
   }
   protected reconcileCallCandidates(call: QuestionCall): boolean {
+    return this.authority.run(call.callId, (authority) => this.replaceCall(call, authority));
+  }
+  private replaceCall(call: QuestionCall, authority: object): boolean {
     const mutationEpoch = this.mutationEpoch;
-    const accepted = this.callAccepted(call);
+    const accepted = candidateCallAccepted(call, this.candidates);
     const groups = candidateGroups(call);
-    let changed = this.retireRemoved(call.callId, groups);
+    let changed = this.retireRemoved(call.callId, groups, authority, mutationEpoch);
     for (const group of groups) {
-      if (this.mutationEpoch !== mutationEpoch) return true;
+      if (!this.ownsCall(call.callId, authority, mutationEpoch)) return true;
       if (this.budget.hasRetired(group.nativeKey)) continue;
       const existing = this.records.get(group.nativeKey);
       if (existing && JSON.stringify(existing.questions) === JSON.stringify(group.questions)) {
@@ -103,22 +109,19 @@ export class CandidateStore {
     }
     return changed;
   }
-  private callAccepted(call: QuestionCall): boolean {
-    return (
-      call.queued &&
-      (call.accepted ||
-        this.candidates
-          .values()
-          .some((candidate) => candidate.callId === call.callId && candidate.accepted))
-    );
+  private ownsCall(callId: string, authority: object, epoch: number): boolean {
+    return this.mutationEpoch === epoch && this.authority.isCurrent(callId, authority);
   }
   private retireRemoved(
     callId: string,
     groups: readonly { readonly nativeKey: string }[],
+    authority: object,
+    epoch: number,
   ): boolean {
     let changed = false;
     const keys = new Set(groups.map((group) => group.nativeKey));
     for (const candidate of this.candidates.values()) {
+      if (!this.ownsCall(callId, authority, epoch)) return true;
       if (candidate.callId === callId && !keys.has(candidate.nativeKey)) {
         this.close(candidate.nativeKey, "unavailable");
         changed = true;
