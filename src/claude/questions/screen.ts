@@ -3,6 +3,7 @@ import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import {
   normalizeClaudeQuestionText,
+  OTHER_CONTINUATION_INDENT_COLUMNS,
   parseClaudeQuestionRows,
   claudeQuestionRow as row,
 } from "./rows.ts";
@@ -11,20 +12,27 @@ export type ClaudeQuestionScreen =
   | {
       readonly kind: "question";
       readonly questionIndex: number;
+      /** Zero-based selection-list index: options, Other, then optional Submit. */
       readonly cursor: number;
       readonly checked: readonly boolean[];
       readonly other: string;
     }
-  | { readonly kind: "review"; readonly cursor: number };
+  | {
+      readonly kind: "review";
+      /** Zero-based review selection: Submit answers (0) or Cancel (1). */
+      readonly cursor: number;
+    };
 const fence = /^[─━]{3,}$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
 
+/** Native chrome may be partial; a candidate alone grants no complete parse or answer authority. */
 export function claudeQuestionCandidate(text: string): boolean {
   const lines = text.split("\n");
   const start = lines.findLastIndex((line) => header.test(line));
   if (start < 1 || !fence.test(lines[start - 1]!)) return false;
   return !lines.slice(start + 1).some((line) => /^❯(?!\s+\d+\.|\s+Submit\s*$)/.test(line));
 }
+/** Return a matching question/review; partial, foreign, or mismatched frames return undefined. */
 export function parseClaudeQuestionScreen(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
@@ -42,14 +50,14 @@ export function parseClaudeQuestionScreen(
     body.some((line) => line === "Ready to submit your answers?")
   ) {
     if (!questionCursor(frame)) return undefined;
-    const choices = body.slice(first).filter((line) => line.trim());
+    const questionRows = body.slice(first).filter((line) => line.trim());
     if (
-      choices.length !== 2 ||
-      !/^(?:❯| )\s+1\. Submit answers$/.test(choices[0]!) ||
-      !/^(?:❯| )\s+2\. Cancel$/.test(choices[1]!)
+      questionRows.length !== 2 ||
+      !/^(?:❯| )\s+1\. Submit answers$/.test(questionRows[0]!) ||
+      !/^(?:❯| )\s+2\. Cancel$/.test(questionRows[1]!)
     )
       return undefined;
-    return { kind: "review", cursor: choices[0]!.startsWith("❯") ? 0 : 1 };
+    return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1 };
   }
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
@@ -60,14 +68,14 @@ export function parseClaudeQuestionScreen(
   if (footer < 0 || body.slice(footer + 1).some((line) => line.trim())) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
-  const choices = body.slice(first, end);
-  const parsed = parseClaudeQuestionRows(question, choices);
+  const questionRows = body.slice(first, end);
+  const parsed = parseClaudeQuestionRows(question, questionRows);
   if (!parsed) return undefined;
   const otherTop = start + 1 + first + parsed.otherStart;
   const otherBottom = start + 1 + first + parsed.otherEnd;
   const otherCursor =
     parsed.cursor === question.options.length &&
-    frame.cursorX >= 5 &&
+    frame.cursorX >= OTHER_CONTINUATION_INDENT_COLUMNS &&
     frame.cursorRow >= otherTop &&
     frame.cursorRow <= otherBottom;
   return questionCursor(frame) || otherCursor

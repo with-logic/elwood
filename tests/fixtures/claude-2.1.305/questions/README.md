@@ -16,7 +16,6 @@ something already focuses its editor. Bracketed paste followed by Enter accepted
 `freeform-hooks.json`. Pressing Enter on an empty Type something row instead
 produced User declined to answer questions in a separate exploratory capture.
 
-These are native characterization fixtures, not evidence that the public Elwood
-question API has passed. `tests/e2e/questions/claude-sandbox.ts` supplies an isolated
-sandbox for the later API proof and checks parent configuration and keychain
-fingerprints without exposing their contents.
+The public Elwood question API proof is a later slice. These native
+characterization captures came from the private configuration home and empty
+project described above; they do not establish that the public API has passed.

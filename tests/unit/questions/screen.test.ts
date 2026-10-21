@@ -1,4 +1,4 @@
-/** Real captured Claude questionnaire grammar and conservative rejection (C-QUESTION-03). */
+/** Real captured Claude questionnaire grammar and conservative rejection (PRD §4). */
 import { describe, expect, test } from "vitest";
 import {
   claudeQuestionCandidate,
@@ -8,7 +8,7 @@ import { definitions, fixture, frame, nativeSnapshot, registry } from "./helpers
 
 const request = registry().publish("native", "blocking", definitions)!;
 const captured = fixture("questions");
-describe("C-QUESTION-03 native frames", () => {
+describe("native frames", () => {
   test.each([
     ["questions", 0, 0],
     ["color-blue-highlight", 0, 1],
@@ -44,6 +44,7 @@ describe("C-QUESTION-03 native frames", () => {
     (text) => text.replace("Enter to select · Tab/Arrow keys to navigate · Esc to cancel", ""),
     (text) => `${text}\nUnrelated dialog`,
     (text) => text.replace("  2. Blue", "  9. Blue"),
+    (text) => text.replace("  2. Blue", "  2. Green"),
     (text) => text.replace("     Warm", "     Unrecognized prose"),
     (text) => text.replace("❯ 1. Amber", "  1. Amber"),
     (text) => text.replace("❯ 1. Amber", "❯ 1. [ ] Amber"),
@@ -54,6 +55,10 @@ describe("C-QUESTION-03 native frames", () => {
     expect(
       parseClaudeQuestionScreen(frame(mutate(captured.text)), request.questions),
     ).toBeUndefined();
+  });
+  test("rejects a multi-select option without its checkbox markup", () => {
+    const changed = fixture("features-initial").text.replace("❯ 1. [ ] Logging", "❯ 1. Logging");
+    expect(parseClaudeQuestionScreen(frame(changed), request.questions)).toBeUndefined();
   });
   test("holds native partial questions but excludes ordinary composer quotations", () => {
     expect(

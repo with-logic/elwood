@@ -1,4 +1,4 @@
-/** Private parser authority follows native editor cursor bounds (C-QUESTION-03). */
+/** Private parser authority follows native editor cursor bounds (PRD §4). */
 import { expect, test } from "vitest";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
 import { definitions, frame, nativeSnapshot } from "./helpers.ts";
@@ -13,10 +13,10 @@ const note = {
   ],
 };
 
-test("C-QUESTION-03 rejects a frame without native question chrome", () => {
+test("rejects a frame without native question chrome", () => {
   expect(parseClaudeQuestionScreen(frame("foreign"), definitions)).toBeUndefined();
 });
-test("C-QUESTION-03 accepts the captured multiline Other editor cursor", () => {
+test("accepts the captured multiline Other editor cursor", () => {
   expect(
     parseClaudeQuestionScreen(nativeSnapshot("freeform-other-typed-native"), [note]),
   ).toMatchObject({
@@ -24,7 +24,7 @@ test("C-QUESTION-03 accepts the captured multiline Other editor cursor", () => {
     other: "ELWOOD_NOTE_LINE1\nELWOOD_NOTE_LINE2",
   });
 });
-test.each([-1, 2])("C-QUESTION-03 rejects a cursor outside the Other editor rows: %s", (offset) => {
+test.each([-1, 2])("rejects a cursor outside the Other editor rows: %s", (offset) => {
   const current = nativeSnapshot("freeform-other-typed-native");
   const otherTop = current.lines.findIndex((line) => line.startsWith("❯ 3."));
   const cursorRow = otherTop + offset;

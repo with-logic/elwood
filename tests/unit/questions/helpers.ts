@@ -1,4 +1,4 @@
-/** Captured Claude frames and shared request fixtures (C-QUESTION-01/03). */
+/** Captured Claude frames and shared request fixtures (PRD §4). */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
@@ -59,17 +59,16 @@ export function nativeSnapshot(name: string): QuestionFrame {
 
 export function parseNativeSnapshot(value: unknown): QuestionFrame {
   if (!isSnapshotRecord(value)) throw invalidSnapshot();
-  const text = value["text"];
+  const lines = snapshotLines(value["lines"]);
   const cursorVisible = value["cursorVisible"];
-  if (typeof text !== "string") throw invalidSnapshot();
   if (cursorVisible !== undefined && typeof cursorVisible !== "boolean") throw invalidSnapshot();
   const cursorY = snapshotNumber(value["cursorY"]);
   const baseY = optionalSnapshotNumber(value["baseY"]);
   const viewportY = optionalSnapshotNumber(value["viewportY"]);
   const cursorRow = optionalSnapshotNumber(value["cursorRow"]);
   return {
-    text,
-    lines: snapshotLines(value["lines"]),
+    text: lines.join("\n"),
+    lines,
     cols: snapshotNumber(value["cols"]),
     rows: snapshotNumber(value["rows"]),
     cursorX: snapshotNumber(value["cursorX"]),
@@ -83,7 +82,7 @@ function isSnapshotRecord(value: unknown): value is Readonly<Record<string, unkn
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function snapshotNumber(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) throw invalidSnapshot();
+  if (typeof value !== "number" || !Number.isInteger(value)) throw invalidSnapshot();
   return value;
 }
 function optionalSnapshotNumber(value: unknown): number | undefined {
