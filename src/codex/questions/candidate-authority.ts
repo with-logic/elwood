@@ -2,6 +2,8 @@
 export class CandidateAuthority {
   private readonly active = new Map<string, object>();
 
+  /** Same-call reentry replaces the token; older cleanup must preserve the newer owner.
+   * Other call IDs remain independent. Return the operation callback's change boolean. */
   run(callId: string, operation: (authority: object) => boolean): boolean {
     const authority = {};
     this.active.set(callId, authority);
