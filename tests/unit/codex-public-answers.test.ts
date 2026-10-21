@@ -1,4 +1,4 @@
-/** Independent accepted-value checks for public Codex question proofs (PRD §12, C-E2E-19). */
+/** Independent accepted-value checks for public Codex question proofs (PRD §12, C-QUESTION-04). */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ElwoodQuestionRequest } from "../../src/index.ts";
@@ -14,7 +14,7 @@ import {
 
 const long = publicCodexLongAnswer("UNIQUE_SYNTHETIC_ANSWER");
 const queuedCallId = "native-async-call";
-function envelope(answer: string, question: string, index: number) {
+function envelope(answer: string, question: string, index: number, callId = queuedCallId) {
   return {
     type: "response_item",
     payload: {
@@ -27,7 +27,7 @@ function envelope(answer: string, question: string, index: number) {
             {
               answer,
               question,
-              questionItemId: JSON.stringify(["request_user_input_async", queuedCallId, index]),
+              questionItemId: JSON.stringify(["request_user_input_async", callId, index]),
             },
           ])}\n</send_user_message_question_reply>`,
         },
@@ -35,15 +35,15 @@ function envelope(answer: string, question: string, index: number) {
     },
   };
 }
-function queuedRecords(note = long.accepted, literal = queuedLiteralAnswer) {
+function queuedRecords(note = long.accepted, literal = queuedLiteralAnswer, callId = queuedCallId) {
   return [
     {
       type: "response_item",
-      payload: { type: "function_call", name: "request_user_input_async", call_id: queuedCallId },
+      payload: { type: "function_call", name: "request_user_input_async", call_id: callId },
     },
-    envelope(note, "ELWOOD_ASYNC_NOTE: What note?", 1),
-    envelope(literal, "ELWOOD_ASYNC_LITERAL: Enter the literal", 2),
-    envelope("Blue", "ELWOOD_ASYNC_COLOR: Which color?", 0),
+    envelope(note, "ELWOOD_ASYNC_NOTE: What note?", 1, callId),
+    envelope(literal, "ELWOOD_ASYNC_LITERAL: Enter the literal", 2, callId),
+    envelope("Blue", "ELWOOD_ASYNC_COLOR: Which color?", 0, callId),
   ];
 }
 function modalRecords(note = long.accepted, literal = modalLiteralAnswer) {
@@ -69,8 +69,10 @@ function modalRecords(note = long.accepted, literal = modalLiteralAnswer) {
   ];
 }
 
-test("C-E2E-19 long answer samples exercise native newline normalization and only outer trim", () => {
+test("C-QUESTION-04 long answer samples exercise native newline normalization and only outer trim", () => {
   assert.ok(long.text.length > 700);
+  assert.ok(long.accepted.startsWith("\uFEFF"));
+  assert.ok(long.accepted.endsWith("\uFEFF"));
   assert.match(long.text, /\r\n/);
   assert.match(long.text, /\r[^\n]/);
   assert.match(long.text, /\tINTERIOR\tTAB\tROW/);
@@ -82,7 +84,7 @@ test("C-E2E-19 long answer samples exercise native newline normalization and onl
   assert.ok(long.accepted.includes("\n\tINTERIOR\tTAB\tROW\n"));
 });
 
-test("C-E2E-19 queued oracle decodes raw JSON and requires complete independent answers", () => {
+test("C-QUESTION-04 queued oracle decodes raw JSON and requires complete independent answers", () => {
   const records = queuedRecords();
   assertPublicCodexQueuedAnswers(records, long.accepted);
   assert.equal(publicCodexQueuedReplies(records)[0]?.["answer"], long.accepted);
@@ -99,7 +101,7 @@ test("C-E2E-19 queued oracle decodes raw JSON and requires complete independent 
   );
 });
 
-test("C-E2E-19 modal oracle requires full notes and a nonempty literal placeholder answer", () => {
+test("C-QUESTION-04 modal oracle requires full notes and a nonempty literal placeholder answer", () => {
   assertPublicCodexModalAnswers(modalRecords(), long.accepted);
   assert.throws(() => assertPublicCodexModalAnswers(modalRecords("clipped"), long.accepted));
   assert.throws(() =>
@@ -110,7 +112,7 @@ test("C-E2E-19 modal oracle requires full notes and a nonempty literal placehold
   );
 });
 
-test("C-E2E-19 modal public answers retain None, named choice plus long notes, and literal notes", () => {
+test("C-QUESTION-04 modal public answers retain None, named choice plus long notes, and literal notes", () => {
   const request: ElwoodQuestionRequest = {
     id: "request",
     agent: "codex",
@@ -130,4 +132,42 @@ test("C-E2E-19 modal public answers retain None, named choice plus long notes, a
     { questionId: "Note", optionIds: ["Short"], text: long.text },
     { questionId: "Literal", optionIds: ["None of the above"], text: modalLiteralAnswer },
   ]);
+});
+
+test.each([
+  "output_text",
+  undefined,
+])("C-QUESTION-04 rejects non-input_text reply parts: %s", (type) => {
+  const replies = [
+    envelope(long.accepted, "ELWOOD_ASYNC_NOTE: What note?", 1),
+    envelope(queuedLiteralAnswer, "ELWOOD_ASYNC_LITERAL: Enter the literal", 2),
+    envelope("Blue", "ELWOOD_ASYNC_COLOR: Which color?", 0),
+  ].map((item) => ({
+    ...item,
+    payload: { ...item.payload, content: item.payload.content.map((part) => ({ ...part, type })) },
+  }));
+  const records = [queuedRecords()[0], ...replies];
+  assert.deepEqual(publicCodexQueuedReplies(records), []);
+  assert.throws(() => assertPublicCodexQueuedAnswers(records, long.accepted));
+});
+
+test("C-QUESTION-04 rejects an empty queued call identity", () => {
+  assert.throws(() =>
+    assertPublicCodexQueuedAnswers(
+      queuedRecords(long.accepted, queuedLiteralAnswer, ""),
+      long.accepted,
+    ),
+  );
+});
+
+test.each([
+  undefined,
+  "",
+  42,
+])("C-QUESTION-04 rejects invalid modal call identity: %s", (callId) => {
+  const records = modalRecords().map((item) => ({
+    ...item,
+    payload: { ...item.payload, call_id: callId },
+  }));
+  assert.throws(() => assertPublicCodexModalAnswers(records, long.accepted));
 });

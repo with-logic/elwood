@@ -1,5 +1,5 @@
-/** Full native acceptance oracles for public Codex question proofs (PRD §12, C-E2E-19). */
-// biome-ignore-all lint/suspicious/noMisplacedAssertion: Shared assertions are called by native and helper tests.
+/** Full native acceptance oracles for public Codex question proofs (PRD §12, C-QUESTION-04). */
+// biome-ignore-all lint/suspicious/noMisplacedAssertion: Assertions verify complete synthetic questionnaire answers.
 import assert from "node:assert/strict";
 import { record } from "../../../src/core/activity/meta.ts";
 import type { ElwoodQuestionRequest } from "../../../src/index.ts";
@@ -20,8 +20,8 @@ export function publicCodexLongAnswer(marker: string) {
   const tabs = "\tINTERIOR\tTAB\tROW";
   const last = `END ${"W".repeat(220)}`;
   return {
-    text: `\u2003 \r\n${first}\r\n${quoted}\r${caret}\r\n${tabs}\r\n${last}\r\n \u2002\t`,
-    accepted: [first, quoted, caret, tabs, last].join("\n"),
+    text: `\u2003 \r\n\uFEFF${first}\r\n${quoted}\r${caret}\r\n${tabs}\r\n${last}\uFEFF\r\n \u2002\t`,
+    accepted: [`\uFEFF${first}`, quoted, caret, tabs, `${last}\uFEFF`].join("\n"),
   };
 }
 
@@ -33,6 +33,7 @@ export function publicCodexQueuedReplies(records: readonly unknown[]) {
   });
 }
 
+/** Require exactly one async call for the fixed Note/Literal/Color questionnaire. */
 export function assertPublicCodexQueuedAnswers(records: readonly unknown[], acceptedNote: string) {
   const calls = nativeCodexFunctionCalls(records, "request_user_input_async");
   assert.equal(calls.length, 1, "One native async call must own all three questions");
@@ -87,10 +88,11 @@ export function publicCodexModalAnswers(request: ElwoodQuestionRequest, note: st
   });
 }
 
+/** Require exactly one modal call and its complete fixed Color/Note/Literal answers. */
 export function assertPublicCodexModalAnswers(records: readonly unknown[], acceptedNote: string) {
   const calls = nativeCodexFunctionCalls(records, "request_user_input");
   assert.equal(calls.length, 1, "One native modal call must own all three questions");
-  const output = nativeCodexFunctionOutput(records.map(record), "request_user_input");
+  const output = nativeCodexFunctionOutput(records, "request_user_input");
   assert.equal(typeof output, "string");
   assert.deepEqual(JSON.parse(String(output)), {
     answers: {

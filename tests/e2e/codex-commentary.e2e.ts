@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { CodexSession, type CodexSessionApi } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { parentCodexConfiguration } from "./codex-parent-state.ts";
+import { parentCodexConfigurationFingerprint } from "./codex-parent-state.ts";
 import { closeNativeResponse, trackResponseKill } from "./codex-response-cleanup.ts";
 import {
   nativeResponseSandbox,
@@ -30,7 +30,7 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
   timeout: 180_000,
 }, async (t) => {
   const environment = { ...process.env };
-  const configuration = parentCodexConfiguration();
+  const configurationFingerprint = parentCodexConfigurationFingerprint();
   const sandbox = await nativeResponseSandbox();
   let live: CodexSessionApi | undefined;
   let toolAttempts = 0;
@@ -82,7 +82,7 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
       assert.equal(existsSync(sandbox.root), false);
       assertParentEnvironmentUnchanged(environment, process.env);
       assert.equal(
-        configuration === parentCodexConfiguration(),
+        configurationFingerprint === parentCodexConfigurationFingerprint(),
         true,
         "Parent Codex configuration changed",
       );

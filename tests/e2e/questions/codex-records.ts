@@ -1,8 +1,6 @@
 /** Decode canonical native question calls and committed answer envelopes (PRD §12). */
 import { record } from "../../../src/core/activity/meta.ts";
 
-export type NativeCodexRecord = Readonly<Record<string, unknown>>;
-
 export function nativeCodexPayload(item: unknown): Record<string, unknown> {
   return record(record(item)["payload"]);
 }
@@ -11,19 +9,27 @@ export function nativeCodexFunctionCalls(records: readonly unknown[], name: stri
   return records
     .filter((item) => record(item)["type"] === "response_item")
     .map(nativeCodexPayload)
-    .filter((payload) => payload["type"] === "function_call" && payload["name"] === name);
+    .filter(
+      (payload) =>
+        payload["type"] === "function_call" &&
+        payload["name"] === name &&
+        typeof payload["call_id"] === "string" &&
+        payload["call_id"].length > 0,
+    );
 }
 
+/** Select the first valid named call, then correlate only its matching call_id output. */
 export function nativeCodexFunctionOutput(
   records: readonly unknown[],
   name: string,
 ): string | undefined {
   const [call] = nativeCodexFunctionCalls(records, name);
+  if (!call) return undefined;
   const output = records
     .filter((item) => record(item)["type"] === "response_item")
     .map(nativeCodexPayload)
     .find(
-      (item) => item["type"] === "function_call_output" && item["call_id"] === call?.["call_id"],
+      (item) => item["type"] === "function_call_output" && item["call_id"] === call["call_id"],
     )?.["output"];
   return typeof output === "string" ? output : undefined;
 }
@@ -41,8 +47,9 @@ export function nativeCodexQueuedReplies(records: readonly unknown[]): readonly 
     const content = payload["content"];
     if (!Array.isArray(content)) return [];
     return content.flatMap((part: unknown): unknown[] => {
-      const text = record(part)["text"];
-      if (typeof text !== "string") return [];
+      const contentPart = record(part);
+      const text = contentPart["text"];
+      if (contentPart["type"] !== "input_text" || typeof text !== "string") return [];
       const match = text.match(
         /^<send_user_message_question_reply>\n(.*)\n<\/send_user_message_question_reply>$/s,
       );
