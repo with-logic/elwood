@@ -39,13 +39,21 @@ test.each([
 test("bounds the aggregate UTF-8 answer size before sanitization", () => {
   const textRequest = registry().publish("text", "queued", [definitions[0]!, definitions[0]!])!;
   const text = "é".repeat(2 * 1024 * 1024);
-  const answers = textRequest.questions.map(({ id }) => ({ questionId: id, text }));
+  const idBytes = textRequest.questions.reduce((bytes, { id }) => bytes + Buffer.byteLength(id), 0);
+  const remainingText = "a".repeat(8 * 1024 * 1024 - Buffer.byteLength(text) - idBytes);
+  const answers = textRequest.questions.map(({ id }, index) => ({
+    questionId: id,
+    text: index === 0 ? text : remainingText,
+  }));
   expect(validateQuestionAnswers(textRequest, answers)).toEqual([
     { optionIndexes: [], text },
-    { optionIndexes: [], text },
+    { optionIndexes: [], text: remainingText },
   ]);
   expect(() =>
-    validateQuestionAnswers(textRequest, [answers[0]!, { ...answers[1]!, text: `${text}a` }]),
+    validateQuestionAnswers(textRequest, [
+      answers[0]!,
+      { ...answers[1]!, text: `${remainingText}a` },
+    ]),
   ).toThrow(invalid);
 });
 
