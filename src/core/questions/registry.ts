@@ -19,7 +19,7 @@ type Entry = {
 export class QuestionRegistry {
   private readonly entries = new Map<string, Entry>();
   private readonly byNativeKey = new Map<string, Entry>();
-  private readonly publishing = new Set<string>();
+  private readonly publishingNativeKeys = new Set<string>();
   private readonly dispatch: QuestionDispatch;
   private stopped = false;
   readonly agent: ElwoodAgentKind;
@@ -50,12 +50,14 @@ export class QuestionRegistry {
     delivery: ElwoodQuestionRequest["delivery"],
     questions: readonly QuestionDefinition[],
   ): ElwoodQuestionRequest | undefined {
-    if (this.stopped || this.publishing.has(nativeKey)) return undefined;
-    this.publishing.add(nativeKey);
+    // A replacement closes before raising: reentrant publication of the same key
+    // must not install an entry that the outer replacement would orphan in the index.
+    if (this.stopped || this.publishingNativeKeys.has(nativeKey)) return undefined;
+    this.publishingNativeKeys.add(nativeKey);
     try {
       return this.publishRequest(nativeKey, delivery, questions);
     } finally {
-      this.publishing.delete(nativeKey);
+      this.publishingNativeKeys.delete(nativeKey);
     }
   }
   private publishRequest(
@@ -140,6 +142,7 @@ export class QuestionRegistry {
     if (failed) throw failure;
   }
   shutdown(): void {
+    // Closure observers run synchronously; latch first so they cannot repopulate shutdown state.
     this.stopped = true;
     this.clear("unavailable");
   }

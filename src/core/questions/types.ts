@@ -12,23 +12,17 @@ export type ElwoodQuestion = {
   readonly header?: string;
   readonly options: readonly ElwoodQuestionOption[];
   readonly selection: "single" | "multiple" | "none";
+  /** Free text is forbidden, replaces choices, or accompanies choices, respectively. */
   readonly textMode: "none" | "alternative" | "additional";
+  /** Whether the native question supports entering secret text. */
   readonly secret: boolean;
 };
 export type ElwoodQuestionRequest = {
   readonly id: string;
   readonly agent: ElwoodAgentKind;
+  /** Blocking questions suspend native work; queued questions can coexist with native work. */
   readonly delivery: "blocking" | "queued";
   readonly questions: readonly ElwoodQuestion[];
-};
-export type ElwoodQuestionAnswer = {
-  readonly questionId: string;
-  readonly optionIds?: readonly string[];
-  readonly text?: string;
-};
-export type ElwoodQuestionAnswerOptions = {
-  readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
 };
 export type QuestionCloseReason = "answered" | "cancelled" | "unavailable";
 export type ElwoodQuestionEvent = {
@@ -39,14 +33,7 @@ export type ElwoodQuestionEvent = {
   | { readonly phase: "raised" }
   | { readonly phase: "closed"; readonly reason: QuestionCloseReason }
 );
-export interface QuestionControls {
-  listQuestions(): Promise<readonly ElwoodQuestionRequest[]>;
-  answerQuestions(
-    requestId: string,
-    answers: readonly ElwoodQuestionAnswer[],
-    options?: ElwoodQuestionAnswerOptions,
-  ): Promise<void>;
-}
+/** Adapters supply native content; the registry generates request, question, and option IDs. */
 export type QuestionDefinition = Omit<ElwoodQuestion, "id" | "options"> & {
   readonly options: readonly Omit<ElwoodQuestionOption, "id">[];
 };

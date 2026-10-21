@@ -23,6 +23,8 @@ export class QuestionDispatch {
     };
   }
 
+  // Synchronous observers may mutate the registry while a raised edge is being delivered.
+  // Queue nested edges so every observer and its activity mirror see raised before closed.
   emit(event: ElwoodQuestionEvent): void {
     const errors: unknown[] = [];
     this.pending.push(Object.freeze(event));

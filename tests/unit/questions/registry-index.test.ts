@@ -1,27 +1,44 @@
-/** Indexed native identities stay consistent across replacement and retirement (C-QUESTION-05). */
+/** Indexed native identities stay consistent across replacement and retirement (PRD §4). */
 import { expect, test, vi } from "vitest";
 import { QuestionRegistry } from "../../../src/core/questions/registry.ts";
+import type { ElwoodQuestionRequest } from "../../../src/core/questions/types.ts";
 import { definitions } from "./helpers.ts";
 
-test("C-QUESTION-05 high-volume identity lookups and unchanged publications do not scan requests", () => {
+test("high-volume identity lookups and unchanged publications do not scan requests", () => {
   const registry = new QuestionRegistry("codex", "indexed", { emit: () => {} });
   const requests = Array.from({ length: 1_000 }, (_, index) =>
     registry.publish(`native-${index}`, "queued", definitions),
   );
-  const values = vi.spyOn(Map.prototype, "values");
+  const scans = [
+    vi.spyOn(Map.prototype, "values"),
+    vi.spyOn(Map.prototype, "entries"),
+    vi.spyOn(Map.prototype, Symbol.iterator),
+    vi.spyOn(Map.prototype, "forEach"),
+  ];
+  const found: (ElwoodQuestionRequest | undefined)[] = [];
+  const published: (ElwoodQuestionRequest | undefined)[] = [];
+  let pending = false;
+  let calls: readonly number[] = [];
+  for (const scan of scans) scan.mockClear();
   try {
-    for (const [index, request] of requests.entries()) {
-      expect(registry.find(`native-${index}`)).toBe(request);
-      expect(registry.publish(`native-${index}`, "queued", definitions)).toBe(request);
+    for (const [index] of requests.entries()) {
+      found.push(registry.find(`native-${index}`));
+      published.push(registry.publish(`native-${index}`, "queued", definitions));
     }
-    expect(registry.hasPending()).toBe(true);
-    expect(values.mock.calls.length).toBe(0);
+    pending = registry.hasPending();
+    calls = scans.map((scan) => scan.mock.calls.length);
   } finally {
-    values.mockRestore();
+    for (const scan of scans) scan.mockRestore();
   }
+  for (const [index, request] of requests.entries()) {
+    expect(found[index]).toBe(request);
+    expect(published[index]).toBe(request);
+  }
+  expect(pending).toBe(true);
+  expect(calls).toEqual([0, 0, 0, 0]);
 });
 
-test("C-QUESTION-05 source indexes retire with request identity and survive semantic replacement", () => {
+test("source indexes retire with request identity and survive semantic replacement", () => {
   const registry = new QuestionRegistry("codex", "indexed", { emit: () => {} });
   const first = registry.publish("native", "queued", definitions)!;
   expect(registry.keyFor(first.id)).toBe("native");

@@ -9,10 +9,12 @@ test.each([
   "internal",
 ])("reentrant %s closure preserves the raised and closed event pairs", (source) => {
   const edges: string[] = [];
+  const reasons: string[] = [];
   const requests = new QuestionRegistry("claude", "session", {
     emit: (name, event) => {
       const phase = "phase" in event ? event.phase : event.question.phase;
       edges.push(`${name}:${phase}`);
+      if (name === "question" && "reason" in event) reasons.push(event.reason);
       if (name === source && phase === "raised") requests.clear("cancelled");
     },
   });
@@ -29,10 +31,15 @@ test.each([
     "activity:closed",
   ]);
   expect(requests.list()).toEqual([]);
+  expect(reasons).toEqual(["cancelled"]);
 });
 
 test("shutdown latches before observers run while clear remains reusable", () => {
   const requests = new QuestionRegistry("claude", "s", { emit: () => {} });
+  const reasons: string[] = [];
+  requests.onEvent((event) => {
+    if (event.phase === "closed") reasons.push(event.reason);
+  });
   requests.publish("first", "queued", definitions);
   requests.clear("answered");
   expect(requests.publish("second", "queued", definitions)).toBeDefined();
@@ -44,6 +51,7 @@ test("shutdown latches before observers run while clear remains reusable", () =>
   requests.shutdown();
   requests.shutdown();
   expect(requests.publish("late", "queued", definitions)).toBeUndefined();
+  expect(reasons).toEqual(["answered", "unavailable"]);
   expect(requests.list()).toEqual([]);
 });
 

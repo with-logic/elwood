@@ -10,11 +10,23 @@ test("deep freezes request snapshots and both lifecycle event wrappers", () => {
   const activities: QuestionActivityEvent[] = [];
   const requests = new QuestionRegistry("codex", "session", {
     emit: (name, payload) => {
-      if (name === "question") questions.push(payload as ElwoodQuestionEvent);
-      else activities.push(payload as QuestionActivityEvent);
+      if (name === "question") {
+        expect("phase" in payload).toBe(true);
+        if ("phase" in payload) questions.push(payload);
+      } else {
+        expect("question" in payload).toBe(true);
+        if ("question" in payload) activities.push(payload);
+      }
     },
   });
   const request = requests.publish("native", "queued", definitions)!;
+  expect(request.questions).toEqual(
+    definitions.map((question) => ({
+      ...question,
+      id: expect.any(String),
+      options: question.options.map((option) => ({ ...option, id: expect.any(String) })),
+    })),
+  );
   expect(Object.isFrozen(request)).toBe(true);
   expect(Object.isFrozen(request.questions)).toBe(true);
   for (const question of request.questions) {

@@ -1,22 +1,36 @@
-/** Immutable native question lifecycle, deduplication and replacement (C-QUESTION-01). */
+/** Immutable native question lifecycle, deduplication and replacement (PRD §4). */
 import { describe, expect, test } from "vitest";
+import type { QuestionActivityEvent } from "../../../src/core/questions/activity.ts";
 import { QuestionRegistry } from "../../../src/core/questions/registry.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { definitions } from "./helpers.ts";
 
-describe("C-QUESTION-01 registry", () => {
+describe("private question registry", () => {
   test("orders frozen requests, deduplicates native mirrors and replaces changed authority", () => {
     const events: ElwoodQuestionEvent[] = [];
-    const activities: unknown[] = [];
+    const activities: QuestionActivityEvent[] = [];
     const registry = new QuestionRegistry("claude", "s", {
       emit: (name, event) => {
-        if (name === "question") events.push(event as ElwoodQuestionEvent);
-        else activities.push(event);
+        if (name === "question") {
+          expect("phase" in event).toBe(true);
+          if ("phase" in event) events.push(event);
+        } else {
+          expect("question" in event).toBe(true);
+          if ("question" in event) activities.push(event);
+        }
       },
     });
     const observed: string[] = [];
     const off = registry.onEvent((event) => observed.push(event.phase));
     const first = registry.publish("a", "blocking", definitions)!;
+    expect(registry.get(first.id)).toBe(first);
+    expect(first.questions).toEqual(
+      definitions.map((question) => ({
+        ...question,
+        id: expect.any(String),
+        options: question.options.map((option) => ({ ...option, id: expect.any(String) })),
+      })),
+    );
     expect(registry.publish("a", "blocking", definitions)).toBe(first);
     const second = registry.publish("b", "queued", definitions)!;
     expect(registry.list()).toEqual([first, second]);
@@ -40,6 +54,35 @@ describe("C-QUESTION-01 registry", () => {
     ]);
     expect(observed).toEqual(["raised", "raised", "closed", "raised"]);
     expect(activities).toHaveLength(6);
+  });
+  test("fresh equivalent snapshots deduplicate while delivery-only changes replace identity", () => {
+    const events: ElwoodQuestionEvent[] = [];
+    const registry = new QuestionRegistry("claude", "s", {
+      emit: (name, event) => {
+        if (name === "question" && "phase" in event) events.push(event);
+      },
+    });
+    const first = registry.publish("native", "blocking", definitions)!;
+    const fresh = structuredClone(definitions);
+    expect(fresh).not.toBe(definitions);
+    expect(registry.publish("native", "blocking", fresh)).toBe(first);
+    expect(events).toHaveLength(1);
+    const queued = registry.publish("native", "queued", fresh)!;
+    expect(queued.id).not.toBe(first.id);
+    expect(queued.delivery).toBe("queued");
+    expect(registry.get(first.id)).toBeUndefined();
+    expect(registry.get(queued.id)).toBe(queued);
+    expect(events).toEqual([
+      { elwoodSessionId: "s", agent: "claude", phase: "raised", request: first },
+      {
+        elwoodSessionId: "s",
+        agent: "claude",
+        phase: "closed",
+        request: first,
+        reason: "unavailable",
+      },
+      { elwoodSessionId: "s", agent: "claude", phase: "raised", request: queued },
+    ]);
   });
   test("commits close and companion activity before surfacing an observer failure", () => {
     let fail = false;
