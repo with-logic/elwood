@@ -45,13 +45,15 @@ test("C-CLAUDE-23 observes renewal on resume without replaying to late listeners
 const notice = (days: number) =>
   asScreen(`Claude Code v2.1.305\n⚠ Your login expires in ${days} days · run /login to renew`);
 
-test("C-CLAUDE-23 a quoted footer needs a live native composer cursor", async () => {
+test.each([
+  "⏸ manual mode on",
+  "⏸ manual mode on · ? for shortcuts",
+])("C-CLAUDE-23 a quoted footer needs a live native composer cursor (%s)", async (manualFooter) => {
   installFakes();
   const session = await startClaude({ cwd: tempDir() });
   const warnings: unknown[] = [];
   session.on("warning", (event) => warnings.push(event));
-  const footer =
-    "───\n❯ \n───\n  ⏸ manual mode on\nYour login expires in 1 day · run /login to renew";
+  const footer = `───\n❯ \n───\n  ${manualFooter}\nYour login expires in 1 day · run /login to renew`;
   ptys[0]!.emitData(asScreen(`⏺ Quoted footer:\n${footer}`));
   await session.terminal.settled();
   expect(warnings).toEqual([]);

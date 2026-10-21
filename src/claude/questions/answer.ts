@@ -21,6 +21,9 @@ export async function answerClaudeQuestions(
   request: ElwoodQuestionRequest,
   answers: readonly ValidatedQuestionAnswer[],
   io: QuestionIo,
+  submitting: () => void = () => {
+    // Standalone driver callers have no candidate lifecycle to notify.
+  },
 ): Promise<void> {
   const bound = bindClaudeQuestionAnswers(request, answers);
   const initial = io.frame();
@@ -30,7 +33,7 @@ export async function answerClaudeQuestions(
   const hasNativeReviewStage = request.questions.length > 1;
   for (const entry of bound) {
     const index = entry.questionIndex;
-    await answerOne(request, entry, io);
+    await answerOne(request, entry, io, request.questions.length === 1 ? submitting : undefined);
     if (index + 1 < request.questions.length) {
       await io.wait((frame) => {
         const screen = parseClaudeQuestionScreen(frame, request.questions);
@@ -38,12 +41,13 @@ export async function answerClaudeQuestions(
       });
     }
   }
-  if (hasNativeReviewStage) await submitReview(request, bound, io);
+  if (hasNativeReviewStage) await submitReview(request, bound, io, submitting);
 }
 async function answerOne(
   request: ElwoodQuestionRequest,
   bound: BoundClaudeQuestionAnswer,
   io: QuestionIo,
+  submitting: (() => void) | undefined,
 ): Promise<void> {
   const { question, questionIndex, answer, otherCursorIndex, targetCursorIndex } = bound;
   const navigation = questionNavigation(request, questionIndex, io);
@@ -75,13 +79,16 @@ async function answerOne(
         current.checked.every((checked, index) => checked === answer.optionIndexes.includes(index)),
       none: () => current.other === answer.text,
     } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
-    return matchesBySelection[question.selection]();
+    const matches = matchesBySelection[question.selection]();
+    if (matches) submitting?.();
+    return matches;
   });
 }
 async function submitReview(
   request: ElwoodQuestionRequest,
   answers: readonly BoundClaudeQuestionAnswer[],
   io: QuestionIo,
+  submitting: () => void,
 ): Promise<void> {
   const reviewFrame = await io.wait(
     (frame) => parseClaudeQuestionScreen(frame, request.questions)?.kind === "review",
@@ -94,5 +101,9 @@ async function submitReview(
     return screen?.kind === "review" && screen.summary === expected ? screen : undefined;
   };
   if (!matchingReview(reviewFrame)) throw questionAnswerFailed();
-  await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0);
+  await io.write("\r", (frame) => {
+    const matches = matchingReview(frame)?.cursor === 0;
+    if (matches) submitting();
+    return matches;
+  });
 }
