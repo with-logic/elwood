@@ -33,7 +33,7 @@ test("editable queued alternative retains metadata ownership", () => {
     { ...view.cursor, visible: false },
     { ...view.cursor, before: undefined },
     { ...view.cursor, row: -1 },
-    { ...view.cursor, row: view.bodyRowCount },
+    { ...view.cursor, row: view.rawBody.length },
   ])
     expect(matchesQuestion({ ...view, cursor }, question)).toBe(false);
   const noBlanks = view.body.filter((line) => line.length > 0);

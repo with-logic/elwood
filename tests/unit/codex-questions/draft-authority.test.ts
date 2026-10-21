@@ -12,23 +12,23 @@ const note: QuestionDefinition = {
   textMode: "alternative",
   secret: false,
 };
-test("C-QUESTION-02 captured empty placeholder is not the literal answer text", () => {
+test("captured empty placeholder is not the literal answer text", () => {
   const empty = questionView(captured("async-after-first.txt"))!;
   expect(draftMatches(empty, note, "Type your answer")).toBe(false);
 });
-test("C-QUESTION-02 an indented caret continuation cannot replace the notes start", () => {
+test("an indented caret continuation cannot replace the notes start", () => {
   const text = captured("blocking-modal-note.txt").text.replace(
     "  › ELWOOD_MODAL_NOTE_85",
     "  › x\n    › tail",
   );
   expect(draftMatches(questionView(frame(text))!, note, "tail")).toBe(false);
 });
-test("C-QUESTION-02 native row trimming cannot discard answer whitespace", () => {
+test("native row trimming cannot discard answer whitespace", () => {
   const text = captured("async-editor-note.txt").text.replace("ELWOOD_NOTE_74", "ELWOOD_NOTE_74  ");
   expect(draftMatches(questionView(frame(text))!, note, "ELWOOD_NOTE_74")).toBe(false);
 });
 
-test("C-QUESTION-02 incomplete editor metadata cannot authorize a draft", () => {
+test("incomplete editor metadata cannot authorize a draft", () => {
   const view = questionView(captured("async-editor-note.txt"))!;
   expect(draftMatches(view, { ...note, prompt: "missing prompt" }, "ELWOOD_NOTE_74")).toBe(false);
   expect(draftMatches({ ...view, rawBody: [note.prompt, " "] }, note, "")).toBe(false);

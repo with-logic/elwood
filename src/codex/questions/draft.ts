@@ -1,7 +1,15 @@
 /** Verify unambiguous visible drafts; wrapped/clipped text needs owned-paste proof (PRD §4). */
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import type { QuestionView } from "./frame.ts";
+import { queuedOtherLabel } from "./labels.ts";
 
+/**
+ * True only when a single visible editor row exactly matches `expected`; supplied
+ * cursor-prefix evidence must agree. Placeholder text requires a visible cursor on
+ * the editor row: dimmed at its prefix for empty input, or undimmed after the full
+ * literal answer. Multiline, wrapped, clipped, and ambiguous drafts return false;
+ * complete logical answers require the separate owned-paste/native-acceptance path.
+ */
 export function draftMatches(
   view: QuestionView,
   question: QuestionDefinition,
@@ -17,10 +25,15 @@ export function draftMatches(
   const text = remaining[0]!.slice(prefix.length);
   const cursor = view.cursor;
   if (text.trimEnd() === placeholder) {
-    if (cursor.visible !== true || cursor.row !== start) return false;
-    return expected === ""
-      ? cursor.dimmed === true && cursor.before === prefix
-      : expected === placeholder && cursor.dimmed === false && cursor.before === prefix + expected;
+    const cursorOwnsEditorRow = cursor.visible === true && cursor.row === start;
+    if (!cursorOwnsEditorRow) return false;
+    const expectsEmptyPlaceholder = expected === "";
+    const hasEmptyPlaceholderCursor = cursor.dimmed === true && cursor.before === prefix;
+    const expectsLiteralPlaceholder = expected === placeholder;
+    const hasLiteralAnswerCursor = cursor.dimmed === false && cursor.before === prefix + expected;
+    return expectsEmptyPlaceholder
+      ? hasEmptyPlaceholderCursor
+      : expectsLiteralPlaceholder && hasLiteralAnswerCursor;
   }
   if (
     cursor.before !== undefined &&
@@ -48,13 +61,11 @@ function draftPosition(view: QuestionView, question: QuestionDefinition) {
     start = lines.findIndex((line) => /^\s*› \d+\. /.test(line));
     if (start < 0) return undefined;
     prefix = /^\s*› \d+\. /.exec(lines[start]!)![0];
-    placeholder = question.options.some((option) => option.label.toLowerCase() === "other")
-      ? "Other (write an answer)"
-      : "Other";
+    placeholder = queuedOtherLabel(question);
   } else {
-    const prompt = lines.findIndex((line) => line.trim() === question.prompt);
-    if (prompt < 0) return undefined;
-    start = lines.findIndex((line, index) => index > prompt && line.trim().length > 0);
+    const promptIndex = lines.findIndex((line) => line.trim() === question.prompt);
+    if (promptIndex < 0) return undefined;
+    start = lines.findIndex((line, index) => index > promptIndex && line.trim().length > 0);
     prefix = "  ";
     placeholder = "Type your answer";
   }

@@ -16,7 +16,7 @@ const question: QuestionDefinition = {
 test.each([
   ["queued", "Type your answer"],
   ["modal", "Add notes"],
-])("C-QUESTION-02 %s empty placeholder and literal answer have different native evidence", (kind, literal) => {
+])("%s empty placeholder and literal answer have different native evidence", (kind, literal) => {
   const empty = questionView(nativeFrame(`editor/${kind}-literal-empty.json`))!;
   const typed = questionView(nativeFrame(`editor/${kind}-literal-typed.json`))!;
   expect(empty.rawBody).toEqual(typed.rawBody);
@@ -39,7 +39,7 @@ test.each([
 test.each([
   "queued",
   "modal",
-])("C-QUESTION-02 %s clipped/wrapped draft cannot attest full logical text", (kind) => {
+])("%s clipped/wrapped draft cannot attest full logical text", (kind) => {
   const expected: unknown = JSON.parse(fixture(`editor/${kind}-expected.json`));
   if (
     !(
@@ -60,6 +60,6 @@ test.each([
           expected.long,
         ),
       ).toBe(false);
-    else expect(kind).toBe("queued"); // Narrow queued capture clips its panel heading too.
+    else expect([kind, width]).toEqual(["queued", "narrow"]); // This capture clips its panel heading too.
   }
 });

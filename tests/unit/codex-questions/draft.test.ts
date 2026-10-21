@@ -5,7 +5,7 @@ import { questionView } from "../../../src/codex/questions/frame.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { captured, frame } from "./helpers.ts";
 
-test("C-QUESTION-02 checks exact native drafts without treating placeholders as answers", () => {
+test("checks exact native drafts without treating placeholders as answers", () => {
   const note: QuestionDefinition = {
     prompt: "ELWOOD_ASYNC_NOTE: What note?",
     options: [],
