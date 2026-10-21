@@ -1,6 +1,7 @@
 /** Native acceptance, cancellation and retry preserve one answer lane (PRD §4). */
 import { afterEach, expect, test, vi } from "vitest";
 import { questionDeadline } from "../../../src/core/questions/deadline.ts";
+import { MAX_TIMER_DELAY_MS } from "../../../src/core/timers.ts";
 import { definitions } from "./helpers.ts";
 import { disposeTransactionHarnesses, transactionHarness as setup } from "./transaction-helpers.ts";
 
@@ -13,13 +14,13 @@ test("long finite timeouts use bounded timer chunks instead of Node's 1 ms overf
   await h.terminal.writeOutput("question");
   vi.useFakeTimers();
   const pending = h.transaction.run(h.adapter, h.request.id, h.answers, {
-    timeoutMs: 2_147_483_648,
+    timeoutMs: MAX_TIMER_DELAY_MS + 1,
   });
   const result = pending.then(
     () => "accepted",
     () => "failed",
   );
-  await vi.advanceTimersByTimeAsync(2_147_483_647);
+  await vi.advanceTimersByTimeAsync(MAX_TIMER_DELAY_MS);
   expect(h.transaction.busy()).toBe(true);
   expect(h.requests.get(h.request.id)).toBe(h.request);
   h.requests.close(h.request.id, "answered");
@@ -28,8 +29,8 @@ test("long finite timeouts use bounded timer chunks instead of Node's 1 ms overf
 test("a deadline expires after its last bounded chunk and cancellation clears it", async () => {
   vi.useFakeTimers();
   const expire = vi.fn();
-  const cancel = questionDeadline(2_147_483_650, expire);
-  await vi.advanceTimersByTimeAsync(2_147_483_649);
+  const cancel = questionDeadline(MAX_TIMER_DELAY_MS + 3, expire);
+  await vi.advanceTimersByTimeAsync(MAX_TIMER_DELAY_MS + 2);
   expect(expire).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1);
   expect(expire).toHaveBeenCalledOnce();
@@ -44,7 +45,7 @@ test.each([
   "timeout",
   "signal",
   "caller",
-] as const)("%s after the first write blocks retries until native closure changes identity", async (reason) => {
+] as const)("%s after the first write retires the request and reserves its native key until closure", async (reason) => {
   const host = new AbortController();
   let firstWrite = false;
   const h = setup(async (io) => {
@@ -109,7 +110,7 @@ test("writes without ordinary queue ownership and waits for native acceptance", 
   });
   await h.terminal.writeOutput("question");
   const pending = h.transaction.run(h.adapter, h.request.id, h.answers, { timeoutMs: 500 });
-  await sent.promise;
+  await Promise.race([sent.promise, pending]);
   expect(h.transaction.busy()).toBe(true);
   expect(h.writes).toEqual(["\r"]);
   const other = h.requests.publish("other", "queued", [definitions[0]!])!;

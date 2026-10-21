@@ -15,10 +15,11 @@ test("harness disposal cancels and settles even an adapter that ignores its sign
   });
   await h.terminal.writeOutput("question");
   vi.useFakeTimers();
-  const result = h.transaction.run(h.adapter, h.request.id, h.answers).catch(() => "failed");
+  const pending = h.transaction.run(h.adapter, h.request.id, h.answers);
+  const failed = expect(pending).rejects.toMatchObject({ code: "question_answer_failed" });
   await entered.promise;
   await disposeTransactionHarnesses();
   expect(h.transaction.busy()).toBe(false);
-  expect(await result).toBe("failed");
+  await failed;
   expect(vi.getTimerCount()).toBe(0);
 });
