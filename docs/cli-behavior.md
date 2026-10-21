@@ -1350,3 +1350,36 @@ complete logical equality of multirow or clipped drafts. Cursor-cell style and a
 physical row prefix are partial evidence, so they must not confirm unshown answer
 text. Full-answer verification must bind an owned paste to the native accepted
 payload rather than infer missing text from the screen.
+
+## Native interactive question records (2026-10-20)
+
+Claude Code 2.1.305 exposes structured `AskUserQuestion` input in PreToolUse and
+PermissionRequest hooks. PermissionRequest can omit the native tool-use ID
+(`tool_use_id`). Direct hook answers may bypass the terminal editor. PostToolUse
+carries the accepted answers for the entire tool request. See
+[Claude question editor captures](#claude-question-editor-captures-2026-10-20)
+for the captured editor, navigation and submission behavior.
+
+Codex 0.163.0 Plan-mode
+`request_user_input` groups questions in a modal and returns one function output
+with all answers. Every question needs nonempty options; a free-text-only tool
+call was rejected before any editor appeared. None of the above plus notes
+provides free text. `request_user_input_async` immediately returns accepted:true,
+then exposes independently answerable queued questions while work continues.
+Shift+Left opens the editor. Answering one leaves the others available, with a
+committed `send_user_message_question_reply` envelope identifying the exact
+question. Ordinary composer input is not an equivalent answer route.
+
+Async question AgentMessage records can say phase:final_answer while work is
+still running. They are question metadata, not a final assistant reply. The
+paginated item_completed mirror uses type AgentMessage. Deduplicate these mirrors
+against the stable tool call. The native question ID encodes the call ID and
+question index. Ctrl+] locally skips the focused async question without an answer
+record; Esc from its editor can merely collapse it. Do not treat every Esc as a
+turn interruption.
+
+Queued editors after the first use `⇧→ prev question`; only the first uses
+`⇧→ main prompt`. Keep this distinction in captured and scripted navigation
+frames. If a local skip and Esc collapse coalesce into one output render, the
+smaller badge does not identify the removed question. Preserve the prior focused
+editor count until a matching remaining editor confirms that removal.

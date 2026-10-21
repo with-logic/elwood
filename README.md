@@ -131,6 +131,7 @@ output protocols, head mode, and continuation.
 `elwoodSessionId`. `ClaudeSession` / `CodexSession` add `send`, `stream`, and
 `close` on top of the full control surface (`sendMessage`, `sendPrompt`,
 `sendGuidance`, `sendKeys`, `interrupt`, `compact`, `listModels`, `setModel`,
+`listQuestions`, `answerQuestions`,
 loops, `waitForStatus`, `stop`, `kill`, `teardown`). The eager `startClaude` /
 `startCodex` factories are deprecated but still available.
 
@@ -148,6 +149,12 @@ replies remain `assistant_message`. Render progress while keeping the turn
 working. Progress is available through `on("activity", ...)`, and is excluded
 from ergonomic `send()` results and `stream()` text. See
 [Codex commentary](docs/codex/cli.md#commentary-and-final-replies) for the contract.
+
+**Agent questions.** Subscribe to `question` events or `question` activities to
+show native Claude and Codex questionnaires. `listQuestions()` returns available
+requests; `answerQuestions()` submits the user's choices or text through the
+native editor, including while `send()` is waiting. Queued Codex questions can
+remain available while the agent works. See [native questions](docs/questions.md).
 
 **Terminal stream.** `terminal:data` carries the raw PTY bytes so a host can
 mirror the agent in its own xterm. A late subscriber first receives up to
