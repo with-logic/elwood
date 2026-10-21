@@ -1,5 +1,6 @@
 /** Native candidate transitions release owned expectations (PRD §4). */
 import { expect, test, vi } from "vitest";
+import { questionMetadataLimitBytes } from "../../../src/codex/questions/limits.ts";
 import { owned, reply } from "./acceptance-helpers.ts";
 import { call, event } from "./candidate-helpers.ts";
 
@@ -18,12 +19,17 @@ test.each([
   if (transition === "disable")
     state.observe(
       event(
-        call({ id: "overflow", queued: true, accepted: true, prompt: "x".repeat(1024 * 1024) }),
+        call({
+          id: "overflow",
+          queued: true,
+          accepted: true,
+          prompt: "x".repeat(questionMetadataLimitBytes),
+        }),
       ),
     );
   if (transition === "answered") state.observe(reply(candidate.key, "Yes"));
   expect(remove).toHaveBeenCalledOnce();
-  expect(() =>
-    state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal),
-  ).toThrow();
+  expect(() => state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal)).toThrow(
+    expect.objectContaining({ code: "question_answer_failed" }),
+  );
 });

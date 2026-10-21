@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { output, owned } from "./acceptance-helpers.ts";
 import { event } from "./candidate-helpers.ts";
 
-test("checks every modal question and exact note order", () => {
+test("rejects a modal note before its selected option", () => {
   const { state, candidate, controller, reason } = owned(false);
   state.observe(
     event({

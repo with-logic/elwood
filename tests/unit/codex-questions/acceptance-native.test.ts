@@ -1,7 +1,7 @@
 /** Replay captured full native editor acceptance values for PRD §4. */
 import { expect, test } from "vitest";
 import { questionReplies, queuedKey } from "../../../src/codex/questions/records.ts";
-import { isRecord } from "../../../src/core/predicates.ts";
+import { isRecord, isStringArray } from "../../../src/core/predicates.ts";
 import { event, setup } from "./candidate-helpers.ts";
 import { fixture } from "./helpers.ts";
 
@@ -25,11 +25,13 @@ test.each([
   const callId = queued
     ? "call_9f8fad43431b4ac3afae9756c0f9a7f7"
     : stringField(acceptance, "callId");
-  for (const id of ["literal", "long"]) stringField(expected, id);
-  const { state, listener } = setup();
-  const ids = ["literal", "long"];
-  const questions = ids.map((id) =>
-    queued ? { title: id } : { id, question: id, options: [{ label: "Yes" }] },
+  const answerCases = ["literal", "long"];
+  for (const answerCase of answerCases) stringField(expected, answerCase);
+  const { state, listener, registry } = setup();
+  const questions = answerCases.map((answerCase) =>
+    queued
+      ? { title: answerCase }
+      : { id: answerCase, question: answerCase, options: [{ label: "Yes" }] },
   );
   state.observe(
     event({
@@ -39,7 +41,11 @@ test.each([
       arguments: JSON.stringify({ questions }),
     }),
   );
-  for (const candidate of state.candidates.values()) {
+  const candidateKeys = queued ? answerCases.map((_, index) => queuedKey(callId, index)) : [callId];
+  expect([...state.candidates.keys()]).toEqual(candidateKeys);
+  for (const key of candidateKeys) {
+    const candidate = state.candidates.get(key);
+    if (!candidate) throw new Error(`Missing captured native candidate ${key}`);
     state.publish(candidate);
     const answers = candidate.questions.map((question) => ({
       optionIndexes: [],
@@ -47,6 +53,8 @@ test.each([
     }));
     state.expectAnswer(candidate, answers, new AbortController().signal);
   }
+  const requests = registry.list();
+  expect(requests).toHaveLength(candidateKeys.length);
   if (queued) {
     const payload = {
       type: "message",
@@ -60,7 +68,7 @@ test.each([
     };
     const native = questionReplies(payload);
     if (
-      native.length !== ids.length ||
+      native.length !== answerCases.length ||
       native.some((answer, index) => answer.questionItemId !== queuedKey(callId, index))
     )
       throw new Error("Invalid captured queued answers");
@@ -69,13 +77,9 @@ test.each([
     const native = acceptance["answers"];
     if (
       !isRecord(native) ||
-      ids.some((id) => {
-        const answer = native[id];
-        return !(
-          isRecord(answer) &&
-          Array.isArray(answer["answers"]) &&
-          answer["answers"].every((value) => typeof value === "string")
-        );
+      answerCases.some((answerCase) => {
+        const answer = native[answerCase];
+        return !(isRecord(answer) && isStringArray(answer["answers"]));
       })
     )
       throw new Error("Invalid captured modal answers");
@@ -88,10 +92,11 @@ test.each([
     );
   }
   expect(state.candidates.size).toBe(0);
-  expect(listener).toHaveBeenCalledWith(
-    "question",
-    expect.objectContaining({ phase: "closed", reason: "answered" }),
-  );
+  for (const request of requests)
+    expect(listener).toHaveBeenCalledWith(
+      "question",
+      expect.objectContaining({ phase: "closed", reason: "answered", request }),
+    );
   expect(listener).not.toHaveBeenCalledWith(
     "question",
     expect.objectContaining({ reason: "unavailable" }),
