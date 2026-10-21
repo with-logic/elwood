@@ -17,13 +17,18 @@ export type ValidatedQuestionAnswer = {
 const DEFAULT_QUESTION_TIMEOUT_MS = 20_000;
 const MAX_ANSWER_BATCH_TEXT_BYTES = 8 * 1024 * 1024;
 
-export function questionTimeout(options?: ElwoodQuestionAnswerOptions): number {
+/** Return a positive finite duration in milliseconds. The 20-second default bounds
+ * stalled native confirmation; callers can extend it for slower interfaces. */
+export function questionTimeoutMs(options?: ElwoodQuestionAnswerOptions): number {
   if (options !== undefined && (typeof options !== "object" || options === null)) throw invalid();
   const timeoutMs = options?.timeoutMs;
   const value = timeoutMs === undefined ? DEFAULT_QUESTION_TIMEOUT_MS : timeoutMs;
   if (!Number.isFinite(value) || value <= 0) throw invalid();
   return value;
 }
+/** Require exactly one answer per question within its selection/text capabilities
+ * and the 8 MiB text budget; return native indexes in request-question order.
+ * The caller owns checking whether the request is still live. */
 export function validateQuestionAnswers(
   request: ElwoodQuestionRequest,
   answers: readonly ElwoodQuestionAnswer[],
@@ -53,10 +58,7 @@ function validateAnswer(
   indexes: number[],
   text: string | undefined,
 ): ValidatedQuestionAnswer {
-  const invalidSelection =
-    indexes.some((index) => index < 0) ||
-    (question.selection !== "multiple" && indexes.length > 1) ||
-    (question.selection === "none" && indexes.length > 0);
+  const invalidSelection = indexes.some((index) => index < 0);
   const invalidText =
     text !== undefined &&
     (typeof text !== "string" ||
@@ -75,10 +77,15 @@ function validateAnswer(
 }
 function questionOptionIndexes(question: ElwoodQuestion, ids: readonly string[]): number[] {
   if (!Array.isArray(ids)) throw invalid();
+  const length = ids.length;
+  const invalidCount =
+    length > question.options.length ||
+    (question.selection === "single" && length > 1) ||
+    (question.selection === "none" && length > 0);
+  if (invalidCount) throw invalid();
   const selected = new Set<string>();
   const optionIndexesById = new Map(question.options.map((option, index) => [option.id, index]));
   const indexes: number[] = [];
-  const length = ids.length;
   for (let index = 0; index < length; index++) {
     const id: unknown = ids[index];
     if (!Object.hasOwn(ids, index) || typeof id !== "string" || selected.has(id)) throw invalid();

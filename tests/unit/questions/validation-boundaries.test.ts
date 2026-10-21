@@ -2,7 +2,10 @@
 import { expect, test } from "vitest";
 import { questionError } from "../../../src/core/questions/errors.ts";
 import type { ElwoodQuestionAnswer } from "../../../src/core/questions/types.ts";
-import { questionTimeout, validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
+import {
+  questionTimeoutMs,
+  validateQuestionAnswers,
+} from "../../../src/core/questions/validate.ts";
 import { definitions, registry } from "./helpers.ts";
 
 const request = registry().publish("native", "queued", [definitions[0]!])!;
@@ -63,19 +66,19 @@ test.each([
   Symbol("options"),
   () => {},
 ])("rejects non-object answer options %s", (options) => {
-  expect(() => Reflect.apply(questionTimeout, undefined, [options])).toThrow(invalid);
+  expect(() => Reflect.apply(questionTimeoutMs, undefined, [options])).toThrow(invalid);
 });
 
 test("rejects null timeout instead of treating it as omitted", () => {
   const options = { timeoutMs: 25 };
   Reflect.set(options, "timeoutMs", null);
-  expect(() => questionTimeout(options)).toThrow(invalid);
+  expect(() => questionTimeoutMs(options)).toThrow(invalid);
 });
 
 test("retains omitted and positive finite timeout behavior", () => {
-  expect(questionTimeout({})).toBe(20_000);
-  expect(questionTimeout({ timeoutMs: 0.5 })).toBe(0.5);
-  expect(questionTimeout({ timeoutMs: Number.MAX_SAFE_INTEGER })).toBe(Number.MAX_SAFE_INTEGER);
+  expect(questionTimeoutMs({})).toBe(20_000);
+  expect(questionTimeoutMs({ timeoutMs: 0.5 })).toBe(0.5);
+  expect(questionTimeoutMs({ timeoutMs: Number.MAX_SAFE_INTEGER })).toBe(Number.MAX_SAFE_INTEGER);
 });
 
 test.each(["\uD800", "\uDC00"])("rejects ill-formed UTF-16 text %s before PTY encoding", (text) => {

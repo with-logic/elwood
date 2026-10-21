@@ -1,7 +1,10 @@
 /** Complete native answer validation before any physical write (PRD §4). */
 import { describe, expect, test } from "vitest";
 import type { ElwoodQuestionAnswer } from "../../../src/core/questions/types.ts";
-import { questionTimeout, validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
+import {
+  questionTimeoutMs,
+  validateQuestionAnswers,
+} from "../../../src/core/questions/validate.ts";
 import { definitions, registry } from "./helpers.ts";
 
 const request = registry().publish("a", "blocking", definitions)!;
@@ -31,8 +34,8 @@ describe("private answer validation", () => {
         },
       ])[1],
     ).toEqual({ optionIndexes: [0, 1] });
-    expect(questionTimeout()).toBe(20000);
-    expect(questionTimeout({ timeoutMs: 25 })).toBe(25);
+    expect(questionTimeoutMs()).toBe(20000);
+    expect(questionTimeoutMs({ timeoutMs: 25 })).toBe(25);
   });
   test.each([
     0,
@@ -40,7 +43,7 @@ describe("private answer validation", () => {
     Number.POSITIVE_INFINITY,
     Number.NaN,
   ])("rejects invalid timeout %s", (timeoutMs) => {
-    expect(() => questionTimeout({ timeoutMs })).toThrow(
+    expect(() => questionTimeoutMs({ timeoutMs })).toThrow(
       expect.objectContaining({ code: "invalid_question_answer" }),
     );
   });
@@ -53,8 +56,11 @@ describe("private answer validation", () => {
       [{ questionId: color!.id, optionIds: ["unknown"] }, valid[1]!],
       [{ questionId: color!.id, optionIds: color!.options.map((option) => option.id) }, valid[1]!],
       [
-        { questionId: color!.id, optionIds: [color!.options[0]!.id, color!.options[0]!.id] },
-        valid[1]!,
+        valid[0]!,
+        {
+          questionId: features!.id,
+          optionIds: [features!.options[0]!.id, features!.options[0]!.id],
+        },
       ],
       [{ questionId: color!.id, text: "\x1b[201~\r" }, valid[1]!],
       [{ questionId: color!.id, text: "   " }, valid[1]!],
