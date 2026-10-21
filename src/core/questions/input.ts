@@ -14,7 +14,11 @@ import type { QuestionFrame, QuestionIo } from "./io.ts";
 import type { QuestionRegistry } from "./registry.ts";
 import type { ElwoodQuestionRequest } from "./types.ts";
 
-type WriteObserver = { readonly started: () => void; readonly failed: () => void };
+type WriteObserver = {
+  readonly started: () => void;
+  readonly settled: () => void;
+  readonly failed: () => void;
+};
 
 export function readQuestionFrame(terminal: ElwoodTerminal): QuestionFrame | undefined {
   const frame = currentRenderedFrame(terminal);
@@ -85,7 +89,14 @@ export function questionInput(
       hasOutputSinceWrite = captureRenderProgress(terminal);
       observer.started();
       try {
-        await untilQuestionAbort(terminal.sendInput(input), signal);
+        const send = async () => {
+          try {
+            await terminal.sendInput(input);
+          } finally {
+            observer.settled();
+          }
+        };
+        await untilQuestionAbort(send(), signal);
       } catch {
         observer.failed();
         throw questionAnswerFailed();
