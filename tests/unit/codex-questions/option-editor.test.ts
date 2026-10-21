@@ -11,7 +11,7 @@ const question: QuestionDefinition = {
   textMode: "alternative",
   secret: false,
 };
-test("C-QUESTION-02 editable queued alternative retains metadata ownership", () => {
+test("editable queued alternative retains metadata ownership", () => {
   const text = captured("async-editor-first.txt")
     .text.replace("› 1. Amber", "  1. Amber")
     .replace("    3. Other", "  › 3. typed answer");
@@ -33,13 +33,13 @@ test("C-QUESTION-02 editable queued alternative retains metadata ownership", () 
     { ...view.cursor, visible: false },
     { ...view.cursor, before: undefined },
     { ...view.cursor, row: -1 },
-    { ...view.cursor, row: view.rawBody.length },
+    { ...view.cursor, row: view.bodyRowCount },
   ])
     expect(matchesQuestion({ ...view, cursor }, question)).toBe(false);
   const noBlanks = view.body.filter((line) => line.length > 0);
   expect(matchesQuestion({ ...view, body: noBlanks, cursor: view.cursor }, question)).toBe(true);
 });
-test("C-QUESTION-02 explicit Other suggestion keeps a separate native text alternative", () => {
+test("explicit Other suggestion keeps a separate native text alternative", () => {
   const original = questionView(captured("async-editor-first.txt"))!;
   const body = original.body.map((line) =>
     line.replace("1. Amber", "1. Other").replace("3. Other", "3. Other (write an answer)"),

@@ -6,13 +6,14 @@ import { codexScreenFactTable } from "../../../src/codex/screen-table.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { readScreenFacts } from "../../../src/core/screen-facts.ts";
 import { captured, frame } from "./helpers.ts";
+import { snapshot } from "./snapshot-fixtures.ts";
 
-test("C-QUESTION-01 recognizes modal input blocking independently of queued availability", () => {
+test("recognizes modal input blocking independently of queued availability", () => {
   expect(blockingQuestionVisible(captured("blocking-modal-first.txt").text)).toBe(true);
   expect(blockingQuestionVisible(captured("blocking-modal-note.txt").text)).toBe(true);
   expect(blockingQuestionVisible("")).toBe(false);
   expect(blockingQuestionVisible("Question 1/2 (2 unanswered)\nOther footer")).toBe(false);
-  expect(blockingQuestionVisible(captured("async-editor-first.txt").text)).toBe(false);
+  expect(blockingQuestionVisible(captured("async-editor-first.txt").text)).toBe(true);
   expect(questionView(captured("blocking-modal-first.txt"))).toMatchObject({
     kind: "blocking",
     index: 0,
@@ -27,6 +28,8 @@ test("C-QUESTION-01 recognizes modal input blocking independently of queued avai
     notes: true,
   });
   expect(queuedBadge(captured("async-badge.txt"))).toBe(2);
+  const singular = snapshot("async-collapsed-after-escape.json");
+  expect(queuedBadge({ ...singular, cursorRow: singular.cursorY })).toBe(1);
   expect(
     readScreenFacts(codexScreenFactTable, {
       text: captured("blocking-modal-first.txt").text,
@@ -34,7 +37,7 @@ test("C-QUESTION-01 recognizes modal input blocking independently of queued avai
     }).facts.blocking_prompt_visible,
   ).toBe(true);
 });
-test("C-QUESTION-02 rejects partial, unknown, quoted and stale cursor layouts", () => {
+test("rejects partial, unknown, quoted and stale cursor layouts", () => {
   const first = captured("async-editor-first.txt");
   for (const invalid of [
     frame(""),
@@ -59,7 +62,7 @@ test("C-QUESTION-02 rejects partial, unknown, quoted and stale cursor layouts", 
   ])
     expect(queuedBadge(invalid)).toBeUndefined();
 });
-test("C-QUESTION-02 validates full prompt and ordered option labels", () => {
+test("validates full prompt and ordered option labels", () => {
   const view = questionView(captured("async-editor-first.txt"))!;
   const question: QuestionDefinition = {
     prompt: "ELWOOD_ASYNC_COLOR: Which color?",
@@ -100,7 +103,7 @@ test("C-QUESTION-02 validates full prompt and ordered option labels", () => {
   ).toBe(false);
 });
 
-test("C-QUESTION-02 later queued pages accept the previous-question footer", () => {
+test("later queued pages accept the previous-question footer", () => {
   const later = captured("async-editor-first.txt")
     .text.replace("1 of 2", "2 of 2")
     .replace("⇧→ main prompt", "⇧→ prev question");

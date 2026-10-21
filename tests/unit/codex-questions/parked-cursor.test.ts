@@ -5,10 +5,10 @@ import { captured } from "./helpers.ts";
 import { nativeFrame } from "./native-frame.ts";
 
 const native = nativeFrame("remaining-color-native.json");
-test("C-QUESTION-02 a hidden native cursor can remain on the working row above choices", () => {
+test("a hidden native cursor can remain on the working row above choices", () => {
   expect(questionView(native)).toMatchObject({ kind: "queued", count: 1, index: 0, selected: 0 });
 });
-test("C-QUESTION-02 working-row cursor evidence still rejects unrelated or visible cursors", () => {
+test("working-row cursor evidence still rejects unrelated or visible cursors", () => {
   expect(questionView({ ...native, cursorVisible: true })).toBeUndefined();
   expect(questionView({ ...native, cursorX: 0 })).toBeUndefined();
   expect(questionView({ ...captured("blocking-modal-first.txt"), cursorRow: 0 })).toBeUndefined();

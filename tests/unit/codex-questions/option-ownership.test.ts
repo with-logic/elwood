@@ -11,7 +11,7 @@ const queued: QuestionDefinition = {
   textMode: "alternative",
   secret: false,
 };
-test("C-QUESTION-02 queued option metadata must own the complete native block", () => {
+test("queued option metadata must own the complete native block", () => {
   const view = questionView(captured("async-editor-first.txt"))!;
   expect(matchesQuestion(view, queued)).toBe(true);
   expect(matchesQuestion(view, { ...queued, options: [{ label: "Amber" }] })).toBe(false);
@@ -24,7 +24,7 @@ test("C-QUESTION-02 queued option metadata must own the complete native block", 
   ])
     expect(matchesQuestion({ ...view, body }, queued)).toBe(false);
 });
-test("C-QUESTION-02 modal metadata includes the native alternative exactly once", () => {
+test("modal metadata includes the native alternative exactly once", () => {
   const view = questionView(captured("blocking-modal-first.txt"))!;
   const modal: QuestionDefinition = {
     ...queued,
@@ -38,7 +38,7 @@ test("C-QUESTION-02 modal metadata includes the native alternative exactly once"
   expect(matchesQuestion(view, modal)).toBe(true);
   expect(matchesQuestion(view, { ...modal, options: modal.options.slice(0, 2) })).toBe(false);
 });
-test("C-QUESTION-02 native free-text drafts may contain numbered answer text", () => {
+test("native free-text drafts may contain numbered answer text", () => {
   const text = captured("async-editor-note.txt").text.replace(
     "ELWOOD_NOTE_74",
     "1. first\n  2. second",
