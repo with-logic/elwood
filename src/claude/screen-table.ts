@@ -7,6 +7,7 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
+import { cursorViewportRow } from "../terminal/coordinates.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
@@ -49,7 +50,7 @@ export function liveClaudeClearance(
       return false;
     const buffer = terminal.xterm.buffer.active;
     // cursorY is relative to baseY; snapshot row zero starts at viewportY.
-    const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
+    const viewportCursorRow = cursorViewportRow(frame.cursorY, buffer);
     const composer = frame.lines[viewportCursorRow] ?? "";
     return composer.startsWith("❯") && claudeComposerRow.test(composer) && textClearance(text);
   };

@@ -1,4 +1,5 @@
 /** Read only a live idle native draft, excluding submitted history (PRD §5.3, C-API-31). */
+import { cursorViewportRow } from "../../terminal/coordinates.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { readScreenFacts, type ScreenFactTable } from "../screen-facts.ts";
@@ -64,7 +65,7 @@ export function readIdleComposerFrame(terminal: ElwoodTerminal, table: ScreenFac
   if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
   const buffer = terminal.xterm.buffer.active;
   // xterm cursorY is buffer-relative; translate to the snapshot viewport row.
-  const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
+  const viewportCursorRow = cursorViewportRow(frame.cursorY, buffer);
   if (viewportCursorRow >= frame.lines.length) return undefined;
   return { frame, viewportCursorRow };
 }
