@@ -4,17 +4,17 @@ import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../../src/core/questions/errors.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
-import { disposeTerminals, controllerHarness as setup } from "./controller-helpers.ts";
+import {
+  disposeTerminals,
+  paintQuestionFrame,
+  controllerHarness as setup,
+} from "./controller-helpers.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { composer, nativeHook, nativeQuestions } from "./lifecycle-helpers.ts";
 
 const current = frame(fixture("questions").text.replace(/^←.*$/m, " ☐ Color"));
 const hook = (name = "PreToolUse", extra: Readonly<Record<string, unknown>> = {}) =>
   nativeHook(name, { tool_input: { questions: [nativeQuestions[0]] }, ...extra });
-const paint = (h: ReturnType<typeof setup>, value: typeof current) =>
-  h.terminal.writeOutput(
-    `\x1b[H\x1b[2J${value.lines.join("\r\n")}\x1b[${value.cursorRow + 1};${value.cursorX + 1}H\x1b[?25h`,
-  );
 afterEach(disposeTerminals);
 
 test("a rejected matched Enter preserves its error and releases the later composer", async () => {
@@ -53,7 +53,7 @@ test("an aborted physical Enter cannot rearm its API request before native closu
   h.questions.configure((requests) => new ClaudeQuestionAdapter(requests));
   try {
     h.events.emit("activity", hook());
-    await paint(h, current);
+    await paintQuestionFrame(h.terminal, current);
     const request = h.questions.list()[0]!;
     const answers = [
       { questionId: request.questions[0]!.id, optionIds: [request.questions[0]!.options[0]!.id] },
@@ -69,17 +69,21 @@ test("an aborted physical Enter cannot rearm its API request before native closu
     expect(h.questions.registry.find("native")).toBe(request);
     expect(h.questions.registry.hasPending()).toBe(true);
     expect(h.questions.blocksInput()).toBe(true);
-    await paint(h, current);
+    await paintQuestionFrame(h.terminal, current);
     h.events.emit("activity", hook());
     expect(h.questions.list()).toEqual([]);
     await expect(h.questions.answer(request.id, answers)).rejects.toMatchObject({
       code: "question_not_found",
     });
     expect(h.writes).toEqual(["\r"]);
+    await paintQuestionFrame(h.terminal, composer());
+    expect(h.questions.registry.find("native")).toBe(request);
+    expect(h.questions.registry.hasPending()).toBe(true);
+    expect(h.questions.blocksInput()).toBe(true);
     h.events.emit("activity", hook("PostToolUse"));
     expect(h.questions.registry.find("native")).toBeUndefined();
     expect(h.questions.registry.hasPending()).toBe(false);
-    await paint(h, composer());
+    await paintQuestionFrame(h.terminal, composer());
     expect(h.questions.blocksInput()).toBe(false);
     expect(observed.filter((event) => event.phase === "closed")).toEqual([
       expect.objectContaining({ request, reason: "unavailable" }),
@@ -109,8 +113,9 @@ test("a predecessor answer failure cannot release a successor submission", async
         signal: new AbortController().signal,
         frame: () => current,
         wait: async () => current,
-        write: (_nextInput, nextMatches) => {
+        write: (_nextInput, nextMatches, onDispatch) => {
           expect(nextMatches(current)).toBe(true);
+          onDispatch?.();
           return Promise.resolve();
         },
       });

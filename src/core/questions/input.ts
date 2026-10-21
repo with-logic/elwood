@@ -76,7 +76,7 @@ export function questionInput(
         wakeup.dispose();
       }
     },
-    write: async (input, matchesBeforeWrite) => {
+    write: async (input, matchesBeforeWrite, onDispatch) => {
       assertOwned();
       let frame = readQuestionFrame(terminal);
       if (!frame) {
@@ -91,6 +91,7 @@ export function questionInput(
       try {
         const send = async () => {
           try {
+            onDispatch?.();
             await terminal.sendInput(input);
           } finally {
             observer.settled();

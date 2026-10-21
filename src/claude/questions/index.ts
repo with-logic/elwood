@@ -141,14 +141,9 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     const candidate = this.candidate;
     if (!candidate || this.registry.keyFor(request.id) !== candidate.nativeKey)
       throw questionAnswerFailed();
-    try {
-      return await answerClaudeQuestions(request, answers, io, () => {
-        candidate.awaitingNativeHookClosure = true;
-      });
-    } catch (error) {
-      if (this.candidate === candidate) candidate.awaitingNativeHookClosure = false;
-      throw error;
-    }
+    return await answerClaudeQuestions(request, answers, io, () => {
+      candidate.awaitingNativeHookClosure = true;
+    });
   }
 }
 

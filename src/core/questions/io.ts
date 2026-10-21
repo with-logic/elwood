@@ -14,6 +14,11 @@ export type QuestionIo = {
   /** Recheck the predicate after completed renders or resize; abort rejects.
    * After a write, require completed output progress before accepting a frame. */
   wait(test: (frame: QuestionFrame) => boolean): Promise<QuestionFrame>;
-  /** Await only the send; callers must wait between state-changing writes. */
-  write(input: string, matchesBeforeWrite: (frame: QuestionFrame) => boolean): Promise<void>;
+  /** Await only the send; callers must wait between state-changing writes.
+   * onDispatch runs after live/frame guards, immediately before physical send. */
+  write(
+    input: string,
+    matchesBeforeWrite: (frame: QuestionFrame) => boolean,
+    onDispatch?: () => void,
+  ): Promise<void>;
 };

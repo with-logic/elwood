@@ -16,9 +16,9 @@ const usesCheckboxes = {
 } satisfies Readonly<Record<ElwoodQuestion["selection"], boolean>>;
 
 /** Requires native question 0 and a complete normalized batch in request order.
- * `submitting` reports a final-submit attempt inside the accepted current-frame
- * guard, before io.write attempts Enter. It proves neither physical delivery nor
- * native acceptance; the transaction owns the native acknowledgement. */
+ * `submitting` reports final Enter dispatch after live/frame guards, immediately
+ * before terminal.sendInput. It proves neither physical delivery nor native
+ * acceptance; the transaction owns the native acknowledgement. */
 export async function answerClaudeQuestions(
   request: ElwoodQuestionRequest,
   answers: readonly ValidatedQuestionAnswer[],
@@ -72,19 +72,23 @@ async function answerOne(
     await io.wait((frame) => navigation.at(frame)?.other === answer.text);
   }
   await navigation.move(targetCursorIndex);
-  await io.write("\r", (frame) => {
-    const current = navigation.at(frame);
-    if (current?.cursor !== targetCursorIndex) return false;
-    const matchesBySelection = {
-      single: () => answer.text === undefined || current.other === answer.text,
-      multiple: () =>
-        current.checked.every((checked, index) => checked === answer.optionIndexes.includes(index)),
-      none: () => current.other === answer.text,
-    } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
-    const matches = matchesBySelection[question.selection]();
-    if (matches) submitting?.();
-    return matches;
-  });
+  await io.write(
+    "\r",
+    (frame) => {
+      const current = navigation.at(frame);
+      if (current?.cursor !== targetCursorIndex) return false;
+      const matchesBySelection = {
+        single: () => answer.text === undefined || current.other === answer.text,
+        multiple: () =>
+          current.checked.every(
+            (checked, index) => checked === answer.optionIndexes.includes(index),
+          ),
+        none: () => current.other === answer.text,
+      } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
+      return matchesBySelection[question.selection]();
+    },
+    submitting,
+  );
 }
 async function submitReview(
   request: ElwoodQuestionRequest,
@@ -103,9 +107,5 @@ async function submitReview(
     return screen?.kind === "review" && screen.summary === expected ? screen : undefined;
   };
   if (!matchingReview(reviewFrame)) throw questionAnswerFailed();
-  await io.write("\r", (frame) => {
-    const matches = matchingReview(frame)?.cursor === 0;
-    if (matches) submitting();
-    return matches;
-  });
+  await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0, submitting);
 }

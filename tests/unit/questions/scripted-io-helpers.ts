@@ -16,9 +16,10 @@ export function scriptedQuestionIo(initial: QuestionFrame, successors: readonly 
       pending = false;
       return rendered;
     },
-    write: (input, expected) => {
+    write: (input, expected, onDispatch) => {
       if (pending) throw new Error("Native write preceded the render barrier");
       if (!(current && expected(current))) throw new Error("Native write was not authorized");
+      onDispatch?.();
       writes.push(input);
       pending = true;
       return Promise.resolve();
