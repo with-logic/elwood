@@ -1,7 +1,7 @@
 /** Final-flush diagnostics join natural exit before reentrant stop (C-API-20, §5.7). */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   type ClaudeHookBridgeFactory,
   currentClaudeHookBridgeFactory,
@@ -10,7 +10,14 @@ import {
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
-afterEach(resetFakes);
+// These cases require a flush; transcript-drain.test.ts covers deadline exhaustion.
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(0);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetFakes();
+});
 
 test.each([
   false,
