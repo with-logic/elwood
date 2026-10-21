@@ -129,8 +129,16 @@ test.each([
   const retired = requests.publish("retired", "queued", definitions)!;
   const active = requests.publish("active", "queued", definitions)!;
   requests.retireUnconfirmed(retired.id);
-  if (action === "clear") requests.clear("answered");
-  else requests.shutdown();
+  switch (action) {
+    case "clear":
+      requests.clear("answered");
+      break;
+    case "shutdown":
+      requests.shutdown();
+      break;
+    default:
+      throw new Error(`Unhandled registry action: ${action satisfies never}`);
+  }
   expect(requests.hasPending()).toBe(false);
   expect(requests.list()).toEqual([]);
   expect(requests.find("retired")).toBeUndefined();
