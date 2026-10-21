@@ -9,6 +9,7 @@ import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { draftMatches } from "./draft.ts";
 import { matchesQuestion, type QuestionView, questionView, queuedBadge } from "./frame.ts";
 import { queuedOtherLabel } from "./labels.ts";
+import { ownedEditorReceipt } from "./owned-editor.ts";
 
 type SupportedDriverQuestion = QuestionDefinition & { readonly selection: "none" | "single" };
 function assertSupportedQuestions(
@@ -74,10 +75,10 @@ export async function answerQueued(
   }
   const match = (current: QuestionFrame) =>
     matchingView(current, "queued", questionIndex, count, question);
-  await stageAnswer(question, answer, io, match, view);
+  const stagedAnswerGuard = await stageAnswer(question, answer, io, match, view);
   await io.write(
     "\r",
-    (current) => isAnswerReadyToSubmit(match(current), question, answer),
+    (current) => isAnswerReadyToSubmit(current, match(current), question, answer, stagedAnswerGuard),
     submitting,
   );
 }
@@ -97,18 +98,21 @@ export async function answerBlocking(
       index === 0 ? io.frame() : await io.wait((current) => match(current) !== undefined);
     const initial = frame && match(frame);
     if (!initial) throw questionAnswerFailed();
-    await stageAnswer(question, answers[index]!, io, match, initial);
+    const stagedAnswerGuard = await stageAnswer(question, answers[index]!, io, match, initial);
     await io.write(
       "\r",
-      (current) => isAnswerReadyToSubmit(match(current), question, answers[index]!),
+      (current) => isAnswerReadyToSubmit(current, match(current), question, answers[index]!, stagedAnswerGuard),
       index === questions.length - 1 ? submitting : undefined,
     );
   }
 }
+type StagedAnswerGuard = (frame: QuestionFrame, view: QuestionView) => boolean;
 function isAnswerReadyToSubmit(
+  frame: QuestionFrame,
   view: QuestionView | undefined,
   question: SupportedDriverQuestion,
   answer: ValidatedQuestionAnswer,
+  stagedAnswerGuard: StagedAnswerGuard | undefined,
 ): boolean {
   if (!view) return false;
   const hasExpectedSelection =
@@ -118,7 +122,10 @@ function isAnswerReadyToSubmit(
   const hasQueuedChoiceEvidence =
     view.kind === "queued" && answer.text === undefined && unownedChoice(view, question);
   const hasAnswerEvidence =
-    hasQueuedChoiceEvidence || draftMatches(view, question, answer.text ?? "");
+    hasQueuedChoiceEvidence ||
+    (stagedAnswerGuard
+      ? stagedAnswerGuard(frame, view)
+      : draftMatches(view, question, answer.text ?? ""));
   return hasAnswerEvidence;
 }
 
@@ -136,7 +143,7 @@ async function stageAnswer(
   io: QuestionIo,
   match: Matcher,
   initial: QuestionView,
-): Promise<void> {
+): Promise<StagedAnswerGuard | undefined> {
   const modal = initial.kind === "blocking";
   const selected = selectedIndex(question, answer, modal);
   let frame: QuestionFrame;
@@ -170,11 +177,17 @@ async function stageAnswer(
     const currentView = match(current);
     return currentView !== undefined && draftMatches(currentView, question, "");
   });
-  await io.wait((current) => {
+  if (io.signal.aborted) throw questionAnswerFailed();
+  const pasted = await io.wait((current) => {
     const currentView = match(current);
-    return currentView !== undefined && draftMatches(currentView, question, answer.text!);
+    return (
+      currentView !== undefined && ownedEditorReceipt(current, currentView, question) !== undefined
+    );
   });
+  const receipt = ownedEditorReceipt(pasted, match(pasted)!, question)!;
   await delay(pasteSettleDelayMs); // Native composer paste bursts must settle before their submitting Enter.
+  return (frame, current) =>
+    !io.signal.aborted && ownedEditorReceipt(frame, current, question) === receipt;
 }
 
 function unownedChoice(view: QuestionView, question: SupportedDriverQuestion): boolean {
