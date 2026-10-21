@@ -73,3 +73,23 @@ test("omitted multiSelect defaults to single and matches an ID-less completion",
   );
   expect(requests.list()).toEqual([]);
 });
+test("equivalent ID-less definitions match regardless of object field order", () => {
+  const h = setup();
+  const reordered = questions.map((q) => ({
+    options: q.options.map((o) => ({
+      ...(o.description === undefined ? {} : { description: o.description }),
+      label: o.label,
+    })),
+    ...(q.multiSelect ? { multiSelect: true } : {}),
+    header: q.header,
+    question: q.question,
+  }));
+  h.adapter.observe(hook("PostToolUse", reordered));
+  expect(h.requests.list()).toEqual([]);
+});
+test("a completion without an active candidate cannot create authority", () => {
+  const requests = registry();
+  const adapter = new ClaudeQuestionAdapter(requests);
+  adapter.observe(hook("PostToolUse", questions));
+  expect(requests.list()).toEqual([]);
+});

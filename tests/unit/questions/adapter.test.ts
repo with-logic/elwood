@@ -78,6 +78,15 @@ describe("Claude hook candidates", () => {
     adapter.render(frame("❯ "));
     expect(adapter.blocksInput()).toBe(false);
   });
+  test.each(["PostToolUseFailure", "PermissionDenied"])("closes native request on %s", (name) => {
+    const requests = registry();
+    const adapter = new ClaudeQuestionAdapter(requests);
+    adapter.observe(hook("PreToolUse"));
+    adapter.render(fixture("questions"));
+    expect(requests.list()).toHaveLength(1);
+    adapter.observe(hook(name, { is_interrupt: true }));
+    expect(requests.list()).toEqual([]);
+  });
   test("replacement invalidates prior ID; unrelated/invalid hooks cannot create or close it", () => {
     const requests = registry();
     const adapter = new ClaudeQuestionAdapter(requests);
@@ -134,6 +143,14 @@ describe("Claude hook candidates", () => {
     adapter.observe(stopResult);
     expect(requests.list()).toHaveLength(1);
     adapter.observe({ ...stopResult, raw: { result: undefined } });
+    expect(requests.list()).toEqual([]);
+  });
+  test("unknown native questionnaire rows retain the input hold without publishing guessed metadata", () => {
+    const requests = registry();
+    const adapter = new ClaudeQuestionAdapter(requests);
+    adapter.observe(hook("PreToolUse"));
+    adapter.render(frame(fixture("questions").text.replace("2. Blue", "2. Violet")));
+    expect(adapter.blocksInput()).toBe(true);
     expect(requests.list()).toEqual([]);
   });
 });

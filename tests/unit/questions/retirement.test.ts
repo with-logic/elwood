@@ -1,5 +1,4 @@
 /** Claude retirement is native-correlated and safe across reentrant observers (PRD §4). */
-
 import { expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import { definitions, fixture, frame, registry } from "./helpers.ts";
@@ -31,6 +30,34 @@ test("Stop reports actual candidate, physical hold, and registry retirement once
   requests.publish("external", "blocking", definitions);
   expect(adapter.observe(stop)).toBe(true);
   expect(adapter.observe(stop)).toBe(false);
+});
+test("replacement close observers can establish a newer candidate without being overwritten", () => {
+  const requests = registry();
+  const adapter = new ClaudeQuestionAdapter(requests);
+  adapter.observe(nativeHook());
+  adapter.render(fixture("questions"));
+  requests.onEvent((event) => {
+    if (event.phase === "closed")
+      adapter.observe(nativeHook("PreToolUse", { tool_use_id: "newest" }));
+  });
+  adapter.observe(nativeHook("PreToolUse", { tool_use_id: "replacement" }));
+  adapter.render(fixture("questions"));
+  const current = requests.list()[0]!;
+  expect(requests.keyFor(current.id)).toBe("newest");
+  expect(adapter.observe(nativeHook("PostToolUse", { tool_use_id: "replacement" }))).toBe(false);
+  expect(requests.get(current.id)).toBe(current);
+});
+test("registry shutdown during replacement prevents subsequent publication", () => {
+  const requests = registry();
+  const adapter = new ClaudeQuestionAdapter(requests);
+  adapter.observe(nativeHook());
+  adapter.render(fixture("questions"));
+  requests.onEvent((event) => {
+    if (event.phase === "closed") requests.shutdown();
+  });
+  adapter.observe(nativeHook("PreToolUse", { tool_use_id: "replacement" }));
+  adapter.render(fixture("questions"));
+  expect(requests.list()).toEqual([]);
 });
 test("answer delegation rejects a changed native stage before any write", async () => {
   const requests = registry();
