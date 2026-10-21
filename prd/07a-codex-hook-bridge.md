@@ -130,6 +130,8 @@ opaque option ID; it may be chosen without notes. Text alone selects that native
 alternative and adds the text as notes. Elwood supports these pages through the native
 editor, preserving the group until the matching committed tool result confirms
 acceptance. Unsupported secret or changed layouts receive no speculative input.
+Every question must omit `isSecret` or set it to boolean `false`; `true` and
+malformed supplied values reject the complete native request before publication.
 
 Each asynchronous question is an independent queued request, with its own
 acceptance unit. Suggested choices reflect the native first-32/512-byte display

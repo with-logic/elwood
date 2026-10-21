@@ -28,7 +28,8 @@ export function parseQuestions(
 function parseQuestion(item: unknown, index: number, queued: boolean): NativeQuestion | undefined {
   if (!isRecord(item)) return undefined;
   const prompt = queued ? item["title"] : item["question"];
-  if (typeof prompt !== "string" || !prompt.trim() || item["isSecret"] === true) return undefined;
+  if (typeof prompt !== "string" || !prompt.trim()) return undefined;
+  if ("isSecret" in item && item["isSecret"] !== false) return undefined;
   const options = parseOptions(item["options"], queued);
   if (!(options && validNativeId(item, queued, options.length))) return undefined;
   const header = item["header"];

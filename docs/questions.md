@@ -117,7 +117,9 @@ its own option. Notes can accompany a selected choice. Queued
 `request_user_input_async` questions are accepted
 individually, so Elwood exposes one request per independently answerable question,
 even if the agent asked several at once. They can disappear when the native turn
-ends. Elwood does not extend their lifetime or invent a fixed expiry.
+ends. Elwood does not extend their lifetime or invent a fixed expiry. Native Codex
+metadata must omit `isSecret` or use boolean `false` for every question; unsupported
+or malformed secret flags leave the complete request unavailable for automation.
 
 Ordinary prose questions, permission prompts, trust gates, model pickers and login
 flows retain their existing surfaces. Unknown question layouts remain available
