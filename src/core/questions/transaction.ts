@@ -1,9 +1,8 @@
 /** Own one answer attempt until native acceptance or revocation (PRD §4). */
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
-import { untilQuestionAbort } from "./abort.ts";
 import type { QuestionAdapter } from "./adapter.ts";
-import { questionDeadline } from "./deadline.ts";
-import { type QuestionFailurePhase, questionAnswerFailed, questionError } from "./errors.ts";
+import { QuestionAttempt } from "./attempt.ts";
+import { questionAnswerFailed, questionError } from "./errors.ts";
 import { questionInput } from "./input.ts";
 import type { QuestionRegistry } from "./registry.ts";
 import type { ElwoodQuestionAnswer, ElwoodQuestionAnswerOptions } from "./types.ts";
@@ -28,15 +27,7 @@ export class QuestionTransaction {
     this.closing = closing;
   }
   busy(): boolean {
-    const reservation = this.reservation;
-    // Retired requests retain native ownership without a second closed event.
-    if (
-      reservation &&
-      reservation.inFlightWrites === 0 &&
-      this.registry.keyFor(reservation.requestId) === undefined
-    )
-      this.reservation = undefined;
-    return this.active !== undefined || this.reservation !== undefined;
+    return this.isBusy();
   }
   revoke(): void {
     this.active?.abort(questionAnswerFailed());
@@ -57,79 +48,58 @@ export class QuestionTransaction {
       );
     const timeoutMs = questionTimeoutMs(options);
     const validated = validateQuestionAnswers(request, answers);
-    if (this.busy() || !adapter) throw questionAnswerFailed();
+    this.releaseSettledReservation();
+    if (this.isBusy() || !adapter) throw questionAnswerFailed();
     const operation = new AbortController();
     const signal = this.operationSignal(operation, options);
     // Reading options.signal can reenter run() before this attempt installs its owner.
-    if (this.busy()) throw questionAnswerFailed();
+    if (this.isBusy()) throw questionAnswerFailed();
     this.active = operation;
     const reservation = { requestId, inFlightWrites: 0 };
-    let writeAttempted = false;
-    let nativeAccepted = false;
-    let failurePhase: QuestionFailurePhase = "frame_wait";
-    let adapterFinished = false;
-    let wake: (() => void) | undefined;
-    const stopDeadline = questionDeadline(timeoutMs, () => operation.abort(questionAnswerFailed()));
-    const off = this.registry.onEvent((event) => {
-      if (event.phase !== "closed" || event.request.id !== requestId) return;
-      if (event.reason === "answered") {
-        nativeAccepted = true;
-        if (adapterFinished) stopDeadline();
-        wake?.();
-      } else operation.abort(questionAnswerFailed());
-    });
-    const assertLive = () => {
-      const requestAvailable = this.registry.get(requestId) !== undefined;
-      const requestAvailableOrAccepted = nativeAccepted || requestAvailable;
-      if (signal.aborted || !requestAvailableOrAccepted) throw questionAnswerFailed();
-    };
-    const io = questionInput(this.terminal, this.registry, request, signal, assertLive, {
-      started: () => {
-        writeAttempted = true;
-        this.reservation = reservation;
-        reservation.inFlightWrites++;
+    const attempt = new QuestionAttempt(request, operation, signal, this.registry, timeoutMs);
+    const io = questionInput(
+      this.terminal,
+      this.registry,
+      request,
+      signal,
+      () => attempt.assertLive(),
+      {
+        started: () => {
+          attempt.writeAttempted = true;
+          this.reservation = reservation;
+          reservation.inFlightWrites++;
+        },
+        settled: () => {
+          reservation.inFlightWrites--;
+          this.releaseSettledReservation();
+        },
+        failed: () => {
+          attempt.failureCategory = "terminal_write";
+        },
       },
-      settled: () => {
-        reservation.inFlightWrites--;
-      },
-      failed: () => {
-        failurePhase = "terminal_write";
-      },
-    });
+    );
     try {
-      assertLive();
-      await io.wait(() => true);
-      failurePhase = "adapter";
-      await untilQuestionAbort(adapter.answer(request, validated, io), signal);
-      adapterFinished = true;
-      failurePhase = "native_acceptance";
-      if (nativeAccepted) stopDeadline();
-      if (!nativeAccepted) {
-        await new Promise<void>((resolve) => {
-          wake = () => resolve();
-          signal.addEventListener("abort", wake, { once: true });
-          if (signal.aborted) resolve();
-        });
-      }
-      assertLive();
+      await attempt.execute(adapter, validated, io);
     } catch {
-      // Retirement emits a closed edge that aborts this operation; retain the original safe phase.
-      const phase = signal.aborted ? "revoked" : failurePhase;
-      if (writeAttempted && !nativeAccepted) {
-        try {
-          this.registry.retireUnconfirmed(requestId);
-        } catch {
-          // Observer failures cannot restore native authority or expose answer-bearing causes.
-        }
-      }
-      throw questionAnswerFailed(phase);
+      throw attempt.failure();
     } finally {
-      if (wake) signal.removeEventListener("abort", wake);
-      operation.abort();
-      stopDeadline();
-      off();
+      attempt.dispose();
       this.active = undefined;
+      this.releaseSettledReservation();
     }
+  }
+  private isBusy(): boolean {
+    const reservation = this.reservation;
+    // Retired requests retain native ownership without a second closed event.
+    return (
+      this.active !== undefined ||
+      (reservation !== undefined &&
+        (reservation.inFlightWrites > 0 ||
+          this.registry.keyFor(reservation.requestId) !== undefined))
+    );
+  }
+  private releaseSettledReservation(): void {
+    if (!this.isBusy()) this.reservation = undefined;
   }
   private operationSignal(
     operation: AbortController,

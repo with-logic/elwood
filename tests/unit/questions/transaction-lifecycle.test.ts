@@ -73,3 +73,45 @@ test("native acceptance immediately before the deadline wakes the waiting answer
   await vi.advanceTimersByTimeAsync(60);
   expect(await result).toBe("accepted");
 });
+
+test("native acknowledgement does not stop the deadline while the adapter remains pending", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const h = setup(async (io) => {
+    await io.write("answer", () => true);
+    entered.resolve();
+    await release.promise;
+  });
+  await h.terminal.writeOutput("question");
+  vi.useFakeTimers();
+  let outcome = "pending";
+  const run = h.transaction.run(h.adapter, h.request.id, h.answers, { timeoutMs: 50 });
+  const result = run.then(
+    () => {
+      outcome = "accepted";
+      return undefined;
+    },
+    (error: unknown) => {
+      outcome = "failed";
+      return error;
+    },
+  );
+  try {
+    await entered.promise;
+    h.requests.close(h.request.id, "answered");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toBe("pending");
+    expect(h.transaction.busy()).toBe(true);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(outcome).toBe("failed");
+    expect(await result).toMatchObject({
+      code: "question_answer_failed",
+      details: { category: "aborted" },
+    });
+    expect(h.writes).toEqual(["answer"]);
+    expect(h.transaction.busy()).toBe(false);
+  } finally {
+    release.resolve();
+    await result;
+  }
+});

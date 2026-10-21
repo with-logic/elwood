@@ -149,8 +149,7 @@ export class CliLifecycle {
   private armDeadline(timeoutMs: number): void {
     const deadline = Math.min(Number.MAX_SAFE_INTEGER, this.startedAt + timeoutMs);
     this.stopDeadline = scheduleDeadline(
-      deadline,
-      timeoutMs,
+      { deadlineAtMs: deadline, initialDelayMs: timeoutMs },
       () => {
         if (this.record({ code: "timeout", message: "Timed out.", exitCode: 124 }))
           this.requestControl("interrupt");

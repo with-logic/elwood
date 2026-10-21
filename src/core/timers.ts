@@ -11,16 +11,15 @@ export type DeadlineClock = {
  * deadlineAtMs is an absolute millisecond reading in the supplied clock's time base.
  * The caller supplies its first delay to preserve when its deadline starts counting. */
 export function scheduleDeadline(
-  deadlineAtMs: number,
-  initialDelayMs: number,
+  options: { readonly deadlineAtMs: number; readonly initialDelayMs: number },
   expire: () => void,
   clock: DeadlineClock,
 ): () => void {
   const tick = () => {
-    const remaining = deadlineAtMs - clock.now();
+    const remaining = options.deadlineAtMs - clock.now();
     if (remaining > 0) timer = clock.setTimer(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
     else expire();
   };
-  let timer = clock.setTimer(tick, Math.min(initialDelayMs, MAX_TIMER_DELAY_MS));
+  let timer = clock.setTimer(tick, Math.min(options.initialDelayMs, MAX_TIMER_DELAY_MS));
   return () => clock.clearTimer(timer);
 }

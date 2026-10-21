@@ -8,5 +8,9 @@ const clock: DeadlineClock = {
 };
 
 export function questionDeadline(timeoutMs: number, expire: () => void): () => void {
-  return scheduleDeadline(clock.now() + timeoutMs, timeoutMs, expire, clock);
+  return scheduleDeadline(
+    { deadlineAtMs: clock.now() + timeoutMs, initialDelayMs: timeoutMs },
+    expire,
+    clock,
+  );
 }

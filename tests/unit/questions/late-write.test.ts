@@ -154,7 +154,7 @@ test.each([
     .catch((error: unknown) => error);
   expect(failure).toMatchObject({
     code: "question_answer_failed",
-    details: { phase: kind === "accepted" ? "adapter" : "terminal_write" },
+    details: { category: kind === "accepted" ? "adapter" : "terminal_write" },
   });
   expect(String(failure)).not.toContain(secret);
   expect(JSON.stringify(failure)).not.toContain(secret);

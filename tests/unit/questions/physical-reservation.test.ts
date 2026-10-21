@@ -16,7 +16,7 @@ test("synchronous transport throws settle the reservation without retaining nati
   });
   await expect(h.transaction.run(h.adapter, h.request.id, h.answers)).rejects.toMatchObject({
     code: "question_answer_failed",
-    details: { phase: "terminal_write" },
+    details: { category: "terminal_write" },
   });
   expect(h.transaction.busy()).toBe(true);
   expect(h.writes).toEqual([]);
@@ -50,7 +50,7 @@ test("native acceptance and adapter failure retain all pending physical writes",
   const run = h.transaction.run(h.adapter, h.request.id, h.answers);
   const rejected = expect(run).rejects.toMatchObject({
     code: "question_answer_failed",
-    details: { phase: "adapter" },
+    details: { category: "adapter" },
   });
   try {
     await entered.promise;
