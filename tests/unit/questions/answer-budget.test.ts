@@ -5,18 +5,18 @@ import { definitions, registry } from "./helpers.ts";
 import { disposeTransactionHarnesses, transactionHarness } from "./transaction-helpers.ts";
 
 afterEach(disposeTransactionHarnesses);
-const limit = 8 * 1024 * 1024;
+const maxAnswerBatchBytes = 8 * 1024 * 1024;
 
 test("counts UTF-8 question IDs and selected option IDs at the exact batch boundary", () => {
   const request = registry().publish("native", "queued", [definitions[0]!])!;
-  const optionId = `${"é".repeat((limit - 2) / 2)}x`;
+  const optionId = `${"é".repeat((maxAnswerBatchBytes - 2) / 2)}x`;
   const question = {
     ...request.questions[0]!,
     id: "q",
     options: [{ id: optionId, label: "Choice" }],
   };
   const bounded = { ...request, questions: [question] };
-  expect(Buffer.byteLength(question.id) + Buffer.byteLength(optionId)).toBe(limit);
+  expect(Buffer.byteLength(question.id) + Buffer.byteLength(optionId)).toBe(maxAnswerBatchBytes);
   const answer = {
     questionId: "q",
     optionIds: [optionId],

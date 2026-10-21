@@ -27,7 +27,8 @@ export function questionTimeoutMs(options?: ElwoodQuestionAnswerOptions): number
   return value;
 }
 /** Require exactly one answer per question within its selection/text capabilities
- * and the 8 MiB UTF-8 question ID, option ID and text budget; return native indexes in request-question order.
+ * and one aggregate 8 MiB UTF-8-byte budget across the batch for question IDs, selected
+ * option IDs, and answer text; return native indexes in request-question order.
  * The caller owns checking whether the request is still live. */
 export function validateQuestionAnswers(
   request: ElwoodQuestionRequest,

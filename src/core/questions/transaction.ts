@@ -40,6 +40,7 @@ export class QuestionTransaction {
     answers: readonly ElwoodQuestionAnswer[],
     options?: ElwoodQuestionAnswerOptions,
   ): Promise<void> {
+    // Reject overlap before reading caller getters; the final check catches their reentry.
     if (this.active) throw questionAnswerFailed();
     const request = this.registry.get(requestId);
     if (!request)
@@ -52,7 +53,7 @@ export class QuestionTransaction {
     this.releaseSettledReservation();
     const operation = new AbortController();
     const signal = this.operationSignal(operation, options);
-    // Reading options.signal can reenter run() before this attempt installs its owner.
+    // Caller getters can reenter run() before this attempt installs its owner.
     if (this.isBusy() || !adapter) throw questionAnswerFailed();
     this.active = operation;
     const reservation = { requestId, inFlightWrites: 0 };
