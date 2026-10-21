@@ -110,3 +110,32 @@ test("unchanged working frames keep indexed native correlation bounded", () => {
     matches.mockRestore();
   }
 });
+
+test("C-QUESTION-05 unchanged empty composers do not rescan ineligible native candidates", () => {
+  const h = harness();
+  h.observe({
+    payload: {
+      type: "function_call",
+      call_id: "COMPOSER_SCAN_PROBE",
+      name: "request_user_input",
+      arguments: JSON.stringify({
+        questions: [{ id: "q", question: "Pick", options: [{ label: "Yes" }] }],
+      }),
+    },
+  });
+  const values = Map.prototype.values;
+  let scans = 0;
+  vi.spyOn(Map.prototype, "values").mockImplementation(function (this: Map<unknown, unknown>) {
+    if (this.has("COMPOSER_SCAN_PROBE")) scans += 1;
+    return values.call(this);
+  });
+  const empty = emptyComposerFrame();
+  h.adapter.render(empty);
+  const initialScans = scans;
+  expect(initialScans).toBeGreaterThan(0);
+  for (let n = 0; n < 1000; n++) h.adapter.render({ ...empty, lines: [...empty.lines] });
+  expect(scans).toBe(initialScans);
+  expect(h.registry.list()).toEqual([]);
+  expect(h.adapter.blocksInput()).toBe(true);
+  expect(h.events).toEqual([]);
+});

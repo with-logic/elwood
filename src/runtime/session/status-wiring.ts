@@ -27,6 +27,7 @@ type StatusEvent = { readonly elwoodSessionId: string; readonly status: ElwoodSe
 /** The emitter surface a session's status, compact, loop, and activity wiring needs. */
 export type SessionStatusEmitter = CompactEmitter &
   LoopEventEmitter & {
+    observeRejections<T>(onError: (error: unknown) => void, operation: () => T): T;
     emit(event: "status", payload: StatusEvent): void;
     emit(event: "activity", payload: ElwoodActivityEvent): void;
     emit(event: "question", payload: ElwoodQuestionEvent): void;

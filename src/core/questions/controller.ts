@@ -1,15 +1,16 @@
-/** Bind private discovery, guarded answers and shutdown to a session (PRD §4). */
+/** Bind public question discovery, guarded answers and shutdown (PRD §5.10). */
 import { subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../activity/index.ts";
 import type { Unsubscribe } from "../types.ts";
 import type { QuestionAdapter } from "./adapter.ts";
 import { readQuestionFrame } from "./input.ts";
-import { type QuestionEmitter, QuestionRegistry } from "./registry.ts";
+import { QuestionRegistry } from "./registry.ts";
+import { containQuestionRejections, type QuestionRejectionEmitter } from "./rejections.ts";
 import { QuestionTransaction } from "./transaction.ts";
 import type { ElwoodQuestionAnswer, ElwoodQuestionAnswerOptions } from "./types.ts";
 
-type Events = QuestionEmitter & {
+type Events = QuestionRejectionEmitter & {
   on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;
 };
 export class SessionQuestions {
@@ -26,7 +27,7 @@ export class SessionQuestions {
     closing: AbortSignal,
   ) {
     this.closing = closing;
-    this.registry = new QuestionRegistry(agent, elwoodSessionId, events);
+    this.registry = new QuestionRegistry(agent, elwoodSessionId, containQuestionRejections(events));
     this.transaction = new QuestionTransaction(this.registry, terminal, inputSignal, closing);
     const refresh = () => {
       if (closing.aborted) return;

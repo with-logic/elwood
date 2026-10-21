@@ -1,31 +1,8 @@
-/**
- * The one shared `ElwoodActivityEvent` builder for unit tests: a minimal valid
- * transcript-sourced assistant message with non-progress fields overridden (PRD §5.4).
- */
-
+/** Shared assistant-message fixture; structured question events use their native producers (PRD §5.4). */
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
-
-type QuestionActivity = Extract<ElwoodActivityEvent, { kind: "question" }>;
-type ActivityInput =
-  | Partial<Exclude<ElwoodActivityEvent, { readonly kind: "assistant_progress" | "question" }>>
-  | (Partial<Omit<QuestionActivity, "kind" | "question">> & {
-      kind: "question";
-      question: QuestionActivity["question"];
-    });
-export function activity(partial: ActivityInput = {}): ElwoodActivityEvent {
-  if (partial.kind === "question") {
-    const { question } = partial;
-    const base = {
-      elwoodSessionId: "s1",
-      agent: "claude",
-      ...partial,
-      source: "terminal",
-      label: question.phase,
-    } as const;
-    return question.phase === "raised"
-      ? { ...base, label: question.phase, question }
-      : { ...base, label: question.phase, question };
-  }
+export function activity(
+  partial: Partial<Exclude<ElwoodActivityEvent, { kind: "question" | "assistant_progress" }>> = {},
+): ElwoodActivityEvent {
   return {
     elwoodSessionId: "s1",
     agent: "claude",

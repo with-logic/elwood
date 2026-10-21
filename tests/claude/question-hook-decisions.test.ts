@@ -9,7 +9,7 @@ afterEach(resetFakes);
 test.each([
   "PreToolUse",
   "PermissionRequest",
-] as const)("%s direct answer cannot expose a phantom before completion", async (name) => {
+] as const)("C-QUESTION-01 %s direct answer cannot expose a phantom before completion", async (name) => {
   installFakes();
   const cwd = tempDir();
   let direct = true;

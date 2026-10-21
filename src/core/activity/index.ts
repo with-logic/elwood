@@ -57,6 +57,7 @@ type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEv
   Event extends ElwoodQuestionEvent
     ? {
         readonly kind: "question";
+        readonly agent: Event["agent"];
         readonly source: "terminal";
         readonly label: Event["phase"];
         readonly question: Event;

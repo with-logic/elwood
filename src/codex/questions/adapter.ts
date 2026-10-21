@@ -21,6 +21,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   private focused: Candidate | undefined;
   private previousQuestionCount = 0;
   private hold = false;
+  private lastComposerText: string | undefined;
   constructor(registry: QuestionRegistry, onDisabled?: () => void) {
     this.registry = registry;
     this.state = new CodexQuestionCandidates(registry, onDisabled);
@@ -28,6 +29,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   observe(event: ElwoodActivityEvent): boolean {
     return this.state.batchNotifications(() => {
       const changed = this.state.observe(event);
+      if (changed) this.lastComposerText = undefined;
       if (this.focused && this.state.candidates.get(this.focused.nativeKey) !== this.focused) {
         this.focused = undefined;
         this.previousQuestionCount = 0;
@@ -40,7 +42,10 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       const view = questionView(frame);
       const badge = queuedBadge(frame);
       const chrome = view !== undefined || badge !== undefined || nativeQuestionFragment(frame);
-      if (chrome) this.hold = true;
+      if (chrome) {
+        this.hold = true;
+        this.lastComposerText = undefined;
+      }
       this.pending.observe(frame, view, this.state);
       const current = view?.kind === "queued" ? this.observeQueued(view) : undefined;
       const available = this.state.availableAcceptedQueuedCandidates();
@@ -59,6 +64,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     answers: readonly ValidatedQuestionAnswer[],
     io: QuestionIo,
   ): Promise<void> {
+    this.lastComposerText = undefined;
     const nativeKey = this.registry.keyFor(request.id);
     const candidate = nativeKey === undefined ? undefined : this.state.candidates.get(nativeKey);
     if (!candidate || candidate.hasPendingNativeSubmission) throw questionAnswerFailed();
@@ -92,6 +98,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       await answerNative();
     } catch (error) {
       abandon();
+      this.lastComposerText = undefined;
       throw error;
     }
   }
@@ -103,7 +110,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     for (const candidate of this.state.unpublishedCandidates()) {
       if (candidate.queued) {
         if (queuedConfirmed && candidate.accepted && !candidate.hasPendingNativeSubmission) {
-          this.candidatesSeenInNativeUi.add(candidate);
+          this.markSeen(candidate);
           this.state.publish(candidate);
         }
       } else if (
@@ -111,9 +118,15 @@ export class CodexQuestionAdapter implements QuestionAdapter {
         candidate.questions.length === view.count &&
         matchesQuestion(view, candidate.questions[view.index]!.definition)
       ) {
-        this.candidatesSeenInNativeUi.add(candidate);
+        this.markSeen(candidate);
         this.state.publish(candidate);
       }
+    }
+  }
+  private markSeen(candidate: Candidate): void {
+    if (!this.candidatesSeenInNativeUi.has(candidate)) {
+      this.candidatesSeenInNativeUi.add(candidate);
+      this.lastComposerText = undefined;
     }
   }
   private observeComposer(frame: QuestionFrame, chrome: boolean): void {
@@ -125,6 +138,8 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     )
       return;
     this.hold = false;
+    if (this.lastComposerText === frame.text) return;
+    this.lastComposerText = frame.text;
     for (const candidate of this.state.candidates.values()) {
       if (
         this.candidatesSeenInNativeUi.has(candidate) &&
@@ -139,7 +154,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     const queued = this.state.availableAcceptedQueuedCandidates();
     const current = queuedCandidate(queued, view);
     if (current) {
-      this.candidatesSeenInNativeUi.add(current);
+      this.markSeen(current);
       const previous = this.focused;
       // A one-item decrease or remaining singleton permits retiring another focused candidate.
       const canRetirePreviousCandidate =
