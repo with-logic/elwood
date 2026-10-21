@@ -3,6 +3,7 @@
  * Implements PRD §5.4.
  */
 
+import type { CodexTranscriptSummary } from "../codex/transcript/types.ts";
 import type { ElwoodActivityKind } from "./activity/index.ts";
 
 export function hookResultLabel(result: unknown, failedOpen: boolean): string {
@@ -20,15 +21,16 @@ export function hookResultLabel(result: unknown, failedOpen: boolean): string {
   return "response";
 }
 
-export function transcriptActivityKind(kind: string): ElwoodActivityKind {
-  if (kind === "message") return "assistant_message";
-  if (
-    kind === "tool_call" ||
-    kind === "tool_result" ||
-    kind === "reasoning" ||
-    kind === "web_search"
-  ) {
-    return kind;
-  }
-  return "other";
+const transcriptActivityKinds = {
+  commentary: "assistant_progress",
+  message: "assistant_message",
+  tool_call: "tool_call",
+  tool_result: "tool_result",
+  reasoning: "reasoning",
+  web_search: "web_search",
+  other: "other",
+} satisfies Record<CodexTranscriptSummary["kind"], ElwoodActivityKind>;
+
+export function transcriptActivityKind(kind: CodexTranscriptSummary["kind"]): ElwoodActivityKind {
+  return transcriptActivityKinds[kind];
 }

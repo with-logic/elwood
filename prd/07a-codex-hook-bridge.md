@@ -100,6 +100,12 @@ observation event. The event may summarize transcript item kind, label, and text
 and may include the raw item for immediate in-memory rendering. Elwood must not
 persist raw transcript items or derived prompt/tool content in Elwood state.
 
+Committed assistant commentary is normalized as `assistant_progress` under
+§5.4, separately from final `assistant_message` activity. The transcript summary
+uses `kind: "commentary"`, `label: "assistant"`, and readable `text` for the
+canonical response item, including array-form `output_text` content. Progress
+does not establish readiness or complete a caller's turn.
+
 The finalized-Stop input boundary in §6.3 also applies to Codex: late registered
 Stop-handler and hook-scoped observer continuations that preserve their async
 execution context cannot admit new queue-backed input to the same live runtime

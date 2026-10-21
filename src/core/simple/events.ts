@@ -1,8 +1,8 @@
 /**
  * The simplified, stable public event union yielded by the ergonomic `stream` API,
  * and the mapping from the richer internal `ElwoodActivityEvent` (PRD §5.8, C-API-48).
- * `stream` yields only a turn's CONTENT — assistant text, thinking, tool calls/results —
- * never lifecycle/hook/warning telemetry, which stays on the underlying session events.
+ * `stream` yields final assistant-message text, thinking, and tool calls/results.
+ * Progress and lifecycle/hook/warning telemetry stay on the underlying session events.
  */
 
 import type { ElwoodActivityEvent } from "../activity/index.ts";

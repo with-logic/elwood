@@ -7,20 +7,16 @@ import test from "node:test";
 import { finalizeRunRequest, resolveRunSettings } from "../../src/cli/request/index.ts";
 import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import { onNativeBoundary } from "../../src/core/simple/native-boundary.ts";
-import {
-  type CodexHookHandlers,
-  CodexSession,
-  type CodexSessionApi,
-  resumeCodex,
-} from "../../src/index.ts";
+import { CodexSession, type CodexSessionApi, resumeCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { sessionSocketHome } from "../../src/state/socket-home.ts";
 import { readSessionRecord } from "../../src/state/store.ts";
+import { closeNativeResponse, trackResponseKill } from "./codex-response-cleanup.ts";
 import {
   assertParentEnvironmentUnchanged,
   nativeResponseSandbox,
+  noToolsResponseOptions,
   responseBinary,
-  responseModel,
 } from "./codex-response-sandbox.ts";
 
 const available = existsSync(responseBinary) && existsSync(join(homedir(), ".codex/auth.json"));
@@ -50,16 +46,11 @@ test("C-API-48 native Codex resume stream excludes the prior cold response", {
   let ownId: string | undefined;
   let expectedPrompt = promptFor(coldToken);
   const off: Array<() => void> = [];
-  const hooks: CodexHookHandlers = {
-    PreToolUse: () => {
-      toolAttempts++;
-      void session?.kill();
-      return {
-        permissionDecision: "deny",
-        permissionDecisionReason: "This response fixture permits no tools.",
-      };
-    },
-  };
+  const killAttempts: Promise<void>[] = [];
+  const options = noToolsResponseOptions(sandbox, () => {
+    toolAttempts++;
+    trackResponseKill(session, killAttempts);
+  });
   const attach = (active: CodexSessionApi) => {
     session = active;
     socketHomes.add(
@@ -90,21 +81,9 @@ test("C-API-48 native Codex resume stream excludes the prior cold response", {
     assert.equal(stopCount, 1);
     assert.equal(toolAttempts, 0);
   };
-  const options = {
-    cwd: sandbox.cwd,
-    stateDir: sandbox.stateDir,
-    model: responseModel,
-    reasoningEffort: "low" as const,
-    autotrust: true,
-    autoupdate: false,
-    sandbox: "read-only" as const,
-    approvalPolicy: "never" as const,
-    initialSize: { cols: 140, rows: 35 },
-    hooks,
-  };
   const abort = () => {
     sandbox.end();
-    void session?.kill();
+    trackResponseKill(session, killAttempts);
   };
   t.signal.addEventListener("abort", abort, { once: true });
   try {
@@ -170,7 +149,11 @@ test("C-API-48 native Codex resume stream excludes the prior cold response", {
     sandbox.end();
     for (const unsubscribe of off) unsubscribe();
     try {
-      await session?.teardown();
+      await closeNativeResponse(
+        () => session?.teardown() ?? Promise.resolve(),
+        session,
+        killAttempts,
+      );
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();

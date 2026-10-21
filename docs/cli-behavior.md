@@ -169,8 +169,10 @@ array of `{ type: "output_text", text }` entries. Only the assistant record with
 progress narration, and user/developer message records are inputs. Current
 sessions emit no legacy `agent_message` duplicate, so treating `content` as a
 plain string silently drops the reply text. The transcript adapter therefore
-extracts `output_text` only from assistant `final_answer` records while retaining
-legacy string/`agent_message` support. C-CODEX-16.
+extracts assistant `final_answer` records as `assistant_message` and
+`commentary` records as `assistant_progress`, while retaining legacy
+string/final `agent_message` support. Explicit non-final legacy mirrors keep
+only their raw observation. C-CODEX-16, C-CODEX-22.
 
 ## Model selection persistence
 
@@ -913,6 +915,26 @@ side-effect-free signal. C-CLI-21 through C-CLI-24.
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+### Codex commentary and final-answer phases (2026-10-20)
+
+The reported completed `response_item` fixture retains assistant text in an
+array-form `output_text` block with `phase: "commentary"`. The previous summarizer
+discarded that phase. It now produces `assistant_progress`; final answers retain
+`assistant_message`. Explicit non-final legacy `agent_message` mirrors remain raw
+observations without normalized text, avoiding false final replies and duplicate
+progress. Tests exercise mirrors before and after canonical response items, as
+well as repeated genuine canonical updates.
+
+An isolated real Codex 0.159.2 / `gpt-6-luna` low-effort turn passed
+`tests/e2e/codex-commentary.e2e.ts`: one progress event preceded one final event,
+progress observed `running`, the turn ended `ready`, and ergonomic `send()`
+returned only final text. Exactly one paste and Enter were delivered, with zero
+tools. The test uses a private Codex home and empty project, removes that home,
+and checks the parent environment and Codex auth/config/hook file fingerprints.
+Run explicitly with `ELWOOD_NATIVE_COMMENTARY_PROOF=1`; it consumes one small
+valid-model turn. This pinned-version proof does not establish every future CLI
+layout or guarantee that arbitrary prompts will cause a model to send commentary.
 
 ### Model-picker dispatch and post-cancel composer (2026-09-19)
 
