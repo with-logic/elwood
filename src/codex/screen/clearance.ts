@@ -22,7 +22,7 @@ const placeholders = new Set([
   "Use /skills to list available skills",
 ]);
 const modelFooter =
-  /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
+  /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$/;
 const hintFooter = /^(?: {2})?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
 
 /** A contiguous startup welcome box and its native tip/warning rows. */

@@ -7,6 +7,7 @@
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
+import { blockingQuestionVisible } from "./questions/chrome.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
 import {
   CodexRetainedComposerHold,
@@ -18,10 +19,11 @@ import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 
-const verifiedAgainst = "codex-cli 0.142.5";
+const verifiedAgainst = "codex-cli 0.142.5; work pulses and question panels: 0.163.0";
 
 /**
- * Verified against codex-cli 0.142.5. The working spinner renders
+ * Original rules verified against codex-cli 0.142.5; 0.163.0 captures additionally
+ * verify pulsing work and native question panels. The working spinner renders
  * "• Working (3s • esc to interrupt)", the interrupt banner renders
  * "■ Conversation interrupted", and the idle composer marker is a
  * line-leading "›". Approval dialogs ask "Would you like to run the following
@@ -56,6 +58,11 @@ function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): 
       all: [/Would you like to|Allow command\?/i, /Press enter to confirm or esc to cancel/i],
     },
     { id: "codex-update-prompt", fact: "blocking_prompt_visible", match: updatePromptVisible },
+    {
+      id: "codex-native-question",
+      fact: "blocking_prompt_visible",
+      match: blockingQuestionVisible,
+    },
   ];
 }
 
