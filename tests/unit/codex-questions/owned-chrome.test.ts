@@ -28,9 +28,10 @@ test.each(
   const enters = () => h.writes.filter((input) => input === "\r");
   await expect.poll(pastes).toEqual([`\x1b[200~${text}\x1b[201~`]);
   await expect.poll(enters, { timeout: 2500 }).toEqual(["\r"]);
-  expect(h.acknowledge()).toBeTypeOf("function");
+  await h.waitForAcknowledgement();
+  expect(h.canAcknowledge()).toBe(true);
   expect(h.transaction.busy()).toBe(true);
-  h.acknowledge()!();
+  h.acknowledge();
   expect(await h.result).toBe(wrong ? "failed" : "answered");
   expect(h.events.at(-1)).toMatchObject({
     phase: "closed",
