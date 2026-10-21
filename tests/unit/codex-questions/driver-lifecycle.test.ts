@@ -3,7 +3,8 @@ import { describe, expect, test } from "vitest";
 import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
-import { captured, fixture, frame, records, scriptedIo } from "./helpers.ts";
+import { captured, frame, records, scriptedIo } from "./helpers.ts";
+import { snapshot } from "./snapshot-fixtures.ts";
 
 const first = captured("async-editor-first.txt");
 const notes = (source: QuestionFrame, text = "Add notes") =>
@@ -22,9 +23,7 @@ const notes = (source: QuestionFrame, text = "Add notes") =>
   );
 describe("Codex native question lifecycle and driving", () => {
   test("submits grouped modal choice and alternative notes", async () => {
-    const raw = records("blocking-records.json")[0] as {
-      readonly payload: Record<string, unknown>;
-    };
+    const raw = records("blocking-records.json")[0];
     const h = harness();
     h.observe(raw);
     const modalFirst = captured("blocking-modal-first.txt");
@@ -63,18 +62,25 @@ describe("Codex native question lifecycle and driving", () => {
     );
     expect(scripted.writes.filter((input) => input === "\r")).toHaveLength(2);
   });
-  test("aborting uncertain acceptance restores local skip reconciliation", async () => {
+  test("aborting uncertain acceptance retains the original request until native closure", async () => {
     const h = harness();
     const native = records("async-records.json");
     h.observe(native[0]);
     h.observe(native[1]);
     h.adapter.render(first);
+    const [color, note] = h.registry.list();
+    expect(color).toBeDefined();
+    expect(note).toBeDefined();
     const scripted = scriptedIo(first, [{ input: "\r" }]);
-    await h.adapter.answer(h.registry.list()[0]!, [{ optionIndexes: [0] }], scripted.io);
+    await h.adapter.answer(color!, [{ optionIndexes: [0] }], scripted.io);
     scripted.controller.abort();
-    const skipped = JSON.parse(fixture("async-after-local-skip.json")) as { readonly text: string };
+    const skipped = snapshot("async-after-local-skip.json");
     h.adapter.render(frame(skipped.text));
-    expect(h.registry.list()).toHaveLength(1);
-    expect(h.events.at(-1)).toMatchObject({ reason: "unavailable" });
+    expect(h.registry.list()).toEqual([color, note]);
+    expect(h.adapter.blocksInput()).toBe(true);
+    h.observe(native[3]);
+    expect(h.registry.list()).toEqual([note]);
+    expect(h.events.at(-1)).toMatchObject({ reason: "answered", request: color });
+    expect(scripted.writes).toEqual(["\r"]);
   });
 });

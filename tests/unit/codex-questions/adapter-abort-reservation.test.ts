@@ -1,15 +1,13 @@
 /** Caller cancellation cannot release dispatched native question ownership (PRD §4). */
 import { expect, test, vi } from "vitest";
 import { harness } from "./adapter-helpers.ts";
-import { captured, frame, records, scriptedIo } from "./helpers.ts";
-
-const emptyComposer = () => ({
-  ...frame("› Ask Codex to do anything\n\n  GPT-6-Luna low"),
-  cursorX: 2,
-  cursorY: 0,
-  cursorRow: 0,
-  cursorVisible: true,
-});
+import {
+  captured,
+  emptyComposerFrame as emptyComposer,
+  frame,
+  records,
+  scriptedIo,
+} from "./helpers.ts";
 
 test.each([
   "native answer",

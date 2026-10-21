@@ -28,7 +28,9 @@ test("an old pending echo cannot consume a new question with that title", () => 
   h.observe(records("async-records.json")[1]);
   h.adapter.render(captured("async-badge.txt"));
   const [color, note] = h.registry.list();
-  const oldKey = h.registry.keyFor(color!.id)!;
+  expect(color).toBeDefined();
+  const oldKey = h.registry.keyFor(color!.id);
+  expect(oldKey).toBeDefined();
   const current = editorFrame(captured("async-after-first.txt"), {
     editorLine: "  Type your answer",
     cursorLineBefore: "  ",
@@ -46,12 +48,12 @@ test("an old pending echo cannot consume a new question with that title", () => 
     ),
   );
   const replacement = h.registry.find(queuedKey("new", 0));
-  expect(h.registry.find(oldKey)).toBeUndefined();
+  expect(h.registry.find(oldKey!)).toBeUndefined();
   expect(h.registry.get(color!.id)).toBeUndefined();
   expect(replacement?.questions[0]?.prompt).toBe("ELWOOD_ASYNC_COLOR: Which color?");
   expect(h.registry.list()).toEqual([note, replacement]);
 });
-test("ambiguous pending titles remain reserved until native identity acceptance", () => {
+test("ambiguous pending titles remain reserved until the turn boundary", () => {
   const h = harness();
   h.observe(call("first", "Q"));
   h.observe(call("second", "Q"));

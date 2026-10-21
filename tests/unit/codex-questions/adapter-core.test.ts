@@ -3,27 +3,8 @@ import { expect, test } from "vitest";
 import type { ValidatedQuestionAnswer } from "../../../src/core/questions/validate.ts";
 import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
-import { captured, frame, records, scriptedIo } from "./helpers.ts";
-import { snapshot } from "./snapshot-fixtures.ts";
-
-const empty = () => ({
-  ...frame("› Ask Codex to do anything\n\n  GPT-6-Luna low"),
-  cursorX: 2,
-  cursorY: 0,
-  cursorRow: 0,
-  cursorVisible: true,
-});
-const call = (id: string, title: string, isSecret = false) => ({
-  payload: { type: "AgentMessage", id, delivery: "async", questions: [{ title, isSecret }] },
-});
-function editor(prompt: string) {
-  const native = snapshot("async-after-local-skip.json");
-  return editorFrame(frame(native.text.replaceAll("ELWOOD_ASYNC_NOTE: What note?", prompt)), {
-    editorLine: "  Type your answer",
-    cursorLineBefore: "  ",
-    dimmed: true,
-  });
-}
+import { captured, emptyComposerFrame as empty, frame, records, scriptedIo } from "./helpers.ts";
+import { queuedCall as call, queuedEditor as editor } from "./native-adapter-fixtures.ts";
 
 test("publishes grouped modal questions and rejects writes without their native frame", async () => {
   const h = harness();

@@ -2,26 +2,9 @@
 import { expect, test } from "vitest";
 import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
-import { captured, fixture, frame, records, scriptedIo } from "./helpers.ts";
+import { captured, emptyComposerFrame as composer, frame, records, scriptedIo } from "./helpers.ts";
+import { queuedCall as call, queuedEditor as editor } from "./native-adapter-fixtures.ts";
 
-const composer = () => ({
-  ...frame("› Ask Codex to do anything\n\n  GPT-6-Luna low"),
-  cursorX: 2,
-  cursorY: 0,
-  cursorRow: 0,
-  cursorVisible: true,
-});
-const call = (id: string, title: string, isSecret = false) => ({
-  payload: { type: "AgentMessage", id, delivery: "async", questions: [{ title, isSecret }] },
-});
-function editor(prompt: string) {
-  const native = JSON.parse(fixture("async-after-local-skip.json")) as { text: string };
-  return editorFrame(frame(native.text.replaceAll("ELWOOD_ASYNC_NOTE: What note?", prompt)), {
-    editorLine: "  Type your answer",
-    cursorLineBefore: "  ",
-    dimmed: true,
-  });
-}
 test("unrelated spinner redraws cannot release opaque native reservations", () => {
   const h = harness();
   h.observe(records("async-records.json")[1]);

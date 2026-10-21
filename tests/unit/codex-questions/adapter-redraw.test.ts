@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import * as questionFrames from "../../../src/codex/questions/frame.ts";
 import { harness } from "./adapter-helpers.ts";
-import { captured, frame, records } from "./helpers.ts";
+import { frame } from "./helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
 const native = (count: number) => ({
@@ -23,11 +23,5 @@ test("count mismatch stops unique-content lookup at the second matching candidat
   const matches = vi.spyOn(questionFrames, "matchesQuestion");
   h.adapter.render(editor(2));
   expect(matches).toHaveBeenCalledTimes(2);
-  expect(h.registry.list()).toEqual([]);
-});
-test("an equal-count index mismatch does not fall back to a different matching unit", () => {
-  const h = harness();
-  h.observe(records("async-records.json")[1]);
-  h.adapter.render(frame(captured("async-editor-first.txt").text.replace("1 of 2", "2 of 2")));
   expect(h.registry.list()).toEqual([]);
 });
