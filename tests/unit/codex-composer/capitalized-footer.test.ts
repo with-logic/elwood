@@ -13,19 +13,27 @@ const captured = readFileSync(
   "utf8",
 ).trimEnd();
 const cursorRow = 11;
+const footers = [
+  { label: "with path", frame: captured },
+  { label: "model only", frame: captured.replace(" · /tmp/elwood_e2e_codex-CAPTURE", "") },
+];
 
-test("C-API-56 captured capitalized model footer acknowledges the native cleared composer", () => {
-  const rows = captured.split("\n");
+test.each(footers)("C-API-56 captured $label footer acknowledges the native cleared composer", ({
+  frame,
+}) => {
+  const rows = frame.split("\n");
   expect(codexComposerRowsClearance(rows, cursorRow)).toBe(true);
   expect(codexComposerRowsClearance(rows)).toBe(true);
   expect(codexComposerRow(rows, false)).toBe(cursorRow);
 });
 
-test("C-TRUST-01 capitalized native footer still needs a live cursor on the composer", async () => {
+test.each(footers)("C-TRUST-01 $label footer still needs a live cursor on the composer", async ({
+  frame,
+}) => {
   const terminal = createHeadlessTerminal({ cols: 189, rows: 48 }, () => undefined);
   const clear = liveCodexClearance(() => terminal);
   try {
-    await terminal.writeOutput(`${captured.replaceAll("\n", "\r\n")}\u001b[12;3H\u001b[?25h`);
+    await terminal.writeOutput(`${frame.replaceAll("\n", "\r\n")}\u001b[12;3H\u001b[?25h`);
     expect(clear(terminal.snapshot().text)).toBe(true);
     await terminal.writeOutput("\u001b[?25l");
     expect(clear(terminal.snapshot().text)).toBe(false);

@@ -131,9 +131,10 @@ export function codexComposerRow(frameRows: readonly string[], liveClear: boolea
 
 /** Require the composer's own footer unless the caller permits welcome evidence. */
 function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
+  // Native Codex right-aligns this badge even with a model-only status line.
   const below = rows
     .slice(at + 1)
-    .map((row) => row.trimEnd())
+    .map((row) => row.replace(/ {2,}⚠ \d+ warnings? · f2 to view\s*$/, "").trimEnd())
     .filter((row) => row !== "");
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
   return (

@@ -8,7 +8,5 @@ export function codexEmptyInputFrame(terminal: ElwoodTerminal) {
 }
 
 export function codexEmptyInputRows(rows: readonly string[], cursorRow: number): boolean {
-  // Native 0.156.1 right-aligns this badge even with a model-only status line.
-  const normalized = rows.map((row) => row.replace(/ {2,}⚠ \d+ warnings? · f2 to view\s*$/, ""));
-  return codexComposerRowsEmpty(normalized, cursorRow);
+  return codexComposerRowsEmpty(rows, cursorRow);
 }
