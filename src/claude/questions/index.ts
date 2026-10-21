@@ -24,6 +24,7 @@ type Candidate = {
   readonly nativeKey: string;
   readonly questions: readonly QuestionDefinition[];
   awaitingNativeHookClosure: boolean;
+  publishable: boolean;
   readonly requiresExactQuestionMatch: boolean;
 };
 export class ClaudeQuestionAdapter implements QuestionAdapter {
@@ -79,6 +80,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     this.candidate = {
       nativeKey,
       awaitingNativeHookClosure: false,
+      publishable: true,
       requiresExactQuestionMatch:
         this.lastNativeQuestions !== undefined &&
         !matchesNativeQuestions(questions, this.lastNativeQuestions),
@@ -94,6 +96,23 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     this.seenChrome = false;
     if (previous) this.registry.close(previous.id, "unavailable");
     return true;
+  }
+  /** A caller resolved the hook; retain native correlation but withdraw automation authority. */
+  withdraw(event: ElwoodActivityEvent): void {
+    const candidate = this.candidate;
+    if (!candidate) return;
+    const hook = record(event.raw);
+    const nativeId = hook["tool_use_id"];
+    const questions = record(hook["tool_input"])["questions"];
+    if (
+      typeof nativeId === "string"
+        ? nativeId !== candidate.nativeKey
+        : !(isQuestions(questions) && matchesNativeQuestions(questions, candidate.questions))
+    )
+      return;
+    candidate.publishable = false;
+    const request = this.registry.find(candidate.nativeKey);
+    if (request) this.registry.retireUnconfirmed(request.id);
   }
   private closeNativeHook(
     hookEventName: unknown,
@@ -138,7 +157,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       if (current) this.registry.close(current.id, "unavailable");
       return;
     }
-    if (!this.held || current || candidate.questions.length === 0) return;
+    if (!this.held || current || !candidate.publishable || candidate.questions.length === 0) return;
     if (screen?.kind === "question")
       this.registry.publish(candidate.nativeKey, "blocking", candidate.questions);
   }

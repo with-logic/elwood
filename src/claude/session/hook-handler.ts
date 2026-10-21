@@ -17,7 +17,7 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import type { InitialReady } from "../../runtime/readiness/initial-ready.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isBlock, requestHook } from "../hooks/dispatch.ts";
-import type { ClaudeHookEvent } from "../hooks/index.ts";
+import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
@@ -33,6 +33,7 @@ export type ClaudeHookHandlerDeps = {
   readonly getSession: () => ClaudeSessionImpl | undefined;
   readonly getTurnWatcher: () => TurnStateWatcher;
   readonly observeHookTranscript: (event: ClaudeHookEvent) => void;
+  readonly onHookOutcome?: (event: ClaudeHookEvent, result: ClaudeHookResult) => void;
 };
 
 /** Builds the async hook-message handler passed to the Claude hook bridge factory. */
@@ -87,6 +88,7 @@ export function buildClaudeHookHandler(
         ),
       ),
     );
+    observation.run("activity", () => deps.onHookOutcome?.(event, outcome.result));
     if (event.hook_event_name === "InstructionsLoaded")
       observation.run("lifecycle", () => ready.mark());
     if (event.hook_event_name === "Stop" && !blocked) {
