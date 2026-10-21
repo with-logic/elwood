@@ -1,28 +1,13 @@
 /** Native Codex question lifecycle and guarded answering (PRD §4). */
 import { describe, expect, test } from "vitest";
-import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { harness } from "./adapter-helpers.ts";
-import { editorFrame } from "./editor-fixtures.ts";
+import { editorFrame, notesFrame } from "./editor-fixtures.ts";
 import { captured, frame, records, scriptedIo } from "./helpers.ts";
 import { snapshot } from "./snapshot-fixtures.ts";
 
 const first = captured("async-editor-first.txt");
 const blue = captured("async-editor-blue.txt");
 const emptyNote = captured("async-after-first.txt");
-const notes = (source: QuestionFrame, text = "Add notes") =>
-  editorFrame(
-    frame(
-      source.text.replace(
-        /^ {2}tab to add notes \| enter to submit (answer|all) \| ←\/→ to navigate questions \| esc to interrupt/m,
-        `  › ${text}\n \n  tab or esc to clear notes | enter to submit $1`,
-      ),
-    ),
-    {
-      editorLine: `  › ${text}`,
-      cursorLineBefore: text === "Add notes" ? "  › " : `  › ${text}`,
-      dimmed: text === "Add notes",
-    },
-  );
 describe("Codex native question lifecycle and driving", () => {
   test("opens badge and accepts one queued choice", async () => {
     const h = harness();
@@ -60,11 +45,11 @@ describe("Codex native question lifecycle and driving", () => {
     const other = captured("blocking-modal-other.txt");
     const scripted = scriptedIo(modalFirst, [
       { input: "\x1b[B", next: modalBlue },
-      { input: "\t", next: notes(modalBlue) },
+      { input: "\t", next: notesFrame(modalBlue) },
       { input: "\r", next: modalSecond },
       { input: "\x1b[B", next: short },
       { input: "\x1b[B", next: other },
-      { input: "\t", next: notes(other) },
+      { input: "\t", next: notesFrame(other) },
       {
         input: "\x1b[200~ELWOOD_MODAL_NOTE_85\x1b[201~",
         next: editorFrame(captured("blocking-modal-note.txt"), {
