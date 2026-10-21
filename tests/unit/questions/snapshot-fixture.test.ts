@@ -44,3 +44,7 @@ test("derives captured text from the canonical snapshot lines", () => {
     text: lines.join("\n"),
   });
 });
+
+test("partial native captures preserve unknown visibility rather than inventing visible authority", () => {
+  expect(nativeSnapshot("accepted-manual-composer").cursorVisible).toBeUndefined();
+});
