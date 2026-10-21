@@ -12,6 +12,7 @@ import type {
 export type { QuestionEmitter } from "./dispatch.ts";
 
 type Entry = {
+  available: boolean;
   readonly nativeKey: string;
   readonly signature: string;
   readonly request: ElwoodQuestionRequest;
@@ -29,15 +30,20 @@ export class QuestionRegistry {
     this.elwoodSessionId = elwoodSessionId;
     this.dispatch = new QuestionDispatch(emitter);
   }
+  /** Includes retired requests until their native ownership is released. */
   hasPending(): boolean {
     return this.entries.size > 0;
   }
   list(): readonly ElwoodQuestionRequest[] {
-    return Object.freeze([...this.entries.values()].map((entry) => entry.request));
+    return Object.freeze(
+      [...this.entries.values()].filter((entry) => entry.available).map((entry) => entry.request),
+    );
   }
   get(requestId: string): ElwoodQuestionRequest | undefined {
-    return this.entries.get(requestId)?.request;
+    const entry = this.entries.get(requestId);
+    return entry?.available ? entry.request : undefined;
   }
+  /** Retired identities remain available for authoritative native-close correlation. */
   find(nativeKey: string): ElwoodQuestionRequest | undefined {
     return this.byNativeKey.get(nativeKey)?.request;
   }
@@ -52,7 +58,12 @@ export class QuestionRegistry {
   ): ElwoodQuestionRequest | undefined {
     // A replacement closes before raising: reentrant publication of the same key
     // must not install an entry that the outer replacement would orphan in the index.
-    if (this.stopped || this.publishingNativeKeys.has(nativeKey)) return undefined;
+    if (
+      this.stopped ||
+      this.publishingNativeKeys.has(nativeKey) ||
+      this.byNativeKey.get(nativeKey)?.available === false
+    )
+      return undefined;
     this.publishingNativeKeys.add(nativeKey);
     try {
       return this.publishRequest(nativeKey, delivery, questions);
@@ -67,6 +78,8 @@ export class QuestionRegistry {
   ): ElwoodQuestionRequest | undefined {
     const signature = JSON.stringify([delivery, questions]);
     const existing = this.byNativeKey.get(nativeKey);
+    // Definition serialization can invoke getters that retire the active request.
+    if (existing?.available === false) return undefined;
     if (existing?.signature === signature) return existing.request;
     let failure: unknown;
     let failed = false;
@@ -98,7 +111,7 @@ export class QuestionRegistry {
         ),
       ),
     });
-    const entry = { nativeKey, signature, request };
+    const entry = { nativeKey, signature, request, available: true };
     this.entries.set(request.id, entry);
     this.byNativeKey.set(nativeKey, entry);
     try {
@@ -115,11 +128,25 @@ export class QuestionRegistry {
     if (failed) throw failure;
     return request;
   }
+  /** Close the API request while retaining native ownership until native closure. */
+  retireUnconfirmed(requestId: string): void {
+    const entry = this.entries.get(requestId);
+    if (!entry?.available) return;
+    entry.available = false;
+    this.emit({
+      elwoodSessionId: this.elwoodSessionId,
+      agent: this.agent,
+      phase: "closed",
+      request: entry.request,
+      reason: "unavailable",
+    });
+  }
   close(requestId: string, reason: QuestionCloseReason): void {
     const entry = this.entries.get(requestId);
     if (!entry) return;
     this.entries.delete(requestId);
     this.byNativeKey.delete(entry.nativeKey);
+    if (!entry.available) return;
     this.emit({
       elwoodSessionId: this.elwoodSessionId,
       agent: this.agent,
