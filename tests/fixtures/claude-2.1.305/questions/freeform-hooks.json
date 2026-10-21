@@ -1,0 +1,75 @@
+[
+  {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which test note?",
+          "header": "Note",
+          "options": [
+            {
+              "label": "Brief (short)",
+              "description": "A short test note."
+            },
+            {
+              "label": "Detailed (long)",
+              "description": "A long test note."
+            }
+          ],
+          "multiSelect": false
+        }
+      ]
+    }
+  },
+  {
+    "hook_event_name": "PostToolUse",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which test note?",
+          "header": "Note",
+          "options": [
+            {
+              "label": "Brief (short)",
+              "description": "A short test note."
+            },
+            {
+              "label": "Detailed (long)",
+              "description": "A long test note."
+            }
+          ],
+          "multiSelect": false
+        }
+      ],
+      "answers": {
+        "Which test note?": "ELWOOD_NOTE_LINE1\nELWOOD_NOTE_LINE2"
+      },
+      "annotations": {}
+    },
+    "tool_response": {
+      "questions": [
+        {
+          "question": "Which test note?",
+          "header": "Note",
+          "options": [
+            {
+              "label": "Brief (short)",
+              "description": "A short test note."
+            },
+            {
+              "label": "Detailed (long)",
+              "description": "A long test note."
+            }
+          ],
+          "multiSelect": false
+        }
+      ],
+      "answers": {
+        "Which test note?": "ELWOOD_NOTE_LINE1\nELWOOD_NOTE_LINE2"
+      },
+      "annotations": {}
+    }
+  }
+]
