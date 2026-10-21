@@ -15,7 +15,7 @@ export type ValidatedQuestionAnswer = {
   readonly text?: string;
 };
 const DEFAULT_QUESTION_TIMEOUT_MS = 20_000;
-const MAX_ANSWER_BATCH_TEXT_BYTES = 8 * 1024 * 1024;
+const MAX_ANSWER_BATCH_BYTES = 8 * 1024 * 1024;
 
 /** Return a positive finite duration in milliseconds. The 20-second default bounds
  * stalled native confirmation; callers can extend it for slower interfaces. */
@@ -27,7 +27,8 @@ export function questionTimeoutMs(options?: ElwoodQuestionAnswerOptions): number
   return value;
 }
 /** Require exactly one answer per question within its selection/text capabilities
- * and the 8 MiB text budget; return native indexes in request-question order.
+ * and one aggregate 8 MiB UTF-8-byte budget across the batch for question IDs, selected
+ * option IDs, and answer text; return native indexes in request-question order.
  * The caller owns checking whether the request is still live. */
 export function validateQuestionAnswers(
   request: ElwoodQuestionRequest,
@@ -36,7 +37,11 @@ export function validateQuestionAnswers(
   if (!Array.isArray(answers)) throw invalid();
   const answerCount = answers.length;
   if (answerCount !== request.questions.length) throw invalid();
-  let textBytes = 0;
+  let bytes = 0;
+  const countBytes = (value: string) => {
+    bytes += Buffer.byteLength(value, "utf8");
+    if (bytes > MAX_ANSWER_BATCH_BYTES) throw invalid();
+  };
   const validated = new Map<string, ValidatedQuestionAnswer>();
   const questionsById = new Map(request.questions.map((question) => [question.id, question]));
   for (let index = 0; index < answerCount; index++) {
@@ -46,9 +51,13 @@ export function validateQuestionAnswers(
     const { questionId, optionIds, text } = answer;
     const question = questionsById.get(questionId);
     if (!question || validated.has(questionId)) throw invalid();
-    const indexes = questionOptionIndexes(question, optionIds === undefined ? [] : optionIds);
-    if (typeof text === "string") textBytes += Buffer.byteLength(text, "utf8");
-    if (textBytes > MAX_ANSWER_BATCH_TEXT_BYTES) throw invalid();
+    countBytes(questionId);
+    const indexes = questionOptionIndexes(
+      question,
+      optionIds === undefined ? [] : optionIds,
+      countBytes,
+    );
+    if (typeof text === "string") countBytes(text);
     validated.set(questionId, validateAnswer(question, indexes, text));
   }
   return request.questions.map((question) => validated.get(question.id)!);
@@ -75,7 +84,11 @@ function validateAnswer(
     ...(text === undefined ? {} : { text }),
   };
 }
-function questionOptionIndexes(question: ElwoodQuestion, ids: readonly string[]): number[] {
+function questionOptionIndexes(
+  question: ElwoodQuestion,
+  ids: readonly string[],
+  countBytes: (value: string) => void,
+): number[] {
   if (!Array.isArray(ids)) throw invalid();
   const length = ids.length;
   const invalidCount =
@@ -89,6 +102,7 @@ function questionOptionIndexes(question: ElwoodQuestion, ids: readonly string[])
   for (let index = 0; index < length; index++) {
     const id: unknown = ids[index];
     if (!Object.hasOwn(ids, index) || typeof id !== "string" || selected.has(id)) throw invalid();
+    countBytes(id);
     selected.add(id);
     indexes.push(optionIndexesById.get(id) ?? -1);
   }

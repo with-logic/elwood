@@ -40,6 +40,8 @@ export class QuestionTransaction {
     answers: readonly ElwoodQuestionAnswer[],
     options?: ElwoodQuestionAnswerOptions,
   ): Promise<void> {
+    // Reject overlap before reading caller getters; the final check catches their reentry.
+    if (this.active) throw questionAnswerFailed();
     const request = this.registry.get(requestId);
     if (!request)
       throw questionError(
@@ -49,11 +51,10 @@ export class QuestionTransaction {
     const timeoutMs = questionTimeoutMs(options);
     const validated = validateQuestionAnswers(request, answers);
     this.releaseSettledReservation();
-    if (this.isBusy() || !adapter) throw questionAnswerFailed();
     const operation = new AbortController();
     const signal = this.operationSignal(operation, options);
-    // Reading options.signal can reenter run() before this attempt installs its owner.
-    if (this.isBusy()) throw questionAnswerFailed();
+    // Caller getters can reenter run() before this attempt installs its owner.
+    if (this.isBusy() || !adapter) throw questionAnswerFailed();
     this.active = operation;
     const reservation = { requestId, inFlightWrites: 0 };
     const attempt = new QuestionAttempt(request, operation, signal, this.registry, timeoutMs);
@@ -106,11 +107,12 @@ export class QuestionTransaction {
     options?: ElwoodQuestionAnswerOptions,
   ): AbortSignal {
     try {
+      const callerSignal = options?.signal;
       return AbortSignal.any([
         operation.signal,
         this.closing,
         this.inputSignal(),
-        ...(options?.signal === undefined ? [] : [options.signal]),
+        ...(callerSignal === undefined ? [] : [callerSignal]),
       ]);
     } catch {
       throw questionError("invalid_question_answer", "The question answer options are invalid.");
