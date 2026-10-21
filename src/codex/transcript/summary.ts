@@ -125,7 +125,9 @@ function message(payload: Item): CodexTranscriptSummary {
 function assistantMessageText(payload: Item, role: string): string | undefined {
   if (role !== "assistant") return undefined;
   const phase = payload["phase"] ?? undefined;
-  if (phase !== undefined && phase !== "final_answer" && phase !== "commentary") return undefined;
+  const hasUnsupportedPhase =
+    phase !== undefined && phase !== "final_answer" && phase !== "commentary";
+  if (hasUnsupportedPhase) return undefined;
   const content = payload["content"];
   if (typeof content === "string") return content;
   if (phase === undefined || !Array.isArray(content)) return undefined;
@@ -138,7 +140,9 @@ function assistantMessageText(payload: Item, role: string): string | undefined {
 
 function agentMessage(payload: Item): CodexTranscriptSummary {
   const phase = payload["phase"] ?? undefined;
-  if (phase !== undefined && phase !== "final_answer") return { kind: "other", label: "assistant" };
+  // Non-final legacy mirrors stay raw: canonical response items own progress and final replies.
+  if (phase !== undefined && phase !== "final_answer")
+    return { kind: "other", label: "agent_message" };
   return { kind: "message", label: "assistant", ...(text(payload["message"]) ?? {}) };
 }
 

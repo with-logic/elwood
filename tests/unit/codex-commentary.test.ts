@@ -101,6 +101,13 @@ test.each([
   expect(project(item).text).toBeUndefined();
 });
 
+test("C-CODEX-22 suppressed legacy mirrors retain their raw item-type label", () => {
+  expect(project(mirror("commentary", "mirror"))).toMatchObject({
+    kind: "other",
+    label: "agent_message",
+  });
+});
+
 test("C-CODEX-22 real watcher emits progress updates and one final in order without mirror duplicates", () => {
   const path = join(tempDirForUnit(), "rollout.jsonl");
   writeFileSync(path, "");

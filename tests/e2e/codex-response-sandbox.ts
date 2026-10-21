@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CodexSessionOptions } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
@@ -122,4 +123,31 @@ export async function nativeResponseSandbox() {
     dispose();
     throw error;
   }
+}
+
+/** Shared pinned, no-tools session policy for both native response proofs. */
+export function noToolsResponseOptions(
+  sandbox: Pick<Awaited<ReturnType<typeof nativeResponseSandbox>>, "cwd" | "stateDir">,
+  onToolAttempt: () => void,
+): CodexSessionOptions {
+  return {
+    cwd: sandbox.cwd,
+    stateDir: sandbox.stateDir,
+    model: responseModel,
+    reasoningEffort: "low",
+    autotrust: true,
+    autoupdate: false,
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    initialSize: { cols: 140, rows: 35 },
+    hooks: {
+      PreToolUse: () => {
+        onToolAttempt();
+        return {
+          permissionDecision: "deny",
+          permissionDecisionReason: "This response fixture permits no tools.",
+        };
+      },
+    },
+  };
 }

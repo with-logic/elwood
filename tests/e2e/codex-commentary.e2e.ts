@@ -7,11 +7,12 @@ import { join } from "node:path";
 import test from "node:test";
 import { CodexSession, type CodexSessionApi } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { closeNativeResponse, trackResponseKill } from "./codex-response-cleanup.ts";
 import {
   assertParentEnvironmentUnchanged,
   nativeResponseSandbox,
+  noToolsResponseOptions,
   responseBinary,
-  responseModel,
 } from "./codex-response-sandbox.ts";
 
 const available = existsSync(responseBinary) && existsSync(join(homedir(), ".codex/auth.json"));
@@ -43,28 +44,17 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
   const configuration = parentConfiguration();
   const sandbox = await nativeResponseSandbox();
   let live: CodexSessionApi | undefined;
-  let tools = 0;
-  const facade = new CodexSession({
-    cwd: sandbox.cwd,
-    stateDir: sandbox.stateDir,
-    model: responseModel,
-    reasoningEffort: "low",
-    autotrust: true,
-    autoupdate: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    initialSize: { cols: 140, rows: 35 },
-    hooks: {
-      PreToolUse: () => {
-        tools++;
-        void live?.kill();
-        return { permissionDecision: "deny", permissionDecisionReason: "No tools in this proof." };
-      },
-    },
-  });
+  let toolAttempts = 0;
+  const killAttempts: Promise<void>[] = [];
+  const facade = new CodexSession(
+    noToolsResponseOptions(sandbox, () => {
+      toolAttempts++;
+      trackResponseKill(live, killAttempts);
+    }),
+  );
   const abort = () => {
     sandbox.end();
-    void live?.kill();
+    trackResponseKill(live, killAttempts);
   };
   t.signal.addEventListener("abort", abort, { once: true });
   try {
@@ -90,12 +80,12 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
     assert.equal(messages[0]!.status, "running");
     assert.ok(statuses.includes("running"));
     assert.equal(live.status, "ready");
-    assert.equal(tools, 0);
+    assert.equal(toolAttempts, 0);
     assert.deepEqual(sandbox.writes, { enters: 1, pastes: 1 });
   } finally {
     sandbox.end();
     try {
-      await facade.close();
+      await closeNativeResponse(() => facade.close(), live, killAttempts);
     } finally {
       resetRuntimeSeamsForTests();
       t.signal.removeEventListener("abort", abort);
