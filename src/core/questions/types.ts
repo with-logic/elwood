@@ -15,7 +15,7 @@ export type ElwoodQuestion = {
   /** Free text is forbidden, replaces choices, or accompanies choices, respectively. */
   readonly textMode: "none" | "alternative" | "additional";
   /** Whether the native question supports entering secret text. */
-  readonly secret: boolean;
+  readonly supportsSecretInput: boolean;
 };
 export type ElwoodQuestionRequest = {
   readonly id: string;

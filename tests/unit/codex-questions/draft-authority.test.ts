@@ -10,7 +10,7 @@ const note: QuestionDefinition = {
   options: [],
   selection: "none",
   textMode: "alternative",
-  secret: false,
+  supportsSecretInput: false,
 };
 test("captured empty placeholder is not the literal answer text", () => {
   const empty = questionView(captured("async-after-first.txt"))!;

@@ -11,7 +11,7 @@ const question: QuestionDefinition = {
   options: [],
   selection: "none",
   textMode: "alternative",
-  secret: false,
+  supportsSecretInput: false,
 };
 test.each([
   ["queued", "Type your answer"],

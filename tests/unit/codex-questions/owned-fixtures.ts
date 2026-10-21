@@ -74,7 +74,7 @@ export function definitions(mode: Mode): readonly QuestionDefinition[] {
           ],
     selection: mode === "queued" ? "none" : "single",
     textMode: mode === "queued" ? "alternative" : "additional",
-    secret: false,
+    supportsSecretInput: false,
   }));
 }
 export function metadata(mode: Mode, count = 2) {

@@ -77,7 +77,7 @@ function parseQuestion(item: unknown, index: number, queued: boolean): NativeQue
       options: queued ? options : [...options, modalOther],
       selection: options.length > 0 ? "single" : "none",
       textMode: queued ? "alternative" : "additional",
-      secret: false,
+      supportsSecretInput: false,
     },
   };
 }

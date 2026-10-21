@@ -16,7 +16,7 @@ export const definitions: readonly ClaudeQuestionFixture[] = [
     ],
     selection: "single",
     textMode: "alternative",
-    secret: false,
+    supportsSecretInput: false,
   },
   {
     prompt: "Which test features?",
@@ -27,7 +27,7 @@ export const definitions: readonly ClaudeQuestionFixture[] = [
     ],
     selection: "multiple",
     textMode: "none",
-    secret: false,
+    supportsSecretInput: false,
   },
 ];
 export function registry() {

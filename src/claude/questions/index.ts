@@ -88,7 +88,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
         options: question.options.map((option) => ({ ...option })),
         selection: question.multiSelect ? "multiple" : "single",
         textMode: question.multiSelect ? "none" : "alternative",
-        secret: false,
+        supportsSecretInput: false,
       })),
     };
     this.seenChrome = false;

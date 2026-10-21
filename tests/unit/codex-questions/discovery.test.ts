@@ -21,7 +21,7 @@ describe("Codex native question lifecycle", () => {
           prompt: "ELWOOD_ASYNC_COLOR: Which color?",
           selection: "single",
           textMode: "alternative",
-          secret: false,
+          supportsSecretInput: false,
           options: [{ label: "Amber" }, { label: "Blue" }],
         },
       ],
