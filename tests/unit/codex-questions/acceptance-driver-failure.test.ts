@@ -16,6 +16,7 @@ test.each([
       }),
     ).rejects.toThrow("native write rejected");
     await h.adapter.answer(h.request, h.answers, scripted.io);
+    expect(scripted.writes).toEqual(queued ? ["\r"] : ["\t", "\r", "\t", "\r"]);
     h.acknowledge("Amber");
     expect(h.events.at(-1)).toMatchObject({ phase: "closed", reason: "answered" });
   } finally {
