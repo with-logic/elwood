@@ -15,10 +15,18 @@ export function questionError(
   return Object.assign(new Error(message), { code, details });
 }
 
-/** Confirmation failures contain no raw native exception or answer content. */
-export function questionAnswerFailed() {
+export type QuestionFailurePhase =
+  | "frame_wait"
+  | "adapter"
+  | "terminal_write"
+  | "native_acceptance"
+  | "revoked";
+
+/** Fixed diagnostic categories never carry a caller's answer or a raw exception. */
+export function questionAnswerFailed(phase?: QuestionFailurePhase) {
   return questionError(
     "question_answer_failed",
     "The native question answer could not be confirmed. Refresh pending questions and inspect the terminal before retrying.",
+    phase === undefined ? {} : { phase },
   );
 }

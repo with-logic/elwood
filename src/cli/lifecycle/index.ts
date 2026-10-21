@@ -3,13 +3,12 @@
  * Implements PRD §12A.2/§12A.5 and C-CLI-07 through C-CLI-09/C-CLI-17.
  */
 
+import { MAX_TIMER_DELAY_MS } from "../../core/timers.ts";
 import type { Unsubscribe } from "../../core/types.ts";
 import type { CliCleanup } from "../output/types.ts";
 import type { CliSessionFacade } from "../session/index.ts";
 import type { EffectiveRunRequest } from "../types.ts";
 import { type CliFailure, cleanupAction, executionFailure } from "./outcome.ts";
-
-const MAX_TIMER_MS = 2_147_483_647;
 
 export type CliSignalSource = { readonly onSigint: (handler: () => void) => Unsubscribe };
 export type CliLifecycleClock = {
@@ -156,13 +155,13 @@ export class CliLifecycle {
     const tick = () => {
       const remaining = deadline - this.clock.now();
       if (remaining > 0) {
-        this.timer = this.clock.setTimer(tick, Math.min(remaining, MAX_TIMER_MS));
+        this.timer = this.clock.setTimer(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
         return;
       }
       if (this.record({ code: "timeout", message: "Timed out.", exitCode: 124 }))
         this.requestControl("interrupt");
     };
-    this.timer = this.clock.setTimer(tick, Math.min(timeoutMs, MAX_TIMER_MS));
+    this.timer = this.clock.setTimer(tick, Math.min(timeoutMs, MAX_TIMER_DELAY_MS));
   }
 
   private clearDeadline(): void {
