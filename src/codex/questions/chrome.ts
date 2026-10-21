@@ -1,4 +1,4 @@
-/** Recognize native Codex question footer chrome independently of input parsing (PRD §4). */
+/** Recognize native Codex question footer chrome independently of input parsing (PRD §4; C-ATTN-02). */
 export const modalFooter =
   /^tab to add notes \| enter to submit (?:answer|all) \| ←\/→ to navigate questions \| esc to interrupt$/;
 export const notesFooter = /^tab or esc to clear notes \| enter to submit (?:answer|all)$/;
@@ -9,8 +9,10 @@ export function blockingQuestionVisible(text: string): boolean {
     .trimEnd()
     .split("\n")
     .map((line) => line.trim());
+  const footer = lines.at(-1)!;
   return (
-    lines.some((line) => /^Question \d+\/\d+ \(\d+ unanswered\)$/.test(line)) &&
-    (modalFooter.test(lines.at(-1)!) || notesFooter.test(lines.at(-1)!))
+    (lines.some((line) => /^Question \d+\/\d+ \(\d+ unanswered\)$/.test(line)) &&
+      (modalFooter.test(footer) || notesFooter.test(footer))) ||
+    (lines.includes("• Queued follow-up inputs") && queuedFooter.test(footer))
   );
 }

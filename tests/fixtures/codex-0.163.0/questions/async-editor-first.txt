@@ -1,0 +1,44 @@
+
+  >_ OpenAI Codex (v0.163.0)
+     <SANDBOX>/project
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› Native question lifecycle characterization only. Do not inspect files or run tools except request_user_input_async. Immediately invoke
+  request_user_input_async once with exactly two questions: title "ELWOOD_ASYNC_COLOR: Which color?", options ["Amber", "Blue"]; title
+  "ELWOOD_ASYNC_NOTE: What note?", no options. After raising them, continue carefully reasoning silently about the first 150 prime numbers
+  and do not send your final answer until I answer both questions. Then report the exact color and note received. Do not ask prose
+  questions.
+
+
+• ELWOOD_ASYNC_COLOR: Which color?
+
+  • Amber
+  • Blue
+
+  ELWOOD_ASYNC_NOTE: What note?
+ 
+◦ Working (2s • esc to interrupt)
+ 
+• Queued follow-up inputs
+ 
+  1 of 2
+  ELWOOD_ASYNC_COLOR: Which color?                                                                                                        
+ 
+  › 1. Amber                                                                                                                              
+    2. Blue
+    3. Other
+ 
+  enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question
+ 
+
+
+
+
+
+
+
+
+
+

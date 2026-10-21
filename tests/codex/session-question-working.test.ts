@@ -6,22 +6,25 @@ import { startCodex } from "../../src/index.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
-test("C-TURN-03 C-QUESTION-01 pulsing queued-question work stays running", async () => {
+test("C-TURN-03 pulsing collapsed queued-question work stays running", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });
-  await becomeReady(session.elwoodSessionId, cwd);
-  const paint = (glyph: string) =>
-    ptys[0]!.emitData(
-      `\x1b[2J\x1b[H${glyph} Working (2s • esc to interrupt)\r\n• Queued follow-up inputs\r\n  ? 1 question\r\n    ⇧← to answer\r\n› Ask Codex to do anything`,
-    );
-  paint("•");
-  await session.terminal.settled();
-  expect(session.status).toBe("running");
-  paint("◦");
-  await session.terminal.settled();
-  expect(session.status).toBe("running");
-  await session.kill();
+  try {
+    await becomeReady(session.elwoodSessionId, cwd);
+    const paint = (glyph: string) =>
+      ptys[0]!.emitData(
+        `\x1b[2J\x1b[H${glyph} Working (2s • esc to interrupt)\r\n• Queued follow-up inputs\r\n  ? 1 question\r\n    ⇧← to answer\r\n› Ask Codex to do anything`,
+      );
+    paint("•");
+    await session.terminal.settled();
+    expect(session.status).toBe("running");
+    paint("◦");
+    await session.terminal.settled();
+    expect(session.status).toBe("running");
+  } finally {
+    await session.kill();
+  }
 });
 test.each([
   "◦ Working (0s • esc to interrupt)",
