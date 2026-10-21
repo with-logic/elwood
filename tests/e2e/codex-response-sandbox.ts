@@ -15,6 +15,7 @@ import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
+import { prefixShellArgument } from "./prefix-shell-argument.ts";
 
 export const responseModel = "gpt-6-luna";
 export const responseBinary = join(
@@ -47,11 +48,7 @@ export async function nativeResponseSandbox() {
     if ((await runProbe("env", [`CODEX_HOME=${home}`, binary, "login", "status"])).status !== 0)
       throw new Error("Private Codex authentication unavailable");
     const pin = (args: readonly string[]) =>
-      args.map((arg, i) =>
-        i === args.length - 1
-          ? `export CODEX_HOME=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; ${arg}`
-          : arg,
-      );
+      prefixShellArgument(args, `export CODEX_HOME=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"`);
     setCommandRunnerForTests((command, args) =>
       runProbe("env", [`ZDOTDIR=${home}`, command, ...pin(args)]),
     );

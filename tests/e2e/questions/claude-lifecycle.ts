@@ -3,14 +3,18 @@
 export function claudeProofLifecycle(signal: AbortSignal) {
   let facade: { close(): Promise<void> } | undefined;
   let closing: Promise<void> | undefined;
+  let cancellationClose: Promise<void> | undefined;
   const close = (): Promise<void> => {
     if (!facade) return Promise.resolve();
     closing ??= facade.close();
-    void closing.catch(() => undefined);
+    const attempt = closing;
+    void attempt.catch(() => {
+      if (closing === attempt) closing = undefined;
+    });
     return closing;
   };
   const abort = () => {
-    void close();
+    cancellationClose = close();
   };
   signal.addEventListener("abort", abort, { once: true });
   return {
@@ -28,7 +32,12 @@ export function claudeProofLifecycle(signal: AbortSignal) {
     ): Promise<void> {
       signal.removeEventListener("abort", abort);
       const failures: unknown[] = [];
-      for (const action of [close, ...actions]) {
+      const finishClose = async () => {
+        // Join an abort-triggered attempt before retrying a transient shutdown failure.
+        await cancellationClose?.catch(() => undefined);
+        await close();
+      };
+      for (const action of [finishClose, ...actions]) {
         try {
           await action();
         } catch (error) {

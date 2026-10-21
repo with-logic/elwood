@@ -23,7 +23,10 @@ import {
 } from "../../../src/runtime/seams.ts";
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
+import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { claudeQuestionLabel, claudeQuestionVersion } from "./claude-cases.ts";
+
+const keychainTimeoutMs = 5_000;
 
 /** The skip gate and sandbox select from the same pinned and installed binary locations. */
 export function claudeQuestionBinary(): string | undefined {
@@ -47,10 +50,14 @@ function credentials(): string {
   const result = spawnSync(
     "/usr/bin/security",
     ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: keychainTimeoutMs },
   );
   if (result.status !== 0) throw new Error("Private Claude authentication unavailable");
-  JSON.parse(result.stdout);
+  try {
+    JSON.parse(result.stdout);
+  } catch {
+    throw new Error("Private Claude authentication is malformed");
+  }
   return result.stdout.trim();
 }
 
@@ -68,6 +75,9 @@ function parentFingerprint(credential: string): Readonly<Record<string, string>>
   ]);
 }
 
+/** Owns private credentials and process seams; dispose removes/resets them and checks parent drift.
+ * Setup failures attempt private-root cleanup and preserve the original error; disposal may report drift.
+ */
 export async function nativeClaudeQuestionSandbox() {
   const environment = { ...process.env };
   const credential = credentials();
@@ -105,13 +115,11 @@ export async function nativeClaudeQuestionSandbox() {
       binary,
       "--version",
     ]);
-    if (version.stdout.trim() !== `${claudeQuestionVersion} (Claude Code)`)
+    if (version.status !== 0 || version.stdout.trim() !== `${claudeQuestionVersion} (Claude Code)`)
       throw new Error(`Pinned ${claudeQuestionLabel} question version unavailable`);
     const pin = (args: readonly string[]) =>
-      args.map((arg, index) =>
-        index === args.length - 1
-          ? `export HOME=${shellQuote(home)} CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL; ${arg}`
-          : arg,
+      prefixShellArgument(args,
+        `export HOME=${shellQuote(home)} CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL`,
       );
     setCommandRunnerForTests((command, args) =>
       runProbe("env", [
@@ -173,7 +181,11 @@ export async function nativeClaudeQuestionSandbox() {
     };
   } catch (error) {
     resetRuntimeSeamsForTests();
-    rmSync(root, { recursive: true, force: true });
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      // Keep the setup failure as the primary diagnostic if private-file removal also fails.
+    }
     throw error;
   }
 }

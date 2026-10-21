@@ -4,13 +4,18 @@ import { settledCursorVisible } from "../../../src/terminal/cursor.ts";
 import { noteLastLine } from "./claude-cases.ts";
 import { privateQuestionArtifacts } from "./proof-files.ts";
 
+type ArtifactStage = "review" | "submit" | "text";
+
+/** Owns private diagnostic files; observe/failure/save suppress both capture and diagnostic errors.
+ * The caller owns removing root after the native session has closed.
+ */
 export function claudeQuestionArtifacts(
-  session: () => ClaudeSessionApi | undefined,
+  session: () => Pick<ClaudeSessionApi, "terminal" | "status"> | undefined,
   root: string,
   diagnostic: (message: string) => void,
 ) {
   let artifacts: ReturnType<typeof privateQuestionArtifacts> | undefined;
-  const frames: Record<string, unknown> = {};
+  const frames: Partial<Record<ArtifactStage, unknown>> = {};
   const bestEffort = (capture: () => void) => {
     try {
       capture();
@@ -31,7 +36,7 @@ export function claudeQuestionArtifacts(
         const terminal = session()?.terminal;
         if (!terminal) return;
         const snapshot = terminal.snapshot();
-        const stage = snapshot.text.includes("Review your answers")
+        const stage: ArtifactStage | undefined = snapshot.text.includes("Review your answers")
           ? "review"
           : /^❯\s+Submit$/m.test(snapshot.text)
             ? "submit"

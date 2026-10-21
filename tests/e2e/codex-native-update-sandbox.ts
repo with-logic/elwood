@@ -14,6 +14,7 @@ import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
+import { prefixShellArgument } from "./prefix-shell-argument.ts";
 
 export async function nativeUpdaterSandbox(sourceBinary: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_update-")));
@@ -50,11 +51,7 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
     if ((await probe(["login", "status"])).status !== 0)
       throw new Error("Native updater proof requires authenticated Codex");
     const pin = (args: readonly string[]) =>
-      args.map((arg, index) =>
-        index === args.length - 1
-          ? `export CODEX_HOME=${shellQuote(codexProofHome)} PATH=${shellQuote(release)}:"$PATH"; ${arg}`
-          : arg,
-      );
+      prefixShellArgument(args, `export CODEX_HOME=${shellQuote(codexProofHome)} PATH=${shellQuote(release)}:"$PATH"`);
     setCommandRunnerForTests((command, args) => runProbe(command, pin(args)));
     const applicationAttempts: string[] = [];
     const protocolReplies: string[] = [];

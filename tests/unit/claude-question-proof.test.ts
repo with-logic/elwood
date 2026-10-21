@@ -1,41 +1,46 @@
-/** Offline isolation, cancellation and cleanup proofs for native Claude questions (PRD §12). */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { claudeQuestionArtifacts } from "../e2e/questions/claude-artifacts.ts";
+/** Offline private-home, bounded subprocess and process-seam guards (PRD §12). */
+import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { expect, test } from "vitest";
+import { currentCommandRunner, currentPtyFactory, setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { claudeQuestionVersion } from "../e2e/questions/claude-cases.ts";
-import { claudeProofLifecycle } from "../e2e/questions/claude-lifecycle.ts";
-import {
-  claudeQuestionBinary,
-  nativeClaudeQuestionSandbox,
-} from "../e2e/questions/claude-sandbox.ts";
+import { mocks, nativeClaudeQuestionSandbox, claudeQuestionBinary } from "./claude-proof-fixture.ts";
 
-const mocks = vi.hoisted(() => ({ parent: "", keychain: vi.fn(), probe: vi.fn() }));
-vi.mock("node:child_process", async (original) => ({
-  ...(await original<typeof import("node:child_process")>()),
-  spawnSync: mocks.keychain,
-}));
-vi.mock("node:os", async (original) => ({
-  ...(await original<typeof import("node:os")>()),
-  homedir: () => mocks.parent,
-}));
-vi.mock("../../src/runtime/probe.ts", () => ({ runProbe: mocks.probe }));
-beforeEach(() => {
-  mocks.parent = mkdtempSync(join(tmpdir(), "elwood-claude-proof-parent-"));
-  const versions = join(mocks.parent, ".local/share/claude/versions");
-  mkdirSync(versions, { recursive: true });
-  writeFileSync(join(versions, claudeQuestionVersion), "offline binary fixture");
-  writeFileSync(join(mocks.parent, ".claude.json"), '{"parentOnly":true}');
-  mocks.keychain.mockReset().mockReturnValue({ status: 0, stdout: '{"syntheticCredential":true}' });
-  mocks.probe
-    .mockReset()
-    .mockResolvedValue({ status: 0, stdout: `${claudeQuestionVersion} (Claude Code)`, stderr: "" });
+test("malformed Keychain output never appears in parse errors", async () => {
+  const canary = "SYNTHETIC_PRIVATE_KEYCHAIN_PARSE_CANARY";
+  mocks.keychain.mockReturnValueOnce({ pid: 1, status: 0, signal: null, output: [], stdout: canary, stderr: "" });
+  const failure: unknown = await nativeClaudeQuestionSandbox().catch((error: unknown) => error);
+  expect(failure instanceof Error).toBe(true);
+  if (!(failure instanceof Error)) throw new Error("Expected sanitized authentication error");
+  expect(failure.message).toBe("Private Claude authentication is malformed");
+  expect(String(failure).includes(canary)).toBe(false);
+  expect("cause" in failure).toBe(false);
 });
-afterEach(() => {
-  resetRuntimeSeamsForTests();
-  rmSync(mocks.parent, { recursive: true, force: true });
+
+test.each([{ status: 1, stdout: `${claudeQuestionVersion} (Claude Code)` }, { status: null, stdout: `${claudeQuestionVersion} (Claude Code)` }, { status: 0, stdout: "wrong version" }])("failed version $status/$stdout cleans credentials and resets seams", async ({ status, stdout }) => {
+  const factory = currentPtyFactory();
+  const runner = currentCommandRunner();
+  setPtyFactoryForTests(() => { throw new Error("obsolete seam"); });
+  setCommandRunnerForTests(() => { throw new Error("obsolete seam"); });
+  mocks.probe.mockImplementationOnce((_command, args) => {
+    const home = args[0]!.slice("HOME=".length);
+    expect(existsSync(join(home, ".credentials.json"))).toBe(true);
+    return Promise.resolve({ status, stdout, stderr: "" });
+  });
+  await expect(nativeClaudeQuestionSandbox()).rejects.toThrow("version unavailable");
+  const home = mocks.probe.mock.calls[0]![1][0]!.slice("HOME=".length);
+  expect(existsSync(dirname(home))).toBe(false);
+  expect(currentPtyFactory()).toBe(factory);
+  expect(currentCommandRunner()).toBe(runner);
+});
+
+test("failed setup cleanup retains the original setup error", async () => {
+  const primary = new Error("synthetic setup failure");
+  mocks.probe.mockRejectedValueOnce(primary);
+  mocks.remove.mockImplementationOnce(() => { throw new Error("synthetic cleanup failure"); });
+  await expect(nativeClaudeQuestionSandbox()).rejects.toBe(primary);
+  const home = mocks.probe.mock.calls[0]![1][0]!.slice("HOME=".length);
+  rmSync(dirname(home), { recursive: true, force: true });
 });
 
 test("pinned-only setup reuses one credential and writes minimal config", async () => {
@@ -78,79 +83,3 @@ test("post-run non-record config reports the guard after removing private creden
   expect(existsSync(sandbox.root)).toBe(false);
 });
 
-test("artifact write and even diagnostic failures remain best-effort", () => {
-  const root = mkdtempSync(join(tmpdir(), "elwood-claude-artifact-proof-"));
-  const diagnostic = vi.fn();
-  const artifacts = claudeQuestionArtifacts(() => undefined, root, diagnostic);
-  rmSync(root, { recursive: true, force: true });
-  expect(() => artifacts.save()).not.toThrow();
-  expect(diagnostic).toHaveBeenCalledOnce();
-  expect(() =>
-    claudeQuestionArtifacts(
-      () => undefined,
-      root,
-      () => {
-        throw new Error("diagnostic");
-      },
-    ),
-  ).not.toThrow();
-});
-
-test("cancellation during setup prevents lazy start but still disposes", async () => {
-  const abort = new AbortController();
-  const lifecycle = claudeProofLifecycle(abort.signal);
-  abort.abort();
-  const start = vi.fn(async () => undefined);
-  await expect(lifecycle.start({ start, close: async () => undefined })).rejects.toThrow();
-  expect(start).not.toHaveBeenCalled();
-  const dispose = vi.fn();
-  await lifecycle.finish([dispose], true, vi.fn());
-  expect(dispose).toHaveBeenCalledOnce();
-});
-
-test("cancellation joins in-flight lazy start and never returns a turn-ready session", async () => {
-  const abort = new AbortController();
-  const lifecycle = claudeProofLifecycle(abort.signal);
-  const started = Promise.withResolvers<void>();
-  const close = vi.fn(async () => {
-    await started.promise;
-  });
-  const pending = lifecycle.start({ start: () => started.promise, close });
-  abort.abort();
-  expect(close).toHaveBeenCalledOnce();
-  started.resolve();
-  await expect(pending).rejects.toThrow();
-  const dispose = vi.fn();
-  await lifecycle.finish([dispose], true, vi.fn());
-  expect(close).toHaveBeenCalledOnce();
-  expect(dispose).toHaveBeenCalledOnce();
-});
-
-test.each([
-  false,
-  true,
-])("cleanup attempts every action and preserves primary failure=%s", async (failed) => {
-  const lifecycle = claudeProofLifecycle(new AbortController().signal);
-  const failure = new Error("close");
-  await lifecycle.start({
-    start: async () => undefined,
-    close: () => Promise.reject(failure),
-  });
-  const dispose = vi.fn();
-  const diagnostic = vi.fn();
-  const finish = lifecycle.finish(
-    [
-      () => {
-        throw new Error("privacy");
-      },
-      dispose,
-    ],
-    failed,
-    diagnostic,
-  );
-  if (failed) await expect(finish).resolves.toBeUndefined();
-  else await expect(finish).rejects.toMatchObject({ errors: [failure, new Error("privacy")] });
-  expect(dispose).toHaveBeenCalledOnce();
-  expect(diagnostic).toHaveBeenCalledTimes(failed ? 1 : 0);
-  if (failed) expect(diagnostic).toHaveBeenCalledWith("Claude question proof cleanup also failed");
-});
