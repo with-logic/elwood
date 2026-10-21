@@ -15,6 +15,6 @@ export abstract class ClaudeQuestionsSession extends AgentSessionBase {
     });
   }
   resolveQuestionHook(event: ClaudeHookEvent, result: ClaudeHookResult): void {
-    this.questionHookGate.resolve(event, result);
+    this.questionHookGate.resolveHookResult(event, result);
   }
 }
