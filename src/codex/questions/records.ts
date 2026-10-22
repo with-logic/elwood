@@ -33,23 +33,39 @@ export function jsonRecord(value: unknown): Record<string, unknown> | undefined 
 }
 const asyncQuestionToolName = "request_user_input_async";
 
+/** Recognize native envelopes even when their question definitions are unsupported. */
+export function questionEnvelope(
+  payload: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (payload["type"] === "function_call")
+    return payload["name"] === "request_user_input" || payload["name"] === asyncQuestionToolName
+      ? payload
+      : undefined;
+  const item = payload["type"] === "item_completed" ? payload["item"] : payload;
+  return isRecord(item) &&
+    nativeMessage(item) &&
+    item["delivery"] === "async" &&
+    Array.isArray(item["questions"])
+    ? item
+    : undefined;
+}
 /** Read modal/async function calls and accepted async assistant-message mirrors.
  * Unsupported records within the metadata budget return undefined.
  * @throws QuestionLimitError for raw-argument or decoded question-metadata limit violations. */
 export function questionCall(payload: Record<string, unknown>): QuestionCall | undefined {
-  if (payload["type"] === "function_call") {
-    const name = payload["name"];
-    if (name !== "request_user_input" && name !== asyncQuestionToolName) return undefined;
-    checkQuestionArguments(payload["arguments"], payload["call_id"]);
-    const argumentsValue = jsonRecord(payload["arguments"]);
-    return parsedCall(payload["call_id"], argumentsValue?.["questions"], {
+  const envelope = questionEnvelope(payload);
+  if (!envelope) return undefined;
+  if (envelope["type"] === "function_call") {
+    const name = envelope["name"];
+    checkQuestionArguments(envelope["arguments"], envelope["call_id"]);
+    const argumentsValue = jsonRecord(envelope["arguments"]);
+    return parsedCall(envelope["call_id"], argumentsValue?.["questions"], {
       queued: name === asyncQuestionToolName,
       accepted: false,
     });
   }
-  const item = payload["type"] === "item_completed" ? payload["item"] : payload;
-  if (!(isRecord(item) && nativeMessage(item) && hasAsyncQuestionMetadata(item))) return undefined;
-  return parsedCall(item["id"], item["questions"], { queued: true, accepted: true });
+  if (!hasAsyncQuestionMetadata(envelope)) return undefined;
+  return parsedCall(envelope["id"], envelope["questions"], { queued: true, accepted: true });
 }
 function nativeMessage(item: Record<string, unknown>): boolean {
   return (
