@@ -11,6 +11,7 @@ import {
 } from "./controller-helpers.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { composer, nativeHook, nativeQuestions } from "./lifecycle-helpers.ts";
+import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 const current = frame(fixture("questions").text.replace(/^←.*$/m, " ☐ Color"));
 const hook = (name = "PreToolUse", extra: Readonly<Record<string, unknown>> = {}) =>
@@ -46,7 +47,7 @@ test("a rejected matched Enter preserves its error and releases the later compos
 
 test("an aborted physical Enter cannot rearm its API request before native closure", async () => {
   const entered = Promise.withResolvers<void>();
-  const h = setup(undefined, undefined, () => entered.resolve());
+  const h = setup({ onInput: () => entered.resolve() });
   const caller = new AbortController();
   const observed: ElwoodQuestionEvent[] = [];
   h.events.on("question", (event) => observed.push(event));
@@ -109,16 +110,7 @@ test("a predecessor answer failure cannot release a successor submission", async
       adapter.observe(hook("PreToolUse", { tool_use_id: "successor" }));
       adapter.render(current);
       const successor = requests.list()[0]!;
-      await adapter.answer(successor, [{ optionIndexes: [0] }], {
-        signal: new AbortController().signal,
-        frame: () => current,
-        wait: async () => current,
-        write: (_nextInput, nextMatches, onDispatch) => {
-          expect(nextMatches(current)).toBe(true);
-          onDispatch?.();
-          return Promise.resolve();
-        },
-      });
+      await adapter.answer(successor, [{ optionIndexes: [0] }], scriptedQuestionIo(current, []).io);
       throw failure;
     },
   };

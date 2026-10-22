@@ -133,7 +133,7 @@ test("shutdown retires all requests despite throwing closed observers", () => {
 test("already-closed sessions cannot configure or publish", () => {
   const closing = new AbortController();
   closing.abort();
-  const h = setup(closing);
+  const h = setup({ closing });
   const factory = vi.fn(() => h.adapter);
   h.questions.configure(factory);
   expect(factory).not.toHaveBeenCalled();

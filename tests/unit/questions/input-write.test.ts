@@ -15,9 +15,11 @@ test("assertLive rejection prevents real terminal dispatch without signal aborti
   });
   await h.terminal.writeOutput("question");
   const send = vi.spyOn(h.input.automated, "sendInput");
+  const onDispatch = vi.fn();
   expect(h.io.signal.aborted).toBe(false);
-  await expect(h.track(h.io.write("forbidden", () => true))).rejects.toBe(failure);
+  await expect(h.track(h.io.write("forbidden", () => true, onDispatch))).rejects.toBe(failure);
   expect(h.io.signal.aborted).toBe(false);
+  expect(onDispatch).not.toHaveBeenCalled();
   expect(send).not.toHaveBeenCalled();
   expect(h.writes).toEqual([]);
   expect(h.started).not.toHaveBeenCalled();
@@ -100,15 +102,49 @@ test.each([
   const h = setup();
   await h.terminal.writeOutput("question");
   const send = vi.spyOn(h.input.automated, "sendInput");
+  const onDispatch = vi.fn();
   if (when === "before write") h.operation.abort();
   await expect(
     h.track(
-      h.io.write("forbidden", () => {
-        if (when === "inside predicate") h.operation.abort();
-        return true;
-      }),
+      h.io.write(
+        "forbidden",
+        () => {
+          if (when === "inside predicate") h.operation.abort();
+          return true;
+        },
+        onDispatch,
+      ),
     ),
   ).rejects.toMatchObject({ code: "question_answer_failed" });
+  expect(onDispatch).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(h.writes).toEqual([]);
+  expect(h.started).not.toHaveBeenCalled();
+});
+
+test.each([
+  "nonmatching frame",
+  "closed request",
+  "request closed by predicate",
+] as const)("%s rejects before the real input dispatch callback", async (reason) => {
+  const h = setup();
+  await h.terminal.writeOutput("foreign frame");
+  const send = vi.spyOn(h.input.automated, "sendInput");
+  const onDispatch = vi.fn();
+  if (reason === "closed request") h.requests.close(h.request.id, "answered");
+  await expect(
+    h.track(
+      h.io.write(
+        "forbidden",
+        (frame) => {
+          if (reason === "request closed by predicate") h.requests.close(h.request.id, "answered");
+          return reason !== "nonmatching frame" || frame.text.includes("native questionnaire");
+        },
+        onDispatch,
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "question_answer_failed" });
+  expect(onDispatch).not.toHaveBeenCalled();
   expect(send).not.toHaveBeenCalled();
   expect(h.writes).toEqual([]);
   expect(h.started).not.toHaveBeenCalled();

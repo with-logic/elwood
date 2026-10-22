@@ -17,11 +17,16 @@ const terminals: ReturnType<typeof createHeadlessTerminal>[] = [];
 export function disposeTerminals(): void {
   for (const terminal of terminals.splice(0)) terminal.dispose();
 }
-export function controllerHarness(
+type ControllerHarnessOptions = {
+  readonly closing?: AbortController;
+  readonly input?: AbortController;
+  readonly onInput?: (data: string | Uint8Array) => void;
+};
+export function controllerHarness({
   closing = new AbortController(),
   input = new AbortController(),
-  onInput?: (data: string | Uint8Array) => void,
-) {
+  onInput,
+}: ControllerHarnessOptions = {}) {
   const writes: (string | Uint8Array)[] = [];
   const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, (data) => {
     writes.push(data);
