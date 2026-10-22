@@ -21,14 +21,20 @@ const editor = (count: number) =>
   );
 test("unchanged redraws publish once despite throwing observers", () => {
   const h = harness();
+  const observerFailure = new Error("private observer failure");
+  const report = vi.fn();
   h.emitter.on("question", () => {
-    throw new Error("private observer failure");
+    throw observerFailure;
   });
   h.observe(native(256));
   const badge = frame(captured("async-badge.txt").text.replace("? 2 questions", "? 256 questions"));
   const publish = vi.spyOn(CodexQuestionCandidates.prototype, "publish");
   const registryPublish = vi.spyOn(h.registry, "publish");
-  for (let n = 0; n < 1000; n++) h.adapter.render(badge);
+  h.emitter.observeErrors(report, () => {
+    for (let n = 0; n < 1000; n++) h.adapter.render(badge);
+  });
+  expect(report).toHaveBeenCalledTimes(256);
+  expect(report).toHaveBeenCalledWith(observerFailure);
   expect(publish).toHaveBeenCalledTimes(256);
   expect(registryPublish).toHaveBeenCalledTimes(256);
   expect(h.registry.list()).toHaveLength(256);

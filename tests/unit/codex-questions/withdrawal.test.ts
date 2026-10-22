@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import { payloadOf } from "../../../src/codex/questions/records.ts";
 import { isRecord } from "../../../src/core/predicates.ts";
+import { QuestionObserverFailure } from "../../../src/core/questions/notification-errors.ts";
 import { harness } from "./adapter-helpers.ts";
 import { captured, frame, records } from "./helpers.ts";
 
@@ -110,8 +111,8 @@ test("throwing observers cannot strand independent native requests", () => {
   });
   h.observe(native[0]);
   h.observe(native[1]);
-  h.adapter.render(captured("async-badge.txt"));
+  expect(() => h.adapter.render(captured("async-badge.txt"))).toThrow(QuestionObserverFailure);
   expect(h.registry.list()).toHaveLength(2);
-  h.observe({ payload: { type: "task_complete" } });
+  expect(() => h.observe({ payload: { type: "task_complete" } })).toThrow(QuestionObserverFailure);
   expect(h.registry.list()).toEqual([]);
 });
