@@ -44,11 +44,11 @@ test("a live composer before committed answer acknowledgement preserves the subm
   h.observe(native[1]);
   h.adapter.render(captured("async-badge.txt"));
   h.observe(native[4]); // The other independent native question is already answered.
-  const single = frame(captured("async-editor-first.txt").text.replace("  1 of 2\n", ""));
+  const single = frame(captured("async-editor-blue.txt").text.replace("  1 of 2\n", ""));
   h.adapter.render(single);
   const composer = emptyComposerFrame();
   const scripted = scriptedIo(single, [{ input: "\r", next: composer }]);
-  await h.adapter.answer(h.registry.list()[0]!, [{ optionIndexes: [0] }], scripted.io);
+  await h.adapter.answer(h.registry.list()[0]!, [{ optionIndexes: [1] }], scripted.io);
   h.adapter.render(composer);
   expect(h.registry.list()).toHaveLength(1);
   h.observe(native[3]);

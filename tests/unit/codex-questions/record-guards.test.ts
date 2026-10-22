@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { expect, test } from "vitest";
 import { parseQuestions } from "../../../src/codex/questions/definitions.ts";
-import { answeredQuestionItemIds } from "../../../src/codex/questions/records.ts";
+import { questionReplies } from "../../../src/codex/questions/records.ts";
 
 const open = "<send_user_message_question_reply>";
 const close = "</send_user_message_question_reply>";
@@ -30,8 +30,8 @@ test("rejects duplicate modal identities before acknowledgement is ambiguous", (
 });
 
 test.each(["", "\n", "\u00a0\ufeff\v\f"])("preserves native reply body whitespace %j", (space) => {
-  expect(answeredQuestionItemIds(message(`${open}${space}${body}${space}${close}`))).toEqual([
-    "question",
+  expect(questionReplies(message(`${open}${space}${body}${space}${close}`))).toEqual([
+    { questionItemId: "question", answer: "Blue" },
   ]);
 });
 test.each([
@@ -43,15 +43,15 @@ test.each([
   " ",
   "x",
 ])("ignores text after the exact native reply wrapper %j", (suffix) => {
-  expect(answeredQuestionItemIds(message(`${open}${body}${close}${suffix}`))).toEqual([]);
+  expect(questionReplies(message(`${open}${body}${close}${suffix}`))).toEqual([]);
 });
 
 test("incomplete whitespace-heavy replies finish within a process deadline", () => {
   const moduleUrl = new URL("../../../src/codex/questions/records.ts", import.meta.url).href;
   const script = `
-    import { answeredQuestionItemIds } from ${JSON.stringify(moduleUrl)};
+    import { questionReplies } from ${JSON.stringify(moduleUrl)};
     const text = ${JSON.stringify(open)} + " ".repeat(10_000) + "x";
-    console.log(JSON.stringify(answeredQuestionItemIds({
+    console.log(JSON.stringify(questionReplies({
       type: "message", role: "user", content: [{ type: "input_text", text }]
     })));
   `;

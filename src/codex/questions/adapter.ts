@@ -64,27 +64,38 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     if (!candidate || candidate.hasPendingNativeSubmission) throw questionAnswerFailed();
     // Physical dispatch retains native ownership even if the caller stops waiting.
     const submitting = () => this.state.setSubmitting(candidate, true);
+    let answerNative: () => Promise<void>;
     if (candidate.queued) {
       if (answers.length !== 1) throw questionAnswerFailed();
       const [answer] = answers;
       if (answer === undefined) throw questionAnswerFailed();
       const queued = this.state.availableAcceptedQueuedCandidates();
-      await answerQueued(
-        queued.map((item) => item.questions[0].definition),
-        answer,
-        // biome-ignore lint/complexity/useIndexOf: the accepted snapshot has a narrower element type than candidate.
-        queued.findIndex((item) => item === candidate),
-        io,
-        submitting,
-      );
+      answerNative = () =>
+        answerQueued(
+          queued.map((item) => item.questions[0].definition),
+          answer,
+          // biome-ignore lint/complexity/useIndexOf: the accepted snapshot has a narrower element type than candidate.
+          queued.findIndex((item) => item === candidate),
+          io,
+          submitting,
+        );
     } else
-      await answerBlocking(
-        candidate.questions.map((question) => question.definition),
-        answers,
-        io,
-        submitting,
-      );
+      answerNative = () =>
+        answerBlocking(
+          candidate.questions.map((question) => question.definition),
+          answers,
+          io,
+          submitting,
+        );
+    const abandon = this.state.expectAnswer(candidate, answers, io.signal);
+    try {
+      await answerNative();
+    } catch (error) {
+      abandon();
+      throw error;
+    }
   }
+
   private publishConfirmedCandidates(
     view: QuestionView | undefined,
     queuedConfirmed: boolean,

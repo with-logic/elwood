@@ -1,19 +1,30 @@
 /** Reconcile committed Codex native question lifecycle records (PRD §4). */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { isRecord } from "../../core/predicates.ts";
+import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
-import { CandidateStore } from "./candidate-store.ts";
+import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { type Candidate, CandidateStore } from "./candidate-store.ts";
 import {
-  answeredQuestionItemIds,
   jsonRecord,
   payloadOf,
   questionCall,
   questionEnvelope,
+  questionReplies,
 } from "./records.ts";
 
 export type { Candidate } from "./candidate-store.ts";
 
 export class CodexQuestionCandidates extends CandidateStore {
+  /** Bind before driver input; the transaction signal releases values after native closure. */
+  expectAnswer(
+    candidate: Candidate,
+    answers: readonly ValidatedQuestionAnswer[],
+    signal: AbortSignal,
+  ): () => void {
+    if (this.candidates.get(candidate.nativeKey) !== candidate) throw questionAnswerFailed();
+    return this.expectations.expect(candidate, answers, signal);
+  }
   observe(event: ElwoodActivityEvent): boolean {
     return this.batchNotifications(() => this.observeNative(event));
   }
@@ -39,11 +50,23 @@ export class CodexQuestionCandidates extends CandidateStore {
       }
     }
     if (this.disabled) return false;
-    let changed = false;
-    for (const nativeKey of answeredQuestionItemIds(payload))
-      changed = this.close(nativeKey, "answered") || changed;
+    let changed = this.replies(payload);
     if (payload["type"] === "function_call_output" && typeof payload["call_id"] === "string")
       changed = this.output(payload) || changed;
+    return changed;
+  }
+  private replies(payload: Record<string, unknown>): boolean {
+    let changed = false;
+    const replies = questionReplies(payload);
+    for (const { questionItemId: nativeKey } of replies) {
+      const candidate = this.candidates.get(nativeKey);
+      if (candidate && !candidate.queued) continue;
+      const closeReason: QuestionCloseReason =
+        !candidate || this.expectations.isQueuedReplyAccepted(candidate, replies)
+          ? "answered"
+          : "unavailable";
+      changed = this.close(nativeKey, closeReason) || changed;
+    }
     return changed;
   }
   private unsupported(payload: Record<string, unknown>): boolean {
@@ -80,15 +103,16 @@ export class CodexQuestionCandidates extends CandidateStore {
       const answers = result?.["answers"];
       const hasAnswersForEveryQuestion =
         !candidate.queued &&
-        isRecord(answers) &&
-        candidate.questions.every((question) => {
-          const answer = answers[question.nativeId];
-          return (
-            isRecord(answer) &&
-            Array.isArray(answer["answers"]) &&
-            answer["answers"].some((value) => typeof value === "string" && value.trim())
-          );
-        });
+        (this.expectations.matchesOwnedBlockingAnswers(candidate, answers) ??
+          (isRecord(answers) &&
+            candidate.questions.every((question) => {
+              const answer = answers[question.nativeId];
+              return (
+                isRecord(answer) &&
+                Array.isArray(answer["answers"]) &&
+                answer["answers"].some((value) => typeof value === "string" && value.trim())
+              );
+            })));
       const cancelled =
         typeof output === "string" && output.includes("was cancelled before receiving a response");
       let closeReason: QuestionCloseReason;

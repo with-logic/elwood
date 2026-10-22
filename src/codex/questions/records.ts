@@ -97,15 +97,16 @@ export function hasAsyncQuestionMetadata(item: Record<string, unknown>): boolean
 const questionReplyOpen = "<send_user_message_question_reply>";
 const questionReplyClose = "</send_user_message_question_reply>";
 
-/** Extract native reply.questionItemId values, not Elwood question IDs or tool call IDs. */
-export function answeredQuestionItemIds(payload: Record<string, unknown>): readonly string[] {
+/** Native questionItemId identifies the queued item, not an Elwood question or tool call. */
+export type QuestionReply = { readonly questionItemId: string; readonly answer: string };
+export function questionReplies(payload: Record<string, unknown>): readonly QuestionReply[] {
   if (
     payload["type"] !== "message" ||
     payload["role"] !== "user" ||
     !Array.isArray(payload["content"])
   )
     return [];
-  const ids: string[] = [];
+  const repliesFound: QuestionReply[] = [];
   for (const part of payload["content"]) {
     if (!isRecord(part) || part["type"] !== "input_text" || typeof part["text"] !== "string")
       continue;
@@ -116,20 +117,23 @@ export function answeredQuestionItemIds(payload: Record<string, unknown>): reado
         text.slice(questionReplyOpen.length, -questionReplyClose.length).trim(),
       );
       if (!Array.isArray(replies)) continue;
-      for (const reply of replies) {
-        if (
-          isRecord(reply) &&
-          typeof reply["questionItemId"] === "string" &&
-          typeof reply["answer"] === "string"
-        )
-          ids.push(reply["questionItemId"]);
-      }
+      // Reject this entire content part if any member is malformed; other parts are independent.
+      if (!replies.every(validReply)) continue;
+      for (const reply of replies) repliesFound.push(reply);
     } catch {
       /* Malformed user prose is not native acceptance. */
     }
   }
-  return ids;
+  return repliesFound;
 }
 export function queuedKey(callId: string, index: number): string {
   return JSON.stringify([asyncQuestionToolName, callId, index]);
+}
+
+function validReply(reply: unknown): reply is QuestionReply {
+  return (
+    isRecord(reply) &&
+    typeof reply["questionItemId"] === "string" &&
+    typeof reply["answer"] === "string"
+  );
 }
