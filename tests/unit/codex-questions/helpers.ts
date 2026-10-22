@@ -3,6 +3,7 @@
 import { payloadOf, questionCall } from "../../../src/codex/questions/records.ts";
 import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { fixture, records } from "./fixtures.ts";
+import { nativeTranscriptEvent } from "./native-transcript-event.ts";
 
 export { fixture, records };
 export function definitions(name: string) {
@@ -19,6 +20,9 @@ export function frame(text: string): QuestionFrame {
 }
 export function captured(name: string): QuestionFrame {
   return frame(fixture(name));
+}
+export function event(raw: unknown) {
+  return nativeTranscriptEvent(raw, "test");
 }
 export function scriptedIo(
   initial: QuestionFrame | undefined,

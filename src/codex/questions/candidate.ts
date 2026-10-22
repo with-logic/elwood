@@ -5,11 +5,13 @@ import { type QuestionCall, queuedKey } from "./records.ts";
 
 type CandidateGroup = { readonly nativeKey: string } & (
   | { readonly queued: false; readonly questions: readonly ModalNativeQuestion[] }
-  | { readonly queued: true; readonly questions: readonly QueuedNativeQuestion[] }
+  | { readonly queued: true; readonly questions: readonly [QueuedNativeQuestion] }
 );
 export type Candidate = CandidateGroup & {
   readonly callId: string;
   readonly submitting: boolean;
+  /** Native submission evidence holds identity until committed acceptance or lifecycle end. */
+  readonly hasPendingNativeSubmission: boolean;
   readonly published: boolean;
   readonly bytes: number;
 } & (
@@ -25,7 +27,13 @@ export function createCandidate(
   accepted: boolean,
   bytes: number,
 ): Candidate {
-  const state = { callId, submitting: false, published: false, bytes };
+  const state = {
+    callId,
+    submitting: false,
+    hasPendingNativeSubmission: false,
+    published: false,
+    bytes,
+  };
   return group.queued ? { ...group, ...state, accepted } : { ...group, ...state, accepted: false };
 }
 export function candidateGroups(call: QuestionCall): readonly CandidateGroup[] {
@@ -38,9 +46,21 @@ export function candidateGroups(call: QuestionCall): readonly CandidateGroup[] {
     expandedKeyBytes += firstKeyBytes + String(index).length - 1;
     if (expandedKeyBytes > questionMetadataLimitBytes) throw new QuestionLimitError();
   }
-  return call.questions.map((question, index) => ({
+  return call.questions.map<CandidateGroup>((question, index) => ({
     nativeKey: queuedKey(call.callId, index),
     queued: true,
     questions: [question],
   }));
+}
+
+/** Freeze accepted queue membership without copying the live readonly candidate views. */
+export function availableAcceptedQueuedSnapshot(
+  candidates: Iterable<Candidate>,
+): readonly AcceptedQueuedCandidate[] {
+  return Object.freeze(
+    [...candidates].filter(
+      (candidate): candidate is AcceptedQueuedCandidate =>
+        candidate.queued && candidate.accepted && !candidate.hasPendingNativeSubmission,
+    ),
+  );
 }

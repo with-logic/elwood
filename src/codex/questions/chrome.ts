@@ -1,4 +1,7 @@
 /** Recognize native Codex question footer chrome independently of input parsing (PRD §4; C-ATTN-02). */
+export const queuedPanelHeader = "• Queued follow-up inputs";
+export const questionHeader = /^\s*Question (\d+)\/(\d+) \(\d+ unanswered\)$/;
+
 export const modalFooter =
   /^tab to add notes \| enter to submit (?:answer|all) \| ←\/→ to navigate questions \| esc to interrupt$/;
 export const notesFooter = /^tab or esc to clear notes \| enter to submit (?:answer|all)$/;
@@ -13,9 +16,7 @@ export function blockingQuestionVisible(text: string): boolean {
   const queued = queuedFooter.test(footer);
   if (!(modal || queued)) return false;
   const lines = trimmed.split("\n");
-  const modalQuestion =
-    modal && lines.some((line) => /^Question \d+\/\d+ \(\d+ unanswered\)$/.test(line.trim()));
-  const expandedQueuedEditor =
-    queued && lines.some((line) => line.trim() === "• Queued follow-up inputs");
+  const modalQuestion = modal && lines.some((line) => questionHeader.test(line.trim()));
+  const expandedQueuedEditor = queued && lines.some((line) => line.trim() === queuedPanelHeader);
   return modalQuestion || expandedQueuedEditor;
 }

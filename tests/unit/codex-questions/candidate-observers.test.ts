@@ -57,7 +57,7 @@ test("direct publication and closure preserve thrown undefined after their regis
     // biome-ignore lint/style/useThrowOnlyError: Native observers may throw any value.
     throw undefined;
   });
-  const candidate = state.acceptedQueuedCandidates()[0]!;
+  const candidate = state.availableAcceptedQueuedCandidates()[0]!;
   expect(failureOf(() => state.publish(candidate)).originalError).toBeUndefined();
   expect(candidate.published).toBe(true);
   expect(

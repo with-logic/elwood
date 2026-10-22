@@ -9,7 +9,7 @@ test("narrows native question identities by candidate mode", () => {
   type Fields = Omit<Candidate, "queued" | "questions">;
   expectTypeOf<Modal["accepted"]>().toEqualTypeOf<false>();
   expectTypeOf<
-    ReturnType<CandidateStore["acceptedQueuedCandidates"]>[number]["accepted"]
+    ReturnType<CandidateStore["availableAcceptedQueuedCandidates"]>[number]["accepted"]
   >().toEqualTypeOf<true>();
   expectTypeOf<CandidateStore["candidates"]>().toEqualTypeOf<ReadonlyMap<string, Candidate>>();
   expectTypeOf<Pick<Candidate, "published">>().toEqualTypeOf<{ readonly published: boolean }>();

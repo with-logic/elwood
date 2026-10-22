@@ -8,15 +8,15 @@ describe("native candidate transitions", () => {
     expect(state.observe(event(call()))).toBe(true);
     expect(state.hasReservation()).toBe(true);
     const candidate = [...state.candidates.values()][0]!;
-    const empty = state.acceptedQueuedCandidates();
+    const empty = state.availableAcceptedQueuedCandidates();
     expect(state.observe(event(call()))).toBe(false);
     expect([...state.candidates.values()][0]).toBe(candidate);
-    expect(state.acceptedQueuedCandidates()).toBe(empty);
+    expect(state.availableAcceptedQueuedCandidates()).toBe(empty);
     expect(state.observe(event(call({ id: "call", queued: true, accepted: true })))).toBe(true);
-    const accepted = state.acceptedQueuedCandidates();
+    const accepted = state.availableAcceptedQueuedCandidates();
     expect(accepted).toEqual([candidate]);
     expect(state.observe(event(call({ id: "call", queued: true, accepted: true })))).toBe(false);
-    expect(state.acceptedQueuedCandidates()).toBe(accepted);
+    expect(state.availableAcceptedQueuedCandidates()).toBe(accepted);
     expect(state.unpublishedCandidates().size).toBe(1);
     state.publish(candidate);
     expect(state.unpublishedCandidates().size).toBe(0);
@@ -73,7 +73,7 @@ describe("native candidate transitions", () => {
 test("withdraws an exposed definition when its native authority becomes unsupported", () => {
   const { state, registry } = setup();
   state.observe(event(call({ id: "call", queued: true, accepted: true })));
-  state.publish(state.acceptedQueuedCandidates()[0]!);
+  state.publish(state.availableAcceptedQueuedCandidates()[0]!);
   expect(
     state.observe(
       event({
@@ -100,7 +100,9 @@ test("withdraws removed queued units when the same native call has fewer definit
     }),
   );
   expect(
-    state.acceptedQueuedCandidates().map((candidate) => candidate.questions[0]?.definition.prompt),
+    state
+      .availableAcceptedQueuedCandidates()
+      .map((candidate) => candidate.questions[0]?.definition.prompt),
   ).toEqual(["Pick", "Removed"]);
   for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
   expect(registry.list().map((request) => request.questions[0]?.prompt)).toEqual([
@@ -109,7 +111,9 @@ test("withdraws removed queued units when the same native call has fewer definit
   ]);
   expect(state.observe(event(call({ id: "call", queued: true, accepted: true })))).toBe(true);
   expect(
-    state.acceptedQueuedCandidates().map((candidate) => candidate.questions[0]?.definition.prompt),
+    state
+      .availableAcceptedQueuedCandidates()
+      .map((candidate) => candidate.questions[0]?.definition.prompt),
   ).toEqual(["Pick"]);
   expect(registry.list().map((request) => request.questions[0]?.prompt)).toEqual(["Pick"]);
 });

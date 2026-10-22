@@ -10,7 +10,7 @@ describe("candidate resource budgets", () => {
     const { state, registry, disabled } = setup(true);
     for (let index = 0; index < 256; index++)
       state.observe(event(call({ id: String(index), queued: true, accepted: true })));
-    expect(state.acceptedQueuedCandidates()).toHaveLength(256);
+    expect(state.availableAcceptedQueuedCandidates()).toHaveLength(256);
     expect(() =>
       state.batchNotifications(() => {
         for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
@@ -51,13 +51,13 @@ describe("candidate resource budgets", () => {
       state.observe(
         event(call({ id: String(index), queued: true, accepted: true, prompt: validPrompt })),
       );
-      expect(state.acceptedQueuedCandidates()).toHaveLength(index + 1);
+      expect(state.availableAcceptedQueuedCandidates()).toHaveLength(index + 1);
       expect(disabled).not.toHaveBeenCalled();
     }
     state.observe(event(call({ id: "sixth", queued: true, accepted: true, prompt: validPrompt })));
     expect(disabled).toHaveBeenCalledTimes(1);
     expect(state.candidates.size).toBe(0);
-    expect(state.acceptedQueuedCandidates()).toEqual([]);
+    expect(state.availableAcceptedQueuedCandidates()).toEqual([]);
     expect(state.hasReservation()).toBe(true);
   });
   test("bounds retired identity count without re-enabling automation on clearance", () => {

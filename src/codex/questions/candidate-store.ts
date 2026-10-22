@@ -4,6 +4,7 @@ import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
 import {
   type AcceptedQueuedCandidate,
+  availableAcceptedQueuedSnapshot,
   type Candidate,
   candidateGroups,
   createCandidate,
@@ -11,6 +12,7 @@ import {
 } from "./candidate.ts";
 import { candidateCallAccepted } from "./candidate-acceptance.ts";
 import { CandidateAuthority } from "./candidate-authority.ts";
+import { publishCandidateRequest } from "./candidate-publication.ts";
 import { QuestionBudget } from "./limits.ts";
 import type { QuestionCall } from "./records.ts";
 
@@ -46,6 +48,9 @@ export class CandidateStore {
   hasReservation(): boolean {
     return this.opaqueReservation || this.candidates.size > 0;
   }
+  hasOpaqueReservation(): boolean {
+    return this.opaqueReservation;
+  }
   clearOpaqueReservation(): boolean {
     const changed = this.opaqueReservation;
     this.opaqueReservation = false;
@@ -57,17 +62,24 @@ export class CandidateStore {
     return changed;
   }
   /** Cached, frozen membership snapshot. Entries are live readonly candidate views. */
-  acceptedQueuedCandidates(): readonly AcceptedQueuedCandidate[] {
-    this.accepted ??= Object.freeze(
-      [...this.candidates.values()].filter(
-        (candidate): candidate is AcceptedQueuedCandidate => candidate.queued && candidate.accepted,
-      ),
-    );
+  availableAcceptedQueuedCandidates(): readonly AcceptedQueuedCandidate[] {
+    this.accepted ??= availableAcceptedQueuedSnapshot(this.candidates.values());
     return this.accepted;
   }
   /** Live readonly membership view; publication and closure remove entries immediately. */
   unpublishedCandidates(): ReadonlySet<Candidate> {
     return this.unpublished;
+  }
+  /** Ignore stale candidate objects after replacement or closure. */
+  setSubmitting(candidate: Candidate, value: boolean): void {
+    const record = this.records.get(candidate.nativeKey);
+    if (record === candidate) record.submitting = value;
+  }
+  markPendingSubmission(candidate: Candidate): void {
+    const record = this.records.get(candidate.nativeKey);
+    if (record !== candidate) return;
+    record.hasPendingNativeSubmission = true;
+    this.accepted = undefined;
   }
   protected accept(candidate: Mutable<QueuedCandidate>): boolean {
     if (candidate.accepted) return false;
@@ -130,23 +142,12 @@ export class CandidateStore {
     return changed;
   }
   publish(candidate: Candidate): void {
-    this.batchNotifications(() => this.publishCandidate(candidate));
-  }
-  private publishCandidate(candidate: Candidate): void {
-    if (!this.unpublished.has(candidate)) return;
-    const record = this.records.get(candidate.nativeKey)!;
-    try {
-      this.notifications.capture(() => {
-        this.registry.publish(
-          candidate.nativeKey,
-          candidate.queued ? "queued" : "blocking",
-          candidate.questions.map((question) => question.definition),
-        );
-      });
-    } finally {
-      record.published = this.registry.find(candidate.nativeKey) !== undefined;
+    this.batchNotifications(() => {
+      if (!this.unpublished.has(candidate)) return;
+      const record = this.records.get(candidate.nativeKey)!;
+      record.published = publishCandidateRequest(this.registry, this.notifications, candidate);
       if (record.published) this.unpublished.delete(candidate);
-    }
+    });
   }
   /** Tombstone even missing identities to prevent replay; false means no active candidate closed. */
   close(nativeKey: string, reason: QuestionCloseReason): boolean {

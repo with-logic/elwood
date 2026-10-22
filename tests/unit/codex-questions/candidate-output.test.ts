@@ -46,10 +46,12 @@ test("captured accepted output alone accepts the exact queued native identities"
   const nativeKeys = [queuedKey(callId, 0), queuedKey(callId, 1)];
   expect(state.observe({ ...event(undefined), raw: captured[0] })).toBe(true);
   expect([...state.candidates.keys()]).toEqual(nativeKeys);
-  expect(state.acceptedQueuedCandidates()).toEqual([]);
+  expect(state.availableAcceptedQueuedCandidates()).toEqual([]);
   // Deliberately skip captured[1], the assistant mirror that also reports acceptance.
   expect(state.observe({ ...event(undefined), raw: captured[2] })).toBe(true);
-  expect(state.acceptedQueuedCandidates().map(({ nativeKey }) => nativeKey)).toEqual(nativeKeys);
+  expect(state.availableAcceptedQueuedCandidates().map(({ nativeKey }) => nativeKey)).toEqual(
+    nativeKeys,
+  );
   expect(
     [...state.candidates.values()].map(({ nativeKey, accepted }) => ({ nativeKey, accepted })),
   ).toEqual(nativeKeys.map((nativeKey) => ({ nativeKey, accepted: true })));

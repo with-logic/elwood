@@ -2,21 +2,11 @@
 import { vi } from "vitest";
 import { CodexQuestionCandidates } from "../../../src/codex/questions/candidates.ts";
 import { questionMetadataLimitBytes } from "../../../src/codex/questions/limits.ts";
-import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
 import { QuestionRegistry } from "../../../src/core/questions/registry.ts";
-import { activity } from "../../helpers/activity.ts";
+import { nativeTranscriptEvent } from "./native-transcript-event.ts";
 
-export function event(payload: unknown): ElwoodActivityEvent & { readonly kind: "other" } {
-  return {
-    ...activity({
-      elwoodSessionId: "session",
-      agent: "codex",
-      source: "transcript",
-      label: "native",
-      raw: { payload },
-    }),
-    kind: "other",
-  };
+export function event(payload: unknown) {
+  return nativeTranscriptEvent({ payload }, "session");
 }
 type CallOptions = {
   readonly id?: string;
