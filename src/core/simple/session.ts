@@ -5,7 +5,6 @@
 
 import type { ElwoodActivityEvent } from "../activity/index.ts";
 import type { ElwoodAgentSession } from "../agent-session.ts";
-import { elwoodError, toError } from "../errors.ts";
 import { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../loops/types.ts";
@@ -18,6 +17,7 @@ import type {
   Unsubscribe,
 } from "../types.ts";
 import { capturedSend, capturedTurn } from "./captured-input.ts";
+import { closeSession } from "./close.ts";
 import type { TurnEvent } from "./events.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
 import type { NativeTurnReader } from "./turn-identity.ts";
@@ -166,24 +166,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     if (!live) return;
     await this.closeLiveSession(live);
   }
-  /** Stop one known-live session, preserving the public close fallback and diagnostics. */
   protected async closeLiveSession(live: S): Promise<void> {
-    try {
-      await live.stop();
-    } catch (stopError) {
-      try {
-        await live.kill();
-      } catch (killError) {
-        // Both shutdown paths failed: surface the ORIGINAL stop failure with the kill
-        // failure attached, so a repeated cleanup/reap problem stays diagnosable.
-        throw elwoodError("termination_failed", "close() failed to stop or kill the session", {
-          cause: toError(stopError).message,
-          killCause: toError(killError).message,
-        });
-      }
-    }
+    await closeSession(live);
   }
-  // stop/kill/teardown: delegate to the live session; a no-op if it never started (C-API-52).
   async stop(): Promise<void> {
     await this.live?.stop();
   }
