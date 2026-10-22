@@ -1,14 +1,32 @@
 /** Offline private-home, bounded subprocess and process-seam guards (PRD §12). */
-import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
-import { currentCommandRunner, currentPtyFactory, setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import {
+  currentCommandRunner,
+  currentPtyFactory,
+  setCommandRunnerForTests,
+  setPtyFactoryForTests,
+} from "../../src/runtime/seams.ts";
 import { claudeQuestionVersion } from "../e2e/questions/claude-cases.ts";
-import { mocks, nativeClaudeQuestionSandbox, claudeQuestionBinary } from "./claude-proof-fixture.ts";
+import {
+  claudeProofMocks,
+  claudeQuestionBinary,
+  nativeClaudeQuestionSandbox,
+} from "./claude-proof-fixture.ts";
+
+const mocks = claudeProofMocks();
 
 test("malformed Keychain output never appears in parse errors", async () => {
   const canary = "SYNTHETIC_PRIVATE_KEYCHAIN_PARSE_CANARY";
-  mocks.keychain.mockReturnValueOnce({ pid: 1, status: 0, signal: null, output: [], stdout: canary, stderr: "" });
+  mocks.keychain.mockReturnValueOnce({
+    pid: 1,
+    status: 0,
+    signal: null,
+    output: [],
+    stdout: canary,
+    stderr: "",
+  });
   const failure: unknown = await nativeClaudeQuestionSandbox().catch((error: unknown) => error);
   expect(failure instanceof Error).toBe(true);
   if (!(failure instanceof Error)) throw new Error("Expected sanitized authentication error");
@@ -17,17 +35,33 @@ test("malformed Keychain output never appears in parse errors", async () => {
   expect("cause" in failure).toBe(false);
 });
 
-test.each([{ status: 1, stdout: `${claudeQuestionVersion} (Claude Code)` }, { status: null, stdout: `${claudeQuestionVersion} (Claude Code)` }, { status: 0, stdout: "wrong version" }])("failed version $status/$stdout cleans credentials and resets seams", async ({ status, stdout }) => {
+test.each([
+  { status: 1, stdout: `${claudeQuestionVersion} (Claude Code)` },
+  { status: null, stdout: `${claudeQuestionVersion} (Claude Code)` },
+  { status: 0, stdout: "wrong version" },
+])("failed version $status/$stdout cleans credentials and resets seams", async ({
+  status,
+  stdout,
+}) => {
   const factory = currentPtyFactory();
   const runner = currentCommandRunner();
-  setPtyFactoryForTests(() => { throw new Error("obsolete seam"); });
-  setCommandRunnerForTests(() => { throw new Error("obsolete seam"); });
+  setPtyFactoryForTests(() => {
+    throw new Error("obsolete seam");
+  });
+  setCommandRunnerForTests(() => {
+    throw new Error("obsolete seam");
+  });
   mocks.probe.mockImplementationOnce((_command, args) => {
     const home = args[0]!.slice("HOME=".length);
     expect(existsSync(join(home, ".credentials.json"))).toBe(true);
     return Promise.resolve({ status, stdout, stderr: "" });
   });
-  await expect(nativeClaudeQuestionSandbox()).rejects.toThrow("version unavailable");
+  const setup = nativeClaudeQuestionSandbox();
+  try {
+    await expect(setup).rejects.toThrow("version unavailable");
+  } finally {
+    (await setup.catch(() => undefined))?.dispose();
+  }
   const home = mocks.probe.mock.calls[0]![1][0]!.slice("HOME=".length);
   expect(existsSync(dirname(home))).toBe(false);
   expect(currentPtyFactory()).toBe(factory);
@@ -37,10 +71,15 @@ test.each([{ status: 1, stdout: `${claudeQuestionVersion} (Claude Code)` }, { st
 test("failed setup cleanup retains the original setup error", async () => {
   const primary = new Error("synthetic setup failure");
   mocks.probe.mockRejectedValueOnce(primary);
-  mocks.remove.mockImplementationOnce(() => { throw new Error("synthetic cleanup failure"); });
-  await expect(nativeClaudeQuestionSandbox()).rejects.toBe(primary);
-  const home = mocks.probe.mock.calls[0]![1][0]!.slice("HOME=".length);
-  rmSync(dirname(home), { recursive: true, force: true });
+  mocks.remove.mockImplementationOnce(() => {
+    throw new Error("synthetic cleanup failure");
+  });
+  try {
+    await expect(nativeClaudeQuestionSandbox()).rejects.toBe(primary);
+  } finally {
+    const home = mocks.probe.mock.calls[0]![1][0]!.slice("HOME=".length);
+    rmSync(dirname(home), { recursive: true, force: true });
+  }
 });
 
 test("pinned-only setup reuses one credential and writes minimal config", async () => {
@@ -82,4 +121,3 @@ test("post-run non-record config reports the guard after removing private creden
   expect(() => sandbox.dispose()).toThrow("must be a JSON object");
   expect(existsSync(sandbox.root)).toBe(false);
 });
-

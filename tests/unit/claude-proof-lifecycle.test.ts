@@ -7,7 +7,9 @@ test("cancellation during setup prevents lazy start but still disposes", async (
   const lifecycle = claudeProofLifecycle(abort.signal);
   abort.abort(new Error("synthetic setup cancellation"));
   const start = vi.fn(async () => undefined);
-  await expect(lifecycle.start({ start, close: async () => undefined })).rejects.toBe(abort.signal.reason);
+  await expect(lifecycle.start({ start, close: async () => undefined })).rejects.toBe(
+    abort.signal.reason,
+  );
   expect(start).not.toHaveBeenCalled();
   const dispose = vi.fn();
   await lifecycle.finish([dispose], true, vi.fn());
@@ -37,7 +39,14 @@ test("cancellation joins in-flight lazy start and never returns a turn-ready ses
   expect(dispose).toHaveBeenCalledOnce();
 });
 
-test.each([{ failed: false, diagnosticThrows: false }, { failed: true, diagnosticThrows: false }, { failed: true, diagnosticThrows: true }])("cleanup attempts every action, primary=$failed throwing diagnostic=$diagnosticThrows", async ({ failed, diagnosticThrows }) => {
+test.each([
+  { failed: false, diagnosticThrows: false },
+  { failed: true, diagnosticThrows: false },
+  { failed: true, diagnosticThrows: true },
+])("cleanup attempts every action, primary=$failed throwing diagnostic=$diagnosticThrows", async ({
+  failed,
+  diagnosticThrows,
+}) => {
   const lifecycle = claudeProofLifecycle(new AbortController().signal);
   const failure = new Error("close");
   await lifecycle.start({
@@ -45,7 +54,9 @@ test.each([{ failed: false, diagnosticThrows: false }, { failed: true, diagnosti
     close: () => Promise.reject(failure),
   });
   const dispose = vi.fn();
-  const diagnostic = vi.fn(() => { if (diagnosticThrows) throw new Error("synthetic diagnostic failure"); });
+  const diagnostic = vi.fn(() => {
+    if (diagnosticThrows) throw new Error("synthetic diagnostic failure");
+  });
   const finish = lifecycle.finish(
     [
       () => {
@@ -63,15 +74,23 @@ test.each([{ failed: false, diagnosticThrows: false }, { failed: true, diagnosti
   if (failed) expect(diagnostic).toHaveBeenCalledWith("Claude question proof cleanup also failed");
 });
 
-
-test.each([false, true])("finalization retries failed cancellation close, settled=%s", async (settled) => {
+test.each([
+  false,
+  true,
+])("finalization retries failed cancellation close, settled=%s", async (settled) => {
   const abort = new AbortController();
   const lifecycle = claudeProofLifecycle(abort.signal);
   const first = Promise.withResolvers<void>();
-  const close = vi.fn<() => Promise<void>>().mockImplementationOnce(() => first.promise).mockResolvedValue(undefined);
+  const close = vi
+    .fn<() => Promise<void>>()
+    .mockImplementationOnce(() => first.promise)
+    .mockResolvedValue(undefined);
   await lifecycle.start({ start: async () => undefined, close });
   abort.abort();
-  if (settled) { first.reject(new Error("first close failed")); await Promise.resolve(); }
+  if (settled) {
+    first.reject(new Error("first close failed"));
+    await Promise.resolve();
+  }
   const dispose = vi.fn();
   const finish = lifecycle.finish([dispose], true, vi.fn());
   if (!settled) {

@@ -1,5 +1,5 @@
 /** Private successful and failed native-proof artifacts are observable offline (PRD §12). */
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
@@ -57,4 +57,3 @@ test("artifact write and even diagnostic failures remain best-effort", () => {
     ),
   ).not.toThrow();
 });
-

@@ -118,7 +118,8 @@ export async function nativeClaudeQuestionSandbox() {
     if (version.status !== 0 || version.stdout.trim() !== `${claudeQuestionVersion} (Claude Code)`)
       throw new Error(`Pinned ${claudeQuestionLabel} question version unavailable`);
     const pin = (args: readonly string[]) =>
-      prefixShellArgument(args,
+      prefixShellArgument(
+        args,
         `export HOME=${shellQuote(home)} CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL`,
       );
     setCommandRunnerForTests((command, args) =>

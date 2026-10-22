@@ -48,7 +48,10 @@ export async function nativeResponseSandbox() {
     if ((await runProbe("env", [`CODEX_HOME=${home}`, binary, "login", "status"])).status !== 0)
       throw new Error("Private Codex authentication unavailable");
     const pin = (args: readonly string[]) =>
-      prefixShellArgument(args, `export CODEX_HOME=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"`);
+      prefixShellArgument(
+        args,
+        `export CODEX_HOME=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"`,
+      );
     setCommandRunnerForTests((command, args) =>
       runProbe("env", [`ZDOTDIR=${home}`, command, ...pin(args)]),
     );

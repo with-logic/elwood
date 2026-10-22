@@ -51,7 +51,10 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
     if ((await probe(["login", "status"])).status !== 0)
       throw new Error("Native updater proof requires authenticated Codex");
     const pin = (args: readonly string[]) =>
-      prefixShellArgument(args, `export CODEX_HOME=${shellQuote(codexProofHome)} PATH=${shellQuote(release)}:"$PATH"`);
+      prefixShellArgument(
+        args,
+        `export CODEX_HOME=${shellQuote(codexProofHome)} PATH=${shellQuote(release)}:"$PATH"`,
+      );
     setCommandRunnerForTests((command, args) => runProbe(command, pin(args)));
     const applicationAttempts: string[] = [];
     const protocolReplies: string[] = [];
