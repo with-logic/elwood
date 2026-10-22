@@ -7,6 +7,7 @@ import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { ElwoodQuestionRequest, QuestionDefinition } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { claudeEmptyInputRows } from "../composer/empty-input.ts";
+import { isBlock } from "../hooks/dispatch.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { claudeComposerInputColumn } from "../screen-table.ts";
 import { isQuestions } from "../validate/tool-values.ts";
@@ -37,7 +38,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
   observe(event: ElwoodActivityEvent): boolean {
     if (event.source !== "hook") return false;
     if (event.kind === "hook_result" && event.hookEventName === "Stop") {
-      if (record(record(event.raw)["result"])["decision"] === "block") return false;
+      if (isBlock(record(event.raw)["result"])) return false;
       const changed = Boolean(this.candidate || this.held || this.registry.hasPending());
       this.candidate = undefined;
       this.held = false;

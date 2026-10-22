@@ -27,6 +27,34 @@ describe("Claude hook candidates", () => {
     expect(events).toEqual([]);
     adapter.render(fixture("questions"));
     const first = requests.list()[0]!;
+    expect(first).toMatchObject({
+      agent: "claude",
+      delivery: "blocking",
+      questions: [
+        {
+          prompt: "Which test color?",
+          header: "Color",
+          options: [
+            { label: "Amber", description: "Warm" },
+            { label: "Blue", description: "Cool" },
+          ],
+          selection: "single",
+          textMode: "alternative",
+          secret: false,
+        },
+        {
+          prompt: "Which test features?",
+          header: "Features",
+          options: [
+            { label: "Logging", description: "Logs" },
+            { label: "Metrics", description: "Counts" },
+          ],
+          selection: "multiple",
+          textMode: "none",
+          secret: false,
+        },
+      ],
+    });
     const raised = { elwoodSessionId: "s", agent: "claude", phase: "raised", request: first };
     expect(events).toEqual([raised]);
     adapter.observe(hook("PermissionRequest", { tool_use_id: undefined }));
@@ -70,15 +98,22 @@ describe("Claude hook candidates", () => {
   });
   test("keyless candidates deduplicate, decline prose retains authority, and native cancellation closes", () => {
     const requests = registry();
+    const events: ElwoodQuestionEvent[] = [];
+    requests.onEvent((event) => events.push(event));
     const adapter = new ClaudeQuestionAdapter(requests);
     adapter.observe(hook("PermissionRequest", { tool_use_id: undefined }));
     adapter.render(fixture("questions"));
     expect(requests.list()).toHaveLength(1);
+    const request = requests.list()[0]!;
     adapter.render(frame("⏺ User declined to answer questions\n❯ "));
     expect(requests.list()).toHaveLength(1);
     expect(adapter.blocksInput()).toBe(true);
     adapter.observe(hook("PostToolUseFailure", { tool_use_id: undefined, is_interrupt: true }));
     expect(requests.list()).toEqual([]);
+    expect(events).toEqual([
+      { elwoodSessionId: "s", agent: "claude", phase: "raised", request },
+      { elwoodSessionId: "s", agent: "claude", phase: "closed", request, reason: "cancelled" },
+    ]);
     adapter.observe(hook("PreToolUse", { tool_input: { questions: [] } }));
     adapter.render(fixture("questions"));
     expect(requests.list()).toEqual([]);

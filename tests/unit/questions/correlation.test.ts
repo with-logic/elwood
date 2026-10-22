@@ -3,33 +3,13 @@
 import { expect, test } from "vitest";
 import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
 import { fixture, registry } from "./helpers.ts";
-import { nativeQuestions as questions } from "./lifecycle-helpers.ts";
+import { nativeHook, nativeQuestions as questions } from "./lifecycle-helpers.ts";
 
-function hook(
-  name: string,
-  input: AskUserQuestionInput["questions"],
-  id?: string,
-): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: "s",
-    agent: "claude",
-    source: "hook",
-    kind: "hook",
-    label: name,
-    raw: {
-      hook_event_name: name,
-      tool_name: "AskUserQuestion",
-      tool_input: { questions: input } satisfies AskUserQuestionInput,
-      ...(id === undefined ? {} : { tool_use_id: id }),
-    },
-  };
-}
 function setup() {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
-  adapter.observe(hook("PreToolUse", questions, "native"));
+  adapter.observe(nativeHook());
   adapter.render(fixture("questions"));
   return { requests, adapter, request: requests.list()[0] };
 }
@@ -54,7 +34,12 @@ for (const name of ["PostToolUse", "PostToolUseFailure"]) {
     Object.entries(mismatches),
   )(`unrelated ID-less ${name} cannot retire an active request: %s`, (_label, changed) => {
     const h = setup();
-    h.adapter.observe(hook(name, changed));
+    h.adapter.observe(
+      nativeHook(name, {
+        tool_input: { questions: changed } satisfies AskUserQuestionInput,
+        tool_use_id: undefined,
+      }),
+    );
     expect(h.requests.list()).toEqual([h.request]);
   });
 }
@@ -72,9 +57,19 @@ test("omitted multiSelect defaults to single and matches an ID-less completion",
   ] satisfies AskUserQuestionInput["questions"];
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
-  adapter.observe(hook("PreToolUse", input, "single"));
+  adapter.observe(
+    nativeHook("PreToolUse", {
+      tool_input: { questions: input } satisfies AskUserQuestionInput,
+      tool_use_id: "single",
+    }),
+  );
   adapter.render(fixture("freeform-questions"));
   expect(requests.list()[0]?.questions[0]?.selection).toBe("single");
-  adapter.observe(hook("PostToolUse", input));
+  adapter.observe(
+    nativeHook("PostToolUse", {
+      tool_input: { questions: input } satisfies AskUserQuestionInput,
+      tool_use_id: undefined,
+    }),
+  );
   expect(requests.list()).toEqual([]);
 });

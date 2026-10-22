@@ -1,7 +1,7 @@
 /**
  * Claude rendered-screen fact table for turn-state and attention detection.
  * Implements PRD §5.3, C-TURN-01 through C-TURN-05, and C-ATTN-01 through
- * C-ATTN-04.
+ * C-ATTN-05.
  */
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";

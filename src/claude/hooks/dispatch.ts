@@ -5,6 +5,7 @@
  */
 
 import { createHookDispatcher } from "../../core/hook-dispatch.ts";
+import { isRecord } from "../../core/predicates.ts";
 import { isClaudeHookResult } from "../validate/result.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "./index.ts";
 
@@ -13,6 +14,7 @@ export const requestHook = createHookDispatcher<ClaudeHookEvent, ClaudeHookResul
   isClaudeHookResult,
 );
 
-export function isBlock(result: ClaudeHookResult): boolean {
-  return Boolean(result && "decision" in result && result.decision === "block");
+/** Read block decisions from validated results or unknown activity payloads. */
+export function isBlock(result: unknown): boolean {
+  return isRecord(result) && result["decision"] === "block";
 }
