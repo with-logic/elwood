@@ -28,3 +28,21 @@ export function matchesNativeQuestions(
     })
   );
 }
+
+/** PermissionRequest can mirror PreToolUse with a different hook ID for the same input. */
+export function matchesCandidateHook(
+  candidate:
+    | { readonly nativeKey: string; readonly questions: readonly QuestionDefinition[] }
+    | undefined,
+  questions: AskUserQuestionInput["questions"],
+  toolUseId: unknown,
+  hookEventName: unknown,
+): boolean {
+  const matchesCandidateQuestions =
+    candidate !== undefined && matchesNativeQuestions(questions, candidate.questions);
+  const matchesCandidateIdentity =
+    typeof toolUseId !== "string" ||
+    toolUseId === candidate?.nativeKey ||
+    hookEventName === "PermissionRequest";
+  return matchesCandidateQuestions && matchesCandidateIdentity;
+}

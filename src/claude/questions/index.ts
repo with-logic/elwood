@@ -12,7 +12,7 @@ import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { claudeComposerInputColumn } from "../screen-table.ts";
 import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
-import { matchesNativeQuestions } from "./correlation.ts";
+import { matchesCandidateHook, matchesNativeQuestions } from "./correlation.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import {
   claudeQuestionCandidate,
@@ -195,20 +195,4 @@ function matchesCandidateChrome(
     panel !== undefined &&
     questions.some((question) => normalizeClaudeQuestionText(question.prompt) === panel.prompt)
   );
-}
-
-/** PermissionRequest can mirror PreToolUse with a different hook ID for the same input. */
-function matchesCandidateHook(
-  candidate: Candidate | undefined,
-  questions: AskUserQuestionInput["questions"],
-  toolUseId: unknown,
-  hookEventName: unknown,
-): boolean {
-  const matchesCandidateQuestions =
-    candidate !== undefined && matchesNativeQuestions(questions, candidate.questions);
-  const matchesCandidateIdentity =
-    typeof toolUseId !== "string" ||
-    toolUseId === candidate?.nativeKey ||
-    hookEventName === "PermissionRequest";
-  return matchesCandidateQuestions && matchesCandidateIdentity;
 }
