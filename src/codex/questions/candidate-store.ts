@@ -13,6 +13,7 @@ import {
 import { candidateCallAccepted } from "./candidate-acceptance.ts";
 import { CandidateAuthority } from "./candidate-authority.ts";
 import { publishCandidateRequest } from "./candidate-publication.ts";
+import { hasCandidateReservation } from "./candidate-reservation.ts";
 import { QuestionBudget } from "./limits.ts";
 import type { QuestionCall } from "./records.ts";
 
@@ -97,8 +98,8 @@ export class CandidateStore {
     let changed = this.retireRemoved(call.callId, groups, authority, mutationEpoch);
     for (const group of groups) {
       if (!this.ownsCall(call.callId, authority, mutationEpoch)) return true;
-      if (this.budget.hasRetired(group.nativeKey)) continue;
       const existing = this.records.get(group.nativeKey);
+      if (hasCandidateReservation(group.nativeKey, existing, this.budget, this.registry)) continue;
       if (existing && JSON.stringify(existing.questions) === JSON.stringify(group.questions)) {
         if (existing.queued && accepted) changed = this.accept(existing) || changed;
         continue;

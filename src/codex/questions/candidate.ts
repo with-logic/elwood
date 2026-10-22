@@ -64,3 +64,8 @@ export function availableAcceptedQueuedSnapshot(
     ),
   );
 }
+
+/** Dispatched or natively pending submissions retain their question identity. */
+export function hasInFlightSubmission(candidate: Candidate | undefined): boolean {
+  return Boolean(candidate && (candidate.submitting || candidate.hasPendingNativeSubmission));
+}
