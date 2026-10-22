@@ -2,14 +2,9 @@
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
-import {
-  modalFooter,
-  notesFooter,
-  questionHeader,
-  queuedFooter,
-  queuedPanelHeader,
-} from "./chrome.ts";
+import { modalFooter, notesFooter, queuedFooter, queuedPanelHeader } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
+import { nativeSelection } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
 export type QuestionView = {
@@ -54,6 +49,8 @@ export function queuedBadge(frame: QuestionFrame): number | undefined {
 // async-skip-editor.json parks its hidden cursor on the blank row after the footer.
 // Preserve that spacer plus one row of tolerance; neither row enters the parsed body.
 const footerCursorAllowanceRows = 2;
+// Native headers have two-space indentation; pasted notes use their editor indentation.
+const nativeQuestionHeader = /^ {2}Question (\d+)\/(\d+) \(\d+ unanswered\)$/;
 
 /** Recognize a complete native editor whose cursor belongs to this panel. */
 export function questionView(frame: QuestionFrame): QuestionView | undefined {
@@ -66,8 +63,8 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   let index: number;
   let kind: QuestionView["kind"];
   if (modalFooter.test(footer) || notesFooter.test(footer)) {
-    start = lines.findLastIndex((line) => questionHeader.test(line));
-    const match = questionHeader.exec(lines[start] ?? "");
+    start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
+    const match = nativeQuestionHeader.exec(lines[start] ?? "");
     if (!match) return undefined;
     index = Number(match[1]) - 1;
     count = Number(match[2]);
@@ -85,15 +82,15 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     kind = "queued";
   } else return undefined;
   if (!questionCursor(frame, lines, start, kind) || index < 0 || index >= count) return undefined;
-  const body = lines.slice(start + 1, end).map((line) => line.trim());
-  const caret = body.map((line) => /^› (\d+)\. /.exec(line)).find((match) => match !== null);
+  const rawBody = frame.lines.slice(start + 1, end);
+  const body = rawBody.map((line) => line.trim());
   return {
     kind,
     count,
     index,
     body,
-    rawBody: frame.lines.slice(start + 1, end),
-    selected: caret ? Number(caret[1]) - 1 : undefined,
+    rawBody,
+    selected: nativeSelection(rawBody, kind === "queued" && count > 1),
     notes: notesFooter.test(footer),
     cursor: {
       row: frame.cursorRow - start - 1,

@@ -50,7 +50,12 @@ export function draftMatches(
   return text === expected;
 }
 
-function draftPosition(
+/**
+ * Return the editor's start row relative to `view.rawBody`, its native input
+ * prefix and its placeholder label; undefined means no supported editor start
+ * belongs to this question/view. Position alone does not establish draft equality.
+ */
+export function draftPosition(
   view: QuestionView,
   question: QuestionDefinition,
 ): DraftPosition | undefined {
