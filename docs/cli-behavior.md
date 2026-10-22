@@ -1291,3 +1291,28 @@ abort leaves delivery uncertain: the native identity and input hold survive an
 empty composer until matching native completion, replacement or turn end.
 A semantic replacement of a known questionnaire must show matching new choices
 before a retained composer can retire it.
+
+### Codex question panels, work pulses, and Plan footer (2026-10-20)
+
+Codex 0.163.0's native queued-question UI can coexist with a working status
+that pulses between `•` and `◦`. Both glyphs retain the elapsed-time and
+`esc to interrupt` grammar; the lighter pulse does not end the running turn.
+A blocking question panel ends with its own navigation/submission footer and
+must hold ordinary input even though its selected option also uses `›`.
+The captured queued choice panel hides the native cursor and can leave its
+coordinates at the end of the working row above the panel. That position is
+valid only with hidden cursor, exact working-row geometry, and blank intervening
+rows; a visible or unrelated cursor does not establish panel ownership.
+
+After a Plan mode question completes, the native model footer includes the exact
+right-aligned `Plan mode (⇧tab to cycle)` suffix. That suffix preserves empty
+composer evidence alongside the existing model/footer grammar, current visible
+cursor, and overlay checks.
+
+The native `async-editor-first.txt` queued editor and `blocking-modal-first.txt`
+modal captures retain their exact header and terminal footer. The collapsed
+`? 1 question` badge is not an open editor and does not itself block ordinary input.
+
+These captures establish the layouts in
+`tests/fixtures/codex-0.163.0/questions/`; they do not reverify all earlier
+Codex trust and update dialogs.

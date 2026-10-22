@@ -22,7 +22,7 @@ const placeholders = new Set([
   "Use /skills to list available skills",
 ]);
 const modelFooter =
-  /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
+  /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$/;
 const hintFooter = /^(?: {2})?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
 
 /** A contiguous startup welcome box and its native tip/warning rows. */
@@ -131,9 +131,10 @@ export function codexComposerRow(frameRows: readonly string[], liveClear: boolea
 
 /** Require the composer's own footer unless the caller permits welcome evidence. */
 function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
+  // Native Codex right-aligns this badge even with a model-only status line.
   const below = rows
     .slice(at + 1)
-    .map((row) => row.trimEnd())
+    .map((row) => row.replace(/ {2,}⚠ [1-9]\d* warnings? · f2 to view\s*$/, "").trimEnd())
     .filter((row) => row !== "");
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
   return (
