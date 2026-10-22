@@ -3,7 +3,11 @@ import { afterEach, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
-import { disposeTerminals, controllerHarness as setup } from "./controller-helpers.ts";
+import {
+  disposeTerminals,
+  paintQuestionFrame,
+  controllerHarness as setup,
+} from "./controller-helpers.ts";
 import { fixture, frame } from "./helpers.ts";
 import { composer, nativeHook } from "./lifecycle-helpers.ts";
 
@@ -33,7 +37,7 @@ async function submit(scenario: {
   ];
   let inputWriteCount = 0;
   const finalRender = Promise.withResolvers<void>();
-  const h = setup(undefined, undefined, onInput);
+  const h = setup({ onInput });
   function onInput(): void {
     if (scenario.failure === "input") throw new Error("Synthetic terminal input failure");
     const next = successors[inputWriteCount++];
@@ -51,9 +55,7 @@ async function submit(scenario: {
     }, finalRender.reject);
   }
   function render(current: QuestionFrame) {
-    return h.terminal.writeOutput(
-      `\x1b[H\x1b[2J${current.lines.join("\r\n")}\x1b[${current.cursorRow + 1};${current.cursorX + 1}H\x1b[?25h`,
-    );
+    return paintQuestionFrame(h.terminal, current);
   }
   h.events.on("question", (event) => observed.push(event));
   h.questions.configure((requests) => new ClaudeQuestionAdapter(requests));
