@@ -4,7 +4,7 @@ import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { nativeHook } from "./lifecycle-helpers.ts";
-import { scriptedQuestionIo } from "./scripted-io.ts";
+import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 const questions = [
   {
