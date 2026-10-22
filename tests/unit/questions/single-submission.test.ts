@@ -1,26 +1,11 @@
 /** Single-question final submission shares native completion ownership (PRD §4). */
 import { expect, test, vi } from "vitest";
-import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
 import { fixture } from "./helpers.ts";
-import { composer } from "./lifecycle-helpers.ts";
+import { composer, singleQuestionToolInput } from "./lifecycle-helpers.ts";
 import { submissionHarness } from "./submission-helpers.ts";
 
-const toolInput = {
-  questions: [
-    {
-      question: "Which test note?",
-      header: "Note",
-      multiSelect: false,
-      options: [
-        { label: "Brief (short)", description: "A short test note." },
-        { label: "Detailed (long)", description: "A long test note." },
-      ],
-    },
-  ] satisfies AskUserQuestionInput["questions"],
-} satisfies AskUserQuestionInput;
-
 test("a single final Enter stays pending until its native completion", async () => {
-  const h = submissionHarness(fixture("freeform-questions"), [composer()], toolInput);
+  const h = submissionHarness(fixture("freeform-questions"), [composer()], singleQuestionToolInput);
   try {
     await h.start();
     const request = h.questions.list()[0]!;
@@ -58,7 +43,7 @@ test("a single final Enter stays pending until its native completion", async () 
 });
 
 test("a failed simulated render rejects final synchronization and still disposes the session", async () => {
-  const h = submissionHarness(fixture("freeform-questions"), [composer()], toolInput);
+  const h = submissionHarness(fixture("freeform-questions"), [composer()], singleQuestionToolInput);
   let pending: Promise<unknown> | undefined;
   try {
     await h.start();

@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../../src/core/questions/errors.ts";
+import { groupedAnswerFrames } from "./grouped-frame-helpers.ts";
 import { definitions, fixture, frame, nativeSnapshot, registry } from "./helpers.ts";
 
 function changingInput(
@@ -72,26 +73,8 @@ test.each([
   },
 ])("rejects a changed review $label at the final write", async ({ change }) => {
   const request = registry().publish("native", "blocking", definitions)!;
-  const logging = fixture("features-logging");
-  const metrics = frame(logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"));
-  const other = frame(
-    fixture("features-both").text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
-  );
-  const { io, writes } = changingInput(
-    fixture("questions"),
-    [
-      fixture("color-blue-highlight"),
-      fixture("features-initial"),
-      logging,
-      metrics,
-      fixture("features-both"),
-      other,
-      fixture("features-submit-highlight"),
-      fixture("review"),
-    ],
-    8,
-    change,
-  );
+  const successors = groupedAnswerFrames();
+  const { io, writes } = changingInput(fixture("questions"), successors, successors.length, change);
   await expect(
     answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }], io),
   ).rejects.toMatchObject({ code: "question_answer_failed" });
