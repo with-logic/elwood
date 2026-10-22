@@ -1253,3 +1253,38 @@ the visible cursor on its indented continuation. Neither necessarily sits on
 the highlighted option glyph. The captures used private configuration and
 authentication copies with synthetic prompts; see
 `tests/fixtures/claude-2.1.305/questions/`.
+
+### Claude question dialogs and manual composer (2026-10-20)
+
+Claude Code 2.1.305 renders `AskUserQuestion` as a fenced questionnaire with
+checkbox headers, numbered choices, and a selected `❯` row. That caret belongs
+to the dialog, so the captured questionnaire is a blocking screen fact. The
+retained question and review frames are under
+`tests/fixtures/claude-2.1.305/questions/`.
+
+After native submission the captured `accepted-manual-composer.json` contains
+`⏸ manual mode on · ? for shortcuts` below the fenced empty composer. Earlier
+question prompts remain above it. The footer is valid native composer chrome;
+clearance still requires the current visible cursor at column two on the empty
+input row. A hook candidate may arrive while the previous composer is still
+visible, so that old frame cannot retire it before its matching questionnaire has
+appeared. Matching uses the live panel’s tabs and prompt, rather than earlier
+question text or cancellation notices retained in history.
+
+These captures establish the questionnaire and manual-footer additions on
+2.1.305. They do not reverify every screen-table pattern from earlier versions.
+
+The private adapter/controller tests retain native input ownership when a
+composer repaint precedes the matching completion hook. Successful submissions
+keep their request pending; a post-write abort retires the public ID while the
+native hold remains until matching completion, replacement or turn end. A
+predecessor review panel cannot publish a newly observed successor.
+
+This adapter groundwork is not yet connected to live session construction,
+hook routing or the ordinary-input gate. The native-question session API
+integration supplies those connections; the live screen-fact rule alone only
+holds input while the questionnaire is visible.
+
+A final Enter rejected by the current-frame guard does not count as submission.
+A semantic replacement of a known questionnaire must show matching new choices
+before a retained composer can retire it.

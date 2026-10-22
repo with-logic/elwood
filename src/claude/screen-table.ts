@@ -1,7 +1,7 @@
 /**
  * Claude rendered-screen fact table for turn-state and attention detection.
  * Implements PRD §5.3, C-TURN-01 through C-TURN-05, and C-ATTN-01 through
- * C-ATTN-04.
+ * C-ATTN-05.
  */
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";
@@ -10,23 +10,27 @@ import { nativeComposerClearance, type TrustClearance } from "../core/trust/clea
 import { cursorViewportRow } from "../terminal/coordinates.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { claudeManualModeFooter } from "./composer/footer.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
+import { claudeQuestionCandidate } from "./questions/screen.ts";
 
 const claudeWorkingTitle = /^[⠀-⣿◐]\s/;
-const claudeComposerInputColumn = 2; // zero-based, after the two-cell "❯ " prefix
+/** Zero-based input position after Claude's two-cell "❯ " composer prefix. */
+export const claudeComposerInputColumn = 2;
 /** Native empty-composer row shape; callers own activity and dialog checks. */
 export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
 
 /**
  * Claude's trust-clearance grammar, owned HERE beside the rest of Claude's verified
  * screen facts (C-TRUST-01). Clearance needs Claude's own chrome — the version banner or
- * the permission-mode footer — plus the composer fenced between rule lines, so a frame
- * that merely contains a `❯` is not mistaken for an answered gate.
+ * the permission-mode or manual-mode footer — plus the composer fenced between rule
+ * lines, so a frame that merely contains a `❯` is not mistaken for an answered gate.
  */
 export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
   (frame) =>
     (/Claude Code v[\d.]+/.test(frame) ||
+      claudeManualModeFooter.test(frame) ||
       /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
         frame,
       )) &&
@@ -73,12 +77,18 @@ export function liveClaudeClearance(
  * on narrow screens. Model/effort switch dialogs use either `❯` or `›` and
  * can be numbered or unnumbered; their complete title/action shape blocks the
  * dialog caret from being mistaken for the idle composer. Verified on claude
- * 2.1.258.
+ * 2.1.258. The questionnaire blocking pattern and manual-mode footer were
+ * captured on 2.1.305; other rules retain the earlier version evidence.
  */
 export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
-  verifiedAgainst: "claude 2.1.258",
+  verifiedAgainst: "claude 2.1.258; question dialog and manual footer: 2.1.305",
   rules: [
+    {
+      id: "claude-question-dialog",
+      fact: "blocking_prompt_visible",
+      match: claudeQuestionCandidate,
+    },
     { id: "claude-composer-marker", fact: "composer_visible", all: [/^\s*❯/m] },
     { id: "claude-working-footer", fact: "working_visible", all: [/esc to interrupt/i] },
     {
