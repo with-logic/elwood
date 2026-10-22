@@ -163,10 +163,7 @@ function expectedOptions(
 ): QuestionDefinition["options"] {
   switch (kind) {
     case "queued":
-      return [
-        ...question.options,
-        { label: queuedOtherLabel(question) },
-      ];
+      return [...question.options, { label: queuedOtherLabel(question) }];
     case "blocking":
       return question.options;
   }
