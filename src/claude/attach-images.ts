@@ -15,10 +15,9 @@ import {
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
 import { requestComposerCleanup } from "../core/input/composer-cleanup.ts";
+import { bracketedPasteEnd, bracketedPasteStart } from "../core/input/constants.ts";
 import { sanitizePasteText } from "../core/input/index.ts";
 
-const PASTE_START = "\u001b[200~";
-const PASTE_END = "\u001b[201~";
 const chipWait: ChipWaitOptions = { settleMs: 150, timeoutMs: 10_000, pollMs: 100 };
 
 /**
@@ -40,7 +39,7 @@ export async function attachClaudeImages(
   try {
     for (const path of paths) {
       if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-      const paste = `${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`;
+      const paste = `${bracketedPasteStart}${sanitizePasteText(path)}${bracketedPasteEnd}`;
       const before = await sendObservedImage(terminal, paste, blocked, signal);
       staged = true;
       await waitForImageChip(terminal, before, signal, chipWait);
