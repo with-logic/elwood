@@ -18,6 +18,16 @@ export function frame(text: string): QuestionFrame {
   const cursorRow = lines.findLastIndex((line) => line.trim().length > 0) + 1;
   return { text, lines, cols: 140, rows: 45, cursorX: 0, cursorY: cursorRow, cursorRow };
 }
+/** A completed empty composer with its visible input cursor, ready for ordinary input. */
+export function emptyComposerFrame(): QuestionFrame {
+  return {
+    ...frame("› Ask Codex to do anything\n\n  GPT-6-Luna low"),
+    cursorX: 2,
+    cursorRow: 0,
+    cursorY: 0,
+    cursorVisible: true,
+  };
+}
 export function captured(name: string): QuestionFrame {
   return frame(fixture(name));
 }
