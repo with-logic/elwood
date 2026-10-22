@@ -1,6 +1,6 @@
 /** Preserve native question reservations across metadata mirrors (PRD §4). */
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
-import type { Candidate } from "./candidate.ts";
+import { type Candidate, hasInFlightSubmission } from "./candidate.ts";
 import type { QuestionBudget } from "./limits.ts";
 
 export function hasCandidateReservation(
@@ -12,6 +12,6 @@ export function hasCandidateReservation(
   return (
     budget.hasRetired(nativeKey) ||
     registry.isRetired(nativeKey) ||
-    Boolean(candidate && (candidate.submitting || candidate.hasPendingNativeSubmission))
+    hasInFlightSubmission(candidate)
   );
 }

@@ -6,7 +6,7 @@ import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { codexEmptyInputRows } from "../screen/empty-input.ts";
-import type { QueuedCandidate } from "./candidate.ts";
+import { hasInFlightSubmission, type QueuedCandidate } from "./candidate.ts";
 import { type Candidate, CodexQuestionCandidates } from "./candidates.ts";
 import { answerBlocking, answerQueued } from "./driver.ts";
 import { matchesQuestion, type QuestionView, questionView, queuedBadge } from "./frame.ts";
@@ -117,8 +117,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     for (const candidate of this.state.candidates.values()) {
       if (
         this.candidatesSeenInNativeUi.has(candidate) &&
-        !candidate.submitting &&
-        !candidate.hasPendingNativeSubmission &&
+        !hasInFlightSubmission(candidate) &&
         !this.pending.isAmbiguous(candidate)
       )
         this.state.close(candidate.nativeKey, "unavailable");
@@ -136,9 +135,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
         previous !== current && (this.previousQuestionCount === view.count + 1 || view.count === 1);
       if (previous) {
         const retirementEligible = !(
-          previous.submitting ||
-          previous.hasPendingNativeSubmission ||
-          this.pending.isAmbiguous(previous)
+          hasInFlightSubmission(previous) || this.pending.isAmbiguous(previous)
         );
         if (canRetirePreviousCandidate && retirementEligible)
           this.state.close(previous.nativeKey, "unavailable");

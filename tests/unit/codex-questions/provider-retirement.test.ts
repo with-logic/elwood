@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import { QuestionTransaction } from "../../../src/core/questions/transaction.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { reply } from "./acceptance-helpers.ts";
 import { harness } from "./adapter-helpers.ts";
 import { captured, frame } from "./helpers.ts";
 
@@ -54,18 +55,7 @@ test("retired Codex identity keeps native acknowledgement correlation across cha
       code: "question_not_found",
     });
     expect(writes).toEqual([]);
-    h.observe({
-      payload: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: `<send_user_message_question_reply>${JSON.stringify([{ questionItemId: key, answer: "Amber" }])}</send_user_message_question_reply>`,
-          },
-        ],
-      },
-    });
+    h.adapter.observe(reply(key, "Amber"));
     expect(h.registry.find(key)).toBeUndefined();
     expect(
       h.events.filter((event) => event.request.id === original.id).map((event) => event.phase),
