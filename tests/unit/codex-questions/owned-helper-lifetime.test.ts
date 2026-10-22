@@ -23,13 +23,21 @@ test("observes asynchronous paint failures and revokes the owning transaction si
   }
 });
 
-test("cleanup aborts and drains a real transaction awaiting native acceptance", async () => {
+test("cleanup drains the caller while native acknowledgement retains its reservation", async () => {
   const h = await transactionBinding({ mode: "queued", long: false, wrong: false });
   await h.waitForAcknowledgement();
   expect(h.transaction.busy()).toBe(true);
-  const disposing = h.dispose();
-  await expect.poll(() => h.transaction.busy(), { timeout: 500 }).toBe(false);
+  let disposed = false;
+  const disposing = h.dispose().then(() => {
+    disposed = true;
+  });
+  await expect.poll(() => disposed, { timeout: 500 }).toBe(true);
   await disposing;
   expect(await h.result).toBe("failed");
+  expect(h.transaction.busy()).toBe(true);
+  expect(h.registry.keyFor(h.request.id)).toBeDefined();
+  h.acknowledge();
   expect(h.transaction.busy()).toBe(false);
+  expect(h.events.filter((event) => event.phase === "closed")).toHaveLength(1);
+  expect(h.events.at(-1)).toMatchObject({ phase: "closed", reason: "unavailable" });
 });
