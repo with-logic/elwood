@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
+import { noteFirstLine, noteLastLine } from "../e2e/questions/claude-cases.ts";
 import {
   assertQuestionAnswerPrivacy,
   committedCodexQuestionRecords,
@@ -140,6 +141,22 @@ test("Question scans allow missing roots and propagate ENOTDIR failures", () => 
     mkdirSync(home);
     writeFileSync(join(home, "sessions"), "not a directory");
     assert.throws(() => committedCodexQuestionRecords(home), { code: "ENOTDIR" });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("C-E2E-18 complete Claude note rejects a second-line-only leak", () => {
+  const root = mkdtempSync(join(tmpdir(), "elwood-claude-note-privacy-test-"));
+  const marker = "synthetic-unique-id";
+  const note = `${noteFirstLine}_${marker}\n${noteLastLine}`;
+  try {
+    assert.throws(
+      () => assertQuestionAnswerPrivacy(root, [{ text: noteLastLine }], [marker, note]),
+      /Question telemetry/,
+    );
+    writeFileSync(join(root, "session.json"), JSON.stringify({ answer: noteLastLine }));
+    assert.throws(() => assertQuestionAnswerPrivacy(root, [], [marker, note]), /session state/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

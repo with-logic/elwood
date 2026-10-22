@@ -347,6 +347,7 @@ Each criterion has:
 | C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that DETERMINISTICALLY uses a workspace tool (reading a planted file) yields the turn's simplified typed events in arrival order — a `tool_call` FOLLOWED by its `tool_result`, and at least one `text` — and ends when the turn settles, verified against the installed CLI (C-API-48). |
 | C-E2E-16 | §5.1 §5.5 | Against the REAL CLIs, a session started with `highTrust: true` reaches `ready` on both adapters: Claude's rendered composer shows its bypass-permissions footer with no acceptance dialog left visible (answered when the installed CLI renders one), and Codex's persisted launch posture is `danger-full-access` / `never` (C-API-54, C-CLAUDE-21). |
 | C-E2E-17 | §5.4 §7A.4 | An isolated real Codex turn emits readable `assistant_progress` before its final `assistant_message`, retains running/ready lifecycle, and returns only final text through ergonomic `send()`, without tools or changes to parent configuration. |
+| C-E2E-18 | §5.10 §7 | Two isolated native Claude public-API turns accept grouped single/multiple choices and multiline alternative text, confirm complete native answers and answered closures, return only final replies, exclude submitted answer markers from question telemetry and Elwood-owned state, remove private artifacts and homes, and preserve parent configuration/authentication/environment. |
 
 #### C-REVIEW: Maintainer automation (§16)
 
