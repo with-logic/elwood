@@ -15,6 +15,11 @@ back each entry are listed in `prd/14-conformance.md`.
 - Preserve overlapping Claude question requests across out-of-order hook outcomes;
   require unambiguous native panel evidence before exposing answer authority.
 
+- Cancel question writes before physical dispatch when the operation aborts, including after its final frame guard.
+- Retain uncertain native answer reservations until both the physical write and correlated native ownership settle.
+- Preserve in-flight question request IDs through same-key metadata redraws so late native acceptance closes the original request.
+
+
 - Preserve the first question-observer failure diagnostic when pending listener
   promises exceed the notification registration cap.
 

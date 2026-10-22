@@ -57,6 +57,6 @@ failures without instrumenting Elwood internals.
 
 Native question controls add `question_not_found` (no current request with this live ID), `invalid_question_answer` (invalid complete answer batch or timeout option), and `question_answer_failed` (busy, revoked, unsupported or unacknowledged native input). Messages and details do not echo answer text.
 
-Native question answer failures may include only the fixed `details.phase` values
-`frame_wait`, `adapter`, `terminal_write`, `native_acceptance`, or `revoked`
+Native question answer failures may include only the fixed `details.category` values
+`frame_wait`, `adapter`, `terminal_write`, `native_acceptance`, or `aborted`
 (§5.10). Raw native exceptions and submitted answer values are never retained.

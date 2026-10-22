@@ -1,5 +1,6 @@
 /** Native question controls bypass ergonomic turn serialization (C-QUESTION-02). */
 import { expect, test, vi } from "vitest";
+import { questionActivity } from "../../../src/core/questions/activity-fields.ts";
 import { activity, TestSimple } from "../simple-fakes.ts";
 import { definitions, registry } from "./helpers.ts";
 
@@ -24,15 +25,11 @@ test("C-QUESTION-02 a live ergonomic turn remains owned while question controls 
     emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
     emitter.emit(
       "activity",
-      activity({
-        kind: "question",
-        text: "Question text is not final",
-        question: {
-          elwoodSessionId: "s1",
-          agent: "claude",
-          phase: "raised",
-          request: { id: "request", agent: "claude", delivery: "blocking", questions: [] },
-        },
+      questionActivity({
+        elwoodSessionId: "s1",
+        agent: "claude",
+        phase: "raised",
+        request: { id: "request", agent: "claude", delivery: "blocking", questions: [] },
       }),
     );
   };

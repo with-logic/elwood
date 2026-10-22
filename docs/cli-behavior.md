@@ -1288,6 +1288,13 @@ ownership until matching completion, replacement or turn end. The captured frame
 establish the native layouts; the capture-specific version and screen-pattern
 limitations above still apply.
 
+Structured answers use the session-owned transaction lane; request listing
+bypasses an active ergonomic turn. After uncertain dispatch, both physical write
+settlement and matching native closure are required before ordinary input resumes,
+regardless of their order. The live screen-fact rule also holds input while the
+questionnaire is visible.
+
+
 A final Enter rejected before physical dispatch, including by a current-frame or
 abort guard, does not count as submission. Once dispatch begins, a rejection or
 abort leaves delivery uncertain: the native identity and input hold survive an
