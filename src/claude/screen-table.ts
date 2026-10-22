@@ -15,15 +15,16 @@ import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 import { claudeQuestionCandidate } from "./questions/screen.ts";
 
 const claudeWorkingTitle = /^[⠀-⣿◐]\s/;
-const claudeComposerInputColumn = 2; // zero-based, after the two-cell "❯ " prefix
+/** Zero-based input position after Claude's two-cell "❯ " composer prefix. */
+export const claudeComposerInputColumn = 2;
 /** Native empty-composer row shape; callers own activity and dialog checks. */
 export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
 
 /**
  * Claude's trust-clearance grammar, owned HERE beside the rest of Claude's verified
  * screen facts (C-TRUST-01). Clearance needs Claude's own chrome — the version banner or
- * the permission-mode footer — plus the composer fenced between rule lines, so a frame
- * that merely contains a `❯` is not mistaken for an answered gate.
+ * the permission-mode or manual-mode footer — plus the composer fenced between rule
+ * lines, so a frame that merely contains a `❯` is not mistaken for an answered gate.
  */
 export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,

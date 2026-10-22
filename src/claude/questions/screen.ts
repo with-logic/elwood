@@ -27,27 +27,33 @@ const CLAUDE_REVIEW_TITLE = "Review your answers";
 const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
+const questionFooter = /^Enter to select · .+ · Esc to cancel$/;
 
 /** Native chrome may be partial; a candidate alone grants no complete parse or answer authority. */
 export function claudeQuestionCandidate(text: string): boolean {
   const lines = text.split("\n");
-  const start = lines.findLastIndex((line) => header.test(line));
-  if (start < 1 || !fence.test(lines[start - 1]!)) return false;
-  return !lines.slice(start + 1).some((line) => /^❯(?!\s+\d+\.|\s+Submit\s*$)/.test(line));
+  const start = questionPanelStart(lines);
+  if (start < 0) return false;
+  // Only a composer after completed native actions can retire this panel. Question
+  // copy may itself contain carets, fences, and footer text; partial panels stay held.
+  const footer = lines.findLastIndex((line) => questionFooter.test(line));
+  const closingFence = lines.findLastIndex((line, index) => index < footer && fence.test(line));
+  const lastOption = lines.findLastIndex((line, index) => index < closingFence && row.test(line));
+  const questionEnd = lastOption > start ? footer : -1;
+  const reviewEnd = lines.findLastIndex((line) => /^(?:❯| )\s+2\. Cancel$/.test(line));
+  const end = Math.max(questionEnd, reviewEnd);
+  return (
+    end <= start || !lines.slice(end + 1).some((line) => /^❯(?!\s+\d+\.|\s+Submit\s*$)/.test(line))
+  );
 }
 /** Return a matching question/review; partial, foreign, or mismatched frames return undefined. */
 export function parseClaudeQuestionScreen(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
 ): ClaudeQuestionScreen | undefined {
-  if (!claudeQuestionCandidate(frame.text)) return undefined;
-  const lines = frame.lines;
-  const start = lines.findLastIndex((line) => header.test(line));
-  if (!matchesClaudeQuestionTabs(frame, questions)) return undefined;
-  const body = lines.slice(start + 1);
-  const first = body.findIndex((line) => row.test(line));
-  if (first < 0) return undefined;
-  const prompt = normalizeClaudeQuestionText(body.slice(0, first).join("\n"));
+  const panel = readClaudeQuestionPanel(frame, questions);
+  if (!panel) return undefined;
+  const { start, body, first, prompt } = panel;
   const reviewReadyIndex = body.lastIndexOf(CLAUDE_REVIEW_READY_LABEL);
   if (prompt.startsWith(`${CLAUDE_REVIEW_TITLE} `) && reviewReadyIndex >= 0) {
     if (!questionCursor(frame)) return undefined;
@@ -68,7 +74,7 @@ export function parseClaudeQuestionScreen(
   );
   const question = questions[questionIndex];
   if (!question) return undefined;
-  const footer = body.findIndex((line) => /^Enter to select · .+ · Esc to cancel$/.test(line));
+  const footer = body.findLastIndex((line) => questionFooter.test(line));
   if (footer < 0 || body.slice(footer + 1).some((line) => line.trim())) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
@@ -87,15 +93,41 @@ export function parseClaudeQuestionScreen(
     : undefined;
 }
 
+/** Shared live tabs/prompt identity; callers separately validate complete native choice rows. */
+export function readClaudeQuestionPanel(
+  frame: QuestionFrame,
+  questions: readonly QuestionDefinition[],
+) {
+  if (!(claudeQuestionCandidate(frame.text) && matchesClaudeQuestionTabs(frame, questions)))
+    return undefined;
+  const start = questionPanelStart(frame.lines);
+  const body = frame.lines.slice(start + 1);
+  const first = body.findIndex((line) => row.test(line));
+  if (first < 0) return undefined;
+  return {
+    start,
+    body,
+    first,
+    prompt: normalizeClaudeQuestionText(body.slice(0, first).join("\n")),
+  };
+}
+
 export function matchesClaudeQuestionTabs(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
 ): boolean {
   if (questions.length === 0 || questions.some((question) => !question.header)) return false;
-  const title = frame.lines.findLast((line) => header.test(line));
+  const title = frame.lines[questionPanelStart(frame.lines)];
   const tabs = questions.map((question) => `☐ ${question.header}`).join("  ");
   const expected = questions.length === 1 ? ` ${tabs}` : `←  ${tabs}  ✔ Submit  →`;
   return title?.replaceAll("☒", "☐") === expected;
+}
+
+/** Header-like model copy without a native opening fence cannot replace the live panel. */
+function questionPanelStart(lines: readonly string[]): number {
+  return lines.findLastIndex(
+    (line, index) => header.test(line) && index > 0 && fence.test(lines[index - 1]!),
+  );
 }
 
 /** Captured native selection dialogs can park their cursor at the bottom-left viewport cell. */

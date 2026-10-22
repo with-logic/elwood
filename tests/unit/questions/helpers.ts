@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { QuestionRegistry } from "../../../src/core/questions/registry.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
-export const definitions: readonly QuestionDefinition[] = [
+
+type ClaudeQuestionFixture = QuestionDefinition & { readonly header: string };
+export const definitions: readonly ClaudeQuestionFixture[] = [
   {
     prompt: "Which test color?",
     header: "Color",

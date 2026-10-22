@@ -1,4 +1,5 @@
 /** Native hook and fenced-composer fixtures for Claude lifecycle regressions (PRD §4). */
+import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
 import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
 import { definitions, frame } from "./helpers.ts";
 export const nativeQuestions = definitions.map((question) => ({
@@ -6,7 +7,7 @@ export const nativeQuestions = definitions.map((question) => ({
   header: question.header,
   options: question.options,
   multiSelect: question.selection === "multiple",
-}));
+})) satisfies AskUserQuestionInput["questions"];
 export function nativeHook(
   name = "PreToolUse",
   extra: Readonly<Record<string, unknown>> = {},
@@ -21,7 +22,7 @@ export function nativeHook(
       hook_event_name: name,
       tool_name: "AskUserQuestion",
       tool_use_id: "native",
-      tool_input: { questions: nativeQuestions },
+      tool_input: { questions: nativeQuestions } satisfies AskUserQuestionInput,
       ...extra,
     },
   };

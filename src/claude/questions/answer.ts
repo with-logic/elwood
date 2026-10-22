@@ -16,7 +16,9 @@ const usesCheckboxes = {
 } satisfies Readonly<Record<ElwoodQuestion["selection"], boolean>>;
 
 /** Requires native question 0 and a complete normalized batch in request order.
- * Finishing these writes does not prove native acceptance; the transaction owns that acknowledgement. */
+ * `submitting` reports a final-submit attempt inside the accepted current-frame
+ * guard, before io.write attempts Enter. It proves neither physical delivery nor
+ * native acceptance; the transaction owns the native acknowledgement. */
 export async function answerClaudeQuestions(
   request: ElwoodQuestionRequest,
   answers: readonly ValidatedQuestionAnswer[],

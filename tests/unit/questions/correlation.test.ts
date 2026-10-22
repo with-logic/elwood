@@ -4,14 +4,9 @@ import { expect, test } from "vitest";
 import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
-import { definitions, fixture, registry } from "./helpers.ts";
+import { fixture, registry } from "./helpers.ts";
+import { nativeQuestions as questions } from "./lifecycle-helpers.ts";
 
-const questions = definitions.map((question) => ({
-  question: question.prompt,
-  header: question.header!,
-  options: question.options,
-  multiSelect: question.selection === "multiple",
-}));
 function hook(
   name: string,
   input: AskUserQuestionInput["questions"],
@@ -26,7 +21,7 @@ function hook(
     raw: {
       hook_event_name: name,
       tool_name: "AskUserQuestion",
-      tool_input: { questions: input },
+      tool_input: { questions: input } satisfies AskUserQuestionInput,
       ...(id === undefined ? {} : { tool_use_id: id }),
     },
   };
@@ -63,3 +58,23 @@ for (const name of ["PostToolUse", "PostToolUseFailure"]) {
     expect(h.requests.list()).toEqual([h.request]);
   });
 }
+
+test("omitted multiSelect defaults to single and matches an ID-less completion", () => {
+  const input = [
+    {
+      question: "Which test note?",
+      header: "Note",
+      options: [
+        { label: "Brief (short)", description: "A short test note." },
+        { label: "Detailed (long)", description: "A long test note." },
+      ],
+    },
+  ] satisfies AskUserQuestionInput["questions"];
+  const requests = registry();
+  const adapter = new ClaudeQuestionAdapter(requests);
+  adapter.observe(hook("PreToolUse", input, "single"));
+  adapter.render(fixture("freeform-questions"));
+  expect(requests.list()[0]?.questions[0]?.selection).toBe("single");
+  adapter.observe(hook("PostToolUse", input));
+  expect(requests.list()).toEqual([]);
+});

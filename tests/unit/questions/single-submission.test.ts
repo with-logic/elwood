@@ -1,15 +1,9 @@
 /** Single-question final submission shares native completion ownership (PRD §4). */
-
-import { expect, test } from "vitest";
-import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
-import type { QuestionActivityEvent } from "../../../src/core/questions/activity.ts";
-import { SessionQuestions } from "../../../src/core/questions/controller.ts";
-import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
-import { TypedEmitter } from "../../../src/events/emitter.ts";
-import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { expect, test, vi } from "vitest";
+import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
 import { fixture } from "./helpers.ts";
-import { composer, nativeHook } from "./lifecycle-helpers.ts";
+import { composer } from "./lifecycle-helpers.ts";
+import { submissionHarness } from "./submission-helpers.ts";
 
 const toolInput = {
   questions: [
@@ -22,50 +16,16 @@ const toolInput = {
         { label: "Detailed (long)", description: "A long test note." },
       ],
     },
-  ],
-};
-const hook = (name = "PreToolUse") => nativeHook(name, { tool_input: toolInput });
+  ] satisfies AskUserQuestionInput["questions"],
+} satisfies AskUserQuestionInput;
 
 test("a single final Enter stays pending until its native completion", async () => {
-  const events = new TypedEmitter<{
-    activity: ElwoodActivityEvent | QuestionActivityEvent;
-    question: ElwoodQuestionEvent;
-  }>();
-  const closing = new AbortController();
-  const writes: string[] = [];
-  const observed: ElwoodQuestionEvent[] = [];
-  events.on("question", (event) => observed.push(event));
-  let submitted: () => void = () => undefined;
-  const final = new Promise<void>((resolve) => {
-    submitted = resolve;
-  });
-  const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, (input) => {
-    writes.push(typeof input === "string" ? input : Buffer.from(input).toString("utf8"));
-    const current = composer();
-    void terminal
-      .writeOutput(
-        `\x1b[H\x1b[2J${current.lines.join("\r\n")}\x1b[${current.cursorRow + 1};3H\x1b[?25h`,
-      )
-      .then(submitted);
-  });
-  const questions = new SessionQuestions(
-    "claude",
-    "s",
-    events,
-    terminal,
-    () => new AbortController().signal,
-    closing.signal,
-  );
-  questions.configure((requests) => new ClaudeQuestionAdapter(requests));
+  const h = submissionHarness(fixture("freeform-questions"), [composer()], toolInput);
   try {
-    events.emit("activity", hook());
-    const current = fixture("freeform-questions");
-    await terminal.writeOutput(
-      `\x1b[H\x1b[2J${current.lines.join("\r\n")}\x1b[${current.cursorRow + 1};1H\x1b[?25h`,
-    );
-    const request = questions.list()[0]!;
+    await h.start();
+    const request = h.questions.list()[0]!;
     let finished = false;
-    const pending = questions
+    const pending = h.questions
       .answer(request.id, [
         { questionId: request.questions[0]!.id, optionIds: [request.questions[0]!.options[0]!.id] },
       ])
@@ -74,20 +34,48 @@ test("a single final Enter stays pending until its native completion", async () 
           finished = true;
           return "resolved";
         },
-        () => {
+        (error: unknown) => {
           finished = true;
-          return "failed";
+          return error;
         },
       );
-    await final;
-    expect(writes).toEqual(["\r"]);
-    expect(questions.list()).toEqual([request]);
+    await Promise.race([
+      h.final,
+      pending.then((outcome) => {
+        if (outcome !== "resolved") throw outcome;
+        return h.final;
+      }),
+    ]);
+    expect(h.writes).toEqual(["\r"]);
+    expect(h.questions.list()).toEqual([request]);
     expect(finished).toBe(false);
-    events.emit("activity", hook("PostToolUse"));
-    await expect(pending).resolves.toBe("resolved");
-    expect(observed.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request });
+    h.hook("PostToolUse");
+    expect(await pending).toBe("resolved");
+    expect(h.observed.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request });
   } finally {
-    closing.abort();
-    terminal.dispose();
+    h.dispose();
+  }
+});
+
+test("a failed simulated render rejects final synchronization and still disposes the session", async () => {
+  const h = submissionHarness(fixture("freeform-questions"), [composer()], toolInput);
+  let pending: Promise<unknown> | undefined;
+  try {
+    await h.start();
+    const renderFailure = new Error("simulated composer render failed");
+    vi.spyOn(h.terminal, "writeOutput").mockRejectedValueOnce(renderFailure);
+    const request = h.questions.list()[0]!;
+    pending = h.questions
+      .answer(request.id, [
+        {
+          questionId: request.questions[0]!.id,
+          optionIds: [request.questions[0]!.options[0]!.id],
+        },
+      ])
+      .catch((error: unknown) => error);
+    await expect(h.final).rejects.toBe(renderFailure);
+  } finally {
+    h.dispose();
+    await pending;
   }
 });

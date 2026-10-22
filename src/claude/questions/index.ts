@@ -8,21 +8,22 @@ import type { ElwoodQuestionRequest, QuestionDefinition } from "../../core/quest
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { claudeEmptyInputRows } from "../composer/empty-input.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
+import { claudeComposerInputColumn } from "../screen-table.ts";
 import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
 import { matchesNativeQuestions } from "./correlation.ts";
-import { claudeQuestionRow, normalizeClaudeQuestionText } from "./rows.ts";
+import { normalizeClaudeQuestionText } from "./rows.ts";
 import {
   claudeQuestionCandidate,
-  matchesClaudeQuestionTabs,
   parseClaudeQuestionScreen,
+  readClaudeQuestionPanel,
 } from "./screen.ts";
 
 type Candidate = {
-  readonly key: string;
+  readonly nativeKey: string;
   readonly questions: readonly QuestionDefinition[];
-  awaitingNative: boolean;
-  readonly requiresMatchingChoices: boolean;
+  awaitingNativeHookClosure: boolean;
+  readonly requiresExactQuestionMatch: boolean;
 };
 export class ClaudeQuestionAdapter implements QuestionAdapter {
   private candidate: Candidate | undefined;
@@ -54,21 +55,14 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     if (name === "PostToolUse" || name === "PostToolUseFailure" || name === "PermissionDenied")
       return this.closeNativeHook(name, hook, questions);
     if (name !== "PreToolUse" && name !== "PermissionRequest") return false;
-    const nativeId = hook["tool_use_id"];
-    if (
-      this.candidate &&
-      matchesNativeQuestions(questions, this.candidate.questions) &&
-      (typeof nativeId !== "string" ||
-        nativeId === this.candidate.key ||
-        name === "PermissionRequest")
-    )
-      return false;
-    const key = typeof nativeId === "string" ? nativeId : JSON.stringify(questions);
-    const previous = this.candidate && this.registry.find(this.candidate.key);
+    const toolUseId = hook["tool_use_id"];
+    if (matchesCandidateHook(this.candidate, questions, toolUseId, name)) return false;
+    const nativeKey = typeof toolUseId === "string" ? toolUseId : JSON.stringify(questions);
+    const previous = this.candidate && this.registry.find(this.candidate.nativeKey);
     this.candidate = {
-      key,
-      awaitingNative: false,
-      requiresMatchingChoices:
+      nativeKey,
+      awaitingNativeHookClosure: false,
+      requiresExactQuestionMatch:
         this.lastNativeQuestions !== undefined &&
         !matchesNativeQuestions(questions, this.lastNativeQuestions),
       questions: questions.map((question) => ({
@@ -91,11 +85,11 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
   ): boolean {
     const candidate = this.candidate;
     if (!candidate) return false;
-    const nativeId = hook["tool_use_id"];
-    if (typeof nativeId === "string") {
-      if (nativeId !== candidate.key) return false;
+    const toolUseId = hook["tool_use_id"];
+    if (typeof toolUseId === "string") {
+      if (toolUseId !== candidate.nativeKey) return false;
     } else if (!matchesNativeQuestions(questions, candidate.questions)) return false;
-    const request = this.registry.find(candidate.key);
+    const request = this.registry.find(candidate.nativeKey);
     this.candidate = undefined;
     this.seenChrome = false;
     if (request) this.registry.close(request.id, closeReason(name, hook));
@@ -107,20 +101,21 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     if (!candidate) return;
     const screen = parseClaudeQuestionScreen(frame, candidate.questions);
     if (screen?.kind === "question") this.lastNativeQuestions = candidate.questions;
-    if (
+    const matchesCompleteQuestion = screen?.kind === "question";
+    const hasMatchingNativePanel =
       this.held &&
-      (screen?.kind === "question" ||
-        (!candidate.requiresMatchingChoices && matchesCandidateChrome(frame, candidate.questions)))
-    )
-      this.seenChrome = true;
-    const current = this.registry.find(candidate.key);
-    const cleared =
-      !candidate.awaitingNative &&
-      this.seenChrome &&
+      (matchesCompleteQuestion ||
+        (!candidate.requiresExactQuestionMatch &&
+          matchesCandidateChrome(frame, candidate.questions)));
+    if (hasMatchingNativePanel) this.seenChrome = true;
+    const current = this.registry.find(candidate.nativeKey);
+    const hasLiveEmptyComposer =
       frame.cursorVisible === true &&
-      frame.cursorX === 2 &&
+      frame.cursorX === claudeComposerInputColumn &&
       claudeEmptyInputRows(frame.lines, frame.cursorRow);
-    if (cleared) {
+    const canRetireFromComposer =
+      !candidate.awaitingNativeHookClosure && this.seenChrome && hasLiveEmptyComposer;
+    if (canRetireFromComposer) {
       this.candidate = undefined;
       this.seenChrome = false;
       if (current) this.registry.close(current.id, "unavailable");
@@ -128,7 +123,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     }
     if (!this.held || current || candidate.questions.length === 0) return;
     if (screen?.kind === "question")
-      this.registry.publish(candidate.key, "blocking", candidate.questions);
+      this.registry.publish(candidate.nativeKey, "blocking", candidate.questions);
   }
   blocksInput(): boolean {
     return Boolean(this.candidate || this.held);
@@ -139,10 +134,10 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     io: QuestionIo,
   ): Promise<void> {
     const candidate = this.candidate;
-    if (!candidate || this.registry.keyFor(request.id) !== candidate.key)
+    if (!candidate || this.registry.keyFor(request.id) !== candidate.nativeKey)
       throw questionAnswerFailed();
     return await answerClaudeQuestions(request, answers, io, () => {
-      candidate.awaitingNative = true;
+      candidate.awaitingNativeHookClosure = true;
     });
   }
 }
@@ -157,11 +152,25 @@ function matchesCandidateChrome(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
 ): boolean {
-  if (!matchesClaudeQuestionTabs(frame, questions)) return false;
-  const title = frame.lines.findLastIndex((line) => /^(?:←\s+)?\s*[☐☒] /.test(line));
-  const body = frame.lines.slice(title + 1);
-  const firstOption = body.findIndex((line) => claudeQuestionRow.test(line));
-  if (firstOption < 0) return false;
-  const prompt = normalizeClaudeQuestionText(body.slice(0, firstOption).join("\n"));
-  return questions.some((question) => normalizeClaudeQuestionText(question.prompt) === prompt);
+  const panel = readClaudeQuestionPanel(frame, questions);
+  return (
+    panel !== undefined &&
+    questions.some((question) => normalizeClaudeQuestionText(question.prompt) === panel.prompt)
+  );
+}
+
+/** PermissionRequest can mirror PreToolUse with a different hook ID for the same input. */
+function matchesCandidateHook(
+  candidate: Candidate | undefined,
+  questions: AskUserQuestionInput["questions"],
+  toolUseId: unknown,
+  name: unknown,
+): boolean {
+  const matchesCandidateQuestions =
+    candidate !== undefined && matchesNativeQuestions(questions, candidate.questions);
+  const matchesCandidateIdentity =
+    typeof toolUseId !== "string" ||
+    toolUseId === candidate?.nativeKey ||
+    name === "PermissionRequest";
+  return matchesCandidateQuestions && matchesCandidateIdentity;
 }

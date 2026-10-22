@@ -2,31 +2,9 @@
 
 import { describe, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
-import { definitions, fixture, frame, registry } from "./helpers.ts";
+import { fixture, frame, registry } from "./helpers.ts";
+import { nativeHook as hook } from "./lifecycle-helpers.ts";
 
-const questions = definitions.map((question) => ({
-  question: question.prompt,
-  header: question.header,
-  options: question.options,
-  multiSelect: question.selection === "multiple",
-}));
-function hook(name: string, extra: Readonly<Record<string, unknown>> = {}): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: "s",
-    agent: "claude",
-    source: "hook",
-    kind: "hook",
-    label: name,
-    raw: {
-      hook_event_name: name,
-      tool_name: "AskUserQuestion",
-      tool_input: { questions },
-      tool_use_id: "native",
-      ...extra,
-    },
-  };
-}
 describe("Claude hook candidates", () => {
   test("publishes only matching native UI, preserves redraw IDs and correlates keyless permission mirrors", () => {
     const requests = registry();

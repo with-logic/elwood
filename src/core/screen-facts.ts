@@ -40,7 +40,7 @@ export type ScreenFactRule = {
 
 export type ScreenFactTable = {
   readonly agent: ElwoodAgentKind;
-  /** CLI version these rules were last verified against by the e2e suites. */
+  /** CLI versions used to establish native grammar through captured frames or e2e suites. */
   readonly verifiedAgainst: string;
   readonly rules: readonly ScreenFactRule[];
   /** Adapter fallback hidden while trust owns a partial repaint. */
