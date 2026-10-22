@@ -7,6 +7,8 @@ import { captured, frame, records, scriptedIo } from "./helpers.ts";
 import { snapshot } from "./snapshot-fixtures.ts";
 
 const first = captured("async-editor-first.txt");
+const blue = captured("async-editor-blue.txt");
+const emptyNote = captured("async-after-first.txt");
 const notes = (source: QuestionFrame, text = "Add notes") =>
   editorFrame(
     frame(
@@ -22,6 +24,25 @@ const notes = (source: QuestionFrame, text = "Add notes") =>
     },
   );
 describe("Codex native question lifecycle and driving", () => {
+  test("opens badge and accepts one queued choice", async () => {
+    const h = harness();
+    const native = records("async-records.json");
+    h.observe(native[0]);
+    h.observe(native[1]);
+    h.adapter.render(captured("async-badge.txt"));
+    const scripted = scriptedIo(captured("async-badge.txt"), [
+      { input: "\x1b[1;2D", next: first },
+      { input: "\x1b[B", next: blue },
+      { input: "\r" },
+    ]);
+    await h.adapter.answer(h.registry.list()[0]!, [{ optionIndexes: [1] }], scripted.io);
+    expect(scripted.writes).toEqual(["\x1b[1;2D", "\x1b[B", "\r"]);
+    h.adapter.render(first);
+    h.adapter.render(emptyNote);
+    expect(h.registry.list()).toHaveLength(2); // submitting Enter is not an acknowledgement
+    h.observe(native[3]);
+    expect(h.registry.list()).toHaveLength(1);
+  });
   test("submits grouped modal choice and alternative notes", async () => {
     const raw = records("blocking-records.json")[0];
     const h = harness();

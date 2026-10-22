@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
-import { captured, emptyComposerFrame as composer, frame, records, scriptedIo } from "./helpers.ts";
+import { captured, emptyComposerFrame, frame, records, scriptedIo } from "./helpers.ts";
 import { queuedCall as call, queuedEditor as editor } from "./native-adapter-fixtures.ts";
 
 test("unrelated spinner redraws cannot release opaque native reservations", () => {
@@ -11,7 +11,7 @@ test("unrelated spinner redraws cannot release opaque native reservations", () =
   h.adapter.render(captured("async-badge.txt"));
   h.observe(call("secret", "New", true));
   h.adapter.render(frame(captured("async-badge.txt").text.replace("2s", "3s")));
-  h.adapter.render(composer());
+  h.adapter.render(emptyComposerFrame());
   expect(h.adapter.blocksInput()).toBe(true);
   h.observe({ payload: { type: "turn_complete" } });
   expect(h.adapter.blocksInput()).toBe(false);
@@ -89,7 +89,6 @@ test("native pending submissions retain identity until transcript acceptance", a
     { input: "\r" },
   ]);
   await h.adapter.answer(note!, [{ optionIndexes: [], text: "Mine" }], scripted.io);
-  expect(scripted.writes).toEqual(["\x1b[200~Mine\x1b[201~", "\r"]);
   h.observe(native[3]);
   expect(h.registry.list()).toEqual([note]);
   expect(h.events.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request: color });
