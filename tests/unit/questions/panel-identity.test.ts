@@ -1,4 +1,4 @@
-/** Question body copy cannot release the native dialog hold (PRD §4, C-ATTN-01). */
+/** Question body copy cannot release the native dialog hold (PRD §5.3, C-ATTN-05). */
 import { expect, test } from "vitest";
 import {
   claudeQuestionCandidate,
@@ -17,7 +17,7 @@ test.each([
   "❯ Which test color?\n☐ Fake",
   `❯ Which test color?\n───\n${footer}\n❯ quoted input`,
   `Which test color?\n───\n${footer}\n❯ quoted input\n───`,
-])("C-ATTN-01 question copy keeps the captured questionnaire blocking: %s", (prompt) => {
+])("C-ATTN-05 question copy keeps the captured questionnaire blocking: %s", (prompt) => {
   const text = captured.text.replace("Which test color?\n", `${prompt}\n`);
   const questions = [{ ...definitions[0]!, prompt }, definitions[1]!];
   const reading = readScreenFacts(claudeScreenFactTable, { text, title: "" });
@@ -37,7 +37,7 @@ test.each([
 test.each([
   "❯ ",
   "───\n❯ \n───\n⏸ manual mode on · ? for shortcuts",
-])("C-ATTN-01 an outside composer excludes a completed quoted panel: %s", (composer) => {
+])("C-ATTN-05 an outside composer excludes a completed quoted panel: %s", (composer) => {
   const text = `${captured.text}\n${composer}`;
   expect(claudeQuestionCandidate(text)).toBe(false);
   expect(
@@ -45,7 +45,7 @@ test.each([
   ).toBe(false);
 });
 
-test("C-ATTN-01 partial prompt copy cannot impersonate a completed panel and composer", () => {
+test("C-ATTN-05 partial prompt copy cannot impersonate a completed panel and composer", () => {
   const start = captured.text.slice(0, captured.text.indexOf("Which test color?\n"));
   const text = `${start}❯ quoted input\n───\n${footer}\n❯ `;
   expect(claudeQuestionCandidate(text)).toBe(true);
@@ -54,18 +54,36 @@ test("C-ATTN-01 partial prompt copy cannot impersonate a completed panel and com
   ).toBe(true);
 });
 
-test("C-ATTN-01 a native review stays held until a composer appears after its actions", () => {
+test("C-ATTN-05 a native review stays held until a composer appears after its actions", () => {
   const text = fixture("review").text;
   expect(claudeQuestionCandidate(text)).toBe(true);
   expect(claudeQuestionCandidate(`${text}\n❯ `)).toBe(false);
   expect(parseClaudeQuestionScreen(fixture("review"), definitions)?.kind).toBe("review");
 });
 
-test("C-ATTN-01 a fenced header quoted inside question copy cannot release the dialog hold", () => {
+test("C-ATTN-05 a fenced header quoted inside question copy cannot release the dialog hold", () => {
   const prompt = `❯ Which test color?\n───\n☐ Fake\n${footer}\n❯ quoted input`;
   const text = captured.text.replace("Which test color?\n", `${prompt}\n`);
   expect(
     readScreenFacts(claudeScreenFactTable, { text, title: "" }).facts.blocking_prompt_visible,
   ).toBe(true);
   expect(claudeQuestionCandidate(`${text}\n❯ `)).toBe(false);
+});
+
+test("C-ATTN-05 completed-only tab markers still identify a native questionnaire", () => {
+  const text = captured.text.replaceAll("☐", "☒");
+  expect(text.includes("☐")).toBe(false);
+  expect(claudeQuestionCandidate(text)).toBe(true);
+  expect(parseClaudeQuestionScreen(frame(text), definitions)).toMatchObject({ kind: "question" });
+  expect(
+    readScreenFacts(claudeScreenFactTable, { text, title: "" }).facts.blocking_prompt_visible,
+  ).toBe(true);
+});
+
+test("C-ATTN-05 ordinary markerless composer frames remain nonblocking", () => {
+  const text = "Claude Code v2.1.305\n───\n❯ \n───\n⏸ manual mode on · ? for shortcuts";
+  expect(claudeQuestionCandidate(text)).toBe(false);
+  expect(
+    readScreenFacts(claudeScreenFactTable, { text, title: "" }).facts.blocking_prompt_visible,
+  ).toBe(false);
 });

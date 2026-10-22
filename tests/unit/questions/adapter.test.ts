@@ -2,31 +2,51 @@
 
 import { describe, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
+import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { nativeHook as hook } from "./lifecycle-helpers.ts";
 
 describe("Claude hook candidates", () => {
   test("publishes only matching native UI, preserves redraw IDs and correlates keyless permission mirrors", () => {
     const requests = registry();
+    const events: ElwoodQuestionEvent[] = [];
+    requests.onEvent((event) => events.push(event));
     const adapter = new ClaudeQuestionAdapter(requests);
     adapter.observe({ ...hook("PreToolUse"), source: "transcript" });
     adapter.render(fixture("questions"));
     expect(requests.list()).toEqual([]);
+    expect(events).toEqual([]);
     adapter.observe({ ...hook("PreToolUse"), kind: "tool_call" });
     adapter.render(fixture("questions"));
     expect(requests.list()).toEqual([]);
+    expect(events).toEqual([]);
     adapter.observe(hook("PreToolUse"));
+    expect(events).toEqual([]);
     adapter.render(frame("ordinary prose"));
     expect(requests.list()).toEqual([]);
+    expect(events).toEqual([]);
     adapter.render(fixture("questions"));
-    const first = requests.list()[0];
+    const first = requests.list()[0]!;
+    const raised = { elwoodSessionId: "s", agent: "claude", phase: "raised", request: first };
+    expect(events).toEqual([raised]);
     adapter.observe(hook("PermissionRequest", { tool_use_id: undefined }));
     adapter.render(fixture("questions"));
     expect(requests.list()[0]).toBe(first);
+    expect(events).toEqual([raised]);
     expect(adapter.blocksInput()).toBe(true);
     adapter.observe(hook("PostToolUse", { tool_response: { answers: {} } }));
     adapter.render(fixture("questions"));
     expect(requests.list()).toEqual([]);
+    expect(events).toEqual([
+      raised,
+      {
+        elwoodSessionId: "s",
+        agent: "claude",
+        phase: "closed",
+        request: first,
+        reason: "answered",
+      },
+    ]);
     adapter.render(frame("❯ "));
     expect(adapter.blocksInput()).toBe(false);
   });

@@ -51,12 +51,16 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     const input = record(hook["tool_input"]);
     if (!isQuestions(input["questions"])) return false;
     const questions = (input as AskUserQuestionInput).questions;
-    const name = hook["hook_event_name"];
-    if (name === "PostToolUse" || name === "PostToolUseFailure" || name === "PermissionDenied")
-      return this.closeNativeHook(name, hook, questions);
-    if (name !== "PreToolUse" && name !== "PermissionRequest") return false;
+    const hookEventName = hook["hook_event_name"];
+    if (
+      hookEventName === "PostToolUse" ||
+      hookEventName === "PostToolUseFailure" ||
+      hookEventName === "PermissionDenied"
+    )
+      return this.closeNativeHook(hookEventName, hook, questions);
+    if (hookEventName !== "PreToolUse" && hookEventName !== "PermissionRequest") return false;
     const toolUseId = hook["tool_use_id"];
-    if (matchesCandidateHook(this.candidate, questions, toolUseId, name)) return false;
+    if (matchesCandidateHook(this.candidate, questions, toolUseId, hookEventName)) return false;
     const nativeKey = typeof toolUseId === "string" ? toolUseId : JSON.stringify(questions);
     const previous = this.candidate && this.registry.find(this.candidate.nativeKey);
     this.candidate = {
@@ -79,7 +83,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     return true;
   }
   private closeNativeHook(
-    name: unknown,
+    hookEventName: unknown,
     hook: Readonly<Record<string, unknown>>,
     questions: AskUserQuestionInput["questions"],
   ): boolean {
@@ -92,7 +96,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     const request = this.registry.find(candidate.nativeKey);
     this.candidate = undefined;
     this.seenChrome = false;
-    if (request) this.registry.close(request.id, closeReason(name, hook));
+    if (request) this.registry.close(request.id, closeReason(hookEventName, hook));
     return true;
   }
   render(frame: QuestionFrame): void {
@@ -142,8 +146,8 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
   }
 }
 
-function closeReason(name: unknown, hook: Readonly<Record<string, unknown>>) {
-  if (name === "PostToolUse") return "answered";
+function closeReason(hookEventName: unknown, hook: Readonly<Record<string, unknown>>) {
+  if (hookEventName === "PostToolUse") return "answered";
   return hook["is_interrupt"] === true ? "cancelled" : "unavailable";
 }
 
@@ -164,13 +168,13 @@ function matchesCandidateHook(
   candidate: Candidate | undefined,
   questions: AskUserQuestionInput["questions"],
   toolUseId: unknown,
-  name: unknown,
+  hookEventName: unknown,
 ): boolean {
   const matchesCandidateQuestions =
     candidate !== undefined && matchesNativeQuestions(questions, candidate.questions);
   const matchesCandidateIdentity =
     typeof toolUseId !== "string" ||
     toolUseId === candidate?.nativeKey ||
-    name === "PermissionRequest";
+    hookEventName === "PermissionRequest";
   return matchesCandidateQuestions && matchesCandidateIdentity;
 }

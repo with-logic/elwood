@@ -1274,10 +1274,16 @@ question text or cancellation notices retained in history.
 These captures establish the questionnaire and manual-footer additions on
 2.1.305. They do not reverify every screen-table pattern from earlier versions.
 
-An Elwood-owned final question submission remains pending if the empty Claude
-composer paints before its completion hook. Only matching native completion,
-replacement or turn end retires that identity, including after an aborted answer
-attempt. A predecessor review panel cannot publish a newly observed successor.
+The private adapter/controller tests retain native input ownership when a
+composer repaint precedes the matching completion hook. Successful submissions
+keep their request pending; a post-write abort retires the public ID while the
+native hold remains until matching completion, replacement or turn end. A
+predecessor review panel cannot publish a newly observed successor.
+
+This adapter groundwork is not yet connected to live session construction,
+hook routing or the ordinary-input gate. The native-question session API
+integration supplies those connections; the live screen-fact rule alone only
+holds input while the questionnaire is visible.
 
 A final Enter rejected by the current-frame guard does not count as submission.
 A semantic replacement of a known questionnaire must show matching new choices

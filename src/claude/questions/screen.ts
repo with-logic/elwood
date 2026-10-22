@@ -28,9 +28,11 @@ const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
 const questionFooter = /^Enter to select · .+ · Esc to cancel$/;
+const reviewCancelRow = /^(?:❯| )\s+2\. Cancel$/;
 
 /** Native chrome may be partial; a candidate alone grants no complete parse or answer authority. */
 export function claudeQuestionCandidate(text: string): boolean {
+  if (!(text.includes("☐") || text.includes("☒"))) return false;
   const lines = text.split("\n");
   const start = questionPanelStart(lines);
   if (start < 0) return false;
@@ -40,7 +42,7 @@ export function claudeQuestionCandidate(text: string): boolean {
   const closingFence = lines.findLastIndex((line, index) => index < footer && fence.test(line));
   const lastOption = lines.findLastIndex((line, index) => index < closingFence && row.test(line));
   const questionEnd = lastOption > start ? footer : -1;
-  const reviewEnd = lines.findLastIndex((line) => /^(?:❯| )\s+2\. Cancel$/.test(line));
+  const reviewEnd = lines.findLastIndex((line) => reviewCancelRow.test(line));
   const end = Math.max(questionEnd, reviewEnd);
   return (
     end <= start || !lines.slice(end + 1).some((line) => /^❯(?!\s+\d+\.|\s+Submit\s*$)/.test(line))
@@ -61,7 +63,7 @@ export function parseClaudeQuestionScreen(
     if (
       questionRows.length !== 2 ||
       !/^(?:❯| )\s+1\. Submit answers$/.test(questionRows[0]!) ||
-      !/^(?:❯| )\s+2\. Cancel$/.test(questionRows[1]!)
+      !reviewCancelRow.test(questionRows[1]!)
     )
       return undefined;
     const summary = normalizeClaudeQuestionText(body.slice(0, reviewReadyIndex).join(" "))
@@ -93,7 +95,7 @@ export function parseClaudeQuestionScreen(
     : undefined;
 }
 
-/** Shared live tabs/prompt identity; callers separately validate complete native choice rows. */
+/** Match live tabs and extract the prompt; callers validate the prompt and complete choice rows. */
 export function readClaudeQuestionPanel(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
