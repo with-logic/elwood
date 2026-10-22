@@ -13,7 +13,7 @@ test.each([
   const { state, candidate, controller } = owned();
   const remove = vi.spyOn(controller.signal, "removeEventListener");
   state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal);
-  if (transition === "close") state.close(candidate.key, "unavailable");
+  if (transition === "close") state.close(candidate.nativeKey, "unavailable");
   if (transition === "replace")
     state.observe(event(call({ id: "call", queued: true, accepted: true, prompt: "Replacement" })));
   if (transition === "disable")
@@ -27,7 +27,7 @@ test.each([
         }),
       ),
     );
-  if (transition === "answered") state.observe(reply(candidate.key, "Yes"));
+  if (transition === "answered") state.observe(reply(candidate.nativeKey, "Yes"));
   expect(remove).toHaveBeenCalledOnce();
   expect(() => state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal)).toThrow(
     expect.objectContaining({ code: "question_answer_failed" }),
