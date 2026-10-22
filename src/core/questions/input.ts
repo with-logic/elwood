@@ -9,6 +9,7 @@ import {
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { RenderWakeup } from "../input/render-wakeup.ts";
 import { untilQuestionAbort } from "./abort.ts";
+import { questionCursorProvenance } from "./cursor-provenance.ts";
 import { questionAnswerFailed } from "./errors.ts";
 import type { QuestionFrame, QuestionIo } from "./io.ts";
 import type { QuestionRegistry } from "./registry.ts";
@@ -29,6 +30,7 @@ export function readQuestionFrame(terminal: ElwoodTerminal): QuestionFrame | und
       // Snapshot rows use the viewport; xterm cursorY is relative to the scrollback base.
       cursorRow: cursorViewportRow(frame.cursorY, buffer),
       cursorVisible: settledCursorVisible(terminal.xterm),
+      ...questionCursorProvenance(terminal, frame),
     }
   );
 }

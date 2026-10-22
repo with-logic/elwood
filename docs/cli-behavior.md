@@ -1316,3 +1316,27 @@ modal captures retain their exact header and terminal footer. The collapsed
 These captures establish the layouts in
 `tests/fixtures/codex-0.163.0/questions/`; they do not reverify all earlier
 Codex trust and update dialogs.
+
+### Native Codex editor provenance and clipped drafts (2026-10-21)
+
+Two isolated Codex 0.163.0 captures distinguish an empty placeholder from a
+literal answer with the same text. In queued input, `Type your answer` starts
+with a dimmed cursor cell at column 2; typing that literal leaves a nondimmed
+cursor after it at column 18. Modal notes render `  › Add notes` in both states,
+with the empty dimmed cursor at column 4 and the typed cursor at column 13.
+Private question frames retain the actual cursor-cell dimming and the cell-derived
+prefix from the same completed render. Public terminal snapshots keep their shape.
+
+The native editor manually wraps text without setting xterm `isWrapped`, clips
+long prefixes even at 140×45, and omits visible glyphs for interior trailing
+spaces that still survive submission. Both queued and modal answers trim outer
+whitespace on submission: a synthetic 764-character paste was accepted as its
+760-character `trim()` result. A continuation containing an indented `›` remains
+answer text; it cannot replace the native notes start after the option block.
+
+The snapshots, source hashes, expected inputs, and native acceptance evidence are
+in `tests/fixtures/codex-0.163.0/questions/editor/`. A viewport alone cannot establish
+complete logical equality of multirow or clipped drafts. Cursor-cell style and a
+physical row prefix are partial evidence, so they must not confirm unshown answer
+text. Full-answer verification must bind an owned paste to the native accepted
+payload rather than infer missing text from the screen.

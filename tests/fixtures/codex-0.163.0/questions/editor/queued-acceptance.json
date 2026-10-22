@@ -1,0 +1,31 @@
+{
+  "literalExact": true,
+  "longExact": false,
+  "longExactAfterNativeTrim": true,
+  "typedLength": 764,
+  "acceptedLength": 760,
+  "acceptedTail": "\"WWWWWWWWWWWW\"",
+  "innerQuotedTailRetained": true,
+  "innerCaretTailRetained": true,
+  "answers": [
+    {
+      "question": "ELWOOD_RAW_LITERAL: Enter the literal",
+      "answer": "Type your answer",
+      "questionItemId": "[\"request_user_input_async\",\"call_9f8fad43431b4ac3afae9756c0f9a7f7\",0]"
+    },
+    {
+      "question": "ELWOOD_RAW_LONG: Enter the long text",
+      "answer": "START item00-abcdef item01-abcdef item02-abcdef item03-abcdef item04-abcdef item05-abcdef item06-abcdef item07-abcdef item08-abcdef item09-abcdef item10-abcdef item11-abcdef item12-abcdef item13-abcdef item14-abcdef item15-abcdef item16-abcdef item17-abcdef item18-abcdef item19-abcdef item20-abcdef item21-abcdef item22-abcdef item23-abcdef item24-abcdef item25-abcdef item26-abcdef item27-abcdef item28-abcdef item29-abcdef item30-abcdef item31-abcdef item32-abcdef item33-abcdef item34-abcdef\n    > quoted-tail  \n    › caret-tail   \nEND WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+      "questionItemId": "[\"request_user_input_async\",\"call_9f8fad43431b4ac3afae9756c0f9a7f7\",1]"
+    }
+  ],
+  "result": {
+    "outcome": "complete",
+    "privateHomeRemoved": true,
+    "parentStateUnchanged": true,
+    "model": "gpt-6-luna",
+    "version": "0.163.0",
+    "mode": "async",
+    "elapsedMs": 73448
+  }
+}

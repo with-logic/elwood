@@ -1,0 +1,48 @@
+{
+  "version": "codex-cli 0.163.0",
+  "captured": "2026-10-21",
+  "nativeCalls": 2,
+  "projection": "Terminal snapshot and native cursor primitives; full raw cell dumps retained as probe artifacts, hashed below.",
+  "entries": [
+    {
+      "file": "queued-literal-empty.json",
+      "source": "literal-empty.json",
+      "sha256": "0c04276a93fe779705635a27f6e53fe187a84d4739fe563826645215736782aa"
+    },
+    {
+      "file": "queued-literal-typed.json",
+      "source": "literal-typed.json",
+      "sha256": "0837c71a73c3727440ba8c48cdf5d4cd4dd23829a919d5fc095eb66614140fc5"
+    },
+    {
+      "file": "queued-long-typed-wide.json",
+      "source": "long-typed-wide.json",
+      "sha256": "9482d680736af0c81f3f1aaaa4f802574956c274d0aeac89a2f0d3fd4e0f35c3"
+    },
+    {
+      "file": "queued-long-typed-narrow.json",
+      "source": "long-typed-narrow.json",
+      "sha256": "8fae7a8918f6ca2e04c882e5155ce8ed2a8efd20dcebf87c93a8a4f9c2534daa"
+    },
+    {
+      "file": "modal-literal-empty.json",
+      "source": "literal-empty.json",
+      "sha256": "ceeb23c3bb6291dbb8b0f1d2b5e44464c0fca8ed235e1020aceba7e11bf67f83"
+    },
+    {
+      "file": "modal-literal-typed.json",
+      "source": "literal-typed.json",
+      "sha256": "c08e55d615bd2420aa02ffe41ebf6602c1e08290a1d82dd618e1335406b92343"
+    },
+    {
+      "file": "modal-long-typed-wide.json",
+      "source": "long-typed-wide.json",
+      "sha256": "84fb3779fb826707f1011a8e34b13c4c2a2cc4a42fbc444a71cb58ca839efd15"
+    },
+    {
+      "file": "modal-long-typed-narrow.json",
+      "source": "long-typed-narrow.json",
+      "sha256": "85f1f40698710a01228367f36a77f547c2f66f880880b1f9f77de1a41beb0029"
+    }
+  ]
+}

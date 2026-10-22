@@ -1,0 +1,33 @@
+{
+  "cols": 60,
+  "rows": 20,
+  "cursorX": 2,
+  "cursorY": 16,
+  "lines": [
+    " ",
+    "◦ Working (6s • esc to interrupt)",
+    " ",
+    "• Messages to be submitted after next tool call (press esc",
+    "  to interrupt and send immediately)",
+    "  ↳ > ELWOOD_RAW_LITERAL: Enter the literal",
+    " ",
+    "  ELWOOD_RAW_LONG: Enter the long text                    ",
+    " ",
+    "      > quoted-tail",
+    "      › caret-tail",
+    "  END",
+    "  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    " ",
+    " ",
+    "  enter submit   ⌃] skip   ⇧→ main prompt",
+    " "
+  ],
+  "text": " \n◦ Working (6s • esc to interrupt)\n \n• Messages to be submitted after next tool call (press esc\n  to interrupt and send immediately)\n  ↳ > ELWOOD_RAW_LITERAL: Enter the literal\n \n  ELWOOD_RAW_LONG: Enter the long text                    \n \n      > quoted-tail\n      › caret-tail\n  END\n  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n  WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW\n \n \n  enter submit   ⌃] skip   ⇧→ main prompt\n ",
+  "cursorRow": 16,
+  "cursorVisible": true,
+  "cursorCellDimmed": false,
+  "cursorLineBefore": "  "
+}
