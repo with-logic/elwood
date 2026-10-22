@@ -3,7 +3,8 @@ import { expect, test } from "vitest";
 import type { ValidatedQuestionAnswer } from "../../../src/core/questions/validate.ts";
 import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
-import { captured, fixture, frame, records, scriptedIo } from "./helpers.ts";
+import { captured, frame, records, scriptedIo } from "./helpers.ts";
+import { snapshot } from "./snapshot-fixtures.ts";
 
 const empty = () => ({
   ...frame("› Ask Codex to do anything\n\n  GPT-6-Luna low"),
@@ -16,7 +17,7 @@ const call = (id: string, title: string, isSecret = false) => ({
   payload: { type: "AgentMessage", id, delivery: "async", questions: [{ title, isSecret }] },
 });
 function editor(prompt: string) {
-  const native = JSON.parse(fixture("async-after-local-skip.json")) as { text: string };
+  const native = snapshot("async-after-local-skip.json");
   return editorFrame(frame(native.text.replaceAll("ELWOOD_ASYNC_NOTE: What note?", prompt)), {
     editorLine: "  Type your answer",
     cursorLineBefore: "  ",
@@ -117,8 +118,9 @@ test.each([
   disposed = true;
   scripted.controller.abort();
   h.adapter.render(empty());
-  expect(h.registry.list()).toEqual([]);
+  expect(h.registry.list()).toEqual([request]);
   h.observe({ payload: { type: "turn_complete" } });
+  expect(h.registry.list()).toEqual([]);
   expect(scripted.writes).toEqual(["\x1b[200~Mine\x1b[201~", "\r"]);
 });
 

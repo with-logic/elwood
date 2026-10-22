@@ -12,7 +12,7 @@ test.each([
   state.observe(event(call({ id: "call", queued: true, accepted: true })));
   for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
   expect(state.observe(event({ type: [type] }))).toBe(false);
-  expect(state.acceptedQueuedCandidates()).toHaveLength(1);
+  expect(state.availableAcceptedQueuedCandidates()).toHaveLength(1);
   expect(registry.list()).toHaveLength(1);
 });
 

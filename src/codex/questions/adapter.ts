@@ -19,7 +19,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   private readonly candidatesSeenInNativeUi = new WeakSet<Candidate>();
   private readonly pending = new PendingSubmissions();
   private focused: Candidate | undefined;
-  private count = 0;
+  private previousQuestionCount = 0;
   private hold = false;
   constructor(registry: QuestionRegistry, onDisabled?: () => void) {
     this.registry = registry;
@@ -30,7 +30,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       const changed = this.state.observe(event);
       if (this.focused && this.state.candidates.get(this.focused.nativeKey) !== this.focused) {
         this.focused = undefined;
-        this.count = 0;
+        this.previousQuestionCount = 0;
       }
       return changed;
     });
@@ -43,7 +43,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       if (chrome) this.hold = true;
       this.pending.observe(frame, view, this.state);
       const current = view?.kind === "queued" ? this.observeQueued(view) : undefined;
-      const available = this.state.acceptedQueuedCandidates();
+      const available = this.state.availableAcceptedQueuedCandidates();
       const queuedConfirmed =
         (badge === available.length && !this.state.hasOpaqueReservation()) ||
         (current !== undefined && view?.count === available.length);
@@ -61,24 +61,14 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   ): Promise<void> {
     const nativeKey = this.registry.keyFor(request.id);
     const candidate = nativeKey === undefined ? undefined : this.state.candidates.get(nativeKey);
-    if (!candidate || candidate.awaitingNative) throw questionAnswerFailed();
-    const submitting = () => {
-      this.state.setSubmitting(candidate, !io.signal.aborted);
-      io.signal.addEventListener(
-        "abort",
-        () => {
-          this.state.setSubmitting(candidate, false);
-          const frame = io.frame();
-          if (frame) this.render(frame);
-        },
-        { once: true },
-      );
-    };
+    if (!candidate || candidate.hasPendingNativeSubmission) throw questionAnswerFailed();
+    // Physical dispatch retains native ownership even if the caller stops waiting.
+    const submitting = () => this.state.setSubmitting(candidate, true);
     if (candidate.queued) {
       if (answers.length !== 1) throw questionAnswerFailed();
       const [answer] = answers;
       if (answer === undefined) throw questionAnswerFailed();
-      const queued = this.state.acceptedQueuedCandidates();
+      const queued = this.state.availableAcceptedQueuedCandidates();
       await answerQueued(
         queued.map((item) => item.questions[0].definition),
         answer,
@@ -101,7 +91,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   ): void {
     for (const candidate of this.state.unpublishedCandidates()) {
       if (candidate.queued) {
-        if (queuedConfirmed && candidate.accepted && !candidate.awaitingNative) {
+        if (queuedConfirmed && candidate.accepted && !candidate.hasPendingNativeSubmission) {
           this.candidatesSeenInNativeUi.add(candidate);
           this.state.publish(candidate);
         }
@@ -128,7 +118,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       if (
         this.candidatesSeenInNativeUi.has(candidate) &&
         !candidate.submitting &&
-        !candidate.awaitingNative &&
+        !candidate.hasPendingNativeSubmission &&
         !this.pending.isAmbiguous(candidate)
       )
         this.state.close(candidate.nativeKey, "unavailable");
@@ -136,25 +126,26 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     // Unknown native identities cannot be correlated to a later panel. Turn end releases them.
   }
   private observeQueued(view: QuestionView): Candidate | undefined {
-    const queued = this.state.acceptedQueuedCandidates();
+    const queued = this.state.availableAcceptedQueuedCandidates();
     const current = queuedCandidate(queued, view);
     if (current) {
       this.candidatesSeenInNativeUi.add(current);
       const previous = this.focused;
-      const pageTransition =
-        previous !== current && (this.count === view.count + 1 || view.count === 1);
+      // A one-item decrease or remaining singleton permits retiring another focused candidate.
+      const canRetirePreviousCandidate =
+        previous !== current && (this.previousQuestionCount === view.count + 1 || view.count === 1);
       if (previous) {
         const retirementEligible = !(
           previous.submitting ||
-          previous.awaitingNative ||
+          previous.hasPendingNativeSubmission ||
           this.pending.isAmbiguous(previous)
         );
-        if (pageTransition && retirementEligible)
+        if (canRetirePreviousCandidate && retirementEligible)
           this.state.close(previous.nativeKey, "unavailable");
       }
       this.focused = current;
     }
-    this.count = view.count;
+    this.previousQuestionCount = view.count;
     return current;
   }
 }

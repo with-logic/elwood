@@ -8,7 +8,7 @@ import { nativePendingPrompts } from "./native-pending.ts";
 export class PendingSubmissions {
   private previous = new Map<string, number>();
   private readonly ambiguous = new WeakSet<Candidate>();
-  /** Title-count ambiguity only; exact deferred acceptance is candidate.awaitingNative. */
+  /** Title-count ambiguity only; exact deferred acceptance is candidate.hasPendingNativeSubmission. */
   isAmbiguous(candidate: Candidate): boolean {
     return this.ambiguous.has(candidate);
   }
@@ -25,7 +25,7 @@ export class PendingSubmissions {
     for (const [prompt, count] of counts) {
       const added = count - (this.previous.get(prompt) ?? 0);
       if (added <= 0) continue;
-      const queued = state.acceptedQueuedCandidates();
+      const queued = state.availableAcceptedQueuedCandidates();
       const live =
         view?.kind === "queued"
           ? queued.filter((candidate) => matchesQuestion(view, candidate.questions[0].definition))

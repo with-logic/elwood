@@ -12,16 +12,16 @@ describe("candidate native lifecycle", () => {
   test("native output accepts a queued candidate exactly once without publishing prematurely", () => {
     const { state, registry } = setup();
     state.observe(event(call()));
-    const before = state.acceptedQueuedCandidates();
+    const before = state.availableAcceptedQueuedCandidates();
     expect(state.observe(output("call", '{"accepted":true}'))).toBe(true);
-    expect(state.acceptedQueuedCandidates()).not.toBe(before);
+    expect(state.availableAcceptedQueuedCandidates()).not.toBe(before);
     expect(state.observe(output("call", '{"accepted":true}'))).toBe(false);
     expect(registry.list()).toEqual([]);
   });
   test("replaces changed definitions and closes the old request before republishing", () => {
     const { state, registry, listener } = setup();
     state.observe(event(call({ id: "call", queued: true, accepted: true })));
-    const old = state.acceptedQueuedCandidates()[0]!;
+    const old = state.availableAcceptedQueuedCandidates()[0]!;
     state.publish(old);
     const request = registry.list()[0]!;
     expect(
@@ -33,7 +33,7 @@ describe("candidate native lifecycle", () => {
       expect.objectContaining({ phase: "closed", reason: "unavailable" }),
     );
     state.publish(old);
-    state.publish(state.acceptedQueuedCandidates()[0]!);
+    state.publish(state.availableAcceptedQueuedCandidates()[0]!);
     expect(registry.list()).toHaveLength(1);
     expect(registry.list()[0]!.id).not.toBe(request.id);
   });
@@ -80,13 +80,15 @@ describe("candidate native lifecycle", () => {
     expect(captured).toHaveLength(7);
     const keys = [0, 1].map((index) => queuedKey("call_c54736dbd68049d192ab5f52ad2532f0", index));
     for (const raw of captured.slice(0, 3)) state.observe({ ...event(undefined), raw });
-    expect(state.acceptedQueuedCandidates().map((candidate) => candidate.nativeKey)).toEqual(keys);
+    expect(
+      state.availableAcceptedQueuedCandidates().map((candidate) => candidate.nativeKey),
+    ).toEqual(keys);
     for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
     expect(registry.list()).toHaveLength(2);
     state.observe({ ...event(undefined), raw: captured[3] });
-    expect(state.acceptedQueuedCandidates().map((candidate) => candidate.nativeKey)).toEqual([
-      keys[1],
-    ]);
+    expect(
+      state.availableAcceptedQueuedCandidates().map((candidate) => candidate.nativeKey),
+    ).toEqual([keys[1]]);
     expect(registry.list()).toHaveLength(1);
     state.observe({ ...event(undefined), raw: captured[4] });
     expect(state.candidates.size).toBe(0);
@@ -135,7 +137,7 @@ test("retires all native units when a close observer also removes another queued
       questions: [{ title: "First" }, { title: "Second" }],
     }),
   );
-  const candidates = state.acceptedQueuedCandidates();
+  const candidates = state.availableAcceptedQueuedCandidates();
   expect(candidates).toHaveLength(2);
   const second = candidates[1];
   expect(second).toBeDefined();

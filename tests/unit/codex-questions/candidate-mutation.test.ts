@@ -5,7 +5,7 @@ import { call, event, setup } from "./candidate-helpers.ts";
 test("owned lifecycle operations update readonly views and invalidate pending accepted membership", () => {
   const { state, registry } = setup();
   state.observe(event(call({ id: "owned", accepted: true })));
-  const accepted = state.acceptedQueuedCandidates();
+  const accepted = state.availableAcceptedQueuedCandidates();
   const candidate = accepted[0];
   if (!candidate) throw new Error("Expected an accepted store-owned candidate");
   state.publish(candidate);
@@ -15,13 +15,13 @@ test("owned lifecycle operations update readonly views and invalidate pending ac
   expect(candidate.submitting).toBe(true);
   state.setSubmitting(candidate, false);
   expect(candidate.submitting).toBe(false);
-  const beforePending = state.acceptedQueuedCandidates();
+  const beforePending = state.availableAcceptedQueuedCandidates();
   expect(beforePending).toEqual([candidate]);
   state.markPendingSubmission(candidate);
-  expect(candidate.awaitingNative).toBe(true);
+  expect(candidate.hasPendingNativeSubmission).toBe(true);
   expect(accepted).toEqual([candidate]);
-  expect(state.acceptedQueuedCandidates()).not.toBe(beforePending);
-  expect(state.acceptedQueuedCandidates()).toEqual([]);
+  expect(state.availableAcceptedQueuedCandidates()).not.toBe(beforePending);
+  expect(state.availableAcceptedQueuedCandidates()).toEqual([]);
   expect(registry.list()).toEqual([request]);
   expect(state.hasReservation()).toBe(true);
 });
@@ -32,7 +32,7 @@ test.each([
 ] as const)("a %s candidate cannot mutate a successor or its accepted cache", (retirement) => {
   const { state, registry } = setup();
   state.observe(event(call({ id: "owned", accepted: true })));
-  const old = state.acceptedQueuedCandidates()[0];
+  const old = state.availableAcceptedQueuedCandidates()[0];
   if (!old) throw new Error("Expected an accepted original candidate");
   state.publish(old);
   const request = registry.list()[0];
@@ -48,7 +48,7 @@ test.each([
     ),
   );
   expect(registry.get(request.id)).toBeUndefined();
-  const accepted = state.acceptedQueuedCandidates();
+  const accepted = state.availableAcceptedQueuedCandidates();
   const successor = accepted[0];
   if (!successor) throw new Error("Expected an accepted successor candidate");
   expect(successor).not.toBe(old);
@@ -59,10 +59,10 @@ test.each([
   state.setSubmitting(old, true);
   state.markPendingSubmission(old);
   expect(old.submitting).toBe(false);
-  expect(old.awaitingNative).toBe(false);
+  expect(old.hasPendingNativeSubmission).toBe(false);
   expect(successor.submitting).toBe(false);
-  expect(successor.awaitingNative).toBe(false);
-  expect(state.acceptedQueuedCandidates()).toBe(accepted);
+  expect(successor.hasPendingNativeSubmission).toBe(false);
+  expect(state.availableAcceptedQueuedCandidates()).toBe(accepted);
   expect(registry.list()).toEqual(successorRequests);
   expect(state.candidates.get(successor.nativeKey)).toBe(successor);
 });

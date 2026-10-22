@@ -11,7 +11,7 @@ export type Candidate = CandidateGroup & {
   readonly callId: string;
   readonly submitting: boolean;
   /** Native submission evidence holds identity until committed acceptance or lifecycle end. */
-  readonly awaitingNative: boolean;
+  readonly hasPendingNativeSubmission: boolean;
   readonly published: boolean;
   readonly bytes: number;
 } & (
@@ -27,7 +27,13 @@ export function createCandidate(
   accepted: boolean,
   bytes: number,
 ): Candidate {
-  const state = { callId, submitting: false, awaitingNative: false, published: false, bytes };
+  const state = {
+    callId,
+    submitting: false,
+    hasPendingNativeSubmission: false,
+    published: false,
+    bytes,
+  };
   return group.queued ? { ...group, ...state, accepted } : { ...group, ...state, accepted: false };
 }
 export function candidateGroups(call: QuestionCall): readonly CandidateGroup[] {
@@ -48,13 +54,13 @@ export function candidateGroups(call: QuestionCall): readonly CandidateGroup[] {
 }
 
 /** Freeze accepted queue membership without copying the live readonly candidate views. */
-export function acceptedQueuedSnapshot(
+export function availableAcceptedQueuedSnapshot(
   candidates: Iterable<Candidate>,
 ): readonly AcceptedQueuedCandidate[] {
   return Object.freeze(
     [...candidates].filter(
       (candidate): candidate is AcceptedQueuedCandidate =>
-        candidate.queued && candidate.accepted && !candidate.awaitingNative,
+        candidate.queued && candidate.accepted && !candidate.hasPendingNativeSubmission,
     ),
   );
 }

@@ -30,7 +30,7 @@ test("two individually valid large records exhaust the aggregate store budget an
     questionMetadataLimitBytes,
   );
   expect(state.observe(event(first))).toBe(true);
-  const candidate = state.acceptedQueuedCandidates()[0];
+  const candidate = state.availableAcceptedQueuedCandidates()[0];
   if (!candidate)
     throw new Error("First valid record must be accepted before aggregate exhaustion");
   state.publish(candidate);
@@ -42,7 +42,7 @@ test("two individually valid large records exhaust the aggregate store budget an
   ]);
   expect(registry.list()).toEqual([]);
   expect(state.candidates.size).toBe(0);
-  expect(state.acceptedQueuedCandidates()).toEqual([]);
+  expect(state.availableAcceptedQueuedCandidates()).toEqual([]);
   expect(state.unpublishedCandidates().size).toBe(0);
   expect(state.hasReservation()).toBe(true);
   expect(disabled).toHaveBeenCalledOnce();
@@ -61,7 +61,7 @@ test("a throwing disable notifier cannot escape a limit-triggered observation or
     throw new Error("Diagnostic observer failed");
   });
   state.observe(event(call({ id: "first", queued: true, accepted: true })));
-  const candidate = state.acceptedQueuedCandidates()[0];
+  const candidate = state.availableAcceptedQueuedCandidates()[0];
   if (!candidate) throw new Error("Initial valid candidate must exist");
   state.publish(candidate);
   expect(registry.list()).toHaveLength(1);

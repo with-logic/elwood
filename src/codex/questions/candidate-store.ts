@@ -4,7 +4,7 @@ import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
 import {
   type AcceptedQueuedCandidate,
-  acceptedQueuedSnapshot,
+  availableAcceptedQueuedSnapshot,
   type Candidate,
   candidateGroups,
   createCandidate,
@@ -62,8 +62,8 @@ export class CandidateStore {
     return changed;
   }
   /** Cached, frozen membership snapshot. Entries are live readonly candidate views. */
-  acceptedQueuedCandidates(): readonly AcceptedQueuedCandidate[] {
-    this.accepted ??= acceptedQueuedSnapshot(this.candidates.values());
+  availableAcceptedQueuedCandidates(): readonly AcceptedQueuedCandidate[] {
+    this.accepted ??= availableAcceptedQueuedSnapshot(this.candidates.values());
     return this.accepted;
   }
   /** Live readonly membership view; publication and closure remove entries immediately. */
@@ -78,7 +78,7 @@ export class CandidateStore {
   markPendingSubmission(candidate: Candidate): void {
     const record = this.records.get(candidate.nativeKey);
     if (record !== candidate) return;
-    record.awaitingNative = true;
+    record.hasPendingNativeSubmission = true;
     this.accepted = undefined;
   }
   protected accept(candidate: Mutable<QueuedCandidate>): boolean {
