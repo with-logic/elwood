@@ -12,26 +12,64 @@ function changingInput(
   change: (current: QuestionFrame) => QuestionFrame,
 ) {
   let current = initial;
+  let pending = false;
   const writes: string[] = [];
   const io: QuestionIo = {
     signal: new AbortController().signal,
     frame: () => current,
-    wait: (matches) => {
-      if (!matches(current)) throw questionAnswerFailed();
-      return Promise.resolve(current);
+    wait: async (matches) => {
+      await Promise.resolve();
+      const rendered = pending ? (steps[writes.length - 1] ?? current) : current;
+      if (!matches(rendered)) throw questionAnswerFailed();
+      current = rendered;
+      pending = false;
+      return rendered;
     },
     write: (input, matches) => {
+      if (pending) throw new Error("Native write preceded the render barrier");
       if (writes.length === beforeWrite) current = change(current);
       if (!matches(current)) throw questionAnswerFailed();
       writes.push(input);
-      current = steps[writes.length - 1] ?? current;
+      pending = true;
       return Promise.resolve();
     },
   };
   return { io, writes };
 }
 
-test("rejects review values changed after the review wait", async () => {
+test("freshness IO rejects another write until the render wait completes", async () => {
+  const initial = fixture("questions");
+  const successor = fixture("color-blue-highlight");
+  const { io, writes } = changingInput(initial, [successor], -1, (current) => current);
+  await io.write("\x1b[B", () => true);
+  expect(io.frame()).toBe(initial);
+  expect(() => io.write("\r", () => true)).toThrow("render barrier");
+  const waiting = io.wait((current) => current === successor);
+  expect(io.frame()).toBe(initial);
+  expect(() => io.write("\r", () => true)).toThrow("render barrier");
+  await waiting;
+  expect(io.frame()).toBe(successor);
+  await io.write("\r", () => true);
+  expect(writes).toEqual(["\x1b[B", "\r"]);
+});
+
+test.each([
+  {
+    label: "summary",
+    change: (current: QuestionFrame) => frame(current.text.replace("→ Blue", "→ Amber")),
+  },
+  { label: "foreign frame", change: (_current: QuestionFrame) => frame("foreign") },
+  { label: "earlier question", change: (_current: QuestionFrame) => fixture("questions") },
+  {
+    label: "Cancel cursor",
+    change: (current: QuestionFrame) =>
+      frame(
+        current.text
+          .replace("❯ 1. Submit answers", "  1. Submit answers")
+          .replace("  2. Cancel", "❯ 2. Cancel"),
+      ),
+  },
+])("rejects a changed review $label at the final write", async ({ change }) => {
   const request = registry().publish("native", "blocking", definitions)!;
   const logging = fixture("features-logging");
   const metrics = frame(logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"));
@@ -51,7 +89,7 @@ test("rejects review values changed after the review wait", async () => {
       fixture("review"),
     ],
     8,
-    (current) => frame(current.text.replace("→ Blue", "→ Amber")),
+    change,
   );
   await expect(
     answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }], io),

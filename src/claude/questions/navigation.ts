@@ -5,10 +5,18 @@ import { questionError } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
-export function questionNavigation(request: ElwoodQuestionRequest, index: number, io: QuestionIo) {
+/** questionIndex addresses request.questions, not an option; only that native question
+ * may authorize navigation. Each move waits for its completed successor frame. */
+export function questionNavigation(
+  request: ElwoodQuestionRequest,
+  questionIndex: number,
+  io: QuestionIo,
+) {
   const at = (frame: QuestionFrame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
-    return screen?.kind === "question" && screen.questionIndex === index ? screen : undefined;
+    return screen?.kind === "question" && screen.questionIndex === questionIndex
+      ? screen
+      : undefined;
   };
   const read = () => {
     const frame = io.frame();
@@ -16,11 +24,11 @@ export function questionNavigation(request: ElwoodQuestionRequest, index: number
     if (!screen) throw questionLayoutFailed();
     return screen;
   };
-  const move = async (target: number) => {
+  const move = async (targetCursorIndex: number) => {
     for (;;) {
       const screen = read();
-      if (screen.cursor === target) return;
-      const delta = target > screen.cursor ? 1 : -1;
+      if (screen.cursor === targetCursorIndex) return;
+      const delta = targetCursorIndex > screen.cursor ? 1 : -1;
       await io.write(
         delta > 0 ? "\x1b[B" : "\x1b[A",
         (frame) => at(frame)?.cursor === screen.cursor,

@@ -8,7 +8,8 @@ export type BoundClaudeQuestionAnswer = {
   readonly questionIndex: number;
   readonly question: ElwoodQuestion;
   readonly answer: ValidatedQuestionAnswer;
-  readonly target: number;
+  readonly otherCursorIndex: number;
+  readonly targetCursorIndex: number;
   readonly reviewValue: string;
 };
 
@@ -22,27 +23,36 @@ export function bindClaudeQuestionAnswers(
   return request.questions.map((question, questionIndex) => {
     const answer = answers[questionIndex];
     if (!(Object.hasOwn(answers, questionIndex) && answer)) throw questionAnswerFailed();
+    // Claude Other replaces a choice; it cannot carry an additional note.
+    const hasText = answer.text !== undefined;
+    const hasSelectedOptions = answer.optionIndexes.length > 0;
+    if (hasText && hasSelectedOptions) throw questionAnswerFailed();
     const labels: string[] = [];
     for (const [position, optionIndex] of answer.optionIndexes.entries()) {
       const option = question.options[optionIndex];
-      if (
-        !(Object.hasOwn(answer.optionIndexes, position) && Number.isInteger(optionIndex) && option)
-      )
-        throw questionAnswerFailed();
+      const hasOwnIndex = Object.hasOwn(answer.optionIndexes, position);
+      const isIntegerIndex = Number.isInteger(optionIndex);
+      const hasMatchingOption = option !== undefined;
+      if (!(hasOwnIndex && isIntegerIndex && hasMatchingOption)) throw questionAnswerFailed();
       labels.push(option.label);
     }
-    const target =
-      question.selection === "multiple"
-        ? question.options.length + 1
-        : answer.text === undefined
-          ? answer.optionIndexes[0]
-          : question.options.length;
-    if (target === undefined) throw questionAnswerFailed();
+    const otherCursorIndex = question.options.length;
+    let targetCursorIndex: number | undefined;
+    if (question.selection === "multiple") {
+      const submitCursorIndex = otherCursorIndex + 1;
+      targetCursorIndex = submitCursorIndex;
+    } else if (hasText) {
+      targetCursorIndex = otherCursorIndex;
+    } else {
+      targetCursorIndex = answer.optionIndexes[0];
+    }
+    if (targetCursorIndex === undefined) throw questionAnswerFailed();
     return {
       questionIndex,
       question,
       answer,
-      target,
+      otherCursorIndex,
+      targetCursorIndex,
       reviewValue: answer.text ?? labels.join(", "),
     };
   });

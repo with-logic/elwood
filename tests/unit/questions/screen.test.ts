@@ -30,13 +30,18 @@ describe("native frames", () => {
     expect(parseClaudeQuestionScreen(fixture("review"), request.questions)).toEqual({
       kind: "review",
       cursor: 0,
+      summary: "● Which test color? → Blue ● Which test features? → Logging, Metrics",
     });
     expect(
       parseClaudeQuestionScreen(
         frame(fixture("review").text.replace("❯ 1.", "  1.").replace("  2. Cancel", "❯ 2. Cancel")),
         request.questions,
       ),
-    ).toEqual({ kind: "review", cursor: 1 });
+    ).toEqual({
+      kind: "review",
+      cursor: 1,
+      summary: "● Which test color? → Blue ● Which test features? → Logging, Metrics",
+    });
   });
   test.each([
     (text) => text.replace("☐ Color", "☐ Other"),
@@ -99,6 +104,7 @@ describe("native frames", () => {
     ).toMatchObject({
       kind: "review",
       cursor: 0,
+      summary: "● Which test color? → Blue ● Which test features? → Logging, Metrics",
     });
   });
   test("rejects a missing/foreign checkbox Submit and supports options without descriptions", () => {

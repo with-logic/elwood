@@ -1,14 +1,16 @@
 /** Drive proven private Claude question stages and native review (PRD §4). */
+import { bracketedPasteEnd, bracketedPasteStart } from "../../core/input/constants.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { type BoundClaudeQuestionAnswer, bindClaudeQuestionAnswers } from "./bind-answers.ts";
 import { questionLayoutFailed, questionNavigation } from "./navigation.ts";
-import { CLAUDE_REVIEW_READY_LABEL, CLAUDE_REVIEW_TITLE } from "./review-labels.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
+/** Requires native question 0 and a complete normalized batch in request order.
+ * Finishing these writes does not prove native acceptance; the transaction owns that acknowledgement. */
 export async function answerClaudeQuestions(
   request: ElwoodQuestionRequest,
   answers: readonly ValidatedQuestionAnswer[],
@@ -35,10 +37,10 @@ async function answerOne(
   bound: BoundClaudeQuestionAnswer,
   io: QuestionIo,
 ): Promise<void> {
-  const { question, questionIndex, answer, target } = bound;
+  const { question, questionIndex, answer, otherCursorIndex, targetCursorIndex } = bound;
   const navigation = questionNavigation(request, questionIndex, io);
   if (question.selection === "multiple") {
-    if (navigation.read().checked.at(-1)) throw questionAnswerFailed();
+    if (navigation.read().checked[otherCursorIndex]) throw questionAnswerFailed();
     for (let option = 0; option < question.options.length; option += 1) {
       const selected = answer.optionIndexes.includes(option);
       if (navigation.read().checked[option] === selected) continue;
@@ -48,17 +50,17 @@ async function answerOne(
     }
   }
   if (answer.text !== undefined) {
-    await navigation.move(question.options.length);
+    await navigation.move(otherCursorIndex);
     await io.write(
-      `\x1b[200~${answer.text}\x1b[201~`,
+      `${bracketedPasteStart}${answer.text}${bracketedPasteEnd}`,
       (frame) => navigation.at(frame)?.other === "Type something.",
     );
     await io.wait((frame) => navigation.at(frame)?.other === answer.text);
   }
-  await navigation.move(target);
+  await navigation.move(targetCursorIndex);
   await io.write("\r", (frame) => {
     const current = navigation.at(frame);
-    if (current?.cursor !== target) return false;
+    if (current?.cursor !== targetCursorIndex) return false;
     if (question.selection === "multiple") {
       return current.checked.every(
         (checked, index) => checked === answer.optionIndexes.includes(index),
@@ -75,19 +77,13 @@ async function submitReview(
   const review = await io.wait(
     (frame) => parseClaudeQuestionScreen(frame, request.questions)?.kind === "review",
   );
-  const text = reviewText(review);
   const expected = normalizeClaudeQuestionText(
     answers.map(({ question, reviewValue }) => `● ${question.prompt} → ${reviewValue}`).join(" "),
   );
-  if (text !== expected) throw questionAnswerFailed();
-  await io.write("\r", (frame) => {
+  const matchingReview = (frame: QuestionFrame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
-    return screen?.kind === "review" && screen.cursor === 0 && reviewText(frame) === expected;
-  });
-}
-
-function reviewText(frame: QuestionFrame): string {
-  const start = frame.lines.findLastIndex((line) => line.trim() === CLAUDE_REVIEW_TITLE);
-  const end = frame.lines.findLastIndex((line) => line.trim() === CLAUDE_REVIEW_READY_LABEL);
-  return normalizeClaudeQuestionText(frame.lines.slice(start + 1, end).join(" "));
+    return screen?.kind === "review" && screen.summary === expected ? screen : undefined;
+  };
+  if (!matchingReview(review)) throw questionAnswerFailed();
+  await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0);
 }

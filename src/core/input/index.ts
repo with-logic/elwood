@@ -14,14 +14,13 @@ import {
   waitForInput,
 } from "./abort.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
+import { bracketedPasteEnd, bracketedPasteStart } from "./constants.ts";
 import type { PasteGuard } from "./paste-guard.ts";
+import { preparePasteNudges } from "./paste-nudge.ts";
 import { sanitizePasteText } from "./sanitize.ts";
 
-export { sanitizePasteText } from "./sanitize.ts";
-
-import { preparePasteNudges } from "./paste-nudge.ts";
-
 export type { PasteGuard, RecoveryComposer } from "./paste-guard.ts";
+export { sanitizePasteText } from "./sanitize.ts";
 
 export const commandEnterDelayMs = 150;
 export const pasteSettleDelayMs = 150;
@@ -88,7 +87,7 @@ async function writePastedPrompt(
     priorEmptyFrame,
     recovery?.revoked,
   );
-  await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
+  await terminal.sendInput(`${bracketedPasteStart}${payload}${bracketedPasteEnd}`);
   try {
     await waitForInput(settleDelayMs, signal);
     // Hold the submitting Enter while a blocking dialog is on screen: firing it

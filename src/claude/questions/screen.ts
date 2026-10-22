@@ -1,7 +1,6 @@
 /** Private native Claude questionnaire grammar (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
-import { CLAUDE_REVIEW_READY_LABEL, CLAUDE_REVIEW_TITLE } from "./review-labels.ts";
 import {
   normalizeClaudeQuestionText,
   OTHER_CONTINUATION_INDENT_COLUMNS,
@@ -22,7 +21,10 @@ export type ClaudeQuestionScreen =
       readonly kind: "review";
       /** Zero-based review selection: Submit answers (0) or Cancel (1). */
       readonly cursor: number;
+      readonly summary: string;
     };
+const CLAUDE_REVIEW_TITLE = "Review your answers";
+const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
 
@@ -46,10 +48,8 @@ export function parseClaudeQuestionScreen(
   const first = body.findIndex((line) => row.test(line));
   if (first < 0) return undefined;
   const prompt = normalizeClaudeQuestionText(body.slice(0, first).join("\n"));
-  if (
-    prompt.startsWith(`${CLAUDE_REVIEW_TITLE} `) &&
-    body.some((line) => line === CLAUDE_REVIEW_READY_LABEL)
-  ) {
+  const reviewReadyIndex = body.lastIndexOf(CLAUDE_REVIEW_READY_LABEL);
+  if (prompt.startsWith(`${CLAUDE_REVIEW_TITLE} `) && reviewReadyIndex >= 0) {
     if (!questionCursor(frame)) return undefined;
     const questionRows = body.slice(first).filter((line) => line.trim());
     if (
@@ -58,7 +58,10 @@ export function parseClaudeQuestionScreen(
       !/^(?:❯| )\s+2\. Cancel$/.test(questionRows[1]!)
     )
       return undefined;
-    return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1 };
+    const summary = normalizeClaudeQuestionText(body.slice(0, reviewReadyIndex).join(" "))
+      .slice(CLAUDE_REVIEW_TITLE.length)
+      .trim();
+    return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1, summary };
   }
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
