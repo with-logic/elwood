@@ -60,11 +60,7 @@ export async function answerQueued(
   }
   const match = (current: QuestionFrame) => matchingView(current, "queued", index, count, question);
   await stageAnswer(question, answer, io, match, view);
-  await io.write("\r", (current) => {
-    if (!ready(match(current), question, answer)) return false;
-    submitting();
-    return true;
-  });
+  await io.write("\r", (current) => ready(match(current), question, answer), submitting);
 }
 export async function answerBlocking(
   questions: readonly QuestionDefinition[],
@@ -80,11 +76,11 @@ export async function answerBlocking(
     const initial = frame && match(frame);
     if (!initial) throw questionAnswerFailed();
     await stageAnswer(question, answers[index]!, io, match, initial);
-    await io.write("\r", (current) => {
-      if (!ready(match(current), question, answers[index]!)) return false;
-      if (index === questions.length - 1) submitting();
-      return true;
-    });
+    await io.write(
+      "\r",
+      (current) => ready(match(current), question, answers[index]!),
+      index === questions.length - 1 ? submitting : undefined,
+    );
   }
 }
 function ready(

@@ -36,11 +36,12 @@ export function scriptedIo(
         throw new Error("Native fixture did not match expected render");
       return await Promise.resolve(current);
     },
-    write: async (input, expected) => {
+    write: async (input, expected, onDispatch) => {
       if (!(current && expected(current))) throw new Error("Unsafe native write");
       const transition = transitions[index++];
       if (!transition || transition.input !== input)
         throw new Error(`Unexpected input ${JSON.stringify(input)}`);
+      onDispatch?.();
       writes.push(input);
       current = transition.next ?? current;
       await Promise.resolve();
