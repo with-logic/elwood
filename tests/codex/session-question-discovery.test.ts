@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { type ElwoodQuestionEvent, type ElwoodWarningEvent, startCodex } from "../../src/index.ts";
 import { captured, records } from "../unit/codex-questions/helpers.ts";
+import { snapshot } from "../unit/codex-questions/snapshot-fixtures.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -42,10 +43,20 @@ test("C-QUESTION-01 discovery exposes immutable events and snapshots without rel
     expect(Object.isFrozen(requests[0]!.questions[0]!.options)).toBe(true);
     expect(requests[0]!.questions[0]!.supportsSecretInput).toBe(false);
     expect(session.status).toBe("ready");
-    const ordinary = session.sendMessage("held ordinary input");
-    void ordinary.catch(() => undefined);
+    let ordinarySettled = false;
+    const ordinary = session.sendMessage("held ordinary input").then(
+      () => {
+        ordinarySettled = true;
+        return "delivered";
+      },
+      (error: unknown) => {
+        ordinarySettled = true;
+        return error;
+      },
+    );
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).toEqual([]);
+    expect(ordinarySettled).toBe(false);
     expect(
       readFileSync(
         join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
@@ -54,6 +65,12 @@ test("C-QUESTION-01 discovery exposes immutable events and snapshots without rel
     ).not.toContain(requests[0]!.questions[0]!.prompt);
     for (const item of native.slice(3)) appendFileSync(path, `${JSON.stringify(item)}\n`);
     await expect.poll(() => session.listQuestions()).toEqual([]);
+    const empty = snapshot("async-turn-ended.json");
+    ptys[0]!.emitData(
+      `\x1b[2J\x1b[H${empty.text.replaceAll("\n", "\r\n")}\x1b[${empty.cursorY + 1};${empty.cursorX + 1}H\x1b[?25h`,
+    );
+    await expect(ordinary).resolves.toBe("delivered");
+    expect(ptys[0]!.writes).toEqual(["\x1b[200~held ordinary input\x1b[201~", "\r"]);
     expect(events.map((event) => event.phase)).toEqual(["raised", "raised", "closed", "closed"]);
     expect(activities).toEqual(events);
     expect(requests).toHaveLength(2);

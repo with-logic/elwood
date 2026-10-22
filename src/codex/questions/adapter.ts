@@ -21,7 +21,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   private focused: Candidate | undefined;
   private previousQuestionCount = 0;
   private hold = false;
-  private lastComposerText: string | undefined;
+  private composerEligibilityChecked = false;
   constructor(registry: QuestionRegistry, onDisabled?: () => void) {
     this.registry = registry;
     this.state = new CodexQuestionCandidates(registry, onDisabled);
@@ -29,7 +29,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   observe(event: ElwoodActivityEvent): boolean {
     return this.state.batchNotifications(() => {
       const changed = this.state.observe(event);
-      if (changed) this.lastComposerText = undefined;
+      if (changed) this.composerEligibilityChecked = false;
       if (this.focused && this.state.candidates.get(this.focused.nativeKey) !== this.focused) {
         this.focused = undefined;
         this.previousQuestionCount = 0;
@@ -44,7 +44,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       const chrome = view !== undefined || badge !== undefined || nativeQuestionFragment(frame);
       if (chrome) {
         this.hold = true;
-        this.lastComposerText = undefined;
+        this.composerEligibilityChecked = false;
       }
       this.pending.observe(frame, view, this.state);
       const current = view?.kind === "queued" ? this.observeQueued(view) : undefined;
@@ -64,7 +64,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     answers: readonly ValidatedQuestionAnswer[],
     io: QuestionIo,
   ): Promise<void> {
-    this.lastComposerText = undefined;
+    this.composerEligibilityChecked = false;
     const nativeKey = this.registry.keyFor(request.id);
     const candidate = nativeKey === undefined ? undefined : this.state.candidates.get(nativeKey);
     if (!candidate || candidate.hasPendingNativeSubmission) throw questionAnswerFailed();
@@ -98,7 +98,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       await answerNative();
     } catch (error) {
       abandon();
-      this.lastComposerText = undefined;
+      this.composerEligibilityChecked = false;
       throw error;
     }
   }
@@ -126,7 +126,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
   private markSeen(candidate: Candidate): void {
     if (!this.candidatesSeenInNativeUi.has(candidate)) {
       this.candidatesSeenInNativeUi.add(candidate);
-      this.lastComposerText = undefined;
+      this.composerEligibilityChecked = false;
     }
   }
   private observeComposer(frame: QuestionFrame, chrome: boolean): void {
@@ -138,8 +138,9 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     )
       return;
     this.hold = false;
-    if (this.lastComposerText === frame.text) return;
-    this.lastComposerText = frame.text;
+    // Only native eligibility changes invalidate this scan; unrelated viewport redraws do not.
+    if (this.composerEligibilityChecked) return;
+    this.composerEligibilityChecked = true;
     for (const candidate of this.state.candidates.values()) {
       if (
         this.candidatesSeenInNativeUi.has(candidate) &&

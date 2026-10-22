@@ -1280,10 +1280,13 @@ keep their request pending; a post-write abort retires the public ID while the
 native hold remains until matching completion, replacement or turn end. A
 predecessor review panel cannot publish a newly observed successor.
 
-This adapter groundwork is not yet connected to live session construction,
-hook routing or the ordinary-input gate. The native-question session API
-integration supplies those connections; the live screen-fact rule alone only
-holds input while the questionnaire is visible.
+Live sessions connect this adapter to the session-owned question controller,
+completed terminal renders, hook routing and the ordinary-input gate. Claude's
+hook-decision gate resolves the exact caller hook outcome before publishing a
+request; direct answers and denials withdraw automation while retaining native
+ownership until matching completion, replacement or turn end. The captured frames
+establish the native layouts; the capture-specific version and screen-pattern
+limitations above still apply.
 
 A final Enter rejected before physical dispatch, including by a current-frame or
 abort guard, does not count as submission. Once dispatch begins, a rejection or

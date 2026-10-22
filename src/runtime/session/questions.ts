@@ -12,7 +12,7 @@ import { SessionLifecycle } from "./lifecycle.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
-export abstract class QuestionsSession extends SessionLifecycle {
+export abstract class QuestionSessionBase extends SessionLifecycle {
   private readonly questions: SessionQuestions;
   protected constructor(
     agent: ElwoodAgentKind,

@@ -19,7 +19,8 @@ export type ElwoodQuestion = {
   /** Whether the native question supports entering secret text. */
   readonly supportsSecretInput: boolean;
 };
-/** Opaque request IDs are process-scoped; a new/resumed process creates new identities. */
+/** Opaque request IDs are process-scoped; a new/resumed process creates new identities.
+ * Agent narrows the request's agent; the default distributes into one request type per agent. */
 export type ElwoodQuestionRequest<Agent extends ElwoodAgentKind = ElwoodAgentKind> =
   Agent extends ElwoodAgentKind
     ? {
@@ -40,6 +41,8 @@ export type ElwoodQuestionAnswerOptions = {
   readonly signal?: AbortSignal;
 };
 export type QuestionCloseReason = "answered" | "cancelled" | "unavailable";
+/** Agent narrows both envelope and nested request agents. The default distributes across
+ * agents and lifecycle phases, preserving agent identity and phase-specific fields in each branch. */
 export type ElwoodQuestionEvent<Agent extends ElwoodAgentKind = ElwoodAgentKind> =
   Agent extends ElwoodAgentKind
     ? {

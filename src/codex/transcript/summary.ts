@@ -1,6 +1,6 @@
 /**
  * Projects one committed Codex JSONL transcript item into a bounded summary.
- * Implements PRD §7A.4 (C-API-12, C-CODEX-18/19/22): assistant messages and progress,
+ * Implements PRD §§7A.4–7A.5 (C-API-12, C-CODEX-18/19/22): assistant messages and progress,
  * tool calls/results, reasoning summary text, and web searches are surfaced; raw
  * encrypted reasoning is never surfaced.
  */
@@ -17,6 +17,7 @@ export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
     return { kind: "other", label: stringValue(record(item)?.["type"]) ?? "unknown" };
   }
   const type = stringValue(payload?.["type"]);
+  // Async question metadata can carry final_answer; exclude it before assistant-text projection.
   if (hasAsyncQuestionMetadata(payload)) return { kind: "other", label: "question" };
   if (type === "web_search_end" || type === "web_search_call") return webSearch(payload);
   if (type === "function_call") return toolCall(payload);

@@ -111,7 +111,7 @@ test("unchanged working frames keep indexed native correlation bounded", () => {
   }
 });
 
-test("C-QUESTION-05 unchanged empty composers do not rescan ineligible native candidates", () => {
+test("C-QUESTION-05 unrelated working redraws do not rescan unchanged composer eligibility", () => {
   const h = harness();
   h.observe({
     payload: {
@@ -133,8 +133,31 @@ test("C-QUESTION-05 unchanged empty composers do not rescan ineligible native ca
   h.adapter.render(empty);
   const initialScans = scans;
   expect(initialScans).toBeGreaterThan(0);
-  for (let n = 0; n < 1000; n++) h.adapter.render({ ...empty, lines: [...empty.lines] });
+  for (let n = 0; n < 1000; n++) {
+    const lines = [`• Working (${n}s • esc to interrupt)`, ...empty.lines];
+    h.adapter.render({
+      ...empty,
+      text: lines.join("\n"),
+      lines,
+      cursorRow: 1,
+      cursorY: 1,
+    });
+  }
   expect(scans).toBe(initialScans);
+  h.observe({
+    payload: {
+      type: "function_call",
+      call_id: "new-native-state",
+      name: "request_user_input",
+      arguments: JSON.stringify({ questions: [{ id: "new", question: "New" }] }),
+    },
+  });
+  const beforeChangedState = scans;
+  h.adapter.render(empty);
+  expect(scans).toBeGreaterThan(beforeChangedState);
+  const afterChangedState = scans;
+  h.adapter.render(empty);
+  expect(scans).toBe(afterChangedState);
   expect(h.registry.list()).toEqual([]);
   expect(h.adapter.blocksInput()).toBe(true);
   expect(h.events).toEqual([]);

@@ -73,9 +73,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     );
     registerNativeTurnReader(this, codexTurnIdentity);
     this.configureQuestions((registry) =>
-      codexSessionQuestions(registry, this.elwoodSessionId, (warnings) =>
-        this.emitWarnings(warnings),
-      ),
+      codexSessionQuestions(registry, this.elwoodSessionId, emitter),
     );
     this.bridge = bridge;
     this.emitter = emitter;

@@ -19,3 +19,46 @@ test("C-QUESTION-01 question envelopes reject mismatched agents", () => {
   void [wrongEvent, wrongActivity];
   expect(question.request.agent).toBe(question.agent);
 });
+
+test("C-QUESTION-01 question activity labels reject mismatched lifecycle phases", () => {
+  const request = {
+    id: "r",
+    agent: "claude",
+    delivery: "blocking",
+    questions: [],
+  } satisfies ElwoodQuestionEvent<"claude">["request"];
+  const raised = {
+    elwoodSessionId: "s",
+    agent: "claude",
+    request,
+    phase: "raised",
+  } satisfies ElwoodQuestionEvent<"claude">;
+  const closed = {
+    ...raised,
+    phase: "closed",
+    reason: "answered",
+  } satisfies ElwoodQuestionEvent<"claude">;
+  const raisedActivity = {
+    ...raised,
+    kind: "question",
+    source: "terminal",
+    label: "raised",
+    question: raised,
+  } satisfies ElwoodActivityEvent;
+  const closedActivity = {
+    ...raisedActivity,
+    label: "closed",
+    question: closed,
+  } satisfies ElwoodActivityEvent;
+  // @ts-expect-error A raised label cannot carry a closed lifecycle event.
+  const wrongRaised: ElwoodActivityEvent = { ...raisedActivity, question: closed };
+  // @ts-expect-error A closed label cannot carry a raised lifecycle event.
+  const wrongClosed: ElwoodActivityEvent = { ...closedActivity, question: raised };
+  // @ts-expect-error Closed question activity must retain its nested agent as well as phase.
+  const wrongAgent: ElwoodActivityEvent = { ...closedActivity, agent: "codex" };
+  void [wrongRaised, wrongClosed, wrongAgent];
+  expect([raisedActivity.question.phase, closedActivity.question.phase]).toEqual([
+    "raised",
+    "closed",
+  ]);
+});

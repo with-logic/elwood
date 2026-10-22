@@ -52,7 +52,8 @@ type ActivityFields = {
   readonly raw?: unknown;
 };
 
-/** Keep the activity label paired with its structured lifecycle phase. */
+/** Distribute the agent-and-phase event union so the activity label, nested phase,
+ * and both agent fields stay correlated. */
 type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEvent> =
   Event extends ElwoodQuestionEvent
     ? {

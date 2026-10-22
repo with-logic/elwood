@@ -33,13 +33,13 @@ import {
   type SubmitKind,
 } from "./image-attach.ts";
 import { PickerInputOwnership } from "./picker-input.ts";
-import { QuestionsSession } from "./questions.ts";
+import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 type Timeout = { readonly timeoutMs?: number };
 
-export abstract class AgentSessionBase extends QuestionsSession {
+export abstract class AgentSessionBase extends QuestionSessionBase {
   protected abstract readonly picker: ModelPickerSpec;
   private readonly commands: CommandSurface;
 

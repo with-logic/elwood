@@ -12,7 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve the first question-observer failure diagnostic when pending listener
+  promises exceed the notification registration cap.
+
 - Keep native Claude questionnaires blocking when question text contains composer-like carets, fences, or navigation-footer copy.
+
+- Report contained question and companion activity listener failures once per
+  live session with a content-free `question_observer_failed` warning.
 
 - Expose live Claude and Codex questionnaires through typed `question` events,
   structured normalized activity and immutable `listQuestions()` snapshots;
