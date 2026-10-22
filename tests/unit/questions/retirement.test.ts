@@ -12,7 +12,7 @@ const stop = {
   raw: {},
 };
 
-test("C-QUESTION-03 an unsupported unpublished candidate retires only after native chrome and live composer clearance", () => {
+test("an unsupported unpublished candidate retires only after native chrome and live composer clearance", () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
   adapter.observe(nativeHook());
@@ -21,7 +21,7 @@ test("C-QUESTION-03 an unsupported unpublished candidate retires only after nati
   adapter.render(composer());
   expect(adapter.blocksInput()).toBe(false);
 });
-test("C-QUESTION-03 Stop reports actual candidate, physical hold, and registry retirement once", () => {
+test("Stop reports actual candidate, physical hold, and registry retirement once", () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
   expect(adapter.observe(stop)).toBe(false);
@@ -32,7 +32,7 @@ test("C-QUESTION-03 Stop reports actual candidate, physical hold, and registry r
   expect(adapter.observe(stop)).toBe(true);
   expect(adapter.observe(stop)).toBe(false);
 });
-test("C-QUESTION-03 answer delegation rejects a changed native stage before any write", async () => {
+test("answer delegation rejects a changed native stage before any write", async () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
   const request = requests.publish("native", "blocking", definitions)!;

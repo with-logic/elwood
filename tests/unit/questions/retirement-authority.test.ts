@@ -5,7 +5,7 @@ import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { composer, nativeHook } from "./lifecycle-helpers.ts";
 
-test("C-QUESTION-03 a partial panel without options cannot arm retirement", () => {
+test("a partial panel without options cannot arm retirement", () => {
   const adapter = new ClaudeQuestionAdapter(registry());
   adapter.observe(nativeHook());
   const native = fixture("questions").text;
@@ -14,7 +14,7 @@ test("C-QUESTION-03 a partial panel without options cannot arm retirement", () =
   expect(adapter.blocksInput()).toBe(true);
 });
 
-test("C-QUESTION-03 a foreign initial tab cannot arm retirement before matching native UI", () => {
+test("a foreign initial tab cannot arm retirement before matching native UI", () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
   adapter.observe(nativeHook());

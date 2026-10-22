@@ -1,4 +1,4 @@
-/** ID-less Claude completions require matching native definitions (PRD §5.10, C-QUESTION-03). */
+/** ID-less Claude completions require matching native definitions (PRD §4). */
 
 import { expect, test } from "vitest";
 import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
@@ -57,7 +57,7 @@ const mismatches: Readonly<Record<string, AskUserQuestionInput["questions"]>> = 
 for (const name of ["PostToolUse", "PostToolUseFailure"]) {
   test.each(
     Object.entries(mismatches),
-  )(`C-QUESTION-03 unrelated ID-less ${name} cannot retire an active request: %s`, (_label, changed) => {
+  )(`unrelated ID-less ${name} cannot retire an active request: %s`, (_label, changed) => {
     const h = setup();
     h.adapter.observe(hook(name, changed));
     expect(h.requests.list()).toEqual([h.request]);

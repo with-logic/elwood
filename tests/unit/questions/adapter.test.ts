@@ -1,4 +1,4 @@
-/** Claude source correlation, native lifecycle and unsupported candidate handling (C-QUESTION-01/03). */
+/** Claude source correlation, native lifecycle and unsupported candidate handling (PRD §4). */
 
 import { describe, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
@@ -27,7 +27,7 @@ function hook(name: string, extra: Readonly<Record<string, unknown>> = {}): Elwo
     },
   };
 }
-describe("C-QUESTION-03 Claude hook candidates", () => {
+describe("Claude hook candidates", () => {
   test("publishes only matching native UI, preserves redraw IDs and correlates keyless permission mirrors", () => {
     const requests = registry();
     const adapter = new ClaudeQuestionAdapter(requests);

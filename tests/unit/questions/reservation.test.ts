@@ -5,7 +5,7 @@ import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { composer, nativeHook } from "./lifecycle-helpers.ts";
 
-test("C-QUESTION-03 pending metadata holds partial native UI and cannot be released by the old composer", () => {
+test("pending metadata holds partial native UI and cannot be released by the old composer", () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
   adapter.observe(nativeHook());
@@ -21,7 +21,7 @@ test("C-QUESTION-03 pending metadata holds partial native UI and cannot be relea
   expect(requests.list()).toEqual([]);
   expect(adapter.blocksInput()).toBe(false);
 });
-test("C-QUESTION-03 equivalent hooks and unrelated completions do not request another parse", () => {
+test("equivalent hooks and unrelated completions do not request another parse", () => {
   const adapter = new ClaudeQuestionAdapter(registry());
   expect(adapter.observe(nativeHook())).toBe(true);
   expect(adapter.observe(nativeHook())).toBe(false);

@@ -26,7 +26,7 @@ const toolInput = {
 };
 const hook = (name = "PreToolUse") => nativeHook(name, { tool_input: toolInput });
 
-test("C-QUESTION-03 a single final Enter stays pending until its native completion", async () => {
+test("a single final Enter stays pending until its native completion", async () => {
   const events = new TypedEmitter<{
     activity: ElwoodActivityEvent | QuestionActivityEvent;
     question: ElwoodQuestionEvent;
