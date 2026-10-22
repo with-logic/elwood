@@ -9,11 +9,11 @@ import { CodexSession, type CodexSessionApi } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { closeNativeResponse, trackResponseKill } from "./codex-response-cleanup.ts";
 import {
-  assertParentEnvironmentUnchanged,
   nativeResponseSandbox,
   noToolsResponseOptions,
   responseBinary,
 } from "./codex-response-sandbox.ts";
+import { assertParentEnvironmentUnchanged } from "./parent-environment.ts";
 
 const available = existsSync(responseBinary) && existsSync(join(homedir(), ".codex/auth.json"));
 const progress = "ELWOOD_PROGRESS_6F82";
