@@ -3,6 +3,7 @@ import { expect, expectTypeOf, test } from "vitest";
 import { parseQuestions } from "../../../src/codex/questions/definitions.ts";
 import { QuestionLimitError } from "../../../src/codex/questions/limits.ts";
 import {
+  answeredQuestionItemIds,
   payloadOf,
   type QuestionCall,
   questionCall,
@@ -56,13 +57,26 @@ test("captured durable native calls and mirrors retain their acceptance distinct
   const queued = records("async-records.json")
     .map(payloadOf)
     .filter((value) => value !== undefined);
-  expect(questionCall(queued[0]!)?.accepted).toBe(false);
-  expect(questionCall(queued[1]!)?.accepted).toBe(true);
-  expect(questionCall(queued[0]!)?.queued).toBe(true);
+  const call = questionCall(queued[0]!);
+  const mirror = questionCall(queued[1]!);
+  const expectedCallId = "call_c54736dbd68049d192ab5f52ad2532f0";
+  expect(call).toMatchObject({ callId: expectedCallId, accepted: false, queued: true });
+  expect(mirror).toMatchObject({ callId: expectedCallId, accepted: true, queued: true });
+  if (!(call?.queued && mirror?.queued)) throw new Error("Captured async requests must parse");
+  const replyIds = queued.flatMap(answeredQuestionItemIds);
+  expect(replyIds).toEqual(
+    call.questions.map(({ questionIndex }) => queuedKey(call.callId, questionIndex)),
+  );
+  expect(replyIds).toEqual(
+    mirror.questions.map(({ questionIndex }) => queuedKey(mirror.callId, questionIndex)),
+  );
   const modal = records("blocking-records.json")
     .map(payloadOf)
     .filter((value) => value !== undefined);
-  expect(questionCall(modal[0]!)?.queued).toBe(false);
+  expect(questionCall(modal[0]!)).toMatchObject({
+    callId: "call_8aaf11dc88ec4e7cb1d51793fea2de2c",
+    queued: false,
+  });
 });
 test("decoded native metadata accepts exactly 1 MiB with its identity", () => {
   const overhead = Buffer.byteLength(JSON.stringify(["id", [{ title: "" }]]));

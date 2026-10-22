@@ -1,8 +1,12 @@
 /** Native Codex question metadata validation for the PRD §4 adapter boundary. */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { parseQuestions } from "../../../src/codex/questions/definitions.ts";
 import {
-  answeredQuestionIds,
+  QuestionLimitError,
+  questionMetadataLimitBytes,
+} from "../../../src/codex/questions/limits.ts";
+import {
+  answeredQuestionItemIds,
   jsonRecord,
   payloadOf,
   questionCall,
@@ -17,10 +21,13 @@ test("mirrors native async suggestion limits and optional fields", () => {
     ],
     true,
   );
-  expect(result?.[0]?.definition.options).toHaveLength(31);
-  expect(result?.[0]?.definition.options[0]).toEqual({ label: "Blue" });
+  expect(result?.[0]?.definition.options).toEqual([
+    { label: "Blue" },
+    ...Array.from({ length: 30 }, (_, index) => ({ label: String(index) })),
+  ]);
   expect(result?.[0]?.definition.header).toBe("Header");
   expect(result?.[1]?.definition.selection).toBe("none");
+  expect(result?.[1]?.definition.options).toEqual([]);
   expect(
     parseQuestions([{ id: "id", question: "Q", options: [{ label: "A" }] }], false)?.[0]?.definition
       .options,
@@ -44,7 +51,7 @@ test.each([
   expect(parseQuestions(value, true)).toBeUndefined();
 });
 test.each([
-  { question: "Q", options: [] },
+  { id: "q", question: "Q", options: [] },
   { id: "q", question: "Q", options: [null] },
   { id: "q", question: "Q", options: [{ label: 3 }] },
   { id: "q", question: "Q", options: [{ label: " " }] },
@@ -102,10 +109,10 @@ test("recognizes native committed reply envelopes, never arbitrary prose", () =>
     role: "user",
     content: [{ type: "input_text", text }],
   });
-  expect(answeredQuestionIds({ type: "message", role: "assistant", content: [] })).toEqual([]);
-  expect(answeredQuestionIds({ type: "message", role: "user", content: null })).toEqual([]);
+  expect(answeredQuestionItemIds({ type: "message", role: "assistant", content: [] })).toEqual([]);
+  expect(answeredQuestionItemIds({ type: "message", role: "user", content: null })).toEqual([]);
   expect(
-    answeredQuestionIds({
+    answeredQuestionItemIds({
       type: "message",
       role: "user",
       content: [null, { type: "other" }, { type: "input_text", text: 3 }],
@@ -117,12 +124,53 @@ test("recognizes native committed reply envelopes, never arbitrary prose", () =>
     "<send_user_message_question_reply>{}</send_user_message_question_reply>",
     '<send_user_message_question_reply>[null,{"questionItemId":3},{"questionItemId":"id","answer":3}]</send_user_message_question_reply>',
   ])
-    expect(answeredQuestionIds(wrapped(body))).toEqual([]);
+    expect(answeredQuestionItemIds(wrapped(body))).toEqual([]);
   expect(
-    answeredQuestionIds(
+    answeredQuestionItemIds(
       wrapped(
         '<send_user_message_question_reply>[{"questionItemId":"id","answer":"A"}]</send_user_message_question_reply>',
       ),
     ),
   ).toEqual(["id"]);
+});
+
+test.each([
+  "request_user_input",
+  "request_user_input_async",
+])("%s bounds malformed raw arguments before parsing", (name) => {
+  const argumentsValue = "{".repeat(questionMetadataLimitBytes + 1);
+  const parse = vi.spyOn(JSON, "parse");
+  try {
+    expect(() =>
+      questionCall({
+        type: "function_call",
+        name,
+        call_id: "id",
+        arguments: argumentsValue,
+      }),
+    ).toThrow(QuestionLimitError);
+    expect(parse).not.toHaveBeenCalled();
+  } finally {
+    parse.mockRestore();
+  }
+});
+
+test.each([
+  undefined,
+  "sync",
+])("assistant question mirrors require async delivery: %j", (delivery) => {
+  const message = {
+    type: "message",
+    role: "assistant",
+    id: "id",
+    questions: [{ title: "Q", options: ["A"] }],
+  };
+  expect(questionCall({ ...message, delivery: "async" })).toMatchObject({
+    callId: "id",
+    accepted: true,
+    queued: true,
+  });
+  expect(
+    questionCall({ ...message, ...(delivery === undefined ? {} : { delivery }) }),
+  ).toBeUndefined();
 });

@@ -14,34 +14,39 @@ export type QueuedNativeQuestion = {
   readonly nativeId?: never;
 };
 export type NativeQuestion = ModalNativeQuestion | QueuedNativeQuestion;
-// Codex limits queued suggestions before rendering its native question editor.
+// Mirror the native queued editor: take the first 32 suggestions, then drop labels
+// above 512 UTF-8 bytes, so normalized options match its displayed choices. These
+// UI bounds are distinct from Elwood's metadata/resource ceilings in limits.ts.
 const queuedOptionCountLimit = 32;
 const queuedOptionLabelLimitBytes = 512;
 const modalOther = {
   label: "None of the above",
   description: "Optionally, add details in notes (tab)",
 };
+/** Parse modal definitions (queued=false) or queued suggestions/free-text questions.
+ * Unsupported shapes within the metadata budget return undefined.
+ * @throws QuestionLimitError for oversized or unserializable call ID/question metadata. */
 export function parseQuestions(
   value: unknown,
   queued: false,
-  identity?: string,
+  callId?: string,
 ): readonly ModalNativeQuestion[] | undefined;
 export function parseQuestions(
   value: unknown,
   queued: true,
-  identity?: string,
+  callId?: string,
 ): readonly QueuedNativeQuestion[] | undefined;
 export function parseQuestions(
   value: unknown,
   queued: boolean,
-  identity?: string,
+  callId?: string,
 ): readonly NativeQuestion[] | undefined;
 export function parseQuestions(
   value: unknown,
   queued: boolean,
-  identity = "",
+  callId = "",
 ): readonly NativeQuestion[] | undefined {
-  checkQuestionInput(value, identity);
+  checkQuestionInput(value, callId);
   if (!Array.isArray(value) || value.length === 0) return undefined;
   const result: NativeQuestion[] = [];
   const nativeIds = new Set<string>();

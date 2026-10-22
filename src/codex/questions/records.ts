@@ -31,22 +31,25 @@ export function jsonRecord(value: unknown): Record<string, unknown> | undefined 
     return undefined;
   }
 }
+const asyncQuestionToolName = "request_user_input_async";
+
+/** Read modal/async function calls and accepted async assistant-message mirrors.
+ * Unsupported records within the metadata budget return undefined.
+ * @throws QuestionLimitError for raw-argument or decoded question-metadata limit violations. */
 export function questionCall(payload: Record<string, unknown>): QuestionCall | undefined {
   if (payload["type"] === "function_call") {
     const name = payload["name"];
-    if (name !== "request_user_input" && name !== "request_user_input_async") return undefined;
+    if (name !== "request_user_input" && name !== asyncQuestionToolName) return undefined;
     checkQuestionArguments(payload["arguments"], payload["call_id"]);
     const argumentsValue = jsonRecord(payload["arguments"]);
-    return parsedCall(
-      payload["call_id"],
-      name === "request_user_input_async",
-      false,
-      argumentsValue?.["questions"],
-    );
+    return parsedCall(payload["call_id"], argumentsValue?.["questions"], {
+      queued: name === asyncQuestionToolName,
+      accepted: false,
+    });
   }
   const item = payload["type"] === "item_completed" ? payload["item"] : payload;
   if (!(isRecord(item) && nativeMessage(item) && hasAsyncQuestionMetadata(item))) return undefined;
-  return parsedCall(item["id"], true, true, item["questions"]);
+  return parsedCall(item["id"], item["questions"], { queued: true, accepted: true });
 }
 function nativeMessage(item: Record<string, unknown>): boolean {
   return (
@@ -56,20 +59,19 @@ function nativeMessage(item: Record<string, unknown>): boolean {
   );
 }
 function parsedCall(
-  id: unknown,
-  queued: boolean,
-  accepted: boolean,
+  callId: unknown,
   value: unknown,
+  { queued, accepted }: { readonly queued: boolean; readonly accepted: boolean },
 ): QuestionCall | undefined {
-  const identity = typeof id === "string" ? id : "";
+  const budgetCallId = typeof callId === "string" ? callId : "";
   if (queued) {
-    const questions = parseQuestions(value, true, identity);
-    if (typeof id !== "string" || !id) return undefined;
-    return questions ? { callId: id, queued: true, accepted, questions } : undefined;
+    const questions = parseQuestions(value, true, budgetCallId);
+    if (typeof callId !== "string" || !callId) return undefined;
+    return questions ? { callId, queued: true, accepted, questions } : undefined;
   }
-  const questions = parseQuestions(value, false, identity);
-  if (typeof id !== "string" || !id) return undefined;
-  return questions ? { callId: id, queued: false, accepted: false, questions } : undefined;
+  const questions = parseQuestions(value, false, budgetCallId);
+  if (typeof callId !== "string" || !callId) return undefined;
+  return questions ? { callId, queued: false, accepted: false, questions } : undefined;
 }
 export function hasAsyncQuestionMetadata(item: Record<string, unknown>): boolean {
   return (
@@ -79,7 +81,8 @@ export function hasAsyncQuestionMetadata(item: Record<string, unknown>): boolean
 const questionReplyOpen = "<send_user_message_question_reply>";
 const questionReplyClose = "</send_user_message_question_reply>";
 
-export function answeredQuestionIds(payload: Record<string, unknown>): readonly string[] {
+/** Extract native reply.questionItemId values, not Elwood question IDs or tool call IDs. */
+export function answeredQuestionItemIds(payload: Record<string, unknown>): readonly string[] {
   if (
     payload["type"] !== "message" ||
     payload["role"] !== "user" ||
@@ -112,5 +115,5 @@ export function answeredQuestionIds(payload: Record<string, unknown>): readonly 
   return ids;
 }
 export function queuedKey(callId: string, index: number): string {
-  return JSON.stringify(["request_user_input_async", callId, index]);
+  return JSON.stringify([asyncQuestionToolName, callId, index]);
 }
