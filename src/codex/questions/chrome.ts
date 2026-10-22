@@ -1,8 +1,8 @@
 /** Recognize native Codex question footer chrome independently of input parsing (PRD §4; C-ATTN-02). */
-const modalFooter =
+export const modalFooter =
   /^tab to add notes \| enter to submit (?:answer|all) \| ←\/→ to navigate questions \| esc to interrupt$/;
-const notesFooter = /^tab or esc to clear notes \| enter to submit (?:answer|all)$/;
-const queuedFooter =
+export const notesFooter = /^tab or esc to clear notes \| enter to submit (?:answer|all)$/;
+export const queuedFooter =
   /^enter submit\s+⌃\] skip\s+⇧→ (?:main prompt|prev question)(?:\s+⇧← next question)?$/;
 /** Modal/notes header-footer pairs and expanded queued editors hold ordinary input;
  * collapsed queued badges have no editor footer and do not block. */
