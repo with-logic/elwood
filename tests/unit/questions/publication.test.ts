@@ -43,7 +43,7 @@ test("publishes only matching native UI, preserves redraw IDs and correlates key
         ],
         selection: "single",
         textMode: "alternative",
-        secret: false,
+        supportsSecretInput: false,
       },
       {
         prompt: "Which test features?",
@@ -54,7 +54,7 @@ test("publishes only matching native UI, preserves redraw IDs and correlates key
         ],
         selection: "multiple",
         textMode: "none",
-        secret: false,
+        supportsSecretInput: false,
       },
     ],
   });
