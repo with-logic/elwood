@@ -23,6 +23,7 @@ import {
 } from "../../../src/runtime/seams.ts";
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
+import { parentFileFingerprint } from "../parent-file-fingerprint.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { claudeQuestionLabel, claudeQuestionVersion } from "./claude-cases.ts";
 
@@ -65,13 +66,7 @@ function parentFingerprint(credential: string): Readonly<Record<string, string>>
   const paths = [".claude.json", ".claude/settings.json", ".claude/hooks.json"];
   return Object.fromEntries([
     ["keychain", createHash("sha256").update(credential).digest("hex")],
-    ...paths.map((name) => {
-      const path = join(homedir(), name);
-      return [
-        name,
-        existsSync(path) ? createHash("sha256").update(readFileSync(path)).digest("hex") : "absent",
-      ];
-    }),
+    ...paths.map((name) => [name, parentFileFingerprint(join(homedir(), name))]),
   ]);
 }
 

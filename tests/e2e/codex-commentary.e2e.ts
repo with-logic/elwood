@@ -1,12 +1,12 @@
 /** Real Codex commentary and final text remain distinct (PRD §5.4, C-CODEX-22, C-E2E-17). */
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { CodexSession, type CodexSessionApi } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { parentCodexConfigurationFingerprint } from "./codex-parent-state.ts";
 import { closeNativeResponse, trackResponseKill } from "./codex-response-cleanup.ts";
 import {
   nativeResponseSandbox,
@@ -20,17 +20,6 @@ const progress = "ELWOOD_PROGRESS_6F82";
 const final = "ELWOOD_FINAL_2D91";
 const prompt = `Send a commentary progress update containing exactly ${progress}. Then send a final answer containing exactly ${final}. Do not use tools or inspect files. These must be separate commentary and final messages.`;
 
-function parentConfiguration(): string {
-  return ["auth.json", "config.toml", "hooks.json"]
-    .map((name) => {
-      const path = join(homedir(), ".codex", name);
-      return existsSync(path)
-        ? createHash("sha256").update(readFileSync(path)).digest("hex")
-        : "absent";
-    })
-    .join(":");
-}
-
 test("C-E2E-17 native Codex progress precedes final text without ending the turn", {
   skip:
     process.env["ELWOOD_NATIVE_COMMENTARY_PROOF"] === "1"
@@ -41,7 +30,7 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
   timeout: 180_000,
 }, async (t) => {
   const environment = { ...process.env };
-  const configuration = parentConfiguration();
+  const configurationFingerprint = parentCodexConfigurationFingerprint();
   const sandbox = await nativeResponseSandbox();
   let live: CodexSessionApi | undefined;
   let toolAttempts = 0;
@@ -93,7 +82,7 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
       assert.equal(existsSync(sandbox.root), false);
       assertParentEnvironmentUnchanged(environment, process.env);
       assert.equal(
-        configuration === parentConfiguration(),
+        configurationFingerprint === parentCodexConfigurationFingerprint(),
         true,
         "Parent Codex configuration changed",
       );
