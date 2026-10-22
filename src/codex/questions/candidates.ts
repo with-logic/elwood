@@ -62,7 +62,9 @@ export class CodexQuestionCandidates extends CandidateStore {
       const candidate = this.candidates.get(nativeKey);
       if (candidate && !candidate.queued) continue;
       const closeReason: QuestionCloseReason =
-        !candidate || this.expectations.queued(candidate, replies) ? "answered" : "unavailable";
+        !candidate || this.expectations.isQueuedReplyAccepted(candidate, replies)
+          ? "answered"
+          : "unavailable";
       changed = this.close(nativeKey, closeReason) || changed;
     }
     return changed;
@@ -101,7 +103,7 @@ export class CodexQuestionCandidates extends CandidateStore {
       const answers = result?.["answers"];
       const hasAnswersForEveryQuestion =
         !candidate.queued &&
-        (this.expectations.blocking(candidate, answers) ??
+        (this.expectations.matchesOwnedBlockingAnswers(candidate, answers) ??
           (isRecord(answers) &&
             candidate.questions.every((question) => {
               const answer = answers[question.nativeId];

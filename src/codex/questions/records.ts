@@ -117,6 +117,7 @@ export function questionReplies(payload: Record<string, unknown>): readonly Ques
         text.slice(questionReplyOpen.length, -questionReplyClose.length).trim(),
       );
       if (!Array.isArray(replies)) continue;
+      // Reject this entire content part if any member is malformed; other parts are independent.
       if (!replies.every(validReply)) continue;
       for (const reply of replies) repliesFound.push(reply);
     } catch {

@@ -5,11 +5,14 @@ import { harness } from "./adapter-helpers.ts";
 import { notesFrame } from "./editor-fixtures.ts";
 import { captured, frame, records, scriptedIo } from "./helpers.ts";
 
-test.each([
-  "Detail",
-  "Different",
-  "Det",
-])("production modal answers require the complete committed notes %j", async (nativeNote) => {
+test.each(
+  ["early", "late"].flatMap((timing) =>
+    ["Detail", "Different", "Det"].map((nativeNote) => ({ timing, nativeNote })),
+  ),
+)("production modal answers require the complete committed notes $nativeNote ($timing)", async ({
+  timing,
+  nativeNote,
+}) => {
   const h = harness();
   const native = records("blocking-records.json")[0] as {
     readonly payload: { readonly call_id: string };
@@ -48,7 +51,48 @@ test.each([
     { input: "\x1b[200~Detail\x1b[201~", next: notesFrame(second, "Detail") },
     { input: "\r" },
   ]);
-  await h.adapter.answer(request, answers, scripted.io);
+  let answerSettled = false;
+  let acknowledgements = 0;
+  const acknowledge = () => {
+    expect(answerSettled).toBe(timing === "late");
+    if (timing === "early") {
+      expect(scripted.writes).toHaveLength(7);
+      expect(scripted.writes.at(-1)).toBe("\r");
+    }
+    acknowledgements++;
+    h.observe({
+      payload: {
+        type: "function_call_output",
+        call_id: native.payload.call_id,
+        output: JSON.stringify({
+          answers: {
+            color: { answers: ["None of the above"] },
+            note: { answers: ["Standard", `user_note: ${nativeNote}`] },
+          },
+        }),
+      },
+    });
+    expect(h.events.at(-1)).toMatchObject({
+      phase: "closed",
+      request,
+      reason: nativeNote === "Detail" ? "answered" : "unavailable",
+    });
+  };
+  let enterWrites = 0;
+  await expect(
+    h.adapter
+      .answer(request, answers, {
+        ...scripted.io,
+        write: async (input, expected, onDispatch) => {
+          await scripted.io.write(input, expected, onDispatch);
+          if (input === "\r") enterWrites++;
+          if (enterWrites === 2 && timing === "early") acknowledge();
+        },
+      })
+      .finally(() => {
+        answerSettled = true;
+      }),
+  ).resolves.toBeUndefined();
   expect(scripted.writes).toEqual([
     "\x1b[B",
     "\x1b[B",
@@ -58,18 +102,11 @@ test.each([
     "\x1b[200~Detail\x1b[201~",
     "\r",
   ]);
-  h.observe({
-    payload: {
-      type: "function_call_output",
-      call_id: native.payload.call_id,
-      output: JSON.stringify({
-        answers: {
-          color: { answers: ["None of the above"] },
-          note: { answers: ["Standard", `user_note: ${nativeNote}`] },
-        },
-      }),
-    },
-  });
+  if (timing === "late") {
+    expect(h.registry.get(request.id)).toBe(request);
+    acknowledge();
+  }
+  expect(acknowledgements).toBe(1);
   expect(h.registry.list()).toEqual([]);
   expect(h.events.at(-1)).toMatchObject({
     phase: "closed",

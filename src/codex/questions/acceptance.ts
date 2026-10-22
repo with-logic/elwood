@@ -22,6 +22,11 @@ export class AnswerExpectations {
       readonly release: () => void;
     }
   >();
+  /** Arm values in question order before driver input.
+   * Text normalizes CRLF/lone CR to LF, then trims Rust Unicode White_Space.
+   * Queued uses provided text (even empty), otherwise the whitespace-trimmed label.
+   * Blocking keeps the verbatim label, then adds user_note only for nonempty normalized text.
+   * Label line endings are not normalized. */
   expect(
     candidate: Candidate,
     answers: readonly ValidatedQuestionAnswer[],
@@ -51,14 +56,14 @@ export class AnswerExpectations {
     this.pending.get(candidate)?.release();
   }
   /** Unowned queued replies retain manual native acceptance; owned replies require a full match. */
-  queued(candidate: Candidate, replies: readonly QuestionReply[]): boolean {
+  isQueuedReplyAccepted(candidate: Candidate, replies: readonly QuestionReply[]): boolean {
     const expected = this.pending.get(candidate);
     if (!expected) return true;
     const matching = replies.filter((reply) => reply.questionItemId === candidate.nativeKey);
     return matching.length === 1 && matching[0]!.answer === expected.values[0]![0];
   }
   /** Without an owned expectation, undefined delegates to the caller's legacy manual check. */
-  blocking(candidate: Candidate, answers: unknown): boolean | undefined {
+  matchesOwnedBlockingAnswers(candidate: Candidate, answers: unknown): boolean | undefined {
     const expected = this.pending.get(candidate);
     if (!expected) return undefined;
     return (

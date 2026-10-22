@@ -9,9 +9,9 @@ test.each([
   const { state, candidate, controller, listener } = owned();
   const remove = vi.spyOn(controller.signal, "removeEventListener");
   const dispose = state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal);
-  expect(() =>
-    state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal),
-  ).toThrow();
+  expect(() => state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal)).toThrow(
+    expect.objectContaining({ code: "question_answer_failed" }),
+  );
   if (abort) controller.abort();
   else dispose();
   expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
@@ -33,12 +33,12 @@ test("stale disposer cannot revoke a later attempt", () => {
 test("already aborted attempts cannot install an expectation", () => {
   const { state, candidate, controller } = owned(false);
   controller.abort();
-  expect(() =>
-    state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal),
-  ).toThrow();
+  expect(() => state.expectAnswer(candidate, [{ optionIndexes: [0] }], controller.signal)).toThrow(
+    expect.objectContaining({ code: "question_answer_failed" }),
+  );
   state.observe(output({ q: { answers: ["manual"] } }));
   expect(state.candidates.size).toBe(0);
   expect(() =>
     state.expectAnswer(candidate, [{ optionIndexes: [0] }], new AbortController().signal),
-  ).toThrow();
+  ).toThrow(expect.objectContaining({ code: "question_answer_failed" }));
 });

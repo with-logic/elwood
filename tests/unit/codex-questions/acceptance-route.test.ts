@@ -5,11 +5,14 @@ import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
 import { captured, frame, scriptedIo } from "./helpers.ts";
 
-test.each([
-  "Complete answer",
-  "Wrong answer",
-  "Complete",
-])("production queued answers require the complete committed value %j", async (value) => {
+test.each(
+  ["early", "late"].flatMap((timing) =>
+    ["Complete answer", "Wrong answer", "Complete"].map((value) => ({ timing, value })),
+  ),
+)("production queued answers require the complete committed value $value ($timing)", async ({
+  timing,
+  value,
+}) => {
   const h = harness();
   const initial = editorFrame(captured("async-after-first.txt"), {
     editorLine: "  Type your answer",
@@ -45,9 +48,37 @@ test.each([
       }),
     ).rejects.toThrow("unwritten driver failure");
     expect(scripted.writes).toEqual([]);
-    await h.adapter.answer(request, [{ optionIndexes: [], text }], scripted.io);
-    expect(h.registry.get(request.id)).toBe(request);
-    h.adapter.observe(reply(key, value));
+    let answerSettled = false;
+    let acknowledgements = 0;
+    const acknowledge = () => {
+      expect(answerSettled).toBe(timing === "late");
+      if (timing === "early") expect(scripted.writes).toEqual([`\x1b[200~${text}\x1b[201~`, "\r"]);
+      acknowledgements++;
+      h.adapter.observe(reply(key, value));
+      expect(h.events.at(-1)).toMatchObject({
+        phase: "closed",
+        request,
+        reason: value === text ? "answered" : "unavailable",
+      });
+    };
+    await expect(
+      h.adapter
+        .answer(request, [{ optionIndexes: [], text }], {
+          ...scripted.io,
+          write: async (input, expected, onDispatch) => {
+            await scripted.io.write(input, expected, onDispatch);
+            if (input === "\r" && timing === "early") acknowledge();
+          },
+        })
+        .finally(() => {
+          answerSettled = true;
+        }),
+    ).resolves.toBeUndefined();
+    if (timing === "late") {
+      expect(h.registry.get(request.id)).toBe(request);
+      acknowledge();
+    }
+    expect(acknowledgements).toBe(1);
     expect(h.events.at(-1)).toMatchObject({
       phase: "closed",
       request,
