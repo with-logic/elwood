@@ -113,3 +113,52 @@ instance after the result is finalized.
 Independent callbacks dispatched by pre-existing event sources, internal queue
 and loop work, and persistent transcript polling remain outside that short-lived
 authority.
+
+### 7A.5 Native questions
+
+The shared discovery surface in §5.10 recognizes current Codex `request_user_input`
+and `request_user_input_async` terminal editors. Committed function-call arguments
+provide complete metadata; a matching native editor or queued-question badge is
+required before publishing an available request. Rejected calls and historical
+transcript content never create requests. Mirrors retain the original identities.
+
+`request_user_input` publishes one grouped blocking request with ordered prompts,
+headers, choices and descriptions. The captured native tool requires nonempty
+choices, adds the real selectable `None of the above` option, and accepts optional
+notes alongside a selected choice. Elwood exposes that native option with its own
+opaque option ID; it may be chosen without notes. Text alone selects that native
+alternative. Native completion evidence closes the group.
+Every question must omit `isSecret` or set it to boolean `false`; `true` and
+malformed supplied values reject the complete native request before publication.
+
+Each asynchronous question is an independent queued request, with its own
+acceptance unit. Suggested choices use the first 32 native choices, then omit labels exceeding
+512 UTF-8 bytes without filling those gaps from later choices. Free text is
+available instead of a suggestion. Native question-bearing
+async messages remain question metadata even when their phase is `final_answer`;
+they never become final assistant activity. Raw human terminal input remains
+available for native answers.
+Ordinary composer submission must remain held because it clears queued questions.
+
+Committed native reply envelopes close matching queued requests as answered.
+Conclusive local removal closes them as unavailable when no answer is confirmed;
+live turn completion/interruption/failure also retires remaining requests. Badge
+redraws and countdowns do not invent an expiry deadline. Availability is live-only
+and independent of whether Codex continues working. A blocking modal contributes
+the existing blocked state; the queued editor does not manufacture a turn boundary.
+
+Question automation retains at most 256 pending native acceptance units and
+1 MiB of aggregate UTF-8 candidate metadata, including native identities and
+serialized question definitions. Each individual call is also limited to 256
+question definitions and 1 MiB of UTF-8 input metadata before normalization.
+Retired native identities are retained for replay suppression up to 4,096 keys
+and 1 MiB of UTF-8 key data. Exceeding any limit closes exposed requests as
+`unavailable`, clears retained candidate/identity state, and disables question
+automation for the remainder of that session; it never evicts a tombstone and
+then republishes an old request. Raw human input remains available. Ordinary
+input remains held for unknown native identities until explicit native turn end;
+raw human terminal input remains available. A matching supported editor can still
+publish recognized requests. One content-free `question_automation_disabled`
+warning and normalized warning activity diagnose budget disablement. Overflow does not
+invent an answer, expiry deadline, or turn boundary. Unchanged native redraws
+must not republish unchanged candidates or repeatedly copy the request registry.

@@ -1,20 +1,18 @@
-/** Bind private discovery, guarded answers and shutdown to a session (PRD §4). */
+/** Bind public question discovery, guarded answers and shutdown (PRD §5.10). */
 import { subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../activity/index.ts";
 import type { Unsubscribe } from "../types.ts";
-import type { QuestionActivityEvent } from "./activity.ts";
 import type { QuestionAdapter } from "./adapter.ts";
 import { readQuestionFrame } from "./input.ts";
-import { type QuestionEmitter, QuestionRegistry } from "./registry.ts";
+import { QuestionObserverFailure } from "./notification-errors.ts";
+import { observeQuestionNotifications, type QuestionObservationEmitter } from "./observers.ts";
+import { QuestionRegistry } from "./registry.ts";
 import { QuestionTransaction } from "./transaction.ts";
 import type { ElwoodQuestionAnswer, ElwoodQuestionAnswerOptions } from "./types.ts";
 
-type Events = QuestionEmitter & {
-  on(
-    event: "activity",
-    handler: (event: ElwoodActivityEvent | QuestionActivityEvent) => void,
-  ): Unsubscribe;
+type Events = QuestionObservationEmitter & {
+  on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;
 };
 export class SessionQuestions {
   readonly registry: QuestionRegistry;
@@ -30,7 +28,8 @@ export class SessionQuestions {
     closing: AbortSignal,
   ) {
     this.closing = closing;
-    this.registry = new QuestionRegistry(agent, elwoodSessionId, events);
+    const notifications = observeQuestionNotifications(events, elwoodSessionId, agent);
+    this.registry = new QuestionRegistry(agent, elwoodSessionId, notifications);
     this.transaction = new QuestionTransaction(this.registry, terminal, inputSignal, closing);
     const refresh = () => {
       if (closing.aborted) return;
@@ -38,16 +37,24 @@ export class SessionQuestions {
       if (frame) {
         try {
           this.adapter?.render(frame);
-        } catch {
+        } catch (error) {
+          if (error instanceof QuestionObserverFailure) notifications.reportFailure();
           /* Observers cannot turn a completed native render into render failure. */
         }
       }
     };
     const offActivity = events.on("activity", (event) => {
-      if (closing.aborted || event.kind === "question") return;
+      // Feeding our own notifications or failure diagnostic back into discovery can recurse.
+      if (
+        closing.aborted ||
+        event.kind === "question" ||
+        (event.kind === "warning" && event.label === "question_observer_failed")
+      )
+        return;
       try {
         if (!this.adapter?.observe(event)) return;
-      } catch {
+      } catch (error) {
+        if (error instanceof QuestionObserverFailure) notifications.reportFailure();
         /* Native state may already have changed before a public observer failed. */
       }
       refresh();

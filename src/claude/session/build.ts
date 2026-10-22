@@ -73,6 +73,7 @@ export async function buildClaudeSession(
       getSession: () => session,
       getTurnWatcher: () => observers.turn,
       observeHookTranscript: (event) => observeTranscript(transcriptWatcher, event),
+      onHookOutcome: (event, result) => session?.resolveQuestionHook(event, result),
     }),
     buildClaudeHookErrorHandler(record, emitter, () => session),
   );

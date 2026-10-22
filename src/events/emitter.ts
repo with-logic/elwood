@@ -29,6 +29,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
   private readonly observerErrors = new ObserverErrors();
   private observerError: ((error: unknown) => void) | undefined;
+  private retainObserverError = false;
   private rejectionError: ((error: unknown) => void) | undefined;
 
   constructor() {
@@ -88,7 +89,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       try {
         const returned = handler(payload);
         if (onRejection && types.isPromise(returned))
-          this.observerErrors.observe(returned, onRejection);
+          this.observerErrors.observe(returned, onRejection, this.retainObserverError);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -104,13 +105,20 @@ export class TypedEmitter<M extends Record<string, unknown>> {
 
   /** Capture synchronous throws and late Promise failures in this notification scope.
    * Pending Promises retain bounded diagnostic sinks after nested scopes unwind. */
-  observeErrors<T>(onError: (error: unknown) => void, operation: () => T): T {
+  observeErrors<T>(
+    onError: (error: unknown) => void,
+    operation: () => T,
+    retainOnOverflow = false,
+  ): T {
     const previous = this.observerError;
+    const priorRetention = this.retainObserverError;
     this.observerError = onError;
+    this.retainObserverError = retainOnOverflow;
     try {
       return operation();
     } finally {
       this.observerError = previous;
+      this.retainObserverError = priorRetention;
     }
   }
 

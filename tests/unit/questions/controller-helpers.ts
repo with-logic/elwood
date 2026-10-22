@@ -1,6 +1,6 @@
 /** Real-terminal harness for private question session controllers (PRD §4). */
 import { vi } from "vitest";
-import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
+import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../../src/core/activity/index.ts";
 import type { QuestionActivityEvent } from "../../../src/core/questions/activity.ts";
 import type { QuestionAdapter, QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { SessionQuestions } from "../../../src/core/questions/controller.ts";
@@ -18,11 +18,13 @@ export function disposeTerminals(): void {
   for (const terminal of terminals.splice(0)) terminal.dispose();
 }
 type ControllerHarnessOptions = {
+  readonly agent?: ElwoodAgentKind;
   readonly closing?: AbortController;
   readonly input?: AbortController;
   readonly onInput?: (data: string | Uint8Array) => void;
 };
 export function controllerHarness({
+  agent = "claude",
   closing = new AbortController(),
   input = new AbortController(),
   onInput,
@@ -35,7 +37,7 @@ export function controllerHarness({
   terminals.push(terminal);
   const events = new TypedEmitter<Events>();
   const questions = new SessionQuestions(
-    "claude",
+    agent,
     "s",
     events,
     terminal,
@@ -51,7 +53,7 @@ export function controllerHarness({
   const activity = (label = "changed") =>
     events.emit("activity", {
       elwoodSessionId: "s",
-      agent: "claude",
+      agent,
       source: "hook",
       kind: "hook",
       label,

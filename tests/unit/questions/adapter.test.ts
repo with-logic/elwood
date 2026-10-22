@@ -18,11 +18,11 @@ import {
 } from "./hook-fixtures.ts";
 
 /** Deliberately bypass hook validation to exercise the adapter's malformed-input guard. */
-function malformedQuestionHook(questions: unknown): ElwoodActivityEvent {
+function malformedQuestionHook(questions: unknown) {
   return {
     ...hook(preToolUse),
     raw: { ...preToolUse, tool_input: { questions } },
-  };
+  } satisfies ElwoodActivityEvent;
 }
 describe("Claude hook candidates", () => {
   test.each([
@@ -46,10 +46,17 @@ describe("Claude hook candidates", () => {
     adapter.observe(
       hook({
         ...preToolUse,
-        tool_use_id: "replacement",
+        tool_input: {
+          questions: preToolUse.tool_input.questions.map((question) => ({
+            ...question,
+            question: `Replacement ${question.question}`,
+          })),
+        },
       } satisfies ClaudeHookEventFor<"PreToolUse">),
     );
-    adapter.render(fixture("questions"));
+    adapter.render(
+      frame(fixture("questions").text.replaceAll("Which test", "Replacement Which test")),
+    );
     expect(requests.get(old.id)).toBeUndefined();
     adapter.observe(
       hook({ ...postToolUse, tool_use_id: "old" } satisfies ClaudeHookEventFor<"PostToolUse">),
@@ -68,7 +75,7 @@ describe("Claude hook candidates", () => {
     adapter.observe(
       hook({
         ...postToolUseFailure,
-        tool_use_id: "replacement",
+        tool_use_id: "native",
       } satisfies ClaudeHookEventFor<"PostToolUseFailure">),
     );
     expect(requests.list()).toEqual([]);

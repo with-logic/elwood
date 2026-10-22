@@ -13,6 +13,10 @@ import type { StartupPromptLabelFor } from "../startup/automation.ts";
 import type { LoginExpiredWarning, LoginExpiringWarning } from "./auth.ts";
 import type * as lifecycle from "./lifecycle.ts";
 import type {
+  QuestionAutomationDisabledWarning,
+  QuestionObserverFailedWarning,
+} from "./questions.ts";
+import type {
   DropCause,
   PollErrorReason,
   PollPhase,
@@ -22,6 +26,8 @@ import type {
 import type { TranscriptListenerErrorWarning } from "./transcript.ts";
 
 export type ElwoodWarningEvent =
+  | QuestionAutomationDisabledWarning
+  | QuestionObserverFailedWarning
   | LoginExpiringWarning
   | TranscriptListenerErrorWarning
   | {

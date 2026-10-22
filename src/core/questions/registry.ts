@@ -1,6 +1,8 @@
-/** Immutable request identities and native lifecycle edges (PRD §4). */
+/** Immutable request identities and native lifecycle edges (PRD §5.10). */
+
 import { randomUUID } from "node:crypto";
 import type { ElwoodAgentKind } from "../activity/index.ts";
+import { eventWithAgent, requestWithAgent } from "./correlation.ts";
 import { QuestionDispatch, type QuestionEmitter } from "./dispatch.ts";
 import type {
   ElwoodQuestionEvent,
@@ -99,9 +101,8 @@ export class QuestionRegistry {
       if (failed) throw failure;
       return undefined;
     }
-    const request: ElwoodQuestionRequest = Object.freeze({
+    const request = requestWithAgent(this.agent, {
       id: randomUUID(),
-      agent: this.agent,
       delivery,
       questions: Object.freeze(
         questions.map((question) =>
@@ -119,12 +120,9 @@ export class QuestionRegistry {
     this.entries.set(request.id, entry);
     this.byNativeKey.set(nativeKey, entry);
     try {
-      this.emit({
-        elwoodSessionId: this.elwoodSessionId,
-        agent: this.agent,
-        phase: "raised",
-        request,
-      });
+      this.emit(
+        eventWithAgent(request, { elwoodSessionId: this.elwoodSessionId, phase: "raised" }),
+      );
     } catch (error) {
       if (!failed) failure = error;
       failed = true;
@@ -137,13 +135,13 @@ export class QuestionRegistry {
     const entry = this.entries.get(requestId);
     if (!entry?.answerable) return;
     entry.answerable = false;
-    this.emit({
-      elwoodSessionId: this.elwoodSessionId,
-      agent: this.agent,
-      phase: "closed",
-      request: entry.request,
-      reason: "unavailable",
-    });
+    this.emit(
+      eventWithAgent(entry.request, {
+        elwoodSessionId: this.elwoodSessionId,
+        phase: "closed",
+        reason: "unavailable",
+      }),
+    );
   }
   close(requestId: string, reason: QuestionCloseReason): void {
     const entry = this.entries.get(requestId);
@@ -151,13 +149,13 @@ export class QuestionRegistry {
     this.entries.delete(requestId);
     this.byNativeKey.delete(entry.nativeKey);
     if (!entry.answerable) return;
-    this.emit({
-      elwoodSessionId: this.elwoodSessionId,
-      agent: this.agent,
-      phase: "closed",
-      request: entry.request,
-      reason,
-    });
+    this.emit(
+      eventWithAgent(entry.request, {
+        elwoodSessionId: this.elwoodSessionId,
+        phase: "closed",
+        reason,
+      }),
+    );
   }
   clear(reason: QuestionCloseReason): void {
     let failure: unknown;

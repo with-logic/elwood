@@ -69,7 +69,6 @@ test("a predecessor review cannot publish an unseen successor", () => {
   adapter.render(fixture("questions"));
   adapter.observe(
     nativeHook("PreToolUse", {
-      tool_use_id: "next",
       tool_input: {
         questions: nativeQuestions.map((question) => ({
           ...question,
@@ -101,7 +100,14 @@ test.each([
   adapter.observe(
     state === "completed"
       ? nativeHook("PostToolUse")
-      : nativeHook("PreToolUse", { tool_use_id: "next" }),
+      : nativeHook("PreToolUse", {
+          tool_input: {
+            questions: nativeQuestions.map((question) => ({
+              ...question,
+              question: `Next ${question.question}`,
+            })),
+          },
+        }),
   );
   const writeContents: string[] = [];
   const io: QuestionIo = {

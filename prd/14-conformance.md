@@ -373,3 +373,10 @@ Each criterion has:
 | C-SITE-02 | §13.2 | Initial landing handoff waits for all retained idle pages without fetching rotation. Pre-ready input/visibility changes preserve preparation; teardown prevents late readiness/paint. Failure retains the fallback and reports the asset error; explicit boot retry can recover. After successful complete animation preparation, up to two idle pages remain renderable and reusable through playback switches and cache eviction until bank disposal. Failed or cancelled preparation establishes no shared lease; larger idle manifests use ordinary ownership. |
 | C-SITE-03 | §13.3 | Automatic moments/facing wait for complete requested/idle/rotation pages and start their delivery clock on success, within the eight-second pre-delivery wait. Publication revalidates exact prepared ownership without superseding a newer candidate/delivery. Obsolete task probes/preparation and matching queued delivery cancel without releasing newer manual or active pose owners. Requested and shared dependency failures report once and suppress automatic retries across actions until explicit preparation clears their failure state; geometry probes stay metadata-only. |
 | C-SITE-04 | §13.4 | Pickup control is immediate, but suspended playback waits for all owned sheets; movement preserves preparation, lifecycle cancellation prevents late delivery, and failures retry only on a new drag. |
+
+## Native questions
+
+| ID | Contract | Criterion |
+| --- | --- | --- |
+| C-QUESTION-01 | §5.10 | Immutable live snapshots and typed question/activity events share opaque IDs, deduplicate redraws, close from native evidence and never persist. |
+| C-QUESTION-05 | §7A.5 | Codex question metadata and retired identities obey bounded count/UTF-8 budgets; overflow closes requests as unavailable and disables automation for the session without guessing input; opaque identities hold ordinary automation until explicit native turn end. Unchanged high-volume redraws do not republish candidates or repeatedly scan/copy the registry. |

@@ -1,5 +1,7 @@
-/** Serialize lifecycle notifications while registry mutations stay synchronous (PRD §4). */
+/** Serialize lifecycle notifications while registry mutations stay synchronous (PRD §5.10). */
+
 import type { QuestionActivityEvent } from "./activity.ts";
+import { questionActivity } from "./activity-fields.ts";
 import type { ElwoodQuestionEvent } from "./types.ts";
 
 export type QuestionEmitter = {
@@ -34,14 +36,7 @@ export class QuestionDispatch {
         const next = this.pending.shift()!;
         for (const listener of this.listeners) attempt(() => listener(next), errors);
         attempt(() => this.emitter.emit("question", next), errors);
-        const activity: QuestionActivityEvent = Object.freeze({
-          elwoodSessionId: next.elwoodSessionId,
-          agent: next.agent,
-          source: "terminal",
-          kind: "question",
-          label: next.phase,
-          question: next,
-        });
+        const activity = questionActivity(next);
         attempt(() => this.emitter.emit("activity", activity), errors);
       }
       this.delivering = false;

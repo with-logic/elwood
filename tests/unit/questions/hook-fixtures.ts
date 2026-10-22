@@ -60,7 +60,11 @@ export const stop = {
 } satisfies ClaudeHookEventFor<"Stop">;
 
 /** Build activity only from a complete, runtime-validated native hook fixture. */
-export function validatedHookActivity(raw: ClaudeHookEvent): ElwoodActivityEvent {
+export function validatedHookActivity(raw: ClaudeHookEvent): ElwoodActivityEvent & {
+  readonly agent: "claude";
+  readonly source: "hook";
+  readonly kind: "hook";
+} {
   if (!isClaudeHookInput(raw)) throw new Error("Hook fixture must pass input validation");
   return {
     elwoodSessionId: "s",

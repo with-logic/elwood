@@ -149,7 +149,7 @@ const hooks = {
 } as const;
 
 function activity(
-  kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress">,
+  kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress" | "question">,
 ): ElwoodActivityEvent {
   return {
     elwoodSessionId: "s1",

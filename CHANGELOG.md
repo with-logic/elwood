@@ -12,7 +12,21 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve overlapping Claude question requests across out-of-order hook outcomes;
+  require unambiguous native panel evidence before exposing answer authority.
+
+- Preserve the first question-observer failure diagnostic when pending listener
+  promises exceed the notification registration cap.
+
 - Keep native Claude questionnaires blocking when question text contains composer-like carets, fences, or navigation-footer copy.
+
+- Report contained question and companion activity listener failures once per
+  live session with a content-free `question_observer_failed` warning.
+
+- Expose live Claude and Codex questionnaires through typed `question` events,
+  structured normalized activity and immutable `listQuestions()` snapshots;
+  preserve native input holds and report budget disablement with a content-free
+  `question_automation_disabled` warning.
 
 - Enforce the existing required payloads in transcript activity types: Codex progress carries text and its Codex/transcript identity, and Claude transcript projections retain their per-kind required fields.
 

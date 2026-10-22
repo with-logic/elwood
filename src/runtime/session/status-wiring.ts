@@ -15,6 +15,7 @@ import {
 } from "../../core/activity/index.ts";
 import type { CompactEmitter } from "../../core/compact.ts";
 import type { ControlQueue } from "../../core/control-queue/index.ts";
+import type { QuestionObservationEmitter } from "../../core/questions/observers.ts";
 import type { TurnBoundaryHook } from "../../core/simple/turn-types.ts";
 import { outsideStopInput } from "../../core/stop-input.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "../../core/types.ts";
@@ -25,7 +26,8 @@ type StatusEvent = { readonly elwoodSessionId: string; readonly status: ElwoodSe
 
 /** The emitter surface a session's status, compact, loop, and activity wiring needs. */
 export type SessionStatusEmitter = CompactEmitter &
-  LoopEventEmitter & {
+  LoopEventEmitter &
+  QuestionObservationEmitter & {
     emit(event: "status", payload: StatusEvent): void;
     emit(event: "activity", payload: ElwoodActivityEvent): void;
     on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;

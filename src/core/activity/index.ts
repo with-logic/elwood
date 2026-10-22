@@ -6,6 +6,7 @@
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
 import { hookResultLabel } from "../hook-result.ts";
+import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
 
@@ -17,6 +18,7 @@ export type ElwoodActivityKind =
   | "user_message"
   | "assistant_message"
   | "assistant_progress"
+  | "question"
   | "reasoning"
   | "tool_call"
   | "tool_result"
@@ -50,10 +52,22 @@ type ActivityFields = {
   readonly raw?: unknown;
 };
 
-/** Committed Codex progress always carries readable text and its transcript identity. */
+/** Distribute the agent-and-phase event union so the activity label, nested phase,
+ * and both agent fields stay correlated. */
+type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEvent> =
+  Event extends ElwoodQuestionEvent
+    ? {
+        readonly kind: "question";
+        readonly agent: Event["agent"];
+        readonly source: "terminal";
+        readonly label: Event["phase"];
+        readonly question: Event;
+      }
+    : never;
+
 export type ElwoodActivityEvent = ActivityFields &
   (
-    | { readonly kind: Exclude<ElwoodActivityKind, "assistant_progress"> }
+    | { readonly kind: Exclude<ElwoodActivityKind, "question" | "assistant_progress"> }
     | {
         readonly kind: "assistant_progress";
         readonly agent: "codex";
@@ -63,6 +77,7 @@ export type ElwoodActivityEvent = ActivityFields &
         readonly transcriptPath: string;
         readonly raw: unknown;
       }
+    | QuestionActivityFields
   );
 
 export {

@@ -4,7 +4,7 @@ import { CodexQuestionCandidates } from "../../../src/codex/questions/candidates
 import * as questionFrames from "../../../src/codex/questions/frame.ts";
 import { questionDefinitionCountLimit } from "../../../src/codex/questions/limits.ts";
 import { harness } from "./adapter-helpers.ts";
-import { captured, event, frame, records } from "./helpers.ts";
+import { captured, emptyComposerFrame, event, frame, records } from "./helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
 const native = (count: number) => ({
@@ -109,4 +109,56 @@ test("unchanged working frames keep indexed native correlation bounded", () => {
   } finally {
     matches.mockRestore();
   }
+});
+
+test("C-QUESTION-05 unrelated working redraws do not rescan unchanged composer eligibility", () => {
+  const h = harness();
+  h.observe({
+    payload: {
+      type: "function_call",
+      call_id: "COMPOSER_SCAN_PROBE",
+      name: "request_user_input",
+      arguments: JSON.stringify({
+        questions: [{ id: "q", question: "Pick", options: [{ label: "Yes" }] }],
+      }),
+    },
+  });
+  const values = Map.prototype.values;
+  let scans = 0;
+  vi.spyOn(Map.prototype, "values").mockImplementation(function (this: Map<unknown, unknown>) {
+    if (this.has("COMPOSER_SCAN_PROBE")) scans += 1;
+    return values.call(this);
+  });
+  const empty = emptyComposerFrame();
+  h.adapter.render(empty);
+  const initialScans = scans;
+  expect(initialScans).toBeGreaterThan(0);
+  for (let n = 0; n < 1000; n++) {
+    const lines = [`• Working (${n}s • esc to interrupt)`, ...empty.lines];
+    h.adapter.render({
+      ...empty,
+      text: lines.join("\n"),
+      lines,
+      cursorRow: 1,
+      cursorY: 1,
+    });
+  }
+  expect(scans).toBe(initialScans);
+  h.observe({
+    payload: {
+      type: "function_call",
+      call_id: "new-native-state",
+      name: "request_user_input",
+      arguments: JSON.stringify({ questions: [{ id: "new", question: "New" }] }),
+    },
+  });
+  const beforeChangedState = scans;
+  h.adapter.render(empty);
+  expect(scans).toBeGreaterThan(beforeChangedState);
+  const afterChangedState = scans;
+  h.adapter.render(empty);
+  expect(scans).toBe(afterChangedState);
+  expect(h.registry.list()).toEqual([]);
+  expect(h.adapter.blocksInput()).toBe(true);
+  expect(h.events).toEqual([]);
 });

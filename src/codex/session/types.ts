@@ -7,6 +7,7 @@ import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { LoopControls } from "../../core/loops/loop-controls.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
+import type { QuestionControls } from "../../core/questions/types.ts";
 import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
 import type {
   ActivityMatch,
@@ -87,7 +88,7 @@ export type CodexEventHandler<E extends CodexEventName> = (
     : undefined
   : void;
 
-export interface CodexSessionApi extends LoopControls {
+export interface CodexSessionApi extends LoopControls, QuestionControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
