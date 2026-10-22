@@ -105,8 +105,8 @@ seconds; pass a positive finite `timeoutMs` or an `AbortSignal` as `signal` to
 bound the operation. Concurrent answer calls, human keyboard takeover,
 interruption, shutdown, layout changes, rejected input or uncertain acceptance
 reject with `question_answer_failed`. A submitting Enter is never blindly
-retried. Failures may include a content-free `details.phase`: `frame_wait`,
-`adapter`, `terminal_write`, `native_acceptance`, or `revoked`.
+retried. Failures may include a content-free `details.category`: `frame_wait`,
+`adapter`, `terminal_write`, `native_acceptance`, or `aborted`.
 
 If no physical write started, the request may remain available for another
 attempt. If input may have reached the CLI without confirmed acceptance, Elwood
@@ -118,8 +118,9 @@ Elwood keeps the uncertain native identity reserved, holding ordinary input unti
 native closure, turn end or shutdown. A redraw, changed metadata for the same
 identity or a late write completion cannot restore the answer form. A later
 native acknowledgement releases that reservation without a second closure event.
-An unavailable API request does not mean the CLI is ready; the terminal remains
-available for manual inspection and recovery.
+Both the physical write and native reservation must settle before ordinary input
+resumes, in either order. An unavailable API request does not mean the CLI is
+ready; the terminal remains available for manual inspection and recovery.
 
 Requests and answers are live-only and are not added to Elwood's persisted state.
 Existing raw hooks and transcripts retain their normal contents and can include
