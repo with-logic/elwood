@@ -1,0 +1,114 @@
+/** Normalize native Codex question capabilities for the PRD §4 adapter boundary. */
+import { isRecord } from "../../core/predicates.ts";
+import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { checkQuestionInput } from "./limits.ts";
+
+export type ModalNativeQuestion = {
+  readonly definition: QuestionDefinition;
+  readonly nativeId: string;
+  readonly questionIndex?: never;
+};
+export type QueuedNativeQuestion = {
+  readonly definition: QuestionDefinition;
+  readonly questionIndex: number;
+  readonly nativeId?: never;
+};
+export type NativeQuestion = ModalNativeQuestion | QueuedNativeQuestion;
+// Mirror the native queued editor: take the first 32 suggestions, then drop labels
+// above 512 UTF-8 bytes, so normalized options match its displayed choices. These
+// UI bounds are distinct from Elwood's metadata/resource ceilings in limits.ts.
+const queuedOptionCountLimit = 32;
+const queuedOptionLabelLimitBytes = 512;
+const modalOther = {
+  label: "None of the above",
+  description: "Optionally, add details in notes (tab)",
+};
+/** Parse modal definitions (queued=false) or queued suggestions/free-text questions.
+ * Unsupported shapes within the metadata budget return undefined.
+ * @throws QuestionLimitError for oversized or unserializable call ID/question metadata. */
+export function parseQuestions(
+  value: unknown,
+  queued: false,
+  callId?: string,
+): readonly ModalNativeQuestion[] | undefined;
+export function parseQuestions(
+  value: unknown,
+  queued: true,
+  callId?: string,
+): readonly QueuedNativeQuestion[] | undefined;
+export function parseQuestions(
+  value: unknown,
+  queued: boolean,
+  callId?: string,
+): readonly NativeQuestion[] | undefined;
+export function parseQuestions(
+  value: unknown,
+  queued: boolean,
+  callId = "",
+): readonly NativeQuestion[] | undefined {
+  checkQuestionInput(value, callId);
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const result: NativeQuestion[] = [];
+  const nativeIds = new Set<string>();
+  for (const [index, item] of value.entries()) {
+    const question = parseQuestion(item, index, queued);
+    if (!question) return undefined;
+    if (question.nativeId !== undefined) {
+      if (nativeIds.has(question.nativeId)) return undefined;
+      nativeIds.add(question.nativeId);
+    }
+    result.push(question);
+  }
+  return result;
+}
+function parseQuestion(item: unknown, index: number, queued: boolean): NativeQuestion | undefined {
+  if (!isRecord(item)) return undefined;
+  const prompt = queued ? item["title"] : item["question"];
+  if (typeof prompt !== "string" || !prompt.trim()) return undefined;
+  if ("isSecret" in item && item["isSecret"] !== false) return undefined;
+  const options = parseOptions(item["options"], queued);
+  if (!(options && hasSupportedIdentityAndOptions(item, queued, options.length))) return undefined;
+  const header = item["header"];
+  return {
+    ...(queued ? { questionIndex: index } : { nativeId: String(item["id"]) }),
+    definition: {
+      prompt,
+      ...(typeof header === "string" ? { header } : {}),
+      options: queued ? options : [...options, modalOther],
+      selection: options.length > 0 ? "single" : "none",
+      textMode: queued ? "alternative" : "additional",
+      secret: false,
+    },
+  };
+}
+function parseOptions(value: unknown, queued: boolean): QuestionDefinition["options"] | undefined {
+  if (queued && (value === undefined || value === null)) return [];
+  if (!Array.isArray(value)) return undefined;
+  if (queued) {
+    if (value.length === 0) return undefined;
+    if (!value.every((option) => typeof option === "string" && option.trim())) return undefined;
+    return value
+      .slice(0, queuedOptionCountLimit)
+      .filter((label: string) => Buffer.byteLength(label) <= queuedOptionLabelLimitBytes)
+      .map((label: string) => ({ label }));
+  }
+  const result: { label: string; description?: string }[] = [];
+  for (const option of value) {
+    if (!isRecord(option) || typeof option["label"] !== "string" || !option["label"].trim())
+      return undefined;
+    const description = option["description"];
+    result.push({
+      label: option["label"],
+      ...(typeof description === "string" ? { description } : {}),
+    });
+  }
+  return result;
+}
+
+function hasSupportedIdentityAndOptions(
+  item: Record<string, unknown>,
+  queued: boolean,
+  optionCount: number,
+): boolean {
+  return queued || (optionCount > 0 && typeof item["id"] === "string");
+}

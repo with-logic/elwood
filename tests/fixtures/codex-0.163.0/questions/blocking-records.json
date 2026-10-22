@@ -1,0 +1,80 @@
+[
+  {
+    "timestamp": "2026-10-20T23:33:02.716Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call",
+      "status": "completed",
+      "id": "fc_0560a886ac0958f5016ad7fa2e32d4819ba18f3a093db7331a",
+      "name": "request_user_input",
+      "arguments": "{\"questions\":[{\"id\":\"color\",\"header\":\"Color\",\"question\":\"ELWOOD_MODAL_COLOR: Which color?\",\"options\":[{\"label\":\"Amber\",\"description\":\"Warm\"},{\"label\":\"Blue\",\"description\":\"Cool\"}]},{\"id\":\"note\",\"header\":\"Note\",\"question\":\"ELWOOD_MODAL_NOTE: What note?\",\"options\":[{\"label\":\"Standard\",\"description\":\"Default note\"},{\"label\":\"Short\",\"description\":\"Brief note\"}],\"isSecret\":false}]}",
+      "call_id": "call_8aaf11dc88ec4e7cb1d51793fea2de2c",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba9-3ff6-7503-99b9-8ed40f7e917b",
+        "create_time": 1792539182.2006998
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "user_input_order": 1
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:33:03.433Z",
+    "ordinal": 14,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call_output",
+      "id": "fco_01a15ba9-4949-7e12-95a8-80a054353ede",
+      "call_id": "call_8aaf11dc88ec4e7cb1d51793fea2de2c",
+      "output": "{\"answers\":{\"color\":{\"answers\":[\"Blue\"]},\"note\":{\"answers\":[\"None of the above\",\"user_note: ELWOOD_MODAL_NOTE_85\"]}}}",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba9-3ff6-7503-99b9-8ed40f7e917b",
+        "create_time": 1792539183.433711
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:33:04.265Z",
+    "ordinal": 16,
+    "type": "event_msg",
+    "payload": {
+      "type": "item_completed",
+      "thread_id": "01a15ba9-369f-7d62-9b10-491818782073",
+      "turn_id": "01a15ba9-3ff6-7503-99b9-8ed40f7e917b",
+      "item": {
+        "type": "AgentMessage",
+        "id": "msg_0560a886ac0958f5016ad7fa300ebc819b8b5bab5d0d1cd53b",
+        "content": [
+          {
+            "type": "Text",
+            "text": "Color: Blue  \nNote: None of the above \u2014 user note: ELWOOD_MODAL_NOTE_85"
+          }
+        ],
+        "phase": "final_answer"
+      },
+      "started_at_ms": 1792539184068,
+      "completed_at_ms": 1792539184265
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:33:04.331Z",
+    "ordinal": 20,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "root_turn_id": "01a15ba9-3ff6-7503-99b9-8ed40f7e917b",
+      "turn_id": "01a15ba9-3ff6-7503-99b9-8ed40f7e917b",
+      "last_agent_message": "Color: Blue  \nNote: None of the above \u2014 user note: ELWOOD_MODAL_NOTE_85",
+      "started_at": 1792539181,
+      "completed_at": 1792539184,
+      "duration_ms": 3283,
+      "time_to_first_token_ms": 1159
+    }
+  }
+]
