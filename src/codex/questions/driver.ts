@@ -7,19 +7,10 @@ import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { draftMatches } from "./draft.ts";
+import { assertSupportedQuestions, type SupportedDriverQuestion } from "./driver-support.ts";
 import { matchesQuestion, type QuestionView, questionView, queuedBadge } from "./frame.ts";
 import { queuedOtherLabel } from "./labels.ts";
 import { ownedEditorReceipt } from "./owned-editor.ts";
-
-type SupportedDriverQuestion = QuestionDefinition & { readonly selection: "none" | "single" };
-function assertSupportedQuestions(
-  questions: readonly QuestionDefinition[],
-): asserts questions is readonly SupportedDriverQuestion[] {
-  if (
-    !questions.every((question) => question.selection === "none" || question.selection === "single")
-  )
-    throw questionAnswerFailed();
-}
 
 function matchingView(
   frame: QuestionFrame,
@@ -78,7 +69,8 @@ export async function answerQueued(
   const stagedAnswerGuard = await stageAnswer(question, answer, io, match, view);
   await io.write(
     "\r",
-    (current) => isAnswerReadyToSubmit(current, match(current), question, answer, stagedAnswerGuard),
+    (current) =>
+      isAnswerReadyToSubmit(current, match(current), question, answer, stagedAnswerGuard),
     submitting,
   );
 }
@@ -101,7 +93,14 @@ export async function answerBlocking(
     const stagedAnswerGuard = await stageAnswer(question, answers[index]!, io, match, initial);
     await io.write(
       "\r",
-      (current) => isAnswerReadyToSubmit(current, match(current), question, answers[index]!, stagedAnswerGuard),
+      (current) =>
+        isAnswerReadyToSubmit(
+          current,
+          match(current),
+          question,
+          answers[index]!,
+          stagedAnswerGuard,
+        ),
       index === questions.length - 1 ? submitting : undefined,
     );
   }
