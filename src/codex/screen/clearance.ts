@@ -70,12 +70,17 @@ function unquotedRows(rows: readonly string[], liveCursor: boolean): readonly st
   });
 }
 
-/** Only a non-working native reply closes a bounded wrapped user prompt. */
+/** A native reply bounds consecutive user/question-answer echoes, including wrapped text. */
 function completeUserHistoryEnd(rows: readonly string[], start: number): number {
   let end = start + 1;
   for (; end < rows.length; end++) {
     const row = rows[end] as string;
-    if (row === "" || /^ {2,}\S/.test(row)) continue;
+    if (
+      row === "" ||
+      /^ {2,}\S/.test(row) ||
+      (/^› \S/.test(row) && !(/^› \d+[.)]/.test(row) && numberedSibling(rows, end)))
+    )
+      continue;
     return /^• \S/.test(row) && !codexWorkingScreen.test(row) ? end : start;
   }
   return start;
