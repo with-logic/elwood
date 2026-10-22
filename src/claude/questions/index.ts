@@ -12,7 +12,7 @@ import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { claudeComposerInputColumn } from "../screen-table.ts";
 import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
-import { matchesNativeQuestions } from "./correlation.ts";
+import { matchesCandidateHook, matchesNativeQuestions } from "./correlation.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import {
   claudeQuestionCandidate,
@@ -24,6 +24,7 @@ type Candidate = {
   readonly nativeKey: string;
   readonly questions: readonly QuestionDefinition[];
   awaitingNativeHookClosure: boolean;
+  publishable: boolean;
   readonly requiresExactQuestionMatch: boolean;
 };
 export class ClaudeQuestionAdapter implements QuestionAdapter {
@@ -50,8 +51,8 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     const hook = record(event.raw);
     if (hook["tool_name"] !== "AskUserQuestion") return false;
     const input = record(hook["tool_input"]);
-    if (!isQuestions(input["questions"])) return false;
-    const questions = (input as AskUserQuestionInput).questions;
+    const questions = input["questions"];
+    if (!isQuestions(questions)) return false;
     const hookEventName = hook["hook_event_name"];
     if (
       hookEventName === "PostToolUse" ||
@@ -79,6 +80,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     this.candidate = {
       nativeKey,
       awaitingNativeHookClosure: false,
+      publishable: true,
       requiresExactQuestionMatch:
         this.lastNativeQuestions !== undefined &&
         !matchesNativeQuestions(questions, this.lastNativeQuestions),
@@ -94,6 +96,19 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     this.seenChrome = false;
     if (previous) this.registry.close(previous.id, "unavailable");
     return true;
+  }
+  /** A caller resolved the hook; retain native correlation but withdraw automation authority. */
+  withdraw(event: ElwoodActivityEvent): void {
+    const candidate = this.candidate;
+    if (!candidate) return;
+    const hook = record(event.raw);
+    const toolUseId = hook["tool_use_id"];
+    const questions = record(hook["tool_input"])["questions"];
+    if (!isQuestions(questions)) return;
+    if (!matchesCandidateHook(candidate, questions, toolUseId, hook["hook_event_name"])) return;
+    candidate.publishable = false;
+    const request = this.registry.find(candidate.nativeKey);
+    if (request) this.registry.retireUnconfirmed(request.id);
   }
   private closeNativeHook(
     hookEventName: unknown,
@@ -138,7 +153,9 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       if (current) this.registry.close(current.id, "unavailable");
       return;
     }
-    if (!this.held || current || candidate.questions.length === 0) return;
+    const canPublishCandidate =
+      this.held && !current && candidate.publishable && candidate.questions.length > 0;
+    if (!canPublishCandidate) return;
     if (screen?.kind === "question")
       this.registry.publish(candidate.nativeKey, "blocking", candidate.questions);
   }
@@ -174,20 +191,4 @@ function matchesCandidateChrome(
     panel !== undefined &&
     questions.some((question) => normalizeClaudeQuestionText(question.prompt) === panel.prompt)
   );
-}
-
-/** PermissionRequest can mirror PreToolUse with a different hook ID for the same input. */
-function matchesCandidateHook(
-  candidate: Candidate | undefined,
-  questions: AskUserQuestionInput["questions"],
-  toolUseId: unknown,
-  hookEventName: unknown,
-): boolean {
-  const matchesCandidateQuestions =
-    candidate !== undefined && matchesNativeQuestions(questions, candidate.questions);
-  const matchesCandidateIdentity =
-    typeof toolUseId !== "string" ||
-    toolUseId === candidate?.nativeKey ||
-    hookEventName === "PermissionRequest";
-  return matchesCandidateQuestions && matchesCandidateIdentity;
 }

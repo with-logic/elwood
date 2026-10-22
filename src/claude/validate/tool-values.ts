@@ -1,12 +1,13 @@
 /** Nested concrete Claude tool value predicates, implementing PRD §6.4. */
 
 import { isOneOf, isRecord, optionalBoolean, optionalString } from "../../core/predicates.ts";
+import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 
 export function optionalOutputMode(value: unknown): boolean {
   return value === undefined || isOneOf(value, ["content", "files_with_matches", "count"]);
 }
 
-export function isQuestions(value: unknown): boolean {
+export function isQuestions(value: unknown): value is AskUserQuestionInput["questions"] {
   return Array.isArray(value) && value.every(isQuestion);
 }
 
