@@ -49,6 +49,7 @@ export class CodexQuestionCandidates extends CandidateStore {
   private unsupported(payload: Record<string, unknown>): boolean {
     let changed = this.reserveOpaqueReservation();
     const callId = payload["type"] === "function_call" ? payload["call_id"] : payload["id"];
+    this.authority.supersede(callId);
     for (const candidate of this.candidates.values()) {
       if (candidate.callId === callId) {
         this.close(candidate.nativeKey, "unavailable");
