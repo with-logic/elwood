@@ -1,17 +1,31 @@
 /** Bound native candidate identities and publication state for PRD §4 adapters. */
+import { QuestionNotificationErrors } from "../../core/questions/notification-errors.ts";
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
-import { type Candidate, candidateGroups } from "./candidate.ts";
+import {
+  type AcceptedQueuedCandidate,
+  type Candidate,
+  candidateGroups,
+  createCandidate,
+  type QueuedCandidate,
+} from "./candidate.ts";
 import { QuestionBudget } from "./limits.ts";
 import type { QuestionCall } from "./records.ts";
 
 export type { Candidate } from "./candidate.ts";
 
+type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
+
 export class CandidateStore {
-  readonly candidates = new Map<string, Candidate>();
+  private readonly records = new Map<string, Mutable<Candidate>>();
+  /** Live readonly catalog; candidate object identity survives acceptance/publication. */
+  get candidates(): ReadonlyMap<string, Candidate> {
+    return this.records;
+  }
   private readonly unpublished = new Set<Candidate>();
-  private accepted: readonly Candidate[] | undefined;
+  private accepted: readonly AcceptedQueuedCandidate[] | undefined;
   private readonly budget = new QuestionBudget();
+  private readonly notifications = new QuestionNotificationErrors();
   protected disabled = false;
   protected mutationEpoch = 0;
   private opaqueReservation = false;
@@ -20,6 +34,10 @@ export class CandidateStore {
   constructor(registry: QuestionRegistry, onDisabled?: () => void) {
     this.registry = registry;
     this.onDisabled = onDisabled;
+  }
+  /** Defer known registry observer failures until independent native work finishes. */
+  batchNotifications<T>(operation: () => T): T {
+    return this.notifications.run(operation);
   }
   /** Includes both opaque holds and parsed native candidates. */
   hasReservation(): boolean {
@@ -35,105 +53,116 @@ export class CandidateStore {
     this.opaqueReservation = true;
     return changed;
   }
-  acceptedQueuedCandidates(): readonly Candidate[] {
+  /** Cached, frozen membership snapshot. Entries are live readonly candidate views. */
+  acceptedQueuedCandidates(): readonly AcceptedQueuedCandidate[] {
     this.accepted ??= Object.freeze(
-      [...this.candidates.values()].filter((candidate) => candidate.queued && candidate.accepted),
+      [...this.candidates.values()].filter(
+        (candidate): candidate is AcceptedQueuedCandidate => candidate.queued && candidate.accepted,
+      ),
     );
     return this.accepted;
   }
+  /** Live readonly membership view; publication and closure remove entries immediately. */
   unpublishedCandidates(): ReadonlySet<Candidate> {
     return this.unpublished;
   }
-  protected accept(candidate: Candidate): boolean {
+  protected accept(candidate: Mutable<QueuedCandidate>): boolean {
     if (candidate.accepted) return false;
     candidate.accepted = true;
     this.accepted = undefined;
     return true;
   }
-  protected add(call: QuestionCall): boolean {
+  protected reconcileCallCandidates(call: QuestionCall): boolean {
     const mutationEpoch = this.mutationEpoch;
     const accepted = this.callAccepted(call);
     const groups = candidateGroups(call);
     let changed = this.retireRemoved(call.callId, groups);
     for (const group of groups) {
       if (this.mutationEpoch !== mutationEpoch) return true;
-      if (this.budget.hasRetired(group.key)) continue;
-      const existing = this.candidates.get(group.key);
+      if (this.budget.hasRetired(group.nativeKey)) continue;
+      const existing = this.records.get(group.nativeKey);
       if (existing && JSON.stringify(existing.questions) === JSON.stringify(group.questions)) {
-        if (accepted) changed = this.accept(existing) || changed;
+        if (existing.queued && accepted) changed = this.accept(existing) || changed;
         continue;
       }
-      const bytes = Buffer.byteLength(JSON.stringify([group.key, call.callId, group.questions]));
+      const bytes = Buffer.byteLength(
+        JSON.stringify([group.nativeKey, call.callId, group.questions]),
+      );
       this.budget.replace(
         this.candidates.size + (existing ? 0 : 1),
         bytes - (existing?.bytes ?? 0),
       );
-      const candidate: Candidate = {
-        ...group,
-        callId: call.callId,
-        accepted,
-        submitting: false,
-        published: false,
-        bytes,
-      };
+      const candidate: Mutable<Candidate> = createCandidate(group, call.callId, accepted, bytes);
       if (existing) this.unpublished.delete(existing);
-      this.candidates.set(group.key, candidate);
+      this.records.set(group.nativeKey, candidate);
       this.unpublished.add(candidate);
       this.accepted = undefined;
       changed = true;
-      const previous = this.registry.find(group.key);
+      const previous = this.registry.find(group.nativeKey);
       if (previous) this.closeRequest(previous.id, "unavailable");
     }
     return changed;
   }
   private callAccepted(call: QuestionCall): boolean {
     return (
-      call.accepted ||
-      this.candidates
-        .values()
-        .some((candidate) => candidate.callId === call.callId && candidate.accepted)
+      call.queued &&
+      (call.accepted ||
+        this.candidates
+          .values()
+          .some((candidate) => candidate.callId === call.callId && candidate.accepted))
     );
   }
-  private retireRemoved(callId: string, groups: readonly { readonly key: string }[]): boolean {
+  private retireRemoved(
+    callId: string,
+    groups: readonly { readonly nativeKey: string }[],
+  ): boolean {
     let changed = false;
-    const keys = new Set(groups.map((group) => group.key));
+    const keys = new Set(groups.map((group) => group.nativeKey));
     for (const candidate of this.candidates.values()) {
-      if (candidate.callId === callId && !keys.has(candidate.key)) {
-        this.close(candidate.key, "unavailable");
+      if (candidate.callId === callId && !keys.has(candidate.nativeKey)) {
+        this.close(candidate.nativeKey, "unavailable");
         changed = true;
       }
     }
     return changed;
   }
   publish(candidate: Candidate): void {
+    this.batchNotifications(() => this.publishCandidate(candidate));
+  }
+  private publishCandidate(candidate: Candidate): void {
     if (!this.unpublished.has(candidate)) return;
+    const record = this.records.get(candidate.nativeKey)!;
     try {
-      this.registry.publish(
-        candidate.key,
-        candidate.queued ? "queued" : "blocking",
-        candidate.questions.map((question) => question.definition),
-      );
-    } catch {
-      // One throwing observer must not suppress independent native question units.
+      this.notifications.capture(() => {
+        this.registry.publish(
+          candidate.nativeKey,
+          candidate.queued ? "queued" : "blocking",
+          candidate.questions.map((question) => question.definition),
+        );
+      });
     } finally {
-      candidate.published = this.registry.find(candidate.key) !== undefined;
-      if (candidate.published) this.unpublished.delete(candidate);
+      record.published = this.registry.find(candidate.nativeKey) !== undefined;
+      if (record.published) this.unpublished.delete(candidate);
     }
   }
-  close(key: string, reason: QuestionCloseReason): boolean {
+  /** Tombstone even missing identities to prevent replay; false means no active candidate closed. */
+  close(nativeKey: string, reason: QuestionCloseReason): boolean {
+    return this.batchNotifications(() => this.closeCandidate(nativeKey, reason));
+  }
+  private closeCandidate(nativeKey: string, reason: QuestionCloseReason): boolean {
     if (this.disabled) return false;
     try {
-      this.budget.retire(key);
+      this.budget.retire(nativeKey);
     } catch {
       return this.disable();
     }
-    const candidate = this.candidates.get(key);
+    const candidate = this.candidates.get(nativeKey);
     if (!candidate) return false;
     this.budget.replace(this.candidates.size, -candidate.bytes);
-    this.candidates.delete(key);
+    this.records.delete(nativeKey);
     this.unpublished.delete(candidate);
     this.accepted = undefined;
-    const request = this.registry.find(key);
+    const request = this.registry.find(nativeKey);
     if (request) this.closeRequest(request.id, reason);
     return true;
   }
@@ -142,12 +171,12 @@ export class CandidateStore {
     this.disabled = true;
     this.reserveOpaqueReservation();
     const keys = [...this.candidates.keys()];
-    this.candidates.clear();
+    this.records.clear();
     this.unpublished.clear();
     this.accepted = undefined;
     this.budget.clear();
-    for (const key of keys) {
-      const request = this.registry.find(key);
+    for (const nativeKey of keys) {
+      const request = this.registry.find(nativeKey);
       if (request) this.closeRequest(request.id, "unavailable");
     }
     try {
@@ -158,10 +187,6 @@ export class CandidateStore {
     return true;
   }
   private closeRequest(id: string, reason: QuestionCloseReason): void {
-    try {
-      this.registry.close(id, reason);
-    } catch {
-      // One throwing observer must not strand the remaining native closures.
-    }
+    this.notifications.capture(() => this.registry.close(id, reason));
   }
 }

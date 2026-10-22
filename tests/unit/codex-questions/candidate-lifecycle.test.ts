@@ -24,6 +24,8 @@ describe("candidate native lifecycle", () => {
     state.publish([...state.candidates.values()][0]!);
     expect(state.observe(output("call", value))).toBe(true);
     expect(registry.list()).toEqual([]);
+    expect(state.candidates.size).toBe(0);
+    expect(state.hasReservation()).toBe(false);
     expect(listener).toHaveBeenCalledWith(
       "question",
       expect.objectContaining({ phase: "closed", reason }),
@@ -36,11 +38,13 @@ describe("candidate native lifecycle", () => {
     expect(captured).toHaveLength(7);
     const keys = [0, 1].map((index) => queuedKey("call_c54736dbd68049d192ab5f52ad2532f0", index));
     for (const raw of captured.slice(0, 3)) state.observe({ ...event(undefined), raw });
-    expect(state.acceptedQueuedCandidates().map((candidate) => candidate.key)).toEqual(keys);
+    expect(state.acceptedQueuedCandidates().map((candidate) => candidate.nativeKey)).toEqual(keys);
     for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
     expect(registry.list()).toHaveLength(2);
     state.observe({ ...event(undefined), raw: captured[3] });
-    expect(state.acceptedQueuedCandidates().map((candidate) => candidate.key)).toEqual([keys[1]]);
+    expect(state.acceptedQueuedCandidates().map((candidate) => candidate.nativeKey)).toEqual([
+      keys[1],
+    ]);
     expect(registry.list()).toHaveLength(1);
     state.observe({ ...event(undefined), raw: captured[4] });
     expect(state.candidates.size).toBe(0);
@@ -93,7 +97,7 @@ test("retires all native units when a close observer also removes another queued
   for (const candidate of candidates) state.publish(candidate);
   registry.onEvent((edge) => {
     if (edge.phase === "closed" && edge.request.questions[0]!.prompt === "First")
-      state.close(candidates[1]!.key, "unavailable");
+      state.close(candidates[1]!.nativeKey, "unavailable");
   });
   expect(state.observe(output("call", "cancelled"))).toBe(true);
   expect(registry.list()).toEqual([]);

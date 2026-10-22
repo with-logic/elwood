@@ -1,5 +1,6 @@
 /** Catalog resource limits preserve native holds and one-shot diagnostics (PRD §4). */
 import { describe, expect, test } from "vitest";
+import { QuestionObserverFailure } from "../../../src/core/questions/notification-errors.ts";
 import { call, event, setup } from "./candidate-helpers.ts";
 
 describe("candidate resource budgets", () => {
@@ -7,9 +8,15 @@ describe("candidate resource budgets", () => {
     const { state, registry, disabled } = setup(true);
     for (let index = 0; index < 256; index++) state.observe(event(call(String(index), true, true)));
     expect(state.acceptedQueuedCandidates()).toHaveLength(256);
-    for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
+    expect(() =>
+      state.batchNotifications(() => {
+        for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
+      }),
+    ).toThrow(QuestionObserverFailure);
     expect(registry.list()).toHaveLength(256);
-    expect(state.observe(event(call("overflow", true, true)))).toBe(true);
+    expect(() => state.observe(event(call("overflow", true, true)))).toThrow(
+      QuestionObserverFailure,
+    );
     expect(registry.list()).toEqual([]);
     expect(state.candidates.size).toBe(0);
     expect(state.unpublishedCandidates().size).toBe(0);

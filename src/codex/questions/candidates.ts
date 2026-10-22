@@ -1,6 +1,7 @@
 /** Reconcile committed Codex native question lifecycle records (PRD §4). */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { isRecord } from "../../core/predicates.ts";
+import type { QuestionCloseReason } from "../../core/questions/types.ts";
 import { CandidateStore } from "./candidate-store.ts";
 import {
   answeredQuestionItemIds,
@@ -14,6 +15,9 @@ export type { Candidate } from "./candidate-store.ts";
 
 export class CodexQuestionCandidates extends CandidateStore {
   observe(event: ElwoodActivityEvent): boolean {
+    return this.batchNotifications(() => this.observeNative(event));
+  }
+  private observeNative(event: ElwoodActivityEvent): boolean {
     if (event.agent !== "codex" || event.source !== "transcript") return false;
     const payload = payloadOf(event.raw);
     if (!payload) return false;
@@ -29,25 +33,25 @@ export class CodexQuestionCandidates extends CandidateStore {
       if (this.disabled) return this.reserveOpaqueReservation();
       try {
         const call = questionCall(payload);
-        return call ? this.add(call) : this.unsupported(native);
+        return call ? this.reconcileCallCandidates(call) : this.unsupported(native);
       } catch {
         return this.disable();
       }
     }
     if (this.disabled) return false;
     let changed = false;
-    for (const key of answeredQuestionItemIds(payload))
-      changed = this.close(key, "answered") || changed;
+    for (const nativeKey of answeredQuestionItemIds(payload))
+      changed = this.close(nativeKey, "answered") || changed;
     if (payload["type"] === "function_call_output" && typeof payload["call_id"] === "string")
       changed = this.output(payload) || changed;
     return changed;
   }
   private unsupported(payload: Record<string, unknown>): boolean {
     let changed = this.reserveOpaqueReservation();
-    const id = payload["type"] === "function_call" ? payload["call_id"] : payload["id"];
+    const callId = payload["type"] === "function_call" ? payload["call_id"] : payload["id"];
     for (const candidate of this.candidates.values()) {
-      if (candidate.callId === id) {
-        this.close(candidate.key, "unavailable");
+      if (candidate.callId === callId) {
+        this.close(candidate.nativeKey, "unavailable");
         changed = true;
       }
     }
@@ -56,7 +60,7 @@ export class CodexQuestionCandidates extends CandidateStore {
   private endTurn(): boolean {
     this.mutationEpoch += 1;
     const changed = this.hasReservation();
-    for (const key of [...this.candidates.keys()]) this.close(key, "unavailable");
+    for (const nativeKey of [...this.candidates.keys()]) this.close(nativeKey, "unavailable");
     return this.clearOpaqueReservation() || changed;
   }
   private output(payload: Record<string, unknown>): boolean {
@@ -73,7 +77,7 @@ export class CodexQuestionCandidates extends CandidateStore {
         continue;
       }
       const answers = result?.["answers"];
-      const accepted =
+      const hasAnswersForEveryQuestion =
         !candidate.queued &&
         isRecord(answers) &&
         candidate.questions.every((question) => {
@@ -86,11 +90,11 @@ export class CodexQuestionCandidates extends CandidateStore {
         });
       const cancelled =
         typeof output === "string" && output.includes("was cancelled before receiving a response");
-      changed =
-        this.close(
-          candidate.key,
-          accepted ? "answered" : cancelled ? "cancelled" : "unavailable",
-        ) || changed;
+      let closeReason: QuestionCloseReason;
+      if (hasAnswersForEveryQuestion) closeReason = "answered";
+      else if (cancelled) closeReason = "cancelled";
+      else closeReason = "unavailable";
+      changed = this.close(candidate.nativeKey, closeReason) || changed;
     }
     return changed;
   }
