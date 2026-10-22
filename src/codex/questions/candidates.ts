@@ -3,7 +3,7 @@ import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { CandidateStore } from "./candidate-store.ts";
 import {
-  answeredQuestionIds,
+  answeredQuestionItemIds,
   jsonRecord,
   payloadOf,
   questionCall,
@@ -36,7 +36,7 @@ export class CodexQuestionCandidates extends CandidateStore {
     }
     if (this.disabled) return false;
     let changed = false;
-    for (const key of answeredQuestionIds(payload))
+    for (const key of answeredQuestionItemIds(payload))
       changed = this.close(key, "answered") || changed;
     if (payload["type"] === "function_call_output" && typeof payload["call_id"] === "string")
       changed = this.output(payload) || changed;

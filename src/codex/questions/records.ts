@@ -38,8 +38,7 @@ export function questionEnvelope(
   payload: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   if (payload["type"] === "function_call")
-    return payload["name"] === "request_user_input" ||
-      payload["name"] === asyncQuestionToolName
+    return payload["name"] === "request_user_input" || payload["name"] === asyncQuestionToolName
       ? payload
       : undefined;
   const item = payload["type"] === "item_completed" ? payload["item"] : payload;
@@ -67,7 +66,6 @@ export function questionCall(payload: Record<string, unknown>): QuestionCall | u
   }
   if (!hasAsyncQuestionMetadata(envelope)) return undefined;
   return parsedCall(envelope["id"], envelope["questions"], { queued: true, accepted: true });
-
 }
 function nativeMessage(item: Record<string, unknown>): boolean {
   return (

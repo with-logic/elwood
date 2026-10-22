@@ -2,7 +2,7 @@
 import { describe, expect, test } from "vitest";
 import { queuedKey } from "../../../src/codex/questions/records.ts";
 import { call, event, setup } from "./candidate-helpers.ts";
-import { records } from "./record-fixtures.ts";
+import { records } from "./fixtures.ts";
 
 function output(callId: string, value: unknown) {
   return event({ type: "function_call_output", call_id: callId, output: value });
