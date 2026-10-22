@@ -787,9 +787,9 @@ Codex automation retains at most 256 pending native requests and 1 MiB of candid
 
 Codex text acceptance converts CRLF/CR to LF and trims outer Unicode White_Space, preserving interior whitespace. Long or clipped answers still require the full native accepted value to match.
 
-An interrupted answer that may have written input retires its request as `unavailable`; the old ID rejects with `question_not_found`. Native input remains held until correlated closure, and retrying the retired request cannot replay delivered input. Aborting does not undo native submission. A completed Claude final submission keeps its hold through a newly empty composer until matching native completion.
+An interrupted answer that may have written input retires its request as `unavailable`; the old ID rejects with `question_not_found`. Native input remains held until both the physical write and correlated native ownership settle, in either order; retrying the retired request cannot replay delivered input. Aborting does not undo native submission. A completed Claude final submission keeps its hold through a newly empty composer until matching native completion.
 
-Direct Claude hook answers take precedence over question publication. An unanswered hook decision requires a fresh completed terminal paint before discovery.
+Direct Claude hook answers take precedence over question publication. An unanswered hook decision requires a fresh completed terminal paint before discovery. Overlapping hooks retain independent native identities; ambiguous panels preserve ownership without granting answer authority.
 
 Question and companion activity listener failures are contained. The first failure per session emits a content-free `question_observer_failed` warning with `phase: "question" | "activity"`; delivery and native ownership continue.
 
