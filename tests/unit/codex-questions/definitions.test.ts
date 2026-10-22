@@ -9,7 +9,7 @@ import {
   questionCall,
   queuedKey,
 } from "../../../src/codex/questions/records.ts";
-import { records } from "./record-fixtures.ts";
+import { records } from "./fixtures.ts";
 
 test("preserves modal IDs and queued ordinals as distinct identity shapes", () => {
   const queued = parseQuestions([{ title: "One" }, { title: "Two" }], true)!;

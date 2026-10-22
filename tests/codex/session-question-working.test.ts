@@ -12,7 +12,7 @@ test("C-TURN-03 pulsing collapsed queued-question work stays running", async () 
   const session = await startCodex({ cwd });
   try {
     await becomeReady(session.elwoodSessionId, cwd);
-    const paint = (glyph: string) =>
+    const paint = (glyph: "•" | "◦") =>
       ptys[0]!.emitData(
         `\x1b[2J\x1b[H${glyph} Working (2s • esc to interrupt)\r\n• Queued follow-up inputs\r\n  ? 1 question\r\n    ⇧← to answer\r\n› Ask Codex to do anything`,
       );
