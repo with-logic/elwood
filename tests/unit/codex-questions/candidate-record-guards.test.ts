@@ -9,7 +9,7 @@ test.each([
   "turn_failed",
 ])("does not coerce malformed completion type %s", (type) => {
   const { state, registry } = setup();
-  state.observe(event(call("call", true, true)));
+  state.observe(event(call({ id: "call", queued: true, accepted: true })));
   for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
   expect(state.observe(event({ type: [type] }))).toBe(false);
   expect(state.acceptedQueuedCandidates()).toHaveLength(1);

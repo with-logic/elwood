@@ -12,10 +12,10 @@ describe("native candidate transitions", () => {
     expect(state.observe(event(call()))).toBe(false);
     expect([...state.candidates.values()][0]).toBe(candidate);
     expect(state.acceptedQueuedCandidates()).toBe(empty);
-    expect(state.observe(event(call("call", true, true)))).toBe(true);
+    expect(state.observe(event(call({ id: "call", queued: true, accepted: true })))).toBe(true);
     const accepted = state.acceptedQueuedCandidates();
     expect(accepted).toEqual([candidate]);
-    expect(state.observe(event(call("call", true, true)))).toBe(false);
+    expect(state.observe(event(call({ id: "call", queued: true, accepted: true })))).toBe(false);
     expect(state.acceptedQueuedCandidates()).toBe(accepted);
     expect(state.unpublishedCandidates().size).toBe(1);
     state.publish(candidate);
@@ -50,11 +50,29 @@ describe("native candidate transitions", () => {
       ),
     ).toBe(false);
   });
+  test("reserves unsupported native questions until explicit live clearance", () => {
+    const { state, disabled } = setup();
+    expect(
+      state.observe(
+        event({
+          type: "function_call",
+          name: "request_user_input",
+          call_id: "secret",
+          arguments: '{"questions":[{"isSecret":true}]}',
+        }),
+      ),
+    ).toBe(true);
+    expect(state.hasReservation()).toBe(true);
+    expect(state.candidates.size).toBe(0);
+    expect(disabled).not.toHaveBeenCalled();
+    expect(state.clearOpaqueReservation()).toBe(true);
+    expect(state.clearOpaqueReservation()).toBe(false);
+  });
 });
 
 test("withdraws an exposed definition when its native authority becomes unsupported", () => {
   const { state, registry } = setup();
-  state.observe(event(call("call", true, true)));
+  state.observe(event(call({ id: "call", queued: true, accepted: true })));
   state.publish(state.acceptedQueuedCandidates()[0]!);
   expect(
     state.observe(
@@ -71,9 +89,34 @@ test("withdraws an exposed definition when its native authority becomes unsuppor
   expect(state.hasReservation()).toBe(true);
 });
 
+test("withdraws removed queued units when the same native call has fewer definitions", () => {
+  const { state, registry } = setup();
+  state.observe(
+    event({
+      type: "AgentMessage",
+      id: "call",
+      delivery: "async",
+      questions: [{ title: "Pick", options: ["Yes"] }, { title: "Removed" }],
+    }),
+  );
+  expect(
+    state.acceptedQueuedCandidates().map((candidate) => candidate.questions[0]?.definition.prompt),
+  ).toEqual(["Pick", "Removed"]);
+  for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
+  expect(registry.list().map((request) => request.questions[0]?.prompt)).toEqual([
+    "Pick",
+    "Removed",
+  ]);
+  expect(state.observe(event(call({ id: "call", queued: true, accepted: true })))).toBe(true);
+  expect(
+    state.acceptedQueuedCandidates().map((candidate) => candidate.questions[0]?.definition.prompt),
+  ).toEqual(["Pick"]);
+  expect(registry.list().map((request) => request.questions[0]?.prompt)).toEqual(["Pick"]);
+});
+
 test("reserves malformed completed native messages without disturbing unrelated calls", () => {
   const { state } = setup();
-  state.observe(event(call("other", true, true)));
+  state.observe(event(call({ id: "other", queued: true, accepted: true })));
   expect(
     state.observe(
       event({
