@@ -1,5 +1,6 @@
 /** Guard private native Codex question navigation and answer writes (PRD §4). */
 import { delay } from "../../core/delay.ts";
+import { bracketedPasteEnd, bracketedPasteStart } from "../../core/input/constants.ts";
 import { pasteSettleDelayMs } from "../../core/input/index.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
@@ -9,12 +10,22 @@ import { draftMatches } from "./draft.ts";
 import { matchesQuestion, type QuestionView, questionView, queuedBadge } from "./frame.ts";
 import { queuedOtherLabel } from "./labels.ts";
 
+type SupportedDriverQuestion = QuestionDefinition & { readonly selection: "none" | "single" };
+function assertSupportedQuestions(
+  questions: readonly QuestionDefinition[],
+): asserts questions is readonly SupportedDriverQuestion[] {
+  if (
+    !questions.every((question) => question.selection === "none" || question.selection === "single")
+  )
+    throw questionAnswerFailed();
+}
+
 function matchingView(
   frame: QuestionFrame,
   kind: QuestionView["kind"],
   index: number,
   count: number,
-  question: QuestionDefinition,
+  question: SupportedDriverQuestion,
 ): QuestionView | undefined {
   const view = questionView(frame);
   return view?.kind === kind &&
@@ -24,14 +35,17 @@ function matchingView(
     ? view
     : undefined;
 }
+/** Answer one indexed queued question.
+ * submitting runs after final guards, immediately before the physical Enter send attempt. */
 export async function answerQueued(
   questions: readonly QuestionDefinition[],
   answer: ValidatedQuestionAnswer,
-  index: number,
+  questionIndex: number,
   io: QuestionIo,
   submitting: () => void,
 ): Promise<void> {
-  const question = questions[index]!;
+  assertSupportedQuestions(questions);
+  const question = questions[questionIndex]!;
   const count = questions.length;
   let frame = io.frame();
   if (!frame) throw questionAnswerFailed();
@@ -46,11 +60,11 @@ export async function answerQueued(
     !matchesQuestion(view, questions[view.index]!)
   )
     throw questionAnswerFailed();
-  while (view.index !== index) {
+  while (view.index !== questionIndex) {
     const from = view.index;
-    const next = from + (from < index ? 1 : -1);
+    const next = from + (from < questionIndex ? 1 : -1);
     await io.write(
-      from < index ? "\x1b[1;2D" : "\x1b[1;2C",
+      from < questionIndex ? "\x1b[1;2D" : "\x1b[1;2C",
       (current) => matchingView(current, "queued", from, count, questions[from]!) !== undefined,
     );
     frame = await io.wait(
@@ -58,16 +72,24 @@ export async function answerQueued(
     );
     view = questionView(frame)!;
   }
-  const match = (current: QuestionFrame) => matchingView(current, "queued", index, count, question);
+  const match = (current: QuestionFrame) =>
+    matchingView(current, "queued", questionIndex, count, question);
   await stageAnswer(question, answer, io, match, view);
-  await io.write("\r", (current) => ready(match(current), question, answer), submitting);
+  await io.write(
+    "\r",
+    (current) => isAnswerReadyToSubmit(match(current), question, answer),
+    submitting,
+  );
 }
+/** Answer the complete ordered blocking batch.
+ * submitting runs after final guards, immediately before only the last Enter send attempt. */
 export async function answerBlocking(
   questions: readonly QuestionDefinition[],
   answers: readonly ValidatedQuestionAnswer[],
   io: QuestionIo,
   submitting: () => void,
 ): Promise<void> {
+  assertSupportedQuestions(questions);
   for (const [index, question] of questions.entries()) {
     const match = (frame: QuestionFrame) =>
       matchingView(frame, "blocking", index, questions.length, question);
@@ -78,29 +100,30 @@ export async function answerBlocking(
     await stageAnswer(question, answers[index]!, io, match, initial);
     await io.write(
       "\r",
-      (current) => ready(match(current), question, answers[index]!),
+      (current) => isAnswerReadyToSubmit(match(current), question, answers[index]!),
       index === questions.length - 1 ? submitting : undefined,
     );
   }
 }
-function ready(
+function isAnswerReadyToSubmit(
   view: QuestionView | undefined,
-  question: QuestionDefinition,
+  question: SupportedDriverQuestion,
   answer: ValidatedQuestionAnswer,
 ): boolean {
-  if (
-    !view ||
-    (question.options.length > 0 &&
-      view.selected !== selectedIndex(question, answer, view.kind === "blocking"))
-  )
-    return false;
-  return (
-    (view.kind === "queued" && answer.text === undefined && unownedChoice(view, question)) ||
-    draftMatches(view, question, answer.text ?? "")
-  );
+  if (!view) return false;
+  const hasExpectedSelection =
+    question.options.length === 0 ||
+    view.selected === selectedIndex(question, answer, view.kind === "blocking");
+  if (!hasExpectedSelection) return false;
+  const hasQueuedChoiceEvidence =
+    view.kind === "queued" && answer.text === undefined && unownedChoice(view, question);
+  const hasAnswerEvidence =
+    hasQueuedChoiceEvidence || draftMatches(view, question, answer.text ?? "");
+  return hasAnswerEvidence;
 }
+
 function selectedIndex(
-  question: QuestionDefinition,
+  question: SupportedDriverQuestion,
   answer: ValidatedQuestionAnswer,
   modal: boolean,
 ): number {
@@ -108,7 +131,7 @@ function selectedIndex(
 }
 type Matcher = (frame: QuestionFrame) => QuestionView | undefined;
 async function stageAnswer(
-  question: QuestionDefinition,
+  question: SupportedDriverQuestion,
   answer: ValidatedQuestionAnswer,
   io: QuestionIo,
   match: Matcher,
@@ -143,7 +166,7 @@ async function stageAnswer(
   } else if (answer.text === undefined) return;
   if (!draftMatches(view, question, "")) throw questionAnswerFailed();
   if (answer.text === undefined) return;
-  await io.write(`\x1b[200~${answer.text}\x1b[201~`, (current) => {
+  await io.write(`${bracketedPasteStart}${answer.text}${bracketedPasteEnd}`, (current) => {
     const currentView = match(current);
     return currentView !== undefined && draftMatches(currentView, question, "");
   });
@@ -154,7 +177,7 @@ async function stageAnswer(
   await delay(pasteSettleDelayMs); // Native composer paste bursts must settle before their submitting Enter.
 }
 
-function unownedChoice(view: QuestionView, question: QuestionDefinition): boolean {
+function unownedChoice(view: QuestionView, question: SupportedDriverQuestion): boolean {
   if (view.notes) return false;
   if (view.kind === "blocking" || question.options.length === 0) return true;
   const other = view.body.find((line) =>
