@@ -1285,6 +1285,9 @@ hook routing or the ordinary-input gate. The native-question session API
 integration supplies those connections; the live screen-fact rule alone only
 holds input while the questionnaire is visible.
 
-A final Enter rejected by the current-frame guard does not count as submission.
+A final Enter rejected before physical dispatch, including by a current-frame or
+abort guard, does not count as submission. Once dispatch begins, a rejection or
+abort leaves delivery uncertain: the native identity and input hold survive an
+empty composer until matching native completion, replacement or turn end.
 A semantic replacement of a known questionnaire must show matching new choices
 before a retained composer can retire it.

@@ -8,6 +8,7 @@ import { SessionQuestions } from "../../../src/core/questions/controller.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { TypedEmitter } from "../../../src/events/emitter.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { paintQuestionFrame } from "./controller-helpers.ts";
 import { nativeHook } from "./lifecycle-helpers.ts";
 
 export function submissionHarness(
@@ -40,11 +41,7 @@ export function submissionHarness(
     closing.signal,
   );
   questions.configure((requests) => new ClaudeQuestionAdapter(requests));
-  function paint(current: QuestionFrame) {
-    return terminal.writeOutput(
-      `\x1b[H\x1b[2J${current.lines.join("\r\n")}\x1b[${current.cursorRow + 1};${current.cursorX + 1}H\x1b[?25h`,
-    );
-  }
+  const paint = (current: QuestionFrame) => paintQuestionFrame(terminal, current);
   const hook = (name = "PreToolUse", extra: Readonly<Record<string, unknown>> = {}) =>
     events.emit("activity", nativeHook(name, { tool_input: toolInput, ...extra }));
   return {

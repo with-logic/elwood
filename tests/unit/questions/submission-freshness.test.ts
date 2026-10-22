@@ -25,10 +25,11 @@ function changingInput(
       pending = false;
       return rendered;
     },
-    write: (input, matches) => {
+    write: (input, matches, onDispatch) => {
       if (pending) throw new Error("Native write preceded the render barrier");
       if (writes.length === beforeWrite) current = change(current);
       if (!matches(current)) throw questionAnswerFailed();
+      onDispatch?.();
       writes.push(input);
       pending = true;
       return Promise.resolve();
