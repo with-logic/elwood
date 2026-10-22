@@ -1,7 +1,7 @@
 /** Native async question exclusion from final answers (PRD §7A.5). */
 import { expect, test } from "vitest";
 import { summarizeTranscriptItem } from "../../../src/codex/transcript/summary.ts";
-import { records } from "./record-fixtures.ts";
+import { records } from "./fixtures.ts";
 
 test("C-QUESTION-04 async question metadata cannot become a final assistant reply", () => {
   const captured = records("async-records.json")[1];
