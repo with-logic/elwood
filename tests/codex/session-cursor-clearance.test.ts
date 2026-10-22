@@ -17,6 +17,18 @@ const nativeRow = codexSmallComposer.split("\n").findIndex((row) => row.startsWi
 
 test.each([
   [
+    "uncompleted consecutive user history",
+    `› First prompt\n  › quoted caret\n› Second prompt\n${codexSmallComposer}`,
+    nativeRow + 3,
+    true,
+  ],
+  [
+    "numbered native options after a user prompt",
+    `› First prompt\n› 1. Yes\n  2. No\n• Reply\n${codexSmallComposer}`,
+    nativeRow + 4,
+    true,
+  ],
+  [
     "single replacement option above old composer",
     `Unrecognized permission\n› Continue\n${codexSmallComposer}`,
     1,
@@ -58,6 +70,7 @@ test.each([
   "• An approval example:\n  Would you like to run the following command?\n  › 1. Yes\n  2. No",
   "› 1. Show the first change\n\n• Here is the requested change.",
   "› Continue\n\n• Continuing the explanation.",
+  "› Ask questions\n\n› > Question note?\n  > quoted-tail\n  › caret-tail\n\n› > Question literal?\n  Type your answer\n\n› > Question color?\n  Blue\n\n• Done.",
 ])("C-TRUST-01 transcript %s does not block the real native cursor", async (transcript) => {
   installFakes();
   const session = await startCodex({ cwd: tempDir(), autotrust: false });

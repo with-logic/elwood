@@ -1368,7 +1368,13 @@ provides free text. `request_user_input_async` immediately returns accepted:true
 then exposes independently answerable queued questions while work continues.
 Shift+Left opens the editor. Answering one leaves the others available, with a
 committed `send_user_message_question_reply` envelope identifying the exact
-question. Ordinary composer input is not an equivalent answer route.
+question. The editor advances to a remaining question and stays expanded, so
+Elwood remains `blocked` even while the working row continues. This status does
+not complete the original `send()` turn. Ordinary composer input is not an
+equivalent answer route. Consecutive answer echoes can contain indented `›`
+inside multiline text before the final assistant response. Only that bounded
+response makes them transcript history for empty-composer recognition; an
+uncompleted user echo or numbered native option block still holds input.
 
 Async question AgentMessage records can say phase:final_answer while work is
 still running. They are question metadata, not a final assistant reply. The

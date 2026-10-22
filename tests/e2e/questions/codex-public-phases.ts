@@ -87,7 +87,8 @@ export async function publicCodexQueuedPhase(
   );
   assert.deepEqual(await facade.listQuestions(), [requests[0], requests[2]]);
   assert.equal(settled, false);
-  assert.equal(live.status, "running");
+  // Native submission advances to the remaining editor, which still owns ordinary input.
+  assert.equal(live.status, "blocked");
   signal.throwIfAborted();
   await facade.answerQuestions(
     requests[2]!.id,
@@ -96,7 +97,7 @@ export async function publicCodexQueuedPhase(
   );
   assert.deepEqual(await facade.listQuestions(), [requests[0]]);
   assert.equal(settled, false);
-  assert.equal(live.status, "running");
+  assert.equal(live.status, "blocked");
   signal.throwIfAborted();
   await facade.answerQuestions(requests[0]!.id, [publicCodexBlueAnswer(requests[0]!)], {
     timeoutMs: 30_000,

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex question turns settle after native completion even when consecutive answer echoes contain caret-like multiline text.
+
 - Preserve overlapping Claude question requests across out-of-order hook outcomes;
   require unambiguous native panel evidence before exposing answer authority.
 
