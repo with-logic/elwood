@@ -36,10 +36,7 @@ test.each([
   ).toBe(false);
   expect(draftMatches(typed, question, "different")).toBe(false);
 });
-test.each([
-  "queued",
-  "modal",
-])("%s clipped/wrapped draft cannot attest full logical text", (kind) => {
+test.each(["queued", "modal"])("%s multiline draft cannot attest full logical text", (kind) => {
   const expected: unknown = JSON.parse(fixture(`editor/${kind}-expected.json`));
   if (
     !(
@@ -62,4 +59,31 @@ test.each([
       ).toBe(false);
     else expect([kind, width]).toEqual(["queued", "narrow"]); // This capture clips its panel heading too.
   }
+});
+
+test("a native clipped single-line draft cannot attest its complete logical answer", () => {
+  const expected: unknown = JSON.parse(fixture("editor/modal-single-line-expected.json"));
+  if (
+    !(
+      expected &&
+      typeof expected === "object" &&
+      "prompt" in expected &&
+      typeof expected.prompt === "string" &&
+      "answer" in expected &&
+      typeof expected.answer === "string"
+    )
+  )
+    throw new Error("Missing native single-line answer metadata");
+  expect(expected.answer).not.toMatch(/[\r\n]/);
+  expect(expected.answer).toMatch(/^SINGLE_LINE_BEGIN item000-abcdef/);
+  const view = questionView(nativeFrame("editor/modal-single-line-clipped.json"));
+  expect(view).toBeDefined();
+  if (!view) throw new Error("Native clipped modal must remain parseable");
+  expect(view).toMatchObject({ kind: "blocking", notes: true });
+  const visible = view.rawBody.join("\n");
+  expect(visible).toContain("  › item017-abcdef");
+  expect(visible).toContain("SINGLE_LINE_END");
+  expect(visible).not.toContain("SINGLE_LINE_BEGIN");
+  expect(visible).not.toContain("[Pasted Content");
+  expect(draftMatches(view, { ...question, prompt: expected.prompt }, expected.answer)).toBe(false);
 });

@@ -23,6 +23,16 @@ test("an indented caret continuation cannot replace the notes start", () => {
   );
   expect(draftMatches(questionView(frame(text))!, note, "tail")).toBe(false);
 });
+test("blocking notes require the native editor caret", () => {
+  const text = captured("blocking-modal-note.txt").text.replace(
+    "  › ELWOOD_MODAL_NOTE_85",
+    "    ELWOOD_MODAL_NOTE_85",
+  );
+  const view = questionView(frame(text));
+  expect(view).toBeDefined();
+  if (!view) throw new Error("Native modal chrome must remain parseable");
+  expect(draftMatches(view, note, "ELWOOD_MODAL_NOTE_85")).toBe(false);
+});
 test("native row trimming cannot discard answer whitespace", () => {
   const text = captured("async-editor-note.txt").text.replace("ELWOOD_NOTE_74", "ELWOOD_NOTE_74  ");
   expect(draftMatches(questionView(frame(text))!, note, "ELWOOD_NOTE_74")).toBe(false);

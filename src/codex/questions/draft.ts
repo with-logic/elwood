@@ -1,7 +1,14 @@
 /** Verify unambiguous visible drafts; wrapped/clipped text needs owned-paste proof (PRD §4). */
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import type { QuestionView } from "./frame.ts";
-import { queuedOtherLabel } from "./labels.ts";
+import { type NativeDraftPlaceholder, queuedOtherLabel } from "./labels.ts";
+
+const selectedOptionPrefix = /^\s*› \d+\. /;
+type DraftPosition = {
+  readonly start: number;
+  readonly prefix: string;
+  readonly placeholder: NativeDraftPlaceholder;
+};
 
 /**
  * True only when a single visible editor row exactly matches `expected`; supplied
@@ -43,31 +50,32 @@ export function draftMatches(
   return text === expected;
 }
 
-function draftPosition(view: QuestionView, question: QuestionDefinition) {
+function draftPosition(
+  view: QuestionView,
+  question: QuestionDefinition,
+): DraftPosition | undefined {
   const lines = view.rawBody;
-  let start: number;
-  let prefix: string;
-  let placeholder: string;
-  if (view.kind === "blocking") {
-    if (!view.notes) return undefined;
-    const firstOption = lines.findIndex((line) => /^\s*(?:› )?1\. /.test(line));
-    if (firstOption < 0) return undefined;
-    const afterOptions = lines.findIndex((line, index) => index > firstOption && !line.trim());
-    start = lines.findIndex((line, index) => index > afterOptions && /^ {2}› /.test(line));
-    prefix = "  › ";
-    placeholder = "Add notes";
-  } else if (question.options.length > 0) {
-    if (view.selected !== question.options.length) return undefined;
-    start = lines.findIndex((line) => /^\s*› \d+\. /.test(line));
-    if (start < 0) return undefined;
-    prefix = /^\s*› \d+\. /.exec(lines[start]!)![0];
-    placeholder = queuedOtherLabel(question);
-  } else {
-    const promptIndex = lines.findIndex((line) => line.trim() === question.prompt);
-    if (promptIndex < 0) return undefined;
-    start = lines.findIndex((line, index) => index > promptIndex && line.trim().length > 0);
-    prefix = "  ";
-    placeholder = "Type your answer";
+  switch (view.kind) {
+    case "blocking": {
+      if (!view.notes) return undefined;
+      const firstOption = lines.findIndex((line) => /^\s*(?:› )?1\. /.test(line));
+      if (firstOption < 0) return undefined;
+      const afterOptions = lines.findIndex((line, index) => index > firstOption && !line.trim());
+      const start = lines.findIndex((line, index) => index > afterOptions && /^ {2}› /.test(line));
+      return start < 0 ? undefined : { start, prefix: "  › ", placeholder: "Add notes" };
+    }
+    case "queued": {
+      if (question.options.length > 0) {
+        if (view.selected !== question.options.length) return undefined;
+        const start = lines.findIndex((line) => selectedOptionPrefix.test(line));
+        if (start < 0) return undefined;
+        const prefix = selectedOptionPrefix.exec(lines[start]!)![0];
+        return { start, prefix, placeholder: queuedOtherLabel(question) };
+      }
+      const promptIndex = lines.findIndex((line) => line.trim() === question.prompt);
+      if (promptIndex < 0) return undefined;
+      const start = lines.findIndex((line, index) => index > promptIndex && line.trim().length > 0);
+      return start < 0 ? undefined : { start, prefix: "  ", placeholder: "Type your answer" };
+    }
   }
-  return start < 0 ? undefined : { start, prefix, placeholder };
 }

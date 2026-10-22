@@ -25,3 +25,11 @@ acceptance envelopes preserve that evidence.
 A single viewport therefore cannot prove full logical equality of multirow or
 clipped drafts. These parser regressions fail closed; the owned-paste and native
 acceptance verification layer supplies the separate full-answer proof.
+
+A further Codex 0.163.0 / GPT-6-Luna low capture on 2026-10-22 uses a
+783-character answer with no newline at 100×35. The native viewport shows
+`item017-abcdef` onward and `SINGLE_LINE_END`, while the logical
+`SINGLE_LINE_BEGIN` prefix is clipped. The full answer was confirmed exactly in
+the native tool result. `modal-single-line-capture.json` records raw capture
+hashes and private-home/parent-state checks; the projected viewport is unchanged.
+This case is separate from the earlier multiline inputs and paste-collapse UI.
