@@ -4,7 +4,7 @@ import { CodexQuestionCandidates } from "../../../src/codex/questions/candidates
 import * as questionFrames from "../../../src/codex/questions/frame.ts";
 import { questionDefinitionCountLimit } from "../../../src/codex/questions/limits.ts";
 import { harness } from "./adapter-helpers.ts";
-import { captured, event, frame, records } from "./helpers.ts";
+import { captured, emptyComposerFrame, event, frame, records } from "./helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
 const native = (count: number) => ({

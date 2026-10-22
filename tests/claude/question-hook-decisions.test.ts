@@ -9,10 +9,10 @@ afterEach(resetFakes);
 test.each([
   "PreToolUse",
   "PermissionRequest",
-] as const)("C-QUESTION-01 %s direct answer cannot expose a phantom before completion", async (name) => {
+] as const)("C-QUESTION-01 %s direct answers and denials precede fresh unanswered discovery", async (name) => {
   installFakes();
   const cwd = tempDir();
-  let direct = true;
+  let outcome: "answered" | "denied" | "unanswered" = "answered";
   const input = {
     questions: nativeQuestions.map((question) => ({ ...question, header: question.header ?? "" })),
   } satisfies AskUserQuestionInput;
@@ -21,14 +21,21 @@ test.each([
     initialSize: { cols: 140, rows: 45 },
     hooks: {
       PreToolUse: {
-        AskUserQuestion: () =>
-          direct && name === "PreToolUse"
+        AskUserQuestion: () => {
+          if (name !== "PreToolUse") return undefined;
+          if (outcome === "denied") return { permissionDecision: "deny" };
+          return outcome === "answered"
             ? { permissionDecision: "allow", updatedInput: { answers: { Color: "Amber" } } }
-            : undefined,
+            : undefined;
+        },
       },
       PermissionRequest: {
-        AskUserQuestion: () =>
-          direct ? { behavior: "allow", updatedInput: { answers: { Color: "Amber" } } } : undefined,
+        AskUserQuestion: () => {
+          if (outcome === "denied") return { behavior: "deny" };
+          return outcome === "answered"
+            ? { behavior: "allow", updatedInput: { answers: { Color: "Amber" } } }
+            : undefined;
+        },
       },
     },
   });
@@ -58,12 +65,15 @@ test.each([
       pty.emitData(`\x1b[H\x1b[2J${frame.lines.join("\r\n")}\x1b[${frame.cursorRow + 1};1H`);
       await session.terminal.settled();
     };
-    if (name === "PermissionRequest") await hook("direct", "PreToolUse");
-    await hook("direct");
-    await show();
-    expect(await session.listQuestions()).toEqual([]);
-    expect(events).toEqual([]);
-    direct = false;
+    for (const decision of ["answered", "denied"] as const) {
+      outcome = decision;
+      if (name === "PermissionRequest") await hook(decision, "PreToolUse");
+      await hook(decision);
+      await show();
+      expect(await session.listQuestions()).toEqual([]);
+      expect(events).toEqual([]);
+    }
+    outcome = "unanswered";
     if (name === "PermissionRequest") await hook("unanswered", "PreToolUse");
     await hook("unanswered");
     expect(await session.listQuestions()).toEqual([]);
