@@ -18,7 +18,8 @@ test("C-QUESTION-03 unrelated and prior ID-less completions cannot settle public
   const { session, pty, hook, show: showFrame } = await questionSession({ questions: [question] });
   const show = (prompt: string) =>
     showFrame(frame(fixture("freeform-questions").text.replaceAll(question.question, prompt)));
-  await hook("PreToolUse", { tool_use_id: "old" });
+  // Changed definitions replace one native identity; distinct IDs remain independent.
+  await hook("PreToolUse", { tool_use_id: "current" });
   await show(question.question);
   const [previous] = await session.listQuestions();
   const replacement = { ...question, question: "Which replacement note?" };
