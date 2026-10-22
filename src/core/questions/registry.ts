@@ -1,4 +1,4 @@
-/** Immutable request identities and native lifecycle edges (PRD §4). */
+/** Immutable request identities and native lifecycle edges (PRD §5.10). */
 
 import { randomUUID } from "node:crypto";
 import type { ElwoodAgentKind } from "../activity/index.ts";

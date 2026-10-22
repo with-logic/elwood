@@ -1,4 +1,4 @@
-/** Serialize lifecycle notifications while registry mutations stay synchronous (PRD §4). */
+/** Serialize lifecycle notifications while registry mutations stay synchronous (PRD §5.10). */
 
 import type { QuestionActivityEvent } from "./activity.ts";
 import { questionActivity } from "./activity-fields.ts";

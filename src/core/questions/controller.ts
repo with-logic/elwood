@@ -44,6 +44,7 @@ export class SessionQuestions {
       }
     };
     const offActivity = events.on("activity", (event) => {
+      // Feeding our own notifications or failure diagnostic back into discovery can recurse.
       if (
         closing.aborted ||
         event.kind === "question" ||

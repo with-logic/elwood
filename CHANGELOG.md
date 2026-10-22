@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve overlapping Claude question requests across out-of-order hook outcomes;
+  require unambiguous native panel evidence before exposing answer authority.
+
 - Preserve the first question-observer failure diagnostic when pending listener
   promises exceed the notification registration cap.
 

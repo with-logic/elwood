@@ -18,7 +18,6 @@ test("a changed-choice replacement stays held through stale panel and composer f
   })) satisfies AskUserQuestionInput["questions"];
   adapter.observe(
     nativeHook("PreToolUse", {
-      tool_use_id: "replacement",
       tool_input: { questions } satisfies AskUserQuestionInput,
     }),
   );

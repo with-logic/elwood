@@ -1,4 +1,4 @@
-/** Reconcile private Codex question UI and route guarded native answers (PRD §4). */
+/** Reconcile private Codex question UI and route guarded native answers (PRD §7A.5; C-QUESTION-05). */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { QuestionAdapter, QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";

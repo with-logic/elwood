@@ -1,4 +1,4 @@
-/** Defer question metadata until its correlated caller hook decision resolves (PRD §6). */
+/** Defer public question authority until exact caller hook decisions resolve (PRD §6). */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { record } from "../../core/activity/meta.ts";
 import type { QuestionAdapter, QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
@@ -9,7 +9,7 @@ import type { ClaudeHookResult } from "../hooks/index.ts";
 import type { ClaudeQuestionAdapter } from "./index.ts";
 
 export class ClaudeQuestionHookGate implements QuestionAdapter {
-  private pending: ElwoodActivityEvent | undefined;
+  private readonly pending = new Map<unknown, ElwoodActivityEvent>();
   private readonly adapter: ClaudeQuestionAdapter;
   constructor(adapter: ClaudeQuestionAdapter) {
     this.adapter = adapter;
@@ -23,7 +23,8 @@ export class ClaudeQuestionHookGate implements QuestionAdapter {
       hook["tool_name"] === "AskUserQuestion" &&
       (hook["hook_event_name"] === "PreToolUse" || hook["hook_event_name"] === "PermissionRequest");
     if (isQuestionRequestHook) {
-      this.pending = event;
+      this.pending.set(event.raw, event);
+      this.adapter.observe(event);
       return false;
     }
     const isUnblockedStopResult =
@@ -31,29 +32,28 @@ export class ClaudeQuestionHookGate implements QuestionAdapter {
       event.kind === "hook_result" &&
       event.hookEventName === "Stop" &&
       !isBlock(hook["result"]);
-    if (isUnblockedStopResult) this.pending = undefined;
+    if (isUnblockedStopResult) this.pending.clear();
     return this.adapter.observe(event);
   }
 
   /** Use the exact frozen original hook passed to onHookOutcome, never a clone or activity wrapper. */
   resolveHookResult(originalHookEvent: unknown, hookResult: ClaudeHookResult): void {
-    const pending = this.pending;
-    if (!pending || pending.raw !== originalHookEvent) return;
-    this.pending = undefined;
+    const pending = this.pending.get(originalHookEvent);
+    if (!pending) return;
+    this.pending.delete(originalHookEvent);
     const decision = record(hookResult);
     const answered = Object.keys(record(record(decision["updatedInput"])["answers"])).length > 0;
     const denied = decision["permissionDecision"] === "deny" || decision["behavior"] === "deny";
     if (answered || denied) this.adapter.withdraw(pending);
-    else this.adapter.observe(pending);
     // The CLI cannot paint the resulting panel until the hook response returns.
     // Only the next completed native frame may publish the resolved candidate.
   }
 
   render(frame: QuestionFrame): void {
-    if (!this.pending) this.adapter.render(frame);
+    this.adapter.render(frame, this.pending.values());
   }
   blocksInput(): boolean {
-    return this.pending !== undefined || this.adapter.blocksInput();
+    return this.pending.size > 0 || this.adapter.blocksInput();
   }
   answer(
     request: ElwoodQuestionRequest,

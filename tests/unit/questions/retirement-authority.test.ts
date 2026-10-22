@@ -38,7 +38,6 @@ test.each([
   }));
   adapter.observe(
     nativeHook("PreToolUse", {
-      tool_use_id: "successor",
       tool_input: { questions: successorQuestions },
     }),
   );
@@ -60,7 +59,7 @@ test.each([
   }
   adapter.render(frame(successorScreenText));
   expect(requests.list()).toHaveLength(1);
-  expect(requests.keyFor(requests.list()[0]!.id)).toBe("successor");
+  expect(requests.keyFor(requests.list()[0]!.id)).toBe("native");
   adapter.render(composer());
   expect(requests.list()).toEqual([]);
   expect(adapter.blocksInput()).toBe(false);

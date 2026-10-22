@@ -72,6 +72,16 @@ test.each([
       await show();
       expect(await session.listQuestions()).toEqual([]);
       expect(events).toEqual([]);
+      await pty.dispatchHook(session.elwoodSessionId, {
+        hook_event_name: "PostToolUseFailure",
+        session_id: "native",
+        cwd,
+        tool_name: "AskUserQuestion",
+        tool_use_id: decision,
+        tool_input: input,
+        error: "Resolved by caller",
+        is_interrupt: false,
+      });
     }
     outcome = "unanswered";
     if (name === "PermissionRequest") await hook("unanswered", "PreToolUse");

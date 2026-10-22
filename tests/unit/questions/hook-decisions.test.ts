@@ -39,7 +39,7 @@ test.each([
   }
 });
 
-test("only the newest correlated unanswered hook can publish on a fresh completed frame", () => {
+test("a turn boundary invalidates stale outcomes before a fresh correlated hook can publish", () => {
   const { gate, requests } = setup();
   const old = nativeHook();
   const current = nativeHook("PermissionRequest", { tool_use_id: "new" });
@@ -49,6 +49,7 @@ test("only the newest correlated unanswered hook can publish on a fresh complete
   gate.observe({ ...old, kind: "hook_result", hookEventName: "PreToolUse" });
   gate.observe(nativeHook("PostToolUse"));
   gate.observe(old);
+  gate.observe({ ...old, kind: "hook_result", hookEventName: "Stop", raw: {} });
   gate.observe(current);
   gate.observe(nativeHook("PreToolUse", { tool_name: "Bash" }));
   gate.resolveHookResult(structuredClone(current.raw), undefined);

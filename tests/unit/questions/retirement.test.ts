@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import { definitions, fixture, frame, registry } from "./helpers.ts";
-import { composer, nativeHook } from "./lifecycle-helpers.ts";
+import { composer, nativeHook, nativeQuestions } from "./lifecycle-helpers.ts";
 
 const stop = {
   ...nativeHook("Stop"),
@@ -40,7 +40,16 @@ test("replacement close observers can establish a newer candidate without being 
     if (event.phase === "closed")
       adapter.observe(nativeHook("PreToolUse", { tool_use_id: "newest" }));
   });
-  adapter.observe(nativeHook("PreToolUse", { tool_use_id: "replacement" }));
+  adapter.observe(
+    nativeHook("PreToolUse", {
+      tool_input: {
+        questions: nativeQuestions.map((question) => ({
+          ...question,
+          question: `Replacement ${question.question}`,
+        })),
+      },
+    }),
+  );
   adapter.render(fixture("questions"));
   const current = requests.list()[0]!;
   expect(requests.keyFor(current.id)).toBe("newest");
@@ -55,7 +64,16 @@ test("registry shutdown during replacement prevents subsequent publication", () 
   requests.onEvent((event) => {
     if (event.phase === "closed") requests.shutdown();
   });
-  adapter.observe(nativeHook("PreToolUse", { tool_use_id: "replacement" }));
+  adapter.observe(
+    nativeHook("PreToolUse", {
+      tool_input: {
+        questions: nativeQuestions.map((question) => ({
+          ...question,
+          question: `Replacement ${question.question}`,
+        })),
+      },
+    }),
+  );
   adapter.render(fixture("questions"));
   expect(requests.list()).toEqual([]);
 });

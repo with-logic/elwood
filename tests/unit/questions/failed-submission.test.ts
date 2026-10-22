@@ -107,6 +107,7 @@ test("a predecessor answer failure cannot release a successor submission", async
     wait: async () => current,
     write: async (_input, matches) => {
       expect(matches(current)).toBe(true);
+      adapter.observe(hook("PostToolUse"));
       adapter.observe(hook("PreToolUse", { tool_use_id: "successor" }));
       adapter.render(current);
       const successor = requests.list()[0]!;
