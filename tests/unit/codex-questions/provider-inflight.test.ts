@@ -19,9 +19,9 @@ const native = (changed = false) => ({
 });
 
 test.each([
-  false,
-  true,
-])("Codex in-flight same-key metadata cannot replace an owned request (awaitingNative: %s)", async (awaitingNative) => {
+  "Elwood dispatch",
+  "native pending submission",
+] as const)("Codex same-key metadata retains the original request after %s", async (origin) => {
   const h = harness();
   h.observe(native());
   h.adapter.render(captured("async-editor-first.txt"));
@@ -29,11 +29,9 @@ test.each([
   const key = h.registry.keyFor(original!.id)!;
   const scripted = scriptedIo(captured("async-editor-first.txt"), [{ input: "\r" }]);
   try {
-    await h.adapter.answer(original!, [{ optionIndexes: [0] }], scripted.io);
-    if (awaitingNative) {
-      scripted.controller.abort();
-      h.adapter.render(captured("async-after-first.txt"));
-    }
+    if (origin === "Elwood dispatch")
+      await h.adapter.answer(original!, [{ optionIndexes: [0] }], scripted.io);
+    else h.adapter.render(captured("async-after-first.txt"));
     expect(h.observe(native(true))).toBe(true);
     h.adapter.render(captured("async-badge.txt"));
     h.adapter.render(
@@ -62,7 +60,7 @@ test.each([
     await expect(
       h.adapter.answer(original!, [{ optionIndexes: [0] }], scripted.io),
     ).rejects.toMatchObject({ code: "question_answer_failed" });
-    expect(scripted.writes).toEqual(["\r"]);
+    expect(scripted.writes).toEqual(origin === "Elwood dispatch" ? ["\r"] : []);
   } finally {
     scripted.controller.abort();
     h.registry.shutdown();

@@ -12,6 +12,6 @@ export function hasCandidateReservation(
   return (
     budget.hasRetired(nativeKey) ||
     registry.isRetired(nativeKey) ||
-    Boolean(candidate && (candidate.submitting || candidate.awaitingNative))
+    Boolean(candidate && (candidate.submitting || candidate.hasPendingNativeSubmission))
   );
 }
