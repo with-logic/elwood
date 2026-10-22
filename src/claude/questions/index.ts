@@ -102,14 +102,10 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     const candidate = this.candidate;
     if (!candidate) return;
     const hook = record(event.raw);
-    const nativeId = hook["tool_use_id"];
+    const toolUseId = hook["tool_use_id"];
     const questions = record(hook["tool_input"])["questions"];
-    if (
-      typeof nativeId === "string"
-        ? nativeId !== candidate.nativeKey
-        : !(isQuestions(questions) && matchesNativeQuestions(questions, candidate.questions))
-    )
-      return;
+    if (!isQuestions(questions)) return;
+    if (!matchesCandidateHook(candidate, questions, toolUseId, hook["hook_event_name"])) return;
     candidate.publishable = false;
     const request = this.registry.find(candidate.nativeKey);
     if (request) this.registry.retireUnconfirmed(request.id);

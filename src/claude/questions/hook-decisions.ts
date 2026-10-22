@@ -4,6 +4,7 @@ import { record } from "../../core/activity/meta.ts";
 import type { QuestionAdapter, QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { isBlock } from "../hooks/dispatch.ts";
 import type { ClaudeHookResult } from "../hooks/index.ts";
 import type { ClaudeQuestionAdapter } from "./index.ts";
 
@@ -29,7 +30,7 @@ export class ClaudeQuestionHookGate implements QuestionAdapter {
       event.source === "hook" &&
       event.kind === "hook_result" &&
       event.hookEventName === "Stop" &&
-      record(hook["result"])["decision"] !== "block";
+      !isBlock(hook["result"]);
     if (isUnblockedStopResult) this.pending = undefined;
     return this.adapter.observe(event);
   }

@@ -1,17 +1,18 @@
 /** Correlated hook decisions precede native question publication (PRD §6). */
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeQuestionHookGate } from "../../../src/claude/questions/hook-decisions.ts";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import { fixture, registry } from "./helpers.ts";
+import { definitions, fixture, registry } from "./helpers.ts";
 import { disposeInputHarnesses, inputHarness } from "./input-helpers.ts";
-import { nativeHook } from "./lifecycle-helpers.ts";
+import { nativeHook, singleQuestionToolInput } from "./lifecycle-helpers.ts";
 
 afterEach(disposeInputHarnesses);
 
 function setup() {
   const requests = registry();
-  const gate = new ClaudeQuestionHookGate(new ClaudeQuestionAdapter(requests));
-  return { gate, requests };
+  const adapter = new ClaudeQuestionAdapter(requests);
+  const gate = new ClaudeQuestionHookGate(adapter);
+  return { gate, requests, adapter };
 }
 
 test.each([
@@ -86,6 +87,24 @@ test("answer forwarding retains native ownership checks", async () => {
   expect(h.writes).toEqual([]);
 });
 
+test("an owned request forwards the exact answer arguments through the gate", async () => {
+  const { gate, requests, adapter } = setup();
+  const hook = nativeHook();
+  gate.observe(hook);
+  gate.resolveHookResult(hook.raw, undefined);
+  gate.render(fixture("questions"));
+  const request = requests.list()[0]!;
+  expect(requests.keyFor(request.id)).toBe("native");
+  const h = inputHarness();
+  const answers = [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }] as const;
+  const answer = vi.spyOn(adapter, "answer").mockResolvedValue();
+  await expect(gate.answer(request, answers, h.io)).resolves.toBeUndefined();
+  expect(answer).toHaveBeenCalledExactlyOnceWith(request, answers, h.io);
+  expect(answer.mock.calls[0]?.[0]).toBe(request);
+  expect(answer.mock.calls[0]?.[1]).toBe(answers);
+  expect(answer.mock.calls[0]?.[2]).toBe(h.io);
+});
+
 test.each([
   false,
   true,
@@ -127,7 +146,7 @@ test.each([
 });
 
 test.each([
-  { tool_use_id: "foreign" },
+  { tool_use_id: "foreign", tool_input: singleQuestionToolInput },
   { tool_use_id: undefined, tool_input: {} },
   { tool_use_id: undefined, tool_input: { questions: [] } },
 ])("a direct decision for foreign or invalid metadata cannot withdraw another native request: %j", (extra) => {
@@ -135,11 +154,19 @@ test.each([
   const pre = nativeHook();
   gate.observe(pre);
   gate.resolveHookResult(pre.raw, undefined);
+  gate.render(fixture("questions"));
+  const original = requests.list()[0]!;
+  expect(requests.keyFor(original.id)).toBe("native");
+  expect(original.questions).toMatchObject(definitions);
   const foreign = nativeHook("PermissionRequest", extra);
   gate.observe(foreign);
   gate.resolveHookResult(foreign.raw, { behavior: "deny" });
   gate.render(fixture("questions"));
-  expect(requests.list()).toHaveLength(1);
+  expect(requests.list()).toEqual([original]);
+  expect(requests.get(original.id)).toBe(original);
+  expect(requests.keyFor(original.id)).toBe("native");
+  expect(requests.find("foreign")).toBeUndefined();
+  expect(original.questions).toMatchObject(definitions);
 });
 test("an ID-less matching permission decision withdraws the native candidate", () => {
   const { gate, requests } = setup();
