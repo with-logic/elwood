@@ -3,6 +3,7 @@ import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import { modalFooter, notesFooter, queuedFooter } from "./chrome.ts";
+import { queuedOtherLabel } from "./labels.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
 export type QuestionView = {
@@ -13,8 +14,8 @@ export type QuestionView = {
   readonly index: number;
   /** Trimmed rows between header and footer, retaining blank rows and row positions. */
   readonly body: readonly string[];
-  /** Original body row count, including blank rows. */
-  readonly bodyRowCount: number;
+  /** Native rows between header and footer, retaining indentation and blank rows. */
+  readonly rawBody: readonly string[];
   /** Zero-based selected option; undefined for a panel without an option caret. */
   readonly selected: number | undefined;
   /** Whether the blocking panel displays its notes-editing footer. */
@@ -85,7 +86,7 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     count,
     index,
     body,
-    bodyRowCount: body.length,
+    rawBody: frame.lines.slice(start + 1, end),
     selected: caret ? Number(caret[1]) - 1 : undefined,
     notes: notesFooter.test(footer),
     cursor: {
@@ -138,7 +139,7 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
     view.cursor.visible === true &&
     view.cursor.before !== undefined &&
     view.cursor.row >= view.body.indexOf(question.prompt) + 1 + start + question.options.length &&
-    view.cursor.row < view.bodyRowCount;
+    view.cursor.row < view.rawBody.length;
   const tooFewOptionRows = rows.length < expected.length;
   const extraRowsOutsideOtherEditor = !editingOther && rows.length > expected.length;
   if (tooFewOptionRows || extraRowsOutsideOtherEditor) return false;
@@ -162,14 +163,7 @@ function expectedOptions(
 ): QuestionDefinition["options"] {
   switch (kind) {
     case "queued":
-      return [
-        ...question.options,
-        {
-          label: question.options.some((option) => option.label.toLowerCase() === "other")
-            ? "Other (write an answer)"
-            : "Other",
-        },
-      ];
+      return [...question.options, { label: queuedOtherLabel(question) }];
     case "blocking":
       return question.options;
   }

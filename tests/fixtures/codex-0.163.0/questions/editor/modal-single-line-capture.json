@@ -1,0 +1,28 @@
+{
+  "outcome": "complete",
+  "privateHomeRemoved": true,
+  "parentStateUnchanged": true,
+  "version": "codex-cli 0.163.0",
+  "model": "gpt-6-luna",
+  "effort": "low",
+  "nativeCalls": 1,
+  "elapsedMs": 7524,
+  "captured": "2026-10-22",
+  "terminal": {
+    "cols": 100,
+    "rows": 35
+  },
+  "logicalAnswerCharacters": 783,
+  "logicalAnswerNewlines": 0,
+  "firstVisibleToken": "item017-abcdef",
+  "missingLogicalPrefix": "SINGLE_LINE_BEGIN item000-abcdef",
+  "visibleTail": "SINGLE_LINE_END",
+  "acceptedAnswerExact": true,
+  "nativeCallId": "call_395c3db9d8dc4dc3a8500b826bbd0846",
+  "projection": "Unchanged actual viewport/cursor fields; temporary private path normalized to <SANDBOX>; cursor-cell dim and prefix projected from raw cells.",
+  "rawCaptureSha256": "f9178fdf86493b1bf13a7c9e0a32aa293bd8d7e1ba03fcf7ab75e8c97542a9bd",
+  "rawPtySha256": "0ee6c5815100f531b54d1318828db0145098085688acb1d8df096a607f22a8c7",
+  "rawRecordsSha256": "ea3384afc03a8ca633acde75ec5d5b410b7a70d5d87be6c60a5341e8a44b037b",
+  "fixtureSha256": "b89e85d0f4cd7d3110849fda9570bd9ab279c79a10a74199af8b7bc227950cf1",
+  "expectedSha256": "83c570e50a8008ba3a5f2744ecbbc79458ae016941a66e32f0260eff84759636"
+}
