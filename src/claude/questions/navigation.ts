@@ -5,6 +5,9 @@ import { questionError } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
+const arrowDown = "\x1b[B";
+const arrowUp = "\x1b[A";
+
 /** questionIndex addresses request.questions, not an option; only that native question
  * may authorize navigation. Each move waits for its completed successor frame. */
 export function questionNavigation(
@@ -30,7 +33,7 @@ export function questionNavigation(
       if (screen.cursor === targetCursorIndex) return;
       const delta = targetCursorIndex > screen.cursor ? 1 : -1;
       await io.write(
-        delta > 0 ? "\x1b[B" : "\x1b[A",
+        delta > 0 ? arrowDown : arrowUp,
         (frame) => at(frame)?.cursor === screen.cursor,
       );
       await io.wait((frame) => at(frame)?.cursor === screen.cursor + delta);

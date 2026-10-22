@@ -2,7 +2,7 @@
 import { describe, expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { definitions, fixture, frame, nativeSnapshot, registry } from "./helpers.ts";
-import { scriptedQuestionIo as ioFor } from "./scripted-io.ts";
+import { scriptedQuestionIo as ioFor } from "./scripted-io-helpers.ts";
 
 describe("Claude native answers", () => {
   test("answers grouped single choice, both checkboxes and verified final review", async () => {

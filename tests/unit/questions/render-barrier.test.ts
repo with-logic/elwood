@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { questionNavigation } from "../../../src/claude/questions/navigation.ts";
 import { definitions, fixture, registry } from "./helpers.ts";
-import { scriptedQuestionIo } from "./scripted-io.ts";
+import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 test("scripted IO stages renders until the wait completes before another write", async () => {
   const initial = fixture("questions");

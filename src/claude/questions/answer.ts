@@ -2,12 +2,18 @@
 import { bracketedPasteEnd, bracketedPasteStart } from "../../core/input/constants.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
-import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
+import type { ElwoodQuestion, ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { type BoundClaudeQuestionAnswer, bindClaudeQuestionAnswers } from "./bind-answers.ts";
 import { questionLayoutFailed, questionNavigation } from "./navigation.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
+
+const usesCheckboxes = {
+  single: false,
+  multiple: true,
+  none: false,
+} satisfies Readonly<Record<ElwoodQuestion["selection"], boolean>>;
 
 /** Requires native question 0 and a complete normalized batch in request order.
  * Finishing these writes does not prove native acceptance; the transaction owns that acknowledgement. */
@@ -20,6 +26,8 @@ export async function answerClaudeQuestions(
   const initial = io.frame();
   const first = initial && parseClaudeQuestionScreen(initial, request.questions);
   if (first?.kind !== "question" || first.questionIndex !== 0) throw questionLayoutFailed();
+  // Claude shows the final review only for grouped requests.
+  const hasNativeReviewStage = request.questions.length > 1;
   for (const entry of bound) {
     const index = entry.questionIndex;
     await answerOne(request, entry, io);
@@ -30,7 +38,7 @@ export async function answerClaudeQuestions(
       });
     }
   }
-  if (request.questions.length > 1) await submitReview(request, bound, io);
+  if (hasNativeReviewStage) await submitReview(request, bound, io);
 }
 async function answerOne(
   request: ElwoodQuestionRequest,
@@ -39,7 +47,7 @@ async function answerOne(
 ): Promise<void> {
   const { question, questionIndex, answer, otherCursorIndex, targetCursorIndex } = bound;
   const navigation = questionNavigation(request, questionIndex, io);
-  if (question.selection === "multiple") {
+  if (usesCheckboxes[question.selection]) {
     if (navigation.read().checked[otherCursorIndex]) throw questionAnswerFailed();
     for (let option = 0; option < question.options.length; option += 1) {
       const selected = answer.optionIndexes.includes(option);
@@ -61,12 +69,13 @@ async function answerOne(
   await io.write("\r", (frame) => {
     const current = navigation.at(frame);
     if (current?.cursor !== targetCursorIndex) return false;
-    if (question.selection === "multiple") {
-      return current.checked.every(
-        (checked, index) => checked === answer.optionIndexes.includes(index),
-      );
-    }
-    return answer.text === undefined || current.other === answer.text;
+    const matchesBySelection = {
+      single: () => answer.text === undefined || current.other === answer.text,
+      multiple: () =>
+        current.checked.every((checked, index) => checked === answer.optionIndexes.includes(index)),
+      none: () => current.other === answer.text,
+    } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
+    return matchesBySelection[question.selection]();
   });
 }
 async function submitReview(
@@ -74,7 +83,7 @@ async function submitReview(
   answers: readonly BoundClaudeQuestionAnswer[],
   io: QuestionIo,
 ): Promise<void> {
-  const review = await io.wait(
+  const reviewFrame = await io.wait(
     (frame) => parseClaudeQuestionScreen(frame, request.questions)?.kind === "review",
   );
   const expected = normalizeClaudeQuestionText(
@@ -84,6 +93,6 @@ async function submitReview(
     const screen = parseClaudeQuestionScreen(frame, request.questions);
     return screen?.kind === "review" && screen.summary === expected ? screen : undefined;
   };
-  if (!matchingReview(review)) throw questionAnswerFailed();
+  if (!matchingReview(reviewFrame)) throw questionAnswerFailed();
   await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0);
 }

@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { definitions, fixture, frame, registry } from "./helpers.ts";
-import { scriptedQuestionIo as ioFor } from "./scripted-io.ts";
+import { scriptedQuestionIo as ioFor } from "./scripted-io-helpers.ts";
 
 test("expected answers quoted above a wrong review never authorize its final Enter", async () => {
   const request = registry().publish("native", "blocking", definitions)!;

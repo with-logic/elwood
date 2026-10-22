@@ -13,40 +13,30 @@ export type BoundClaudeQuestionAnswer = {
   readonly reviewValue: string;
 };
 
-/** Bind the whole normalized batch before any frame read or terminal write. */
+/** Bind the core-validated, dense, request-ordered batch before native IO. */
 export function bindClaudeQuestionAnswers(
   request: ElwoodQuestionRequest,
   answers: readonly ValidatedQuestionAnswer[],
 ): readonly BoundClaudeQuestionAnswer[] {
-  if (answers.length === 0 || answers.length !== request.questions.length)
-    throw questionAnswerFailed();
   return request.questions.map((question, questionIndex) => {
-    const answer = answers[questionIndex];
-    if (!(Object.hasOwn(answers, questionIndex) && answer)) throw questionAnswerFailed();
+    const answer = answers[questionIndex]!;
     // Claude Other replaces a choice; it cannot carry an additional note.
     const hasText = answer.text !== undefined;
     const hasSelectedOptions = answer.optionIndexes.length > 0;
     if (hasText && hasSelectedOptions) throw questionAnswerFailed();
-    const labels: string[] = [];
-    for (const [position, optionIndex] of answer.optionIndexes.entries()) {
+    const labels = answer.optionIndexes.map((optionIndex) => {
       const option = question.options[optionIndex];
-      const hasOwnIndex = Object.hasOwn(answer.optionIndexes, position);
-      const isIntegerIndex = Number.isInteger(optionIndex);
-      const hasMatchingOption = option !== undefined;
-      if (!(hasOwnIndex && isIntegerIndex && hasMatchingOption)) throw questionAnswerFailed();
-      labels.push(option.label);
-    }
+      if (option === undefined) throw questionAnswerFailed();
+      return option.label;
+    });
     const otherCursorIndex = question.options.length;
-    let targetCursorIndex: number | undefined;
-    if (question.selection === "multiple") {
-      const submitCursorIndex = otherCursorIndex + 1;
-      targetCursorIndex = submitCursorIndex;
-    } else if (hasText) {
-      targetCursorIndex = otherCursorIndex;
-    } else {
-      targetCursorIndex = answer.optionIndexes[0];
-    }
-    if (targetCursorIndex === undefined) throw questionAnswerFailed();
+    const submitCursorIndex = otherCursorIndex + 1;
+    const cursorBySelection = {
+      single: hasText ? otherCursorIndex : answer.optionIndexes[0]!,
+      multiple: submitCursorIndex,
+      none: otherCursorIndex,
+    } satisfies Readonly<Record<ElwoodQuestion["selection"], number>>;
+    const targetCursorIndex = cursorBySelection[question.selection];
     return {
       questionIndex,
       question,

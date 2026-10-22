@@ -3,14 +3,18 @@ import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
 import { definitions, fixture, frame, registry } from "./helpers.ts";
-import { scriptedQuestionIo as ioFor } from "./scripted-io.ts";
+import { scriptedQuestionIo as ioFor } from "./scripted-io-helpers.ts";
 
 test.each([
-  { optionIndexes: [] },
-  { optionIndexes: [1] },
-])("Other text preserves or rejects selected options (%j)", async ({ optionIndexes }) => {
+  { selection: "single" as const, optionIndexes: [] },
+  { selection: "single" as const, optionIndexes: [1] },
+  { selection: "none" as const, optionIndexes: [] },
+])("Other text preserves or rejects selected options (%j)", async ({
+  selection,
+  optionIndexes,
+}) => {
   const request = registry().publish("native", "blocking", [
-    { ...definitions[0]!, textMode: "additional" },
+    { ...definitions[0]!, selection, textMode: "additional" },
     definitions[1]!,
   ])!;
   const color = request.questions[0]!;
