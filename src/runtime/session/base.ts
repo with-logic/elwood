@@ -133,6 +133,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     return this.inSession(() => applyResize(this.pty, this.terminal, size));
   }
   interrupt(options?: Timeout): Promise<void> {
+    this.revokeQuestionAnswer();
     return this.inSession(() => this.commands.interrupt(options));
   }
   compact(options?: Timeout): Promise<void> {

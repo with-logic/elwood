@@ -114,6 +114,8 @@ export type { ListModelsOptions } from "./core/models/list.ts";
 export type { AgentModelOption } from "./core/models/rows.ts";
 export type {
   ElwoodQuestion,
+  ElwoodQuestionAnswer,
+  ElwoodQuestionAnswerOptions,
   ElwoodQuestionEvent,
   ElwoodQuestionOption,
   ElwoodQuestionRequest,

@@ -9,7 +9,11 @@ import { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../loops/types.ts";
 import type { AgentModelOption } from "../models/rows.ts";
-import type { ElwoodQuestionRequest } from "../questions/types.ts";
+import type {
+  ElwoodQuestionAnswer,
+  ElwoodQuestionAnswerOptions,
+  ElwoodQuestionRequest,
+} from "../questions/types.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -153,6 +157,13 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   }
   async listQuestions(): Promise<readonly ElwoodQuestionRequest[]> {
     return (await this.start()).listQuestions();
+  }
+  async answerQuestions(
+    requestId: string,
+    answers: readonly ElwoodQuestionAnswer[],
+    options?: ElwoodQuestionAnswerOptions,
+  ): Promise<void> {
+    return (await this.start()).answerQuestions(requestId, answers, options);
   }
   async createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     return (await this.start()).createLoop(request);

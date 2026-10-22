@@ -116,10 +116,10 @@ authority.
 
 ### 7A.5 Native questions
 
-The shared discovery surface in §5.10 recognizes current Codex `request_user_input`
+The shared question controls in §5.10 support current Codex `request_user_input`
 and `request_user_input_async` terminal editors. Committed function-call arguments
 provide complete metadata; a matching native editor or queued-question badge is
-required before publishing an available request. Rejected calls and historical
+required before publishing an actionable request. Rejected calls and historical
 transcript content never create requests. Mirrors retain the original identities.
 
 `request_user_input` publishes one grouped blocking request with ordered prompts,
@@ -127,7 +127,9 @@ headers, choices and descriptions. The captured native tool requires nonempty
 choices, adds the real selectable `None of the above` option, and accepts optional
 notes alongside a selected choice. Elwood exposes that native option with its own
 opaque option ID; it may be chosen without notes. Text alone selects that native
-alternative. Native completion evidence closes the group.
+alternative and adds the text as notes. Elwood supports these pages through the native
+editor, preserving the group until the matching committed tool result confirms
+acceptance. Unsupported secret or changed layouts receive no speculative input.
 Every question must omit `isSecret` or set it to boolean `false`; `true` and
 malformed supplied values reject the complete native request before publication.
 
@@ -136,8 +138,8 @@ acceptance unit. Suggested choices use the first 32 native choices, then omit la
 512 UTF-8 bytes without filling those gaps from later choices. Free text is
 available instead of a suggestion. Native question-bearing
 async messages remain question metadata even when their phase is `final_answer`;
-they never become final assistant activity. Raw human terminal input remains
-available for native answers.
+they never become final assistant activity. Answering opens the confirmed native
+editor and uses its question-answer route, preserving other pending questions.
 Ordinary composer submission must remain held because it clears queued questions.
 
 Committed native reply envelopes close matching queued requests as answered.
