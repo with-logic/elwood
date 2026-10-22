@@ -24,13 +24,13 @@ test("direct completed renders discover questions despite throwing observers", a
   expect(
     questions
       .list()[0]
-      ?.questions.map(({ prompt, header, options, selection, textMode, secret }) => ({
+      ?.questions.map(({ prompt, header, options, selection, textMode, supportsSecretInput }) => ({
         prompt,
         header,
         options: options.map(({ label, description }) => ({ label, description })),
         selection,
         textMode,
-        secret,
+        supportsSecretInput,
       })),
   ).toEqual(definitions);
   expect(questions.blocksInput()).toBe(true);

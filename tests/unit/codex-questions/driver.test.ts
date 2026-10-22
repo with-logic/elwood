@@ -11,14 +11,14 @@ const color: QuestionDefinition = {
   options: [{ label: "Amber" }, { label: "Blue" }],
   selection: "single",
   textMode: "alternative",
-  secret: false,
+  supportsSecretInput: false,
 };
 const note: QuestionDefinition = {
   prompt: "ELWOOD_ASYNC_NOTE: What note?",
   options: [],
   selection: "none",
   textMode: "alternative",
-  secret: false,
+  supportsSecretInput: false,
 };
 const first = captured("async-editor-first.txt");
 const blue = captured("async-editor-blue.txt");

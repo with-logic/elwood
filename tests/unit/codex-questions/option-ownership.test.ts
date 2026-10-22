@@ -9,7 +9,7 @@ const queued: QuestionDefinition = {
   options: [{ label: "Amber" }, { label: "Blue" }],
   selection: "single",
   textMode: "alternative",
-  secret: false,
+  supportsSecretInput: false,
 };
 test("queued option metadata must own the complete native block", () => {
   const view = questionView(captured("async-editor-first.txt"))!;

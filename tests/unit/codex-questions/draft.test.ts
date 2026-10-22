@@ -11,7 +11,7 @@ test("checks exact native drafts without treating placeholders as answers", () =
     options: [],
     selection: "none",
     textMode: "alternative",
-    secret: false,
+    supportsSecretInput: false,
   };
   const freeFrame = captured("async-after-first.txt");
   const freeRow = freeFrame.lines.findIndex((line) => line.trim() === "Type your answer");

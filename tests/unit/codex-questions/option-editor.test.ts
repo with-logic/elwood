@@ -9,7 +9,7 @@ const question: QuestionDefinition = {
   options: [{ label: "Amber" }, { label: "Blue" }],
   selection: "single",
   textMode: "alternative",
-  secret: false,
+  supportsSecretInput: false,
 };
 test("editable queued alternative retains metadata ownership", () => {
   const text = captured("async-editor-first.txt")

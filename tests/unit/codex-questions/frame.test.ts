@@ -69,7 +69,7 @@ test("validates full prompt and ordered option labels", () => {
     options: [{ label: "Amber" }, { label: "Blue" }],
     selection: "single",
     textMode: "alternative",
-    secret: false,
+    supportsSecretInput: false,
   };
   expect(matchesQuestion(view, question)).toBe(true);
   expect(matchesQuestion(view, { ...question, prompt: "Other" })).toBe(false);

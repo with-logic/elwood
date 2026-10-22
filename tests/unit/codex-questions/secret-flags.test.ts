@@ -52,7 +52,9 @@ for (const variant of variants) {
     expect(
       h.registry
         .list()
-        .every((request) => request.questions.every((question) => question.secret === false)),
+        .every((request) =>
+          request.questions.every((question) => question.supportsSecretInput === false),
+        ),
     ).toBe(true);
   });
 }

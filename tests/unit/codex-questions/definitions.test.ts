@@ -46,10 +46,12 @@ test.each([
 });
 test("absent and false secret flags preserve supported capability declarations", () => {
   for (const flags of [{}, { isSecret: false }]) {
-    expect(parseQuestions([{ title: "Q", ...flags }], true)?.[0]?.definition.secret).toBe(false);
+    expect(
+      parseQuestions([{ title: "Q", ...flags }], true)?.[0]?.definition.supportsSecretInput,
+    ).toBe(false);
     expect(
       parseQuestions([{ id: "q", question: "Q", options: [{ label: "A" }], ...flags }], false)?.[0]
-        ?.definition.secret,
+        ?.definition.supportsSecretInput,
     ).toBe(false);
   }
 });
