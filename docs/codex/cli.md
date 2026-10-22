@@ -74,6 +74,16 @@ use `on("activity", ...)` for progress. These are live observations, not token
 deltas or replayed history, and their text may contain sensitive conversation
 content just like final replies.
 
+## Native questions
+
+Codex modal and queued question tools surface through Elwood's shared
+`question` event, normalized `question` activity, `listQuestions()` and
+`answerQuestions()`. Modal question sets are one request; queued asynchronous
+questions are independently answerable requests and can coexist with ongoing
+work. Question-bearing asynchronous messages remain distinct from final replies,
+even when their native record says `phase: "final_answer"`. See
+[native questions](../questions.md) for consumer usage and lifecycle details.
+
 ## Resume Implications
 
 Codex stores transcripts locally under Codex-owned state. Elwood should persist
