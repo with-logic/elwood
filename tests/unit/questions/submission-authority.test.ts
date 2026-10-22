@@ -1,29 +1,20 @@
 /** Native submission guards and authoritative hook closure (PRD §4). */
-import { expect, test } from "vitest";
-import type { AskUserQuestionInput } from "../../../src/claude/hooks/tool-types.ts";
+import { assert, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../../src/core/questions/errors.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { fixture, frame, registry } from "./helpers.ts";
-import { composer, nativeHook, nativeQuestions } from "./lifecycle-helpers.ts";
+import {
+  composer,
+  nativeHook,
+  nativeQuestions,
+  singleQuestionToolInput,
+} from "./lifecycle-helpers.ts";
 
-const toolInput = {
-  questions: [
-    {
-      question: "Which test note?",
-      header: "Note",
-      multiSelect: false,
-      options: [
-        { label: "Brief (short)", description: "A short test note." },
-        { label: "Detailed (long)", description: "A long test note." },
-      ],
-    },
-  ] satisfies AskUserQuestionInput["questions"],
-} satisfies AskUserQuestionInput;
-const hook = (name = "PreToolUse") => nativeHook(name, { tool_input: toolInput });
+const hook = (name = "PreToolUse") => nativeHook(name, { tool_input: singleQuestionToolInput });
 
-test("a rejected final write cannot latch submission ownership", async () => {
+test("a final write rejected before dispatch cannot latch submission ownership", async () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
   adapter.observe(hook());
@@ -105,7 +96,8 @@ test.each([
   const adapter = new ClaudeQuestionAdapter(requests);
   adapter.observe(nativeHook());
   adapter.render(fixture("questions"));
-  const request = requests.list()[0]!;
+  const request = requests.list()[0];
+  assert.isDefined(request, "The matching native panel must publish before native closure");
   adapter.observe(
     state === "completed"
       ? nativeHook("PostToolUse")

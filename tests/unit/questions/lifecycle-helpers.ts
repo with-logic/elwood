@@ -8,6 +8,19 @@ export const nativeQuestions = definitions.map((question) => ({
   options: question.options,
   multiSelect: question.selection === "multiple",
 })) satisfies AskUserQuestionInput["questions"];
+export const singleQuestionToolInput = {
+  questions: [
+    {
+      question: "Which test note?",
+      header: "Note",
+      multiSelect: false,
+      options: [
+        { label: "Brief (short)", description: "A short test note." },
+        { label: "Detailed (long)", description: "A long test note." },
+      ],
+    },
+  ] satisfies AskUserQuestionInput["questions"],
+} satisfies AskUserQuestionInput;
 export function nativeHook(
   name = "PreToolUse",
   extra: Readonly<Record<string, unknown>> = {},

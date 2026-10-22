@@ -1,68 +1,20 @@
 /** Await correlated Claude completion despite an earlier composer redraw (PRD §4). */
+import assert from "node:assert/strict";
 import { afterEach, expect, test } from "vitest";
-import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
-import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
-import {
-  disposeTerminals,
-  paintQuestionFrame,
-  controllerHarness as setup,
-} from "./controller-helpers.ts";
-import { fixture, frame } from "./helpers.ts";
-import { composer, nativeHook } from "./lifecycle-helpers.ts";
+import { disposeTerminals } from "./controller-helpers.ts";
+import { nativeHook } from "./lifecycle-helpers.ts";
+import { type SubmissionScenario, submissionOrderDriver } from "./submission-order-driver.ts";
+import { submissionOrderSnapshot } from "./submission-order-snapshot.ts";
 
 afterEach(disposeTerminals);
-async function submit(scenario: {
-  readonly acknowledgementOrder: "composer-first" | "hook-first";
-  readonly abortAfterFinalRender?: true;
-  readonly failure?: "input" | "first-render" | "last-render";
-}) {
+async function submit(scenario: SubmissionScenario) {
   const caller = new AbortController();
-  const observed: ElwoodQuestionEvent[] = [];
-  const logging = fixture("features-logging");
-  const metrics = frame(logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"));
-  const other = frame(
-    fixture("features-both").text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
-  );
-  const successors = [
-    fixture("color-blue-highlight"),
-    fixture("features-initial"),
-    logging,
-    metrics,
-    fixture("features-both"),
-    other,
-    fixture("features-submit-highlight"),
-    fixture("review"),
-    composer(),
-  ];
-  let inputWriteCount = 0;
-  const finalRender = Promise.withResolvers<void>();
-  const h = setup({ onInput });
-  function onInput(): void {
-    if (scenario.failure === "input") throw new Error("Synthetic terminal input failure");
-    const next = successors[inputWriteCount++];
-    if (!next) throw new Error("Unexpected extra answer write");
-    const isFinalInput = inputWriteCount === successors.length;
-    if (isFinalInput && scenario.acknowledgementOrder === "hook-first")
-      h.events.emit("activity", nativeHook("PostToolUse"));
-    const rejectRender =
-      scenario.failure === "first-render" || (isFinalInput && scenario.failure === "last-render");
-    const rendered = rejectRender
-      ? Promise.reject(new Error("Synthetic native render rejection"))
-      : render(next);
-    void rendered.then(() => {
-      if (isFinalInput) finalRender.resolve();
-    }, finalRender.reject);
-  }
-  function render(current: QuestionFrame) {
-    return paintQuestionFrame(h.terminal, current);
-  }
-  h.events.on("question", (event) => observed.push(event));
-  h.questions.configure((requests) => new ClaudeQuestionAdapter(requests));
+  const driver = submissionOrderDriver(scenario);
+  const { h, observed } = driver;
   try {
-    h.events.emit("activity", nativeHook());
-    await render(fixture("questions"));
-    const request = h.questions.list()[0]!;
+    await driver.start();
+    const request = h.questions.list()[0];
+    if (!request) throw new Error("Matching native questionnaire must publish a request");
     const answers = [
       { questionId: request.questions[0]!.id, optionIds: [request.questions[0]!.options[1]!.id] },
       {
@@ -71,41 +23,44 @@ async function submit(scenario: {
       },
     ];
     const pending = h.questions
-      .answer(request.id, answers, { timeoutMs: 3000, signal: caller.signal })
+      .answer(request.id, answers, {
+        timeoutMs: 3000,
+        signal: caller.signal,
+      })
       .then(
         () => ({ kind: "resolved" as const }),
         (error: unknown) => ({ kind: "failed" as const, error }),
       );
-    await Promise.race([
-      finalRender.promise,
-      pending.then((outcome) => {
-        if (outcome.kind === "failed") throw outcome.error;
-        return finalRender.promise;
-      }),
-    ]);
+    // Failure cases await the real answer operation; finalRender only synchronizes successful paints.
+    const failureOutcome = scenario.failure ? await pending : undefined;
+    if (!scenario.failure)
+      await Promise.race([
+        driver.finalRender,
+        pending.then((outcome) => {
+          if (outcome.kind === "failed") throw outcome.error;
+          return driver.finalRender;
+        }),
+      ]);
     const requestsAtFinalRender = h.questions.list();
     if (scenario.abortAfterFinalRender) {
       caller.abort();
       await pending;
     }
-    const stateBeforeAcknowledgement = {
-      answerable: h.questions.registry.get(request.id),
-      requests: h.questions.list(),
-      nativeReservation: h.questions.registry.find("native"),
-      pending: h.questions.registry.hasPending(),
-      blocksInput: h.questions.blocksInput(),
-      closed: observed.filter((event) => event.phase === "closed"),
-    };
-    if (scenario.acknowledgementOrder === "composer-first")
+    const stateAtFinalRender = scenario.failure
+      ? undefined
+      : submissionOrderSnapshot(h, request, observed);
+    if (!scenario.failure && scenario.acknowledgementOrder === "composer-first")
       h.events.emit("activity", nativeHook("PostToolUse"));
     return {
-      outcome: await pending,
-      inputWriteCount,
-      expectedInputWriteCount: successors.length,
+      outcome: failureOutcome ?? (await pending),
+      inputWriteCount: driver.inputWriteCount(),
+      expectedInputWriteCount: driver.expectedInputWriteCount,
+      renderFailures: driver.renderFailures,
+      injectedRenderFailure: driver.injectedRenderFailure,
       observed,
       requestsAtFinalRender,
       request,
-      stateBeforeAcknowledgement,
+      stateAtFinalRender,
       nativeReservationAfterAcknowledgement: h.questions.registry.find("native"),
       holdsInputAfterAcknowledgement: h.questions.blocksInput(),
     };
@@ -139,7 +94,8 @@ test("abort after final Enter retires API authority until the later native answe
   });
   expect(result.inputWriteCount).toBe(result.expectedInputWriteCount);
   expect(result.requestsAtFinalRender).toEqual([result.request]);
-  expect(result.stateBeforeAcknowledgement).toEqual({
+  assert.ok(result.stateAtFinalRender);
+  expect(result.stateAtFinalRender).toEqual({
     answerable: undefined,
     requests: [],
     nativeReservation: result.request,
@@ -150,20 +106,30 @@ test("abort after final Enter retires API authority until the later native answe
   expect(result.nativeReservationAfterAcknowledgement).toBeUndefined();
   expect(result.holdsInputAfterAcknowledgement).toBe(false);
   expect(result.observed.filter((event) => event.phase === "closed")).toEqual(
-    result.stateBeforeAcknowledgement.closed,
+    result.stateAtFinalRender.closed,
   );
 });
 
 test.each([
   "first-render",
   "last-render",
-] as const)("%s propagates the original rendering failure", async (failure) => {
-  await expect(submit({ acknowledgementOrder: "composer-first", failure })).rejects.toThrow(
-    "Synthetic native render rejection",
+] as const)("%s reaches the real answer operation through its rendered-write seam", async (failure) => {
+  const result = await submit({ acknowledgementOrder: "composer-first", failure });
+  expect(result.outcome).toMatchObject({
+    kind: "failed",
+    error: { code: "question_answer_failed", details: { category: "adapter" } },
+  });
+  expect(result.renderFailures).toHaveLength(1);
+  expect(result.renderFailures[0]).toBe(result.injectedRenderFailure);
+  expect(result.inputWriteCount).toBe(
+    failure === "first-render" ? 1 : result.expectedInputWriteCount,
   );
 });
-test("an early answer failure rejects without waiting for the final rendering", async () => {
-  await expect(
-    submit({ acknowledgementOrder: "composer-first", failure: "input" }),
-  ).rejects.toMatchObject({ code: "question_answer_failed" });
+test("an early input failure reaches the answer operation as terminal_write", async () => {
+  const result = await submit({ acknowledgementOrder: "composer-first", failure: "input" });
+  expect(result.outcome).toMatchObject({
+    kind: "failed",
+    error: { code: "question_answer_failed", details: { category: "terminal_write" } },
+  });
+  expect(result.inputWriteCount).toBe(1);
 });
