@@ -4,13 +4,15 @@ All notable **consumer-facing** changes to Elwood are recorded here: new or
 changed public API, session/lifecycle behavior, activity/event shapes, and bug
 fixes a host application would notice. Internal refactors, test-only changes,
 and doc tweaks are omitted. The format follows
-[Keep a Changelog](https://keepachangelog.com); this project is pre-1.0, so
-everything lands under **Unreleased** until the first tagged release.
+[Keep a Changelog](https://keepachangelog.com). Changes accumulate under
+**Unreleased** and move into a versioned section for each release.
 
 Observable behavior is specified in `prd/`; the conformance criteria that
 back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-22
 
 - Codex question turns settle after native completion even when consecutive answer echoes contain caret-like multiline text.
 
@@ -26,6 +28,7 @@ back each entry are listed in `prd/14-conformance.md`.
   promises exceed the notification registration cap.
 
 - Keep native Claude questionnaires blocking when question text contains composer-like carets, fences, or navigation-footer copy.
+
 
 - Report contained question and companion activity listener failures once per
   live session with a content-free `question_observer_failed` warning.
