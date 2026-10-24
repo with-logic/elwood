@@ -79,9 +79,10 @@ node --expose-gc --no-warnings scripts/performance/fleet/index.ts
 ```
 
 This probe starts 50 production runtimes, alternating Claude and Codex, with
-synthetic PTY producers. It exercises real local hook sockets, transcript
-watchers, frame observers, public snapshots and cleanup without launching agent
-CLIs or making model calls. Each session receives 80 full-screen redraws at
+synthetic PTY producers. Dependency seams model macOS even on other hosts; this
+does not test native-agent support on those hosts. It exercises real local hook
+sockets, transcript watchers, frame observers, public snapshots and cleanup without
+launching agent CLIs or making model calls. Each session receives 80 full-screen redraws at
 120 columns by 40 rows, then 1,200 scrolling lines. Assertions check all
 15,155,250 output bytes, 500 transcript activities and final viewport markers.
 The process reports setup separately, a two-second idle CPU sample, active CPU,

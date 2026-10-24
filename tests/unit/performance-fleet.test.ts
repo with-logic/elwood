@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { additionalResources } from "../../scripts/performance/fleet/resources.ts";
 import { createFleet } from "../../scripts/performance/fleet/runtime.ts";
 import { exerciseFleet } from "../../scripts/performance/fleet/workload.ts";
+import { setPlatformForTests } from "../../src/runtime/seams.ts";
 import { resetGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { resetStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
 import { sessionSocketHome } from "../../src/state/socket-home.ts";
@@ -23,7 +24,8 @@ test("C-LIFE-10 fleet resources count extra handles of a baseline type", () => {
   expect(additionalResources(["PipeWrap", "Timeout"], ["PipeWrap"])).toEqual([]);
 });
 
-test("C-LIFE-10 fleet disposal removes every session's private socket home", async () => {
+test("C-LIFE-10 synthetic fleet cleans up both adapters on a non-macOS host", async () => {
+  setPlatformForTests("linux");
   const fleet = await createFleet(2);
   const homes = fleet.sessions.map((session, index) =>
     sessionSocketHome({

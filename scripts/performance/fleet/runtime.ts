@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ElwoodAgentSession } from "../../../src/core/agent-session.ts";
 import { startClaude, startCodex } from "../../../src/index.ts";
-import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../../src/runtime/seams.ts";
+import {
+  setCommandRunnerForTests,
+  setPlatformForTests,
+  setPtyFactoryForTests,
+} from "../../../src/runtime/seams.ts";
 import { setGroupKillerForTests } from "../../../src/runtime/shutdown/reap-tree.ts";
 import { setStartupWaitMsForTests } from "../../../src/runtime/startup/index.ts";
 import { FakePty } from "../../../tests/helpers/fake-pty.ts";
@@ -18,6 +22,7 @@ export async function createFleet(count: number) {
   const root = mkdtempSync(join(tmpdir(), "elwood_fleet_bench-"));
   const ptys = new Map<string, FakePty>();
   const sessions: ElwoodAgentSession[] = [];
+  setPlatformForTests("darwin");
   setStartupWaitMsForTests(1);
   setGroupKillerForTests({
     killGroup() {
