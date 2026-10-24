@@ -80,3 +80,10 @@ cap does not constrain your state layout.
   before the user starts a session — use `listClaudeModels`/`listCodexModels`.
   They spin up a throwaway session, list, and always tear it down, so they cost
   a few seconds each; cache the result in the parent app if you call them often.
+
+## Scaling concurrent sessions
+
+See [performance.md](performance.md) for the fifty-session workload, measured
+CPU improvement, and the existing `terminal.xterm.options.scrollback` history
+budget. Headless history and the browser terminal's history are separate;
+choose both budgets and avoid polling fresh snapshots for hidden sessions.
