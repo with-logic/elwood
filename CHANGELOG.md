@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-24
+
 - Reduce repeated terminal viewport conversion across frame observers, preserving fresh public snapshots and direct xterm writes.
 
 ## [0.2.0] - 2026-10-22

@@ -549,6 +549,8 @@ immediate; both are safe after the process has already exited.
   size, and persisting/resuming.
 - [docs/embedding.md](docs/embedding.md): wiring a session into a host
   application (Electron and similar).
+- [docs/performance.md](docs/performance.md): fifty-session measurements, headless
+  history budgets, and terminal-engine assessment.
 - [docs/loops.md](docs/loops.md): recurring prompts and `/loop` parsing.
 - [docs/images.md](docs/images.md): attaching images to a turn.
 - [docs/login-recovery.md](docs/login-recovery.md): detecting and recovering an

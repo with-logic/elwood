@@ -129,3 +129,63 @@ These measurements exclude browser rendering and agent-process memory/CPU.
 The probe's final screen assertions and 500 activity count protect this workload;
 they do not establish correctness for every native dialog. The repository's
 conformance suite remains the merge gate.
+
+## Consumer memory and rendering budgets
+
+Elwood's headless xterm retains 1,000 history lines by default. Consumers that
+retain their own raw terminal history can opt out of headless scrollback through
+the existing advanced xterm handle:
+
+```ts
+const session = await startCodex({ cwd });
+session.terminal.xterm.options.scrollback = 0;
+```
+
+The same setting applies to Claude sessions. Apply it at session creation,
+before sustained output. This discards headless scrollback and changes what
+xterm can recover/reflow on scrolling and resizing; choose a small nonzero
+budget if that history is needed. It does not change the consumer's own replay
+store or browser terminal's independent scrollback setting.
+
+Three alternating default/zero-history runs of the fixed 50-session workload
+on Node 26.3.1, commit `f6e4406c`, measured the following medians after
+1,200 scrolling lines per session. The experimental preload changed only xterm
+constructor scrollback; all byte, transcript, viewport and cleanup assertions
+passed. A separate two-adapter smoke used the public setter above and verified
+zero history rows after scrolling. This is a configuration comparison, not a
+runtime default change.
+
+| Parent-process memory | Default 1,000 lines | Zero history |
+|---|---:|---:|
+| Live JS heap | 53.080 MiB | 38.977 MiB |
+| External memory | 81.017 MiB | 13.065 MiB |
+| Process RSS | 318.766 MiB | 231.484 MiB |
+
+JS heap samples ranged from 53.078–53.080 MiB at the default budget and
+34.650–38.987 MiB at zero history. History, dimensions, GC and host activity
+affect these values. CPU and
+idle timing varied enough that no CPU benefit is claimed for this setting.
+
+For many-session consumers:
+
+- Feed all ordered `terminal:data` bytes to the consumer's terminal/history
+  pipeline; batch browser writes without dropping bytes or ANSI boundaries.
+- Keep only visible terminals rendering. Bound browser scrollback independently
+  and avoid polling public snapshots for every hidden session. Public snapshots
+  deliberately perform a fresh viewport read.
+- Use normalized activity for chat/progress updates. Append to a bounded store
+  and batch UI updates instead of rerendering all terminal history per event.
+- Measure Elwood parent CPU separately from agent child processes and the UI
+  renderer. Browser refresh/history costs do not appear in the headless probe.
+
+The update-dialog prefilter prototype reduced active CPU by 3.8% in its matched
+window, below this investigation's 5% decision threshold, and was not retained.
+Fifty idle sessions used roughly 20 ms of parent CPU per two seconds; the
+measurements did not justify a polling rewrite. The
+[terminal engine assessment](performance/terminal-engines.md) records the
+Ghostty prototype and the compatibility requirements for a replacement.
+
+The fleet probe dispatches authenticated local hook requests directly; it does
+not launch the generated hook-bridge subprocess for each request. Bridge-process
+startup/CPU, agent processes and the browser need separate measurements. The
+parent-process results do not establish a whole-system scaling guarantee.
