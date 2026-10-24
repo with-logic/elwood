@@ -137,7 +137,9 @@ retain their own raw terminal history can opt out of headless scrollback through
 the existing advanced xterm handle:
 
 ```ts
-const session = await startCodex({ cwd });
+import { CodexSession } from "@with-logic/elwood";
+
+const session = await new CodexSession({ cwd }).start();
 session.terminal.xterm.options.scrollback = 0;
 ```
 
