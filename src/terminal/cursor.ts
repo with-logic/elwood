@@ -32,7 +32,7 @@ export function subscribeRender(terminal: ElwoodTerminal, listener: () => void):
   return tracked.get(terminal.xterm)?.subscribe(listener) ?? (() => undefined);
 }
 
-/** Called inside an owned render callback; subsequent trust reads reuse this snapshot. */
+/** Completed-render and post-parse picker observations share text with subsequent trust reads. */
 export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
   return tracked.get(terminal.xterm)?.snapshot(() => terminal.snapshot()) ?? terminal.snapshot();
 }
@@ -74,6 +74,11 @@ export class RenderCursor {
       ),
       terminal.parser.registerEscHandler({ final: "c" }, reset),
       terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset),
+      {
+        dispose: invalidateOnMutation(terminal, () => {
+          this.frame = undefined;
+        }),
+      },
     ];
   }
 
@@ -125,4 +130,34 @@ export class RenderCursor {
     this.listeners.clear();
     for (const handler of this.handlers) handler.dispose();
   }
+}
+
+/** Raw xterm mutations bypass owned revisions, but must never reuse older viewport text. */
+function invalidateOnMutation(terminal: Terminal, invalidate: () => void): () => void {
+  const restore: Array<() => void> = [];
+  const writes: readonly ("write" | "writeln")[] = ["write", "writeln"];
+  for (const method of writes) {
+    const original = terminal[method];
+    const write = original.bind(terminal);
+    terminal[method] = (data, callback) => {
+      // writeln can parse its first internal write synchronously after user input.
+      invalidate();
+      write(data, () => {
+        invalidate();
+        callback?.();
+      });
+    };
+    restore.push(() => {
+      terminal[method] = original;
+    });
+  }
+  const reset = terminal.reset;
+  terminal.reset = () => {
+    reset.call(terminal);
+    invalidate();
+  };
+  return () => {
+    for (const method of restore) method();
+    terminal.reset = reset;
+  };
 }

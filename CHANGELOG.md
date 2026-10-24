@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reduce repeated terminal viewport conversion across frame observers, preserving fresh public snapshots and direct xterm writes.
+
 ## [0.2.0] - 2026-10-22
 
 - Codex question turns settle after native completion even when consecutive answer echoes contain caret-like multiline text.

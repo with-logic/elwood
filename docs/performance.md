@@ -71,3 +71,61 @@ under active output.
 Re-run the probe after changes to rendering, frame classification, replay,
 transcript polling, or cleanup. Compare output correctness and cleanup as well
 as throughput, memory, and event-loop delay.
+
+## Fifty-session runtime workload
+
+```sh
+node --expose-gc --no-warnings scripts/performance/fleet/index.ts
+```
+
+This probe starts 50 production runtimes, alternating Claude and Codex, with
+synthetic PTY producers. Dependency seams model macOS even on other hosts; this
+does not test native-agent support on those hosts. It exercises real local hook
+sockets, transcript watchers, frame observers, public snapshots and cleanup without
+launching agent CLIs or making model calls. Each session receives 80 full-screen redraws at
+120 columns by 40 rows, then 1,200 scrolling lines. Assertions check all
+15,155,250 output bytes, 500 transcript activities and final viewport markers.
+The process reports setup separately, a two-second idle CPU sample, active CPU,
+wall time, event-loop delay, live memory after GC and resource cleanup.
+For a quick smoke run, set `ELWOOD_BENCH_SESSIONS=2 ELWOOD_BENCH_ROUNDS=2`.
+
+### October 24, 2026: shared completed-frame text
+
+Three alternating reference/candidate pairs used the same worktree, v2 probe
+and Node 26.3.1 on the development Mac. Both sides used the benchmark from
+`f6e4406c`; the reference restored runtime files from release `ba8b634e`
+(0.2.0), while the candidate used the runtime at `f6e4406c`.
+Values below are medians, not guarantees. Host activity changed absolute
+timings substantially between measurement windows; compare matched pairs.
+
+| Parent-process metric | Reference | Shared frame | Change |
+|---|---:|---:|---:|
+| Active CPU | 1,177.071 ms | 1,043.927 ms | −11.3% |
+| Idle CPU over two seconds | 20.955 ms | 22.113 ms | +1.158 ms; variable |
+| Live JS heap | 52.828 MiB | 53.084 MiB | +0.5% |
+
+Active CPU samples were 1,176.453 / 1,177.071 / 1,195.298 ms before and
+1,043.927 / 1,045.998 / 1,031.162 ms after. Every v2 run passed per-session
+byte/activity attribution, final viewport markers and resource-count checks.
+The probe awaits teardown of every session, removing private socket homes before
+its shared root. Regression tests verify filesystem cleanup, rejection ordering,
+extra handles of an existing type and offsetting per-session accounting gaps.
+Idle samples ranged from 20.275–25.492 ms before and 16.285–23.858 ms after;
+no idle optimization is claimed. The CPU reduction is below the initial 15%
+estimate, with effectively unchanged live heap.
+
+The change removes a second viewport conversion in foreign-picker observation
+while preserving fresh public snapshots and input-boundary reads. Raw xterm
+writes, writeln and reset invalidate private cached text; disposal restores the
+original methods. Regression tests fail with the change removed, including a
+raw write in an owned parser drain, writeln's synchronous parse after user input
+and method restoration on disposal.
+
+An earlier v1 comparison measured 10.3% lower CPU. Its aggregate assertions
+did not establish per-session completeness, same-type handle counts or socket-home
+removal; the v2 comparison above supersedes that result.
+
+These measurements exclude browser rendering and agent-process memory/CPU.
+The probe's final screen assertions and 500 activity count protect this workload;
+they do not establish correctness for every native dialog. The repository's
+conformance suite remains the merge gate.
