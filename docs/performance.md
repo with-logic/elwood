@@ -90,29 +90,39 @@ For a quick smoke run, set `ELWOOD_BENCH_SESSIONS=2 ELWOOD_BENCH_ROUNDS=2`.
 
 ### October 24, 2026: shared completed-frame text
 
-Three alternating reference/candidate pairs used the same worktree, workload
-and Node 26.3.1 on the development Mac. The reference is commit `bbda211e`
-(the 0.2.0 runtime plus this probe); the candidate is `34ab7dd5`.
+Three alternating reference/candidate pairs used the same worktree, v2 probe
+and Node 26.3.1 on the development Mac. Both sides used the benchmark from
+`f6e4406c`; the reference restored runtime files from release `ba8b634e`
+(0.2.0), while the candidate used the runtime at `f6e4406c`.
 Values below are medians, not guarantees. Host activity changed absolute
 timings substantially between measurement windows; compare matched pairs.
 
 | Parent-process metric | Reference | Shared frame | Change |
 |---|---:|---:|---:|
-| Active CPU | 1,165.772 ms | 1,045.619 ms | −10.3% |
-| Idle CPU over two seconds | 20.819 ms | 20.215 ms | Within noise |
-| Live JS heap | 53.262 MiB | 53.306 MiB | Within noise |
+| Active CPU | 1,177.071 ms | 1,043.927 ms | −11.3% |
+| Idle CPU over two seconds | 20.955 ms | 22.113 ms | +1.158 ms; variable |
+| Live JS heap | 52.828 MiB | 53.084 MiB | +0.5% |
 
-Active CPU samples were 1,165.772 / 1,174.442 / 1,151.372 ms before and
-1,047.047 / 1,030.526 / 1,045.619 ms after. Every v1 run passed fleet-wide
-byte/activity totals, viewport markers and a resource-type membership check. That v1 check did not establish per-session
-completeness, same-type handle counts, or removal of stable socket-home directories.
-The current v2 probe checks per-session byte/activity attribution and resource
-counts, and awaits teardown of every session before removing its shared root.
-The measured reduction is smaller than the initial 15% estimate. It removes a second viewport conversion in foreign-picker
-observation while preserving fresh public snapshots and input-boundary reads.
-Raw xterm writes, writeln and reset invalidate private cached text. Regression
-tests fail with the change removed, including a raw write in an owned parser
-drain and writeln's synchronous parse after user input.
+Active CPU samples were 1,176.453 / 1,177.071 / 1,195.298 ms before and
+1,043.927 / 1,045.998 / 1,031.162 ms after. Every v2 run passed per-session
+byte/activity attribution, final viewport markers and resource-count checks.
+The probe awaits teardown of every session, removing private socket homes before
+its shared root. Regression tests verify filesystem cleanup, rejection ordering,
+extra handles of an existing type and offsetting per-session accounting gaps.
+Idle samples ranged from 20.275–25.492 ms before and 16.285–23.858 ms after;
+no idle optimization is claimed. The CPU reduction is below the initial 15%
+estimate, with effectively unchanged live heap.
+
+The change removes a second viewport conversion in foreign-picker observation
+while preserving fresh public snapshots and input-boundary reads. Raw xterm
+writes, writeln and reset invalidate private cached text; disposal restores the
+original methods. Regression tests fail with the change removed, including a
+raw write in an owned parser drain, writeln's synchronous parse after user input
+and method restoration on disposal.
+
+An earlier v1 comparison measured 10.3% lower CPU. Its aggregate assertions
+did not establish per-session completeness, same-type handle counts or socket-home
+removal; the v2 comparison above supersedes that result.
 
 These measurements exclude browser rendering and agent-process memory/CPU.
 The probe's final screen assertions and 500 activity count protect this workload;
