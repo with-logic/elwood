@@ -4,13 +4,16 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
-import { startClaude, startCodex } from "../../src/index.ts";
-import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
-import { setStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
-import { FakePty } from "../../tests/helpers/fake-pty.ts";
+import type { ElwoodAgentSession } from "../../../src/core/agent-session.ts";
+import { startClaude, startCodex } from "../../../src/index.ts";
+import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../../src/runtime/seams.ts";
+import { setGroupKillerForTests } from "../../../src/runtime/shutdown/reap-tree.ts";
+import { setStartupWaitMsForTests } from "../../../src/runtime/startup/index.ts";
+import { FakePty } from "../../../tests/helpers/fake-pty.ts";
 
+/** Installs standalone-process test seams and returns sessions/producers in an owned temp root.
+ * The caller must await dispose() to tear down every runtime and remove its files/socket homes.
+ */
 export async function createFleet(count: number) {
   const root = mkdtempSync(join(tmpdir(), "elwood_fleet_bench-"));
   const ptys = new Map<string, FakePty>();
@@ -73,17 +76,29 @@ export async function createFleet(count: number) {
       pty: (session: ElwoodAgentSession) => ptys.get(session.cwd)!,
       async dispose() {
         try {
-          await Promise.all(sessions.map((session) => session.kill()));
+          await teardownFleet(sessions, root);
         } finally {
           ptys.clear();
           sessions.length = 0;
-          rmSync(root, { recursive: true, force: true });
         }
       },
     };
   } catch (error) {
-    await Promise.allSettled(sessions.map((session) => session.kill()));
-    rmSync(root, { recursive: true, force: true });
+    try {
+      await teardownFleet(sessions, root);
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Fleet startup and cleanup failed.");
+    }
     throw error;
   }
+}
+
+/** Waits for every teardown before removing shared files, retaining all shutdown failures. */
+async function teardownFleet(sessions: readonly ElwoodAgentSession[], root: string): Promise<void> {
+  const outcomes = await Promise.allSettled(sessions.map((session) => session.teardown()));
+  rmSync(root, { recursive: true, force: true });
+  const errors = outcomes.flatMap((outcome) =>
+    outcome.status === "rejected" ? [outcome.reason] : [],
+  );
+  if (errors.length > 0) throw new AggregateError(errors, "Fleet teardown failed.");
 }

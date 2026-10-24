@@ -3,8 +3,9 @@
 import assert from "node:assert/strict";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
-import { createFleet } from "./fleet-runtime.ts";
-import { exerciseFleet } from "./fleet-workload.ts";
+import { additionalResources } from "./resources.ts";
+import { createFleet } from "./runtime.ts";
+import { exerciseFleet } from "./workload.ts";
 
 const count = Number(process.env["ELWOOD_BENCH_SESSIONS"] ?? 50);
 const rounds = Number(process.env["ELWOOD_BENCH_ROUNDS"] ?? 80);
@@ -40,8 +41,8 @@ try {
     heapMiB: memory.heapUsed / 1024 ** 2,
     rssMiB: memory.rss / 1024 ** 2,
     externalMiB: memory.external / 1024 ** 2,
-    latencyP99Ms: loop.percentile(99) / 1e6,
-    latencyMaxMs: loop.max / 1e6,
+    eventLoopP99Ms: loop.percentile(99) / 1e6,
+    eventLoopMaxMs: loop.max / 1e6,
     elapsedMs,
     ...counts,
     correct: 1,
@@ -51,9 +52,7 @@ try {
 }
 await delay(100);
 globalThis.gc?.();
-const resources = process
-  .getActiveResourcesInfo()
-  .filter((name) => !initialResources.includes(name));
+const resources = additionalResources(initialResources, process.getActiveResourcesInfo());
 assert.deepEqual(resources, []);
 process.stdout.write(
   `${JSON.stringify({

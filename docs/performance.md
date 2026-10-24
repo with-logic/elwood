@@ -75,7 +75,7 @@ as throughput, memory, and event-loop delay.
 ## Fifty-session runtime workload
 
 ```sh
-node --expose-gc --no-warnings scripts/performance/fleet.ts
+node --expose-gc --no-warnings scripts/performance/fleet/index.ts
 ```
 
 This probe starts 50 production runtimes, alternating Claude and Codex, with
@@ -103,9 +103,12 @@ timings substantially between measurement windows; compare matched pairs.
 | Live JS heap | 53.262 MiB | 53.306 MiB | Within noise |
 
 Active CPU samples were 1,165.772 / 1,174.442 / 1,151.372 ms before and
-1,047.047 / 1,030.526 / 1,045.619 ms after. Every run passed byte, transcript,
-viewport and resource checks. The measured reduction is smaller than the
-initial 15% estimate. It removes a second viewport conversion in foreign-picker
+1,047.047 / 1,030.526 / 1,045.619 ms after. Every v1 run passed fleet-wide
+byte/activity totals, viewport markers and a resource-type membership check. That v1 check did not establish per-session
+completeness, same-type handle counts, or removal of stable socket-home directories.
+The current v2 probe checks per-session byte/activity attribution and resource
+counts, and awaits teardown of every session before removing its shared root.
+The measured reduction is smaller than the initial 15% estimate. It removes a second viewport conversion in foreign-picker
 observation while preserving fresh public snapshots and input-boundary reads.
 Raw xterm writes, writeln and reset invalidate private cached text. Regression
 tests fail with the change removed, including a raw write in an owned parser

@@ -1,9 +1,11 @@
 /** Current frame evidence is shared and cached only across unchanged renders (C-TRUST-01). */
+import xtermHeadless from "@xterm/headless";
 import { expect, test, vi } from "vitest";
 import {
   captureRenderProgress,
   currentRenderedFrame,
   hasUnknownOrNonPristineOutput,
+  RenderCursor,
   renderedSnapshot,
   subscribeRender,
 } from "../../src/terminal/cursor.ts";
@@ -49,6 +51,26 @@ test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on ou
   const snapshot = { cols: 1, rows: 1, cursorX: 0, cursorY: 0, lines: [""], text: "" };
   capture.mockReturnValue(snapshot);
   expect(renderedSnapshot(terminal)).toBe(snapshot);
+});
+
+test("C-API-15 disposal detaches frame invalidation from retained raw xterm handles", async () => {
+  const terminal = new xtermHeadless.Terminal({ allowProposedApi: true });
+  const original = { write: terminal.write, writeln: terminal.writeln, reset: terminal.reset };
+  const cursor = new RenderCursor(terminal, () => false);
+  try {
+    expect(terminal.write).not.toBe(original.write);
+    cursor.dispose();
+    expect(terminal.write).toBe(original.write);
+    expect(terminal.writeln).toBe(original.writeln);
+    expect(terminal.reset).toBe(original.reset);
+    await new Promise<void>((resolve) => terminal.writeln("still usable", resolve));
+    expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe("still usable");
+    terminal.reset();
+    expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe("");
+  } finally {
+    cursor.dispose();
+    terminal.dispose();
+  }
 });
 
 const rawMethods: readonly ("write" | "writeln")[] = ["write", "writeln"];
