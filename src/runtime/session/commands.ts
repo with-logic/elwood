@@ -49,7 +49,7 @@ export type CommandSurfaceDeps = {
   readonly blocked: () => boolean;
   readonly picker: () => ModelPickerSpec;
   readonly controlQueue: ControlQueue;
-  readonly observeRendered?: (listener: () => void) => void;
+  readonly observeRendered?: (listener: (read?: () => string) => void) => void;
   readonly inputSignal?: () => AbortSignal;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
 };

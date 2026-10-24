@@ -16,7 +16,7 @@ import {
 
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
-  readonly observeRendered?: (listener: () => void) => void;
+  readonly observeRendered?: (listener: (read?: () => string) => void) => void;
   readonly inputSignal?: () => AbortSignal;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
   /** Also carries the optional observation barrier (`settled`/`renderFailed`) when real. */
@@ -35,7 +35,7 @@ export class PickerTransactions {
   private clearStreak = 0;
   constructor(deps: PickerDeps) {
     this.deps = deps;
-    deps.observeRendered?.(() => this.foreignDialogVisible());
+    deps.observeRendered?.((read) => this.foreignDialogVisible(read));
   }
 
   /**
@@ -71,10 +71,10 @@ export class PickerTransactions {
    * human's state, so a WRITE that is not part of a picker transaction — `/login`
    * recovery, a queued paste — must be withheld while it is up (C-API-55).
    */
-  foreignDialogVisible(): boolean {
+  foreignDialogVisible(read?: () => string): boolean {
     if (this.survivor !== undefined) return false;
     if (this.active?.progress.commandSubmitted && !this.active.signal.aborted) return false;
-    return this.foreign.observe(this.deps.terminal.snapshot().text, this.deps.picker());
+    return this.foreign.observe(read?.() ?? this.deps.terminal.snapshot().text, this.deps.picker());
   }
 
   /**

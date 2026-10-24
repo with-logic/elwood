@@ -75,6 +75,9 @@ export class RenderCursor {
       terminal.parser.registerEscHandler({ final: "c" }, reset),
       terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset),
     ];
+    invalidateOnMutation(terminal, () => {
+      this.frame = undefined;
+    });
   }
 
   received(): number {
@@ -125,4 +128,25 @@ export class RenderCursor {
     this.listeners.clear();
     for (const handler of this.handlers) handler.dispose();
   }
+}
+
+/** Raw xterm mutations bypass owned revisions, but must never reuse older viewport text. */
+function invalidateOnMutation(terminal: Terminal, invalidate: () => void): void {
+  const writes: readonly ("write" | "writeln")[] = ["write", "writeln"];
+  for (const method of writes) {
+    const write = terminal[method].bind(terminal);
+    terminal[method] = (data, callback) => {
+      // writeln can parse its first internal write synchronously after user input.
+      invalidate();
+      write(data, () => {
+        invalidate();
+        callback?.();
+      });
+    };
+  }
+  const reset = terminal.reset.bind(terminal);
+  terminal.reset = () => {
+    reset();
+    invalidate();
+  };
 }
