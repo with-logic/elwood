@@ -71,3 +71,47 @@ under active output.
 Re-run the probe after changes to rendering, frame classification, replay,
 transcript polling, or cleanup. Compare output correctness and cleanup as well
 as throughput, memory, and event-loop delay.
+
+## Fifty-session runtime workload
+
+```sh
+node --expose-gc --no-warnings scripts/performance/fleet.ts
+```
+
+This probe starts 50 production runtimes, alternating Claude and Codex, with
+synthetic PTY producers. It exercises real local hook sockets, transcript
+watchers, frame observers, public snapshots and cleanup without launching agent
+CLIs or making model calls. Each session receives 80 full-screen redraws at
+120 columns by 40 rows, then 1,200 scrolling lines. Assertions check all
+15,155,250 output bytes, 500 transcript activities and final viewport markers.
+The process reports setup separately, a two-second idle CPU sample, active CPU,
+wall time, event-loop delay, live memory after GC and resource cleanup.
+For a quick smoke run, set `ELWOOD_BENCH_SESSIONS=2 ELWOOD_BENCH_ROUNDS=2`.
+
+### October 24, 2026: shared completed-frame text
+
+Three alternating reference/candidate pairs used the same worktree, workload
+and Node 26.3.1 on the development Mac. The reference is commit `bbda211e`
+(the 0.2.0 runtime plus this probe); the candidate is `34ab7dd5`.
+Values below are medians, not guarantees. Host activity changed absolute
+timings substantially between measurement windows; compare matched pairs.
+
+| Parent-process metric | Reference | Shared frame | Change |
+|---|---:|---:|---:|
+| Active CPU | 1,165.772 ms | 1,045.619 ms | −10.3% |
+| Idle CPU over two seconds | 20.819 ms | 20.215 ms | Within noise |
+| Live JS heap | 53.262 MiB | 53.306 MiB | Within noise |
+
+Active CPU samples were 1,165.772 / 1,174.442 / 1,151.372 ms before and
+1,047.047 / 1,030.526 / 1,045.619 ms after. Every run passed byte, transcript,
+viewport and resource checks. The measured reduction is smaller than the
+initial 15% estimate. It removes a second viewport conversion in foreign-picker
+observation while preserving fresh public snapshots and input-boundary reads.
+Raw xterm writes, writeln and reset invalidate private cached text. Regression
+tests fail with the change removed, including a raw write in an owned parser
+drain and writeln's synchronous parse after user input.
+
+These measurements exclude browser rendering and agent-process memory/CPU.
+The probe's final screen assertions and 500 activity count protect this workload;
+they do not establish correctness for every native dialog. The repository's
+conformance suite remains the merge gate.
