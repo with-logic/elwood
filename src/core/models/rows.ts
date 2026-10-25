@@ -4,7 +4,7 @@
  * Implements PRD §5.3 AgentModelOption, C-API-23, and C-API-24.
  */
 
-import { type ScrollGrammar, unmarkedRow } from "./row-block.ts";
+import { overflowMayFollowRow, type ScrollGrammar, unmarkedRow } from "./row-block.ts";
 
 export type AgentModelOption = {
   readonly id: string;
@@ -15,23 +15,42 @@ export type AgentModelOption = {
   readonly raw: string;
 };
 
+/**
+ * One rendered option row. `absoluteRowNumber` is the row's 1-based position in the WHOLE
+ * list, as the CLI numbers it: a scrolled window keeps it, so `↑ 3.` is the third model even
+ * as the first row on screen.
+ */
+export type PickerRow = {
+  readonly absoluteRowNumber: number;
+  readonly option: AgentModelOption;
+};
+
 export type ParsedModelPicker = {
+  readonly rows: readonly PickerRow[];
+  /** Each row's option, in the same order as `rows`. */
   readonly options: readonly AgentModelOption[];
-  readonly cursorIndex: number;
+  /** Index into `rows` and `options` of the highlighted row; -1 while none is painted. */
+  readonly cursorOptionIndex: number;
+  /**
+   * How many rows the window hides below its last rendered row: 0 when the window reaches
+   * the end of the list, the overflow line's count when one is drawn, and undefined when
+   * the window marks rows hidden below without a positive count, so the length is unknown.
+   */
+  readonly hiddenRowCountBelow: number | undefined;
 };
 
 export const claudeModelPickerHeader = /Select model/;
 export const codexModelPickerHeader = /Select Model and Effort/;
 
-export const rowPattern = /^\s*(❯|›)?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
+/** `1. Label  Description`, capturing the cursor glyph, absolute row number, label and description. */
+export const rowPattern = /^\s*(❯|›)?\s*(\d+)\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
 
 /**
  * Claude's rendered rows. Under `scroll`, a row wearing a scroll marker (`↓ 10.`) is an
  * ordinary option; its `raw` keeps the marker as rendered.
  */
 export function parseClaudeModelPicker(text: string, scroll?: ScrollGrammar): ParsedModelPicker {
-  const normalizeRow = (line: string) => unmarkedRow(line, scroll);
-  return parseRows(pickerRegion(text, claudeModelPickerHeader), normalizeRow, (labelText) => {
+  return parseRows(pickerRegion(text, claudeModelPickerHeader), scroll, (labelText) => {
     const isCurrent = labelText.includes("✔");
     const isDefault = /\(recommended\)/i.test(labelText);
     const label = labelText
@@ -47,38 +66,55 @@ export function parseClaudeModelPicker(text: string, scroll?: ScrollGrammar): Pa
  * `(current)` says nothing about the default; the Codex spec marks it from config.toml.
  */
 export function parseCodexModelPicker(text: string): ParsedModelPicker {
-  return parseRows(
-    pickerRegion(text, codexModelPickerHeader),
-    (line) => line,
-    (labelText) => {
-      const isCurrent = /\(current\)/i.test(labelText);
-      const isDefault = /\(default\)/i.test(labelText);
-      const label = labelText.replace(/\((?:current|default)\)/gi, "").trim();
-      return { label, id: label.toLowerCase(), isCurrent, isDefault };
-    },
-  );
+  return parseRows(pickerRegion(text, codexModelPickerHeader), undefined, (labelText) => {
+    const isCurrent = /\(current\)/i.test(labelText);
+    const isDefault = /\(default\)/i.test(labelText);
+    const label = labelText.replace(/\((?:current|default)\)/gi, "").trim();
+    return { label, id: label.toLowerCase(), isCurrent, isDefault };
+  });
 }
 
 type RowFlags = Pick<AgentModelOption, "id" | "label" | "isCurrent" | "isDefault">;
 
 function parseRows(
   region: string,
-  normalizeRow: (line: string) => string,
+  scroll: ScrollGrammar | undefined,
   decorate: (labelText: string) => RowFlags,
 ): ParsedModelPicker {
-  const options: AgentModelOption[] = [];
-  let cursorIndex = -1;
+  const rows: PickerRow[] = [];
+  let cursorOptionIndex = -1;
+  let hiddenRowCountBelow: number | undefined = 0;
+  // As in the region grammar, a count is read only from the line directly under a row
+  // `overflowMayFollowRow` allows; an overflow line anywhere else leaves the length unknown.
+  let overflowMayFollow = false;
   for (const line of region.split("\n")) {
-    const match = rowPattern.exec(normalizeRow(line));
+    const mayBeOverflow = overflowMayFollow;
+    overflowMayFollow = false;
+    const overflow = scroll?.overflow.exec(line);
+    if (overflow)
+      hiddenRowCountBelow = mayBeOverflow ? positiveCount(overflow.groups?.["hidden"]) : undefined;
+    const match = rowPattern.exec(unmarkedRow(line, scroll));
     if (!match) continue;
-    if (match[1]) cursorIndex = options.length;
-    options.push({
-      ...decorate(match[2] as string),
-      description: match[3] as string,
-      raw: line.trim(),
+    if (match[1]) cursorOptionIndex = rows.length;
+    // A `below` marker says rows are hidden; only the overflow line under it says how many.
+    if (scroll?.below.test(line) === true) hiddenRowCountBelow = undefined;
+    overflowMayFollow = overflowMayFollowRow(line, scroll);
+    rows.push({
+      absoluteRowNumber: Number(match[2]),
+      option: {
+        ...decorate(match[3] as string),
+        description: match[4] as string,
+        raw: line.trim(),
+      },
     });
   }
-  return { options, cursorIndex };
+  return { rows, options: rows.map((row) => row.option), cursorOptionIndex, hiddenRowCountBelow };
+}
+
+/** The rendered hidden-row count, returned only when it is a positive, exactly representable integer. */
+function positiveCount(text: string | undefined): number | undefined {
+  const count = Number(text);
+  return Number.isSafeInteger(count) && count > 0 ? count : undefined;
 }
 
 export { bottomDialogCandidate, bottomDialogRow, type DialogGrammar } from "./dialog-region.ts";
