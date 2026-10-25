@@ -4,7 +4,7 @@
  * rows themselves) to keep each file within the size cap. Implements C-API-24.
  */
 
-import { rowPattern } from "./rows.ts";
+import { caretRow, numberedRow, RowBlock, type ScrollGrammar } from "./row-block.ts";
 
 /**
  * What one CLI's model dialog looks like beyond the shared block rules. Each adapter owns
@@ -17,12 +17,12 @@ export type DialogGrammar = {
   readonly footer: RegExp;
   /** A row of the CLI's own that may sit between the rows and the footer. */
   readonly controlRow?: RegExp;
+  /** How the CLI windows a list longer than its viewport, if it does. */
+  readonly scroll?: ScrollGrammar;
 };
 
 // An agent reply or the composer renders below any header the transcript merely quotes.
 const replyRow = /^\s*[●•⏺]/;
-const caretRow = /^\s*[❯›]/;
-const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
 // Both CLIs separate the transcript from the composer or a lower dialog with one of these.
 const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
 // The closing hint row is ONLY hints — `key to action` clauses joined by `·` — so the footer
@@ -54,14 +54,14 @@ function opensRegion(header: string): boolean {
  * caret, or numbered row — those belong to the transcript, the composer, or another list.
  * Once the rows have STARTED the block is contiguous (real dialogs paint it in one run), so
  * only a blank or rule, the CLI's own control row (`◉ xHigh effort ←/→ to adjust`), or the
- * closing hint row may appear; free prose mid-list means these rows are not one block.
+ * closing hint row may appear; free prose mid-list means these rows are not one block. The
+ * control row is checked first: Claude's High-effort row (`● High effort …`) wears a bullet.
  */
 function mayAppearBesideRows(line: string, rowsStarted: boolean, grammar: DialogGrammar) {
+  if (rowsStarted && grammar.controlRow?.test(line) === true) return true;
   if (replyRow.test(line) || caretRow.test(line) || numberedRow.test(line)) return false;
   if (!rowsStarted) return true;
-  return (
-    blockEnd.test(line) || grammar.controlRow?.test(line) === true || isFooterRow(line, grammar)
-  );
+  return blockEnd.test(line) || isFooterRow(line, grammar);
 }
 
 /**
@@ -76,7 +76,10 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean, grammar: Dialog
  * contiguous block of picker rows numbered from 1 with at most one cursor. A staged
  * composer line, a permission or approval option, or a second numbered list is on a
  * caret row outside that block, restarts the numbering, follows a blank or rule, or
- * lacks the description column, so none of them can pass for the dialog.
+ * lacks the description column, so none of them can pass for the dialog. A windowed
+ * list (Claude's, longer than ten rows) is the one block that may start past 1: its first
+ * row wears the grammar's `above` marker, a `below` row ends it, and its overflow line
+ * (`… +K models`) may stand only directly under its last row.
  *
  * Nothing missing and nothing after: the block renders at least two numbered rows and
  * then the CLI's closing hint row, which TERMINATES it — only blank lines and rules may
@@ -89,8 +92,7 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean, grammar: Dialog
 function isNativeRegion(lines: readonly string[], grammar: DialogGrammar, complete: boolean) {
   const [header, ...body] = lines as [string, ...string[]];
   if (!opensRegion(header)) return false;
-  let next = 1;
-  let cursors = 0;
+  const block = new RowBlock({ complete, scroll: grammar.scroll });
   let footer = false;
   for (const line of body) {
     // Nothing but blank lines and rules may follow the closing hint row: a complete
@@ -102,19 +104,11 @@ function isNativeRegion(lines: readonly string[], grammar: DialogGrammar, comple
       if (!blockEnd.test(line)) return false;
       continue;
     }
-    // A row must be a full picker row (`1. Label  Description`) numbered in sequence.
-    // Anything else — a renumbered second list, a row without the description column —
-    // is not this dialog's, so the region is not one native block.
-    const candidateRow = !complete && numberedRow.test(line);
-    if (!(rowPattern.test(line) || candidateRow) || Number(numberedRow.exec(line)?.[1]) !== next) {
-      if (!mayAppearBesideRows(line, next > 1, grammar)) return false;
-      footer = isFooterRow(line, grammar);
-      continue;
-    }
-    next += 1;
-    if (caretRow.test(line)) cursors += 1;
+    if (block.accept(line)) continue;
+    if (!mayAppearBesideRows(line, block.rowCount > 0, grammar)) return false;
+    footer = isFooterRow(line, grammar);
   }
-  return cursors <= 1 && (!complete || (footer && next > minimumRows));
+  return block.cursorCount <= 1 && (!complete || (footer && block.rowCount >= minimumRows));
 }
 
 /**

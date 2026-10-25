@@ -40,6 +40,20 @@ test("C-API-24 a Codex picker closed by Claude's hint is not a live picker", () 
   expect(codexModelPicker.activeDialog(text, opened)).toBeUndefined();
 });
 
+/** Scroll markers and the overflow line are Claude's; on a Codex list they are foreign. */
+test.each([
+  ["a `↓` row", "  7. GPT-5.6-Luna ", "↓ 7. GPT-5.6-Luna "],
+  [
+    "an overflow line",
+    "  7. GPT-5.6-Luna           Older fast and efficient model.",
+    "  7. GPT-5.6-Luna           Older fast and efficient model.\n     … +2 models",
+  ],
+])("C-API-24 a Codex picker with %s is not a live picker", (_name, from, to) => {
+  const text = viewport("picker").replace(from, to);
+  expect(text).not.toBe(viewport("picker"));
+  expect(codexModelPicker.activeDialog(text, opened)).toBeUndefined();
+});
+
 test("C-API-23 listPickerModels reads every row of the 0.164.0 picker", async () => {
   const terminal = scripted(viewport("picker"));
   terminal.onInput = (input) => {
