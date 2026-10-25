@@ -6,13 +6,19 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   reapProcessGroup,
+  resetProcessTreeOpsForTests,
   rethrowUnlessGroupGone,
   SessionReaper,
+  setProcessTreeOpsForTests,
 } from "../../src/runtime/shutdown/reap-tree.ts";
+import { noDetachedSweep } from "../helpers/process-tree.ts";
 
 const LEADER = 1000;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetProcessTreeOpsForTests();
+});
 
 describe("C-LIFE-10 process-group reaping", () => {
   test("SIGKILLs the leader's process group", () => {
@@ -91,7 +97,10 @@ describe("C-LIFE-10 process-group reaping", () => {
     // recycle the pid, so a second kill(-pgid) could hit an unrelated group. The
     // latch guarantees at most one SUCCESSFUL signal per session.
     const killed: number[] = [];
-    const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
+    const reaper = new SessionReaper(LEADER, {
+      ...noDetachedSweep,
+      killGroup: (pgid) => killed.push(pgid),
+    });
     reaper.reap();
     reaper.reap();
     reaper.reap();
@@ -104,6 +113,7 @@ describe("C-LIFE-10 process-group reaping", () => {
     // succeeds once the killer recovers.
     let attempts = 0;
     const reaper = new SessionReaper(LEADER, {
+      ...noDetachedSweep,
       killGroup: (pgid) => {
         attempts += 1;
         if (attempts === 1) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
@@ -121,5 +131,15 @@ describe("C-LIFE-10 process-group reaping", () => {
     // pid 1 is refused by the guard, so the default killer performs no real signal
     // — exercising the no-injected-killer path safely.
     expect(() => new SessionReaper(1).reap()).not.toThrow();
+  });
+
+  test("ops a test leaves out of the seam are inert, never the real ones", async () => {
+    // Faking only the kill must not leave a real SIGSTOP or `ps` behind the sweep.
+    const killed: number[] = [];
+    setProcessTreeOpsForTests({ killGroup: (pgid) => killed.push(pgid) });
+    const reaper = new SessionReaper(LEADER);
+    await expect(reaper.sweepDetached(() => false)).resolves.toBeUndefined();
+    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).not.toThrow(); // a clean sweep leaves nothing owed
+    expect(killed).toEqual([LEADER]); // the sweep found nothing, so only the group reap
   });
 });

@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
+import { noDetachedSweep } from "../helpers/process-tree.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const zsh = "/bin/zsh";
@@ -20,7 +21,7 @@ if (!hasZsh) console.warn(`SKIPPING C-PTY-02: ${zsh} is not installed on this ho
 
 /** A reaper with an injected killer so tests never signal a real process group. */
 function testReaper(reaped: number[], pid = 1000) {
-  return new SessionReaper(pid, { killGroup: (pgid) => reaped.push(pgid) });
+  return new SessionReaper(pid, { ...noDetachedSweep, killGroup: (pgid) => reaped.push(pgid) });
 }
 
 afterEach(() => {
