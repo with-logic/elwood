@@ -3,8 +3,10 @@
  * descendants have moved into. Implements PRD §5.3 and §9.4 (C-LIFE-10): Claude
  * starts every hook command with `setsid()`, so a hook runs in its OWN session and
  * process group and a SIGKILL of the leader's group cannot reach it. The parent-pid
- * link is the only thing tying such a descendant to the leader, and it holds only
- * while the leader is alive — so this walk runs before Elwood kills the leader.
+ * chain is the only thing tying such a descendant to the leader, and it holds only
+ * while every process between them is alive: when any of them exits, the processes
+ * below it are reparented to PID 1 and are out of reach. So this walk runs before
+ * Elwood kills the leader, and it finds only descendants still linked at that point.
  */
 
 import { execFile } from "node:child_process";
@@ -91,37 +93,48 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
 
 /**
  * The process groups, other than the leader's own, that hold at least one LIVE
- * descendant of `leaderPid`. Descent follows parent pids transitively. Every such
- * group is safe to signal: a group lives inside one session, and every member of
- * the leader's session or of a session a descendant created is itself a
- * descendant. The host's own group and the ids `kill(-pgid)` would misroute
- * (`<= 1`) are excluded regardless.
+ * descendant of `leaderPid`, each mapped to the groups its linked members' parents are
+ * in. Descent follows parent pids transitively, so only descendants still linked to the
+ * leader when the table was read are found. A returned group holds only descendants: a
+ * group lives inside one session, and every member of the leader's session or of a
+ * session a descendant created is itself a descendant. Its id is only a snapshot, and
+ * is free for reuse once the group is gone, so the parent groups let a caller signal it
+ * only once a parent's group is frozen: a stopped parent cannot reap its exited child,
+ * so that child keeps its pid and the group keeps its id. The host's group (`hostPid`'s)
+ * and the ids `kill(-pgid)` would misroute (`<= 1`) are never returned.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
   leaderPid: number,
-  hostPid: number = process.pid,
-): ReadonlySet<number> {
+  hostPid: number,
+): ReadonlyMap<number, ReadonlySet<number>> {
+  const children = childrenByParent(table);
+  const leaderGroup = table.find((entry) => entry.pid === leaderPid)?.pgid ?? leaderPid;
+  const excluded = new Set([leaderPid, hostPid, leaderGroup]);
+  for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);
+  const groups = new Map<number, Set<number>>();
+  const pending = [{ pid: leaderPid, pgid: leaderGroup }];
+  const visited = new Set([leaderPid]);
+  for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
+    for (const child of children.get(parent.pid) ?? []) {
+      if (visited.has(child.pid)) continue;
+      visited.add(child.pid);
+      pending.push(child);
+      if (child.zombie || child.pgid <= 1 || excluded.has(child.pgid)) continue;
+      const parents = groups.get(child.pgid) ?? new Set<number>();
+      if (parent.pgid !== child.pgid) parents.add(parent.pgid);
+      groups.set(child.pgid, parents);
+    }
+  }
+  return groups;
+}
+
+function childrenByParent(table: readonly ProcessEntry[]): Map<number, ProcessEntry[]> {
   const children = new Map<number, ProcessEntry[]>();
   for (const entry of table) {
     const siblings = children.get(entry.ppid);
     if (siblings) siblings.push(entry);
     else children.set(entry.ppid, [entry]);
   }
-  const excluded = new Set([leaderPid, hostPid]);
-  for (const entry of table) {
-    if (entry.pid === leaderPid || entry.pid === hostPid) excluded.add(entry.pgid);
-  }
-  const groups = new Set<number>();
-  const pending = [leaderPid];
-  const visited = new Set<number>(pending);
-  for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
-    for (const child of children.get(parent) ?? []) {
-      if (visited.has(child.pid)) continue;
-      visited.add(child.pid);
-      pending.push(child.pid);
-      if (!child.zombie && child.pgid > 1 && !excluded.has(child.pgid)) groups.add(child.pgid);
-    }
-  }
-  return groups;
+  return children;
 }

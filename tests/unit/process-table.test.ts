@@ -61,7 +61,21 @@ describe("C-LIFE-10 detached descendant groups", () => {
       entry(6000, 1, 6000), // unrelated process: never selected
       entry(6001, HOST, 6001), // the host's other child: not a leader descendant
     ];
-    expect([...detachedDescendantGroups(table, LEADER, HOST)].sort()).toEqual([5002, 5004, 5005]);
+    // Each group maps to the groups of its members' parents: 5004's parent is 5003, in
+    // the hook's group, and 5005's parent is in the leader's own group.
+    expect(detachedDescendantGroups(table, LEADER, HOST)).toEqual(
+      new Map([
+        [5002, new Set([LEADER])],
+        [5004, new Set([5002])],
+        [5005, new Set([LEADER])],
+      ]),
+    );
+  });
+
+  test("a descendant whose own parent already exited is out of reach", () => {
+    // The hook exited and its child was reparented to PID 1: no parent pid links it now.
+    const table = [entry(LEADER, HOST, LEADER), entry(5004, 1, 5004)];
+    expect(detachedDescendantGroups(table, LEADER, HOST).size).toBe(0);
   });
 
   test("ignores groups whose descendants are all zombies", () => {
@@ -82,13 +96,22 @@ describe("C-LIFE-10 detached descendant groups", () => {
     expect(detachedDescendantGroups(table, LEADER, HOST).size).toBe(0);
   });
 
-  test("defaults the host to this process and survives a parent-pid cycle", () => {
+  test("a leader missing from the read still parents its listed children by its pid", () => {
+    // `ps` can read a leader's children in the same pass the leader's own row left.
+    expect(detachedDescendantGroups([entry(5002, LEADER, 5002)], LEADER, HOST)).toEqual(
+      new Map([[5002, new Set([LEADER])]]),
+    );
+  });
+
+  test("survives a parent-pid cycle", () => {
     const table = [
-      entry(LEADER, process.pid, LEADER),
+      entry(LEADER, HOST, LEADER),
       entry(5002, LEADER, 5002),
       entry(LEADER, 5002, LEADER), // a duplicate row closing a cycle back to the leader
     ];
-    expect([...detachedDescendantGroups(table, LEADER)]).toEqual([5002]);
+    expect(detachedDescendantGroups(table, LEADER, HOST)).toEqual(
+      new Map([[5002, new Set([LEADER])]]),
+    );
   });
 });
 
