@@ -26,6 +26,8 @@ export type ClaudeQuestionScreen =
 const CLAUDE_REVIEW_TITLE = "Review your answers";
 const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
+// A named session (`--name`) labels the prompt box's bottom border, under the footer.
+const namedBorder = /^[─━]{3,} \S.* [─━]$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
 const questionFooter = /^Enter to select · .+ · Esc to cancel$/;
 const reviewCancelRow = /^(?:❯| )\s+2\. Cancel$/;
@@ -77,7 +79,7 @@ export function parseClaudeQuestionScreen(
   const question = questions[questionIndex];
   if (!question) return undefined;
   const footer = body.findLastIndex((line) => questionFooter.test(line));
-  if (footer < 0 || body.slice(footer + 1).some((line) => line.trim())) return undefined;
+  if (footer < 0 || !hasOnlyOptionalNamedBorder(body.slice(footer + 1))) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
   const questionRows = body.slice(first, end);
@@ -122,7 +124,16 @@ export function matchesClaudeQuestionTabs(
   const title = frame.lines[questionPanelStart(frame.lines)];
   const tabs = questions.map((question) => `☐ ${question.header}`).join("  ");
   const expected = questions.length === 1 ? ` ${tabs}` : `←  ${tabs}  ✔ Submit  →`;
-  return title?.replaceAll("☒", "☐") === expected;
+  // Claude 2.1.310 pads the highlighted single-question chip with a trailing space.
+  return title?.replaceAll("☒", "☐").trimEnd() === expected;
+}
+
+/** Below the footer: blank rows, plus at most one named session's border (`──── Name ─`). */
+function hasOnlyOptionalNamedBorder(footerTail: readonly string[]): boolean {
+  const visibleRows = footerTail.filter((line) => line.trim());
+  return (
+    visibleRows.length === 0 || (visibleRows.length === 1 && namedBorder.test(visibleRows[0]!))
+  );
 }
 
 /** Header-like model copy without a native opening fence cannot replace the live panel. */

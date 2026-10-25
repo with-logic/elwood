@@ -4,7 +4,7 @@ import {
   matchesClaudeQuestionTabs,
   parseClaudeQuestionScreen,
 } from "../../../src/claude/questions/screen.ts";
-import { definitions, fixture, frame } from "./helpers.ts";
+import { definitions, fixture, frame, testPick } from "./helpers.ts";
 
 test.each([
   (text: string) => text.replace("☐ Color", "☐ Colors"),
@@ -15,6 +15,19 @@ test.each([
   expect(
     parseClaudeQuestionScreen(frame(change(fixture("questions").text)), definitions),
   ).toBeUndefined();
+});
+
+test("accepts the padded single-question chip Claude 2.1.310 renders", () => {
+  const padded = fixture("single-question", "2.1.310");
+  expect(padded.lines).toContain(" ☐ Test pick ");
+  expect(matchesClaudeQuestionTabs(padded, [testPick])).toBe(true);
+  expect(parseClaudeQuestionScreen(padded, [testPick])).toMatchObject({
+    kind: "question",
+    questionIndex: 0,
+    cursor: 0,
+  });
+  // Only trailing padding is chrome: a different header still fails.
+  expect(matchesClaudeQuestionTabs(padded, [{ ...testPick, header: "Test" }])).toBe(false);
 });
 
 test("rejects a grouped native dialog for a single-question request", () => {

@@ -30,12 +30,27 @@ export const definitions: readonly ClaudeQuestionFixture[] = [
     supportsSecretInput: false,
   },
 ];
+/** The single-question request captured from Claude Code 2.1.310. */
+export const testPick: QuestionDefinition = {
+  prompt: "Which option would you like to pick for this test?",
+  header: "Test pick",
+  options: [
+    { label: "Option A", description: "First option." },
+    { label: "Option B", description: "Second option." },
+    { label: "Option C", description: "Third option." },
+  ],
+  selection: "single",
+  textMode: "alternative",
+  supportsSecretInput: false,
+};
 export function registry() {
   return new QuestionRegistry("claude", "s", { emit: () => {} });
 }
-export function fixture(name: string): QuestionFrame {
+export function fixture(name: string, version = "2.1.305"): QuestionFrame {
   const text = readFileSync(
-    fileURLToPath(new URL(`../../fixtures/claude-2.1.305/questions/${name}.txt`, import.meta.url)),
+    fileURLToPath(
+      new URL(`../../fixtures/claude-${version}/questions/${name}.txt`, import.meta.url),
+    ),
     "utf8",
   );
   return frame(text);

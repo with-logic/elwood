@@ -1,5 +1,5 @@
 /** Pinned version, synthetic markers and operation budgets for C-E2E-18 (PRD §12). */
-export const claudeQuestionVersion = "2.1.305";
+export const claudeQuestionVersion = "2.1.310";
 export const claudeQuestionLabel = `Claude Code ${claudeQuestionVersion}`;
 export const groupedFinal = "ELWOOD_GROUP_DONE";
 export const textFinal = "ELWOOD_TEXT_DONE";
