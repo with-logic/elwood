@@ -21,7 +21,10 @@ export type Progress = {
 
 const cleanupMs = 1_000;
 /**
- * Consecutive clear frames that prove a dialog is gone rather than mid-repaint.
+ * Consecutive positive clearance READINGS that prove a dialog is gone rather than
+ * mid-repaint. A reading is one look at the latest completed frame. It need not be a new
+ * frame: idle CLIs do not repaint, so the hold counts readings spaced in time
+ * (`clearReadingGapMs`), not rendered-frame callbacks.
  *
  * Matches `quietFramesToSettle` in `core/turn-state.ts`, deliberately. That value IS
  * measured: Codex's resume replay repaints in bursts with brief 1-frame quiet gaps, and 5
@@ -34,22 +37,30 @@ const cleanupMs = 1_000;
  * Enter applies the highlighted model — the exact bug class this file exists to prevent.
  * Absent a measurement, take the conservative measured precedent.
  *
- * This governs the SURVIVOR hold in `picker.ts`, which is unbounded and only observes, so
- * a longer streak costs nothing but a little latency. The cleanup loop below uses a
- * shorter one on purpose: see `cleanupClearFrames`.
+ * This governs every input hold (`picker-hold.ts`), which is unbounded and only observes,
+ * so a longer streak costs nothing but a little latency. The cleanup loop below uses a
+ * shorter one on purpose: see `cleanupClearReadings`.
  */
-export const clearFrames = 5;
+export const clearReadings = 5;
 
 /**
- * Cleanup's own streak, deliberately shorter than `clearFrames`.
+ * The least time between two clearance readings that both count toward `clearReadings`.
+ * Below the 50 ms queued-write retry (`unsafeWriteRetryMs`), so each retry of a waiting
+ * writer counts, while readings bunched into one instant, or a burst of repaints, count
+ * once: a release takes the composer staying clear across four gaps (160 ms or more).
+ */
+export const clearReadingGapMs = 40;
+
+/**
+ * Cleanup's own streak of polled readings, deliberately shorter than `clearReadings`.
  *
  * Cleanup is BOUNDED at one second and must also send its Escapes inside that budget, so
- * demanding five clear frames (500 ms at a 100 ms poll) would spend half the budget
+ * demanding five clear readings (500 ms at a 100 ms poll) would spend half the budget
  * proving a clearance it has already driven. It is also the safer of the two positions:
  * a cleanup that returns early only hands off to the survivor hold, which then applies
- * the full `clearFrames` streak before releasing any input. Nothing is released early.
+ * the full `clearReadings` streak before releasing any input. Nothing is released early.
  */
-const cleanupClearFrames = 2;
+const cleanupClearReadings = 2;
 const pollMs = 100;
 export const escapeKey = "\u001b";
 /**
@@ -82,7 +93,7 @@ export async function cleanUpDialog(
   const isActive = (text: string) => spec.activeDialog(text, ours) !== undefined;
   let escaped = progress.escapeSentTo;
   let clearStreak = 0;
-  /** Whether a dialog of ours was ever on screen here; only then can a clear frame lie. */
+  /** Whether a dialog of ours was ever on screen here; only then can a clear reading lie. */
   let sawDialog = progress.escapeSentTo !== undefined;
   let lateDialogPossible =
     progress.keyWritten || (progress.commandSubmitted && !progress.dialogSeen);
@@ -90,17 +101,17 @@ export async function cleanUpDialog(
     for (const bound = Date.now() + cleanupMs; Date.now() < bound; await delay(pollMs)) {
       const stage = spec.activeDialog(terminal.snapshot().text, ours);
       if (stage === undefined) {
-        // ONE clear frame is not proof a dialog we were CANCELLING is gone: a picker
+        // ONE clear reading is not proof a dialog we were CANCELLING is gone: a picker
         // repainting between stages is momentarily unrecognizable, and releasing the queue
         // there would let queued input land in the frame that follows. So a streak is
         // required only once we have actually seen a dialog here; a cleanup that never
         // found one has nothing to repaint and returns at once. (Same lesson as resume
         // settling in docs/cli-behavior.md.)
         clearStreak += 1;
-        const settled = !sawDialog || clearStreak >= cleanupClearFrames;
+        const settled = !sawDialog || clearStreak >= cleanupClearReadings;
         // The dialog is gone and nothing can still paint: the queue is released.
         if (!lateDialogPossible && settled) return true;
-        // Whatever paints after a clear frame is a new dialog, owed its own Escape.
+        // Whatever paints after a clear reading is a new dialog, owed its own Escape.
         escaped = undefined;
         continue;
       }

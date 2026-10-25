@@ -1,5 +1,5 @@
 /** Only a bottom-most native model dialog is Elwood's to cancel or hold on (PRD §5.3, C-API-55). */
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
@@ -10,6 +10,7 @@ import {
   codexPickerViewport,
 } from "../helpers/model-dialog-viewports.ts";
 import { claudePicker, codexReasoningScreen } from "../helpers/model-pickers.ts";
+import { releasesAfterClearStreak } from "../helpers/picker-harness.ts";
 
 /** A running turn: the agent's reply quotes a dialog above the live working row and composer. */
 const quotedInReply = (bullet: string, quoted: string, caret: string) =>
@@ -73,6 +74,10 @@ test.each([
  * which would deadlock Elwood's own picker (C-API-55).
  */
 test("C-API-55 a human's model picker withholds non-picker writes but not readiness", () => {
+  vi.useFakeTimers({ toFake: ["performance"] });
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   const screen = { text: claudePicker };
   const queue = new ControlQueue(
     () => Promise.resolve(),
@@ -93,8 +98,7 @@ test("C-API-55 a human's model picker withholds non-picker writes but not readin
   // Once the human closes it, writes resume.
   screen.text =
     "Claude Code v2.1.278\n────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
-  for (let read = 0; read < 4; read += 1) expect(picker.foreignDialogVisible()).toBe(true);
-  expect(picker.foreignDialogVisible()).toBe(false);
+  expect(releasesAfterClearStreak(() => picker.foreignDialogVisible())).toBe(true);
   queue.close();
 });
 
