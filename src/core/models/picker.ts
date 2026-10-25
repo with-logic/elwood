@@ -132,7 +132,7 @@ export async function setPickerModel(
   // Row ids are already lower-cased labels (`rows.ts`), so matching the id
   // alone covers a caller that passes the display label in any case.
   const target = parsed.options.findIndex((option) => option.id === wanted);
-  if (target === -1 || parsed.cursorIndex === -1) {
+  if (target === -1 || parsed.cursorOptionIndex === -1) {
     await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
     const reason =
       target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
@@ -140,7 +140,7 @@ export async function setPickerModel(
       available: parsed.options.map((option) => option.id),
     });
   }
-  const delta = target - parsed.cursorIndex;
+  const delta = target - parsed.cursorOptionIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
     await sendPickerInput(io, key, isOwnCompletePicker(spec));
@@ -160,7 +160,7 @@ export async function setPickerModel(
 
 /** The highlighted option, or undefined while no cursor is painted. */
 function cursorOption(parsed: ParsedModelPicker): AgentModelOption | undefined {
-  return parsed.options[parsed.cursorIndex];
+  return parsed.options[parsed.cursorOptionIndex];
 }
 
 async function openAndParse(
