@@ -12,6 +12,17 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Claude `listModels`, `listClaudeModels` and `setModel` work on accounts whose model
+  list is longer than the picker's ten-row window, and on any row whose effort control
+  is Medium, High or Max. Elwood now recognizes the scrolled picker (`↑`/`↓` rows,
+  `… +K models`) and every measured effort glyph, and follows the cursor across a
+  scrolling window. `listModels` also returns the `↓`-marked last visible row, with the
+  marker kept in its `raw`.
+- `listModels` and `listClaudeModels` no longer return a partial catalog read while
+  the picker was still painting. Claude draws it over the slash-command menu, so a
+  probe could return only `default`, or fail with "Could not parse any model picker
+  rows". The picker is parsed only once the complete dialog is on screen.
+
 - Codex `setModel` works on Codex 0.164.0, whose model picker closes with an
   `enter select · esc back` hint and whose reasoning screen closes with
   `enter default · s session · esc back`. It failed on its first key with "The model

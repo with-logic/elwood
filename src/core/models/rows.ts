@@ -4,6 +4,8 @@
  * Implements PRD §5.3 AgentModelOption, C-API-23, and C-API-24.
  */
 
+import { type ScrollGrammar, unmarkedRow } from "./row-block.ts";
+
 export type AgentModelOption = {
   readonly id: string;
   readonly label: string;
@@ -23,8 +25,13 @@ export const codexModelPickerHeader = /Select Model and Effort/;
 
 export const rowPattern = /^\s*(❯|›)?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
 
-export function parseClaudeModelPicker(text: string): ParsedModelPicker {
-  return parseRows(pickerRegion(text, claudeModelPickerHeader), (labelText) => {
+/**
+ * Claude's rendered rows. Under `scroll`, a row wearing a scroll marker (`↓ 10.`) is an
+ * ordinary option; its `raw` keeps the marker as rendered.
+ */
+export function parseClaudeModelPicker(text: string, scroll?: ScrollGrammar): ParsedModelPicker {
+  const normalizeRow = (line: string) => unmarkedRow(line, scroll);
+  return parseRows(pickerRegion(text, claudeModelPickerHeader), normalizeRow, (labelText) => {
     const isCurrent = labelText.includes("✔");
     const isDefault = /\(recommended\)/i.test(labelText);
     const label = labelText
@@ -40,21 +47,29 @@ export function parseClaudeModelPicker(text: string): ParsedModelPicker {
  * `(current)` says nothing about the default; the Codex spec marks it from config.toml.
  */
 export function parseCodexModelPicker(text: string): ParsedModelPicker {
-  return parseRows(pickerRegion(text, codexModelPickerHeader), (labelText) => {
-    const isCurrent = /\(current\)/i.test(labelText);
-    const isDefault = /\(default\)/i.test(labelText);
-    const label = labelText.replace(/\((?:current|default)\)/gi, "").trim();
-    return { label, id: label.toLowerCase(), isCurrent, isDefault };
-  });
+  return parseRows(
+    pickerRegion(text, codexModelPickerHeader),
+    (line) => line,
+    (labelText) => {
+      const isCurrent = /\(current\)/i.test(labelText);
+      const isDefault = /\(default\)/i.test(labelText);
+      const label = labelText.replace(/\((?:current|default)\)/gi, "").trim();
+      return { label, id: label.toLowerCase(), isCurrent, isDefault };
+    },
+  );
 }
 
 type RowFlags = Pick<AgentModelOption, "id" | "label" | "isCurrent" | "isDefault">;
 
-function parseRows(region: string, decorate: (labelText: string) => RowFlags): ParsedModelPicker {
+function parseRows(
+  region: string,
+  normalizeRow: (line: string) => string,
+  decorate: (labelText: string) => RowFlags,
+): ParsedModelPicker {
   const options: AgentModelOption[] = [];
   let cursorIndex = -1;
   for (const line of region.split("\n")) {
-    const match = rowPattern.exec(line);
+    const match = rowPattern.exec(normalizeRow(line));
     if (!match) continue;
     if (match[1]) cursorIndex = options.length;
     options.push({
@@ -67,6 +82,7 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
 }
 
 export { bottomDialogCandidate, bottomDialogRow, type DialogGrammar } from "./dialog-region.ts";
+export type { ScrollGrammar } from "./row-block.ts";
 
 /**
  * The picker itself, the stage an accepted row opens (reasoning level, cache warning),

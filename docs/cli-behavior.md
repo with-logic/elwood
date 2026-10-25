@@ -192,6 +192,46 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the default from `config.toml`. The cached catalog (`models_cache.json`) carries
   no default flag, so Codex's built-in default in an unconfigured home cannot be
   identified at all.
+- **Claude scrolls a list longer than ten rows inside the picker (2.1.310, 2026-10-24).**
+  An account with 13 models renders a ten-row window. At the top, rows 1–9 are plain,
+  row 10 is `↓ 10. Opus 4.8 …`, and `… +3 models` stands directly under it. Moving the
+  cursor past the last visible row scrolls the window by one: the first visible row then
+  carries `↑` (`↑ 2.`), and the last carries `↓` with `… +2 models` / `… +1 model` below it
+  while any rows stay hidden; at the end of the list that line is blank. The cursor glyph
+  REPLACES a marker on its row (`❯ 11. Opus 4.7` above `… +2 models`), and moving up keeps
+  one row visible above the cursor, so arrowing from row 5 to row 4 shifts the window from
+  `↑ 4.`–`13.` to `↑ 3.`–`↓ 12.`. The picker OPENS scrolled when the current model is below
+  the fold: started on `claude-opus-4-6`, it showed `↑ 3.` through `❯ 12. Opus 4.6 ✔` and
+  `… +1 model`, with the `Default (recommended)` row out of view. Two consequences: the
+  region grammar must accept a block that starts at its `↑` row and ends at its `↓` row or
+  overflow line (before this, it rejected every frame of such a list, so `setModel` failed
+  on its first arrow key with "The model picker was replaced"), and `setModel` must settle
+  on the cursor row's identity, not its index, because a target's index changes as the
+  window scrolls under the cursor. `listModels` returns the rendered window only (C-API-23);
+  rows hidden below it are not enumerated. Fixtures:
+  `tests/fixtures/claude-2.1.310/model-picker/`. C-API-23, C-API-24.
+- **The picker's effort row follows the HIGHLIGHTED model, and `●` is one of its glyphs.**
+  On 2.1.310 the row under the list reads `○ Low effort`, `◐ Medium effort`, `● High
+  effort`, `◉ xHigh effort`, or `◈ Max effort` (each `←/→ to adjust`, with `(default)` when
+  it is that model's default), and `○ Effort not supported for Haiku 4.5` for a model
+  without effort. It changes as the cursor moves, so navigation crosses several glyphs.
+  `●` is also the older Claude reply bullet, which the region grammar treats as foreign
+  content, so the control row is recognized by its own copy before the reply check;
+  otherwise every frame with the cursor on a High-effort model reads as transcript. Captured
+  with `--effort low|medium|high|max` across all 13 rows. C-API-24.
+- **Claude paints `/model` over its slash-command menu, so the header lands first.** A
+  5 ms capture on 2.1.310 (2026-10-24) showed the `Select model` header for 10–500 ms above
+  a partial dialog: rows 1–3 with row 3 spliced into a stale `/review-…` suggestion and
+  the rest of the menu below it, rows 1–7 the same way, or all ten rows and the overflow
+  line above leftover menu prose and no footer yet. Parsing the first frame that showed
+  the header returned one row, three rows, or none (`listClaudeModels` in `~/.coal-harbor`
+  gave 9, 1, error, 9, error over five runs), and Coal Harbor persisted a one-row
+  `default` catalog as a successful discovery. The picker is therefore parsed only once
+  the region grammar recognizes the complete dialog, footer included — the same check
+  every navigation and selection key already passed. A picker that never completes is
+  Escaped after a bounded paint wait under the header-only guard, the one write that does
+  not need the complete dialog. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
+  C-API-23, C-API-24.
 - **Codex 0.164.0 shortened its dialog hints.** The picker closes with `enter select ·
   esc back` and the reasoning screen with `enter default · s session · esc back` (one
   Escape still returns to the picker). Neither matched the old closing-hint phrases
@@ -217,12 +257,14 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   phrase on a reply or composer row itself (`❯ Select model` is staged input), and
   a quoted picker above another dialog. Below its header a native dialog holds
   exactly one contiguous block of picker rows (description column, numbered from 1,
-  at most one cursor); any other caret or numbered row (`❯ 1. Yes`, `  1. Yes`, a
-  staged `❯ 1. fix this  then that`) restarts the numbering, follows the blank or
-  rule that separates the composer, or lacks the column, and marks the region as
-  someone else's. The block must also be COMPLETE before Elwood treats it as live:
-  every captured picker and reasoning screen carries at least two numbered rows and
-  a closing hint row (`Esc to cancel`, `esc to go back`). A header with neither —
+  at most one cursor); the one exception is a scrolled Claude window, which starts at
+  its `↑`-marked row (see the windowed list below). Any other caret or numbered row
+  (`❯ 1. Yes`, `  1. Yes`, a staged `❯ 1. fix this  then that`) restarts the
+  numbering, follows the blank or rule that separates the composer, or lacks the
+  column, and marks the region as someone else's. The block must also be COMPLETE
+  before Elwood treats it as live: every captured picker and reasoning screen carries
+  at least two numbered rows and a closing hint row (`Esc to cancel`, `esc to go
+  back`, `esc back`). A header with neither —
   a transcript quoting `Select model` above a trust or hook prompt, or above a
   reply's own numbered list — is a fragment, and Escaping it would dismiss the live
   prompt underneath. The CURSOR is deliberately not required: a complete picker

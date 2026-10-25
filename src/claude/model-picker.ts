@@ -27,15 +27,20 @@ const arrowDown = "\u001b[B";
 const arrowUp = "\u001b[A";
 
 /**
- * Claude's picker closes with `Esc to cancel` and paints a radio-style control row between
- * its rows and that footer (`◉ xHigh effort ←/→ to adjust`). The control row is part of
- * the dialog, but it is a marker row, not free prose, which keeps it from reopening the
- * mid-list gap.
+ * Claude's picker closes with `Esc to cancel`, windows a list longer than ten rows, and
+ * paints a radio-style effort row between its rows and that footer. The effort row follows
+ * the HIGHLIGHTED model (2.1.310): ○ low, ◐ medium, ● high, ◉ xhigh, ◈ max, or
+ * `○ Effort not supported for Haiku 4.5`. It is matched by its own copy because `●` is also
+ * a reply bullet, which the region grammar otherwise rejects as transcript.
  */
 const pickerGrammar: DialogGrammar = {
   header: claudeModelPickerHeader,
   footer: /\besc to cancel\b/i,
-  controlRow: /^\s*[◉○◎●]\s*\S/,
+  controlRow: /^\s*[○◐●◉◈] (?:\S.* ←\/→ to adjust|Effort not supported for \S.*?)\s*$/,
+  // `↑ 3.` marks the window's first row while rows are hidden above it, `↓ 10.` its last
+  // while rows are hidden below, with `… +3 models` (`… +1 model`) directly under it. The
+  // cursor glyph replaces either marker on its own row.
+  scroll: { above: /^\s*↑/, below: /^\s*↓/, overflow: /^\s*…\s*\+\d+ models?\s*$/ },
 };
 
 export const claudeModelPicker: ModelPickerSpec = {
@@ -56,7 +61,7 @@ export const claudeModelPicker: ModelPickerSpec = {
     if (isClaudeSwitchShell(text)) return "painting";
     return bottomDialogRow(text, pickerGrammar) < 0 ? undefined : "picker";
   },
-  parse: parseClaudeModelPicker,
+  parse: (text) => parseClaudeModelPicker(text, pickerGrammar.scroll),
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {
