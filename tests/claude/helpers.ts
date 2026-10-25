@@ -13,8 +13,8 @@ import {
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
 import {
-  resetGroupKillerForTests,
-  setGroupKillerForTests,
+  resetProcessTreeOpsForTests,
+  setProcessTreeOpsForTests,
 } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   resetStartupWaitMsForTests,
@@ -39,7 +39,7 @@ export function installFakes(): void {
   setCommandRunnerForTests(versionOk);
   setStartupWaitMsForTests(25);
   // Record group reaps instead of issuing a real SIGKILL to a live pgid.
-  setGroupKillerForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
+  setProcessTreeOpsForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
   setPtyFactoryForTests((options) => {
     const pty = new FakePty(options, 1000 + ptys.length);
     ptys.push(pty);
@@ -52,7 +52,7 @@ export function resetFakes(): void {
   resetStartupWaitMsForTests();
   resetPreflightCacheForTests();
   resetClaudeSessionSeamsForTests();
-  resetGroupKillerForTests();
+  resetProcessTreeOpsForTests();
   ptys.length = 0;
   reapedGroups.length = 0;
 }
