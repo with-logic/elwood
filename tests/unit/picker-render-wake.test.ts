@@ -17,14 +17,18 @@ afterEach(() => vi.useRealTimers());
 /** How long the fake CLI takes to repaint after a write. */
 const paintMs = 5;
 
-/** Lists models from a CLI that opens the picker, and closes it on Escape, `paintMs` later. */
-async function listing(observed: boolean) {
-  const renders: (() => void)[] = [];
+/**
+ * Lists models from a CLI that opens the picker, and closes it on Escape, `paintMs` later.
+ * `renders` is whether the terminal reports completed renders: always, never (it cannot
+ * subscribe), or silently (it subscribes but never reports one).
+ */
+async function listing(renders: "reported" | "unsupported" | "silent") {
+  const listeners = new Set<() => void>();
   const terminal = scripted(closedComposer(claudeModelPicker));
   const paint = (text: string) =>
     setTimeout(() => {
       terminal.text = text;
-      for (const render of renders) render();
+      if (renders === "reported") for (const listener of listeners) listener();
     }, paintMs);
   terminal.onInput = (input) => {
     if (input === "/model") paint(claudePicker);
@@ -41,7 +45,14 @@ async function listing(observed: boolean) {
     blocked: () => false,
     picker: () => claudeModelPicker,
     submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
-    ...(observed ? { observeRendered: (listener) => renders.push(() => listener()) } : {}),
+    ...(renders === "unsupported"
+      ? {}
+      : {
+          subscribeRender: (listener: () => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+        }),
   });
   queue.markReady();
   const started = Date.now();
@@ -54,14 +65,23 @@ async function listing(observed: boolean) {
   await vi.advanceTimersByTimeAsync(1_000);
   const models = await listed;
   queue.close();
-  return { models, elapsedMs: finishedAt - started };
+  // Every wait unsubscribes when it ends.
+  return { models, elapsedMs: finishedAt - started, subscribed: listeners.size };
 }
 
 test("C-API-23 listModels reads the opening and closing picker on the renders that paint them", async () => {
-  const observed = await listing(true);
-  expect(observed.models).toEqual(claudeModelPicker.parse(claudePicker).options);
+  const reported = await listing("reported");
+  expect(reported.models).toEqual(claudeModelPicker.parse(claudePicker).options);
   // Two repaints, the picker opening and then closing on Escape, and no poll waited out.
-  expect(observed.elapsedMs).toBe(2 * paintMs);
+  expect(reported.elapsedMs).toBe(2 * paintMs);
+  expect(reported.subscribed).toBe(0);
   // A terminal that cannot report renders still polls: one interval per repaint.
-  expect((await listing(false)).elapsedMs).toBe(200);
+  expect((await listing("unsupported")).elapsedMs).toBe(200);
+});
+
+test("C-API-23 a picker wait still polls a frame no render reported", async () => {
+  const silent = await listing("silent");
+  expect(silent.models).toEqual(claudeModelPicker.parse(claudePicker).options);
+  expect(silent.elapsedMs).toBe(200);
+  expect(silent.subscribed).toBe(0);
 });

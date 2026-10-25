@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `listModels` and `setModel` now read each picker frame as soon as it renders,
+  rather than at the next 100 ms poll. They return sooner and hold the session's
+  input queue for less time. The poll remains as a fallback for a frame that no
+  render reports.
 - A failed start or resume no longer signals a CLI that already exited during startup,
   and no longer reaps its process group a second time. The leader's pid could already
   belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and

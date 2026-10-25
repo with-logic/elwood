@@ -50,6 +50,8 @@ export type CommandSurfaceDeps = {
   readonly picker: () => ModelPickerSpec;
   readonly controlQueue: ControlQueue;
   readonly observeRendered?: (listener: (read?: () => string) => void) => void;
+  /** Completed renders, so picker waits read each frame as it lands (PRD §5.3). */
+  readonly subscribeRender?: (listener: () => void) => () => void;
   readonly inputSignal?: () => AbortSignal;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
 };
