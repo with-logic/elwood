@@ -57,15 +57,19 @@ test.each(
     frame = boot;
   });
   const attempt = settled(responder.handle(frame, write, () => frame));
+  const outcomes: string[] = [];
+  void attempt.then((outcome) => outcomes.push(outcome));
   await vi.advanceTimersByTimeAsync(250);
-  await expect(attempt).resolves.toBe("cancelled");
   expect(write).toHaveBeenCalledOnce();
   responder.handle(frame, write, () => frame);
   await vi.advanceTimersByTimeAsync(60_000);
   expect(responder.blockedPrompt).toBeUndefined();
-  // Clearance is still unverified, so queued input stays held until the composer.
+  // Clearance is still unverified: queued input stays held and the answer unreported.
   expect(responder.inputBlocking).toBe(true);
+  expect(outcomes).toEqual([]);
   responder.handle(composer, write, () => composer);
+  await expect(attempt).resolves.toBe("answered");
+  expect(write).toHaveBeenCalledOnce();
   expect(responder.inputBlocking).toBe(false);
   expect(responder.blockedPrompt).toBeUndefined();
 });

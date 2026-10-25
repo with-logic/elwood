@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { ImageCaptures } from "../../src/core/images/capture.ts";
 import { submissionControlOptions } from "../../src/core/input/submission-cancel.ts";
 import { capturedTurn } from "../../src/core/simple/captured-input.ts";
+import { DRAIN_MS } from "../../src/core/simple/turn-boundary.ts";
 import { TurnQueue } from "../../src/core/simple/turn-queue.ts";
 import { defaultBoundarySignal } from "../../src/core/simple/turn-types.ts";
 import { defaultScript, FakeUnderlying } from "./simple-fakes.ts";
@@ -67,7 +68,7 @@ test.each([
   expect(order).toEqual(started);
   expect(() => captures.capture(options)).toThrow("Too many queued image bytes");
   cleanup.resolve();
-  await vi.advanceTimersByTimeAsync(750);
+  await vi.advanceTimersByTimeAsync(DRAIN_MS);
   expect(order).toEqual([...started, "second"]);
   await vi.advanceTimersByTimeAsync(2_000);
   await second;

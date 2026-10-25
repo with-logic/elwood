@@ -89,6 +89,11 @@ should read the committed live transcript data with one bounded per-pass scan
 reserved for PTY exit) so parent applications receive transcript-derived turn
 activity before the ready transition whenever Codex has already written it.
 
+A turn Codex rejects (for example an unknown model) fires no `Stop`. Its only
+evidence is the committed transcript's `event_msg` `task_complete` record whose
+`error` is an object, tagged with the turn's `turn_id`. For ergonomic turns that
+record is the turn's boundary instead of `Stop` (§5.8).
+
 ### 7A.4 Non-Hook Transcript Activity
 
 Current Codex hooks do not cover every TUI-visible activity. Reasoning/status

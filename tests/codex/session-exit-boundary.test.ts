@@ -7,7 +7,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -34,7 +34,7 @@ describe("C-LIFE-10 codex exit-callback error boundary", () => {
     // group is surfaced live, content-free, with pgid + normalized code (never persisted).
     const cwd = tempDir();
     installFakes();
-    setGroupKillerForTests({
+    setProcessTreeOpsForTests({
       killGroup: () => {
         throw Object.assign(new Error("EPERM"), { code: "EPERM" });
       },

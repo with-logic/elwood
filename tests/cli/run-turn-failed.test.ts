@@ -1,8 +1,9 @@
 /**
  * A rejected user or persona turn reaches every headless output mode as `turn_failed` with exit
  * status 1, after cleanup (PRD §12A.2/§12A.5, C-CLI-28). The session facade's own rejection is
- * proven against the real Claude reader in tests/claude/rejected-turn.test.ts; this covers the
- * run core's mapping of that error in text, JSON and JSONL.
+ * proven against the real Claude reader in tests/claude/rejected-turn.test.ts and the Codex one
+ * in tests/codex/simple-rejected-turn.test.ts; this covers the run core's mapping of that error
+ * in text, JSON and JSONL.
  */
 
 import { expect, test } from "vitest";
