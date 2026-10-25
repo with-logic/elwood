@@ -56,7 +56,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly configPath: string;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
-  readonly turnCommit = new CodexTurnCommit(() => this.transcriptWatcher?.poll(), this.cliExit);
+  readonly turnCommit: CodexTurnCommit;
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -88,6 +88,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
+    this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.configPath = configPath;
     // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
@@ -173,7 +174,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);
   }
-  // Queued input and loops stop at once; only the signal waits for the turn's record.
   override stop(): Promise<void> {
     this.closing.abort();
     this.loops.pause();

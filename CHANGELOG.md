@@ -22,6 +22,11 @@ back each entry are listed in `prd/14-conformance.md`.
   closed descriptor 3 now writes the line on stdout, and Elwood removes it from
   the captured output.
 
+- A Codex `stop()` or `teardown()` that gives up waiting for the ended turn's record
+  now says so. When the 2-second wait runs out with Codex still running, the session
+  emits one content-free `turn_commit_wait_expired` warning, with its `activity`, before
+  signaling Codex, even when `stop()` and `teardown()` overlap. A host can then tell
+  that a resume may show that turn as interrupted.
 - Stopping a Codex session as soon as a turn ends no longer cuts off Codex before it
   records the turn. Codex records a turn as complete only after its `Stop` hook
   returns, and Elwood reports `ready` from that hook, so a `stop()` or `teardown()`
