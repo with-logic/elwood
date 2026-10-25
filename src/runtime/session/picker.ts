@@ -9,6 +9,7 @@ import { PickerHold } from "./picker-hold.ts";
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
   readonly observeRendered?: (listener: (read?: () => string) => void) => void;
+  readonly subscribeRender?: (listener: () => void) => () => void;
   readonly inputSignal?: () => AbortSignal;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
   /** Carries the received-output barrier every picker key is written behind (C-API-56). */
@@ -148,6 +149,7 @@ export class PickerTransactions {
     const live = abortable(this.deps.terminal, signal);
     // Every key is decided on everything received, like cleanup's Escape (C-API-56).
     const terminal = behindReceivedOutputBarrier(this.deps.terminal, {
+      subscribeRender: this.deps.subscribeRender,
       snapshot: () => {
         const snapshot = live.snapshot();
         progress.dialogSeen ||= spec.activeDialog(snapshot.text, ours) !== undefined;
