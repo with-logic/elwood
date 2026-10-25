@@ -25,6 +25,17 @@ back each entry are listed in `prd/14-conformance.md`.
   the session's transcript activity without a warning. A transcript that has not
   been created yet still waits silently.
 
+- A Codex session no longer reports `ready` before a late directory-trust prompt
+  is answered. Codex paints an empty composer while it boots, before its session is
+  configured, and under load its trust prompt followed 11 to 31 seconds after the
+  first frame. Elwood's 10-second readiness deadline fired on that boot composer,
+  so the session reported `ready` before the prompt even appeared (24 of 32
+  loaded launches on Codex 0.164). The deadline now waits for the composer with
+  Codex's model footer, which appears once the session is configured, so a cold
+  start can now take longer than 10 seconds to report `ready`.
+  A backstop still releases readiness 60 seconds after the first frame if that
+  footer is never recognized; a prompt painted after that would still follow
+  `ready`.
 
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has
