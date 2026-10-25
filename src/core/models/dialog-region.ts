@@ -9,7 +9,13 @@ import { rowPattern } from "./rows.ts";
 // An agent reply or the composer renders below any header the transcript merely quotes.
 const replyRow = /^\s*[●•⏺]/;
 const caretRow = /^\s*[❯›]/;
-const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
+const numberedRow = /^\s*[❯›↑↓]?\s*(\d+)[.)]\s/;
+// Claude windows a list longer than ten rows: `↑` marks the first visible row when rows are
+// hidden above it, `↓` the last when rows are hidden below, and `… +3 models` (`… +1 model`)
+// sits directly under the last row while any are. The cursor glyph replaces either marker.
+const scrolledAbove = /^\s*↑/;
+const scrolledBelow = /^\s*↓/;
+const overflowRow = /^\s*…\s*\+\d+ models?\s*$/;
 // Both CLIs separate the transcript from the composer or a lower dialog with one of these.
 const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
 // Every captured picker and reasoning screen closes with one of these hint rows. The row is
@@ -20,7 +26,10 @@ const hintClause = /^[^.!?]{0,48}$/;
 // Claude paints a radio-style control row under its rows (`◉ xHigh effort ←/→ to adjust`).
 // It is part of the dialog, so it may sit between the rows and the footer — but it is a
 // marker row, not free prose, which is what keeps this from reopening the mid-list gap.
-const controlRow = /^\s*[◉○◎●]\s*\S/;
+// Its glyph follows the highlighted model's effort (2.1.310): ○ low, ◐ medium, ● high,
+// ◉ xhigh, ◈ max; a model without effort shows `○ Effort not supported for Haiku 4.5`.
+// The row is matched by its own copy, because `●` is also a reply bullet.
+const controlRow = /^\s*[○◐●◉◈] (?:\S.* ←\/→ to adjust|Effort not supported for \S.*?)\s*$/;
 
 /** A closing hint row: the footer phrase standing on its own row, not buried in prose. */
 function isFooterRow(line: string): boolean {
@@ -47,12 +56,14 @@ function opensRegion(header: string): boolean {
  * caret, or numbered row — those belong to the transcript, the composer, or another list.
  * Once the rows have STARTED the block is contiguous (real dialogs paint it in one run), so
  * only a blank or rule, the CLI's own control row (`◉ xHigh effort ←/→ to adjust`), or the
- * closing hint row may appear; free prose mid-list means these rows are not one block.
+ * closing hint row may appear; free prose mid-list means these rows are not one block. The
+ * control row is checked first: a High-effort row (`● High effort …`) wears a reply bullet.
  */
 function mayAppearBesideRows(line: string, rowsStarted: boolean): boolean {
+  if (rowsStarted && controlRow.test(line)) return true;
   if (replyRow.test(line) || caretRow.test(line) || numberedRow.test(line)) return false;
   if (!rowsStarted) return true;
-  return blockEnd.test(line) || controlRow.test(line) || isFooterRow(line);
+  return blockEnd.test(line) || isFooterRow(line);
 }
 
 /**
@@ -67,7 +78,9 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean): boolean {
  * contiguous block of picker rows numbered from 1 with at most one cursor. A staged
  * composer line, a permission or approval option, or a second numbered list is on a
  * caret row outside that block, restarts the numbering, follows a blank or rule, or
- * lacks the description column, so none of them can pass for the dialog.
+ * lacks the description column, so none of them can pass for the dialog. A scrolled
+ * Claude window is the one block that starts later: its first row carries `↑`, a `↓`
+ * row ends it, and its `… +K models` line may stand only directly under its last row.
  *
  * Nothing missing and nothing after: the block renders at least two numbered rows and
  * then the CLI's closing hint row, which TERMINATES it — only blank lines and rules may
@@ -80,8 +93,7 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean): boolean {
 function isNativeRegion(lines: readonly string[], complete = true): boolean {
   const [header, ...body] = lines as [string, ...string[]];
   if (!opensRegion(header)) return false;
-  let next = 1;
-  let cursors = 0;
+  const block = new RowBlock(complete);
   let footer = false;
   for (const line of body) {
     // Nothing but blank lines and rules may follow the closing hint row: a complete
@@ -93,19 +105,60 @@ function isNativeRegion(lines: readonly string[], complete = true): boolean {
       if (!blockEnd.test(line)) return false;
       continue;
     }
-    // A row must be a full picker row (`1. Label  Description`) numbered in sequence.
-    // Anything else — a renumbered second list, a row without the description column —
-    // is not this dialog's, so the region is not one native block.
-    const candidateRow = !complete && numberedRow.test(line);
-    if (!(rowPattern.test(line) || candidateRow) || Number(numberedRow.exec(line)?.[1]) !== next) {
-      if (!mayAppearBesideRows(line, next > 1)) return false;
-      footer = isFooterRow(line);
-      continue;
-    }
-    next += 1;
-    if (caretRow.test(line)) cursors += 1;
+    if (block.accept(line)) continue;
+    if (!mayAppearBesideRows(line, block.rows > 0)) return false;
+    footer = isFooterRow(line);
   }
-  return cursors <= 1 && (!complete || (footer && next > minimumRows));
+  return block.cursors <= 1 && (!complete || (footer && block.rows >= minimumRows));
+}
+
+/** The dialog's one contiguous block of option rows, fed line by line. */
+class RowBlock {
+  rows = 0;
+  cursors = 0;
+  private next = 1;
+  /** The block's last row has painted: a `↓` row or the overflow line beneath the last row. */
+  private closed = false;
+  private afterRow = false;
+  private readonly complete: boolean;
+  constructor(complete: boolean) {
+    this.complete = complete;
+  }
+
+  /**
+   * Whether `line` extends the block. A row must be a full picker row (`1. Label  Description`)
+   * numbered in sequence. Anything else — a renumbered second list, a row without the
+   * description column, a row below the block's last — is not this dialog's.
+   */
+  accept(line: string): boolean {
+    if (this.afterRow && overflowRow.test(line)) {
+      this.closed = true;
+      this.afterRow = false;
+      return true;
+    }
+    const candidateRow = !this.complete && numberedRow.test(line);
+    this.afterRow =
+      !this.closed &&
+      (rowPattern.test(line) || candidateRow) &&
+      inSequence(line, this.rows, this.next);
+    if (!this.afterRow) return false;
+    this.rows += 1;
+    this.next = Number(numberedRow.exec(line)?.[1]) + 1;
+    this.closed = scrolledBelow.test(line);
+    if (caretRow.test(line)) this.cursors += 1;
+    return true;
+  }
+}
+
+/**
+ * Whether a row continues the block. Only the FIRST row may be numbered past 1, and only
+ * under `↑`: a window scrolled down hides the rows above it, but an unmarked list that
+ * starts at 3 is someone else's, and `↑` anywhere below the first row is not a window.
+ */
+function inSequence(line: string, rows: number, next: number): boolean {
+  const number = Number(numberedRow.exec(line)?.[1]);
+  if (scrolledAbove.test(line)) return rows === 0 && number > 1;
+  return number === next;
 }
 
 /**

@@ -133,14 +133,21 @@ export async function setPickerModel(
     await sendPickerInput(io, key, ours(spec));
     await delay(arrowStepMs);
   }
+  // Settle on the cursor row's identity, not its index: a scrolled Claude window shifts
+  // which rows are rendered as the cursor moves, so the target's index changes with it.
   await waitForScreen(
     io.terminal,
-    (text) => spec.parse(text).cursorIndex === target,
+    (text) => cursorOption(spec.parse(text))?.id === wanted,
     timeoutMs,
     `${spec.agent} picker cursor on "${id}"`,
     io.signal,
   );
   await spec.apply(io, timeoutMs);
+}
+
+/** The highlighted option, or undefined while no cursor is painted. */
+function cursorOption(parsed: ParsedModelPicker): AgentModelOption | undefined {
+  return parsed.options[parsed.cursorIndex];
 }
 
 async function openAndParse(

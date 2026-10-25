@@ -21,7 +21,13 @@ export type ParsedModelPicker = {
 export const claudeModelPickerHeader = /Select model/;
 export const codexModelPickerHeader = /Select Model and Effort/;
 
-export const rowPattern = /^\s*(❯|›)?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
+/**
+ * One option row: `1. Label  Description`. The glyph column holds the cursor (`❯`/`›`) or,
+ * on a Claude list longer than its window, a scroll marker (`↑ 3.` first visible row with
+ * rows hidden above, `↓ 10.` last with rows hidden below). Only the cursor is captured: a
+ * marked row is an ordinary rendered, selectable option.
+ */
+export const rowPattern = /^\s*(?:(❯|›)|[↑↓])?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
 
 export function parseClaudeModelPicker(text: string): ParsedModelPicker {
   return parseRows(pickerRegion(text, claudeModelPickerHeader), (labelText) => {

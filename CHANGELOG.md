@@ -38,6 +38,12 @@ back each entry are listed in `prd/14-conformance.md`.
   empty-input checks from matching: a named session in an untrusted folder
   stayed `blocked` after autotrust answered the trust prompt.
 
+- Claude `setModel` works again on accounts whose model list is longer than the
+  picker's ten-row window, and on any row whose effort control is Medium, High, or
+  Max: Elwood now recognizes the scrolled picker (`↑`/`↓` rows, `… +K models`) and
+  every measured effort glyph, and follows the cursor across a scrolling window.
+  `listModels` also returns the `↓`-marked last visible row.
+
 - Claude sessions recognize their idle composer in every permission mode after
   the version banner has scrolled away. Elwood accepted only the exact footers
   captured earlier (auto mode and don't ask on 2.1.278, manual mode on 2.1.305).

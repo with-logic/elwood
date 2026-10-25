@@ -72,6 +72,13 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       models.find((model) => model.isDefault)?.id,
       "user default model is untouched",
     );
+    // The last rendered row: the cursor crosses every row's effort control on the way, and
+    // on a list longer than Claude's window it is the `↓`-marked row above `… +K models`.
+    const last = after.at(-1);
+    assert.ok(last && !last.isCurrent, "the last rendered row is another model");
+    await session.setModel(last.id);
+    const final = await session.listModels();
+    assert.equal(final.find((model) => model.isCurrent)?.id, last.id);
   } finally {
     await cleanup(session);
   }
