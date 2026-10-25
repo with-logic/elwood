@@ -1,9 +1,9 @@
 /**
  * Bounded one-shot subprocess probe used by the command-runner seam.
- * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05):
- * a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
- * `update`, or `--help` probe, and a slow login-shell profile is bounded separately
- * from the CLI it launches.
+ * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05,
+ * C-PERF-07): a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
+ * `update`, or `--help` probe, a slow login-shell profile is bounded separately from the CLI
+ * it launches, and only a few probes run at once.
  */
 
 import { spawn } from "node:child_process";
@@ -11,6 +11,7 @@ import type { Readable } from "node:stream";
 import { completeUtf8Length } from "../../core/utf8.ts";
 import type { CommandResult } from "../seams.ts";
 import { abortProbe } from "./cleanup.ts";
+import { withProbeSlot } from "./slots.ts";
 import { announcesStart, ProbeStartWatcher, probeControlFd } from "./start.ts";
 
 /** The probe command's own default bound, from the shell's start line (C-PERF-03). */
@@ -72,7 +73,12 @@ class CappedBuffer {
   }
 }
 
+/** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
 export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
+  return withProbeSlot(() => spawnProbe(command, args));
+}
+
+function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
