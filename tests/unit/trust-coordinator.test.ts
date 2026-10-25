@@ -80,8 +80,7 @@ test("C-TRUST-01 unknown replacements remain blocked until positively cleared", 
     frame = "Enable elevated access?\n❯ Yes";
   });
   const attempt = settled(responder.handle(trust, write, () => frame));
-  await vi.advanceTimersByTimeAsync(250);
-  await expect(attempt).resolves.toBe("cancelled");
+  responder.handle(frame, write, () => frame);
   expect(responder.inputBlocking).toBe(true);
   // The gate left the frame, so its budget waits; a stable gate then exhausts it.
   await vi.advanceTimersByTimeAsync(10_000);
@@ -89,6 +88,8 @@ test("C-TRUST-01 unknown replacements remain blocked until positively cleared", 
   responder.handle(unsupported, write);
   await vi.advanceTimersByTimeAsync(5_000);
   expect(responder.blockedPrompt).toBe("workspace_trust");
+  // Expiry ends the answered attempt without reporting it.
+  await expect(attempt).resolves.toBe("cancelled");
   responder.handle("Enable elevated access?\n❯ Yes", write);
   await vi.advanceTimersByTimeAsync(10_000);
   expect(responder.blockedPrompt).toBe("workspace_trust");

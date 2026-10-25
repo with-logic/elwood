@@ -22,11 +22,9 @@ afterEach(() => vi.useRealTimers());
 
 test.each([
   cursor.replace("❯ Yes", "❯ Yes, proceed"),
-  cursor.replace("this folder", "the folder"),
   numbered,
   `${claudeTrust}\n❯ No`,
   `${claudeTrust}\n❯ Yes\n  No\nUnknown footer`,
-  "Unknown permission\n❯ Yes",
 ])("C-TRUST-01 a cursor confirmation cannot succeed on replacement: %s", async (replacement) => {
   let frame = cursor;
   const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
@@ -39,6 +37,29 @@ test.each([
   expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[H\r");
   expect(responder.inputBlocking).toBe(true);
   responder.dispose();
+});
+
+test.each([
+  cursor.replace("this folder", "the folder"),
+  "Unknown permission\n❯ Yes",
+])("C-TRUST-01 a cursor confirmation replaced by an unknown frame is neither cleared nor lost: %s", async (replacement) => {
+  let frame = cursor;
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
+  const write = vi.fn(() => {
+    frame = replacement;
+  });
+  const attempt = settled(responder.handle(frame, write, () => frame));
+  const outcomes: string[] = [];
+  void attempt.then((outcome) => outcomes.push(outcome));
+  responder.handle(frame, write, () => frame);
+  await vi.advanceTimersByTimeAsync(60_000);
+  // Only verified clearance can report the answer; nothing rewrites or blocks meanwhile.
+  expect(outcomes).toEqual([]);
+  expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[H\r");
+  expect(responder.inputBlocking).toBe(true);
+  expect(responder.blockedPrompt).toBeUndefined();
+  responder.dispose();
+  await expect(attempt).resolves.toBe("cancelled");
 });
 
 test("C-TRUST-01 a selection without Enter cannot report trust answered when the composer appears", async () => {

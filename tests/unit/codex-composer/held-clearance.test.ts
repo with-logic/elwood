@@ -50,14 +50,18 @@ test("C-TRUST-01 live trust revalidation includes title-only working evidence", 
         terminal.writeOutput(`\u001b]0;⠋ project\u0007\u001b[2J\u001b[H${codexTty(codexComposer)}`),
       () => terminal.snapshot().text,
     );
+    const settled: unknown[] = [];
+    void outcomes[0]?.settled?.then((outcome) => settled.push(outcome));
     await vi.advanceTimersByTimeAsync(250);
-    await expect(outcomes[0]?.settled).resolves.toBe("cancelled");
+    // A working title is not clearance: the confirmed answer stays unreported and held.
+    expect(settled).toEqual([]);
     expect(responder.inputBlocking).toBe(true);
     const idle = terminal.writeOutput("\u001b]0;project\u0007");
     await vi.advanceTimersByTimeAsync(5);
     await idle;
     responder.handle(terminal.snapshot().text, vi.fn());
     expect(responder.inputBlocking).toBe(false);
+    await expect(outcomes[0]?.settled).resolves.toBe("answered");
   } finally {
     responder.dispose();
     terminal.dispose();

@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `autotrust` now reports an answered Claude folder-trust prompt. Claude erases
+  the dialog as soon as it is answered, then shows a blank or banner-only screen
+  until its composer paints. Elwood treated that screen as the answer being
+  lost, so the `startup_prompt` activity (`workspace_trust`, for example
+  `sent home+down+enter`) never fired: 0 of 30 real launches on Claude Code
+  2.1.310 emitted it. The answer is now reported once, when the composer
+  appears. Codex 0.164 lost its directory-trust answers the same way (0 of 16
+  fresh git-folder launches reported one); they are now reported too.
+
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
   reaped now says so. The typed startup error keeps its code and

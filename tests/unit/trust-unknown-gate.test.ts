@@ -31,7 +31,10 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
       `Accessing workspace:\n/tmp/p\n${newCursorGate}`,
     ])
       expect(blockingRuleIds(agent, autotrust, gate)).toEqual([`${agent}-unknown_gate-prompt`]);
-    expect(trustView(rewordedGate, agent, clearanceFor(agent))).toEqual({ kind: "unknown" });
+    expect(trustView(rewordedGate, agent, clearanceFor(agent))).toEqual({
+      kind: "unknown",
+      gate: true,
+    });
   });
 
   test("C-TRUST-01 conversation content, the native composer, and incomplete shapes never hold", () => {
