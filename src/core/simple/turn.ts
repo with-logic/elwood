@@ -4,13 +4,14 @@
  * or terminal status. Codex acceptance and Stop identity come from private adapter evidence;
  * public running/ready alone cannot bind or finish its turn. Untagged adapters retain the
  * serialized passive oracle. The Stop oracle checks completeness; it never supplies output.
+ * Adapter rejection evidence fails the turn as `turn_failed` (C-API-59).
  * Whole-turn deadlines start after physical submission; catch-up deadlines start after idle.
  */
 
 import { toError } from "../errors.ts";
 import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
-import { boundaryExpectation } from "./boundary-signal.ts";
+import { boundaryExpectation, boundaryRejection } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { withSubmissionAttempt } from "./submission-context.ts";
 import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn/defaults.ts";
@@ -125,7 +126,10 @@ export function runTurn(
       return; // Public Stop precedes its callback outcome; only private confirmation owns the oracle.
     }
     if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
-    gate.expectText(boundaryExpectation(readBoundarySignal(event)));
+    const signal = readBoundarySignal(event);
+    const rejection = boundaryRejection(signal); // the agent rejected the turn (C-API-59)
+    if (rejection) gate.fail(rejection);
+    else gate.expectText(boundaryExpectation(signal));
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") {

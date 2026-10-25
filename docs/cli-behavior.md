@@ -182,6 +182,39 @@ misattributed to a CLI regression.)
   after done — do not treat spinner presence as a reliable per-frame liveness bit
   at tiny sizes.
 
+## Rejected turns (2026-10-25)
+
+**Claude 2.1.310 ends a rejected turn with `StopFailure`, never `Stop`.** A bogus
+`--model elwood-bogus-model` is refused before any model quota is consumed. The
+hooks were `InstructionsLoaded`, `SessionStart` (`model: "elwood-bogus-model"`),
+`UserPromptSubmit`, then `StopFailure` with `error: "model_not_found"`, a
+`prompt_id` matching the submit, and `last_assistant_message` set to Claude's own
+"There's an issue with the selected model (elwood-bogus-model)…" text. No `Stop`
+fired. The transcript writes that same text as an `assistant` entry carrying
+`isApiErrorMessage: true`, `error: "model_not_found"` and `message.model:
+"<synthetic>"`, so Elwood's transcript activity surfaces it as an ordinary
+`assistant_message`. Startup also shows `⚠ Model "elwood-bogus-model" isn't
+recognized`, so the session reaches ready normally. Before C-API-59 the
+no-oracle quiet window settled that turn as a success: `ClaudeSession.send`
+resolved with the error text and `elwood run` exited 0 with it as `response`.
+Elwood now reads `StopFailure` as rejection evidence (`claudeBoundarySignal`) and
+fails the turn with `turn_failed`, message `Claude rejected the turn:
+model_not_found`. The assistant text is not the diagnostic (§6.1). C-API-59,
+C-CLI-28, C-E2E-20.
+
+**The hook can lag the first rendered `ready` under load.** On an idle machine
+`StopFailure` arrived in the same 0.1 s as `ready` and 0.3 s before the transcript
+entry. With four concurrent sessions at load ~55, it lagged the first `ready` by
+0.8, 2.0, 2.5 and 1.8 s. One run rendered a transient `ready → running → ready`
+before the hook. The turn fails only if the hook arrives before the turn settles,
+and a no-oracle turn settles 2 s after its last content. That is the same lag
+that can end a successful turn early when its `Stop` is late.
+
+**Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
+sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
+evidence is a transcript `event_msg` `task_complete` carrying `error`, with
+`last_agent_message: null`, as first measured on 0.155.0.
+
 ## Codex transcript replies
 
 **Codex 0.149.1 writes committed replies as phased `message` response items, not

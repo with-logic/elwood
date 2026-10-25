@@ -1,9 +1,11 @@
 /**
  * What an adapter's turn boundary carries, and the accessors the runner reads it with.
- * Implements PRD §5.8 / §12A: the completeness signal, plus OPTIONAL evidence that the
- * agent itself rejected the turn. Separate from the reader contract so the failure shape
- * has one home (#19).
+ * Implements PRD §5.8 / §10 / §12A and C-API-59: the completeness signal, plus OPTIONAL
+ * evidence that the agent itself rejected the turn, surfaced as `turn_failed`. Separate from
+ * the reader contract so the failure shape has one home.
  */
+
+import { type ElwoodError, elwoodError } from "../errors.ts";
 
 /**
  * What a boundary carries. A bare string is the completeness signal on its own — the shorthand
@@ -34,4 +36,15 @@ export function boundaryFailure(signal: BoundarySignal): TurnFailure | undefined
 /** The gate's expected text for a signal that may be absent: `undefined` stays `undefined`. */
 export function boundaryExpectation(signal: BoundarySignal | undefined): string | undefined {
   return signal === undefined ? undefined : boundaryText(signal);
+}
+
+/** The consumer-facing `turn_failed` error for a rejecting signal; `undefined` otherwise. */
+export function boundaryRejection(signal: BoundarySignal | undefined): ElwoodError | undefined {
+  const failure = signal === undefined ? undefined : boundaryFailure(signal);
+  if (failure === undefined) return undefined;
+  return elwoodError(
+    "turn_failed",
+    failure.message,
+    failure.info === undefined ? {} : { info: failure.info },
+  );
 }

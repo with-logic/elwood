@@ -21,6 +21,9 @@ export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
   readonly prompt?: string;
+  /** Rejection diagnostics an adapter reader may normalize into a failure (C-API-59). */
+  readonly error?: unknown;
+  readonly error_details?: unknown;
 };
 
 /**
@@ -39,8 +42,9 @@ export type TurnBoundaryContract = {
  * are DISTINCT: `undefined` means "not a turn boundary" (the runner ignores the event — an
  * installed oracle stays installed), while a `BoundarySignal` means "a turn boundary whose
  * expected final assistant text is this" — an EMPTY string is a boundary that carries no text
- * (`null`/absent `last_assistant_message`, e.g. `StopFailure`) and clears the oracle →
- * quiet-window settle.
+ * (`null`/absent `last_assistant_message`) and clears the oracle → quiet-window settle. The
+ * object form also reports that the agent REJECTED the turn (Claude `StopFailure`), which fails
+ * it with `turn_failed`.
  * This is the ONE seam where adapter hook shape meets the adapter-neutral runner: `runTurn`
  * consumes only this normalized signal, never raw `hook_event_name`/`last_assistant_message`, so
  * the core is not coupled to adapter hook fields. Each `SessionBase` subclass supplies its own
