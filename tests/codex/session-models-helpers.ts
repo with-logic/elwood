@@ -5,15 +5,17 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { useCodexHome } from "../helpers/codex-home.ts";
 import {
   asScreen,
-  codexPickerCurrentIsDefault,
+  codexPickerCurrentMarkerOnly,
   codexPickerSplitMarkers,
   codexReasoningScreen,
   until,
 } from "../helpers/model-pickers.ts";
 import { ptys } from "./helpers.ts";
 
+export { restoreCodexHome } from "../helpers/codex-home.ts";
 export { until };
 
 export const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[hooks]\n';
@@ -21,9 +23,9 @@ export const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\
 export function sandboxCodexHome(cwd: string): string {
   const home = join(cwd, "codex-home");
   mkdirSync(home, { recursive: true });
-  writeFileSync(join(home, "config.toml"), userConfig);
-  process.env["CODEX_HOME"] = home;
-  return join(home, "config.toml");
+  const configPath = useCodexHome(home);
+  writeFileSync(configPath, userConfig);
+  return configPath;
 }
 
 export async function driveSetModel(
@@ -48,7 +50,7 @@ export async function driveUntilConfigWritten(
 ): Promise<void> {
   const pty = ptys[ptyIndex]!;
   await until(() => pty.writes.join("").includes("/model\r"));
-  pty.emitData(asScreen(codexPickerCurrentIsDefault));
+  pty.emitData(asScreen(codexPickerCurrentMarkerOnly));
   await until(() => pty.writes.filter((w) => w === "[B").length === 1);
   pty.emitData(asScreen(codexPickerSplitMarkers));
   await until(() => pty.writes.filter((w) => w === "\r").length >= 2);
@@ -66,11 +68,4 @@ export function becomeReadyFor(elwoodSessionId: string, cwd: string, ptyIndex: n
     model: "gpt-5.3-codex",
     source: "startup",
   });
-}
-
-const originalCodexHome = process.env["CODEX_HOME"];
-
-export function restoreCodexHome(): void {
-  if (originalCodexHome === undefined) delete process.env["CODEX_HOME"];
-  else process.env["CODEX_HOME"] = originalCodexHome;
 }

@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
-import { asScreen, claudePicker, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
+import { asScreen, claudePicker, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -82,7 +82,7 @@ for (const agent of ["claude", "codex"] as const) {
       await vi.advanceTimersByTimeAsync(200);
       if (method === "listModels") {
         expect(pty.writes.join("")).toContain("/model\r");
-        pty.emitData(asScreen(agent === "claude" ? claudePicker : codexPickerCurrentIsDefault));
+        pty.emitData(asScreen(agent === "claude" ? claudePicker : codexPickerCurrentMarkerOnly));
         await vi.advanceTimersByTimeAsync(200);
         expect(pty.writes).toContain("\u001b");
         pty.emitData(asScreen(agent === "claude" ? "❯ " : "› "));

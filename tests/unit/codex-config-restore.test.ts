@@ -6,14 +6,12 @@
 import {
   chmodSync,
   lstatSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -22,26 +20,15 @@ import {
   restoreFailureRaw,
   snapshotCodexConfig,
 } from "../../src/codex/config/restore.ts";
+import { restoreCodexHome, tempCodexHome } from "./helpers.ts";
 
-const original = process.env["CODEX_HOME"];
-
-afterEach(() => {
-  if (original === undefined) delete process.env["CODEX_HOME"];
-  else process.env["CODEX_HOME"] = original;
-});
-
-function sandbox(contents: string): string {
-  const home = mkdtempSync(join(tmpdir(), "codex-restore-"));
-  process.env["CODEX_HOME"] = home;
-  writeFileSync(join(home, "config.toml"), contents);
-  return join(home, "config.toml");
-}
+afterEach(restoreCodexHome);
 
 const baseConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\nfoo = 1\n\n[hooks]\n';
 
 describe("codex config restore", () => {
   test("C-CODEX-14 restores when only root model keys changed", () => {
-    const path = sandbox(baseConfig);
+    const path = tempCodexHome(baseConfig);
     const snapshot = snapshotCodexConfig();
     writeFileSync(
       path,
@@ -52,13 +39,13 @@ describe("codex config restore", () => {
   });
 
   test("C-CODEX-14 reports unchanged when the picker wrote nothing", () => {
-    const path = sandbox(baseConfig);
+    const path = tempCodexHome(baseConfig);
     expect(restoreCodexConfig(snapshotCodexConfig())).toBe("unchanged");
     expect(readFileSync(path, "utf8")).toBe(baseConfig);
   });
 
   test("C-CODEX-14 skips instead of clobbering concurrent edits", () => {
-    const path = sandbox(baseConfig);
+    const path = tempCodexHome(baseConfig);
     const snapshot = snapshotCodexConfig();
     const concurrent = 'model = "gpt-5.4"\nfoo = 2\n\n[hooks]\n';
     writeFileSync(path, concurrent);
@@ -67,34 +54,34 @@ describe("codex config restore", () => {
   });
 
   test("C-CODEX-14 model keys inside tables are protected, not stripped", () => {
-    const path = sandbox('model = "gpt-5.5"\n\n[profiles.fast]\nmodel = "gpt-5.4-mini"\n');
+    const path = tempCodexHome('model = "gpt-5.5"\n\n[profiles.fast]\nmodel = "gpt-5.4-mini"\n');
     const snapshot = snapshotCodexConfig();
     writeFileSync(path, 'model = "gpt-5.4"\n\n[profiles.fast]\nmodel = "changed"\n');
     expect(restoreCodexConfig(snapshot)).toBe("skipped");
   });
 
   test("C-CODEX-14 a file that vanished during the switch is skipped, never recreated", () => {
-    process.env["CODEX_HOME"] = mkdtempSync(join(tmpdir(), "codex-empty-"));
+    const home = dirname(tempCodexHome());
     expect(snapshotCodexConfig()).toBeUndefined();
     expect(restoreCodexConfig(baseConfig)).toBe("skipped");
-    expect(readdirSync(process.env["CODEX_HOME"])).toEqual([]);
+    expect(readdirSync(home)).toEqual([]);
   });
 
   test("C-CODEX-14 with no snapshot, a config.toml the picker created is `no_snapshot`", () => {
     // No config existed before the switch: the created file is left in place and the
     // outcome names the real situation, not a concurrent edit.
-    const path = sandbox('model = "gpt-5.4"\n');
+    const path = tempCodexHome('model = "gpt-5.4"\n');
     expect(restoreCodexConfig(undefined)).toBe("no_snapshot");
     expect(readFileSync(path, "utf8")).toBe('model = "gpt-5.4"\n');
   });
 
   test("C-CODEX-14 with no snapshot and still no file there is nothing to report", () => {
-    process.env["CODEX_HOME"] = mkdtempSync(join(tmpdir(), "codex-empty-"));
+    tempCodexHome();
     expect(restoreCodexConfig(undefined)).toBe("unchanged");
   });
 
   test("C-CODEX-14 the restore is atomic: no temp file is left behind and the mode survives", () => {
-    const path = sandbox(baseConfig);
+    const path = tempCodexHome(baseConfig);
     chmodSync(path, 0o640);
     const snapshot = snapshotCodexConfig();
     writeFileSync(
@@ -110,11 +97,10 @@ describe("codex config restore", () => {
   test("C-CODEX-14 a symlinked config.toml is written THROUGH to its target", () => {
     // Renaming onto the link path would replace the user's symlink with a regular
     // file; the restore must land in the resolved target and leave the link intact.
-    const home = mkdtempSync(join(tmpdir(), "codex-link-"));
+    const home = dirname(tempCodexHome());
     const target = join(home, "real-config.toml");
     writeFileSync(target, baseConfig);
     symlinkSync(target, join(home, "config.toml"));
-    process.env["CODEX_HOME"] = home;
     const snapshot = snapshotCodexConfig();
     writeFileSync(
       target,

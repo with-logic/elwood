@@ -67,7 +67,7 @@ export const claudeHookSwitchConfirmationWithCacheReason = [
   "  2. No, go back",
 ].join("\n");
 
-export const codexPickerCurrentIsDefault = [
+export const codexPickerCurrentMarkerOnly = [
   "  Select Model and Effort",
   "  Access legacy models by running codex -m <model_name> or in your config.toml",
   "› 1. gpt-5.5 (current)    Frontier model for complex coding, research, and real-world work.",

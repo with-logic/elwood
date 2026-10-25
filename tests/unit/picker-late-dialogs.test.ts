@@ -8,7 +8,7 @@ import { codexReasoningViewport } from "../helpers/model-dialog-viewports.ts";
 import {
   claudeModelCacheConfirmationOnNo,
   claudePicker,
-  codexPickerCurrentIsDefault,
+  codexPickerCurrentMarkerOnly,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
 import { escapeKey, pickerHarness, type Screen } from "../helpers/picker-harness.ts";
@@ -26,7 +26,7 @@ test.each([
   [
     "Codex reasoning level",
     codexModelPicker,
-    codexPickerCurrentIsDefault,
+    codexPickerCurrentMarkerOnly,
     "\r",
     codexReasoningScreen,
   ],

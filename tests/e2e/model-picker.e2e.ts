@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import {
   type ClaudeSessionApi,
@@ -18,6 +18,7 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
+import { defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -82,7 +83,6 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, BASELINE_CONFIG);
-  const defaultsBefore = rootModelKeys(sandbox.configPath);
   let session: CodexSessionApi | undefined;
   try {
     session = await startCodex({
@@ -95,18 +95,25 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
     });
     await waitFor(() => (session?.status === "ready" ? true : undefined), "codex ready", 60_000);
     const models = await session.listModels();
-    assert.ok(models.length >= 2, "picker lists several models");
+    assert.ok(models.length >= 3, "picker lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    assert.equal(models.filter((model) => model.isDefault).length, 1);
-    const target = models.find((model) => !model.isCurrent);
-    assert.ok(target, "another model is available to switch to");
+    // The baseline names no model, so a default here is one Codex drew (none on 0.164).
+    // Without one, the default is the configured model (§5.3): name one that is neither
+    // the launch model nor the switch target.
+    const drawn = drawnCodexDefault(models);
+    const configured = models.find((model) => !model.isCurrent && model.id !== drawn);
+    const target = models.findLast((model) => !model.isCurrent);
+    assert.ok(configured && target && configured !== target, "two other models are listed");
+    const config = readFileSync(sandbox.configPath, "utf8");
+    writeFileSync(sandbox.configPath, `model = "${configured.id}"\n${config}`);
+    const defaultsBefore = rootModelKeys(sandbox.configPath);
     await session.setModel(target.id);
     const after = await session.listModels();
     assert.equal(after.find((model) => model.isCurrent)?.id, target.id, "session keeps the switch");
-    assert.equal(
-      after.find((model) => model.isDefault)?.id,
-      models.find((model) => model.isDefault)?.id,
-      "codex default model marker is unchanged",
+    assert.deepEqual(
+      defaultIds(after),
+      [drawn ?? configured.id],
+      "codex default model is unchanged",
     );
     // C-CODEX-14: Elwood itself restored the sandbox's model defaults after the CLI
     // persisted the picker selection — nothing in this test writes them back.
@@ -146,7 +153,8 @@ test("C-API-41 real listCodexModels returns models and leaves config.toml untouc
     const models = await listCodexModels({ cwd: project.cwd, stateDir: project.stateDir });
     assert.ok(models.length >= 2, "session-less probe lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    assert.equal(models.filter((model) => model.isDefault).length, 1);
+    // The baseline names no model, so at most the one default Codex drew (§5.3).
+    drawnCodexDefault(models);
     // The probe only opens and cancels the picker (never applies a selection), so
     // the sandbox's model defaults are untouched.
     assert.deepEqual(

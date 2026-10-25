@@ -123,9 +123,10 @@ export class CommandSurface {
   listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
     const spec = this.deps.picker();
     const timeoutMs = pickerTimeout(options);
-    return this.picker.run("list_models", spec, timeoutMs, (io) =>
-      listPickerModels(io, spec, timeoutMs),
-    );
+    return this.picker.run("list_models", spec, timeoutMs, async (io, signal) => {
+      const options = await listPickerModels(io, spec, timeoutMs);
+      return spec.withDefaults ? spec.withDefaults(options, signal) : options;
+    });
   }
 
   /**

@@ -32,7 +32,7 @@ const { becomeReady, installFakes, ptys, resetFakes, tempDir } = await import(".
 
 import { codexTty } from "../fixtures/trust-composer.ts";
 
-import { asScreen, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
+import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 
 afterEach(() => {
   resetFakes();
@@ -52,7 +52,7 @@ test("C-API-44 image and text writes wait for a foreign model picker to close", 
   try {
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
-    ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
+    ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await session.terminal.settled();
     const sent = session.sendMessage("caption", { images: [{ path: image }] });
     void sent.catch(() => undefined);

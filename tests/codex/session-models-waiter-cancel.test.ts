@@ -4,7 +4,7 @@ import { afterEach, expect, test } from "vitest";
 import { withCodexConfigLock } from "../../src/codex/config/lock.ts";
 import { startCodex } from "../../src/index.ts";
 import { codexTty } from "../fixtures/trust-composer.ts";
-import { asScreen, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
+import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { restoreCodexHome, sandboxCodexHome, userConfig } from "./session-models-helpers.ts";
 
@@ -102,7 +102,7 @@ test("C-API-55 a config-lock timeout never cancels a picker opened by someone el
       .setModel("gpt-5.4", { timeoutMs: 100 })
       .catch((error: unknown) => error);
     await new Promise<void>((resolve) => setImmediate(resolve));
-    ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
+    ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await session.terminal.settled();
     expect(await setting).toMatchObject({ code: "model_automation_failed" });
     expect(ptys[0]!.writes).toEqual([]);

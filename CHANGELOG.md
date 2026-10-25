@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex `listModels()` and `listCodexModels()` no longer report the session's
+  current model as the configured default. Codex 0.164 marks only the current
+  row, so `isDefault` now follows `config.toml`: the `model` of the profile the
+  root `profile` key selects, else the root `model`. A session launched or
+  switched onto another model keeps the configured row as its default, and a
+  config that names no model reports no default. A `config.toml` that exists but
+  cannot be read rejects the listing with `model_automation_failed`.
+
 - Claude questions are raised again on Claude Code 2.1.310 and in named
   sessions (`name`). 2.1.310 pads the single-question header chip with a
   trailing space, and a named session draws its label into the border below the

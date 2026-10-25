@@ -2,12 +2,12 @@
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
-import { codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
+import { codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { pickerHarness } from "../helpers/picker-harness.ts";
 
 test("C-API-55 a foreign picker remains held through missing rows and blank frames", () => {
   const { picker, screen, queue } = pickerHarness(
-    codexPickerCurrentIsDefault,
+    codexPickerCurrentMarkerOnly,
     () => {},
     codexModelPicker,
   );
