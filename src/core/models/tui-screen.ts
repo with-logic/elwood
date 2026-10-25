@@ -9,6 +9,8 @@ import { elwoodError } from "../errors.ts";
 export type ScreenTerminal = {
   sendInput(data: string | Uint8Array): void | Promise<void>;
   snapshot(): { readonly text: string };
+  /** Resolves on the next completed render, when the terminal can tell (see `waitForScreen`). */
+  readonly nextRender?: (() => Promise<void>) | undefined;
 };
 
 export const defaultModelTimeoutMs = 20_000;
@@ -16,7 +18,10 @@ const pollMs = 100;
 const openNudgeDelayMs = 2_000;
 
 /**
- * Polls until `test` passes, the deadline elapses, or `signal` aborts.
+ * Polls until `test` passes, the deadline elapses, or `signal` aborts. A terminal that
+ * reports completed renders (`nextRender`) is also read on each one, so a frame is seen as
+ * soon as it lands rather than up to one poll interval later; the poll still runs in case
+ * no render follows.
  *
  * `signal` is the OPERATION's budget, shared by every phase; `timeoutMs` bounds this phase.
  * Without the signal a timed-out operation kept polling through each remaining phase's own
@@ -39,7 +44,8 @@ export async function waitForScreen(
       signal?.throwIfAborted();
       return text;
     }
-    await delay(pollMs);
+    const rendered = terminal.nextRender?.();
+    await (rendered === undefined ? delay(pollMs) : Promise.race([delay(pollMs), rendered]));
   }
   signal?.throwIfAborted();
   throw elwoodError("model_automation_failed", `Timed out waiting for ${label}.`);

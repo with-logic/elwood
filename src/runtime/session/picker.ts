@@ -6,6 +6,7 @@ import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
 import { PickerHold } from "./picker-hold.ts";
+import { renderWakeup } from "./render-wakeup.ts";
 
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
@@ -26,9 +27,11 @@ export class PickerTransactions {
   private survivor: ModelPickerSpec | undefined;
   /** Forgets the survivor only after the composer is positively, sustainedly clear. */
   private readonly survivorHold = new PickerHold();
+  private readonly nextRender: (() => Promise<void>) | undefined;
   constructor(deps: PickerDeps) {
     this.deps = deps;
     deps.observeRendered?.((read) => this.foreignDialogVisible(read));
+    this.nextRender = renderWakeup(deps.observeRendered);
   }
 
   /**
@@ -148,6 +151,7 @@ export class PickerTransactions {
   private io(signal: AbortSignal, spec: ModelPickerSpec, progress: Progress): ModelPickerIo {
     const live = abortable(this.deps.terminal, signal);
     const terminal: ScreenTerminal = {
+      nextRender: this.nextRender,
       snapshot: () => {
         const snapshot = live.snapshot();
         progress.dialogSeen ||= spec.activeDialog(snapshot.text, ours) !== undefined;
