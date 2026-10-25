@@ -20,13 +20,15 @@ describe("user shell", () => {
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    // Same shell and flags; the probe writes its start line on descriptor 3, closes it, then
-    // runs the command (C-PERF-05).
+    // Same shell and flags; the probe writes its start line on descriptor 3 and closes it, or
+    // writes it on stdout if the shell already closed descriptor 3, then runs the command
+    // (C-PERF-05).
+    const line = probeCommandStartLine;
     expect(probeShellCommand("claude --version")).toEqual([
       "-l",
       "-i",
       "-c",
-      `echo ${probeCommandStartLine} >&3; exec 3>&-; claude --version`,
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; claude --version`,
     ]);
   });
 });
