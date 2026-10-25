@@ -7,6 +7,8 @@
  * responder and screen-fact blocking rules, so option text cannot spoof a header.
  */
 
+import { arrowDown } from "./input/constants.ts";
+
 export type NumberedOption = { readonly number: string; readonly label: string };
 
 /** One answerable option, with style-specific selection data. */
@@ -54,7 +56,7 @@ export function optionInput(option: SelectableOption): string {
  * cursor was on, so a delayed or duplicated write cannot move past the option.
  */
 export function cursorSelection(option: Extract<SelectableOption, { style: "cursor" }>): string {
-  return `\u001b[H${"\u001b[B".repeat(option.index)}`;
+  return `\u001b[H${arrowDown.repeat(option.index)}`;
 }
 
 /**

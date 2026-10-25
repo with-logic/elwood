@@ -7,6 +7,7 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import type { ObservedTerminal } from "../input/abort.ts";
+import { arrowDown, arrowUp } from "../input/constants.ts";
 import { sendPickerInput } from "./input.ts";
 import type {
   AgentModelOption,
@@ -101,8 +102,6 @@ const closing = (spec: ModelPickerSpec) => (text: string) =>
   spec.activeDialog(text, opened) !== undefined || spec.hasPickerHeader(text);
 
 const escapeKey = "\u001b";
-const arrowDown = "\u001b[B";
-const arrowUp = "\u001b[A";
 const arrowStepMs = 80;
 
 export async function listPickerModels(
