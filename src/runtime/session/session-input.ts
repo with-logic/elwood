@@ -1,12 +1,13 @@
 /**
  * One session's input ownership: caller keys reach the terminal through `caller`, and
- * Elwood's own writes go through `automated`. Raw caller input aborts `signal()`, which
- * revokes the automation holding the terminal at that moment: picker operations
- * (C-API-55), composer cleanup, and native question answers.
+ * Elwood's operations write through `automated`. Startup responders write through their
+ * own guarded writers, whose sends run inside `withAutomatedInput`, the same scope.
+ * Raw caller input aborts `signal()`, which revokes the automation holding the terminal at
+ * that moment: picker operations (C-API-55), composer cleanup, and native question answers.
  */
 import type { EmptyComposerObserver } from "../../core/input/clear-ack.ts";
 import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
-import { pickerIntervention } from "../../core/models/intervention.ts";
+import { callerInputIntervention } from "../../core/models/intervention.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
 type AutomatedWork = () => Promise<void>;
@@ -28,7 +29,7 @@ export class SessionInputOwnership {
   constructor(inner: ElwoodTerminal) {
     let automating = false;
     const revoke = () => {
-      this.current.abort(pickerIntervention());
+      this.current.abort(callerInputIntervention());
       this.current = new AbortController();
     };
     // onData also carries parser-generated protocol replies; only input invocations

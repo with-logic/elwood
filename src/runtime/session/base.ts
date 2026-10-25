@@ -12,7 +12,7 @@ import type { SendOptions } from "../../core/images/types.ts";
 import { writeQueuedInput } from "../../core/input/index.ts";
 import { submissionControlOptions } from "../../core/input/submission-cancel.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
-import { isPickerIntervention } from "../../core/models/intervention.ts";
+import { isCallerInputIntervention } from "../../core/models/intervention.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { submissionAttempt } from "../../core/simple/submission-context.ts";
@@ -90,7 +90,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
           "command",
           {
             ...this.pasteGuard,
-            blocked: () => isPickerIntervention(signal.reason) || this.queuedInputBlocked(),
+            blocked: () => isCallerInputIntervention(signal.reason) || this.queuedInputBlocked(),
           },
           signal,
         ),
