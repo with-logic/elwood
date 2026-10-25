@@ -149,8 +149,13 @@ bound while the CLI itself answers in milliseconds. The two phases are therefore
 bounded separately. After the startup files load, and immediately before the probe
 command runs, the probe shell writes a fixed start line of Elwood's own on a private
 channel that is neither stdout nor stderr, so a startup file that redirects either
-cannot hide the line, and the probe's captured output is exactly the shell's and the
-command's. The shell has 60 seconds from spawn to write that line (the launch bound),
+cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
+started as an interactive login shell, closes every inherited descriptor above
+stderr) writes the line on stdout instead. Not stderr, which a startup file may
+discard or merge into stdout: a startup file that hid stdout would also hide the
+command's own output. Elwood removes the line from captured stdout, so on either
+channel the probe's captured output is exactly the shell's and the command's.
+The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap

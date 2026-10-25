@@ -1,11 +1,12 @@
 /**
- * Unit coverage for recognizing the probe shell's start line in a chunked stderr stream
- * (PRD §9.2, C-PERF-05). Pipes may split the line anywhere, so it is fed byte by byte.
+ * Unit coverage for recognizing the probe shell's start line in a chunked stream, on either of
+ * its channels (PRD §9.2, C-PERF-05). Pipes may split the line anywhere, so it is fed byte by byte.
  */
 
 import { expect, test } from "vitest";
 import {
   announcesStart,
+  ProbeStart,
   ProbeStartWatcher,
   probeCommandStartLine,
   probeStartScript,
@@ -42,4 +43,25 @@ test("C-PERF-03 the watcher keeps a copy of a split line's tail, not a view of t
   expect(Buffer.isBuffer(tail) && tail.length === probeCommandStartLine.length).toBe(true);
   // An unresolved probe's reaper retains the watcher; it must not pin the 1 MB chunk.
   expect(Buffer.isBuffer(tail) && tail.buffer.byteLength < 1_000_000).toBe(true);
+});
+
+test("C-PERF-05 the first channel to carry the start line starts the command, once", () => {
+  const viaControl = new ProbeStart();
+  expect(viaControl.feed("control", Buffer.from(line))).toBe(true);
+  expect(viaControl.started).toBe(true);
+  expect(viaControl.feed("stdout", Buffer.from(line))).toBe(false); // the command's own output
+  expect(viaControl.stdout(`2.1.310\n${line}`)).toBe(`2.1.310\n${line}`);
+  const viaStdout = new ProbeStart();
+  expect(viaStdout.started).toBe(false);
+  expect(viaStdout.feed("stdout", Buffer.from(`noise ${line}`))).toBe(true);
+  expect(viaStdout.started).toBe(true);
+  expect(viaStdout.feed("control", Buffer.from(line))).toBe(false);
+});
+
+test("C-PERF-05 a start line that arrived on stdout is removed from captured stdout", () => {
+  const start = new ProbeStart();
+  expect(start.stdout(`noise ${line}2.1.310\n`)).toBe(`noise ${line}2.1.310\n`); // not yet seen
+  start.feed("stdout", Buffer.from(`noise ${line}`));
+  expect(start.stdout(`noise ${line}2.1.310\n`)).toBe("noise 2.1.310\n");
+  expect(start.stdout("")).toBe(""); // a settled probe's released capture
 });

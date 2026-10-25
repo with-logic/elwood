@@ -12,6 +12,16 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Sessions start again for macOS users whose login shell is `/bin/bash` or
+  `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
+  every inherited descriptor above stderr, so the probe start line added for
+  slow profiles never arrived on descriptor 3. Every `--version`, `--help` and
+  `update` probe, and the CLI's agent detection, failed with `login shell
+  exited with status 0 before starting the probe command`
+  (`phase: "login_shell"`), even though the command had run. A shell that
+  closed descriptor 3 now writes the line on stdout, and Elwood removes it from
+  the captured output.
+
 - `listModels` and `setModel` now read each picker frame they wait for while
   opening and moving through the picker as soon as it renders, rather than at the
   next 100 ms poll. They return sooner and hold the session's

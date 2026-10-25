@@ -1287,15 +1287,42 @@ failed `claude_start_failed` ("`claude --version` failed", `ETIMEDOUT`) at 17.5�
 probe shell now writes `elwood-probe-command-start` on descriptor 3, a fourth pipe the
 runner opens, just before the command, then closes it so the command does not inherit it.
 Writing it to stderr was the first version; a review pointed out that a profile running
-`exec 2>&1` or `exec 2>/dev/null` would hide it, and both shells were confirmed to
-pass descriptor 3 through: real zsh with this host's profile, zsh with either redirect in
-a private `ZDOTDIR`, and bash with `exec 2>&1` in its rc file all delivered the line, and
-only a profile that runs `exec 3>&-` itself loses it.
+`exec 2>&1` or `exec 2>/dev/null` would hide it. Real zsh with this host's profile, and
+zsh with either redirect in a private `ZDOTDIR`, delivered the line on descriptor 3. The
+bash check ran `bash --rcfile … -i`, a non-login shell, which keeps descriptor 3 too; macOS's
+bash as an interactive login shell does not (next section).
 The profile gets a 60 s launch bound and the CLI keeps 15 s from that line (C-PERF-05).
 With the stderr version, three 16-run fleets at load 48–74 passed preflight 48 of 48;
 the bounds are the same on descriptor 3. The real-shell e2e
 uses a private `ZDOTDIR` whose `.zshrc` sleeps 4 s with a 2 s command bound; `main`
 fails it with that same `ETIMEDOUT`.
+
+## Probe start line under macOS bash 3.2 (2026-10-25)
+
+macOS's `/bin/bash` 3.2.57, and `/bin/sh`, which is the same bash in sh mode, close every
+inherited descriptor above stderr when started with both `-l` and `-i`, even with
+`--noprofile --norc`. Pipes a Node parent opened on 3, 9, 10 and 19 were all closed before
+the `-c` script ran. `-l` alone or `-i` alone keeps them, and so does Linux's bash 5.2.15
+(Debian, in the `node:24` image) as an interactive login shell. zsh 5.9 and ksh 93u+ keep
+them; dash keeps 3–9 but cannot name a descriptor of 10 or more, so a higher number is no
+fix. With descriptor 3 as the only channel, every probe through those shells failed `login
+shell exited with status 0 before starting the probe command` although its command ran,
+and so did `elwood`'s agent detection. Any macOS user whose login shell is bash could not
+start a session. GitHub's `macos-latest` runner user's shell is bash.
+
+The probe script now tests the write: `if { echo L >&3; } 2>/dev/null; then exec 3>&-;
+else echo L; fi`. zsh, ksh, macOS and Debian dash, non-login bash 3.2 and bash 5.2 took
+descriptor 3 when it was open and stdout when it was closed, and none printed the failed
+redirection's error. The fallback is stdout, not stderr. Under real `bash -l -i` with a
+`~/.bash_profile` of `exec 2>/dev/null` or `exec 2>&1`, the line arrived on stdout and the
+probe passed. A stderr fallback would have been discarded by the first and moved into
+stdout by the second. A profile that hid stdout would hide the command's own output and
+fail the probe regardless. The runner removes the line from captured stdout. A profile
+that runs `exec 3>&-` itself now falls back too. Only a profile that reopens descriptor 3
+onto something else still loses the line. `tests/unit/probe-closed-descriptor.test.ts`
+covers this with a `/bin/sh` stand-in that closes descriptor 3 on every host, and with
+real `/bin/bash -l -i` where `/bin/bash` is 3.x. All nine of its tests fail on `main` at
+613b3ea5.
 
 ## Testing against the real CLIs
 
