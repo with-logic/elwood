@@ -166,6 +166,23 @@ misattributed to a CLI regression.)
   observed `◐ ` prefix alongside the existing braille range; both screen facts
   and live trust clearance share it. No other new spinner glyph is inferred.
   C-TURN-05, C-TRUST-01.
+- **Claude 2.1.310 alternates its working title between `◐` and `◑`, and its
+  spinner row has no `esc to interrupt`.** Sampling the title every 50 ms through
+  real turns (2026-10-25, Opus 5.5, 189 columns) gave `✳ ◐ ◑ ◐ ✳` and
+  `✳ ◐ ◑ ◐ ◑ ◐ ✳`, each half circle lasting about a second, with `✳` while idle.
+  The spinner row reads `✢ Nebulizing… (2s)`, or
+  `✶ Computing… (running Stop hook · 8s · ↓ 3 tokens)`, and no frame of those turns
+  contained `esc to interrupt`, so the title was the only working signal. With only
+  `◐` recognized, every `◑` frame read as idle: the session reported
+  `running → ready → running` about once a second for the whole turn, eight false
+  `ready`s during one 6 s `sleep` tool call. The ergonomic turn treats an accepted
+  `ready` as the start of its 2 s quiet window, so a turn with more than 2 s between
+  a `◑` frame and its first text settled early. Six concurrent `send("Reply with
+  exactly OK…")` calls returned `""` in 5 of 6 at load 117 and 6 of 6 at load 207,
+  with Claude's `Stop` carrying `OK` 2–4 s later. Both half circles now read as
+  working (`tests/fixtures/claude-2.1.310/working-half-right.txt`): the same six
+  sends returned `OK` 6 of 6 at load 120–126 with no `ready` before `Stop`.
+  C-TURN-05, C-API-48.
 - Both CLIs render the literal `esc to interrupt` only while a turn is running
   (Claude footer, Codex "Working" spinner). Elwood's `TurnStateWatcher` keys off
   this, and **arms only after initial readiness** because the Codex MCP boot
@@ -181,6 +198,43 @@ misattributed to a CLI regression.)
 - On a narrow screen the working spinner may hide while streaming and persist
   after done — do not treat spinner presence as a reliable per-frame liveness bit
   at tiny sizes.
+
+## Rejected turns (2026-10-25)
+
+**Claude 2.1.310 ends a rejected turn with `StopFailure`, never `Stop`.** A bogus
+`--model elwood-bogus-model` is refused before any model quota is consumed. The
+hooks were `InstructionsLoaded`, `SessionStart` (`model: "elwood-bogus-model"`),
+`UserPromptSubmit`, then `StopFailure` with `error: "model_not_found"`, a
+`prompt_id` matching the submit, and `last_assistant_message` set to Claude's own
+"There's an issue with the selected model (elwood-bogus-model)…" text. No `Stop`
+fired. The transcript writes that same text as an `assistant` entry carrying
+`isApiErrorMessage: true`, `error: "model_not_found"` and `message.model:
+"<synthetic>"`, so Elwood's transcript activity surfaces it as an ordinary
+`assistant_message`. Startup also shows `⚠ Model "elwood-bogus-model" isn't
+recognized`, so the session reaches ready normally. Before C-API-59 the
+no-oracle quiet window settled that turn as a success: `ClaudeSession.send`
+resolved with the error text and `elwood run` exited 0 with it as `response`.
+Elwood now reads `StopFailure` as rejection evidence (`claudeBoundarySignal`) and
+fails the turn with `turn_failed`, message `Claude rejected the turn:
+model_not_found`. The assistant text is not the diagnostic (§6.1). C-API-59,
+C-CLI-28, C-E2E-20.
+
+**The hook can lag the first rendered `ready` under load.** On an idle machine
+`StopFailure` arrived in the same 0.1 s as `ready` and 0.3 s before the transcript
+entry. With four concurrent sessions at load ~55, it lagged the first `ready` by
+0.8, 2.0, 2.5 and 1.8 s. One run rendered a transient `ready → running → ready`
+before the hook. The turn fails only if the hook arrives before the turn settles,
+and a no-oracle turn settles 2 s after its last content. That is the same lag
+that can end a successful turn early when its `Stop` is late. A hook that late can
+also land while the NEXT turn is running. Each hook is delivered by its own bridge
+process, so the next turn's `UserPromptSubmit` can even arrive first. Elwood
+therefore applies a `StopFailure` only after the turn's own `UserPromptSubmit`, and
+only when its `prompt_id` matches that submit's.
+
+**Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
+sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
+evidence is a transcript `event_msg` `task_complete` carrying `error`, with
+`last_agent_message: null`, as first measured on 0.155.0.
 
 ## Codex transcript replies
 
@@ -1118,6 +1172,40 @@ session's stable socket home. A connect probe was rejected on purpose: the
 bridge treats any connection that closes without a frame as a malformed request
 and emits `hookError`/`activity` on the live owner, so presence is the only
 side-effect-free signal. C-CLI-21 through C-CLI-24.
+
+## Probe shell startup under concurrency (2026-10-25)
+
+Preflight probes run through the user's interactive login shell (§4.2), so their wall
+time is the user's profile plus the CLI. On a 16-CPU host already at load 35–90 with a
+typical developer profile (oh-my-zsh with seven plugins, `nvm.sh`, `fnm env`,
+`brew shellenv`), measured with Claude Code 2.1.310:
+
+- `claude --version` without a shell took 0.01–0.12 s at 1, 4, 8 and 16 concurrent
+  runs. There is no `~/.claude.json` lock, autoupdate check or keychain wait on this
+  path. An empty `CLAUDE_CONFIG_DIR` changed nothing, and `zsh -l -i -c true` costs
+  the same as the real probe.
+- The interactive login shell alone took 2.3–7.6 s for one probe, about 2 s each at 4
+  concurrent, about 5 s at 8, 7–19 s at 16 (p50 8–18 s), and 15.5–30.9 s at 32. A
+  trace of one startup put about 2.5 s in `nvm.sh`'s command substitutions and 1.2 s
+  in `compinit`/`compdef`. Fresh or shared working directories made no difference, so
+  this is CPU saturation from fork-heavy startup files, not a shared lock.
+- With an empty private `ZDOTDIR`, the same probe took 0.03–0.23 s at 16.
+
+The original 15 s bound covered both phases. 16 concurrent `elwood run`s therefore
+failed `claude_start_failed` ("`claude --version` failed", `ETIMEDOUT`) at 17.5–18.9 s:
+16 of 16 in one of three fleets at load 68, and 14 of 16 in the original report. The
+probe shell now writes `elwood-probe-command-start` on descriptor 3, a fourth pipe the
+runner opens, just before the command, then closes it so the command does not inherit it.
+Writing it to stderr was the first version; a review pointed out that a profile running
+`exec 2>&1` or `exec 2>/dev/null` would hide it, and both shells were confirmed to
+pass descriptor 3 through: real zsh with this host's profile, zsh with either redirect in
+a private `ZDOTDIR`, and bash with `exec 2>&1` in its rc file all delivered the line, and
+only a profile that runs `exec 3>&-` itself loses it.
+The profile gets a 60 s launch bound and the CLI keeps 15 s from that line (C-PERF-05).
+With the stderr version, three 16-run fleets at load 48–74 passed preflight 48 of 48;
+the bounds are the same on descriptor 3. The real-shell e2e
+uses a private `ZDOTDIR` whose `.zshrc` sleeps 4 s with a 2 s command bound; `main`
+fails it with that same `ETIMEDOUT`.
 
 ## Testing against the real CLIs
 

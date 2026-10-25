@@ -22,11 +22,11 @@ describe("model picker parsing", () => {
       "sonnet",
       "haiku",
     ]);
-    expect(parsed.cursorIndex).toBe(2);
+    expect(parsed.cursorOptionIndex).toBe(2);
     expect(parsed.options[0]).toMatchObject({ isDefault: true, isCurrent: false });
     expect(parsed.options[2]).toMatchObject({ label: "Fable", isCurrent: true, isDefault: false });
     expect(parsed.options[4]?.description).toBe("Haiku 4.5 · Fastest for quick answers");
-    expect(parseClaudeModelPicker(claudePickerCursorOnHaiku).cursorIndex).toBe(4);
+    expect(parseClaudeModelPicker(claudePickerCursorOnHaiku).cursorOptionIndex).toBe(4);
   });
 
   test("C-API-23 parses Codex rows without inferring a default from `(current)`", () => {
@@ -38,7 +38,7 @@ describe("model picker parsing", () => {
       "gpt-5.4-mini",
       "gpt-5.3-codex-spark",
     ]);
-    expect(parsed.cursorIndex).toBe(0);
+    expect(parsed.cursorOptionIndex).toBe(0);
     expect(parsed.options[0]).toMatchObject({ isCurrent: true, isDefault: false });
     expect(parsed.options.filter((option) => option.isDefault)).toEqual([]);
   });
@@ -47,7 +47,7 @@ describe("model picker parsing", () => {
     const parsed = parseCodexModelPicker(codexPickerSplitMarkers);
     expect(parsed.options[0]).toMatchObject({ id: "gpt-5.5", isDefault: true, isCurrent: false });
     expect(parsed.options[1]).toMatchObject({ id: "gpt-5.4", isCurrent: true, isDefault: false });
-    expect(parsed.cursorIndex).toBe(1);
+    expect(parsed.cursorOptionIndex).toBe(1);
   });
 
   test("C-API-23 returns no rows when the picker header is absent", () => {

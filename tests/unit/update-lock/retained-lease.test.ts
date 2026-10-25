@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { expect, test } from "vitest";
 import { elwoodError } from "../../../src/core/errors.ts";
-import { processGroupGone } from "../../../src/runtime/probe-cleanup.ts";
+import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { readOwner } from "../../../src/runtime/update/owner.ts";
 import { tempDir } from "../../helpers/tmp.ts";

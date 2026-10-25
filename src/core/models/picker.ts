@@ -6,6 +6,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
+import type { ObservedTerminal } from "../input/abort.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
 import { sendPickerInput } from "./input.ts";
 import type {
@@ -14,19 +15,15 @@ import type {
   ModelDialogStage,
   ParsedModelPicker,
 } from "./rows.ts";
-import {
-  defaultModelTimeoutMs,
-  openCommandScreen,
-  type ScreenTerminal,
-  waitForScreen,
-} from "./tui-screen.ts";
+import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
 
 export function pickerTimeout(options?: { readonly timeoutMs?: number }): number {
   return options?.timeoutMs ?? defaultModelTimeoutMs;
 }
 
 export type ModelPickerIo = {
-  readonly terminal: ScreenTerminal;
+  /** Every key is written behind its received-output barrier (C-API-56). */
+  readonly terminal: ObservedTerminal;
   readonly blocked?: () => boolean;
   readonly signal?: AbortSignal;
   readonly submit: (command: string, signal: AbortSignal) => Promise<void>;
@@ -135,7 +132,7 @@ export async function setPickerModel(
   // Row ids are already lower-cased labels (`rows.ts`), so matching the id
   // alone covers a caller that passes the display label in any case.
   const target = parsed.options.findIndex((option) => option.id === wanted);
-  if (target === -1 || parsed.cursorIndex === -1) {
+  if (target === -1 || parsed.cursorOptionIndex === -1) {
     await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
     const reason =
       target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
@@ -143,7 +140,7 @@ export async function setPickerModel(
       available: parsed.options.map((option) => option.id),
     });
   }
-  const delta = target - parsed.cursorIndex;
+  const delta = target - parsed.cursorOptionIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
     await sendPickerInput(io, key, isOwnCompletePicker(spec));
@@ -163,7 +160,7 @@ export async function setPickerModel(
 
 /** The highlighted option, or undefined while no cursor is painted. */
 function cursorOption(parsed: ParsedModelPicker): AgentModelOption | undefined {
-  return parsed.options[parsed.cursorIndex];
+  return parsed.options[parsed.cursorOptionIndex];
 }
 
 async function openAndParse(

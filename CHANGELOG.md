@@ -30,6 +30,14 @@ back each entry are listed in `prd/14-conformance.md`.
   confirmed terminated and its group reap fails too, `termination_failed` now also
   carries the reap's errno as `details.reapErrno`, next to `details.reapError`.
 
+- On Claude Code 2.1.310, `send` no longer returns an empty or truncated reply, and
+  `stream` no longer ends early, when a turn takes more than about two seconds to
+  produce text. A Claude session also stays `running` for the whole turn instead of
+  flipping to `ready` and back about once a second. Claude 2.1.310 alternates its
+  working window title between `◐` and `◑`, and Elwood read every `◑` frame as idle.
+  An ergonomic turn treated that false `ready` as the start of its 2-second quiet
+  window. Both half circles now mean working.
+
 - A failed start or resume no longer signals a CLI that already exited during startup,
   and no longer reaps its process group a second time. The leader's pid could already
   belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and
@@ -45,6 +53,20 @@ back each entry are listed in `prd/14-conformance.md`.
   throws. They used to pass the raw system error through, whose own `code` (for example
   `ESRCH`) read like an Elwood error name. The underlying message is kept as
   `details.cause`, with `errno`, `syscall` and `path` when present.
+
+- A slow login-shell profile no longer fails startup as `claude_start_failed` /
+  `codex_start_failed` ("`--version` failed", `ETIMEDOUT`). Preflight probes run
+  through the user's interactive login shell, and the fixed 15-second bound counted
+  loading that profile as the CLI's time. Under 16 concurrent headless runs on a
+  loaded machine the profile alone took 7–19 seconds, while the CLI answered in
+  milliseconds. The shell now has 60 seconds to load the profile, and the CLI still
+  has 15 seconds from then. A shell that never starts the probe, by timing out or by
+  exiting first, fails with a cause naming the login shell and `details.phase:
+  "login_shell"`; for `autoupdate` the `agent_update_failed` warning carries
+  `errorCode: "login_shell_failed"`. The profile's own startup output is left out of
+  both, since it can contain expanded secrets. A contender waiting on another process's update
+  now waits up to 165 seconds instead of 60, so it does not give up and re-read the
+  version while the owner's version and update probes are still within their bounds.
 
 - `autotrust` no longer reports a Claude folder-trust prompt that it has
   already answered as needing attention. Claude erases the dialog at once but
@@ -62,6 +84,23 @@ back each entry are listed in `prd/14-conformance.md`.
   for its first turn. Claude names its transcript at startup but writes the file only once
   a turn begins, and Elwood had reported each poll of the missing file as a read error.
   Removing a transcript after it existed still warns, as does any other read failure.
+- `listModels` and `setModel` no longer send a picker key into a prompt that has
+  reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
+  answer and Escape is now decided after every received byte is rendered, like
+  queued input and failure cleanup already were. If the screen cannot be verified,
+  the key is withheld and the operation fails with `model_automation_failed`.
+  Before, an arrow chosen from the stale picker frame could move a permission or
+  question prompt's selection.
+
+- A Claude turn that Claude itself rejects, such as one sent with a model that does not
+  exist, now fails with the new `turn_failed` error instead of passing as a successful
+  reply. `ClaudeSession.send` rejects and `stream` throws after its collected events;
+  `error.details.agentError` carries Claude's error name (for example `model_not_found`).
+  `elwood run` exits 1 with a `turn_failed` error record where it used to exit 0 and
+  print Claude's error text as the response. A late rejection whose `prompt_id` names an
+  earlier submission than the current turn's does not fail the current turn. When either
+  hook lacks a `prompt_id`, a rejection that arrives during a turn is attributed to that
+  turn. Codex rejections are not recognized yet.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker

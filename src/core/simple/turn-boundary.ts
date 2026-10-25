@@ -13,7 +13,7 @@
  */
 
 /** Short transcript-drain settle (ms) after a post-failure `ready` — trailing events flush. */
-const DRAIN_MS = 750;
+export const DRAIN_MS = 750;
 
 export class TurnBoundary {
   /** Resolves when the next turn may safely start. The serializer holds its slot on this. */

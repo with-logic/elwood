@@ -9,7 +9,7 @@
 import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { exitingDuringStartup, rejection, startupExit } from "../helpers/startup-exit.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
@@ -28,7 +28,7 @@ test("C-LIFE-10 a Codex CLI that exits during startup is never signaled again; i
 test("C-LIFE-10 a failed Codex exit-path reap is retried by cleanup's shared reaper, still unsignaled", async () => {
   installFakes();
   const attempts: number[] = [];
-  setGroupKillerForTests({
+  setProcessTreeOpsForTests({
     killGroup: (pgid) => {
       attempts.push(pgid);
       if (attempts.length === 1) throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });

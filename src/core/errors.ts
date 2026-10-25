@@ -44,6 +44,7 @@ export type ElwoodErrorName =
   | "loop_not_found"
   | "loop_persistence_failed"
   | "loop_submission_failed"
+  | "turn_failed"
   | "wait_timeout";
 
 export class ElwoodError extends Error {
@@ -115,6 +116,8 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
  * Diagnosable details for a failed CLI probe (C-ERR-08): stderr plus the
  * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
  * output overflow) so a start failure never drops the underlying reason.
+ * A login-shell failure (`phase: "login_shell"`) never ran the command, so its stderr is
+ * only the user's startup output, which can carry expanded secrets: it is withheld.
  * `cleanupErrorCode` and `cleanupProcessGroupId` appear only when an aborted probe's cleanup
  * stayed unconfirmed. The group id is diagnostic: it may already be reissued to an unrelated
  * group, so it must never be signaled.
@@ -130,12 +133,16 @@ export function probeFailureDetails(result: {
     // the constraint is enforced at the producer and documented here.
     readonly cleanupErrorCode?: string;
     readonly cleanupProcessGroupId?: number;
+    /** The user's login shell, not the probe command, failed (§9.2). */
+    readonly phase?: "login_shell";
   };
 }): Readonly<Record<string, string | number>> {
-  const details: Record<string, string | number> = { stderr: result.stderr };
+  const loginShell = result.error?.phase === "login_shell";
+  const details: Record<string, string | number> = { stderr: loginShell ? "" : result.stderr };
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;
+    if (result.error.phase !== undefined) details["phase"] = result.error.phase;
     if (result.error.cleanupErrorCode !== undefined)
       details["cleanupErrorCode"] = result.error.cleanupErrorCode;
     if (result.error.cleanupProcessGroupId !== undefined)

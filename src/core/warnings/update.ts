@@ -8,6 +8,9 @@
  * `updateReason: "active_owner"` — another process held the update lease until this caller's
  * wait expired — becomes `errorCode: "update_active"` with a message saying the update was
  * skipped, and no diagnostics, because no local updater ran to produce an errno or stderr.
+ * The user's login shell can also fail before the update command runs (§9.2): that reports
+ * `errorCode: "login_shell_failed"` with empty `raw`, since its stderr would be only the
+ * profile's startup output.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
@@ -32,7 +35,7 @@ const maxStderr = 2_000;
  * Reasons an update was skipped rather than attempted, and how each reads to a user. A
  * skipped update carries no errno or updater stderr, because no local updater ran. Both
  * reach the consumer as `errorCode: "update_active"` and differ only in timing:
- * `active_owner` follows the full 60-second contention wait, while `cleanup_pending` is
+ * `active_owner` follows the full 165-second contention wait, while `cleanup_pending` is
  * immediate, because a surviving updater group may outlive any bound worth waiting out.
  */
 const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
@@ -42,8 +45,9 @@ const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
 
 /**
  * Build the warning from the contained update error. `installedVersion` is the parsed version the
- * session will actually run (the preflight re-read it after the failed update). `errorCode` is the
- * update probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
+ * session will actually run (the preflight re-read it after the failed update). `errorCode` is
+ * `login_shell_failed` when the login shell failed before the update ran, else the update
+ * probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
  *
  * An error carrying `updateReason: "active_owner"` is contention, not failure: another process
  * held the update lease until this caller's wait expired, so no local update command ran. That
@@ -70,7 +74,19 @@ export function buildUpdateWarning(
         ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
         : `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
-    errorCode: skipped === undefined ? (errno ?? "update_failed") : "update_active",
+    errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),
   };
+}
+
+/**
+ * A login shell that timed out or exited before running `update` is the user's profile, not the
+ * updater, so it reports as `login_shell_failed` rather than the probe's errno (§9.2, C-PERF-05).
+ */
+function failureCode(
+  details: Readonly<Record<string, unknown>>,
+  errno: string | undefined,
+): string {
+  if (details["phase"] === "login_shell") return "login_shell_failed";
+  return errno ?? "update_failed";
 }

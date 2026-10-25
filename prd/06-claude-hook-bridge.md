@@ -40,6 +40,8 @@ input and fail open until first-class types are added. Elwood should add an
 unknown-but-safe event path before promising forward-compatible hook handling.
 
 `StopFailure` identifies a rejected Claude turn even when diagnostic fields drift.
+Ergonomic `send`/`stream` turns and headless CLI runs fail such a turn with
+`turn_failed` (§5.8, §12A.2).
 After validating the common hook envelope, ingress MUST admit missing or arbitrarily
 shaped `error`, `error_details`, and `last_assistant_message` fields. Their public
 TypeScript types are optional `unknown`; consumers must narrow them before use.

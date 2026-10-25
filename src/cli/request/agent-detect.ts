@@ -46,8 +46,17 @@ export async function loginShellResolves(
   return result.status === 0;
 }
 
-function probeFailedMessage(shell: string, error: { readonly code?: string | undefined }): string {
-  const reason = error.code === undefined ? "did not run" : `failed with ${error.code}`;
+function probeFailedMessage(
+  shell: string,
+  error: { readonly code?: string | undefined; readonly message: string; readonly phase?: string },
+): string {
+  // A login-shell failure's message is Elwood's own fixed text, never captured output.
+  const reason =
+    error.phase === "login_shell"
+      ? `failed before running the check (${error.message})`
+      : error.code === undefined
+        ? "did not run"
+        : `failed with ${error.code}`;
   return (
     `No agent was found because the probe itself failed: login shell ${JSON.stringify(shell)} ` +
     `${reason} while checking for \`claude\` and \`codex\`. Fix the shell, or select an agent ` +

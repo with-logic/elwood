@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { runProbe, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
+import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 import { currentCommandRunner } from "../../src/runtime/seams.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -66,7 +66,7 @@ describe("runtime probe runner", () => {
   });
 
   test("C-PERF-03 a hung probe is killed at the timeout with a typed error", async () => {
-    setProbeTimeoutMsForTests(50);
+    setProbeTimeoutsForTests({ commandMs: 50, launchMs: 50 });
     const result = await runProbe(node, ["-e", "setInterval(() => {}, 1000)"]);
     expect(result.status).toBeNull();
     expect(result.error?.code).toBe("ETIMEDOUT");
@@ -79,7 +79,7 @@ describe("runtime probe runner", () => {
     // Generous, because the probe must not time out until the shell has recorded the
     // grandchild: at a short timeout a loaded machine aborts before `echo` ever runs, and
     // the test then fails for want of a marker rather than for a surviving grandchild.
-    setProbeTimeoutMsForTests(2_000);
+    setProbeTimeoutsForTests({ commandMs: 2_000, launchMs: 2_000 });
     const marker = join(tempDir("elwood-probe-"), "grandchild.pid");
     const result = await runProbe("/bin/sh", ["-c", `sleep 30 & echo $! > "${marker}"; wait`]);
     expect(result.error?.code).toBe("ETIMEDOUT");
@@ -92,7 +92,7 @@ describe("runtime probe runner", () => {
     // The child can exit in the instant between the timer firing and the group kill;
     // the kill's ESRCH is swallowed and the timed-out result still resolves. The child
     // here exits on its own shortly after, since the stubbed kill never signals it.
-    setProbeTimeoutMsForTests(50);
+    setProbeTimeoutsForTests({ commandMs: 50, launchMs: 50 });
     // Signal and target both recorded: `ESRCH` from the signal-0 observation means the
     // group is already gone, and the point of the test is that abort then stops. Recording
     // only pids could not tell that apart from a SIGKILL that also happened to see ESRCH.
@@ -113,7 +113,7 @@ describe("runtime probe runner", () => {
     "EPERM",
     "unexpected",
   ])("C-PERF-03 abort failure %s still settles without leaking error text", async (code) => {
-    setProbeTimeoutMsForTests(25);
+    setProbeTimeoutsForTests({ commandMs: 25, launchMs: 25 });
     vi.spyOn(process, "kill").mockImplementation(() => {
       throw Object.assign(new Error("private probe context"), { code, name: "PrivateError" });
     });

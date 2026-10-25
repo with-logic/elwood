@@ -6,13 +6,13 @@ import { additionalResources } from "../../scripts/performance/fleet/resources.t
 import { createFleet } from "../../scripts/performance/fleet/runtime.ts";
 import { exerciseFleet } from "../../scripts/performance/fleet/workload.ts";
 import { setPlatformForTests } from "../../src/runtime/seams.ts";
-import { resetGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { resetProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { resetStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
 import { sessionSocketHome } from "../../src/state/socket-home.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
-  resetGroupKillerForTests();
+  resetProcessTreeOpsForTests();
   resetStartupWaitMsForTests();
 });
 
