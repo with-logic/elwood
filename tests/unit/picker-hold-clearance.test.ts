@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
-import { clearReadingGapMs } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearReadingGapMs } from "../../src/core/models/clearance.ts";
 import { PickerHold } from "../../src/runtime/session/picker-hold.ts";
 import {
   claudeClosedPickerViewport,

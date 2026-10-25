@@ -8,6 +8,7 @@ import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import type { ObservedTerminal } from "../input/abort.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
+import { waitUntilClosed } from "./close-wait.ts";
 import { sendPickerInput } from "./input.ts";
 import type {
   AgentModelOption,
@@ -78,7 +79,8 @@ export type ModelPickerSpec = {
  * a transcript or the agent's own output can print `Select model`, so navigating or
  * Escaping on it could send keys into a running turn, the real composer, or another prompt
  * (C-API-24). The header gates only two waits, the `/model` open wait (`openAndParse`) and
- * the `closing` wait; the cursor-settle wait reads a parsed row. None of them writes.
+ * the close wait (`waitUntilClosed`); the cursor-settle wait reads a parsed row. None of
+ * them writes.
  */
 const opened: ModelDialogAuthority = { opened: true };
 
@@ -92,15 +94,6 @@ const opened: ModelDialogAuthority = { opened: true };
 export const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
   spec.activeDialog(text, opened) === "picker";
 
-/**
- * The CLOSE wait after Elwood's own Escape, and deliberately weaker than `isOwnCompletePicker` because it
- * only waits: while any stage of the dialog or its header still shows, the picker may be
- * mid-close, and resolving there would let the next operation find picker text already on
- * screen. It never gates a write: every key, Escape included, needs `isOwnCompletePicker`.
- */
-const closing = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, opened) !== undefined || spec.hasPickerHeader(text);
-
 const escapeKey = "\u001b";
 const arrowStepMs = 80;
 
@@ -111,13 +104,7 @@ export async function listPickerModels(
 ): Promise<readonly AgentModelOption[]> {
   const parsed = await openAndParse(io, spec, timeoutMs);
   await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
-  await waitForScreen(
-    io.terminal,
-    (text) => !closing(spec)(text),
-    timeoutMs,
-    `${spec.agent} model picker to close`,
-    io.signal,
-  );
+  await waitUntilClosed(io, spec, timeoutMs);
   return parsed.options;
 }
 
@@ -156,6 +143,7 @@ export async function setPickerModel(
     io.signal,
   );
   await spec.apply(io, timeoutMs);
+  await waitUntilClosed(io, spec, timeoutMs);
 }
 
 /** The highlighted option, or undefined while no cursor is painted. */

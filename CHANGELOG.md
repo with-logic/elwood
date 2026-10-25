@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A successful `listModels` or `setModel` no longer releases queued input on the
+  first frame without the picker. It now waits until the picker and its header
+  have stayed gone across five readings at least 40 ms apart. Before, a blank or
+  half-painted repaint could end the operation and let a queued message's Enter
+  land in the picker when it painted again, applying the highlighted model.
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
   reaped now says so. The typed startup error keeps its code and
