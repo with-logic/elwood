@@ -15,7 +15,9 @@ import { claudeComposerFooterRow } from "./composer/footer.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 import { claudeQuestionCandidate } from "./questions/screen.ts";
 
-const claudeWorkingTitle = /^[⠀-⣿◐]\s/;
+// Claude's working title: a braille spinner, or the half circles 2.1.310 alternates between
+// (`◐`, `◑`); the idle title is `✳`. Reading `◑` as idle reported `ready` mid-turn (C-TURN-05).
+const claudeWorkingTitle = /^[⠀-⣿◐◑]\s/;
 /** Zero-based input position after Claude's two-cell "❯ " composer prefix. */
 export const claudeComposerInputColumn = 2;
 /** Native empty-composer row shape; callers own activity and dialog checks. */
@@ -75,17 +77,20 @@ export function liveClaudeClearance(
  * matching the question plus the numbered-Yes line together avoids matching
  * model prose that merely quotes the phrase. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and "✳ " when idle
- * on 2.1.258; 2.1.281 also emits the captured "◐ " working prefix
+ * on 2.1.258; 2.1.281 also emits the captured "◐ " working prefix, and 2.1.310
+ * alternates "◐ " and "◑ " for the whole turn
  * — a width-independent working signal that survives Claude's footer elision
  * on narrow screens. Model/effort switch dialogs use either `❯` or `›` and
  * can be numbered or unnumbered; their complete title/action shape blocks the
  * dialog caret from being mistaken for the idle composer. Verified on claude
  * 2.1.258. The questionnaire blocking pattern and manual-mode footer were
- * captured on 2.1.305; other rules retain the earlier version evidence.
+ * captured on 2.1.305, and the working-title rule (both half circles) on
+ * 2.1.310; every other rule retains the 2.1.258 evidence.
  */
 export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
-  verifiedAgainst: "claude 2.1.258; question dialog and manual footer: 2.1.305",
+  verifiedAgainst:
+    "claude 2.1.258; question dialog and manual footer: 2.1.305; working title: 2.1.310",
   rules: [
     {
       id: "claude-question-dialog",
