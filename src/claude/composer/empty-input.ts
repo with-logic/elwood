@@ -23,9 +23,11 @@ export function claudeEmptyInputRows(
 ): boolean {
   const composer = rows[cursorRow];
   if (!(composer?.startsWith("❯") && claudeComposerRow.test(composer))) return false;
-  const top = rows[cursorRow - 1] ?? "";
-  if (!((rule.test(top) || claudeNamedBorder.test(top)) && rule.test(rows[cursorRow + 1] ?? "")))
-    return false;
+  // A named session labels only the top rule; the rule below the composer stays plain.
+  const topRule = rows[cursorRow - 1] ?? "";
+  const hasComposerTopRule = rule.test(topRule) || claudeNamedBorder.test(topRule);
+  const hasPlainBottomRule = rule.test(rows[cursorRow + 1] ?? "");
+  if (!(hasComposerTopRule && hasPlainBottomRule)) return false;
   const below = rows.slice(cursorRow + 2).filter((row) => row.trim() !== "");
   return (
     (rows.some((row) => /Claude Code v[\d.]+/.test(row)) ||

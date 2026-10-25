@@ -7,4 +7,6 @@
  * dialog replaces the composer. The other rules stay plain.
  */
 
-export const claudeNamedBorder = /^[─━]{3,} \S.* [─━]\s*$/;
+/** The inset label after a rule's dashes (` Question Asker ─`), as a single-line fragment. */
+export const claudeNamedLabel = String.raw` \S[^\n]* [─━]`;
+export const claudeNamedBorder = new RegExp(String.raw`^[─━]{3,}${claudeNamedLabel}\s*$`);

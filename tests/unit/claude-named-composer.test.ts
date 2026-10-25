@@ -9,8 +9,9 @@ const fixture = readNativeInputFrame(
   new URL("../fixtures/claude-2.1.310/named-empty-input.json", import.meta.url),
 );
 const rows = fixture.text.split("\n");
-const label = `${"─".repeat(123)} Question Asker ─`;
-const plain = "─".repeat(140);
+const label = " Question Asker ─";
+const namedTopRule = `${"─".repeat(fixture.cols - label.length)}${label}`;
+const plainBottomRule = "─".repeat(fixture.cols);
 
 function edited(change: (lines: string[]) => void): string {
   const lines = [...rows];
@@ -19,8 +20,8 @@ function edited(change: (lines: string[]) => void): string {
 }
 
 test("C-TRUST-01 the captured named composer clears trust and reads as empty input", async () => {
-  expect(rows[fixture.cursorY - 1]).toBe(label);
-  expect(rows[fixture.cursorY + 1]).toBe(plain);
+  expect(rows[fixture.cursorY - 1]).toBe(namedTopRule);
+  expect(rows[fixture.cursorY + 1]).toBe(plainBottomRule);
   expect(claudeTrustClearance(fixture.text)).toBe(true);
   const terminal = createHeadlessTerminal({ cols: fixture.cols, rows: fixture.rows }, () => {});
   try {
@@ -39,7 +40,7 @@ test.each([
   [
     "a label without the closing rule cell",
     (lines: string[]) => {
-      lines[fixture.cursorY - 1] = `${"─".repeat(123)} Question Asker`;
+      lines[fixture.cursorY - 1] = namedTopRule.slice(0, -2);
     },
   ],
   [

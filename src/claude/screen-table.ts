@@ -10,6 +10,7 @@ import { nativeComposerClearance, type TrustClearance } from "../core/trust/clea
 import { cursorViewportRow } from "../terminal/coordinates.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { claudeNamedLabel } from "./composer/border.ts";
 import { claudeManualModeFooter } from "./composer/footer.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 import { claudeQuestionCandidate } from "./questions/screen.ts";
@@ -20,12 +21,16 @@ export const claudeComposerInputColumn = 2;
 /** Native empty-composer row shape; callers own activity and dialog checks. */
 export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
 
+/** A composer fenced by rules; a named session labels the top rule (`claudeNamedLabel`). */
+const fencedComposer = new RegExp(
+  String.raw`(?:^|\n)[─━]{3,}(?:${claudeNamedLabel})?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}`,
+);
+
 /**
  * Claude's trust-clearance grammar, owned HERE beside the rest of Claude's verified
  * screen facts (C-TRUST-01). Clearance needs Claude's own chrome — the version banner or
  * the permission-mode or manual-mode footer — plus the composer fenced between rule
  * lines, so a frame that merely contains a `❯` is not mistaken for an answered gate.
- * A named session's top rule carries its label (`claudeNamedBorder`).
  */
 export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
@@ -35,9 +40,7 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
       /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
         frame,
       )) &&
-    /(?:^|\n)[─━]{3,}(?: \S[^\n]* [─━])?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(
-      frame,
-    ),
+    fencedComposer.test(frame),
 );
 
 /** A per-batch composer cannot release trust until every received byte has rendered. */
