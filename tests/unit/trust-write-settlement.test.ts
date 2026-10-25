@@ -57,7 +57,7 @@ test("C-TRUST-01 a replacement after cursor movement cancels without a false war
   );
   await vi.runAllTimersAsync();
   await expect(observed.settled).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[B");
+  expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[H\u001b[B");
   expect(observed.emit).not.toHaveBeenCalled();
   expect(observed.emitWarnings).not.toHaveBeenCalled();
 });

@@ -16,11 +16,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
-import { optionKeystrokes, selectableOptions } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
 import { cleanup, makeProject, skipIf, skipNow, skipReason, waitFor } from "./helpers.ts";
+import { advancePromptFrame, affirmativeOptionKeys } from "./trust-answer-model.ts";
 import { completeFolderTrustScreenVisible, folderTrustScreenVisible } from "./trust-screens.ts";
 
 /**
@@ -52,31 +51,6 @@ async function trustInputFor(frame: string): Promise<string | undefined> {
   } finally {
     responder.dispose();
   }
-}
-
-/** The raw PTY keys needed to select the real frame's affirmative option, if any. */
-function affirmativeOptionKeys(frame: string): string | undefined {
-  const option = selectableOptions(frame).find((candidate) =>
-    /\byes\b|proceed|trust/i.test(candidate.label),
-  );
-  return option === undefined ? undefined : optionKeystrokes(option).join("");
-}
-
-/** Minimal repaint model for the direct responder check; live wiring is tested below. */
-function advancePromptFrame(frame: string, input: string): string {
-  if (input === "\r" || /^\d+\r$/.test(input)) return claudeComposer;
-  const lines = frame.split("\n");
-  const selectedRow = lines.findIndex((line) => /^(\s*)[❯›]\s+/.test(line));
-  if (selectedRow < 0) return frame;
-  const selected = /^(\s*)[❯›](\s+)(.*)$/.exec(lines[selectedRow] as string);
-  if (selected === null) return frame;
-  const targetRow = selectedRow + (input === "\u001b[A" ? -1 : 1);
-  const target = lines[targetRow];
-  if (target === undefined) return frame;
-  const labelColumn = (selected[1] as string).length + 1 + (selected[2] as string).length;
-  lines[selectedRow] = `${" ".repeat(labelColumn)}${selected[3] as string}`;
-  lines[targetRow] = `${selected[1] as string}❯${selected[2] as string}${target.trim()}`;
-  return lines.join("\n");
 }
 
 /** An answerable real trust frame, an auto-trusted "ready", or no matchable frame. */

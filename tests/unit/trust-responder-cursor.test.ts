@@ -41,18 +41,23 @@ describe("cursor-style trust prompts", () => {
     expect(optionKeystrokes(selectableOptions(frame)[0]!)).toEqual(["1\r"]);
   });
 
-  test("C-CLAUDE-14 derives selected, upward, and multi-step affirmative input", () => {
+  test("C-CLAUDE-14 derives absolute affirmative selections whatever the cursor row", () => {
     for (const [frame, input, keys] of [
-      ["Do you trust this folder?\n❯ Yes, I trust this folder\n  No", "enter", ["\r"]],
+      ["Do you trust this folder?\n❯ Yes, I trust this folder\n  No", "home+enter", ["\u001b[H\r"]],
       [
         "Do you trust this folder?\n  Yes, I trust this folder\n❯ No",
-        "up+enter",
-        ["\u001b[A", "\r"],
+        "home+enter",
+        ["\u001b[H", "\u001b[H\r"],
+      ],
+      [
+        "Do you trust this folder?\n❯ No\n  Maybe\n  Yes, I trust this folder",
+        "home+down+down+enter",
+        ["\u001b[H\u001b[B\u001b[B", "\u001b[H\u001b[B\u001b[B\r"],
       ],
       [
         "New MCP server found in this project\n  Use this MCP server\n  Use all future servers\n❯ No",
-        "up+up+enter",
-        ["\u001b[A", "\u001b[A", "\r"],
+        "home+enter",
+        ["\u001b[H", "\u001b[H\r"],
       ],
     ] as const) {
       const option = selectableOptions(frame).find((candidate) =>
@@ -91,7 +96,7 @@ describe("cursor-style trust prompts", () => {
       (input) => {
         writes.push(input);
         rendered =
-          input === "\u001b[B"
+          input === "\u001b[H\u001b[B"
             ? frame.replace("❯ No, exit\n  Yes", "  No, exit\n❯ Yes")
             : claudeComposer;
       },
@@ -99,13 +104,13 @@ describe("cursor-style trust prompts", () => {
     );
     expect(result).toMatchObject({
       kind: "attempted",
-      automation: { prompt: "workspace_trust", input: "down+enter" },
+      automation: { prompt: "workspace_trust", input: "home+down+enter" },
     });
     if (result?.kind === "attempted") await result.settled;
-    expect(writes).toEqual(["\u001b[B", "\r"]);
+    expect(writes).toEqual(["\u001b[H\u001b[B", "\u001b[H\u001b[B\r"]);
   });
 
-  test("C-CLAUDE-14 navigates upward before confirming", async () => {
+  test("C-CLAUDE-14 selects a first-row affirmative with Home before confirming", async () => {
     const frame = `${claudeTrust}\n  Yes, I trust this folder\n❯ No`;
     const writes: string[] = [];
     let rendered = frame;
@@ -114,13 +119,13 @@ describe("cursor-style trust prompts", () => {
       (input) => {
         writes.push(input);
         rendered =
-          input === "\u001b[A"
+          input === "\u001b[H"
             ? `${claudeTrust}\n❯ Yes, I trust this folder\n  No`
             : claudeComposer;
       },
       () => rendered,
     );
     if (result?.kind === "attempted") await result.settled;
-    expect(writes).toEqual(["\u001b[A", "\r"]);
+    expect(writes).toEqual(["\u001b[H", "\u001b[H\r"]);
   });
 });

@@ -36,7 +36,7 @@ test.each([
   const attempt = settled(responder.handle(frame, write, () => frame));
   await vi.advanceTimersByTimeAsync(250);
   await expect(attempt).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledExactlyOnceWith("\r");
+  expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[H\r");
   expect(responder.inputBlocking).toBe(true);
   responder.dispose();
 });
@@ -50,7 +50,7 @@ test("C-TRUST-01 arrows alone cannot report trust answered when the composer app
   const attempt = settled(responder.handle(frame, write, () => frame));
   await vi.runAllTimersAsync();
   await expect(attempt).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[B");
+  expect(write).toHaveBeenCalledExactlyOnceWith("\u001b[H\u001b[B");
   expect(responder.inputBlocking).toBe(false);
 });
 
@@ -68,7 +68,7 @@ test("C-TRUST-01 swallowed cursor confirmation retries its exact choice", async 
   );
   await vi.runAllTimersAsync();
   await expect(attempt).resolves.toBe("answered");
-  expect(write.mock.calls).toEqual([["\r"], ["\r"]]);
+  expect(write.mock.calls).toEqual([["\u001b[H\r"], ["\u001b[H\r"]]);
 });
 
 test("C-TRUST-01 later native cursor rows do not replace the active choice", async () => {

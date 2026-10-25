@@ -100,5 +100,5 @@ test("C-TRUST-01 cursor navigation does not confirm a replacement dialog under a
   );
   if (result?.kind !== "attempted") throw new Error("expected attempted answer");
   await expect(result.settled).resolves.toBe("cancelled");
-  expect(writes).toEqual(["\u001b[B"]);
+  expect(writes).toEqual(["\u001b[H\u001b[B"]);
 });

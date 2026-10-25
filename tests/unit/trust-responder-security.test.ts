@@ -136,7 +136,7 @@ describe("trust-prompt automation security", () => {
         initial,
         (input) => {
           retryFrame =
-            input === "\u001b[B"
+            input === "\u001b[H\u001b[B"
               ? `${claudeTrust}\n  No\n❯ Yes, I trust this folder`
               : claudeComposer;
         },
