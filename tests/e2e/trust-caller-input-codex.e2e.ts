@@ -149,11 +149,7 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
   assert.deepEqual(after, ["hello"], "nothing was written after the caller's keys");
   const stray = submitted.filter((event) => event.includes("hello"));
   assert.deepEqual(stray, [], "the caller's keys were not submitted");
-  // A retry written before the caller's keys can still leave its digit ahead of them;
-  // only what follows the keys is at issue here.
-  assert.match(
-    screen(),
-    /^› 1*hello\s*$/m,
-    `the caller's draft stays in the composer:\n${screen()}`,
-  );
+  // A retry is Enter alone while the caret is on the affirmative, so no digit reaches
+  // the composer ahead of the caller's keys either.
+  assert.match(screen(), /^› hello\s*$/m, `the caller's draft stays in the composer:\n${screen()}`);
 });

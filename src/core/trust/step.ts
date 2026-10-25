@@ -2,14 +2,14 @@
  * The keys one trust answer writes, and what a retry of it may write (PRD §5.4,
  * C-TRUST-01). Kept apart from the attempt's lifecycle in `write.ts`.
  */
-import type { ElwoodAgentKind } from "../activity/index.ts";
 import { cursorSelection, type SelectableOption } from "../terminal-options.ts";
 
 export const retryMs = 250;
 export const observationMs = 20;
 
 export type TrustStep = {
-  readonly input: string;
+  /** The raw PTY keystrokes, not the printable answer summary activity reports. */
+  readonly keys: string;
   /** The write confirms the answer (it carries Enter). */
   readonly confirm: boolean;
   readonly pollMs: number;
@@ -25,28 +25,41 @@ export type TrustStep = {
  */
 export function trustStep(option: SelectableOption): TrustStep {
   if (option.style === "numbered")
-    return { input: `${option.number}\r`, confirm: true, pollMs: retryMs };
+    return { keys: `${option.number}\r`, confirm: true, pollMs: retryMs };
   const select = cursorSelection(option);
   const confirm = option.offset === 0;
-  return { input: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
+  return { keys: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
 }
 
+type NumberedOption = Extract<SelectableOption, { style: "numbered" }>;
+
 /**
- * A numbered answer is typed once. A frame still showing its gate does not prove the CLI
- * ignored it: under load Codex 0.164 takes `1\r` but paints its composer after the retry
- * interval, and the same keys typed again submit "1" as a user turn. Codex's answer is
- * therefore repeated as Enter alone while the rendered caret is on the affirmative: on
- * the gate Enter confirms that option, and on Codex's empty composer it does nothing.
- * Claude resets its caret to the decline when its list remounts, so it never gets a bare
- * Enter. Otherwise the answer repeats only once a frame rendered after the last write
- * still shows the gate; `undefined` waits for one.
+ * What a numbered answer's retry writes after its first write typed the number
+ * (`trustStep`); `undefined` waits for the next rendered frame. A frame still showing
+ * the gate does not prove the CLI ignored the answer: under load Codex 0.164 takes `1\r`
+ * but paints its composer after the retry interval, and the same keys typed again submit
+ * "1" as a user turn. Each adapter chooses its retry beside its clearance grammar
+ * (C-TRUST-01).
  */
-export function numberedRetry(
-  option: Extract<SelectableOption, { style: "numbered" }>,
-  agent: ElwoodAgentKind,
+export type NumberedRetry = (
+  option: NumberedOption,
   renderedSinceWrite: boolean,
-): TrustStep | undefined {
-  if (option.selected === true && agent === "codex")
-    return { input: "\r", confirm: true, pollMs: retryMs };
-  return renderedSinceWrite ? trustStep(option) : undefined;
-}
+) => TrustStep | undefined;
+
+/**
+ * The default: the number again, but only once a frame rendered from output received
+ * after the last write still shows the gate. Claude needs this: its list remounts with
+ * the caret on the decline, so a bare Enter could exit.
+ */
+export const retypeAfterRender: NumberedRetry = (option, renderedSinceWrite) =>
+  renderedSinceWrite ? trustStep(option) : undefined;
+
+/**
+ * For a CLI whose gate confirms its highlighted option on Enter and whose empty composer
+ * ignores a bare Enter: Enter alone while the rendered caret is on the affirmative, which
+ * confirms the gate or does nothing; otherwise `retypeAfterRender`.
+ */
+export const enterWhileSelected: NumberedRetry = (option, renderedSinceWrite) =>
+  option.selected === true
+    ? { keys: "\r", confirm: true, pollMs: retryMs }
+    : retypeAfterRender(option, renderedSinceWrite);

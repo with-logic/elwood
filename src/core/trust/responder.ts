@@ -3,7 +3,7 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
-import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import type { Episode, TrustHooks, TrustPromptResult, TrustWriteResult } from "./types.ts";
 import { attempted, leaveFrame, newEpisode } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
@@ -19,14 +19,14 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private disposed = false;
   private readonly agent: A;
   private readonly autotrust: boolean;
-  private readonly onStateChange: (() => void) | undefined;
+  private readonly hooks: TrustHooks;
   /** The ADAPTER's clearance grammar; the coordinator never encodes a CLI's layout. */
   private readonly clearance: TrustClearance;
-  constructor(agent: A, clearance: TrustClearance, autotrust = false, onStateChange?: () => void) {
+  constructor(agent: A, clearance: TrustClearance, autotrust = false, hooks: TrustHooks = {}) {
     this.agent = agent;
     this.clearance = clearance;
     this.autotrust = autotrust;
-    this.onStateChange = onStateChange;
+    this.hooks = hooks;
   }
   get inputBlocking(): boolean {
     return this.humanPrompt !== undefined || this.episode !== undefined;
@@ -82,7 +82,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       readFrame === undefined
         ? undefined
         : () => readTrustView(readFrame, this.agent, this.clearance);
-    const attempt = new TrustAttempt(view, identity);
+    const attempt = new TrustAttempt(view, identity, this.hooks.numberedRetry);
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);
@@ -191,7 +191,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   }
   private notify(): void {
     try {
-      this.onStateChange?.();
+      this.hooks.onStateChange?.();
     } catch {
       /* An observer cannot retain owned timers or writes. */
     }

@@ -857,7 +857,8 @@ alone selects option 1 without confirming it (the gate stayed for 40 s). So
 neither a time limit nor new output can tell a dropped answer from one Codex
 is still processing, and a dropped answer produces no output to wait for.
 
-Elwood therefore types the number once per appearance of the gate. While the
+Elwood therefore types the number in its first write to a gate, and never
+again on a stale frame alone. While the
 rendered caret is on the affirmative, a Codex retry is Enter alone, every
 250 ms within the gate's five on-screen seconds. On the gate it confirms the
 highlighted affirmative; on the empty composer it does nothing. Claude never

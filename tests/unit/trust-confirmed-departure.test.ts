@@ -48,7 +48,9 @@ test("C-TRUST-01 a gate that returns after its answer is answered again within i
 
 test("C-TRUST-01 a returning gate that stays unanswered spends only its remaining budget and reports nothing", async () => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, {
+    onStateChange: changed,
+  });
   let frame = cursorGate;
   const write = vi.fn(() => {
     if (write.mock.calls.length === 1) frame = "";

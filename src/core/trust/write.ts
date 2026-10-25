@@ -3,7 +3,14 @@ import type { StartupWriteCompletion } from "../startup/write.ts";
 import type { SelectableOption } from "../terminal-options.ts";
 import { abortableDelay, ownWrite, untilWoken } from "./abortable.ts";
 import type { GateDeadline } from "./deadline.ts";
-import { numberedRetry, observationMs, retryMs, type TrustStep, trustStep } from "./step.ts";
+import {
+  type NumberedRetry,
+  observationMs,
+  retryMs,
+  retypeAfterRender,
+  type TrustStep,
+  trustStep,
+} from "./step.ts";
 import type { TrustWriteResult } from "./types.ts";
 import { choiceIdentity, type TrustCandidate, type TrustView } from "./view.ts";
 
@@ -13,7 +20,7 @@ export class TrustAttempt {
   private readonly controller = new AbortController();
   private clearance = false;
   private retryAt = 0;
-  private previousInput: string | undefined;
+  private previousKeys: string | undefined;
   /** A frame rendered after the last write: only such a frame can show it was ignored. */
   private renderedSinceWrite = false;
   private wakeWaiter: (() => void) | undefined;
@@ -23,9 +30,16 @@ export class TrustAttempt {
   /** The polled choice vanished mid-attempt; its return deserves a fresh attempt. */
   lostChoice = false;
 
-  constructor(candidate: TrustCandidate, identity: string) {
+  private readonly numberedRetry: NumberedRetry;
+
+  constructor(
+    candidate: TrustCandidate,
+    identity: string,
+    numberedRetry: NumberedRetry = retypeAfterRender,
+  ) {
     this.candidate = candidate;
     this.identity = identity;
+    this.numberedRetry = numberedRetry;
   }
 
   get cleared(): boolean {
@@ -121,7 +135,7 @@ export class TrustAttempt {
 
   private stepFor(option: SelectableOption): TrustStep | undefined {
     if (option.style !== "numbered" || !this.confirmationWriteFulfilled) return trustStep(option);
-    return numberedRetry(option, this.candidate.spec.agent, this.renderedSinceWrite);
+    return this.numberedRetry(option, this.renderedSinceWrite);
   }
 
   /**
@@ -155,15 +169,15 @@ export class TrustAttempt {
     write: (input: string) => TrustWriteResult,
     step: TrustStep,
   ): Promise<boolean> {
-    if (Date.now() >= this.retryAt || step.input !== this.previousInput) {
+    if (Date.now() >= this.retryAt || step.keys !== this.previousKeys) {
       if (this.controller.signal.aborted) return false;
       this.renderedSinceWrite = false;
-      const result = write(step.input);
+      const result = write(step.keys);
       // A void writer has already fulfilled before an observer can replace the frame.
       if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
       const fulfilled = await this.own(result);
       if (fulfilled && step.confirm) this.confirmationWriteFulfilled = true;
-      this.previousInput = step.input;
+      this.previousKeys = step.keys;
       this.retryAt = Date.now() + retryMs;
       if (!fulfilled) return false;
     }

@@ -30,7 +30,7 @@ export class ClaudeStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
   ) {
-    this.trust = new TrustPromptResponder("claude", clearance, autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("claude", clearance, autotrust, { onStateChange });
   }
 
   get blockedPrompt() {

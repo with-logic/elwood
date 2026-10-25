@@ -3,12 +3,20 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupWriteCompletion } from "../startup/write.ts";
 import { optionInput, type SelectableOption } from "../terminal-options.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
+import type { NumberedRetry } from "./step.ts";
 import { choiceIdentity, type TrustCandidate } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
 
 export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
   readonly prompt: TrustPromptIdFor<A>;
   readonly input: string;
+};
+/** What an adapter supplies beside its clearance grammar (C-TRUST-01). */
+export type TrustHooks = {
+  /** Told when blocking state changes without a frame (expiry, settlement). */
+  readonly onStateChange?: (() => void) | undefined;
+  /** What a numbered retry writes; the default retypes only after a rendered frame. */
+  readonly numberedRetry?: NumberedRetry;
 };
 /** Raw PTY result; the coordinator separately owns cancellation and clearance. */
 export type TrustWriteResult = void | Promise<void>;

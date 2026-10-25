@@ -13,13 +13,16 @@ function settled(result: TrustPromptResult<"claude">) {
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
+const observed = (onStateChange: () => void) =>
+  new TrustPromptResponder("claude", claudeTrustClearance, true, { onStateChange });
+
 test.each([
   "Do you trust this folder?\n1. Yes\n2. No",
   unsupported,
   `${claudeTrust}\n1. Yes\nUnknown footer`,
 ])("C-TRUST-01 unsupported native candidates hold input and expire without new output: %s", async (frame) => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
+  const responder = observed(changed);
   const write = vi.fn();
   expect(responder.handle(frame, write)).toBeUndefined();
   expect(responder.inputBlocking).toBe(true);
@@ -118,7 +121,7 @@ test("C-TRUST-01 new generations can answer the same class again after confirmed
 });
 
 test("C-TRUST-01 timer observers cannot prevent recovery by throwing", async () => {
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, () => {
+  const responder = observed(() => {
     throw new Error("observer");
   });
   responder.handle(unsupported, vi.fn());
