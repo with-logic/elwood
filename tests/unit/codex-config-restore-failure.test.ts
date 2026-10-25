@@ -28,9 +28,9 @@ describe("codex config restore write failure", () => {
   test("C-CODEX-14 a failed rename removes the temp file and rethrows the original error", () => {
     const path = tempCodexHome('model = "gpt-5.5"\n');
     const home = dirname(path);
-    const snapshot = snapshotCodexConfig();
+    const snapshot = snapshotCodexConfig(path);
     writeFileSync(path, 'model = "gpt-5.4"\n');
-    expect(() => restoreCodexConfig(snapshot)).toThrow(/cross-device link/);
+    expect(() => restoreCodexConfig({ path, snapshot })).toThrow(/cross-device link/);
     expect(readdirSync(home)).toEqual(["config.toml"]); // no temp litter
     expect(readFileSync(path, "utf8")).toBe('model = "gpt-5.4"\n'); // never truncated
   });

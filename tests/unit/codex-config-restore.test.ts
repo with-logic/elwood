@@ -29,41 +29,42 @@ const baseConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\nfoo = 1\
 describe("codex config restore", () => {
   test("C-CODEX-14 restores when only root model keys changed", () => {
     const path = tempCodexHome(baseConfig);
-    const snapshot = snapshotCodexConfig();
+    const snapshot = snapshotCodexConfig(path);
     writeFileSync(
       path,
       'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\nfoo = 1\n\n[hooks]\n',
     );
-    expect(restoreCodexConfig(snapshot)).toBe("restored");
+    expect(restoreCodexConfig({ path, snapshot })).toBe("restored");
     expect(readFileSync(path, "utf8")).toBe(baseConfig);
   });
 
   test("C-CODEX-14 reports unchanged when the picker wrote nothing", () => {
     const path = tempCodexHome(baseConfig);
-    expect(restoreCodexConfig(snapshotCodexConfig())).toBe("unchanged");
+    expect(restoreCodexConfig({ path, snapshot: snapshotCodexConfig(path) })).toBe("unchanged");
     expect(readFileSync(path, "utf8")).toBe(baseConfig);
   });
 
   test("C-CODEX-14 skips instead of clobbering concurrent edits", () => {
     const path = tempCodexHome(baseConfig);
-    const snapshot = snapshotCodexConfig();
+    const snapshot = snapshotCodexConfig(path);
     const concurrent = 'model = "gpt-5.4"\nfoo = 2\n\n[hooks]\n';
     writeFileSync(path, concurrent);
-    expect(restoreCodexConfig(snapshot)).toBe("skipped");
+    expect(restoreCodexConfig({ path, snapshot })).toBe("skipped");
     expect(readFileSync(path, "utf8")).toBe(concurrent);
   });
 
   test("C-CODEX-14 model keys inside tables are protected, not stripped", () => {
     const path = tempCodexHome('model = "gpt-5.5"\n\n[profiles.fast]\nmodel = "gpt-5.4-mini"\n');
-    const snapshot = snapshotCodexConfig();
+    const snapshot = snapshotCodexConfig(path);
     writeFileSync(path, 'model = "gpt-5.4"\n\n[profiles.fast]\nmodel = "changed"\n');
-    expect(restoreCodexConfig(snapshot)).toBe("skipped");
+    expect(restoreCodexConfig({ path, snapshot })).toBe("skipped");
   });
 
   test("C-CODEX-14 a file that vanished during the switch is skipped, never recreated", () => {
-    const home = dirname(tempCodexHome());
-    expect(snapshotCodexConfig()).toBeUndefined();
-    expect(restoreCodexConfig(baseConfig)).toBe("skipped");
+    const path = tempCodexHome();
+    const home = dirname(path);
+    expect(snapshotCodexConfig(path)).toBeUndefined();
+    expect(restoreCodexConfig({ path, snapshot: baseConfig })).toBe("skipped");
     expect(readdirSync(home)).toEqual([]);
   });
 
@@ -71,24 +72,24 @@ describe("codex config restore", () => {
     // No config existed before the switch: the created file is left in place and the
     // outcome names the real situation, not a concurrent edit.
     const path = tempCodexHome('model = "gpt-5.4"\n');
-    expect(restoreCodexConfig(undefined)).toBe("no_snapshot");
+    expect(restoreCodexConfig({ path, snapshot: undefined })).toBe("no_snapshot");
     expect(readFileSync(path, "utf8")).toBe('model = "gpt-5.4"\n');
   });
 
   test("C-CODEX-14 with no snapshot and still no file there is nothing to report", () => {
-    tempCodexHome();
-    expect(restoreCodexConfig(undefined)).toBe("unchanged");
+    const path = tempCodexHome();
+    expect(restoreCodexConfig({ path, snapshot: undefined })).toBe("unchanged");
   });
 
   test("C-CODEX-14 the restore is atomic: no temp file is left behind and the mode survives", () => {
     const path = tempCodexHome(baseConfig);
     chmodSync(path, 0o640);
-    const snapshot = snapshotCodexConfig();
+    const snapshot = snapshotCodexConfig(path);
     writeFileSync(
       path,
       'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\nfoo = 1\n\n[hooks]\n',
     );
-    expect(restoreCodexConfig(snapshot)).toBe("restored");
+    expect(restoreCodexConfig({ path, snapshot })).toBe("restored");
     expect(readFileSync(path, "utf8")).toBe(baseConfig);
     expect(statSync(path).mode & 0o777).toBe(0o640);
     expect(readdirSync(dirname(path))).toEqual(["config.toml"]); // the temp file was renamed away
@@ -97,16 +98,17 @@ describe("codex config restore", () => {
   test("C-CODEX-14 a symlinked config.toml is written THROUGH to its target", () => {
     // Renaming onto the link path would replace the user's symlink with a regular
     // file; the restore must land in the resolved target and leave the link intact.
-    const home = dirname(tempCodexHome());
+    const path = tempCodexHome();
+    const home = dirname(path);
     const target = join(home, "real-config.toml");
     writeFileSync(target, baseConfig);
     symlinkSync(target, join(home, "config.toml"));
-    const snapshot = snapshotCodexConfig();
+    const snapshot = snapshotCodexConfig(path);
     writeFileSync(
       target,
       'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\nfoo = 1\n\n[hooks]\n',
     );
-    expect(restoreCodexConfig(snapshot)).toBe("restored");
+    expect(restoreCodexConfig({ path, snapshot })).toBe("restored");
     expect(lstatSync(join(home, "config.toml")).isSymbolicLink()).toBe(true);
     expect(readFileSync(target, "utf8")).toBe(baseConfig);
     expect(readdirSync(home).sort()).toEqual(["config.toml", "real-config.toml"]);

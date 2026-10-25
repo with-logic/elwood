@@ -8,7 +8,7 @@ import { emitSettledStartupOutcomes as emitSettledStartup } from "../../core/sta
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../../core/turn-state.ts";
 import { TypedEmitter } from "../../events/emitter.ts";
-import type { PtyExit, PtyProcess } from "../../pty/types.ts";
+import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
@@ -81,7 +81,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       socketPath: runtime.socketPath,
     });
   }
-  const pty: PtyProcess = await spawnCodexPty(record, runtime.bridgeScriptPath, options).catch(
+  const { pty, configPath } = await spawnCodexPty(record, runtime.bridgeScriptPath, options).catch(
     async (error: unknown) => {
       await cleanupStartupResources({ bridge });
       throw error;
@@ -159,6 +159,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     terminalReplay,
     transcriptWatcher,
     loopDefinitions,
+    configPath,
   );
   const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);

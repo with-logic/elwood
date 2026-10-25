@@ -3,7 +3,7 @@
  * Implements PRD §5.3 setModel restore and C-CODEX-14: a compare-and-swap restore
  * of the user's global config that never clobbers concurrent edits, written
  * atomically (sibling temp file + rename) so a crash mid-restore can never leave
- * the user's config truncated.
+ * the user's config truncated. Each session passes the path it fixed at launch.
  */
 
 import {
@@ -28,6 +28,10 @@ import { errnoCode } from "../../core/errors.ts";
  */
 type ConfigRestoreOutcome = "restored" | "skipped" | "unchanged" | "no_snapshot";
 
+/**
+ * Resolves the `config.toml` path once per session at launch (`spawnCodexPty`). Only the path
+ * is fixed; the file's contents are read for each listing and model switch.
+ */
 export function codexConfigPath(): string {
   return join(process.env["CODEX_HOME"] ?? join(homedir(), ".codex"), "config.toml");
 }
@@ -41,8 +45,7 @@ export function restoreFailureRaw(path: string, error: unknown): string {
   return `${path} (${errnoCode(error) ?? "UNKNOWN"})`;
 }
 
-export function snapshotCodexConfig(): string | undefined {
-  const path = codexConfigPath();
+export function snapshotCodexConfig(path: string): string | undefined {
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
@@ -54,8 +57,13 @@ export function snapshotCodexConfig(): string | undefined {
  * picker created is reported as `no_snapshot` rather than misreported as a
  * concurrent edit.
  */
-export function restoreCodexConfig(snapshot: string | undefined): ConfigRestoreOutcome {
-  const path = codexConfigPath();
+export function restoreCodexConfig({
+  path,
+  snapshot,
+}: {
+  readonly path: string;
+  readonly snapshot: string | undefined;
+}): ConfigRestoreOutcome {
   const exists = existsSync(path);
   if (snapshot === undefined) return exists ? "no_snapshot" : "unchanged";
   if (!exists) return "skipped";

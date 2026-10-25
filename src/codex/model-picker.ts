@@ -15,7 +15,6 @@ import {
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 
-import { withCodexDefault } from "./config/default-model.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
 
 const reasoningHeader = /Select Reasoning Level/;
@@ -44,9 +43,9 @@ export const codexModelPicker: ModelPickerSpec = {
     return level > picker ? "follow-up" : "picker";
   },
   parse: parseCodexModelPicker,
-  // When Codex draws no `(default)` marker (0.164 never does), each listing reads the
-  // configured default from config.toml once, after the picker closes (PRD §5.3).
-  withDefaults: withCodexDefault,
+  // No `withDefaults` here: when Codex draws no `(default)` marker (0.164 never does), each
+  // listing reads the configured default from the SESSION's config.toml, so the session
+  // binds it (`CodexSessionImpl.picker`, PRD §5.3).
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
   apply: async (io, timeoutMs) => {
