@@ -2,25 +2,37 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
-import { listPickerModels } from "../../src/core/models/picker.ts";
+import { listPickerModels, type ModelPickerSpec } from "../../src/core/models/picker.ts";
 import { waitForScreen } from "../../src/core/models/tui-screen.ts";
-import { codexReasoningViewport } from "../helpers/model-dialog-viewports.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
+import {
+  claudeClosedPickerViewport,
+  codexReasoningViewport,
+} from "../helpers/model-dialog-viewports.ts";
 import {
   claudeModelCacheConfirmationOnNo,
   claudePicker,
   codexPickerCurrentMarkerOnly,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
-import { escapeKey, pickerHarness, type Screen } from "../helpers/picker-harness.ts";
+import {
+  closedComposer,
+  escapeKey,
+  pickerHarness,
+  type Screen,
+} from "../helpers/picker-harness.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 const never = new AbortController().signal;
 /** Real CLIs: Escape on a follow-up stage reopens `pickerText`; Escape on the picker closes it. */
-const escapes = (followUp: string, pickerText: string) => (input: string, shown: Screen) => {
-  if (input === escapeKey) shown.text = shown.text === followUp ? pickerText : "❯ ";
-};
+const escapes =
+  (spec: ModelPickerSpec, followUp: string, pickerText: string) =>
+  (input: string, shown: Screen) => {
+    if (input === escapeKey)
+      shown.text = shown.text === followUp ? pickerText : closedComposer(spec);
+  };
 
 test.each([
   [
@@ -35,7 +47,7 @@ test.each([
   // The apply key blanks the picker; the CLI paints the follow-up stage late.
   const { screen, writes, leaked, queue, picker } = pickerHarness("❯ ", (input, shown) => {
     if (input === applyKey) shown.text = "";
-    escapes(followUp, pickerText)(input, shown);
+    escapes(spec, followUp, pickerText)(input, shown);
   });
   const failed = expect(
     picker.run("set_model", spec, 50, async (io) => {
@@ -61,7 +73,10 @@ test.each([
   ["opens late and is cancelled", 300, ["/model", escapeKey]],
   ["never opens, releasing input at the bound", undefined, ["/model"]],
 ] as const)("C-API-55 a submitted picker that %s", async (_name, opensAfterMs, expected) => {
-  const { screen, writes, leaked, queue, picker } = pickerHarness("❯ ", escapes("", claudePicker));
+  const { screen, writes, leaked, queue, picker } = pickerHarness(
+    claudeClosedPickerViewport,
+    escapes(claudeModelPicker, "", claudePicker),
+  );
   const failed = expect(
     picker.run("list_models", claudeModelPicker, 50, (io) =>
       listPickerModels(io, claudeModelPicker, 5000),
@@ -82,7 +97,10 @@ test.each([
 });
 
 test("C-API-55 a picker reopening after a clear frame receives its own Escape", async () => {
-  const { screen, writes, queue, picker } = pickerHarness("❯ ", escapes("", claudePicker));
+  const { screen, writes, queue, picker } = pickerHarness(
+    "❯ ",
+    escapes(claudeModelPicker, "", claudePicker),
+  );
   const failure = new Error("navigation failed");
   const failed = expect(
     picker.run("set_model", claudeModelPicker, 5000, async (io) => {
@@ -109,7 +127,7 @@ test("C-API-55 terminating while awaiting a late dialog prevents the cleanup Esc
   const failed = picker
     .run("set_model", claudeModelPicker, 50, async (io) => {
       await io.submit("/model", never);
-      await waitForScreen(io.terminal, claudeModelPicker.isOpen, 5000, "picker");
+      await waitForScreen(io.terminal, claudeModelPicker.hasPickerHeader, 5000, "picker");
     })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(200);
@@ -135,5 +153,32 @@ test.each([
   await failed;
   expect(writes).toEqual([]);
   expect(picker.blocksInput()).toBe(false);
+  queue.close();
+});
+
+/**
+ * Claude paints `/model` over its slash-command menu, so the header can stand above a
+ * half-painted dialog past the operation's deadline. Nothing is written to that frame: the
+ * picker gets exactly one Escape, from cleanup, once it is recognizably complete.
+ */
+test("C-API-55 a picker still painting at the deadline gets one Escape, from cleanup", async () => {
+  const painting = capturedFrame("claude-2.1.310/model-picker/painting-three-rows");
+  const { screen, writes, leaked, queue, picker } = pickerHarness("❯ ", (input, shown) => {
+    if (input === "/model") shown.text = painting;
+    escapes(claudeModelPicker, "", claudePicker)(input, shown);
+  });
+  const failed = expect(
+    picker.run("list_models", claudeModelPicker, 50, (io) =>
+      listPickerModels(io, claudeModelPicker, 5000),
+    ),
+  ).rejects.toMatchObject({ code: "model_automation_failed" });
+  setTimeout(() => {
+    screen.text = capturedFrame("claude-2.1.310/model-picker/top-window");
+  }, 300);
+  const message = queue.send("hello", "message");
+  await vi.advanceTimersByTimeAsync(1500);
+  await Promise.all([failed, message]);
+  expect(leaked).toEqual([]);
+  expect(writes).toEqual(["/model", escapeKey]);
   queue.close();
 });

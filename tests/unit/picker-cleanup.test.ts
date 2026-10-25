@@ -12,6 +12,7 @@ import {
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
 import {
+  closedComposer,
   escapeKey,
   failure,
   releasesAfterClearStreak,
@@ -25,7 +26,7 @@ test("C-API-55 a failed operation's picker is cancelled before queued input is r
   // The CLI takes 200ms to repaint after Escape.
   const { writes, leaked, queue, picker, failWith } = setup(claudeModelPicker, (_input, shown) => {
     setTimeout(() => {
-      shown.text = "❯ ";
+      shown.text = claudeClosedPickerViewport;
     }, 200);
   });
   const failed = expect(failWith(claudePicker)).rejects.toBe(failure);
@@ -44,7 +45,7 @@ test.each([
 ] as const)("C-API-55 cancelling a %s returns to the picker, which is cancelled too", async (_name, spec, followUp, pickerText) => {
   // Real Claude 2.1.274 and Codex 0.154.0: Escape on the follow-up stage reopens the picker.
   const { writes, leaked, queue, picker, failWith } = setup(spec, (_input, shown) => {
-    shown.text = shown.text === followUp ? pickerText : "❯ ";
+    shown.text = shown.text === followUp ? pickerText : closedComposer(spec);
   });
   const failed = expect(failWith(followUp)).rejects.toBe(failure);
   const message = queue.send("hello", "message");
@@ -86,7 +87,7 @@ test("C-API-55 an Escape the operation already wrote is not repeated", async () 
     if (input === "/model") shown.text = claudePicker;
     if (input === escapeKey)
       setTimeout(() => {
-        shown.text = "❯ ";
+        shown.text = claudeClosedPickerViewport;
       }, 200);
   });
   const failed = expect(
@@ -121,6 +122,7 @@ test("C-API-55 an unrelated dialog is left open on failure", async () => {
   await vi.advanceTimersByTimeAsync(1100);
   await failed;
   expect(writes).toEqual(["/model"]);
+  // The hook's dialog is the caller's: it is neither cancelled nor kept as our survivor.
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });

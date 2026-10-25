@@ -14,6 +14,7 @@ import {
 } from "../helpers/model-dialog-viewports.ts";
 import { codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import {
+  escapeKey,
   failure,
   guardedPickerHarness,
   releasesAfterClearStreak,
@@ -76,6 +77,47 @@ test("C-API-55 a survivor in an unrecognized repaint holds a queued message unti
     screen.text = repaint;
     await vi.advanceTimersByTimeAsync(5000);
   }
+  expect(delivered("hello")).toBe(0);
+  screen.text = claudeClosedPickerViewport;
+  await vi.advanceTimersByTimeAsync(1000);
+  await message;
+  expect(delivered("hello")).toBe(1);
+  queue.close();
+});
+
+/** Escape blanks the screen before the CLI paints the composer, or the picker again. */
+const blankingEscape = (input: string, shown: { text: string }) => {
+  if (input === escapeKey) shown.text = "";
+};
+
+test.each([
+  ["the operation saw", 0],
+  ["only cleanup saw, after the failure", 300],
+] as const)("C-API-55 a picker %s stays held through a blank repaint until the composer clears", async (_name, opensAfterMs) => {
+  const { screen, queue, picker, delivered } = guardedPickerHarness(
+    claudeClosedPickerViewport,
+    blankingEscape,
+  );
+  const failed = expect(
+    picker.run("set_model", claudeModelPicker, 5000, async (io) => {
+      await io.submit("/model", new AbortController().signal);
+      if (opensAfterMs === 0) screen.text = claudePickerViewport;
+      io.terminal.snapshot();
+      throw failure;
+    }),
+  ).rejects.toBe(failure);
+  if (opensAfterMs > 0)
+    setTimeout(() => {
+      screen.text = claudePickerViewport;
+    }, opensAfterMs);
+  await vi.advanceTimersByTimeAsync(1100);
+  await failed;
+  // Cleanup's Escape left a blank frame, which is not proof the picker is gone.
+  expect(screen.text).toBe("");
+  const message = queue.send("hello", "message");
+  await vi.advanceTimersByTimeAsync(1000);
+  screen.text = claudePickerViewport;
+  await vi.advanceTimersByTimeAsync(1000);
   expect(delivered("hello")).toBe(0);
   screen.text = claudeClosedPickerViewport;
   await vi.advanceTimersByTimeAsync(1000);

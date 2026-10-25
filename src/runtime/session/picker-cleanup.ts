@@ -117,6 +117,8 @@ export async function cleanUpDialog(
       }
       clearStreak = 0;
       sawDialog = true;
+      // Recorded for the transaction too: a dialog seen here may still repaint after release.
+      progress.dialogSeen = true;
       lateDialogPossible = false;
       // A `painting` shell may turn out to be a hook confirmation: wait, never write.
       if (stage === "painting" || stage === escaped) continue;

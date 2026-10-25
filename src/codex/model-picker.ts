@@ -31,7 +31,7 @@ export const codexModelPicker: ModelPickerSpec = {
   isClear: codexComposerClearance,
   isCandidate: (text) =>
     bottomDialogCandidate(text, pickerGrammar) || bottomDialogCandidate(text, reasoningGrammar),
-  isOpen: (text) => codexModelPickerHeader.test(text),
+  hasPickerHeader: (text) => codexModelPickerHeader.test(text),
   activeDialog: (text, authority) => {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to
     // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).

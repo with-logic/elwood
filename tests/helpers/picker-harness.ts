@@ -11,8 +11,13 @@ import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
 import { clearReadingGapMs, clearReadings } from "../../src/runtime/session/picker-cleanup.ts";
+import { claudeClosedPickerViewport, codexClosedPickerViewport } from "./model-dialog-viewports.ts";
 
 export const escapeKey = String.fromCharCode(27);
+
+/** The real composer a CLI shows once its model dialog closes: positive clearance. */
+export const closedComposer = (spec: ModelPickerSpec) =>
+  spec.agent === "claude" ? claudeClosedPickerViewport : codexClosedPickerViewport;
 
 /**
  * Reads `held` (under fake timers) until it releases, asserting it stayed held for the full
