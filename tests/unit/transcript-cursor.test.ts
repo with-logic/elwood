@@ -21,7 +21,7 @@ function readAll(cursor: BoundedTranscriptCursor) {
   const lines: string[] = [];
   let startedOversizedDrop = false;
   for (;;) {
-    const chunk = cursor.readChunk();
+    const chunk = cursor.readLiveChunk();
     const taken = cursor.takeLines(chunk.text);
     lines.push(...taken.lines);
     startedOversizedDrop ||= taken.startedOversizedDrop;
@@ -59,7 +59,7 @@ describe("BoundedTranscriptCursor", () => {
     const path = transcript("abc\n");
     const cursor = new BoundedTranscriptCursor(path); // starts at the current end (4)
     writeFileSync(path, ""); // truncated to nothing
-    expect(cursor.readChunk()).toEqual({ text: "", canContinueNow: false });
+    expect(cursor.readLiveChunk()).toEqual({ text: "", canContinueNow: false });
     writeFileSync(path, "d\n");
     expect(readLines(cursor)).toEqual(["d"]);
   });

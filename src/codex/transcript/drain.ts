@@ -5,7 +5,8 @@
  * hundreds-of-MiB synchronous loop that would stall the event loop. Any backlog
  * still unread when the budget OR the slice is spent is accounted as a content-free
  * `unread_backlog` drop, never read in an unbounded loop, so termination always
- * completes in bounded work.
+ * completes in bounded work. A drained transcript removed after it existed warns like a
+ * live read (§5.7, C-CODEX-23).
  */
 
 import type { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
@@ -66,7 +67,7 @@ function drainCursor(
 ): boolean {
   while (budget.chunks > 0 && now() < deadline) {
     budget.chunks -= 1;
-    const chunk = context.readFs(cursor.path, () => cursor.readChunk());
+    const chunk = context.readFs(cursor.path, () => cursor.readLiveChunk());
     if (chunk === undefined) return false; // contained FS failure; nothing to account
     if (chunk.text.length > 0) context.lines.emitLines(cursor.path, chunk.text, cursor);
     if (!chunk.canContinueNow) return false;

@@ -1224,6 +1224,18 @@ five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
   seen the file. ENOENT after that, and any other read error, still warns.
   Codex never warned here: its shared cursor's `fileSize` already maps ENOENT
   to an empty file. C-CLAUDE-24.
+- **That same mapping hid a removed Codex transcript (2026-10-25).** On Codex
+  0.164.0, `SessionStart` arrives only with the first submission, and its
+  `transcript_path` is a realpath (`/private/var/…/sessions/YYYY/MM/DD/rollout-…jsonl`
+  under `CODEX_HOME`); the file exists by the time that turn's `task_complete` is
+  committed. Deleting it afterwards made the next poll read size 0, which the
+  cursor took for a truncation, so nothing warned and the session's later
+  transcript activity was silently gone: no `transcript_read_error` within 10 s
+  on `main`. The Codex scan now reads through the shared cursor's existence
+  policy, as Claude's does: until a stat has seen the file, ENOENT waits silently;
+  after that, every poll, and the final flush, warns with `ENOENT` while the file is
+  missing. A file that reappears is read with the
+  existing truncation rule. C-CODEX-23.
 
 `elwood sessions` reports `live` from the presence of a `.sock` file in the
 session's stable socket home. A connect probe was rejected on purpose: the
