@@ -110,7 +110,7 @@ test("C-API-55 terminating while awaiting a late dialog prevents the cleanup Esc
   const failed = picker
     .run("set_model", claudeModelPicker, 50, async (io) => {
       await io.submit("/model", never);
-      await waitForScreen(io.terminal, claudeModelPicker.isOpen, 5000, "picker");
+      await waitForScreen(io.terminal, claudeModelPicker.hasPickerHeader, 5000, "picker");
     })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(200);

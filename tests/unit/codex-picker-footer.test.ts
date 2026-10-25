@@ -65,5 +65,8 @@ test("C-API-23 listPickerModels reads every row of the 0.164.0 picker", async ()
     "gpt-5.6-terra",
     "gpt-5.6-luna",
   ]);
-  expect(options[0]).toMatchObject({ isCurrent: true, isDefault: true });
+  // 0.164.0 marks only `(current)`; the default comes from config.toml through the spec's
+  // `withDefaults`, which the session's listing runs after this read (PRD §5.3).
+  expect(options[0]).toMatchObject({ isCurrent: true, isDefault: false });
+  expect(options.filter((option) => option.isDefault)).toEqual([]);
 });

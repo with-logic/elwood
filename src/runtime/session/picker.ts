@@ -35,7 +35,8 @@ export class PickerTransactions {
    * Whether a model dialog is on screen that queued input must not be written into.
    *
    * TWO cases, and the difference matters. A SURVIVOR is a dialog our own cleanup could not
-   * cancel: it is ours, and it is remembered until it clears. A dialog nobody here opened —
+   * cancel, or a half-painted one it could not yet recognize: it is ours, and it is
+   * remembered until the composer is positively clear. A dialog nobody here opened —
    * a human who typed `/model` themselves — is NOT ours and never becomes a survivor, but
    * Enter on it still applies its highlighted row, and Escape still discards the human's
    * state. So writes are held on any visible model dialog, whoever opened it; ownership
@@ -96,13 +97,13 @@ export class PickerTransactions {
         kind,
         async (closed) => {
           // Elwood cannot tell its own dialog from picker text that precedes its command: a
-          // human's dialog, or a transcript quote the unanchored `isOpen` would drive.
+          // human's dialog, or a transcript quote the unanchored `hasPickerHeader` would drive.
           const human = this.deps.inputSignal?.();
           const before = this.deps.terminal.snapshot().text;
           // We have NOT written `/model` yet, so nothing here is ours. We still ask the
           // grammar under a hypothetical authority: anything it would call a dialog is
           // someone else's, which is precisely why the operation must refuse to start.
-          if (spec.isOpen(before) || spec.activeDialog(before, ours) !== undefined)
+          if (spec.hasPickerHeader(before) || spec.activeDialog(before, ours) !== undefined)
             throw elwoodError(
               "model_automation_failed",
               "Model picker text was already visible before the operation began.",
@@ -172,7 +173,11 @@ export class PickerTransactions {
     closed: AbortSignal,
   ): Promise<void> {
     const released = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
-    if (released) return;
+    // Released means nothing RECOGNIZABLE is left, yet a half-painted picker's header can be
+    // up: keep it as a survivor, held and never written to, until the composer is positively
+    // clear. A quoted header above a clear composer, or a terminated session, holds nothing.
+    const text = this.deps.terminal.snapshot().text;
+    if (released && (closed.aborted || !spec.hasPickerHeader(text) || spec.isClear(text))) return;
     this.survivor = spec;
     this.survivorHold.hold();
   }

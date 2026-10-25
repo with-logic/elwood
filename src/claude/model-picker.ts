@@ -44,7 +44,7 @@ export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isClear: claudeModelComposerClearance,
   isCandidate: (text) => bottomDialogCandidate(text, pickerGrammar) || isClaudeSwitchShell(text),
-  isOpen: (text) => claudeModelPickerHeader.test(text),
+  hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
   activeDialog: (text, authority) => {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to

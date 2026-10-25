@@ -329,8 +329,12 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the region grammar recognizes the complete dialog, footer included — the same check
   every key write passes. A picker that never completes is never written to, because a
   bare header is untrusted (the agent can print one): the operation fails, and failure
-  cleanup Escapes the dialog once it is recognizable, while an unrecognized candidate
-  keeps queued input held. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
+  cleanup Escapes the dialog once it is recognizable. A half-painted frame is never
+  recognizable (the grammar and the candidate check both reject its stale rows), so a
+  cleanup that ends with the picker header still up and no clear composer holds queued
+  input until the composer is positively clear: Enter on that picker would apply its
+  highlighted row. The header only ever holds; it never authorizes a key.
+  Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
   C-API-23, C-API-24, C-API-55.
 - **Codex 0.164.0 shortened its dialog hints and dropped the `(default)` marker.** The
   picker closes with `enter select · esc back` and the reasoning screen with `enter

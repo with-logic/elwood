@@ -36,7 +36,12 @@ export type ModelPickerSpec = {
   readonly isCandidate: (text: string) => boolean;
   /** Positive native composer evidence for releasing a foreign-dialog hold. */
   readonly isClear: (text: string) => boolean;
-  readonly isOpen: (text: string) => boolean;
+  /**
+   * Only that the picker's title is on screen: a transcript can print it, and a picker
+   * still painting shows it over stale rows. It may hold input or end a close wait; it
+   * never authorizes a write.
+   */
+  readonly hasPickerHeader: (text: string) => boolean;
   /**
    * The live, bottom-most model dialog: the only one Elwood may cancel or hold input on.
    * `authority` is REQUIRED and carries proof Elwood opened this dialog (see
@@ -63,11 +68,12 @@ export type ModelPickerSpec = {
 
 /**
  * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority.
- * Every write below is gated on `ours(spec)` rather than the raw `isOpen` header, as is every
- * wait except `closing`, which only waits longer. A header match alone is untrusted
- * candidate evidence — a transcript or the agent's own output can print `Select model` — so
- * navigating or Escaping on it could send keys into a running turn, the real composer, or
- * another prompt (C-API-24).
+ * Every key and Escape below is gated on `ours(spec)`, the complete dialog recognized as the
+ * operation's own, never on `hasPickerHeader`. A header match alone is untrusted: a
+ * transcript or the agent's own output can print `Select model`, so navigating or Escaping
+ * on it could send keys into a running turn, the real composer, or another prompt
+ * (C-API-24). The header only gates the `/model` open wait and the `closing` wait, and the
+ * cursor-settle wait reads a parsed row; none of those writes.
  */
 const opened: ModelDialogAuthority = { opened: true };
 
@@ -81,7 +87,8 @@ const ours = (spec: ModelPickerSpec) => (text: string) =>
  * would let the next operation find picker text already on screen. It never gates a write —
  * every key, Escape included, needs `ours`, since a bare header is untrusted evidence.
  */
-const closing = (spec: ModelPickerSpec) => (text: string) => ours(spec)(text) || spec.isOpen(text);
+const closing = (spec: ModelPickerSpec) => (text: string) =>
+  ours(spec)(text) || spec.hasPickerHeader(text);
 
 const escapeKey = "\u001b";
 const arrowDown = "\u001b[B";
@@ -156,7 +163,7 @@ async function openAndParse(
     terminal: io.terminal,
     ...(io.signal === undefined ? {} : { signal: io.signal }),
     submit: (signal) => io.submit("/model", signal),
-    isOpen: spec.isOpen,
+    isOpen: spec.hasPickerHeader,
     timeoutMs,
     label: `${spec.agent} model picker`,
   });
