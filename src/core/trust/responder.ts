@@ -47,6 +47,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const priorIdentity = this.episode?.lastIdentity;
     const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
+    this.episode?.attempt?.wake();
     const episode = this.episode;
     if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
       return undefined;
@@ -143,7 +144,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     if (view.kind === "unknown") {
       // Unknown/partial replacements retain human ownership until verified clearance.
       if (this.episode) {
-        leaveFrame(this.episode);
+        leaveFrame(this.episode, view.gate === true);
         // No human can act on a gate that left the frame; its budget waits for its return.
         this.deadline.pause();
       }

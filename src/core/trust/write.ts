@@ -1,6 +1,7 @@
 /** One abortable, generation-owned trust attempt for both layouts (PRD §5.4/C-TRUST-01). */
 import type { StartupWriteCompletion } from "../startup/write.ts";
 import { cursorSelection, type SelectableOption } from "../terminal-options.ts";
+import { abortableDelay, ownWrite, untilWoken } from "./abortable.ts";
 import type { GateDeadline } from "./deadline.ts";
 import type { TrustWriteResult } from "./types.ts";
 import { choiceIdentity, type TrustCandidate, type TrustView } from "./view.ts";
@@ -15,8 +16,9 @@ export class TrustAttempt {
   private clearance = false;
   private retryAt = 0;
   private previousInput: string | undefined;
-  /** The confirming write fulfilled: only clearance or cancellation can settle it now. */
-  confirmed = false;
+  private wakeWaiter: (() => void) | undefined;
+  /** The confirming write fulfilled; that is not clearance, which only a frame verifies. */
+  confirmationWriteFulfilled = false;
   invalidated = false;
   /** The polled choice vanished mid-attempt; its return deserves a fresh attempt. */
   lostChoice = false;
@@ -28,6 +30,13 @@ export class TrustAttempt {
 
   get cleared(): boolean {
     return this.clearance;
+  }
+
+  /** A frame rendered: a waiting answer re-reads it (see `awaiting`). */
+  wake(): void {
+    const waiter = this.wakeWaiter;
+    this.wakeWaiter = undefined;
+    waiter?.();
   }
 
   /** The deadline is read live, so a gate that returns writes within its resumed budget. */
@@ -54,7 +63,9 @@ export class TrustAttempt {
   }
 
   private completion(): StartupWriteCompletion {
-    return this.clearance && this.confirmed && !this.invalidated ? "answered" : "cancelled";
+    return this.clearance && this.confirmationWriteFulfilled && !this.invalidated
+      ? "answered"
+      : "cancelled";
   }
 
   private async atomic(
@@ -74,7 +85,7 @@ export class TrustAttempt {
     while (!this.controller.signal.aborted) {
       const view = read();
       if (this.awaiting(view)) {
-        if (!(await this.pause(observationMs))) return this.completion();
+        if (!(await this.nextFrame())) return this.completion();
         continue;
       }
       const remainingMs = deadline.deadlineAtMs - Date.now();
@@ -99,11 +110,27 @@ export class TrustAttempt {
   /**
    * A confirmed answer whose gate left the frame (the CLI erased it and is painting its
    * next screen), or whose frame is unavailable, writes nothing and is not lost: it waits,
-   * unbounded here, for verified clearance or the gate's return. The coordinator owns
-   * that wait's end: clearance, expiry, a changed gate, or closing (C-TRUST-01).
+   * unbounded here and without polling, for verified clearance or the gate's return. The
+   * coordinator owns that wait's end: clearance, expiry, a changed gate, an off-allowlist
+   * gate (which a human must answer), or closing (C-TRUST-01).
    */
   private awaiting(view: TrustView | undefined): boolean {
-    return this.confirmed && (view === undefined || view.kind === "unknown");
+    if (!this.confirmationWriteFulfilled) return false;
+    return view === undefined || (view.kind === "unknown" && view.gate !== true);
+  }
+
+  private nextFrame(): Promise<boolean> {
+    return untilWoken(this.controller.signal, (wake) => {
+      this.wakeWaiter = wake;
+    });
+  }
+
+  private own(write: TrustWriteResult): Promise<boolean> {
+    return ownWrite(this.controller.signal, write);
+  }
+
+  private pause(ms: number): Promise<boolean> {
+    return abortableDelay(this.controller.signal, ms);
   }
 
   /** Write `step` unless it repeats the last input within the retry interval. */
@@ -115,9 +142,9 @@ export class TrustAttempt {
     if (this.controller.signal.aborted) return false;
     const result = write(step.input);
     // A void writer has already fulfilled before an observer can replace the frame.
-    if (result === undefined && step.confirm) this.confirmed = true;
+    if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
     const fulfilled = await this.own(result);
-    if (fulfilled && step.confirm) this.confirmed = true;
+    if (fulfilled && step.confirm) this.confirmationWriteFulfilled = true;
     this.previousInput = step.input;
     this.retryAt = Date.now() + retryMs;
     return fulfilled;
@@ -135,43 +162,6 @@ export class TrustAttempt {
       return "cancelled";
     }
     return view.option!; // Identity exists only for a validated affirmative.
-  }
-
-  /** Race disposal against an in-flight write while retaining a rejection handler for it. */
-  private own(write: TrustWriteResult): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-      const signal = this.controller.signal;
-      const cancel = () => resolve(false);
-      if (signal.aborted) cancel();
-      else signal.addEventListener("abort", cancel, { once: true });
-      Promise.resolve(write).then(
-        () => {
-          signal.removeEventListener("abort", cancel);
-          resolve(!signal.aborted);
-        },
-        (error: unknown) => {
-          signal.removeEventListener("abort", cancel);
-          reject(error);
-        },
-      );
-    });
-  }
-
-  private pause(ms: number): Promise<boolean> {
-    if (this.controller.signal.aborted) return Promise.resolve(false);
-    return new Promise((resolve) => {
-      const signal = this.controller.signal;
-      const cancel = () => {
-        clearTimeout(timer);
-        resolve(false);
-      };
-      const timer = setTimeout(() => {
-        signal.removeEventListener("abort", cancel);
-        resolve(true);
-      }, ms);
-      timer.unref();
-      signal.addEventListener("abort", cancel, { once: true });
-    });
   }
 }
 

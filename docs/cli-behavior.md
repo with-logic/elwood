@@ -645,11 +645,12 @@ composer. The attempt read them as its choice vanishing and cancelled itself
 quietly, which is right for a choice lost before its Enter. By then, though, the
 confirming write had fulfilled, so the cancellation discarded a real answer.
 None of the 30 fresh-folder `autotrust` launches above emitted `startup_prompt`,
-although the 27 that reached `ready` had answered their gate. A confirmed attempt now waits through frames
-without its gate and writes nothing. Verified composer or successor clearance
-reports it once. If the same gate returns, the attempt answers again within the
-remaining on-screen budget. Expiry, a changed gate, or closing cancels it
-without a report. With this change, all 21 launches of the two Claude trust e2e
+although the 27 that reached `ready` had answered their gate. A confirmed
+attempt now waits through dialog-free frames and writes nothing; it re-reads the
+screen only when a new frame renders, so the wait holds no timer. Verified
+composer or successor clearance reports it once. If the same gate returns, the
+attempt answers again within the remaining on-screen budget. Expiry, a changed
+gate, a complete off-allowlist gate, or closing cancels it without a report. With this change, all 21 launches of the two Claude trust e2e
 files (5 at once, then 16 at once with every composer more than 7.5 s after the
 prompt) reported exactly one `startup_prompt`, `sent home+down+enter`. Swapping
 in the previous trust code failed both files: no launch reported its answer.
@@ -658,7 +659,7 @@ answers were lost the same way: in four rounds of 4 such launches at once, the
 previous code reported 0 of 16 answers and this change 16 of 16, each `sent 1`.
 `tests/claude/session-trust-slow-boot.test.ts` replays the recorded launch and
 requires exactly one report, and both Claude trust e2e files require one
-`startup_prompt` per launch that names a write the launch made. C-CLAUDE-10,
+`workspace_trust` `startup_prompt` per launch that names a write the launch made. C-CLAUDE-10,
 C-TRUST-01.
 
 Both CLIs reword gates often, so an off-allowlist gate behind a recognized header

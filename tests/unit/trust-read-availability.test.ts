@@ -32,8 +32,10 @@ test("C-TRUST-01 unavailable frames withhold first and retry writes until curren
   view = undefined;
   await vi.advanceTimersByTimeAsync(500);
   expect(write).toHaveBeenCalledTimes(1);
+  // The confirmed answer waits for a render notification, not a poll.
+  expect(vi.getTimerCount()).toBe(0);
   view = { kind: "clear" };
-  await vi.advanceTimersByTimeAsync(20);
+  owned.wake();
   expect(await completion).toBe("answered");
   expect(vi.getTimerCount()).toBe(0);
 });

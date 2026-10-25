@@ -50,11 +50,12 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
 
 /**
  * The gate left the frame. An unconfirmed attempt lost its choice; a confirmed answer
- * keeps waiting for verified clearance or the gate's return (C-TRUST-01).
+ * keeps waiting for verified clearance or the gate's return, unless an off-allowlist
+ * gate a human must answer replaced it (C-TRUST-01).
  */
-export function leaveFrame(episode: Episode): void {
+export function leaveFrame(episode: Episode, offAllowlistGate: boolean): void {
   episode.lastIdentity = undefined;
-  if (episode.attempt?.confirmed) return;
+  if (episode.attempt?.confirmationWriteFulfilled && !offAllowlistGate) return;
   episode.attempt?.cancel();
   episode.attempt = undefined;
   episode.attemptedIdentity = undefined;

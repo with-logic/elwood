@@ -1,8 +1,8 @@
 /**
  * A confirmed trust answer whose gate leaves the frame is neither cleared nor lost: it
  * settles `answered` once verified clearance follows, answers again within the remaining
- * budget if the same gate returns, and never reports an answer that did not clear
- * (C-TRUST-01, C-CLAUDE-10, C-CODEX-11).
+ * budget if the same gate returns, is cancelled by an off-allowlist gate, and never
+ * reports an answer that did not clear (C-TRUST-01, C-CLAUDE-10, C-CODEX-11).
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
@@ -10,6 +10,7 @@ import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust, codexHooks, codexTrust } from "../fixtures/trust-composer.ts";
+import { rewordedGate } from "../helpers/unknown-gate.ts";
 
 const cursorGate = `${claudeTrust}\n❯ Yes\n  No`;
 const answer = "\u001b[H\r";
@@ -99,4 +100,28 @@ test("C-TRUST-01 an unconfirmed selection whose gate leaves loses its choice and
   frame = `${claudeTrust}\n❯ No\n  Yes`;
   expect(responder.handle(frame, write, () => frame)?.kind).toBe("attempted");
   responder.dispose();
+});
+
+test.each([
+  ["the observed frame", rewordedGate, ""],
+  ["the attempt's own read", "", rewordedGate],
+] as const)("C-TRUST-01 a confirmed answer that meets an off-allowlist gate in %s is cancelled, never reported", async (_where, observed, read) => {
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
+  let frame = cursorGate;
+  const write = vi.fn(() => {
+    frame = "";
+  });
+  const attempt = settled(responder.handle(frame, write, () => frame));
+  responder.handle(frame, write, () => frame);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(attempt.outcomes).toEqual([]);
+  // A human must answer this gate; the earlier answer cannot be credited for it.
+  frame = read;
+  responder.handle(observed, write, () => frame);
+  await vi.advanceTimersByTimeAsync(20);
+  frame = claudeComposer;
+  responder.handle(frame, write, () => frame);
+  await expect(attempt.promise).resolves.toBe("cancelled");
+  expect(write).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
 });

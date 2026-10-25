@@ -59,7 +59,9 @@ test("C-E2E-09 concurrent fresh-folder autotrust launches all clear the REAL Cla
       session.on("activity", (event) => {
         if (event.kind === "terminal_exit" && event.exitCode !== undefined)
           exits.push(event.exitCode);
-        if (event.kind === "startup_prompt") reported.push(`${event.label}: ${event.text}`);
+        // Other startup prompts (browser_tools, C-CLAUDE-11) are not this gate's answer.
+        if (event.kind === "startup_prompt" && event.label === "workspace_trust")
+          reported.push(`${event.label}: ${event.text}`);
       });
       return session;
     }),

@@ -37,7 +37,7 @@ export const isTrustInput = (input: string) =>
 /** A write that confirmed the affirmative with its own absolute selection. */
 export const isTrustAnswer = (input: string) => input.endsWith("\r") && isAbsoluteAnswer(input);
 
-/** Each launch's `startup_prompt` reports, as `label: text`. */
+/** Each launch's `workspace_trust` `startup_prompt` reports, as `label: text`. */
 export type TrustReports = string[];
 
 const answerReport =

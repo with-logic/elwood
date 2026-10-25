@@ -77,7 +77,9 @@ test("C-E2E-09 concurrent autotrust launches never report an answered Claude tru
       // that verifies the answer, so this listener cannot miss the report.
       session.on("activity", (event) => {
         if (event.kind === "attention") launch.attention.push(event.label);
-        if (event.kind === "startup_prompt") launch.reports.push(`${event.label}: ${event.text}`);
+        // Other startup prompts (browser_tools, C-CLAUDE-11) are not this gate's answer.
+        if (event.kind === "startup_prompt" && event.label === "workspace_trust")
+          launch.reports.push(`${event.label}: ${event.text}`);
       });
     }),
   );
