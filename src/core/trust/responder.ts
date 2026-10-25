@@ -72,11 +72,12 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
     }
     const handedToCaller = episode.callerOwned; // raw caller input reached this gate
-    const answering =
+    // Running now, answered without a reader, or this choice was already attempted.
+    const attemptAlreadyHandled =
       episode.attempt !== undefined ||
       episode.legacyAnswered ||
       episode.attemptedIdentity === identity;
-    if (episode.expired || handedToCaller || answering) return undefined;
+    if (episode.expired || handedToCaller || attemptAlreadyHandled) return undefined;
     const read =
       readFrame === undefined
         ? undefined

@@ -60,13 +60,38 @@ test("C-CODEX-12 caller input during the skip's render settlement owns the updat
   await expect(next?.settled).resolves.toBe("answered");
 });
 
-test("C-CODEX-12 caller input with no update on screen leaves the next one to automation", () => {
+test("C-CODEX-12 caller input with no update on screen leaves the next one to automation", async () => {
+  const writes: string[] = [];
+  let frame = prompt;
+  const terminal = { sendInput: () => undefined, settled: () => Promise.resolve() };
+  const guarded = guardedNonTrustAutomationWrite(
+    terminal,
+    (input) => {
+      writes.push(input);
+    },
+    () => frame,
+    "codex",
+    codexOptionStillSafe,
+  );
   const responder = new CodexStartupPromptResponder("s1", true, undefined, undefined, () => false);
   responder.callerInput();
   const [skip] = responder.handle(
     prompt,
     () => undefined,
-    () => prompt,
+    () => frame,
+    guarded,
   ).outcomes;
   expect(skip?.outcome).toMatchObject({ kind: "attempted", input: "2" });
+  await vi.waitFor(() => expect(writes).toEqual(["2"]));
+  // A native composer settles the skip, so no retry outlives the test.
+  frame = codexComposer;
+  responder.handle(
+    codexComposer,
+    () => undefined,
+    () => frame,
+    guarded,
+  );
+  responder.observeClearance(codexComposer);
+  await expect(skip?.settled).resolves.toBe("answered");
+  expect(writes).toEqual(["2"]);
 });

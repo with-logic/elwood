@@ -15,7 +15,7 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { teardownOrKillCodex } from "./codex-ready.ts";
+import { endCodexTest } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -91,21 +91,29 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
   const launch = lagAfterAnswerWrite();
   let session: CodexSessionApi | undefined;
+  let launchRejected = false;
   t.after(async () => {
-    let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) failures = await teardownOrKillCodex(session);
+      // The sandbox goes only once every Codex process that could use it is confirmed gone.
+      await endCodexTest({
+        sessions: [session],
+        project,
+        sandbox,
+        launchRejected,
+        failure: undefined,
+      });
     } finally {
       resetRuntimeSeamsForTests();
-      sandbox.dispose();
     }
-    if (failures.length > 0) throw new AggregateError(failures, "Codex teardown failed");
   });
   session = await startCodex({
     cwd: project.cwd,
     stateDir: project.stateDir,
     model: bogusModel,
     autotrust: true,
+  }).catch((error: unknown) => {
+    launchRejected = true;
+    throw error;
   });
   const live = session;
   const submitted: string[] = [];
