@@ -13,11 +13,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { createCliSanitizer } from "../../src/cli/output/sanitize.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { nodePtyFactory } from "../../src/pty/node.ts";
-import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { stopCodex } from "./codex-ready.ts";
+import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { teardownOrKillCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -27,6 +25,7 @@ import {
   skipReason,
   waitFor,
 } from "./helpers.ts";
+import { holdCliOutput, outputMatcher } from "./output-hold.ts";
 import { trustPromptVisible } from "./trust-screens.ts";
 
 const bogusModel = "gpt-elwood-nonexistent-model";
@@ -34,7 +33,6 @@ const bogusModel = "gpt-elwood-nonexistent-model";
 const lagMs = 4_000;
 /** How long after the lag a stray submission has to show itself. */
 const settleMs = 5_000;
-/** Codex draws spaces as cursor moves, so raw output is matched without them. */
 const directoryTrustOutput = /trustthisfolder\?|trustthecontentsofthisdirectory/i;
 /** Codex's configured composer: its footer names the session's model. */
 const composerOutput = new RegExp(bogusModel);
@@ -62,45 +60,24 @@ function lagAfterAnswerWrite(): Launch {
     writes: [],
     composer: Promise.withResolvers(),
   };
-  const plainText = createCliSanitizer();
-  setPtyFactoryForTests((options) => {
-    const pty = nodePtyFactory(options);
-    const handlers = new Set<(data: string) => void>();
-    let held: string[] | undefined;
-    let beforeGate = "";
-    let afterAnswerWrite = "";
-    pty.onData((data) => {
-      if (!launch.displayed) {
-        beforeGate += data;
-        launch.displayed = directoryTrustOutput.test(plainText(beforeGate).replace(/\s+/g, ""));
-      }
-      if (launch.answerWritten) afterAnswerWrite += data;
+  const gate = outputMatcher(directoryTrustOutput);
+  const composerUngated = outputMatcher(composerOutput);
+  const composerAnswered = outputMatcher(composerOutput);
+  holdCliOutput({
+    output(data, output) {
+      if (!launch.displayed) launch.displayed = gate(data);
       // Behind a gate, only output after the answer can show the configured composer.
-      const sinceGate = launch.displayed ? afterAnswerWrite : beforeGate;
-      if (composerOutput.test(plainText(sinceGate)))
-        launch.composer.resolve(held === undefined ? "shown" : "held");
-      if (held === undefined) for (const handler of handlers) handler(data);
-      else held.push(data);
-    });
-    return {
-      ...pty,
-      onData(handler) {
-        handlers.add(handler);
-        return () => handlers.delete(handler);
-      },
-      write(data) {
-        pty.write(data);
-        if (typeof data === "string") launch.writes.push(data);
-        if (data !== "1\r" || launch.answerWritten) return;
-        launch.answerWritten = true;
-        held = [];
-        setTimeout(() => {
-          const chunks = held ?? [];
-          held = undefined;
-          for (const chunk of chunks) for (const handler of handlers) handler(chunk);
-        }, lagMs);
-      },
-    };
+      const composer = launch.displayed
+        ? launch.answerWritten && composerAnswered(data)
+        : composerUngated(data);
+      if (composer) launch.composer.resolve(output.holding ? "held" : "shown");
+    },
+    input(data, output) {
+      launch.writes.push(data);
+      if (data !== "1\r" || launch.answerWritten) return;
+      launch.answerWritten = true;
+      output.hold(lagMs);
+    },
   });
   return launch;
 }
@@ -117,7 +94,7 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
   t.after(async () => {
     let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) failures = await stopCodex(session);
+      if (session !== undefined) failures = await teardownOrKillCodex(session);
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();

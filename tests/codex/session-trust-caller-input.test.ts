@@ -81,3 +81,23 @@ test("C-CODEX-12 caller keys during an update skip stop its retries; the next pr
   await vi.advanceTimersByTimeAsync(20);
   expect(ptys[0]!.writes).toEqual(["2", "hello", "x", "1\r"]);
 });
+
+test("C-CODEX-12 caller keys after the update leaves the screen own its redraw until a composer", async () => {
+  const session = await start();
+  ptys[0]!.emitData(update);
+  await vi.advanceTimersByTimeAsync(20);
+  expect(ptys[0]!.writes).toEqual(["2"]);
+  // Elwood's frame can lose and regain a stale update while Codex is already elsewhere.
+  ptys[0]!.emitData("\u001b[2J\u001b[H");
+  await vi.advanceTimersByTimeAsync(1_000);
+  await session.sendKeys("hello");
+  ptys[0]!.emitData(update);
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(ptys[0]!.writes).toEqual(["2", "hello"]);
+  // A native composer resolves the prompt; a later update is a new one.
+  ptys[0]!.emitData(composer);
+  await vi.advanceTimersByTimeAsync(20);
+  ptys[0]!.emitData(update);
+  await vi.advanceTimersByTimeAsync(20);
+  expect(ptys[0]!.writes).toEqual(["2", "hello", "2"]);
+});

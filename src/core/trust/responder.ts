@@ -71,14 +71,12 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.reportedPending = true;
       return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
     }
-    if (
-      episode.expired ||
-      episode.callerOwned ||
-      episode.attempt ||
+    const handedToCaller = episode.callerOwned; // raw caller input reached this gate
+    const answering =
+      episode.attempt !== undefined ||
       episode.legacyAnswered ||
-      episode.attemptedIdentity === identity
-    )
-      return undefined;
+      episode.attemptedIdentity === identity;
+    if (episode.expired || handedToCaller || answering) return undefined;
     const read =
       readFrame === undefined
         ? undefined

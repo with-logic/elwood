@@ -9,8 +9,8 @@ import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
-import { onCallerInput } from "./picker-input.ts";
 import type { ReadinessGate } from "./readiness.ts";
+import { onCallerInput } from "./session-input.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
@@ -113,10 +113,11 @@ export function bindStartupLifetime(
   readiness: ReadinessGate,
 ): void {
   session.bindInitialReadinessHold(readiness.isHeld);
-  onCallerInput(session.terminal, () => trust.callerInput());
+  const stopCallerInput = onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
     "abort",
     () => {
+      stopCallerInput();
       trust.dispose();
       readiness.ready.cancel();
     },

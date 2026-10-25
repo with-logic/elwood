@@ -14,10 +14,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { createCliSanitizer } from "../../src/cli/output/sanitize.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { nodePtyFactory } from "../../src/pty/node.ts";
-import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { teardownOrKillCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
@@ -28,13 +26,13 @@ import {
   skipReason,
   waitFor,
 } from "./helpers.ts";
+import { holdCliOutput, outputMatcher } from "./output-hold.ts";
 import { trustPromptVisible } from "./trust-screens.ts";
 
 /** Codex refuses a turn on an unknown model before any quota is used. */
 const bogusModel = "gpt-elwood-nonexistent-model";
 /** Longer than the 10-second deadline, which starts at Elwood's first rendered frame. */
 const holdMs = 12_000;
-/** Codex draws spaces as cursor moves, so raw output is matched without them. */
 const bootComposerOutput = /forshortcuts/i;
 const directoryTrustOutput = /trustthisfolder\?|trustthecontentsofthisdirectory/i;
 
@@ -48,50 +46,23 @@ type Launch = {
 /** Holds the CLI's output from Elwood for `holdMs` once its boot composer is out. */
 function holdAfterBootComposer(): Launch {
   const launch: Launch = { displayed: false };
-  const plainText = createCliSanitizer();
-  setPtyFactoryForTests((options) => {
-    const pty = nodePtyFactory(options);
-    const handlers = new Set<(data: string) => void>();
-    let held: string[] | undefined;
-    let output = "";
-    const deliver = (data: string) => {
-      for (const handler of handlers) handler(data);
-    };
-    const hold = () => {
+  const gate = outputMatcher(directoryTrustOutput);
+  const bootComposer = outputMatcher(bootComposerOutput);
+  holdCliOutput({
+    output(data, output) {
+      if (launch.displayed) return;
+      launch.displayed = gate(data);
+      const boot = bootComposer(data);
+      if (launch.heldAt !== undefined || launch.displayed || !boot) return;
+      // Elwood sees the boot composer itself, then nothing for `holdMs`.
       launch.heldAt = Date.now();
-      held = [];
-      setTimeout(() => {
-        const chunks = held ?? [];
-        held = undefined;
+      output.hold(holdMs, () => {
         launch.releasedAt = Date.now();
-        for (const chunk of chunks) deliver(chunk);
-      }, holdMs);
-    };
-    pty.onData((data) => {
-      if (!launch.displayed) {
-        output += data;
-        const plain = plainText(output).replace(/\s+/g, "");
-        launch.displayed = directoryTrustOutput.test(plain);
-        if (launch.heldAt === undefined && !launch.displayed && bootComposerOutput.test(plain)) {
-          deliver(data); // Elwood sees the boot composer itself, then nothing for `holdMs`.
-          hold();
-          return;
-        }
-      }
-      if (held === undefined) deliver(data);
-      else held.push(data);
-    });
-    return {
-      ...pty,
-      onData(handler) {
-        handlers.add(handler);
-        return () => handlers.delete(handler);
-      },
-      write(data) {
-        pty.write(data);
-        if (data === "1\r") launch.answeredAt ??= Date.now();
-      },
-    };
+      });
+    },
+    input(data) {
+      if (data === "1\r") launch.answeredAt ??= Date.now();
+    },
   });
   return launch;
 }

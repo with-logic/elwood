@@ -848,6 +848,28 @@ against a model of this dialog. `tests/e2e/trust-prompt-claude-concurrent.e2e.ts
 launches five fresh folders at once and checks every trust write at the PTY
 boundary.
 
+### Codex takes a trust answer before Elwood's frame shows it (0.164, 2026-10-25)
+
+Elwood decides each startup retry from the frame it has rendered, and under load that
+frame trails Codex. Codex 0.164 can take the trust answer and draw its composer while
+Elwood's frame still shows the folder-access gate. A retry decided from that stale
+frame lands in the composer. Keys a caller types in that window also reach the
+composer, so a `1\r` retry written after them would add a digit to the caller's draft
+and submit it as a turn.
+
+`tests/e2e/trust-caller-input-codex.e2e.ts` makes the window certain. It holds Codex's
+output from Elwood for 4 s after the first `1\r`, and types `hello` as soon as Codex's
+raw output draws its configured composer (the footer naming the session's model). On
+`main` at 6e396099, at load average 34, Elwood kept retrying the stale gate every
+250 ms: 14 more `1\r` writes followed `hello`. Raw caller input now hands the startup
+prompt on screen to the caller before its keys are written (C-TRUST-01). In two runs
+with that handoff, nothing followed `hello`.
+
+The Codex update skip has the same ordering. A `2` decided from a stale update prompt
+would reach whatever Codex drew next; on the trust gate, `2` is Quit. Caller input
+ends the skip, and the update stays the caller's until a native composer clears it,
+because Elwood's frame can lose and regain a stale prompt in between (C-CODEX-12).
+
 ### Native Codex startup warnings
 
 Codex 0.154.0 normally collapses MCP failures to

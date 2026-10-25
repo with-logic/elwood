@@ -4,6 +4,8 @@
  * own guarded writers, whose sends run inside `withAutomatedInput`, the same scope.
  * Raw caller input aborts `signal()`, which revokes the automation holding the terminal at
  * that moment: picker operations (C-API-55), composer cleanup, and native question answers.
+ * Listeners registered with `onCallerInput` hear of it too, which hands the session's
+ * startup prompts to the caller (C-TRUST-01, C-CODEX-12).
  */
 import type { EmptyComposerObserver } from "../../core/input/clear-ack.ts";
 import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
@@ -19,9 +21,19 @@ const automationScopes = new WeakMap<
 /** Keyed by the session's xterm, which every terminal view of that session shares. */
 const callerInputListeners = new WeakMap<object, Set<() => void>>();
 
-/** Run `listener` whenever caller input revokes automation in this terminal's session. */
-export function onCallerInput(terminal: { readonly xterm: object }, listener: () => void) {
-  callerInputListeners.get(terminal.xterm)?.add(listener);
+/**
+ * Run `listener` whenever caller input revokes automation in this terminal's session,
+ * until the returned function unsubscribes it.
+ */
+export function onCallerInput(
+  terminal: { readonly xterm: object },
+  listener: () => void,
+): () => void {
+  const listeners = callerInputListeners.get(terminal.xterm);
+  listeners?.add(listener);
+  return () => {
+    listeners?.delete(listener);
+  };
 }
 
 /** Preserve the same ownership scope for startup writers that retain their own input policy. */
