@@ -49,9 +49,9 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
       },
     });
     const reaper = new SessionReaper(LEADER, ops);
-    const unreached = "the leader exited before every descendant group was stopped";
+    const unreached = "the leader exited before every group was confirmed stopped";
     await expect(reaper.sweepDetached(() => exited)).rejects.toMatchObject({
-      processGroupIds: [5002],
+      processGroupIds: [5002, LEADER], // the hook unreached, the leader's group not yet held
     });
     expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreached);
   });

@@ -86,11 +86,27 @@ const defaultOps: ProcessTreeOps = {
 let activeOps: ProcessTreeOps = defaultOps;
 
 /**
- * Replaces the process-tree ops. Ops a test leaves out become inert (no stop, an empty
- * table), never the real ones, so faking only the kill cannot leave a real sweep live.
+ * Replaces the process-tree ops. Ops a test leaves out become inert, never the real
+ * ones, so faking only the kill cannot leave a real sweep live (see `quietProcessTree`).
  */
 export function setProcessTreeOpsForTests(ops: GroupReapOps & Partial<ProcessTreeOps>): void {
-  activeOps = { stopGroup: () => undefined, listProcesses: () => Promise.resolve([]), ...ops };
+  activeOps = { ...quietProcessTree(), ...ops };
+}
+
+/**
+ * Inert sweep ops for tests: a process tree holding only the group leaders it was asked
+ * to stop, each read as stopped with nothing under it. A sweep driven by them signals
+ * no real process, finds no descendant, and converges on its second read.
+ */
+export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProcesses"> {
+  const stopped = new Set<number>();
+  return {
+    stopGroup: (pgid) => void stopped.add(pgid),
+    listProcesses: () =>
+      Promise.resolve(
+        [...stopped].map((pgid) => ({ pid: pgid, ppid: 1, pgid, zombie: false, stopped: true })),
+      ),
+  };
 }
 
 export function resetProcessTreeOpsForTests(): void {

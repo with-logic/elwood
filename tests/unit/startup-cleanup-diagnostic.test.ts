@@ -7,14 +7,13 @@
 
 import { describe, expect, test } from "vitest";
 import { ElwoodError, elwoodError } from "../../src/core/errors.ts";
-import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
   cleanupStartupResources,
   guardStartupRegion,
   type StartupPty,
 } from "../../src/runtime/startup/cleanup.ts";
-import { noDetachedSweep } from "../helpers/process-tree.ts";
 
 // Any pid but the test process's own: SessionReaper refuses to signal that one.
 const LEADER = process.pid + 1;
@@ -82,7 +81,7 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
       kill: (signal = "SIGTERM") => void signals.push(signal),
     };
     const refusing = new SessionReaper(LEADER, {
-      ...noDetachedSweep,
+      ...quietProcessTree(),
       killGroup: () => {
         throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
       },

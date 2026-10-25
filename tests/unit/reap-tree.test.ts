@@ -5,12 +5,12 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  quietProcessTree,
   reapProcessGroup,
   resetProcessTreeOpsForTests,
   rethrowUnlessGroupGone,
   SessionReaper,
 } from "../../src/runtime/shutdown/reap-tree.ts";
-import { noDetachedSweep } from "../helpers/process-tree.ts";
 
 const LEADER = 1000;
 
@@ -97,7 +97,7 @@ describe("C-LIFE-10 process-group reaping", () => {
     // latch guarantees at most one SUCCESSFUL signal per session.
     const killed: number[] = [];
     const reaper = new SessionReaper(LEADER, {
-      ...noDetachedSweep,
+      ...quietProcessTree(),
       killGroup: (pgid) => killed.push(pgid),
     });
     reaper.reap();
@@ -112,7 +112,7 @@ describe("C-LIFE-10 process-group reaping", () => {
     // succeeds once the killer recovers.
     let attempts = 0;
     const reaper = new SessionReaper(LEADER, {
-      ...noDetachedSweep,
+      ...quietProcessTree(),
       killGroup: (pgid) => {
         attempts += 1;
         if (attempts === 1) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
