@@ -19,6 +19,8 @@ export type ProcessEntry = {
   readonly pgid: number;
   /** An exited process its parent has not reaped yet: nothing left to kill. */
   readonly zombie: boolean;
+  /** Stopped (state `T`) when its row was read, as a delivered SIGSTOP leaves it. */
+  readonly stopped: boolean;
 };
 
 // An absolute path, so a caller's PATH can never substitute another `ps`. macOS is
@@ -102,6 +104,7 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
       ppid: Number(match[2]),
       pgid: Number(match[3]),
       zombie: (match[4] as string).startsWith("Z"),
+      stopped: (match[4] as string).startsWith("T"),
     });
   }
   return entries;
@@ -109,27 +112,34 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
 
 /**
  * The process groups, other than the leader's own, that hold at least one LIVE
- * descendant of `leaderPid`, each mapped to the distinct groups, other than its own,
- * that its members' parents are in (a parent in the same group adds nothing). Descent
- * follows parent pids transitively, so only descendants still linked to the leader
- * when the table was read are found. A returned group holds only descendants: a group
- * lives inside one session, and every member of the leader's session or of a session
- * a descendant created is itself a descendant. Its id is only a snapshot, and is free
- * for reuse once the group is gone, so the parent groups let a caller signal it only
- * once a parent's group is frozen: a stopped parent cannot reap its exited child, so
- * that child keeps its pid and the group keeps its id. The host's group (`hostPid`'s)
- * and the ids `kill(-pgid)` would misroute (`<= 1`) are never returned.
+ * descendant of `leaderPid`, each mapped to the rows of its members' parents that sit
+ * in OTHER groups (a parent in the same group adds nothing). Descent follows parent
+ * pids transitively, so only descendants still linked to the leader when the table was
+ * read are found. A returned group holds only descendants: a group lives inside one
+ * session, and every member of the leader's session or of a session a descendant
+ * created is itself a descendant. Its id is only a snapshot, and is free for reuse
+ * once the group is gone, so the parent rows let a caller signal it only once a parent
+ * is known to be stopped: a stopped parent cannot reap its exited child, so that child
+ * keeps its pid and the group keeps its id. A leader missing from the table is given
+ * as a row that is not stopped. The host's group (`hostPid`'s) and the ids
+ * `kill(-pgid)` would misroute (`<= 1`) are never returned.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
   { leaderPid, hostPid }: { readonly leaderPid: number; readonly hostPid: number },
-): ReadonlyMap<number, ReadonlySet<number>> {
+): ReadonlyMap<number, ReadonlySet<ProcessEntry>> {
   const children = childrenByParent(table);
-  const leaderGroup = table.find((entry) => entry.pid === leaderPid)?.pgid ?? leaderPid;
-  const excluded = new Set([leaderPid, hostPid, leaderGroup]);
+  const leader = table.find((entry) => entry.pid === leaderPid) ?? {
+    pid: leaderPid,
+    ppid: 0,
+    pgid: leaderPid,
+    zombie: false,
+    stopped: false,
+  };
+  const excluded = new Set([leaderPid, hostPid, leader.pgid]);
   for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);
-  const groups = new Map<number, Set<number>>();
-  const pending = [{ pid: leaderPid, pgid: leaderGroup }];
+  const groups = new Map<number, Set<ProcessEntry>>();
+  const pending = [leader];
   const visited = new Set([leaderPid]);
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     for (const child of children.get(parent.pid) ?? []) {
@@ -137,8 +147,8 @@ export function detachedDescendantGroups(
       visited.add(child.pid);
       pending.push(child);
       if (child.zombie || child.pgid <= 1 || excluded.has(child.pgid)) continue;
-      const parents = groups.get(child.pgid) ?? new Set<number>();
-      if (parent.pgid !== child.pgid) parents.add(parent.pgid);
+      const parents = groups.get(child.pgid) ?? new Set<ProcessEntry>();
+      if (parent.pgid !== child.pgid) parents.add(parent);
       groups.set(child.pgid, parents);
     }
   }
