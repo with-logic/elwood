@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
-import { processGroupGone } from "../../src/runtime/probe-cleanup.ts";
+import { processGroupGone } from "../../src/runtime/probe/cleanup.ts";
 import {
   leaseIsAlive,
   ownerFile,

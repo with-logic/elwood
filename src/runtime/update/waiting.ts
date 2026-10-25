@@ -5,7 +5,16 @@
 import { opendir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../probe/index.ts";
 import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.ts";
+
+/**
+ * A contender's default wait: longer than an owner can hold the lease while its two probes,
+ * the `--version` read that confirms the CLI exists and then the update, each stay within
+ * their launch and command bounds (§9.2). The margin covers each probe's abort cleanup and
+ * the group observation after it, so a contender never re-reads a version mid-update.
+ */
+export const defaultWaitMs = 2 * (probeLaunchTimeoutMs + probeCommandTimeoutMs) + 15_000;
 
 export async function waitForOwner(
   path: string,

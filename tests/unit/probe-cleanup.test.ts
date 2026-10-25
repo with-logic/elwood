@@ -3,7 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, expect, test, vi } from "vitest";
-import { abortProbe, processGroupGone } from "../../src/runtime/probe-cleanup.ts";
+import { abortProbe, processGroupGone } from "../../src/runtime/probe/cleanup.ts";
 
 const kill = process.kill.bind(process);
 afterEach(() => vi.restoreAllMocks());
@@ -142,7 +142,7 @@ test("C-PERF-03 nothing is signaled after the cleanup deadline, even a still-liv
 
 test("C-PERF-03 an unresolved cleanup window does not keep the host process alive", async () => {
   const cleanup = pathToFileURL(
-    fileURLToPath(new URL("../../src/runtime/probe-cleanup.ts", import.meta.url)),
+    fileURLToPath(new URL("../../src/runtime/probe/cleanup.ts", import.meta.url)),
   ).href;
   // A real host whose group signals are swallowed: with nothing else to do it must exit
   // while the cleanup window is still open, leaving `abortProbe` unresolved.

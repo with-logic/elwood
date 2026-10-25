@@ -38,7 +38,7 @@ const pickerGrammar: DialogGrammar = {
   // `↑ 3.` marks the window's first row while rows are hidden above it, `↓ 10.` its last
   // while rows are hidden below, with `… +3 models` (`… +1 model`) directly under it. The
   // cursor glyph replaces either marker on its own row.
-  scroll: { above: /^\s*↑/, below: /^\s*↓/, overflow: /^\s*…\s*\+\d+ models?\s*$/ },
+  scroll: { above: /^\s*↑/, below: /^\s*↓/, overflow: /^\s*…\s*\+(?<hidden>\d+) models?\s*$/ },
 };
 
 export const claudeModelPicker: ModelPickerSpec = {

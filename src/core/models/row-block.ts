@@ -14,7 +14,8 @@ export const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
  * and `below` each match a row's start through the marker it wears in the cursor column
  * while rows are hidden above the window (its first visible row) or below it (its last);
  * `overflow` is the line that may stand directly under that last row while any are hidden,
- * which wears the `below` marker or, when the cursor is on it, the cursor in its place.
+ * which wears the `below` marker or, when the cursor is on it, the cursor in its place. The
+ * overflow line's `hidden` named group captures how many rows are hidden.
  */
 export type ScrollGrammar = {
   readonly above: RegExp;
@@ -26,6 +27,15 @@ export type ScrollGrammar = {
 export function unmarkedRow(line: string, scroll: ScrollGrammar | undefined): string {
   const marker = [scroll?.above, scroll?.below].find((pattern) => pattern?.test(line));
   return marker === undefined ? line : line.replace(marker, (start) => " ".repeat(start.length));
+}
+
+/**
+ * Whether the overflow line may stand directly under row `line`: only a window's last row,
+ * which wears the `below` marker or, when the cursor is on it, the cursor in its place. The
+ * region grammar and the overflow-count parser (`rows.ts`) share this one rule.
+ */
+export function overflowMayFollowRow(line: string, scroll: ScrollGrammar | undefined): boolean {
+  return scroll?.below.test(line) === true || caretRow.test(unmarkedRow(line, scroll));
 }
 
 export class RowBlock {
@@ -72,9 +82,8 @@ export class RowBlock {
     this.rowCount += 1;
     this.nextRowNumber = Number(numberedRow.exec(row)?.[1]) + 1;
     this.windowEnded = this.scroll?.below.test(line) === true;
-    const isCursorRow = caretRow.test(row);
-    if (isCursorRow) this.cursorCount += 1;
-    this.overflowMayFollow = this.windowEnded || isCursorRow;
+    if (caretRow.test(row)) this.cursorCount += 1;
+    this.overflowMayFollow = overflowMayFollowRow(line, this.scroll);
     return true;
   }
 
@@ -87,6 +96,9 @@ export class RowBlock {
   private isRow(line: string, row: string): boolean {
     if (!(rowPattern.test(row) || (!this.complete && numberedRow.test(row)))) return false;
     const number = Number(numberedRow.exec(row)?.[1]);
+    // A number that rounds is not the row the CLI drew, and rows that round together would
+    // pass for consecutive ones.
+    if (!Number.isSafeInteger(number)) return false;
     if (this.scroll?.above.test(line) === true) return this.rowCount === 0 && number > 1;
     return number === this.nextRowNumber;
   }

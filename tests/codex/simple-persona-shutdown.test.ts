@@ -1,7 +1,7 @@
 /** Persona cancellation precedes fallible process shutdown (PRD §5.8/§9.4, C-API-21/51). */
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexSession } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -12,7 +12,7 @@ afterEach(() => {
 test("C-API-51 failed stop and kill still cancel the caller waiting on its persona", async () => {
   installFakes();
   let failShutdown = true;
-  setGroupKillerForTests({
+  setProcessTreeOpsForTests({
     killGroup: () => {
       if (failShutdown) throw new Error("reap failed");
     },

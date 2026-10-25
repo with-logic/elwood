@@ -47,3 +47,16 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
     attempt: undefined,
   };
 }
+
+/**
+ * The gate left the frame. An unconfirmed attempt lost its choice; a confirmed answer
+ * keeps waiting for verified clearance or the gate's return, unless an off-allowlist
+ * gate a human must answer replaced it (C-TRUST-01).
+ */
+export function leaveFrame(episode: Episode, offAllowlistGate: boolean): void {
+  episode.lastIdentity = undefined;
+  if (episode.attempt?.confirmationWriteFulfilled && !offAllowlistGate) return;
+  episode.attempt?.cancel();
+  episode.attempt = undefined;
+  episode.attemptedIdentity = undefined;
+}

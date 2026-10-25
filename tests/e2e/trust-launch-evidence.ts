@@ -1,7 +1,8 @@
 /**
  * Per-launch evidence, keyed by each PTY's working directory (one fresh folder per
  * launch), that Claude displayed its folder-trust prompt and that Elwood answered it.
- * Without it a trust e2e can pass on a CLI that never showed the gate (C-E2E-09).
+ * Without it a trust e2e can pass on a CLI that never showed the gate (C-E2E-09). An
+ * answer's `startup_prompt` report must name a write the launch actually made.
  */
 
 import { realpathSync } from "node:fs";
@@ -35,6 +36,20 @@ export const isTrustInput = (input: string) =>
 
 /** A write that confirmed the affirmative with its own absolute selection. */
 export const isTrustAnswer = (input: string) => input.endsWith("\r") && isAbsoluteAnswer(input);
+
+/** Each launch's `workspace_trust` `startup_prompt` reports, as `label: text`. */
+export type TrustReports = string[];
+
+const answerReport =
+  /^workspace_trust: Detected claude workspace_trust prompt; sent (home(?:\+down)*\+enter|\d+)\.$/;
+
+/** The physical write a folder-trust `startup_prompt` report names, if it is one. */
+export function reportedTrustWrite(report: string): string | undefined {
+  const input = answerReport.exec(report)?.[1];
+  if (input === undefined) return undefined;
+  if (/^\d+$/.test(input)) return `${input}\r`;
+  return `${home}${down.repeat(input.split("+down").length - 1)}\r`;
+}
 
 /** Claude draws spaces as cursor moves, so the raw prompt is matched without them. */
 const folderTrustOutput = /trustthisfolder|Isthisaprojectyou|Accessingworkspace:/i;

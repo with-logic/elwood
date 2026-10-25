@@ -19,6 +19,15 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
+const navigate = "\u001b[H\u001b[B"; // absolute selection of the second option
+const confirm = `${navigate}\r`;
+
+/** Blocks the event loop, as a host under heavy load does between two timer callbacks. */
+function stallEventLoop(ms: number): void {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {}
+}
+
 describe("ClaudeSessionApi trust-prompt render delay", () => {
   test("C-CLAUDE-10 autotrust navigates the current cursor prompt before reporting it answered", async () => {
     const cwd = tempDir();
@@ -26,15 +35,23 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
     const session = await startClaude({ cwd, autotrust: true });
     const activity: string[] = [];
     session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
+    const writes = ptys[0]!.writes;
     ptys[0]!.emitData(
       `Quick safety check: Is this a project you created or one you trust?\r\n${tty(claudeBody)}\r\n\r\n❯ No, exit\r\n  Yes, I trust this folder`,
     );
-    await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(["\u001b[H\u001b[B"]));
+    await vi.waitFor(() => expect(writes).toContain(navigate));
+    // A loaded host can stall the loop past the 250 ms retry before Claude repaints. The
+    // absolute selection is then re-sent unchanged, never confirmed while "No" is selected.
+    stallEventLoop(300);
+    await vi.waitFor(() => expect(writes.length).toBeGreaterThan(1));
+    expect(new Set(writes)).toEqual(new Set([navigate]));
+    const beforeYes = writes.length;
     ptys[0]!.emitData(
       `\u001b[2J\u001b[HQuick safety check: Is this a project you created or one you trust?\r\n${tty(claudeBody)}\r\n\r\n  No, exit\r\n❯ Yes, I trust this folder`,
     );
-    await vi.waitFor(() =>
-      expect(ptys[0]!.writes).toEqual(["\u001b[H\u001b[B", "\u001b[H\u001b[B\r"]),
+    await vi.waitFor(() => expect(writes.slice(beforeYes)).toContain(confirm));
+    expect(writes.slice(beforeYes).every((write) => write === navigate || write === confirm)).toBe(
+      true,
     );
     ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await vi.waitFor(() => expect(activity).toContain("startup_prompt:workspace_trust"));

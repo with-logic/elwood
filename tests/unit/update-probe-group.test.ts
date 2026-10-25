@@ -5,13 +5,13 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { probeFailureDetails } from "../../src/core/errors.ts";
-import { runProbe, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
+import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 
 const kill = process.kill.bind(process);
 afterEach(() => vi.restoreAllMocks());
 
 test("C-PERF-03 an aborted probe whose group survives reports it in the typed error", async () => {
-  setProbeTimeoutMsForTests(50);
+  setProbeTimeoutsForTests({ commandMs: 50, launchMs: 50 });
   // Only the group signals are swallowed, so the updater is a real, genuinely hanging
   // process that outlives the abort rather than a stubbed failure.
   vi.spyOn(process, "kill").mockImplementation((pid, signal) =>

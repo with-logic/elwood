@@ -62,7 +62,7 @@ export function withTrustBlockingRules(
  * below them but the native footer that ends the frame, no conversation row above —
  * and NO region names an allowlisted prompt. Enter would answer it, so it holds input.
  */
-function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): boolean {
+export function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): boolean {
   const gate = regions[0];
   return (
     gate?.validTail === true &&

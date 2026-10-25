@@ -3,21 +3,20 @@
  * Claude's turn-boundary reader, which turns `StopFailure` into a rejection (PRD §5.8, C-API-59).
  */
 
+import { boundedDiagnostic } from "../../core/simple/boundary-signal.ts";
 import {
   type BoundarySignalReader,
   defaultBoundarySignal,
   type TurnBoundaryHook,
 } from "../../core/simple/turn-types.ts";
 
-const maxDiagnosticLength = 2_000;
-
 /** Accepts the structural diagnostic fields so internal adapters share one selector. */
 export function stopFailureDiagnostic(event: {
   readonly error?: unknown;
   readonly error_details?: unknown;
 }): { readonly message: string; readonly agentError?: string } {
-  const error = diagnosticField(event.error);
-  const details = diagnosticField(event.error_details);
+  const error = boundedDiagnostic(event.error);
+  const details = boundedDiagnostic(event.error_details);
   return {
     message:
       details ??
@@ -56,9 +55,4 @@ function promptId(event: ClaudeBoundaryHook): string | undefined {
   return typeof event.prompt_id === "string" && event.prompt_id !== ""
     ? event.prompt_id
     : undefined;
-}
-
-function diagnosticField(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.trim().length === 0) return undefined;
-  return value.length <= maxDiagnosticLength ? value : `${value.slice(0, maxDiagnosticLength)}…`;
 }

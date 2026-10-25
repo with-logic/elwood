@@ -166,6 +166,23 @@ misattributed to a CLI regression.)
   observed `◐ ` prefix alongside the existing braille range; both screen facts
   and live trust clearance share it. No other new spinner glyph is inferred.
   C-TURN-05, C-TRUST-01.
+- **Claude 2.1.310 alternates its working title between `◐` and `◑`, and its
+  spinner row has no `esc to interrupt`.** Sampling the title every 50 ms through
+  real turns (2026-10-25, Opus 5.5, 189 columns) gave `✳ ◐ ◑ ◐ ✳` and
+  `✳ ◐ ◑ ◐ ◑ ◐ ✳`, each half circle lasting about a second, with `✳` while idle.
+  The spinner row reads `✢ Nebulizing… (2s)`, or
+  `✶ Computing… (running Stop hook · 8s · ↓ 3 tokens)`, and no frame of those turns
+  contained `esc to interrupt`, so the title was the only working signal. With only
+  `◐` recognized, every `◑` frame read as idle: the session reported
+  `running → ready → running` about once a second for the whole turn, eight false
+  `ready`s during one 6 s `sleep` tool call. The ergonomic turn treats an accepted
+  `ready` as the start of its 2 s quiet window, so a turn with more than 2 s between
+  a `◑` frame and its first text settled early. Six concurrent `send("Reply with
+  exactly OK…")` calls returned `""` in 5 of 6 at load 117 and 6 of 6 at load 207,
+  with Claude's `Stop` carrying `OK` 2–4 s later. Both half circles now read as
+  working (`tests/fixtures/claude-2.1.310/working-half-right.txt`): the same six
+  sends returned `OK` 6 of 6 at load 120–126 with no `ready` before `Stop`.
+  C-TURN-05, C-API-48.
 - Both CLIs render the literal `esc to interrupt` only while a turn is running
   (Claude footer, Codex "Working" spinner). Elwood's `TurnStateWatcher` keys off
   this, and **arms only after initial readiness** because the Codex MCP boot
@@ -217,7 +234,28 @@ only when its `prompt_id` matches that submit's.
 **Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
 sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
 evidence is a transcript `event_msg` `task_complete` carrying `error`, with
-`last_agent_message: null`, as first measured on 0.155.0.
+`last_agent_message: null`, as first measured on 0.155.0. The record's `turn_id`
+(and `root_turn_id`) equal the `UserPromptSubmit` `turn_id`. `error.message` is the
+service's raw JSON body (`{"type":"error","status":400,"error":{...,"code":
+"model_not_found"}}`, "…model is not supported when using Codex with a ChatGPT
+account."), and `error.codex_error_info` is `"other"`. The binary's
+`CodexErrorInfo` kinds are bare strings (`usage_limit_exceeded`, `bad_request`,
+`other`, …) or one-key objects for kinds with fields (`http_connection_failed`,
+`response_stream_connection_failed`, `response_stream_disconnected`, …). The
+screen still reached `ready` 1.4 s after the submit hook and 0.15 s before the record.
+
+On 0.164.0 the turn binds the submit's `turn_id`, and only a private `Stop` or a
+classified rendered completion ends it. A rejected turn has no `Stop`, so its end
+depended on the rendered path. In the A/B runs (load 60–100), `CodexSession.send`
+resolved `""` about 20 s after submission, and `elwood run` exited 0 with
+`"response": ""`, the same empty success 0.155.0 showed. In one earlier probe, run
+beside a full test suite at load ~100, `send` stayed pending for over five minutes
+and resolved `""` only when the CLI was killed. Elwood now
+reads a failed `task_complete` that names the accepted `turn_id` as that turn's
+native boundary (`confirmCodexRejection`) and fails it with `turn_failed`. The
+message is `error.message` and `details.agentError` is the `codex_error_info`
+kind. A second turn on the same session is rejected the same way, so the first
+released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
 
 ## Codex transcript replies
 
@@ -659,8 +697,9 @@ The budget therefore elapses only on frames that show the gate: it is five
 seconds of cumulative visible time. A frame without it pauses the budget, and
 the same gate's return resumes the remainder rather than a fresh five seconds,
 so a gate that flickers still exhausts one budget. Only a gate that stays absent
-from its departure through verified clearance is guaranteed never to block. The input hold does not change: it
-lasts until verified composer or successor clearance. No separate post-answer
+from its departure through verified clearance is guaranteed never to block. The
+input hold does not change: it lasts until verified composer or successor
+clearance. No separate post-answer
 bound replaces the old one. Boot time grows with load, so any fixed bound only
 moves the false attention later. A CLI that never paints after an answered gate
 leaves the session held, as before, but no longer reported as a trust prompt.
@@ -672,6 +711,30 @@ reached the condition. The sanitized PTY bytes of the slowest launch are in
 `tests/claude/session-trust-slow-boot.test.ts` replays them at their recorded
 times. `tests/e2e/trust-slow-boot-claude.e2e.ts` launches 16 fresh folders at
 once against the real CLI and logs how many boots exceeded 5 s. C-ATTN-03,
+C-TRUST-01.
+
+**An answer is reported when the composer verifies it, not when the dialog
+leaves (Claude 2.1.310, 2026-10-25).** The blank and banner-only frames between
+the erased folder-trust dialog and the composer show neither the gate nor a
+composer. The attempt read them as its choice vanishing and cancelled itself
+quietly, which is right for a choice lost before its Enter. By then, though, the
+confirming write had fulfilled, so the cancellation discarded a real answer.
+None of the 30 fresh-folder `autotrust` launches above emitted `startup_prompt`,
+although the 27 that reached `ready` had answered their gate. A confirmed
+attempt now waits through dialog-free frames and writes nothing; it re-reads the
+screen only when a new frame renders, so the wait holds no timer. Verified
+composer or successor clearance reports it once. If the same gate returns, the
+attempt answers again within the remaining on-screen budget. Expiry, a changed
+gate, a complete off-allowlist gate, or closing cancels it without a report. With this change, all 21 launches of the two Claude trust e2e
+files (5 at once, then 16 at once with every composer more than 7.5 s after the
+prompt) reported exactly one `startup_prompt`, `sent home+down+enter`. Swapping
+in the previous trust code failed both files: no launch reported its answer.
+Codex 0.164 shows its directory-trust prompt in a fresh git folder, and its
+answers were lost the same way: in four rounds of 4 such launches at once, the
+previous code reported 0 of 16 answers and this change 16 of 16, each `sent 1`.
+`tests/claude/session-trust-slow-boot.test.ts` replays the recorded launch and
+requires exactly one report, and both Claude trust e2e files require one
+`workspace_trust` `startup_prompt` per launch that names a write the launch made. C-CLAUDE-10,
 C-TRUST-01.
 
 Both CLIs reword gates often, so an off-allowlist gate behind a recognized header
@@ -1130,6 +1193,40 @@ session's stable socket home. A connect probe was rejected on purpose: the
 bridge treats any connection that closes without a frame as a malformed request
 and emits `hookError`/`activity` on the live owner, so presence is the only
 side-effect-free signal. C-CLI-21 through C-CLI-24.
+
+## Probe shell startup under concurrency (2026-10-25)
+
+Preflight probes run through the user's interactive login shell (§4.2), so their wall
+time is the user's profile plus the CLI. On a 16-CPU host already at load 35–90 with a
+typical developer profile (oh-my-zsh with seven plugins, `nvm.sh`, `fnm env`,
+`brew shellenv`), measured with Claude Code 2.1.310:
+
+- `claude --version` without a shell took 0.01–0.12 s at 1, 4, 8 and 16 concurrent
+  runs. There is no `~/.claude.json` lock, autoupdate check or keychain wait on this
+  path. An empty `CLAUDE_CONFIG_DIR` changed nothing, and `zsh -l -i -c true` costs
+  the same as the real probe.
+- The interactive login shell alone took 2.3–7.6 s for one probe, about 2 s each at 4
+  concurrent, about 5 s at 8, 7–19 s at 16 (p50 8–18 s), and 15.5–30.9 s at 32. A
+  trace of one startup put about 2.5 s in `nvm.sh`'s command substitutions and 1.2 s
+  in `compinit`/`compdef`. Fresh or shared working directories made no difference, so
+  this is CPU saturation from fork-heavy startup files, not a shared lock.
+- With an empty private `ZDOTDIR`, the same probe took 0.03–0.23 s at 16.
+
+The original 15 s bound covered both phases. 16 concurrent `elwood run`s therefore
+failed `claude_start_failed` ("`claude --version` failed", `ETIMEDOUT`) at 17.5–18.9 s:
+16 of 16 in one of three fleets at load 68, and 14 of 16 in the original report. The
+probe shell now writes `elwood-probe-command-start` on descriptor 3, a fourth pipe the
+runner opens, just before the command, then closes it so the command does not inherit it.
+Writing it to stderr was the first version; a review pointed out that a profile running
+`exec 2>&1` or `exec 2>/dev/null` would hide it, and both shells were confirmed to
+pass descriptor 3 through: real zsh with this host's profile, zsh with either redirect in
+a private `ZDOTDIR`, and bash with `exec 2>&1` in its rc file all delivered the line, and
+only a profile that runs `exec 3>&-` itself loses it.
+The profile gets a 60 s launch bound and the CLI keeps 15 s from that line (C-PERF-05).
+With the stderr version, three 16-run fleets at load 48–74 passed preflight 48 of 48;
+the bounds are the same on descriptor 3. The real-shell e2e
+uses a private `ZDOTDIR` whose `.zshrc` sleeps 4 s with a 2 s command bound; `main`
+fails it with that same `ETIMEDOUT`.
 
 ## Testing against the real CLIs
 

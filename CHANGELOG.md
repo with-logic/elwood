@@ -16,6 +16,34 @@ back each entry are listed in `prd/14-conformance.md`.
   rather than at the next 100 ms poll. They return sooner and hold the session's
   input queue for less time. The poll remains as a fallback for a frame that no
   render reports.
+- A successful `listModels` or `setModel` no longer releases queued input on the
+  first frame without the picker. It now waits until no part of the picker has
+  been the bottom of the screen across five readings at least 40 ms apart. Before,
+  a blank or half-painted repaint could end the operation and let a queued
+  message's Enter land in the picker when it painted again, applying the
+  highlighted model. Picker text quoted above the composer does not hold the
+  operation. Each reading first renders all output the terminal has received, and
+  one that cannot fails the operation with `model_automation_failed` instead of
+  reporting success.
+- A Codex turn the agent rejects, for example one run with an unknown model, now
+  fails with `turn_failed`. `CodexSession.send` rejects, `stream` throws after the
+  events it already yielded, and `elwood run` exits 1, as Claude rejections already
+  do. Codex fires no `Stop` hook for such a turn. On Codex 0.164.0, `send` resolved
+  `''` about 20 seconds later, as if the turn had succeeded with an empty reply, or
+  stayed pending until the CLI exited, and `elwood run` exited 0 with an empty
+  `response`. The evidence is the transcript's failed `task_complete` for the turn's own
+  `turn_id`. The error message is Codex's `error.message`, and
+  `details.agentError` is its `codex_error_info` kind (for example `other`).
+
+- `autotrust` now reports an answered Claude folder-trust prompt. Claude erases
+  the dialog as soon as it is answered, then shows a blank or banner-only screen
+  until its composer paints. Elwood treated that screen as the answer being
+  lost, so the `startup_prompt` activity (`workspace_trust`, for example
+  `sent home+down+enter`) never fired: 0 of 30 real launches on Claude Code
+  2.1.310 emitted it. The answer is now reported once, when the composer
+  appears. Codex 0.164 lost its directory-trust answers the same way (0 of 16
+  fresh git-folder launches reported one); they are now reported too.
+
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
   reaped now says so. The typed startup error keeps its code and
@@ -24,6 +52,15 @@ back each entry are listed in `prd/14-conformance.md`.
   must never be signaled. Before, that failure was dropped silently. When a PTY is not
   confirmed terminated and its group reap fails too, `termination_failed` now also
   carries the reap's errno as `details.reapErrno`, next to `details.reapError`.
+
+- On Claude Code 2.1.310, `send` no longer returns an empty or truncated reply, and
+  `stream` no longer ends early, when a turn takes more than about two seconds to
+  produce text. A Claude session also stays `running` for the whole turn instead of
+  flipping to `ready` and back about once a second. Claude 2.1.310 alternates its
+  working window title between `◐` and `◑`, and Elwood read every `◑` frame as idle.
+  An ergonomic turn treated that false `ready` as the start of its 2-second quiet
+  window. Both half circles now mean working.
+
 - A failed start or resume no longer signals a CLI that already exited during startup,
   and no longer reaps its process group a second time. The leader's pid could already
   belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and
@@ -39,6 +76,20 @@ back each entry are listed in `prd/14-conformance.md`.
   throws. They used to pass the raw system error through, whose own `code` (for example
   `ESRCH`) read like an Elwood error name. The underlying message is kept as
   `details.cause`, with `errno`, `syscall` and `path` when present.
+
+- A slow login-shell profile no longer fails startup as `claude_start_failed` /
+  `codex_start_failed` ("`--version` failed", `ETIMEDOUT`). Preflight probes run
+  through the user's interactive login shell, and the fixed 15-second bound counted
+  loading that profile as the CLI's time. Under 16 concurrent headless runs on a
+  loaded machine the profile alone took 7–19 seconds, while the CLI answered in
+  milliseconds. The shell now has 60 seconds to load the profile, and the CLI still
+  has 15 seconds from then. A shell that never starts the probe, by timing out or by
+  exiting first, fails with a cause naming the login shell and `details.phase:
+  "login_shell"`; for `autoupdate` the `agent_update_failed` warning carries
+  `errorCode: "login_shell_failed"`. The profile's own startup output is left out of
+  both, since it can contain expanded secrets. A contender waiting on another process's update
+  now waits up to 165 seconds instead of 60, so it does not give up and re-read the
+  version while the owner's version and update probes are still within their bounds.
 
 - `autotrust` no longer reports a Claude folder-trust prompt that it has
   already answered as needing attention. Claude erases the dialog at once but
@@ -72,7 +123,7 @@ back each entry are listed in `prd/14-conformance.md`.
   print Claude's error text as the response. A late rejection whose `prompt_id` names an
   earlier submission than the current turn's does not fail the current turn. When either
   hook lacks a `prompt_id`, a rejection that arrives during a turn is attributed to that
-  turn. Codex rejections are not recognized yet.
+  turn.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker

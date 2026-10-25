@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
+import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
 import { loginShellCommand, probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 vi.mock("node:os", async (importOriginal) => {
@@ -19,6 +20,13 @@ describe("user shell", () => {
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    expect(probeShellCommand("claude --version")).toEqual(["-l", "-i", "-c", "claude --version"]);
+    // Same shell and flags; the probe writes its start line on descriptor 3, closes it, then
+    // runs the command (C-PERF-05).
+    expect(probeShellCommand("claude --version")).toEqual([
+      "-l",
+      "-i",
+      "-c",
+      `echo ${probeCommandStartLine} >&3; exec 3>&-; claude --version`,
+    ]);
   });
 });

@@ -5,6 +5,7 @@
  */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { SelectableOption } from "../terminal-options.ts";
+import { unknownGateVisible } from "./blocking.ts";
 import type { TrustClearance } from "./clearance.ts";
 import { parseTrustCandidates, parseTrustDialog, type TrustDialog } from "./dialog.ts";
 import { activeTrustDialogVisible, type TrustPromptSpec, trustPromptAllowlist } from "./prompts.ts";
@@ -17,7 +18,11 @@ export type TrustCandidate = {
   readonly valid: boolean;
   readonly option: SelectableOption | undefined;
 };
-export type TrustView = TrustCandidate | { readonly kind: "clear" } | { readonly kind: "unknown" };
+/** `gate` marks a complete off-allowlist dialog, which a human must answer. */
+export type TrustView =
+  | TrustCandidate
+  | { readonly kind: "clear" }
+  | { readonly kind: "unknown"; readonly gate?: true };
 
 /** A present reader with unavailable output must never become the permissive no-reader mode. */
 export function readTrustView(
@@ -62,6 +67,7 @@ export function trustView(
       };
     }
   }
+  if (unknownGateVisible(regions, agent)) return { kind: "unknown", gate: true };
   if (regions.length > 0) return { kind: "unknown" };
   return { kind: clearance(frame) ? "clear" : "unknown" };
 }
