@@ -37,11 +37,16 @@ describe("C-CODEX-14 PtyExitLatch", () => {
     await expect(latch.within(0)).resolves.toBe(true);
   });
 
-  test("times out without an exit", async () => {
+  test("times out without an exit, and not before its timeout", async () => {
     vi.useFakeTimers();
     const latch = new PtyExitLatch(fakePty());
-    const waiting = latch.within(100);
-    await vi.advanceTimersByTimeAsync(100);
-    await expect(waiting).resolves.toBe(false);
+    let settled: boolean | undefined;
+    void latch.within(100).then((exited) => {
+      settled = exited;
+    });
+    await vi.advanceTimersByTimeAsync(99);
+    expect(settled).toBeUndefined(); // still waiting 1 ms before the timeout
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(false);
   });
 });
