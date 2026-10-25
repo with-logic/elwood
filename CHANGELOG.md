@@ -40,6 +40,14 @@ back each entry are listed in `prd/14-conformance.md`.
   limit now counts only time the prompt is on screen. Queued input is still
   held until Claude's composer appears.
 
+- `listModels` and `setModel` no longer send a picker key into a prompt that has
+  reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
+  answer and Escape is now decided after every received byte is rendered, like
+  queued input and failure cleanup already were. If the screen cannot be verified,
+  the key is withheld and the operation fails with `model_automation_failed`.
+  Before, an arrow chosen from the stale picker frame could move a permission or
+  question prompt's selection.
+
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
   that has not finished painting or to a bare `Select model` header, which agent output

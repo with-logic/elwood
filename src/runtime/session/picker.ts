@@ -1,7 +1,7 @@
 /** Exclusive model-picker queue ownership and failure cleanup (PRD §5.3, C-API-55). */
 import type { ControlQueue } from "../../core/control-queue/index.ts";
 import { elwoodError } from "../../core/errors.ts";
-import type { InputTerminal } from "../../core/input/abort.ts";
+import { type InputTerminal, withObservation } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
@@ -147,7 +147,8 @@ export class PickerTransactions {
 
   private io(signal: AbortSignal, spec: ModelPickerSpec, progress: Progress): ModelPickerIo {
     const live = abortable(this.deps.terminal, signal);
-    const terminal: ScreenTerminal = {
+    // Every key is decided on everything received, like cleanup's Escape (C-API-56).
+    const terminal = withObservation(this.deps.terminal, {
       snapshot: () => {
         const snapshot = live.snapshot();
         progress.dialogSeen ||= spec.activeDialog(snapshot.text, ours) !== undefined;
@@ -160,7 +161,7 @@ export class PickerTransactions {
         else progress.keyWritten = true;
         return sent;
       },
-    };
+    });
     return {
       terminal,
       signal,

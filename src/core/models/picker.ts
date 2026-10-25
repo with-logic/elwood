@@ -6,6 +6,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
+import type { InputTerminal } from "../input/abort.ts";
 import { sendPickerInput } from "./input.ts";
 import type {
   AgentModelOption,
@@ -25,7 +26,8 @@ export function pickerTimeout(options?: { readonly timeoutMs?: number }): number
 }
 
 export type ModelPickerIo = {
-  readonly terminal: ScreenTerminal;
+  /** Carries the observation barrier (`settled`/`renderFailed`) when real (C-API-56). */
+  readonly terminal: ScreenTerminal & InputTerminal;
   readonly blocked?: () => boolean;
   readonly signal?: AbortSignal;
   readonly submit: (command: string, signal: AbortSignal) => Promise<void>;

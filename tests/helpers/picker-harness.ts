@@ -39,6 +39,12 @@ export function releasesAfterClearStreak(held: () => boolean): boolean {
 /** The rejection the cleanup harness's scripted operation fails with. */
 export const failure = new Error("navigation failed");
 export type Screen = { text: string };
+/** Observation-barrier state a real terminal carries (C-API-56). */
+export type Barrier = {
+  readonly renderFailed?: boolean;
+  /** Renders whatever the PTY has received but the snapshot does not show yet. */
+  readonly settled?: () => Promise<void>;
+};
 // A raw oracle, so a recognizer regression cannot make a leak look like a clean dispatch.
 const dialogTitle =
   /Select model|Select Model and Effort|Select Reasoning Level|Switch model\?|Change effort level\?/;
@@ -50,7 +56,7 @@ const dialogTitle =
 function scriptedTerminal(
   text: string,
   react: (input: string, screen: Screen) => void,
-  barrier: { readonly renderFailed?: boolean } = {},
+  barrier: Barrier = {},
 ) {
   const screen: Screen = { text };
   const writes: string[] = [];
@@ -86,8 +92,9 @@ export function pickerHarness(
   text: string,
   react: (input: string, screen: Screen) => void,
   spec: ModelPickerSpec = claudeModelPicker,
+  barrier: Barrier = {},
 ) {
-  const { screen, writes, terminal } = scriptedTerminal(text, react);
+  const { screen, writes, terminal } = scriptedTerminal(text, react, barrier);
   /** Queued input dispatched while any model dialog title was on screen. */
   const leaked: string[] = [];
   const queue = new ControlQueue(
@@ -137,7 +144,7 @@ export function cleanupHarness(
   spec: ModelPickerSpec,
   react: (input: string, screen: Screen) => void = () => {},
   /** Observation-barrier state a real terminal carries (`renderFailed`, `settled`). */
-  barrier: { readonly renderFailed?: boolean } = {},
+  barrier: Barrier = {},
 ) {
   const { screen, writes, terminal } = scriptedTerminal("❯ ", react, barrier);
   /** The harness stands in for a transaction Elwood opened. */

@@ -2,6 +2,7 @@
 
 import { elwoodError } from "../errors.ts";
 import { isPickerIntervention } from "../models/intervention.ts";
+import type { ScreenTerminal } from "../models/tui-screen.ts";
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
 import { observeRender } from "./render-observation.ts";
 
@@ -85,6 +86,27 @@ export async function writeUnsafe(
   )
     return true;
   return terminal.renderFailed === true || guard?.blocked?.() === true;
+}
+
+/**
+ * `view` carrying `source`'s observation barrier, so a picker key written through it is
+ * decided on everything received and withheld when that cannot be observed (C-API-56).
+ * `renderFailed` stays live: a render can fail after the view is made.
+ */
+export function withObservation(
+  source: InputTerminal,
+  view: ScreenTerminal,
+): ScreenTerminal & InputTerminal {
+  return {
+    snapshot: () => view.snapshot(),
+    sendInput: (input) => view.sendInput(input),
+    settled: async () => {
+      await source.settled?.();
+    },
+    get renderFailed() {
+      return source.renderFailed === true;
+    },
+  };
 }
 
 export function throwIfInputAborted(signal?: AbortSignal): void {

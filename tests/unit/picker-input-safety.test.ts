@@ -1,4 +1,4 @@
-/** Picker keys revalidate the live screen at write time (PRD §5.3, C-API-23/24). */
+/** Picker keys revalidate the live screen at write time (PRD §5.3, C-API-23/24/56). */
 import { expect, test } from "vitest";
 import { sendPickerInput } from "../../src/core/models/input.ts";
 import type { ModelPickerIo } from "../../src/core/models/picker.ts";
@@ -21,12 +21,12 @@ test("C-API-24 navigation refuses a replaced picker or unrelated blocking dialog
   await sendPickerInput(io, "s", expected);
   expect(writes).toEqual(["s"]);
   blocked = true;
-  expect(() => sendPickerInput(io, "\r", expected)).toThrowError(
-    expect.objectContaining({ code: "model_automation_failed" }),
-  );
+  await expect(sendPickerInput(io, "\r", expected)).rejects.toMatchObject({
+    code: "model_automation_failed",
+  });
   blocked = false;
   text = "different screen";
-  expect(() => sendPickerInput(io, "\r", expected)).toThrow();
+  await expect(sendPickerInput(io, "\r", expected)).rejects.toThrow();
   expect(writes).toEqual(["s"]);
 });
 test("C-API-24 first-party confirmation ownership still revalidates its exact frame", async () => {
@@ -45,6 +45,6 @@ test("C-API-24 first-party confirmation ownership still revalidates its exact fr
   const expected = (screen: string) => screen === "owned cache warning";
   await sendPickerInput(io, "\r", expected, true);
   text = "permission dialog";
-  expect(() => sendPickerInput(io, "\r", expected, true)).toThrow();
+  await expect(sendPickerInput(io, "\r", expected, true)).rejects.toThrow();
   expect(writes).toEqual(["\r"]);
 });
