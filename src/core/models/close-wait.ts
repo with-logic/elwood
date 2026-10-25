@@ -7,26 +7,25 @@ import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import { clearReadingGapMs, clearReadings } from "./clearance.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "./picker.ts";
-import type { ModelDialogAuthority } from "./rows.ts";
-
-const opened: ModelDialogAuthority = { opened: true };
+import { ownOperation } from "./rows.ts";
 
 /**
- * Whether any stage of the operation's dialog, or its header, still shows. Deliberately
- * weaker than `isOwnCompletePicker`, because it only waits: a picker mid-close may still
- * show either. It never gates a write.
+ * Whether the bottom-most region is still the operation's dialog: any stage of it, complete
+ * or partly painted. Deliberately weaker than `isOwnCompletePicker`, because it only waits;
+ * it never gates a write. Dialog text above a conversation or composer row (a transcript
+ * quoting the picker's title) is not the dialog and does not hold the slot (C-API-55).
  */
 const closing = (spec: ModelPickerSpec, text: string) =>
-  spec.activeDialog(text, opened) !== undefined || spec.hasPickerHeader(text);
+  spec.activeDialog(text, ownOperation) !== undefined || spec.isCandidate(text);
 
 /**
- * Resolves once neither the dialog nor its header has shown across `clearReadings`
- * readings spaced `clearReadingGapMs` apart; any reading that shows either restarts the
- * count. One frame without the picker is not proof it closed: a blank or half-painted
- * repaint lacks it too, and the picker can paint again after it, where a queued Enter
- * released by this operation would apply the highlighted model. Absence, not positive
- * composer clearance, is what is counted: clearance excludes a running turn, and model
- * operations run during turns (C-API-35).
+ * Resolves once the dialog has not shown across `clearReadings` readings spaced
+ * `clearReadingGapMs` apart; any reading that shows it restarts the count. One frame without
+ * the picker is not proof it closed: a blank or half-painted repaint lacks it too, and the
+ * picker can paint again after it, where a queued Enter released by this operation would
+ * apply the highlighted model. Absence, not positive composer clearance, is what is counted:
+ * clearance excludes a running turn, and model operations run during turns (C-API-35). A
+ * terminal that stopped rendering shows only its last frame, which proves nothing (C-API-56).
  */
 export async function waitUntilClosed(
   io: Pick<ModelPickerIo, "terminal" | "signal">,
@@ -36,6 +35,11 @@ export async function waitUntilClosed(
   const deadline = Date.now() + timeoutMs;
   for (let streak = 0; ; await delay(clearReadingGapMs)) {
     io.signal?.throwIfAborted();
+    if (io.terminal.renderFailed)
+      throw elwoodError(
+        "model_automation_failed",
+        `Could not confirm the ${spec.agent} model picker closed: the terminal stopped rendering.`,
+      );
     streak = closing(spec, io.terminal.snapshot().text) ? 0 : streak + 1;
     if (streak >= clearReadings) return;
     if (Date.now() >= deadline)

@@ -123,8 +123,9 @@ export function guardedPickerHarness(
   text: string,
   react: (input: string, screen: Screen) => void = () => {},
   spec: ModelPickerSpec = claudeModelPicker,
+  barrier: Barrier = {},
 ) {
-  const { screen, writes, terminal } = scriptedTerminal(text, react);
+  const { screen, writes, terminal } = scriptedTerminal(text, react, barrier);
   const holds: { picker?: PickerTransactions } = {};
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {

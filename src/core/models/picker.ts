@@ -10,11 +10,12 @@ import type { ObservedTerminal } from "../input/abort.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
 import { waitUntilClosed } from "./close-wait.ts";
 import { sendPickerInput } from "./input.ts";
-import type {
-  AgentModelOption,
-  ModelDialogAuthority,
-  ModelDialogStage,
-  ParsedModelPicker,
+import {
+  type AgentModelOption,
+  type ModelDialogAuthority,
+  type ModelDialogStage,
+  ownOperation,
+  type ParsedModelPicker,
 } from "./rows.ts";
 import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
 
@@ -73,26 +74,21 @@ export type ModelPickerSpec = {
 };
 
 /**
- * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority.
- * Every key and Escape below is gated on `isOwnCompletePicker(spec)`: the operation's own COMPLETE picker,
- * never a `painting` dialog and never `hasPickerHeader`. A header match alone is untrusted:
- * a transcript or the agent's own output can print `Select model`, so navigating or
- * Escaping on it could send keys into a running turn, the real composer, or another prompt
- * (C-API-24). The header gates only two waits, the `/model` open wait (`openAndParse`) and
- * the close wait (`waitUntilClosed`); the cursor-settle wait reads a parsed row. None of
- * them writes.
- */
-const opened: ModelDialogAuthority = { opened: true };
-
-/**
  * True only while THIS operation's own COMPLETE picker is the bottom-most region: never its
  * `painting` shell and never a `follow-up` stage. It gates every shared navigation,
  * selection, and cancelling key, and each adapter's selecting key; a follow-up is answered
  * only by the adapter's `apply`, under that stage's own guard (Claude's cache warning,
  * Codex's reasoning level).
+ *
+ * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority
+ * (`ownOperation`). A header match alone is untrusted: a transcript or the agent's own output
+ * can print `Select model`, so navigating or Escaping on it could send keys into a running
+ * turn, the real composer, or another prompt (C-API-24). The header gates only the `/model`
+ * open wait (`openAndParse`); the cursor-settle wait reads a parsed row, and the close wait
+ * (`waitUntilClosed`) reads only the bottom-most region. None of them writes.
  */
 export const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, opened) === "picker";
+  spec.activeDialog(text, ownOperation) === "picker";
 
 const escapeKey = "\u001b";
 const arrowStepMs = 80;
