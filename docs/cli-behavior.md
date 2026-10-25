@@ -166,6 +166,23 @@ misattributed to a CLI regression.)
   observed `◐ ` prefix alongside the existing braille range; both screen facts
   and live trust clearance share it. No other new spinner glyph is inferred.
   C-TURN-05, C-TRUST-01.
+- **Claude 2.1.310 alternates its working title between `◐` and `◑`, and its
+  spinner row has no `esc to interrupt`.** Sampling the title every 50 ms through
+  real turns (2026-10-25, Opus 5.5, 189 columns) gave `✳ ◐ ◑ ◐ ✳` and
+  `✳ ◐ ◑ ◐ ◑ ◐ ✳`, each half circle lasting about a second, with `✳` while idle.
+  The spinner row reads `✢ Nebulizing… (2s)`, or
+  `✶ Computing… (running Stop hook · 8s · ↓ 3 tokens)`, and no frame of those turns
+  contained `esc to interrupt`, so the title was the only working signal. With only
+  `◐` recognized, every `◑` frame read as idle: the session reported
+  `running → ready → running` about once a second for the whole turn, eight false
+  `ready`s during one 6 s `sleep` tool call. The ergonomic turn treats an accepted
+  `ready` as the start of its 2 s quiet window, so a turn with more than 2 s between
+  a `◑` frame and its first text settled early. Six concurrent `send("Reply with
+  exactly OK…")` calls returned `""` in 5 of 6 at load 117 and 6 of 6 at load 207,
+  with Claude's `Stop` carrying `OK` 2–4 s later. Both half circles now read as
+  working (`tests/fixtures/claude-2.1.310/working-half-right.txt`): the same six
+  sends returned `OK` 6 of 6 at load 120–126 with no `ready` before `Stop`.
+  C-TURN-05, C-API-48.
 - Both CLIs render the literal `esc to interrupt` only while a turn is running
   (Claude footer, Codex "Working" spinner). Elwood's `TurnStateWatcher` keys off
   this, and **arms only after initial readiness** because the Codex MCP boot

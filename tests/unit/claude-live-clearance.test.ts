@@ -36,6 +36,7 @@ test("C-TRUST-01 live Claude clearance requires the current visible cursor on it
 test.each([
   "⠋ Working",
   "◐ Claude Code",
+  "◑ Slow counting from one to twenty",
 ])("C-TRUST-01 title %s vetoes the unchanged visible Claude composer", async (title) => {
   const terminal = createHeadlessTerminal({ cols: 173, rows: 35 }, () => undefined);
   const clear = liveClaudeClearance(() => terminal);

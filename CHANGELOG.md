@@ -21,6 +21,14 @@ back each entry are listed in `prd/14-conformance.md`.
   confirmed terminated and its group reap fails too, `termination_failed` now also
   carries the reap's errno as `details.reapErrno`, next to `details.reapError`.
 
+- On Claude Code 2.1.310, `send` no longer returns an empty or truncated reply, and
+  `stream` no longer ends early, when a turn takes more than about two seconds to
+  produce text. A Claude session also stays `running` for the whole turn instead of
+  flipping to `ready` and back about once a second. Claude 2.1.310 alternates its
+  working window title between `◐` and `◑`, and Elwood read every `◑` frame as idle.
+  An ergonomic turn treated that false `ready` as the start of its 2-second quiet
+  window. Both half circles now mean working.
+
 - A failed start or resume no longer signals a CLI that already exited during startup,
   and no longer reaps its process group a second time. The leader's pid could already
   belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and
