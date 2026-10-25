@@ -24,6 +24,7 @@ function fakePty() {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("C-LIFE-10 C-CODEX-14 PtyExitLatch", () => {
@@ -53,6 +54,19 @@ describe("C-LIFE-10 C-CODEX-14 PtyExitLatch", () => {
     expect(settled).toEqual([undefined, undefined]); // still waiting 1 ms before the timeout
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toEqual([false, false]);
+  });
+
+  test("a wait holds the host open unless it asks for unref", async () => {
+    // Termination's wait must keep the host alive until the leader is reaped; Codex's
+    // restore wait must not keep an otherwise finished host running for five seconds.
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    const pty = fakePty();
+    const latch = new PtyExitLatch(pty);
+    const waiting = [latch.within(60_000), latch.within(60_000, { unref: true })];
+    const [held, unrefed] = timers.mock.results.map((result) => result.value as NodeJS.Timeout);
+    expect([held?.hasRef(), unrefed?.hasRef()]).toEqual([true, false]);
+    pty.exit();
+    await expect(Promise.all(waiting)).resolves.toEqual([true, true]);
   });
 
   test("dispose drops the one subscription", () => {

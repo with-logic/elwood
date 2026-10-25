@@ -102,7 +102,7 @@ back each entry are listed in `prd/14-conformance.md`.
   together share reads. If the walk cannot confirm every group stopped (including
   when the CLI exits on its own first), the call still kills the CLI and then
   rejects: `stop()` and `kill()` with `termination_failed` (with up to
-  16 of the unconfirmed process-group ids in `details.detachedProcessGroupIds`),
+  16 of the unconfirmed process-group ids in `details.unconfirmedProcessGroupIds`),
   `teardown()` with `teardown_failed`, and later shutdown calls on that session
   keep rejecting.
 

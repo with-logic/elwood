@@ -2,8 +2,9 @@
  * Latches one PTY's exit from a single subscription. node-pty never replays an exit to a
  * later subscriber, so a waiter that subscribed only after the exit would sit out its
  * whole timeout. Shared by termination (PRD §9.4, C-LIFE-10), which awaits a process-table
- * sweep between SIGTERM and SIGKILL, and by Codex's `setModel` restore (§5.3, C-CODEX-14),
- * which waits for a closing CLI to exit before restoring `config.toml`.
+ * sweep before any SIGKILL (after a SIGTERM only when the leader outlasts it), and by
+ * Codex's `setModel` restore (§5.3, C-CODEX-14), which waits for a closing CLI to exit
+ * before restoring `config.toml`.
  */
 
 import type { PtyProcess } from "./types.ts";

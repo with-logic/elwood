@@ -127,7 +127,7 @@ function withCause(
     ...terminationError.details,
     [key]: toError(secondary).message,
     ...(reapErrno === undefined ? {} : { reapErrno }),
-    ...(key === "sweepError" ? detachedGroupsDetail(toError(secondary)) : {}),
+    ...(key === "sweepError" ? unconfirmedGroupsDetail(toError(secondary)) : {}),
   });
 }
 
@@ -166,19 +166,21 @@ function sweepOnlyFailed(sweepError: unknown): ElwoodError {
   return elwoodError(
     "termination_failed",
     "PTY exited but its detached descendants could not be confirmed reaped.",
-    { ...causeDetails(sweepError), ...detachedGroupsDetail(toError(sweepError)) },
+    { ...causeDetails(sweepError), ...unconfirmedGroupsDetail(toError(sweepError)) },
   );
 }
 
 /**
- * `detachedProcessGroupIds`: the process-group ids a sweep failure names, if any. Like
- * `processGroupId` they are diagnostic only; an id may already belong to another group.
+ * `unconfirmedProcessGroupIds`: the process-group ids a sweep failure names, if any: the
+ * groups it could not confirm reaped, the leader's own included when its group was not
+ * confirmed stopped. Like `processGroupId` they are diagnostic only; an id may already
+ * belong to another group.
  */
-export function detachedGroupsDetail(error: Error): {
-  readonly detachedProcessGroupIds?: number[];
+export function unconfirmedGroupsDetail(error: Error): {
+  readonly unconfirmedProcessGroupIds?: number[];
 } {
   const { processGroupIds } = error as Partial<SweepFailure>;
   return processGroupIds !== undefined && processGroupIds.length > 0
-    ? { detachedProcessGroupIds: [...processGroupIds] }
+    ? { unconfirmedProcessGroupIds: [...processGroupIds] }
     : {};
 }

@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtyExit, PtyProcess } from "../../src/pty/types.ts";
 import {
   type FailureReason,
@@ -112,7 +113,7 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
       details: {
         cause: "Could not reap detached descendants: process table unreadable (ETIMEDOUT)",
         errno: "ETIMEDOUT",
-        detachedProcessGroupIds: [7001, 7002],
+        unconfirmedProcessGroupIds: [7001, 7002],
       },
     });
     // The leader is still killed and its group still reaped.
@@ -121,13 +122,17 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
 
   test("a sweep failure rides along on an exit timeout instead of replacing it", async () => {
     const { pty, reaper } = harness({ sweepError: "sweep exploded" });
-    const rejected = await terminatePty(pty, "SIGKILL", reaper, timeouts).catch((e) => e);
+    const rejected: unknown = await terminatePty(pty, "SIGKILL", reaper, timeouts).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    if (!(rejected instanceof ElwoodError)) throw new Error("expected an ElwoodError");
     expect(rejected).toMatchObject({
       code: "termination_failed",
       message: "PTY did not exit after SIGKILL.",
       details: { sweepError: "sweep exploded" },
     });
-    expect(rejected.details).not.toHaveProperty("detachedProcessGroupIds"); // none were named
+    expect(rejected.details).not.toHaveProperty("unconfirmedProcessGroupIds"); // none were named
   });
 
   test("a sweep failure rides along on a typed PTY signaling failure too", async () => {
@@ -142,7 +147,7 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
         cause: "kill exploded",
         sweepError:
           "Could not reap detached descendants: could not kill a signaled descendant group",
-        detachedProcessGroupIds: [7003],
+        unconfirmedProcessGroupIds: [7003],
       },
     });
   });

@@ -17,7 +17,7 @@ import { reapFailureWarning } from "../../core/activity/index.ts";
 import { causeDetails, elwoodError, toError } from "../../core/errors.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { SessionReaper } from "../shutdown/reap-tree.ts";
-import { detachedGroupsDetail } from "../shutdown/terminate.ts";
+import { unconfirmedGroupsDetail } from "../shutdown/terminate.ts";
 
 export class SessionReapPolicy {
   readonly reaper: SessionReaper;
@@ -50,11 +50,15 @@ export class SessionReapPolicy {
     try {
       this.reaper.reapAndThrowOnDetachedSweepFailure();
     } catch (error) {
-      throw elwoodError("termination_failed", "Could not reap the PTY process group.", {
-        ...causeDetails(error),
-        ...detachedGroupsDetail(toError(error)),
-        processGroupId: this.leaderPid,
-      });
+      throw elwoodError(
+        "termination_failed",
+        "Could not confirm the PTY process tree was reaped.",
+        {
+          ...causeDetails(error),
+          ...unconfirmedGroupsDetail(toError(error)),
+          processGroupId: this.leaderPid,
+        },
+      );
     }
   }
 }

@@ -334,5 +334,7 @@ and (for teardown) remove files. A settled shutdown failure is not permanently
 sticky: because signal ownership is separate from the in-flight promise, a later
 `stop()`/`kill()`/`teardown()` after a failed one runs a fresh attempt that RETRIES
 the reap, runtime cleanup, and file removal — without re-signaling the PTY — rather
-than returning the earlier rejection forever (C-LIFE-10 retry posture). Each caller
-still observes its own operation's success or typed failure.
+than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
+exception is a detached-descendant walk that could not complete (§5.3): with the
+leader gone it cannot be retried, so every later call keeps rejecting for it. Each
+caller still observes its own operation's success or typed failure.
