@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { expect, test, vi } from "vitest";
-import { processGroupGone } from "../../../src/runtime/probe-cleanup.ts";
+import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { updateLockPath } from "../../../src/runtime/update/lock.ts";
 import * as owner from "../../../src/runtime/update/owner.ts";
 import { retainLease } from "../../../src/runtime/update/retained-lease.ts";

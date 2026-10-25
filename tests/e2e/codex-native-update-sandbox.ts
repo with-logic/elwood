@@ -11,7 +11,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../src/pty/node.ts";
-import { runProbe } from "../../src/runtime/probe.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";

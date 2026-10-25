@@ -1,9 +1,10 @@
 /**
  * User shell helpers shared by preflight and PTY launch.
- * Implements PRD §4.2.
+ * Implements PRD §4.2 and the probe start line of §9.2 (C-PTY-08, C-PERF-05).
  */
 
 import { userInfo } from "node:os";
+import { probeStartScript } from "./probe/start.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
@@ -17,18 +18,22 @@ export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+/** The login shell's arguments; the script to run is always the fourth. */
+export type LoginShellArgs = readonly ["-l", "-i", "-c", string];
+
 /** Interactive login shell for the agent PTY — matches Terminal.app (§4.2). */
-export function loginShellCommand(command: string): readonly string[] {
+export function loginShellCommand(command: string): LoginShellArgs {
   return ["-l", "-i", "-c", command];
 }
 
 /**
  * Interactive login shell for the non-PTY probes (`--version`, `update`, `--help`).
- * Deliberately IDENTICAL to `loginShellCommand` today (C-PTY-08): the probes and the
- * agent PTY must resolve the same CLI installation, so a probe must load the same
- * user PATH the PTY launch does. Kept as its own name so the CLI's resolution path
- * reads as a probe and any future divergence is a visible, single-site decision.
+ * The same shell and flags as `loginShellCommand` (C-PTY-08): the probes and the agent
+ * PTY must resolve the same CLI installation, so a probe loads the same user PATH the
+ * PTY launch does. The one divergence is the start line written, on the runner's private
+ * control descriptor, before the command, so the probe runner can bound the user's profile
+ * and the CLI separately (C-PERF-05).
  */
-export function probeShellCommand(command: string): readonly string[] {
-  return loginShellCommand(command);
+export function probeShellCommand(command: string): LoginShellArgs {
+  return loginShellCommand(`${probeStartScript}${command}`);
 }
