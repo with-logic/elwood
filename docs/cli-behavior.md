@@ -1148,6 +1148,33 @@ bridge treats any connection that closes without a frame as a malformed request
 and emits `hookError`/`activity` on the live owner, so presence is the only
 side-effect-free signal. C-CLI-21 through C-CLI-24.
 
+## Probe shell startup under concurrency (2026-10-25)
+
+Preflight probes run through the user's interactive login shell (§4.2), so their wall
+time is the user's profile plus the CLI. On a 16-CPU host already at load 35–90 with a
+typical developer profile (oh-my-zsh with seven plugins, `nvm.sh`, `fnm env`,
+`brew shellenv`), measured with Claude Code 2.1.310:
+
+- `claude --version` without a shell took 0.01–0.12 s at 1, 4, 8 and 16 concurrent
+  runs. There is no `~/.claude.json` lock, autoupdate check or keychain wait on this
+  path. An empty `CLAUDE_CONFIG_DIR` changed nothing, and `zsh -l -i -c true` costs
+  the same as the real probe.
+- The interactive login shell alone took 2.3–7.6 s for one probe, about 2 s each at 4
+  concurrent, about 5 s at 8, 7–19 s at 16 (p50 8–18 s), and 15.5–30.9 s at 32. A
+  trace of one startup put about 2.5 s in `nvm.sh`'s command substitutions and 1.2 s
+  in `compinit`/`compdef`. Fresh or shared working directories made no difference, so
+  this is CPU saturation from fork-heavy startup files, not a shared lock.
+- With an empty private `ZDOTDIR`, the same probe took 0.03–0.23 s at 16.
+
+The original 15 s bound covered both phases. 16 concurrent `elwood run`s therefore
+failed `claude_start_failed` ("`claude --version` failed", `ETIMEDOUT`) at 17.5–18.9 s:
+16 of 16 in one of three fleets at load 68, and 14 of 16 in the original report. The
+probe shell now writes `elwood-probe-command-start` to stderr just before the command.
+The profile gets a 60 s launch bound and the CLI keeps 15 s from that line (C-PERF-05).
+Three 16-run fleets at load 48–74 then passed preflight 48 of 48. The real-shell e2e
+uses a private `ZDOTDIR` whose `.zshrc` sleeps 4 s with a 2 s command bound; `main`
+fails it with that same `ETIMEDOUT`.
+
 ## Testing against the real CLIs
 
 - `test:e2e` runs **serially** (`--test-concurrency=1`): Codex config-file

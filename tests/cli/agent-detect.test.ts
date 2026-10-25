@@ -15,7 +15,7 @@ import {
 } from "../../src/cli/request/agent-detect.ts";
 import type { CliAgent } from "../../src/cli/types.ts";
 import { resetRuntimeSeamsForTests, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { userShell } from "../../src/runtime/shell.ts";
+import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 /**
  * A hermetic stand-in for the user's login shell. It enforces the same
@@ -101,12 +101,13 @@ describe("agent auto-detection", () => {
     const calls: { readonly command: string; readonly args: readonly string[] }[] = [];
     setCommandRunnerForTests((command, args) => {
       calls.push({ command, args });
-      return { status: args.at(-1) === "command -v 'codex'" ? 0 : 1, stdout: "", stderr: "" };
+      const codex = args.at(-1) === probeShellCommand("command -v 'codex'").at(-1);
+      return { status: codex ? 0 : 1, stdout: "", stderr: "" };
     });
     await expect(detectAvailableAgent()).resolves.toBe("codex");
     expect(calls).toEqual([
-      { command: userShell(), args: ["-l", "-i", "-c", "command -v 'claude'"] },
-      { command: userShell(), args: ["-l", "-i", "-c", "command -v 'codex'"] },
+      { command: userShell(), args: probeShellCommand("command -v 'claude'") },
+      { command: userShell(), args: probeShellCommand("command -v 'codex'") },
     ]);
   });
 

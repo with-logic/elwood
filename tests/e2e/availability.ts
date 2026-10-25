@@ -40,7 +40,9 @@ function probe(agent: AgentName): string | undefined {
   const result = spawnSync(shell, [...probeShellCommand(`command -v ${agent}`)], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: 15_000,
+    // The production probe's launch plus command bounds (§9.2, C-PERF-05): a loaded host's
+    // interactive profile alone can exceed 15 s, which must not read as a missing CLI.
+    timeout: 75_000,
   });
   if (result.status === 0) return undefined;
   const detail = result.error ? ` (${result.error.message})` : "";

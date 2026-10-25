@@ -45,6 +45,8 @@ This interactive login form (`-l -i` for zsh) applies to both the **agent PTY**
 and one-shot, non-PTY preflight probes (`--version`, `update`, `--help`). The
 same shell startup files MUST resolve the CLI for every lifecycle operation so
 preflight, update, launch, and resume cannot operate on different installations.
+A probe's shell startup and its command are bounded separately (§9.2), so a slow
+profile is not reported as a failing CLI.
 
 Elwood MUST provide diagnostics or tests proving that environment variables from
 the user's shell startup are visible to the launched agent process.

@@ -140,9 +140,19 @@ rejected result: a later caller re-attempts rather than inheriting the prior
 failure.
 
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
-the host: a probe that does not exit within a default timeout (15 seconds) or
-whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
-killed, and its captured output is truncated to the cap. Abort cleanup has an
+the host. A probe runs through the user's interactive login shell (§4.2), and
+loading that shell's startup files is the user's profile, not the CLI: under
+concurrent launches on a loaded machine the profile alone can outlast the CLI's
+bound while the CLI itself answers in milliseconds. The two phases are therefore
+bounded separately. After the startup files load, and immediately before the probe
+command runs, the probe shell writes the line `elwood-probe-command-start` to
+stderr. The shell has 60 seconds from spawn to write that line (the launch bound),
+and the probe command then has a default timeout of 15 seconds from that line
+until it exits. The line is removed from the probe's captured stderr. A probe that
+exceeds either bound, or whose captured output exceeds a per-stream byte cap
+(1,000,000 bytes), is killed, and its captured output is truncated to the cap.
+Either timeout reports `ETIMEDOUT`; a launch-bound timeout's cause names the login
+shell rather than the probe command. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,
 falls back to terminating the direct child once group signals have kept failing,
 and awaits exit within that window. A process-group id is signaled only while the
