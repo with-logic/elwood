@@ -3,7 +3,7 @@
  * prompt readiness, and cleanup.
  * Implements PRD §12 and C-E2E-01 through C-E2E-04. Availability/skip logic lives in
  * `availability.ts`; scratch dirs and the Codex sandbox in `scratch.ts`; direct bridge
- * invocation in `bridge-helpers.ts`. All are re-exported here.
+ * invocation in `bridge-helpers.ts`; polling in `wait-for.ts`. All are re-exported here.
  */
 
 import { existsSync } from "node:fs";
@@ -19,7 +19,8 @@ import type {
   HookErrorEvent,
   Unsubscribe,
 } from "../../src/index.ts";
-import { type AgentName, e2eTimeoutMs } from "./availability.ts";
+import type { AgentName } from "./availability.ts";
+import { waitFor } from "./wait-for.ts";
 
 export {
   type AgentName,
@@ -40,6 +41,7 @@ export {
   sandboxedCodexHome,
   seedCodexHome,
 } from "./scratch.ts";
+export { waitFor } from "./wait-for.ts";
 
 export type E2eSession = ClaudeSessionApi | CodexSessionApi;
 export type HookEvent = ClaudeHookEvent | CodexHookEvent;
@@ -109,20 +111,6 @@ export function observeSession(session: E2eSession): ObservedSession {
       for (const unsubscribe of unsubscribers) unsubscribe();
     },
   };
-}
-
-export async function waitFor<T>(
-  read: () => T | undefined | Promise<T | undefined>,
-  label: string,
-  timeoutMs = e2eTimeoutMs,
-): Promise<T> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const value = await read();
-    if (value !== undefined) return value;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Timed out waiting for ${label}`);
 }
 
 export async function prepareInteractivePrompt(

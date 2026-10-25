@@ -17,7 +17,7 @@ import { createCliSanitizer } from "../../src/cli/output/sanitize.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { stopCodex } from "./codex-ready.ts";
+import { teardownOrKillCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -107,7 +107,7 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   t.after(async () => {
     let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) failures = await stopCodex(session);
+      if (session !== undefined) failures = await teardownOrKillCodex(session);
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();
