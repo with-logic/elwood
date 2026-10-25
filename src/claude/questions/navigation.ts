@@ -1,12 +1,10 @@
 /** Verify every private Claude question navigation step (PRD §4). */
 
+import { arrowDown, arrowUp } from "../../core/input/constants.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionError } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
-
-const arrowDown = "\x1b[B";
-const arrowUp = "\x1b[A";
 
 /** questionIndex addresses request.questions, not an option; only that native question
  * may authorize navigation. Each move waits for its completed successor frame. */
