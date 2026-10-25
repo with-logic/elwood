@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `claude --version` or `codex --version` check that fails (it exits nonzero,
+  times out, or cannot start) no longer fails every later start of that adapter
+  in the process. Elwood kept the failed result and replayed it as the same
+  `claude_start_failed` or `codex_start_failed`; a later start now runs the
+  check again. Concurrent starts still share one check and its outcome.
 - `teardown_failed` now keeps what each failed step reported. Alongside
   `details.causes` (the messages), `details.failures` lists each failed step,
   with its `code` and `details` when it was a typed Elwood error, so a failed
