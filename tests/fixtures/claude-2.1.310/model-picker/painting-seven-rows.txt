@@ -1,0 +1,19 @@
+  Select model
+  Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.
+
+  ❯ 1.  Default (recommended) ✔  Opus 5.5 · Best for everyday, complex tasks
+    2.  Opus 5.5                 For complex work and everyday tasks
+    3.  Fable 5.1                For your toughest challenges
+    4.  Sonnet 5.5               Most efficient for simpler tasks
+    5.  Haiku 5.5                Fastest for quick answers
+    6.  Haiku 4.5                Fastest for quick answers
+    7.  Sonnet 5      y                                  Reviews compile-time correctness and whether invalid states are made unrepresentable — bare strings that should be unions,
+                                                         hand-listed columns that should derive from generated DB types, unguarded casts of user/DB values into lookup-key unions, missing…
+    /loop                                                Repeat a prompt or command on an interval (e.g. /loop 5m /foo)
+    /claude-api                                          Build and debug apps that use the Claude API
+    /update-config                                       Change settings: hooks, permissions, environment variables
+    /domain-ontology                                     Build a rigorous, implementation-aware domain ontology for a product or codebase and write it to DOMAIN_ONTOLOGY.md. Use when
+                                                         establishing or revising the canonical model of a domain, including its concepts, taxonomy, terminology, relationships, identitie…
+    /brag-slim                                           Turn a project directory or a website URL into a short, shareable launch video with music, motion, and share copy. One file, no
+                                                         bundled assets — built entirely by the model with the tools already on the machine. Use when someone says "/brag-slim", "let's /b…
+    /ce-pov                                              Judge a supplied subject against the project's evidence and constraints. Use when assessing an external-adoption question, a

@@ -318,6 +318,28 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   content, so the control row is recognized by its own copy before the reply check;
   otherwise every frame with the cursor on a High-effort model reads as transcript. Captured
   with `--effort low|medium|high|max` across all 13 rows. C-API-24.
+- **Claude paints `/model` over its slash-command menu, so the header lands first.** A
+  5 ms capture on 2.1.310 (2026-10-24) showed the `Select model` header for 10–500 ms above
+  a partial dialog: rows 1–3 with row 3 spliced into a stale `/review-…` suggestion and
+  the rest of the menu below it, rows 1–7 the same way, or all ten rows and the overflow
+  line above leftover menu prose and no footer yet. Parsing the first frame that showed
+  the header returned one row, three rows, or none (`listClaudeModels` in `~/.coal-harbor`
+  gave 9, 1, error, 9, error over five runs), and Coal Harbor persisted a one-row
+  `default` catalog as a successful discovery. The picker is therefore parsed only once
+  the region grammar recognizes the complete dialog, footer included — the same check
+  every key write already passed — and a picker that never completes is Escaped after a
+  bounded paint wait. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
+  C-API-23, C-API-24.
+- **Codex 0.164.0 shortened its dialog hints and dropped the `(default)` marker.** The
+  picker closes with `enter select · esc back` and the reasoning screen with `enter
+  default · s session · esc back` (one Escape still returns to the picker). Neither
+  matched the old closing-hint phrases, so the grammar never recognized either dialog:
+  `setModel` failed on its first key with "The model picker was replaced", and only the
+  header-parsing `listModels` kept working. The picker also renders `(current)` alone,
+  both on the launch default and after a session switch (`2. GPT-6-Astra (current)`, no
+  marker on `GPT-6.1-Sol`), so the "only `(current)` means it is also the default" rule
+  in §5.3 no longer identifies the default. The new `s session` key is a session-only
+  apply. Fixtures: `tests/fixtures/codex-0.164.0/model-picker/`. C-API-23, C-API-24.
 
 ## Trust prompts
 

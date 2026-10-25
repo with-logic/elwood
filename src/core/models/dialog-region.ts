@@ -20,8 +20,9 @@ const overflowRow = /^\s*…\s*\+\d+ models?\s*$/;
 const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
 // Every captured picker and reasoning screen closes with one of these hint rows. The row is
 // ONLY hints — `key to action` clauses joined by `·` — so the phrase cannot be matched
-// inside a sentence of the agent's own prose that happens to mention pressing Esc.
-const dialogFooter = /\b(?:esc to cancel|esc to go back)\b/i;
+// inside a sentence of the agent's own prose that happens to mention pressing Esc. Codex
+// 0.164.0 shortened its hints to `enter select · esc back`.
+const dialogFooter = /\b(?:esc to cancel|esc to go back|esc back)\b/i;
 const hintClause = /^[^.!?]{0,48}$/;
 // Claude paints a radio-style control row under its rows (`◉ xHigh effort ←/→ to adjust`).
 // It is part of the dialog, so it may sit between the rows and the footer — but it is a

@@ -55,6 +55,8 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
     await waitFor(() => (session?.status === "ready" ? true : undefined), "claude ready", 60_000);
     const models = await session.listModels();
     assert.ok(models.length >= 3, "picker lists several models");
+    // Claude paints the picker over its slash-command menu; a list read mid-paint is short.
+    assert.deepEqual(await session.listModels(), models, "an unchanged picker lists the same rows");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
     assert.ok(
       models.some((model) => model.isDefault),
@@ -142,6 +144,13 @@ test("C-API-41 real listClaudeModels returns models without a caller-held sessio
   const project = makeProject("claude");
   const models = await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir });
   assert.ok(models.length >= 3, "session-less probe lists several models");
+  // A probe that read the picker mid-paint returned one row, or none, in 3 of 5 runs.
+  for (let probe = 0; probe < 2; probe += 1)
+    assert.deepEqual(
+      await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir }),
+      models,
+      "every probe of the same account lists the same rows",
+    );
   assert.equal(models.filter((model) => model.isCurrent).length, 1);
   assert.ok(
     models.some((model) => model.isDefault),

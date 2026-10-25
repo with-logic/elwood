@@ -86,6 +86,14 @@ const ours = (spec: ModelPickerSpec) => (text: string) =>
 const oursOrOpen = (spec: ModelPickerSpec) => (text: string) =>
   ours(spec)(text) || spec.isOpen(text);
 
+/**
+ * How long the picker may take to finish painting once its header is up. Real Claude 2.1.310
+ * frames held the header above stale rows for 10–500 ms on a loaded machine. The bound is
+ * generous because the failure directions are asymmetric: a paint that outlasts it fails
+ * the operation, while a layout the grammar cannot recognize only fails later. It exists so
+ * that failure still Escapes the picker inside the operation's own budget.
+ */
+const paintMs = 5_000;
 const escapeKey = "\u001b";
 const arrowDown = "\u001b[B";
 const arrowUp = "\u001b[A";
@@ -155,7 +163,7 @@ async function openAndParse(
   spec: ModelPickerSpec,
   timeoutMs: number,
 ): Promise<ParsedModelPicker> {
-  const text = await openCommandScreen({
+  await openCommandScreen({
     terminal: io.terminal,
     ...(io.signal === undefined ? {} : { signal: io.signal }),
     submit: (signal) => io.submit("/model", signal),
@@ -163,10 +171,24 @@ async function openAndParse(
     timeoutMs,
     label: `${spec.agent} model picker`,
   });
-  const parsed = spec.parse(text);
-  if (parsed.options.length === 0) {
-    await sendPickerInput(io, escapeKey, oursOrOpen(spec));
-    throw elwoodError("model_automation_failed", "Could not parse any model picker rows.");
+  // The header paints before the rows finish: Claude draws the picker over its slash-command
+  // menu, so a frame that merely shows `Select model` can hold three rows above stale
+  // commands. Parse only the complete dialog the grammar recognizes as ours, the same guard
+  // every key write already passes, or a partial list is returned as the catalog.
+  let text: string;
+  try {
+    text = await waitForScreen(
+      io.terminal,
+      (screen) => spec.activeDialog(screen, opened) === "picker",
+      Math.min(timeoutMs, paintMs),
+      `${spec.agent} model picker rows`,
+      io.signal,
+    );
+  } catch (error) {
+    // Our picker whose rows never formed a recognizable dialog is still ours to close, and
+    // only while the operation lives: failure cleanup cancels only dialogs it recognizes.
+    if (!io.signal?.aborted) await sendPickerInput(io, escapeKey, oursOrOpen(spec));
+    throw error;
   }
-  return parsed;
+  return spec.parse(text);
 }

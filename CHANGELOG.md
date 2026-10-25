@@ -43,6 +43,13 @@ back each entry are listed in `prd/14-conformance.md`.
   Max: Elwood now recognizes the scrolled picker (`↑`/`↓` rows, `… +K models`) and
   every measured effort glyph, and follows the cursor across a scrolling window.
   `listModels` also returns the `↓`-marked last visible row.
+- `listModels` and `listClaudeModels`/`listCodexModels` no longer return a partial
+  catalog read while the picker was still painting (Claude draws it over the
+  slash-command menu, so a probe could return only `default`, or fail with "Could not
+  parse any model picker rows"). The picker is parsed only once the complete dialog
+  is on screen; one that never completes fails with `model_automation_failed`.
+- Codex `setModel` works on Codex 0.164.0, whose picker and reasoning screens close
+  with `enter select · esc back` hints.
 
 - Claude sessions recognize their idle composer in every permission mode after
   the version banner has scrolled away. Elwood accepted only the exact footers
