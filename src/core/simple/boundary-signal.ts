@@ -1,11 +1,12 @@
 /**
  * What an adapter's turn boundary carries, and the accessors the runner reads it with.
- * Implements PRD §5.8 / §10 / §12A and C-API-59: the completeness signal, plus OPTIONAL
- * evidence that the agent itself rejected the turn, surfaced as `turn_failed`. Separate from
- * the reader contract so the failure shape has one home.
+ * Implements PRD §5.8 / §10 / §12A and C-API-59 / C-API-60: the completeness signal, plus
+ * OPTIONAL evidence that the agent itself rejected the turn, surfaced as `turn_failed`.
+ * Separate from the reader contract so the failure shape has one home.
  */
 
 import { type ElwoodError, elwoodError } from "../errors.ts";
+import type { TurnGate } from "./turn-gate.ts";
 import type { TurnBoundaryHook } from "./turn-types.ts";
 
 /**
@@ -19,9 +20,15 @@ export type BoundarySignal = string | { readonly text: string; readonly failure:
 
 /** An adapter's evidence that the agent itself rejected the turn (PRD §12A.5). */
 export type TurnFailure = {
-  /** Human-readable reason, bounded by the adapter. */
+  /**
+   * The agent's own diagnostic, bounded by the adapter: Claude's `error_details`, or Codex's
+   * `error.message` (often the service's raw JSON error body). Diagnostic, not display prose.
+   */
   readonly message: string;
-  /** The agent's own error name (Claude's `error`), DIAGNOSTIC ONLY — never decides failure. */
+  /**
+   * The agent's own error kind, DIAGNOSTIC ONLY — never decides failure: Claude's `error` name
+   * (`model_not_found`) or Codex's `codex_error_info` kind (`other`, `http_connection_failed`).
+   */
   readonly agentError?: string | undefined;
   /**
    * Whether the rejection names the submission the turn accepted (the hook that accepted it).
@@ -51,8 +58,44 @@ export function signalFailure(signal: BoundarySignal | undefined): TurnFailure |
   return signal === undefined ? undefined : boundaryFailure(signal);
 }
 
-/** The consumer-facing `turn_failed` error for an adapter's rejection evidence (C-API-59). */
+/** The consumer-facing `turn_failed` error for an adapter's rejection evidence (C-API-59/60). */
 export function turnRejection(failure: TurnFailure): ElwoodError {
   const details = failure.agentError === undefined ? {} : { agentError: failure.agentError };
   return elwoodError("turn_failed", failure.message, details);
+}
+
+type BoundaryGate = Pick<TurnGate, "fail" | "expectText">;
+
+/**
+ * An untagged hook's boundary: its text is the completeness oracle, or its rejection fails the
+ * turn. An earlier turn's late rejection is not this turn's: only a rejection after this turn's
+ * own submission, which the adapter matches to it, fails the turn (C-API-59).
+ */
+export function settleHookBoundary(
+  gate: BoundaryGate,
+  signal: BoundarySignal | undefined,
+  acceptedBy: TurnBoundaryHook | undefined,
+): void {
+  const failure = signalFailure(signal);
+  if (!failure) gate.expectText(boundaryExpectation(signal));
+  else if (acceptedBy && (failure.belongsTo?.(acceptedBy) ?? true))
+    gate.fail(turnRejection(failure));
+}
+
+/**
+ * A native boundary already names this turn (its identity matched the turn id), so its
+ * rejection fails the turn outright; otherwise its text is the completeness oracle (C-API-60).
+ */
+export function settleNativeBoundary(gate: BoundaryGate, signal: BoundarySignal): void {
+  const failure = boundaryFailure(signal);
+  if (failure) gate.fail(turnRejection(failure));
+  else gate.expectText(boundaryText(signal));
+}
+
+const maxDiagnosticLength = 2_000;
+
+/** A nonblank agent diagnostic, bounded so a rejection message stays small (§6.1). */
+export function boundedDiagnostic(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  return value.length <= maxDiagnosticLength ? value : `${value.slice(0, maxDiagnosticLength)}…`;
 }

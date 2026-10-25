@@ -6,7 +6,7 @@ import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
-import { clearReadingGapMs } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearReadingGapMs } from "../../src/core/models/clearance.ts";
 import { PickerHold } from "../../src/runtime/session/picker-hold.ts";
 import { PickerInputOwnership } from "../../src/runtime/session/picker-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
