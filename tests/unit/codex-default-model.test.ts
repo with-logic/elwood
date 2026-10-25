@@ -60,7 +60,7 @@ describe("Codex configured default under the config lock", () => {
     const path = tempCodexHome('model = "gpt-6-astra"\n');
     let finishApply: () => void = () => undefined;
     const switching = runCodexModelSwitch({
-      snapshot: snapshotCodexConfig,
+      snapshot: () => snapshotCodexConfig(path),
       // Codex's picker persists its selection while the switch is still in flight.
       apply: () => {
         writeFileSync(path, 'model = "gpt-6-luna"\n');
@@ -69,11 +69,11 @@ describe("Codex configured default under the config lock", () => {
         });
       },
       restore: (snapshot) => {
-        restoreCodexConfig(snapshot);
+        restoreCodexConfig(path, snapshot);
       },
     });
     let settled = false;
-    const listing = withCodexDefault(rows, new AbortController().signal).finally(() => {
+    const listing = withCodexDefault(rows, new AbortController().signal, path).finally(() => {
       settled = true;
     });
     try {
@@ -89,7 +89,7 @@ describe("Codex configured default under the config lock", () => {
   });
 
   test("C-API-23 a listing aborted while waiting for the lock rejects with the abort reason", async () => {
-    tempCodexHome('model = "gpt-6-astra"\n');
+    const path = tempCodexHome('model = "gpt-6-astra"\n');
     let release: () => void = () => undefined;
     const held = runCodexModelSwitch({
       snapshot: () => undefined,
@@ -101,7 +101,7 @@ describe("Codex configured default under the config lock", () => {
     });
     try {
       const deadline = new AbortController();
-      const listing = withCodexDefault(rows, deadline.signal);
+      const listing = withCodexDefault(rows, deadline.signal, path);
       deadline.abort(new Error("Timed out waiting for model picker operation."));
       await expect(listing).rejects.toThrow("Timed out waiting for model picker operation.");
     } finally {

@@ -8,7 +8,6 @@ import { readFileSync } from "node:fs";
 import { elwoodError, errnoCode } from "../../core/errors.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { withCodexConfigLock } from "./lock.ts";
-import { codexConfigPath } from "./restore.ts";
 
 const tableHeader = /^\s*\[/;
 const profileTable = /^\s*\[\s*profiles\.(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*\]/;
@@ -19,13 +18,16 @@ const profileKey = /^\s*profile\s*=\s*(?:"([^"]*)"|'([^']*)')/;
  * Marks the configured default once per listing, under the process-wide config lock. A
  * concurrent `setModel` holds that lock while Codex's picker has written its selection
  * into config.toml, so the temporary selection is never read as the default. A deadline
- * or session close while waiting rejects without reading.
+ * or session close while waiting rejects without reading. `configPath` is the session's own
+ * config, fixed at launch.
  */
 export function withCodexDefault(
   options: readonly AgentModelOption[],
   signal: AbortSignal,
+  configPath: string,
 ): Promise<readonly AgentModelOption[]> {
-  return withCodexConfigLock(async () => markCodexDefault(options, configuredCodexModel()), {
+  const mark = async () => markCodexDefault(options, configuredCodexModel(configPath));
+  return withCodexConfigLock(mark, {
     signal,
     error: () => signal.reason,
   });
@@ -44,13 +46,13 @@ export function markCodexDefault(
 }
 
 /**
- * The model a plain `codex` launch in this `CODEX_HOME` runs: the `model` of the profile
+ * The model a plain `codex` launch with the config at `path` runs: the `model` of the profile
  * the root `profile` key selects, else the root `model` key. TOML requires root keys to
  * precede the first table header, so a `model` inside any other table is never read.
  * Undefined when the config names no model and Codex falls back to its built-in default.
  */
-export function configuredCodexModel(): string | undefined {
-  const text = readConfig();
+export function configuredCodexModel(path: string): string | undefined {
+  const text = readConfig(path);
   if (text === undefined) return undefined;
   const lines = keyLines(text);
   const root = tableBody(lines, -1);
@@ -66,8 +68,7 @@ export function configuredCodexModel(): string | undefined {
 }
 
 /** Only a missing file means "no config"; any other failure must not pass as one. */
-function readConfig(): string | undefined {
-  const path = codexConfigPath();
+function readConfig(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {

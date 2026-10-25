@@ -5,7 +5,7 @@
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { HookObservation } from "../../core/hook-observation.ts";
-import { isPickerIntervention } from "../../core/models/intervention.ts";
+import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import { registerNativeTurnReader } from "../../core/simple/submission-context.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -19,8 +19,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexTurnIdentity } from "../accepted-turn.ts";
-import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
-import { runCodexModelSwitch } from "../config/transaction.ts";
+import { withCodexDefault } from "../config/default-model.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
 import { codexSessionQuestions } from "../questions/session.ts";
@@ -30,17 +29,16 @@ import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { CliExitBarrier } from "./cli-exit.ts";
+import { switchCodexModel } from "./config-switch.ts";
 import { observeCodexInitialReady } from "./initial-ready.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
-import {
-  clipboardRestoreFailedWarning,
-  codexRestoreFailedWarning,
-  codexRestoreSkippedWarning,
-} from "./warnings.ts";
+import { clipboardRestoreFailedWarning } from "./warnings.ts";
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  protected readonly picker = {
+  // The default and the setModel restore use the config fixed at THIS session's launch (§5.3).
+  protected readonly picker: ModelPickerSpec = {
     ...codexModelPicker,
     isClear: liveCodexClearance(() => this.terminal),
+    withDefaults: (options, signal) => withCodexDefault(options, signal, this.configPath),
   };
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
@@ -48,6 +46,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit: CliExitBarrier;
+  private readonly configPath: string;
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -59,6 +58,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     terminalReplay: TerminalReplayBuffer,
     transcriptWatcher: CodexTranscriptWatcher | undefined,
     loopDefinitions: readonly PersistedLoopDefinition[],
+    configPath: string,
   ) {
     super(
       "codex",
@@ -79,6 +79,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
     this.cliExit = new CliExitBarrier(pty);
+    this.configPath = configPath;
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
@@ -88,42 +89,24 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.replayFor(event as string, handler);
     return unsubscribe;
   }
-  // Restore the user's config default after picker changes; the live CLI retains
-  // its selection. The process-wide transaction lock prevents interleaved snapshots
-  // and restores even when automation rejects after Codex writes (C-CODEX-14).
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     // The queue slot is claimed FIRST (by `super.setModel`), and the config transaction
     // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch
     // while this call was still waiting for another session's lock, sending under the old
     // model — a FIFO violation the slot exists to prevent.
-    return super.setModel(id, options, (flow, signal) =>
-      runCodexModelSwitch({
-        snapshot: snapshotCodexConfig,
-        apply: flow,
-        waitForCliExit: () => this.waitForCliExit(),
-        // The picker deadline includes this lock wait. Once acquired, the transaction
-        // owns config.toml until its abort handling and restore finish.
-        cancel: { signal, error: () => signal.reason },
-        restore: (snapshot) => this.restoreCodexDefault(snapshot, signal.reason),
-        onRestoreError: (error) =>
-          this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
-      }),
-    );
+    const session = {
+      elwoodSessionId: this.elwoodSessionId,
+      configPath: this.configPath,
+      waitForCliExit: () => this.waitForCliExit(),
+      emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => this.emitWarnings(warnings),
+    };
+    return super.setModel(id, options, (flow, signal) => switchCodexModel(session, flow, signal));
   }
   // A closing session rejects the picker at once, while the dying CLI can still persist
   // the selection it had confirmed, so the restore waits on the PTY's own exit.
   private waitForCliExit(): Promise<unknown> | undefined {
     if (!this.closing.signal.aborted) return undefined;
     return this.cliExit.wait();
-  }
-  private restoreCodexDefault(snapshot: string | undefined, reason: unknown): void {
-    const outcome = isPickerIntervention(reason)
-      ? snapshotCodexConfig() === snapshot
-        ? "unchanged"
-        : "interrupted"
-      : restoreCodexConfig(snapshot);
-    if (outcome === "restored" || outcome === "unchanged") return;
-    this.emitWarnings([codexRestoreSkippedWarning(this.elwoodSessionId, outcome)]);
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);

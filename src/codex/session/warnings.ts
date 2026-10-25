@@ -7,7 +7,7 @@
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
-import { codexConfigPath, restoreFailureRaw } from "../config/restore.ts";
+import { restoreFailureRaw } from "../config/restore.ts";
 import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../images/clipboard.ts";
 
 type RestoreWarning = Extract<
@@ -28,6 +28,7 @@ const restoreSkippedMessages = {
 export function codexRestoreSkippedWarning(
   elwoodSessionId: string,
   outcome: keyof typeof restoreSkippedMessages,
+  configPath: string,
 ): RestoreWarning {
   return {
     elwoodSessionId,
@@ -36,7 +37,7 @@ export function codexRestoreSkippedWarning(
     code: "codex_default_model_persisted",
     severity: "warning",
     message: restoreSkippedMessages[outcome],
-    raw: codexConfigPath(),
+    raw: configPath,
   };
 }
 
@@ -45,7 +46,11 @@ export function codexRestoreSkippedWarning(
  * preserved to the caller, so the swallowed restore failure is surfaced as a bounded
  * diagnostic — otherwise the user gets no signal that config.toml may stay mutated.
  */
-export function codexRestoreFailedWarning(elwoodSessionId: string, error: unknown): RestoreWarning {
+export function codexRestoreFailedWarning(
+  elwoodSessionId: string,
+  error: unknown,
+  configPath: string,
+): RestoreWarning {
   return {
     elwoodSessionId,
     agent: "codex",
@@ -54,7 +59,7 @@ export function codexRestoreFailedWarning(elwoodSessionId: string, error: unknow
     severity: "warning",
     message:
       "Codex may have persisted the picker selection as the user's default model: the model switch failed and restoring config.toml also failed.",
-    raw: restoreFailureRaw(codexConfigPath(), error),
+    raw: restoreFailureRaw(configPath, error),
   };
 }
 
