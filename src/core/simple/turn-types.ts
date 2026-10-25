@@ -8,6 +8,7 @@ import type { BoundarySignal } from "./boundary-signal.ts";
 
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
 import type { ImageInput } from "../images/types.ts";
+import { sanitizePasteText } from "../input/sanitize.ts";
 import type { TurnEvent } from "./events.ts";
 import type { NativeTurnReader } from "./turn-identity.ts";
 
@@ -62,10 +63,21 @@ export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: strin
 export const defaultBoundarySignal: BoundarySignalReader = (event) =>
   event.hook_event_name === "Stop" ? (event.last_assistant_message ?? "") : undefined;
 
-/** Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. */
+/**
+ * Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. The agent
+ * echoes the text Elwood pasted, which is the prompt with control characters removed (§5.3).
+ */
 export const defaultAcceptanceSignal: AcceptanceSignalReader = (event, prompt) =>
   event.hook_event_name === "Stop" ||
-  (event.hook_event_name === "UserPromptSubmit" && event.prompt === prompt);
+  (event.hook_event_name === "UserPromptSubmit" && event.prompt === sanitizePasteText(prompt));
+
+/** A submit hook's identity without its prompt, which can be large and is not read again. */
+export function submitIdentity({
+  prompt: _prompt,
+  ...identity
+}: TurnBoundaryHook): TurnBoundaryHook {
+  return identity;
+}
 
 /**
  * Compile-time conformance probe: `true` only if `T` declares every `TurnBoundaryContract` key

@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { CliError } from "../../src/cli/output/types.ts";
 import { ClaudeSession, ElwoodError } from "../../src/index.ts";
 import { invoke, parse } from "./cli-commands-helpers.ts";
 import {
@@ -18,12 +19,6 @@ import {
 } from "./helpers.ts";
 
 const bogusModel = "elwood-bogus-model";
-
-type ErrorDocument = {
-  readonly type: "result" | "error";
-  readonly agent: "claude" | "codex" | null;
-  readonly error?: { readonly code: string; readonly message: string };
-};
 
 test("C-E2E-20 elwood run reports a rejected real Claude turn as turn_failed with status 1", {
   skip: skipIf(skipReason("claude"), skipTurns),
@@ -45,11 +40,11 @@ test("C-E2E-20 elwood run reports a rejected real Claude turn as turn_failed wit
   // Report both streams on any mismatch so an unrelated startup failure is diagnosable.
   const output = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
   assert.equal(result.status, 1, output);
-  const document = parse<ErrorDocument>(result, 1);
+  const document = parse<CliError>(result, 1);
   assert.equal(document.type, "error", output);
   assert.equal(document.agent, "claude");
-  assert.equal(document.error?.code, "turn_failed", output);
-  assert.match(document.error?.message ?? "", /model_not_found/u);
+  assert.equal(document.error.code, "turn_failed", output);
+  assert.match(document.error.message, /model_not_found/u);
 });
 
 test("C-E2E-20 ClaudeSession.send rejects a real Claude rejection with turn_failed", {
@@ -67,7 +62,9 @@ test("C-E2E-20 ClaudeSession.send rejects a real Claude rejection with turn_fail
   const hooks: string[] = [];
   session.on("hook", (event: HookEvent) => hooks.push(event.hook_event_name));
   try {
-    const outcome = await session.send("Reply with exactly OK.").then(
+    // The BEL is removed before pasting (§5.3), so Claude's submit hook echoes the prompt
+    // without it; the rejection still belongs to this turn.
+    const outcome = await session.send("Reply with exactly OK.\u0007").then(
       (reply) => ({ reply }),
       (error: unknown) => ({ error }),
     );

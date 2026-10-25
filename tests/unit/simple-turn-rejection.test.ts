@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeBoundarySignal } from "../../src/claude/hooks/stop-failure.ts";
-import { activity, collect, drive, runTurnFake } from "./simple-turn-fakes.ts";
+import { activity, collect, drive, runTurn, runTurnFake } from "./simple-turn-fakes.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -139,4 +139,44 @@ test("C-API-59 a reader that cannot correlate is trusted once the turn has accep
   events.catch(() => undefined);
   await vi.runAllTimersAsync();
   await expect(events).rejects.toMatchObject({ code: "turn_failed", message: "rejected" });
+});
+
+test("C-API-59 a prompt pasted without its control characters is still the turn its rejection fails", async () => {
+  // Elwood pastes `go` for `go\u0007` (§5.3), so that is the prompt Claude's submit hook echoes.
+  const s = drive((s) => {
+    s.emit("hook", submitted);
+    s.emit("status", { status: "running" });
+    s.emit("hook", ownRejected);
+    s.emit("status", { status: "ready" });
+  });
+  const turn = runTurn(s, "go\u0007", {
+    fallbackQuietMs: 20,
+    readBoundarySignal: claudeBoundarySignal,
+  });
+  const events = collect(turn.events);
+  events.catch(() => undefined);
+  await vi.runAllTimersAsync();
+  await expect(events).rejects.toMatchObject({ code: "turn_failed" });
+});
+
+test("C-API-59 the turn keeps its submit hook's identity, not its prompt", async () => {
+  const seen: unknown[] = [];
+  const s = drive((s) => {
+    s.emit("hook", submitted);
+    s.emit("status", { status: "running" });
+    s.emit("hook", rejection);
+    s.emit("status", { status: "ready" });
+  });
+  const readBoundarySignal = (event: { readonly hook_event_name?: string }) =>
+    event.hook_event_name === "StopFailure"
+      ? {
+          text: "",
+          failure: { message: "rejected", belongsTo: (by: unknown) => seen.push(by) > 0 },
+        }
+      : undefined;
+  const events = collect(runTurnFake(s, { readBoundarySignal }).events);
+  events.catch(() => undefined);
+  await vi.runAllTimersAsync();
+  await expect(events).rejects.toMatchObject({ code: "turn_failed" });
+  expect(seen).toEqual([{ hook_event_name: "UserPromptSubmit", prompt_id: "p2" }]);
 });

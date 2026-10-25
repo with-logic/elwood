@@ -34,12 +34,15 @@ test("C-HOOK-20 prefers rejection details, then a named error, never assistant t
     error_details: "Please wait.",
     last_assistant_message: "unrelated",
   };
-  expect(stopFailureDiagnostic(event)).toEqual({ message: "Please wait.", info: "rate_limit" });
+  expect(stopFailureDiagnostic(event)).toEqual({
+    message: "Please wait.",
+    agentError: "rate_limit",
+  });
   expect(summarizeHookEvent(event)).toBe("hook StopFailure: Please wait.");
   for (const error_details of ["", " \n\t ", null, 42]) {
     expect(stopFailureDiagnostic({ ...event, error_details })).toEqual({
       message: "Claude rejected the turn: rate_limit",
-      info: "rate_limit",
+      agentError: "rate_limit",
     });
   }
   expect(stopFailureDiagnostic({ error: "   " })).toEqual({ message: "Claude rejected the turn." });
@@ -47,7 +50,7 @@ test("C-HOOK-20 prefers rejection details, then a named error, never assistant t
 
 test("C-HOOK-20 bounds each diagnostic before composing the result", () => {
   const long = "x".repeat(2_001);
-  expect(stopFailureDiagnostic({ error: long }).info).toBe(`${long.slice(0, 2_000)}…`);
+  expect(stopFailureDiagnostic({ error: long }).agentError).toBe(`${long.slice(0, 2_000)}…`);
   expect(stopFailureDiagnostic({ error: long }).message).toBe(
     `Claude rejected the turn: ${long.slice(0, 2_000)}…`,
   );

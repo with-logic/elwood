@@ -16,9 +16,13 @@ const message = "Claude rejected the turn: model_not_found";
 const rejected = () => elwoodError("turn_failed", message, { agentError: "model_not_found" });
 
 /** A run whose user turn, or persona setup turn, the agent rejects. */
-async function run(turn: "user" | "persona", output: EffectiveRunRequest["output"]) {
+async function run(
+  turn: "user" | "persona",
+  output: EffectiveRunRequest["output"],
+  stream = false,
+) {
   const session = new FakeCliSession();
-  session.events = [];
+  session.events = stream ? [{ type: "text", text: "partial" }] : [];
   if (turn === "persona") {
     session.setupWork = async (s) => {
       await s.start();
@@ -35,7 +39,7 @@ async function run(turn: "user" | "persona", output: EffectiveRunRequest["output
     highTrust: false,
     stateDir: "/state",
     verbose: false,
-    stream: false,
+    stream,
     cwd: "/work",
     images: [],
     prompt: "go",
@@ -72,4 +76,11 @@ test.each([
   if (output === "json") expect(records).toHaveLength(1);
   expect(records.at(-1)).toMatchObject({ type: "error", error: { code: "turn_failed", message } });
   expect(records.some((record) => record.type === "result")).toBe(false);
+});
+
+test("C-CLI-28 a rejected streamed turn keeps the text it already streamed, once, and exits 1", async () => {
+  const result = await run("user", "text", true);
+  expect(result).toMatchObject({ status: 1, teardowns: 1 });
+  expect(result.stdout.split("partial")).toHaveLength(2);
+  expect(result.stderr).toContain(`elwood: ${message}\n`);
 });

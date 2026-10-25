@@ -15,14 +15,14 @@ const maxDiagnosticLength = 2_000;
 export function stopFailureDiagnostic(event: {
   readonly error?: unknown;
   readonly error_details?: unknown;
-}): { readonly message: string; readonly info?: string } {
+}): { readonly message: string; readonly agentError?: string } {
   const error = diagnosticField(event.error);
   const details = diagnosticField(event.error_details);
   return {
     message:
       details ??
       (error === undefined ? "Claude rejected the turn." : `Claude rejected the turn: ${error}`),
-    ...(error === undefined ? {} : { info: error }),
+    ...(error === undefined ? {} : { agentError: error }),
   };
 }
 
@@ -43,13 +43,13 @@ type ClaudeBoundaryHook = TurnBoundaryHook & {
  */
 export const claudeBoundarySignal: BoundarySignalReader = (event: ClaudeBoundaryHook) => {
   if (event.hook_event_name !== "StopFailure") return defaultBoundarySignal(event);
-  const { message, info } = stopFailureDiagnostic(event);
+  const { message, agentError } = stopFailureDiagnostic(event);
   const rejected = promptId(event);
   const belongsTo = (acceptedBy: ClaudeBoundaryHook) => {
     const own = promptId(acceptedBy);
     return rejected === undefined || own === undefined || own === rejected;
   };
-  return { text: "", failure: { message, agentError: info, belongsTo } };
+  return { text: "", failure: { message, agentError, belongsTo } };
 };
 
 function promptId(event: ClaudeBoundaryHook): string | undefined {

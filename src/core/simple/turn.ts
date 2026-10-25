@@ -23,6 +23,7 @@ import {
   defaultBoundarySignal,
   type RunningTurn,
   type StreamTurnOptions,
+  submitIdentity,
   type TurnBoundaryHook,
   type TurnSession,
 } from "./turn-types.ts";
@@ -129,7 +130,7 @@ export function runTurn(
     }
     if (defaultAcceptanceSignal(event, prompt)) {
       acceptance.accept();
-      if (event.hook_event_name === "UserPromptSubmit") acceptedBy = event;
+      if (event.hook_event_name === "UserPromptSubmit") acceptedBy = submitIdentity(event);
     }
     const signal = readBoundarySignal(event);
     const failure = signalFailure(signal);

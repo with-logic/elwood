@@ -81,4 +81,10 @@ describe("defaultAcceptanceSignal", () => {
     ).toBe(false);
     expect(defaultAcceptanceSignal({ hook_event_name: "PreToolUse" }, "go")).toBe(false);
   });
+
+  test("C-API-40 matches the submit hook against the prompt as pasted, without control characters", () => {
+    const hook = { hook_event_name: "UserPromptSubmit", prompt: "go" };
+    expect(defaultAcceptanceSignal(hook, "g\u0007o\u001b")).toBe(true);
+    expect(defaultAcceptanceSignal(hook, "go!")).toBe(false);
+  });
 });
