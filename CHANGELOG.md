@@ -40,6 +40,13 @@ back each entry are listed in `prd/14-conformance.md`.
   next 100 ms poll. They return sooner and hold the session's
   input queue for less time. The poll remains as a fallback when no render
   notification arrives.
+
+- A Codex session whose readiness falls back to the 60-second backstop now emits
+  an `initial_ready_backstop` warning, so a host can tell it from ordinary
+  readiness. The backstop releases readiness when Elwood never recognizes Codex's
+  configured composer (the model footer), for example after a layout change in a
+  new Codex release. Before, that readiness looked like any other.
+
 - Removing a Codex transcript that Elwood was reading now emits
   `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
   file is missing, and at the final flush if it is still gone, as a removed Claude
