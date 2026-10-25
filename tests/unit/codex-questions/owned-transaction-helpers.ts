@@ -1,7 +1,7 @@
 /** Start and clean up real owned-answer transactions over scripted terminals (PRD §4). */
 import { afterEach } from "vitest";
 import { QuestionTransaction } from "../../../src/core/questions/transaction.ts";
-import { PickerInputOwnership } from "../../../src/runtime/session/picker-input.ts";
+import { SessionInputOwnership } from "../../../src/runtime/session/session-input.ts";
 import { createOwnedInteraction } from "./owned-transaction-interaction.ts";
 import {
   answerText,
@@ -19,7 +19,7 @@ function startOwnedTransaction(
   interaction: ReturnType<typeof createOwnedInteraction>,
   closing: AbortSignal,
 ) {
-  const ownership = new PickerInputOwnership(interaction.terminal);
+  const ownership = new SessionInputOwnership(interaction.terminal);
   const transaction = new QuestionTransaction(
     scenario.registry,
     ownership.automated,

@@ -32,9 +32,9 @@ import {
   enqueueSubmission,
   type SubmitKind,
 } from "./image-attach.ts";
-import { PickerInputOwnership } from "./picker-input.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
+import { SessionInputOwnership } from "./session-input.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 type Timeout = { readonly timeoutMs?: number };
@@ -54,7 +54,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],
   ) {
-    const ownership = new PickerInputOwnership(terminal);
+    const ownership = new SessionInputOwnership(terminal);
     super(
       agent,
       record,

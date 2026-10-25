@@ -2,9 +2,9 @@
 import { expect, test } from "vitest";
 import { stageComposer } from "../../src/core/input/composer-cleanup.ts";
 import {
-  PickerInputOwnership,
+  SessionInputOwnership,
   withAutomatedInput,
-} from "../../src/runtime/session/picker-input.ts";
+} from "../../src/runtime/session/session-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 test("C-API-55 terminal observation and picker-owned writes preserve input authority", async () => {
@@ -14,7 +14,7 @@ test("C-API-55 terminal observation and picker-owned writes preserve input autho
   );
   await withAutomatedInput(inner, () => inner.sendInput("startup"));
   writes.length = 0;
-  const owner = new PickerInputOwnership(inner);
+  const owner = new SessionInputOwnership(inner);
   const signal = owner.signal();
   const terminal = owner.caller;
   try {
@@ -43,7 +43,7 @@ test("C-API-55/56 native protocol replies preserve picker and staged cleanup aut
   const inner = createHeadlessTerminal({ cols: 80, rows: 24 }, (input) =>
     writes.push(String(input)),
   );
-  const owner = new PickerInputOwnership(inner);
+  const owner = new SessionInputOwnership(inner);
   const signal = owner.signal();
   const closing = new AbortController();
   const acknowledgement = {};

@@ -1,4 +1,9 @@
-/** Raw terminal intervention revokes a picker operation's private authority (C-API-55). */
+/**
+ * One session's input ownership: caller keys reach the terminal through `caller`, and
+ * Elwood's own writes go through `automated`. Raw caller input aborts `signal()`, which
+ * revokes the automation holding the terminal at that moment: picker operations
+ * (C-API-55), composer cleanup, and native question answers.
+ */
 import type { EmptyComposerObserver } from "../../core/input/clear-ack.ts";
 import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import { pickerIntervention } from "../../core/models/intervention.ts";
@@ -15,7 +20,7 @@ export function withAutomatedInput(terminal: ElwoodTerminal, work: AutomatedWork
   return automationScopes.get(terminal.xterm)?.(work) ?? work();
 }
 
-export class PickerInputOwnership {
+export class SessionInputOwnership {
   readonly caller: ElwoodTerminal;
   readonly automated: ElwoodTerminal;
   private current = new AbortController();
