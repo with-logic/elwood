@@ -9,26 +9,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 import { currentCommandRunner } from "../../src/runtime/seams.ts";
+import { pollGone } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const node = process.execPath;
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function pollGone(pid: number): Promise<boolean> {
-  for (let i = 0; i < 100; i += 1) {
-    if (!alive(pid)) return true;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  return false;
-}
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -85,7 +69,7 @@ describe("runtime probe runner", () => {
     expect(result.error?.code).toBe("ETIMEDOUT");
     const grandchild = Number(readFileSync(marker, "utf8").trim());
     expect(grandchild).toBeGreaterThan(0);
-    expect(await pollGone(grandchild)).toBe(true);
+    expect(await pollGone({ pid: grandchild, timeoutMs: 2_000 })).toBe(true);
   });
 
   test("C-PERF-03 a probe whose group already exited at abort time still settles (ESRCH)", async () => {

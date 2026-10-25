@@ -1,26 +1,31 @@
 /**
- * Real-process fixtures for the detached-sweep tests (PRD §5.3 and §9.4, C-LIFE-10): a
- * setsid node leader that starts one setsid child, and an unrelated bystander. Cleanup
- * signals only what this test still owns: the child while its command line still
- * carries the pair's unique marker, then the leader and bystander through their own
- * handles.
+ * A real setsid process pair for the process-table tests (PRD §5.3 and §9.4,
+ * C-LIFE-10): a detached node leader that starts one detached child. The test owns the
+ * leader's handle and the leader owns the child's, so cleanup goes through handles: a
+ * SIGTERM asks the leader to SIGKILL its child, wait for the child's exit, and exit. Only
+ * a child whose leader is already gone falls back to `killIfCommandHas`.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
-import { killIfCommandHas } from "./process-liveness.ts";
+import { killIfCommandHas, pidExists, pollGone } from "./process-liveness.ts";
 
-// A detached (setsid) leader that starts one detached child, passing the child the
-// marker as an argument so it shows in the child's command line, and prints its pid.
+// The child gets the marker as an argument, so it shows in the child's command line.
 const LEADER_SCRIPT = `
 const { spawn } = require("node:child_process");
 const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", process.argv[1]], {
   detached: true,
   stdio: "ignore",
 });
+process.on("SIGTERM", () => {
+  child.once("exit", () => process.exit(0));
+  child.kill("SIGKILL");
+});
 process.stdout.write(child.pid + "\\n");
 setInterval(() => {}, 1000);
 `;
+
+const EXIT_WAIT_MS = 5_000;
 
 let pairs = 0;
 
@@ -38,26 +43,35 @@ export async function startSetsidPair(): Promise<SetsidPair> {
     detached: true,
     stdio: ["ignore", "pipe", "ignore"],
   });
-  const [chunk] = (await once(leader.stdout as NodeJS.ReadableStream, "data")) as [Buffer];
-  return { leader, childPid: Number(chunk.toString().trim()), marker };
+  try {
+    const [chunk] = (await once(leader.stdout as NodeJS.ReadableStream, "data")) as [Buffer];
+    return { leader, childPid: Number(chunk.toString().trim()), marker };
+  } catch (error) {
+    // The leader may already have started its child: its SIGTERM handler ends both.
+    await stopLeader(leader);
+    throw error;
+  }
 }
 
-/** A detached process that descends from this test process, not from any leader. */
-export function startBystander(): ChildProcess {
-  return spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore",
-  });
-}
-
-/** Whether node has seen this handle's process exit (after which its pid may be reused). */
-export function hasExited(handle: ChildProcess): boolean {
-  return handle.exitCode !== null || handle.signalCode !== null;
-}
-
-/** Kills the child while its pid is still the child's, then the leader by its handle. */
-export function stopPair(pair: SetsidPair | undefined): void {
+/** Ends the pair and waits until both processes are gone; throws if either outlives it. */
+export async function stopPair(pair: SetsidPair | undefined): Promise<void> {
   if (pair === undefined) return;
-  killIfCommandHas(pair.childPid, pair.marker);
-  pair.leader.kill("SIGKILL");
+  const { leader, childPid, marker } = pair;
+  await stopLeader(leader);
+  // A child that outlived its leader is out of every handle's reach.
+  if (pidExists(childPid)) killIfCommandHas(childPid, marker);
+  if (!(await pollGone({ pid: childPid, timeoutMs: EXIT_WAIT_MS }))) {
+    throw new Error(`setsid child ${childPid} outlived cleanup`);
+  }
+}
+
+/** Resumes the leader if stopped, asks it to end its child and exit, then SIGKILLs it. */
+async function stopLeader(leader: ChildProcess): Promise<void> {
+  if (leader.exitCode !== null || leader.signalCode !== null) return;
+  const exited = once(leader, "exit");
+  leader.kill("SIGCONT");
+  leader.kill("SIGTERM");
+  const timer = setTimeout(() => leader.kill("SIGKILL"), EXIT_WAIT_MS);
+  await exited;
+  clearTimeout(timer);
 }

@@ -1,7 +1,8 @@
 /**
  * The process-table read and walk against real processes (PRD §5.3 and §9.4,
- * C-LIFE-10): the host table really lists a setsid grandchild under its parent, and the
- * production `ps` options really bound a run's time and output.
+ * C-LIFE-10): the host table really lists a setsid grandchild under its parent, reads a
+ * SIGSTOPped process as stopped, and the production `ps` options really bound a run's
+ * time and output.
  */
 
 import { describe, expect, test } from "vitest";
@@ -9,9 +10,25 @@ import {
   detachedDescendantGroups,
   listProcessTable,
   listProcessTableShared,
+  type ProcessEntry,
   runFile,
 } from "../../src/runtime/shutdown/process-table.ts";
+import { delay, POLL_INTERVAL_MS } from "../helpers/process-liveness.ts";
 import { type SetsidPair, startSetsidPair, stopPair } from "../helpers/setsid-pair.ts";
+
+/**
+ * Reads the table until `pid` reads stopped, for up to five seconds of wall time, so a
+ * failure still leaves the test's cleanup well inside its timeout.
+ */
+async function stoppedRead(pid: number): Promise<readonly ProcessEntry[]> {
+  const deadline = performance.now() + 5_000;
+  for (;;) {
+    const table = await listProcessTable(5_000);
+    if (table.find((row) => row.pid === pid)?.stopped) return table;
+    if (performance.now() >= deadline) throw new Error(`${pid} never read as stopped`);
+    await delay(POLL_INTERVAL_MS);
+  }
+}
 
 describe("C-LIFE-10 real process table", () => {
   test("lists the real host table, including this process under its parent", async () => {
@@ -41,7 +58,24 @@ describe("C-LIFE-10 real process table", () => {
         new Map([[childPid, new Set([leaderRow])]]),
       );
     } finally {
-      stopPair(pair);
+      await stopPair(pair);
+    }
+  });
+
+  test("reads a really SIGSTOPped leader as stopped, on its parent row too", async () => {
+    let pair: SetsidPair | undefined;
+    try {
+      pair = await startSetsidPair();
+      const leaderPid = pair.leader.pid as number;
+      pair.leader.kill("SIGSTOP");
+      // kill() returning means the signal was sent; it shows in a read once delivered.
+      const table = await stoppedRead(leaderPid);
+      const leaderRow = table.find((row) => row.pid === leaderPid);
+      expect(leaderRow).toMatchObject({ stopped: true, zombie: false });
+      const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+      expect([...(groups.get(pair.childPid) ?? [])]).toEqual([leaderRow]);
+    } finally {
+      await stopPair(pair);
     }
   });
 

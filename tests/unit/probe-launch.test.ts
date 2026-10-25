@@ -14,6 +14,7 @@ import {
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
 import { probeShellCommand } from "../../src/runtime/shell.ts";
+import { pollGone } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 /** A probe shell whose "profile" takes `profile` before the production probe command runs. */
@@ -56,18 +57,6 @@ test("C-PERF-05 the start line never reaches captured stderr", async () => {
   expect(result).toEqual({ status: 2, stdout: "", stderr: "warnerr\n" });
 });
 
-async function pollGone(pid: number): Promise<boolean> {
-  for (let i = 0; i < 100; i += 1) {
-    try {
-      process.kill(pid, 0);
-    } catch {
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  return false;
-}
-
 test("C-PERF-03 a command-bound timeout kills the command's whole process group", async () => {
   // Generous: the bound must not expire before the command has recorded its grandchild.
   setProbeTimeoutsForTests({ commandMs: 2_000, launchMs: 10_000 });
@@ -79,7 +68,7 @@ test("C-PERF-03 a command-bound timeout kills the command's whole process group"
   });
   const grandchild = Number(readFileSync(pidFile, "utf8").trim());
   expect(grandchild).toBeGreaterThan(0);
-  expect(await pollGone(grandchild)).toBe(true);
+  expect(await pollGone({ pid: grandchild, timeoutMs: 2_000 })).toBe(true);
 });
 
 test("C-PERF-05 a login shell that exits before announcing its command fails the probe", async () => {
