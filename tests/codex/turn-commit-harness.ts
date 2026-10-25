@@ -47,9 +47,12 @@ export async function runningTurn(
   started.push(session);
   await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
   ptys[0]!.emitData("\u001b[2J\u001b[H• Working (3s • esc to interrupt)\r\n› ");
-  await vi.waitFor(() => {
-    if (session.status !== "running") throw new Error(`status ${session.status}`);
-  });
+  await vi.waitFor(
+    () => {
+      if (session.status !== "running") throw new Error(`status ${session.status}`);
+    },
+    { timeout: 5_000 }, // the frame renders on real timers
+  );
   return { session, path };
 }
 
@@ -130,12 +133,17 @@ export function unboundedCommitWait(): void {
 
 /**
  * Resolves once the transcript has been re-read `count` more times, so every record
- * appended before the call has been observed. Watcher reads are synchronous.
+ * appended before the call has been observed. Watcher reads are synchronous. The reads
+ * run on real 20 ms timers, so a worker stalled for a second by a loaded machine must
+ * not fail the wait: it allows five seconds, as other real-timer waits here do.
  */
 export async function transcriptReads(count: number): Promise<void> {
   const poll = vi.spyOn(CodexTranscriptWatcher.prototype, "poll");
   const before = poll.mock.calls.length;
-  await vi.waitFor(() => {
-    if (poll.mock.calls.length < before + count) throw new Error("transcript not re-read yet");
-  });
+  await vi.waitFor(
+    () => {
+      if (poll.mock.calls.length < before + count) throw new Error("transcript not re-read yet");
+    },
+    { timeout: 5_000 },
+  );
 }
