@@ -69,12 +69,14 @@ export class CodexTranscriptWatcher {
     // timer as an uncaught exception — contain it, stop, and route a bounded live
     // diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
     this.interval = outsideStopInput(() =>
-      setInterval(() => this.runScan(), this.scanIntervalMs ?? defaultScanIntervalMs),
+      setInterval(() => this.poll(), this.scanIntervalMs ?? defaultScanIntervalMs),
     );
     this.interval.unref?.();
   }
 
-  private runScan(): void {
+  /** One `scan()` that never throws, as the poll timer runs it: a failure finishes the
+   * watcher and reports `onPollError`. For callers that scan from their own timers. */
+  poll(): void {
     try {
       this.scan();
     } catch (error) {
