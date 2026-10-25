@@ -37,14 +37,14 @@ export async function waitForScreen(
   label: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const renders = new RenderWakeup(terminal.subscribeRender);
+  const wakeup = new RenderWakeup(terminal.subscribeRender);
   try {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       signal?.throwIfAborted();
       // Consumed BEFORE the read: a render that lands after it, even while `test` runs,
       // leaves the wakeup set, so the wait below returns at once instead of missing it.
-      renders.consume();
+      wakeup.consume();
       const text = terminal.snapshot().text;
       if (test(text)) {
         signal?.throwIfAborted();
@@ -52,12 +52,12 @@ export async function waitForScreen(
       }
       await (terminal.subscribeRender === undefined
         ? delay(pollMs)
-        : renders.wait(undefined, pollMs));
+        : wakeup.wait(undefined, pollMs));
     }
     signal?.throwIfAborted();
     throw elwoodError("model_automation_failed", `Timed out waiting for ${label}.`);
   } finally {
-    renders.dispose();
+    wakeup.dispose();
   }
 }
 

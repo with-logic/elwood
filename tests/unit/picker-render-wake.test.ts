@@ -24,11 +24,11 @@ const closeWaitMs = clearReadings * clearReadingGapMs;
 const paintMs = 5;
 
 /**
- * Lists models from a CLI that opens the picker, and closes it on Escape, `paintMs` later.
- * `renders` is whether the terminal reports completed renders: always, never (it cannot
- * subscribe), or silently (it subscribes but never reports one).
+ * Lists models from a CLI that opens the picker (unless `opens` is false), and closes it on
+ * Escape, `paintMs` later. `renders` is whether the terminal reports completed renders:
+ * always, never (it cannot subscribe), or silently (it subscribes but never reports one).
  */
-async function listing(renders: "reported" | "unsupported" | "silent") {
+async function listing(renders: "reported" | "unsupported" | "silent", opens = true) {
   const listeners = new Set<() => void>();
   const terminal = scripted(closedComposer(claudeModelPicker));
   const paint = (text: string) =>
@@ -37,7 +37,7 @@ async function listing(renders: "reported" | "unsupported" | "silent") {
       if (renders === "reported") for (const listener of listeners) listener();
     }, paintMs);
   terminal.onInput = (input) => {
-    if (input === "/model") paint(claudePicker);
+    if (input === "/model" && opens) paint(claudePicker);
     else if (input === escapeKey) paint(closedComposer(claudeModelPicker));
   };
   const queue = new ControlQueue(
@@ -63,12 +63,15 @@ async function listing(renders: "reported" | "unsupported" | "silent") {
   queue.markReady();
   const started = Date.now();
   let finishedAt = Number.POSITIVE_INFINITY;
-  const listed = picker.run("list_models", claudeModelPicker, 5_000, async (io) => {
-    const models = await listPickerModels(io, claudeModelPicker, 5_000);
-    finishedAt = Date.now();
-    return models;
-  });
-  await vi.advanceTimersByTimeAsync(1_000);
+  const listed = picker
+    .run("list_models", claudeModelPicker, 5_000, async (io) => {
+      const models = await listPickerModels(io, claudeModelPicker, 5_000);
+      finishedAt = Date.now();
+      return models;
+    })
+    .catch((error: unknown) => error);
+  // A picker that never opens fails at the operation's own 5 s deadline.
+  await vi.advanceTimersByTimeAsync(opens ? 1_000 : 6_000);
   const models = await listed;
   queue.close();
   // Every wait unsubscribes when it ends.
@@ -86,9 +89,18 @@ test("C-API-23 listModels reads the opening picker on the render that paints it"
   expect((await listing("unsupported")).elapsedMs).toBe(pollMs + closeWaitMs);
 });
 
-test("C-API-23 a picker wait still polls a frame no render reported", async () => {
+test("C-API-23 a picker wait still polls when a subscribed terminal reports no render", async () => {
   const silent = await listing("silent");
   expect(silent.models).toEqual(claudeModelPicker.parse(claudePicker).options);
   expect(silent.elapsedMs).toBe(pollMs + closeWaitMs);
   expect(silent.subscribed).toBe(0);
+});
+
+test("C-API-23 a subscribed picker wait that times out still unsubscribes", async () => {
+  const failed = await listing("silent", false);
+  expect(failed.models).toMatchObject({
+    code: "model_automation_failed",
+    message: expect.stringMatching(/^Timed out waiting for /),
+  });
+  expect(failed.subscribed).toBe(0);
 });
