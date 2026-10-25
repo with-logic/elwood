@@ -191,9 +191,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     return this.turnCommit.beforeShutdown(() => super.teardown());
   }
   /** One bounded per-pass scan of the committed transcript (an unblocked `Stop`, §7A.3). */
-  scanTranscript(): void {
-    this.transcriptWatcher?.scan();
-  }
+  readonly scanTranscript = (): void => this.transcriptWatcher?.scan();
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     // No cast: each callback is the emitter's own `emit` bound to a correlated
     // event name, so a map/payload drift is a compile error here.

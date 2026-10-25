@@ -7,6 +7,8 @@ import {
 } from "./definitions.ts";
 import { checkQuestionArguments } from "./limits.ts";
 
+export { payloadOf } from "../transcript/payload.ts";
+
 export type QuestionCall = { readonly callId: string } & (
   | {
       readonly queued: false;
@@ -19,9 +21,6 @@ export type QuestionCall = { readonly callId: string } & (
       readonly questions: readonly QueuedNativeQuestion[];
     }
 );
-export function payloadOf(item: unknown): Record<string, unknown> | undefined {
-  return isRecord(item) && isRecord(item["payload"]) ? item["payload"] : undefined;
-}
 export function jsonRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== "string") return undefined;
   try {

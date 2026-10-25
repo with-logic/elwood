@@ -10,8 +10,8 @@
  * turn Codex has still not recorded can be lost.
  */
 
-import { isRecord } from "../../core/predicates.ts";
 import { outsideStopInput } from "../../core/stop-input.ts";
+import { payloadOf } from "../transcript/payload.ts";
 import { isTurnEndPayload } from "../transcript/turn-end.ts";
 
 /** The longest `stop`/`teardown` wait for the record before signaling anyway. */
@@ -21,7 +21,8 @@ const turnCommitPollMs = 20;
 
 type PendingCommit = {
   readonly turnId: string;
-  readonly committed: Promise<void>;
+  /** Settles once this turn's end is recorded or its `Stop` is blocked: the wait is over. */
+  readonly waitFinished: Promise<void>;
   readonly release: () => void;
 };
 
@@ -45,7 +46,7 @@ export class CodexTurnCommit {
    */
   expect(turnId: string): void {
     const { promise, resolve } = Promise.withResolvers<void>();
-    this.pending = { turnId, committed: promise, release: resolve };
+    this.pending = { turnId, waitFinished: promise, release: resolve };
   }
 
   /** Ends the wait for `turnId`: its end was recorded, or its `Stop` was blocked. */
@@ -62,16 +63,16 @@ export class CodexTurnCommit {
    * without it could be an older turn's backlog.
    */
   observe(item: unknown): void {
-    const payload = isRecord(item) && isRecord(item["payload"]) ? item["payload"] : undefined;
+    const payload = payloadOf(item);
     const turnId = payload?.["turn_id"];
     if (payload && isTurnEndPayload(payload) && typeof turnId === "string") this.release(turnId);
   }
 
   /**
-   * Runs `shutdown` once the pending turn is recorded, the CLI exits, or
-   * `turnCommitWaitMs` passes, re-reading the transcript meanwhile. With no turn
-   * pending, `shutdown` starts in the same tick. A turn not recorded within the bound
-   * is not waited for again.
+   * Runs `shutdown` once the pending turn is recorded, its `Stop` is blocked, the CLI
+   * exits, or `turnCommitWaitMs` passes, re-reading the transcript meanwhile. With no
+   * turn pending, `shutdown` starts in the same tick. A turn not recorded within the
+   * bound is not waited for again.
    */
   beforeShutdown(shutdown: () => Promise<void>): Promise<void> {
     const pending = this.pending;
@@ -79,7 +80,7 @@ export class CodexTurnCommit {
     // Internal work outlives a Stop callback that called `stop()` (C-HOOK-22).
     const poll = outsideStopInput(() => setInterval(this.poll, turnCommitPollMs));
     const bound = this.waitForCliExitOrTimeout(turnCommitWaitMs);
-    return Promise.race([pending.committed, bound]).then(() => {
+    return Promise.race([pending.waitFinished, bound]).then(() => {
       clearInterval(poll);
       if (this.pending === pending) this.pending = undefined;
       return shutdown();

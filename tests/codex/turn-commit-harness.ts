@@ -7,9 +7,28 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import { vi } from "vitest";
 import { CliExitBarrier } from "../../src/codex/session/cli-exit.ts";
+import { CodexTranscriptWatcher } from "../../src/codex/transcript/index.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { launchArtifactPaths } from "../helpers/launch-artifacts.ts";
 import { becomeReady, ptys, readBridgeScript } from "./helpers.ts";
+
+const started: CodexSessionApi[] = [];
+const shutdowns: Promise<unknown>[] = [];
+
+/** Records a shutdown a test started, so `endStarted` can settle it if the test fails first. */
+export function tracked(shutdown: Promise<void>): Promise<void> {
+  shutdowns.push(shutdown);
+  return shutdown;
+}
+
+/**
+ * Kills every session the test started and settles the shutdowns it started, so a test
+ * that fails early leaves no bridge server or poll timer behind. Run before resetting fakes.
+ */
+export async function endStarted(): Promise<void> {
+  await Promise.allSettled(started.splice(0).map((session) => session.kill()));
+  await Promise.allSettled(shutdowns.splice(0));
+}
 
 /** Appends one rollout record whose payload is `payloadType` for `turnId`. */
 export function appendRecord(path: string, payloadType: string, turnId: string): void {
@@ -25,6 +44,7 @@ export async function runningTurn(
   const path = join(cwd, "rollout.jsonl");
   writeFileSync(path, "");
   const session = await startCodex({ cwd, hooks });
+  started.push(session);
   await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
   ptys[0]!.emitData("\u001b[2J\u001b[H• Working (3s • esc to interrupt)\r\n› ");
   await vi.waitFor(() => {
@@ -92,7 +112,7 @@ export async function shutdownAtReady(
 ): Promise<{ readonly shutdown: Promise<void> }> {
   let shutdown: Promise<void> | undefined;
   session.on("status", (event) => {
-    if (event.status === "ready") shutdown ??= session[verb]();
+    if (event.status === "ready") shutdown ??= tracked(session[verb]());
   });
   await stopHook(session, cwd, path);
   if (!shutdown) throw new Error("the Stop hook did not report ready");
@@ -108,4 +128,14 @@ export function unboundedCommitWait(): void {
   });
 }
 
-export const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Resolves once the transcript has been re-read `count` more times, so every record
+ * appended before the call has been observed. Watcher reads are synchronous.
+ */
+export async function transcriptReads(count: number): Promise<void> {
+  const poll = vi.spyOn(CodexTranscriptWatcher.prototype, "poll");
+  const before = poll.mock.calls.length;
+  await vi.waitFor(() => {
+    if (poll.mock.calls.length < before + count) throw new Error("transcript not re-read yet");
+  });
+}

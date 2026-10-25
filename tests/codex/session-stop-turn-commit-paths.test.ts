@@ -7,14 +7,17 @@ import type { CodexSessionApi } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
-  pause,
+  endStarted,
   runningTurn,
   stopHook,
   stopHookUntilClosed,
+  tracked,
+  transcriptReads,
   unboundedCommitWait,
 } from "./turn-commit-harness.ts";
 
-afterEach(() => {
+afterEach(async () => {
+  await endStarted();
   vi.restoreAllMocks();
   resetFakes();
 });
@@ -41,13 +44,13 @@ test.each<[string, Observer]>([
   const { session, path } = await runningTurn(cwd);
   let shutdown: Promise<void> | undefined;
   observe(session, () => {
-    shutdown ??= session.stop();
+    shutdown ??= tracked(session.stop());
   });
   // The hook-time scan delivers this turn's last committed record to transcript observers.
   appendRecord(path, "agent_message", "turn-1");
   await stopHookUntilClosed(session, cwd, path);
   if (!shutdown) throw new Error("the observer did not stop the session");
-  await pause(100);
+  await transcriptReads(2);
   expect(ptys[0]!.killSignals).toEqual([]);
   appendRecord(path, "task_complete", "turn-1");
   await shutdown;
@@ -63,7 +66,7 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
   });
   let shutdown: Promise<void> | undefined;
   session.on("hook", () => {
-    shutdown ??= session.stop();
+    shutdown ??= tracked(session.stop());
   });
   // With the bound lifted, only the block can release the stop before the record.
   await stopHookUntilClosed(session, cwd, path);
@@ -86,7 +89,7 @@ test.each([
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd, hooks);
   await stopHook(session, cwd, withPath ? path : null);
-  const shutdown = session[verb]();
+  const shutdown = tracked(session[verb]());
   expect(ptys[0]!.killSignals).toHaveLength(1);
   await shutdown;
 });

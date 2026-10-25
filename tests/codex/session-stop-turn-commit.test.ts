@@ -9,13 +9,15 @@ import type { ElwoodWarningEvent } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
-  pause,
+  endStarted,
   runningTurn,
   shutdownAtReady,
+  transcriptReads,
   unboundedCommitWait,
 } from "./turn-commit-harness.ts";
 
-afterEach(() => {
+afterEach(async () => {
+  await endStarted();
   vi.restoreAllMocks();
   resetFakes();
 });
@@ -39,7 +41,7 @@ test.each([
   // Another turn's end, and a record that ends no turn, are not this turn's record.
   appendRecord(path, "task_complete", "turn-0");
   appendRecord(path, "token_count", "turn-1");
-  await pause(300);
+  await transcriptReads(2);
   expect(ptys[0]!.killSignals).toEqual([]);
   expect(ptys[0]!.writes).toHaveLength(writes);
   // Polled from the transcript: with the bound lifted, nothing else can end the wait.
@@ -54,7 +56,7 @@ test("C-LIFE-13 a CLI that exits on its own before recording the turn releases t
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd);
   const { shutdown } = await shutdownAtReady(session, cwd, "stop", path);
-  await pause(100);
+  await transcriptReads(1); // The wait is under way.
   ptys[0]!.emitExit({ exitCode: 0 });
   await shutdown;
   // Nothing was signaled: the exit was the CLI's own.

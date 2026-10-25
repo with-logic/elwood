@@ -2,7 +2,7 @@
  * The bounded wait that holds a graceful Codex shutdown for the turn's commit
  * (PRD §5.7, C-LIFE-13): which transcript records release it, and its bound.
  */
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { CodexTurnCommit, turnCommitWaitMs } from "../../src/codex/session/turn-commit.ts";
 
 const never = new Promise<never>(() => undefined);
@@ -17,7 +17,12 @@ function commit(waitForCliExitOrTimeout: (timeoutMs: number) => Promise<unknown>
   return { turn, order, shutdown };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Runs the wait's re-read timer a few times; the bound here never fires on its own. */
+const afterPolls = () => vi.advanceTimersByTimeAsync(100);
 
 test("C-LIFE-13 with no turn pending, shutdown starts in the same tick", () => {
   const { turn, order, shutdown } = commit();
@@ -41,6 +46,7 @@ test.each([
 });
 
 test("C-LIFE-13 no other record releases the wait, and it polls the transcript meanwhile", async () => {
+  vi.useFakeTimers();
   const { turn, order, shutdown } = commit();
   turn.expect("t1");
   const done = turn.beforeShutdown(shutdown);
@@ -56,7 +62,7 @@ test("C-LIFE-13 no other record releases the wait, and it polls the transcript m
     { payload: { type: "task_complete", turn_id: 1 } },
   ])
     turn.observe(item);
-  await settle();
+  await afterPolls();
   expect(order).not.toContain("shutdown");
   expect(order).toContain("poll");
   turn.release("t1");
@@ -64,11 +70,12 @@ test("C-LIFE-13 no other record releases the wait, and it polls the transcript m
 });
 
 test("C-LIFE-13 a blocked Stop releases the wait for its turn only", async () => {
+  vi.useFakeTimers();
   const { turn, order, shutdown } = commit();
   turn.expect("t1");
   const done = turn.beforeShutdown(shutdown);
   turn.release("t0");
-  await settle();
+  await afterPolls();
   expect(order).not.toContain("shutdown");
   turn.release("t1");
   await done;

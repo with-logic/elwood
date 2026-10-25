@@ -4,15 +4,10 @@ import { isRecord } from "../../core/predicates.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { payloadOf } from "../transcript/payload.ts";
 import { isTurnEndPayload } from "../transcript/turn-end.ts";
 import { type Candidate, CandidateStore } from "./candidate-store.ts";
-import {
-  jsonRecord,
-  payloadOf,
-  questionCall,
-  questionEnvelope,
-  questionReplies,
-} from "./records.ts";
+import { jsonRecord, questionCall, questionEnvelope, questionReplies } from "./records.ts";
 
 export type { Candidate } from "./candidate-store.ts";
 
