@@ -26,10 +26,10 @@ const exitingPty = {
     return () => {};
   },
 };
-const throwingReaper = () =>
+const throwingReaper = (code?: string) =>
   new SessionReaper(LEADER, {
     killGroup: () => {
-      throw new Error("reap failure");
+      throw Object.assign(new Error("reap failure"), code === undefined ? {} : { code });
     },
   });
 
@@ -43,13 +43,17 @@ describe("C-LIFE-10 terminatePty", () => {
 
   test("when BOTH termination and reaping fail, both causes are preserved", async () => {
     // The termination error wins as the thrown cause, but the reap failure must
-    // NOT be silently dropped — it is carried in the error's details (C-LIFE-10).
-    await expect(
-      terminatePty(deadPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toMatchObject({
+    // NOT be silently dropped — its message and errno ride in the details (C-LIFE-10).
+    const timeouts = { gracefulMs: 0, forceMs: 0 };
+    const rejected = terminatePty(deadPty, "SIGKILL", throwingReaper("EPERM"), timeouts);
+    await expect(rejected).rejects.toMatchObject({
       code: "termination_failed",
-      details: { reapError: "reap failure" },
+      message: "PTY did not exit after SIGKILL.",
+      details: { reapError: "reap failure", reapErrno: "EPERM" },
     });
+    await expect(
+      terminatePty(deadPty, "SIGKILL", throwingReaper(), timeouts),
+    ).rejects.not.toHaveProperty("details.reapErrno");
   });
 
   test("a throwing PTY kill is typed and still preserves the reap cause when both fail", async () => {

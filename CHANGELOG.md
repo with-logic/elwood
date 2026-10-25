@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
+  `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
+  reaped now says so. The typed startup error keeps its code and
+  message and gains `details.cleanupErrorCode` (an allowlisted errno, else
+  `UnknownError`) and `details.cleanupProcessGroupId`, which is for diagnosis only and
+  must never be signaled. Before, that failure was dropped silently. When a PTY is not
+  confirmed terminated and its group reap fails too, `termination_failed` now also
+  carries the reap's errno as `details.reapErrno`, next to `details.reapError`.
+
 - A failed start or resume no longer signals a CLI that already exited during startup,
   and no longer reaps its process group a second time. The leader's pid could already
   belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and

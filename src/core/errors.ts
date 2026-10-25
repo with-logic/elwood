@@ -88,6 +88,16 @@ export function errnoCode(error: unknown): string | undefined {
 }
 
 /**
+ * The errno behind a failure: a typed error's `details.errno` (as `causeDetails` records
+ * it), else the thrown value's own errno; `undefined` when neither exists. Never throws.
+ */
+export function underlyingErrno(error: unknown): string | undefined {
+  if (!(error instanceof ElwoodError)) return errnoCode(error);
+  const errno = error.details["errno"];
+  return typeof errno === "string" ? errno : undefined;
+}
+
+/**
  * Extracts diagnosable details from an underlying failure (C-ERR-08):
  * message as cause, plus errno/syscall/path when the error exposes them.
  */
