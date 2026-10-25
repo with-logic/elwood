@@ -20,7 +20,7 @@ import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./
 const QUIET_STREAK_MS = 2_000;
 const QUIET_DEADLINE_MS = 15_000;
 const FRAME_MS = 250;
-// Twelve measured resumes latched `ready` 0.25 to 0.32 s after Codex's first output.
+// Twelve measured resumes latched `ready` 0.25 to 0.32 s after the first composer frame.
 const COMPOSER_TO_READY_MS = 2_000;
 
 async function waitForQuietScreen(session: CodexSessionApi): Promise<void> {
@@ -56,6 +56,12 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
   let resumed: CodexSessionApi | undefined;
   try {
     first = await startCodex(opts);
+    // Codex fires `SessionStart` lazily, at the first prompt, and it alone carries the
+    // conversation id a resume needs.
+    let sessionStarted = false;
+    first.on("hook", (event) => {
+      if (event.hook_event_name === "SessionStart") sessionStarted = true;
+    });
     await waitFor(() => (first?.status === "ready" ? true : undefined), "first ready", 60_000);
     // One real turn so Codex persists a resumable conversation id.
     await first.sendMessage("Reply exactly: OK. Do not use tools.");
@@ -64,12 +70,13 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
       "first turn settled",
       60_000,
     );
+    await waitFor(() => (sessionStarted ? true : undefined), "first SessionStart", 10_000);
     const id = first.elwoodSessionId;
     await first.stop();
 
     const startedAt = Date.now();
-    const observed = await resumeCodex({ ...opts, elwoodSessionId: id });
-    resumed = observed;
+    const resumedSession = await resumeCodex({ ...opts, elwoodSessionId: id });
+    resumed = resumedSession;
     // Capture status transitions from resume start: the transcript replay must NOT
     // fabricate a phantom running->ready cycle after readiness (a host application
     // surfaced that as a false "unread reply").
@@ -80,12 +87,17 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     // composer frame (the screen table's composer rule). A composer-driven ready follows
     // that frame within a fraction of a second. The ~10 s fallback deadline starts at
     // Codex's first rendered frame, which comes within a quarter second of the composer,
-    // so a deadline-driven ready would trail the composer by about 10 s.
+    // so a deadline-driven ready would trail the composer by about 10 s. Subscribing
+    // replays output rendered before it; a composer already in that replay is dated to
+    // the resume's start, the earliest it could have painted, which can only overstate
+    // the latency.
     let composerAt: number | undefined;
+    let replaying = true;
     resumed.on("terminal:data", () => {
-      if (composerAt === undefined && /^\s*›/m.test(observed.terminal.snapshot().text))
-        composerAt = Date.now();
+      if (composerAt === undefined && /^\s*›/m.test(resumedSession.terminal.snapshot().text))
+        composerAt = replaying ? startedAt : Date.now();
     });
+    replaying = false;
     await waitFor(() => (resumed?.status === "ready" ? true : undefined), "resumed ready", 30_000);
     const readyAt = Date.now();
     const composer =
