@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import {
   type ClaudeSessionApi,
@@ -16,9 +16,9 @@ import {
   listClaudeModels,
   listCodexModels,
   startClaude,
-  startCodex,
 } from "../../src/index.ts";
-import { defaultIds, drawnCodexDefault } from "./codex-default.ts";
+import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
+import { startReadyCodex } from "./codex-ready.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -96,15 +96,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
   const sandbox = sandboxedCodexHome(project, BASELINE_CONFIG);
   let session: CodexSessionApi | undefined;
   try {
-    session = await startCodex({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      sandbox: "read-only",
-      approvalPolicy: "never",
-      autotrust: true,
-      hooks: {},
-    });
-    await waitFor(() => (session?.status === "ready" ? true : undefined), "codex ready", 60_000);
+    session = await startReadyCodex(project);
     const models = await session.listModels();
     assert.ok(models.length >= 3, "picker lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
@@ -115,8 +107,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
     const configured = models.find((model) => !model.isCurrent && model.id !== drawn);
     const target = models.findLast((model) => !model.isCurrent);
     assert.ok(configured && target && configured !== target, "two other models are listed");
-    const config = readFileSync(sandbox.configPath, "utf8");
-    writeFileSync(sandbox.configPath, `model = "${configured.id}"\n${config}`);
+    configureCodexDefaultModel(sandbox.configPath, configured.id);
     const defaultsBefore = rootModelKeys(sandbox.configPath);
     await session.setModel(target.id);
     const after = await session.listModels();
