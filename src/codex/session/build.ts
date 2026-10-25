@@ -164,7 +164,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
-  const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(readiness.ready.cancel);
+  const sessionCleanup = activeSession.startupCleanupResources(readiness.ready.cancel);
   await guardStartupRegion(
     async () => {
       activeSession.startLoops();
@@ -188,7 +188,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       frameObserver.blockOnceLive(activeSession);
       input.activate();
     },
-    { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+    { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
   if (preflightWarning !== undefined)
     warnGate.emitWarnings([preflightEvent(elwoodSessionId, preflightWarning)]);

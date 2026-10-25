@@ -196,13 +196,17 @@ assertion, and the startup-usable evidence. If ANY of them fails, Elwood tears
 down the now-live PTY, hook bridge, terminal, and transcript watcher before
 rejecting, so a failed `startClaude`/`startCodex` never leaks a live process, IPC
 endpoint, or file watcher. (The one-shot version/preflight warning is NOT part of
-this boundary — it is scheduled for delivery AFTER start resolves, per C-API-14.) Tearing down the PTY routes through the SAME one-shot
-process-group reap the normal exit path uses (§9.4, C-LIFE-10): the PTY is
-signaled, its exit is awaited within a bounded window, and the leader's process
-group is SIGKILLed on every path — even if the PTY signal throws — so a
-CLI-spawned descendant such as a hook-bridge grandchild (which POSIX reparents to
-PID 1 the instant the leader exits) cannot survive or reparent past a failed
-startup. The original startup error is preserved; a cleanup or reap failure is
+this boundary — it is scheduled for delivery AFTER start resolves, per C-API-14.)
+The session ends the PTY with the same one-shot process-group reaper its exit path
+uses (§9.4, C-LIFE-10), so the leader's group is SIGKILLed once, not once per path.
+If the session has already seen the PTY exit (for example, the CLI exited during
+startup), the PTY is not signaled again: the leader's pid may already belong to an
+unrelated process, so only that shared reaper runs. That reaper does nothing if the
+exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled, its
+exit is awaited within a bounded window, and the leader's process group is SIGKILLed on
+every path, even if the PTY signal throws, so a CLI-spawned descendant such as a
+hook-bridge grandchild (which POSIX reparents to PID 1 the instant the leader exits)
+cannot survive or reparent past a failed startup. The original startup error is preserved; a cleanup or reap failure is
 secondary and never replaces it.
 
 ### 9.3 Resume
