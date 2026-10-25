@@ -15,7 +15,8 @@ import {
   type StartupPty,
 } from "../../src/runtime/startup/cleanup.ts";
 
-const LEADER = 4242;
+// Any pid but the test process's own: SessionReaper refuses to signal that one.
+const LEADER = process.pid + 1;
 
 const endingWith = (failure?: unknown): StartupPty => ({
   pid: LEADER,
@@ -26,8 +27,8 @@ const startFailed = () =>
   elwoodError("claude_start_failed", "claude exited during startup.", { exitCode: 1 });
 
 /** What the guarded region rejects with when startup fails and the PTY end does `failure`. */
-function rejectionAfter(failure: unknown): Promise<unknown> {
-  return guardStartupRegion(() => Promise.reject(startFailed()), {
+function rejectionAfter(failure: unknown, original = startFailed()): Promise<unknown> {
+  return guardStartupRegion(() => Promise.reject(original), {
     pty: endingWith(failure),
   }).then(
     () => undefined,
@@ -36,30 +37,36 @@ function rejectionAfter(failure: unknown): Promise<unknown> {
 }
 
 describe("C-ERR-08 startup cleanup diagnostic", () => {
-  test("an unconfirmed termination or reap is named on the typed startup error", async () => {
-    // A raw errno comes from a post-exit reap and a typed one from the PTY termination.
-    // When termination and reap both fail, the reap's errno is the one reported.
-    for (const failure of [
-      Object.assign(new Error("kill EPERM"), { code: "EPERM" }),
+  // A raw errno comes from a post-exit reap and a typed one from the PTY termination.
+  // When termination and reap both fail, the reap's errno is the one reported.
+  test.each([
+    ["a raw post-exit reap errno", Object.assign(new Error("kill EPERM"), { code: "EPERM" })],
+    [
+      "a typed termination errno",
       elwoodError("termination_failed", "PTY exited but…", { errno: "EPERM" }),
+    ],
+    [
+      "a reap errno over the termination's",
       elwoodError("termination_failed", "PTY did not exit after SIGKILL.", {
         errno: "ESRCH",
         reapError: "kill EPERM",
         reapErrno: "EPERM",
       }),
-    ]) {
-      const error = await rejectionAfter(failure);
-      expect(error).toBeInstanceOf(ElwoodError);
-      expect(error).toMatchObject({
-        code: "claude_start_failed",
-        message: "claude exited during startup.",
-      });
-      expect((error as ElwoodError).details).toEqual({
-        exitCode: 1,
-        cleanupErrorCode: "EPERM",
-        cleanupProcessGroupId: LEADER,
-      });
-    }
+    ],
+  ])("%s is named on the typed startup error", async (_case, failure) => {
+    const original = startFailed();
+    const error = await rejectionAfter(failure, original);
+    expect(error).toBeInstanceOf(ElwoodError);
+    expect(error).toMatchObject({
+      code: "claude_start_failed",
+      message: "claude exited during startup.",
+      stack: original.stack,
+    });
+    expect((error as ElwoodError).details).toEqual({
+      exitCode: 1,
+      cleanupErrorCode: "EPERM",
+      cleanupProcessGroupId: LEADER,
+    });
   });
 
   test("a PTY that never exits and a refused group kill report the reap's EPERM", async () => {
@@ -87,20 +94,18 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
-  test("a failure without an allowlisted errno is reported as UnknownError", async () => {
-    // A PTY that never reported exit carries no errno; an errno outside the allowlist,
-    // or a thrown non-error, is never echoed either.
-    for (const failure of [
-      elwoodError("termination_failed", "PTY did not exit after SIGKILL."),
-      Object.assign(new Error("odd"), { code: "ENOTALLOWLISTED" }),
-      "not an error",
-    ]) {
-      expect(((await rejectionAfter(failure)) as ElwoodError).details).toEqual({
-        exitCode: 1,
-        cleanupErrorCode: "UnknownError",
-        cleanupProcessGroupId: LEADER,
-      });
-    }
+  // A PTY that never reported exit carries no errno; an errno outside the allowlist, or
+  // a thrown non-error, is never echoed either.
+  test.each([
+    ["an unexited PTY", elwoodError("termination_failed", "PTY did not exit after SIGKILL.")],
+    ["a non-allowlisted errno", Object.assign(new Error("odd"), { code: "ENOTALLOWLISTED" })],
+    ["a thrown non-error", "not an error"],
+  ])("%s is reported as UnknownError", async (_case, failure) => {
+    expect(((await rejectionAfter(failure)) as ElwoodError).details).toEqual({
+      exitCode: 1,
+      cleanupErrorCode: "UnknownError",
+      cleanupProcessGroupId: LEADER,
+    });
   });
 
   test("a confirmed cleanup rethrows the original startup error itself", async () => {

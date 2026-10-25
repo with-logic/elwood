@@ -12,8 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- A failed `startClaude`/`startCodex` whose cleanup could not confirm that the CLI's
-  process group was reaped now says so. The typed startup error keeps its code and
+- A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
+  `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
+  reaped now says so. The typed startup error keeps its code and
   message and gains `details.cleanupErrorCode` (an allowlisted errno, else
   `UnknownError`) and `details.cleanupProcessGroupId`, which is for diagnosis only and
   must never be signaled. Before, that failure was dropped silently. When a PTY is not

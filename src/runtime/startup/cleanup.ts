@@ -118,8 +118,8 @@ async function endPty(
 }
 
 /**
- * The errno to report. A failed group reap's comes first, because that reap decides
- * whether descendants may still be running; otherwise the termination's own errno.
+ * The errno to report: the failed group reap's errno when there is one, because that
+ * reap decides whether descendants may still be running; otherwise the termination's.
  */
 function cleanupErrno(error: unknown): string | undefined {
   const reapErrno = error instanceof ElwoodError ? error.details["reapErrno"] : undefined;
@@ -146,16 +146,17 @@ export async function guardStartupRegion(
 }
 
 /**
- * Keeps the startup error's code and message and adds the unconfirmed-cleanup details.
- * Only Elwood's own typed errors gain them: any other startup error is rethrown
- * unchanged, never wrapped or mutated.
+ * Keeps the startup error's code, message, and stack and adds the unconfirmed-cleanup
+ * details. Only Elwood's own typed errors gain them: any other startup error is
+ * rethrown unchanged, never wrapped or mutated.
  */
 function withCleanupFailure(
   error: unknown,
   unconfirmed: UnconfirmedStartupPtyCleanup | undefined,
 ): unknown {
   if (unconfirmed === undefined || !(error instanceof ElwoodError)) return error;
-  return elwoodError(error.code, error.message, { ...error.details, ...unconfirmed });
+  const enriched = elwoodError(error.code, error.message, { ...error.details, ...unconfirmed });
+  return Object.assign(enriched, { stack: error.stack });
 }
 
 /** Stops the bridge if one exists; a sync throw or rejection stays secondary. */
