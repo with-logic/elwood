@@ -1,7 +1,7 @@
 /** Attempt descriptors distinguish trust input from confirmed clearance (PRD §5.4). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupWriteCompletion } from "../startup/write.ts";
-import { optionInput } from "../terminal-options.ts";
+import { optionInput, type SelectableOption } from "../terminal-options.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
 import { choiceIdentity, type TrustCandidate } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
@@ -52,17 +52,13 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
   };
 }
 
-/** The result announcing an attempt at `candidate`'s affirmative. */
+/** The result announcing an attempt at `prompt`'s affirmative `option`. */
 export function attempted<A extends ElwoodAgentKind>(
-  candidate: TrustCandidate,
+  prompt: TrustPromptIdFor<A>,
+  option: SelectableOption,
   settled: Promise<StartupWriteCompletion>,
 ): TrustPromptResult<A> {
-  const prompt = candidate.spec.id as TrustPromptIdFor<A>;
-  return {
-    kind: "attempted",
-    automation: { prompt, input: optionInput(candidate.option!) },
-    settled,
-  };
+  return { kind: "attempted", automation: { prompt, input: optionInput(option) }, settled };
 }
 
 /**

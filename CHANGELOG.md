@@ -73,7 +73,9 @@ back each entry are listed in `prd/14-conformance.md`.
   keys. When the CLI had already left the prompt but Elwood's screen had not caught
   up, that retry landed in the composer and submitted the caller's text along with
   the answer. A prompt the caller owns that stays up past five seconds is reported
-  `blocked`, as before; a later trust prompt is answered as usual.
+  `blocked`, as before; a later trust prompt is answered as usual. The same keys
+  also stop Elwood retrying its skip choice on a Codex update prompt, which could
+  otherwise follow them onto whatever Codex drew next.
 
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has

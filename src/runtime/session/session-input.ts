@@ -38,7 +38,8 @@ export class SessionInputOwnership {
     let automating = false;
     const listeners = new Set<() => void>();
     callerInputListeners.set(inner.xterm, listeners);
-    // Runs before the caller's keys are written, so no automation can follow them.
+    // Runs before the caller's keys are written: picker operations and the startup
+    // answers registered through onCallerInput stop, so none of their writes follow them.
     const revoke = () => {
       this.current.abort(callerInputIntervention());
       this.current = new AbortController();

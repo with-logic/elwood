@@ -1,6 +1,6 @@
 /**
- * Raw caller input owns the trust gate on screen: automation writes nothing more to it,
- * so a retry never lands after the caller's keys (C-TRUST-01).
+ * Raw caller input owns the startup prompt on screen: automation writes nothing more to
+ * it, so a retry never lands after the caller's keys (C-TRUST-01, C-CODEX-12).
  */
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
@@ -20,6 +20,7 @@ const screen = (path: string) =>
 /** The folder-access gate Codex 0.156.1 introduced and 0.164 still draws. */
 const folderAccess = screen("../fixtures/codex-0.156.1/folder-access.txt");
 const hooks = screen("../fixtures/codex-0.154.0/hooks.txt");
+const update = screen("../fixtures/codex-0.155.1/update-100x30.txt");
 const composer = `\u001b[2J\u001b[H${codexTty(codexComposer)}`;
 
 async function start() {
@@ -63,4 +64,20 @@ test("C-TRUST-01 caller keys own only the gate on screen; the next gate is answe
   ptys[0]!.emitData(hooks);
   await vi.advanceTimersByTimeAsync(20);
   expect(ptys[0]!.writes).toEqual(["x", "1\r", "1\r", "2\r"]);
+});
+
+test("C-CODEX-12 caller keys during an update skip stop its retries; the next prompt is answered", async () => {
+  const session = await start();
+  ptys[0]!.emitData(update);
+  await vi.advanceTimersByTimeAsync(20);
+  expect(ptys[0]!.writes).toEqual(["2"]);
+  // Codex may already have taken the skip and drawn its trust gate, where 2 is Quit,
+  // while Elwood's frame still shows the update prompt.
+  await session.sendKeys("hello");
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(ptys[0]!.writes).toEqual(["2", "hello"]);
+  await session.sendKeys("x"); // the cancelled attempt has nothing left to stop
+  ptys[0]!.emitData(folderAccess);
+  await vi.advanceTimersByTimeAsync(20);
+  expect(ptys[0]!.writes).toEqual(["2", "hello", "x", "1\r"]);
 });

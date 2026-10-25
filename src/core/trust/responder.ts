@@ -119,7 +119,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         throw error;
       },
     );
-    return attempted<A>(view, settled);
+    return attempted(view.spec.id as TrustPromptIdFor<A>, view.option!, settled);
   }
   /**
    * Raw caller input owns the gate on screen: its attempt is cancelled before the caller's

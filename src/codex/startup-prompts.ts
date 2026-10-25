@@ -74,9 +74,10 @@ export class CodexStartupPromptResponder {
     this.trust.dispose();
   }
 
-  /** Raw caller input owns the trust gate on screen (C-TRUST-01). */
+  /** Raw caller input owns the startup prompt on screen (C-TRUST-01, C-CODEX-12). */
   callerInput(): void {
     this.trust.callerInput();
+    this.updateAttempt?.cancel();
   }
 
   get inputBlocking(): boolean {

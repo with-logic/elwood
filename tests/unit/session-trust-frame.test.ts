@@ -32,6 +32,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   const active = {
     closing: new AbortController(),
     bindInitialReadinessHold: vi.fn(),
+    terminal: { xterm: {} },
     inputBlocking: false,
     trustInputBlocking: false,
     get status() {
@@ -80,9 +81,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   );
   observe.blockOnceLive(active); // already blocked: the startup replay never duplicates attention
   expect(activity).toHaveBeenCalledTimes(1);
-  bindStartupLifetime(active, { ...trust, callerInput: vi.fn() }, readiness, {
-    xterm: {},
-  });
+  bindStartupLifetime(active, { ...trust, callerInput: vi.fn() }, readiness);
   expect(active.bindInitialReadinessHold).toHaveBeenCalledWith(readiness.isHeld);
   active.closing.abort();
   active.closing.abort();

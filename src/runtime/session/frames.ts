@@ -102,16 +102,18 @@ export function createSessionFrameObserver(
 
 /**
  * Cancel automation synchronously before signaling or disposing its PTY, and hand the
- * gate on screen to the caller as soon as raw caller input reaches `terminal`.
+ * startup prompt on screen to the caller as soon as raw caller input reaches the
+ * session's terminal.
  */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold">,
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold"> & {
+    readonly terminal: { readonly xterm: object };
+  },
   trust: TrustState & { callerInput(): void },
   readiness: ReadinessGate,
-  terminal: { readonly xterm: object },
 ): void {
   session.bindInitialReadinessHold(readiness.isHeld);
-  onCallerInput(terminal, () => trust.callerInput());
+  onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
     "abort",
     () => {

@@ -3,10 +3,11 @@
  * by that answer's retry. Under load Codex takes the answer but its next screen reaches
  * Elwood late, so the gate Elwood still sees is stale and its retry would land in Codex's
  * composer after the caller's keys. The test makes that lag certain by holding the CLI's
- * output from Elwood for four seconds once the answer is written, while Codex itself runs
- * normally, and types as soon as Codex's own output shows its composer. The session uses a bogus model, so a
- * stray submission is refused before using quota. The launch must show and answer the real
- * gate, or the run skips loudly. Covers C-TRUST-01 (§5.4).
+ * output from Elwood for four seconds once the first answer is written, while Codex itself
+ * runs normally, and types as soon as Codex's own output shows its composer. A launch
+ * without the gate, or whose composer paints only after the lag, skips loudly. The session
+ * uses a bogus model, so a stray submission is refused before using quota. Covers
+ * C-TRUST-01 (§5.4).
  */
 
 import assert from "node:assert/strict";
@@ -40,41 +41,46 @@ const composerOutput = new RegExp(bogusModel);
 
 type Launch = {
   displayed: boolean;
-  answered: boolean;
+  /** Elwood wrote its first trust answer. Codex can discard it while its gate paints. */
+  answerWritten: boolean;
   readonly writes: string[];
-  /** Settles once Codex, unseen by Elwood, has drawn its composer after the answer. */
-  readonly composer: PromiseWithResolvers<void>;
+  /**
+   * Settles when Codex's raw output draws its configured composer: `held` while that
+   * output is still held from Elwood, `shown` otherwise (no gate, or a late paint).
+   */
+  readonly composer: PromiseWithResolvers<"held" | "shown">;
 };
 
 /**
  * Records the launch's writes. Elwood sees no output for `lagMs` after the first trust
- * answer; the raw output it is not shown reveals when Codex has taken the answer.
+ * answer write. The raw output, held or not, reveals when Codex has drawn its composer.
  */
-function lagAfterAnswer(): Launch {
+function lagAfterAnswerWrite(): Launch {
   const launch: Launch = {
     displayed: false,
-    answered: false,
+    answerWritten: false,
     writes: [],
-    composer: Promise.withResolvers<void>(),
+    composer: Promise.withResolvers(),
   };
   const plainText = createCliSanitizer();
   setPtyFactoryForTests((options) => {
     const pty = nodePtyFactory(options);
     const handlers = new Set<(data: string) => void>();
     let held: string[] | undefined;
-    let output = "";
-    let afterAnswer = "";
+    let beforeGate = "";
+    let afterAnswerWrite = "";
     pty.onData((data) => {
       if (!launch.displayed) {
-        output += data;
-        launch.displayed = directoryTrustOutput.test(plainText(output).replace(/\s+/g, ""));
+        beforeGate += data;
+        launch.displayed = directoryTrustOutput.test(plainText(beforeGate).replace(/\s+/g, ""));
       }
+      if (launch.answerWritten) afterAnswerWrite += data;
+      // Behind a gate, only output after the answer can show the configured composer.
+      const sinceGate = launch.displayed ? afterAnswerWrite : beforeGate;
+      if (composerOutput.test(plainText(sinceGate)))
+        launch.composer.resolve(held === undefined ? "shown" : "held");
       if (held === undefined) for (const handler of handlers) handler(data);
-      else {
-        held.push(data);
-        afterAnswer += data;
-        if (composerOutput.test(plainText(afterAnswer))) launch.composer.resolve();
-      }
+      else held.push(data);
     });
     return {
       ...pty,
@@ -85,8 +91,8 @@ function lagAfterAnswer(): Launch {
       write(data) {
         pty.write(data);
         if (typeof data === "string") launch.writes.push(data);
-        if (data !== "1\r" || launch.answered) return;
-        launch.answered = true;
+        if (data !== "1\r" || launch.answerWritten) return;
+        launch.answerWritten = true;
         held = [];
         setTimeout(() => {
           const chunks = held ?? [];
@@ -106,15 +112,17 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
   const project = makeProject("codex");
   execFileSync("git", ["init", "-q", project.cwd]);
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
-  const launch = lagAfterAnswer();
+  const launch = lagAfterAnswerWrite();
   let session: CodexSessionApi | undefined;
   t.after(async () => {
+    let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) await stopCodex(session);
+      if (session !== undefined) failures = await stopCodex(session);
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();
     }
+    if (failures.length > 0) throw new AggregateError(failures, "Codex teardown failed");
   });
   session = await startCodex({
     cwd: project.cwd,
@@ -133,7 +141,7 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
     "Codex's composer behind its answered gate",
     120_000,
   ).catch(() => "timeout");
-  const outcome = await Promise.race([launch.composer.promise.then(() => "composer"), ended]);
+  const outcome = await Promise.race([launch.composer.promise, ended]);
   finished = true;
   const screen = () => live.terminal.snapshot().text;
   assert.notEqual(outcome, "exited", `Codex exited:\n${screen()}`);
@@ -141,7 +149,11 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
     skipNow(t, `Codex showed no directory-trust prompt (auto-trusted or reworded):\n${screen()}`);
     return;
   }
-  assert.equal(outcome, "composer", `Codex never took the answer:\n${screen()}`);
+  assert.notEqual(outcome, "timeout", `Codex never took the answer:\n${screen()}`);
+  if (outcome === "shown") {
+    skipNow(t, `Codex drew its composer after the ${lagMs} ms lag, so Elwood's view caught up`);
+    return;
+  }
   // Codex is at its composer; Elwood, its output held, still sees the gate.
   assert.ok(trustPromptVisible(screen(), "codex"), `Elwood's view trails Codex:\n${screen()}`);
   const typedAt = launch.writes.length;
@@ -152,5 +164,11 @@ test("C-TRUST-01 keys a caller types during Codex's trust answer are never submi
   assert.deepEqual(after, ["hello"], "nothing was written after the caller's keys");
   const stray = submitted.filter((event) => event.includes("hello"));
   assert.deepEqual(stray, [], "the caller's keys were not submitted");
-  assert.match(screen(), /^› hello\s*$/m, `the caller's draft stays in the composer:\n${screen()}`);
+  // A retry written before the caller's keys can still leave its digit ahead of them;
+  // only what follows the keys is at issue here.
+  assert.match(
+    screen(),
+    /^› 1*hello\s*$/m,
+    `the caller's draft stays in the composer:\n${screen()}`,
+  );
 });
