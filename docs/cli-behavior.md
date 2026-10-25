@@ -985,6 +985,43 @@ other errors, pre-exit errors, and persistent `EPERM` still fail. Controlled
 shutdown also leaves the reap to its owning termination path instead of emitting
 a competing best-effort warning. Verified against Codex 0.153.3 on macOS.
 
+## Hook and MCP process groups (2026-10-25)
+
+Claude Code 2.1.310 and Codex 0.164.0 start every hook command with `setsid()`.
+Measured on macOS with `ps -o pid,ppid,pgid,command` and `os.getsid()` while a
+slow hook was in flight under a real Elwood session:
+
+- Claude runs a hook as a direct child of the CLI (`ppid` = the PTY leader) whose
+  `pgid` and `sid` both equal its own pid. A compound command runs as
+  `/bin/sh -c '<command>'`; a plain one such as Elwood's
+  `'<node>' '<bridge>.mjs'` is executed directly. An Electron host's
+  `ELECTRON_RUN_AS_NODE=1 …` command needs the shell, consistent with the
+  reported orphan `/bin/sh -c node hook-bridge.mjs`.
+- Codex runs a hook as `/bin/zsh -c '<command>'` (the user's shell), also with its
+  own `pgid` and `sid`. Codex started an MCP server (`node ./scripts/start-mcp.mjs`,
+  from a plugin it installed in the sandboxed `CODEX_HOME`) in its own process
+  group but inside the leader's session.
+- The children the CLI starts without detaching, such as Claude's IDE probe
+  (`ps aux | grep …`), stay in the leader's group.
+
+So the leader-group SIGKILL (`kill(-leader)`) cannot reach a hook. Once the
+leader dies the hook is reparented to PID 1 and nothing ties it to the session;
+only the parent-pid chain links a hook to its leader, and only while the leader
+lives. With the group reap alone, `teardown()` during a `SessionStart` project hook
+running `sleep 45` resolved in 25 ms and left that `/bin/sh` and its `sleep` alive
+under PID 1. `stop()` while a `SessionEnd` hook ran `sleep 46` timed out after
+5 s; Claude waits for `SessionEnd` hooks on SIGTERM, so Elwood escalated to SIGKILL
+and left the hook running. On Codex, `teardown()` during a `UserPromptSubmit`
+config hook left the `zsh`/`sleep` group alive, and the MCP server group outlived
+the CLI briefly. Elwood's own bridge processes died only because teardown then
+closes the bridge socket; the reap itself never reached them.
+
+When Claude exits on SIGTERM within the graceful window it kills its in-flight
+hooks itself: a `stop()` during the same `sleep 45` hook exited in about 1 s with
+no survivors. On macOS, `killpg` on a group whose members are all unreaped zombies
+returns `EPERM`, not `ESRCH`. `src/runtime/shutdown/process-table.ts` reads the
+table and finds these groups by walking parent pids from the leader. C-LIFE-10.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
