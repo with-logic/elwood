@@ -43,6 +43,7 @@ test("C-LIFE-10 a real PTY child that exits during startup is not signaled or aw
   const failure = await rejection(startClaude({ cwd: tempDir() }));
   expect(failure.code).toBe("claude_start_failed");
   expect(failure.details).toMatchObject({ exitCode: 12 });
+  expect(failure.details).not.toHaveProperty("cleanupErrorCode");
   expect(signals).toEqual([]);
   expect(listenersAfterExit).toBe(0);
   expect(reapedGroups).toEqual([leaderPid]);
