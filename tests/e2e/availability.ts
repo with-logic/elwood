@@ -82,7 +82,8 @@ function probe(agent: AgentName): Probed {
   const shell = userShell();
   const result = spawnSync(shell, [...probeShellCommand(`command -v ${agent}`)], {
     encoding: "utf8",
-    // The fourth pipe receives the probe shell's start line, as `runProbe`'s does.
+    // The fourth pipe receives the probe shell's start line, as `runProbe`'s does, unless the
+    // shell closed it; then the line precedes the command's output on stdout.
     stdio: ["ignore", "pipe", "pipe", "pipe"],
     // The production probe's launch plus command bounds (§9.2, C-PERF-05): a loaded host's
     // interactive profile alone can exceed 15 s, which must not read as a missing CLI.
