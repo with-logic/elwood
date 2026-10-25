@@ -54,7 +54,7 @@ describe("bypass-permissions acceptance dialog", () => {
     expect(responder.handle(numberedDialog, () => undefined)).toBeUndefined();
   });
 
-  test("C-CLAUDE-21 navigates the cursor layout down to the affirmative and confirms", async () => {
+  test("C-CLAUDE-21 selects the cursor layout's affirmative absolutely and confirms", async () => {
     const writes: string[] = [];
     let rendered = cursorDialog;
     const responder = new TrustPromptResponder<"claude">("claude", claudeTrustClearance, true);
@@ -62,21 +62,21 @@ describe("bypass-permissions acceptance dialog", () => {
       cursorDialog,
       (input) => {
         writes.push(input);
-        if (input === "\u001b[B")
+        if (input === "\u001b[H\u001b[B")
           rendered = [...header, "   No, exit", " ❯ Yes, I accept", "", " Enter to confirm"].join(
             "\n",
           );
-        if (input === "\r") rendered = runningFooter;
+        if (input.endsWith("\r")) rendered = runningFooter;
       },
       () => rendered,
     );
     expect(result).toMatchObject({
       kind: "attempted",
-      automation: { prompt: "bypass_permissions", input: "down+enter" },
+      automation: { prompt: "bypass_permissions", input: "home+down+enter" },
     });
     if (result?.kind !== "attempted") throw new Error("expected an answered prompt");
     await result.settled;
-    expect(writes).toEqual(["\u001b[B", "\r"]);
+    expect(writes).toEqual(["\u001b[H\u001b[B", "\u001b[H\u001b[B\r"]);
   });
 
   test("C-CLAUDE-21 a decline-only partial frame is pending, not answered", () => {

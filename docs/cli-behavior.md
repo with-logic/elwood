@@ -359,8 +359,10 @@ across physical rows** on a narrow terminal. Its option format is version-couple
 - Claude 2.1.206 used numbered rows with the affirmative first
   (`❯ 1. Yes, I trust this folder / 2. No, exit`).
 - Claude 2.1.252 uses unnumbered cursor rows with the safe decline selected first
-  (`❯ No, exit / Yes, I trust this folder`). Accepting requires ArrowDown + Enter;
-  sending the old numeric answer leaves the dialog waiting.
+  (`❯ No, exit / Yes, I trust this folder`). Accepting requires moving the cursor
+  to the affirmative and pressing Enter; sending the old numeric answer leaves the
+  dialog waiting. From 2.1.310 evidence, never do that with a relative arrow and a
+  separate Enter (see "Claude trust selection reset" below).
 
 The workspace gate is independent of tool permission policy: it still appears
 under both `--permission-mode bypassPermissions` and the exact
@@ -373,7 +375,8 @@ under both `--permission-mode bypassPermissions` and the exact
   "Yes" option) must never anchor a prompt (anti-spoofing).
 - treat the whole numbered or cursor-selectable block as the option region,
   including unselected rows above the cursor, then either send the old option
-  number or navigate from the rendered cursor to the affirmative and press Enter.
+  number or select the affirmative by its absolute row and confirm in the same
+  write.
 
 Under `autotrust`, detect-and-approve: if a trust prompt is detected, answer yes
 rather than leave the agent hanging on the gate. Keep the cheap safety: never
@@ -479,7 +482,9 @@ replacement prompts or future Claude renderers.
 Claude 2.1.278 can paint the complete folder-trust dialog before accepting keyboard
 navigation. In the real human-trust test, immediate Down/Enter writes left the
 selection on "No, exit". Waiting for the selected "Yes, I trust this folder" repaint
-before Enter cleared the dialog. The test records physical PTY writes and confirms
+before Enter cleared the dialog. The 2.1.310 investigation below found the cause, an
+input guard that remounts the dialog, and showed that waiting for the repaint is not
+enough on a loaded machine. The test records physical PTY writes and confirms
 that queued caller input follows native cursor clearance; it does not require a
 model response or available turn quota.
 
@@ -548,7 +553,7 @@ reports answered only after the gate clears. A native directory-to-hook transiti
 confirms directory clearance without sending an old answer to the hook gate.
 An observed clear-and-reappear generation cancels the old attempt.
 
-Cursor navigation rereads between individual arrows and Enter. Both navigation
+Cursor answers reread the frame before every selection and confirmation write. Both navigation
 styles now belong to one session-owned coordinator: each observed dialog
 generation owns its reservation, deadline, exact affirmative, and completion.
 An old cancelled attempt cannot release or settle a reappeared gate. The five-
@@ -591,6 +596,54 @@ the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
 A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the welcome
 box can scroll away while its composer and model/reasoning/path footer remain.
 Those native rows also prove clearance; welcome presence is not required.
+
+### Claude trust selection reset (2.1.310, 2026-10-25)
+
+Under `autotrust`, 7 of 60 fresh-folder launches of Claude Code 2.1.310 exited
+with code 1 at the folder-trust gate on a loaded machine (load average 60–160 on
+16 cores, three to six launches at once). Every failure had the same shape. Elwood
+wrote `\x1b[B` (twice in two runs, the second a 250 ms retry), Claude painted
+`❯ Yes, I trust this folder`, and Elwood wrote a bare `\r`. Claude then repainted
+`❯ No, exit` without any key from Elwood and ran its exit sequence
+(`\x1b[?1006l…\x1b[?25h`). In two runs the repaint and the exit sequence arrived in
+one output chunk.
+
+The 2.1.310 binary explains it. `TrustDialog` renders its confirm list with
+`cancelFirst`, `focus: "cancel"` and a React key of `"held"` or `"settled"`. The key
+flips to `"settled"` 150 ms after the dialog mounts. An Enter within 150 ms of mount,
+or of an earlier refused Enter, is refused, and the refusal flips the key back to
+`"held"` for another 150 ms. Each key change remounts the list with the cursor on
+"No, exit". On a busy machine the settle timer is already overdue when Claude next
+reads stdin, so it runs first. The Enter that Elwood decided from the `❯ Yes` frame
+is then processed on the remounted list and confirms "No, exit". A probe that sent
+only Down at first paint saw `❯ Yes` and then `❯ No, exit` 90 ms later, with no
+Enter. A refused Enter only resets the cursor: that is the "first Enter is lost"
+pattern in successful runs (Down, Enter, reset, Down, Enter). Separately, Down on
+the last row wraps to the first. In one run a stalled first arrow and its 250 ms
+retry both landed, painting `❯ Yes` and then `❯ No, exit`; an Enter decided between
+them would also confirm "No, exit". Every installed binary from 2.1.268 to 2.1.310
+carries the same remount key on this dialog (the 150 ms window was read from 2.1.305
+and 2.1.310), and the MCP-server dialog uses it too.
+
+Claude's list binds `home` to `select:first` and `end` to `select:last` in every
+installed binary from 2.1.268 to 2.1.310. A live 2.1.310 probe confirmed that Home
+(`\x1b[H`) and End (`\x1b[F`, `\x1b[4~`, `\x1bOF`) move the trust cursor absolutely
+and repeat harmlessly. Written as one chunk, `\x1b[H\x1b[B\r` confirmed "Yes" in
+every probe and every fixed launch, including launches where the remount ran just
+before the chunk was read.
+The list's key handlers read focus through a synchronous getter, so one chunk's keys
+see each other's effect. Inside the 150 ms windows the chunk is refused, which is
+harmless, and the next retry succeeds. Elwood therefore writes Home plus one Down
+per row above the affirmative while the rendered cursor is elsewhere. Once the
+cursor is on the affirmative, it writes that selection and Enter as one write.
+Relative arrows and bare Enter are never sent. With that rule, interleaved with the
+failing runs under the same load, 0 of 51 launches exited. In 7 of them Claude
+repainted `❯ No, exit` after the combined write and still accepted it; with a bare
+Enter that interleaving exits. `tests/unit/trust-claude-selection-reset.test.ts`
+replays the real 100×30 frames (`tests/fixtures/claude-2.1.310/folder-trust-*.txt`)
+against a model of this dialog. `tests/e2e/trust-prompt-claude-concurrent.e2e.ts`
+launches five fresh folders at once and checks every trust write at the PTY
+boundary.
 
 ### Native Codex startup warnings
 

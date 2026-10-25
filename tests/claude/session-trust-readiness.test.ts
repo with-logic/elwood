@@ -21,7 +21,7 @@ test("C-TRUST-01 expired cursor navigation holds the readiness deadline until th
   ptys[0]!.emitData(`${tty(claudeTrust)}\r\n❯ No, exit\r\n  Yes, I trust this folder`);
   await vi.advanceTimersByTimeAsync(11_000);
   expect(ptys[0]!.writes.length).toBeGreaterThan(0);
-  expect(ptys[0]!.writes.every((input) => input === "\u001b[B")).toBe(true);
+  expect(ptys[0]!.writes.every((input) => input === "\u001b[H\u001b[B")).toBe(true);
   expect(session.status).not.toBe("ready");
   expect(session.status).toBe("blocked");
   expect(warnings).toEqual([]);

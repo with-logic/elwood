@@ -37,3 +37,12 @@ edge. A `default` launch renders the same `⏸ manual mode on` footer as `manual
 `vim-bypass-permissions-after-model.json` is a 100x12 session after `/model` was
 opened with raw keys and closed with Escape, twice. The banner has scrolled away
 and `❯ /model` / `⎿ Kept model as Opus 5.5` remain above the composer.
+
+## Folder-trust dialog (`folder-trust-*.txt`)
+
+`folder-trust-no.txt` and `folder-trust-yes.txt` are the rendered folder-trust
+gate of a fresh, untrusted directory, captured on 2026-10-25 through Elwood at
+100x30 with `autotrust: false`. The first is the dialog as painted, with the
+cursor on its default "No, exit"; the second follows a written `Home` + `Down`.
+The workspace path is normalized to `/tmp/ELWOOD_CAPTURE/project` and trailing
+blank rows are removed. The dialog was torn down without being answered.

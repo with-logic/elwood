@@ -1,6 +1,6 @@
 /** One abortable, generation-owned trust attempt for both layouts (PRD §5.4/C-TRUST-01). */
 import type { StartupWriteCompletion } from "../startup/write.ts";
-import type { SelectableOption } from "../terminal-options.ts";
+import { cursorSelection, type SelectableOption } from "../terminal-options.ts";
 import type { TrustWriteResult } from "./types.ts";
 import { choiceIdentity, type TrustCandidate, type TrustView } from "./view.ts";
 
@@ -69,7 +69,7 @@ export class TrustAttempt {
     deadlineAtMs: number,
   ): Promise<StartupWriteCompletion> {
     let retryAt = 0;
-    let previousOffset: number | undefined;
+    let previousInput: string | undefined;
     while (!this.controller.signal.aborted && Date.now() < deadlineAtMs) {
       const view = read();
       if (view === undefined) {
@@ -83,10 +83,10 @@ export class TrustAttempt {
       const option = this.readChoice(view);
       if (typeof option === "string") return option;
       const step = trustStep(option);
-      if (Date.now() >= retryAt || step.offset !== previousOffset) {
+      if (Date.now() >= retryAt || step.input !== previousInput) {
         if (this.controller.signal.aborted) return this.completion();
         if (!(await this.send(write, step))) return this.completion();
-        previousOffset = step.offset;
+        previousInput = step.input;
         retryAt = Date.now() + retryMs;
       }
       if (!(await this.pause(Math.min(step.pollMs, retryAt - Date.now()))))
@@ -99,7 +99,7 @@ export class TrustAttempt {
     write: (input: string) => TrustWriteResult,
     step: ReturnType<typeof trustStep>,
   ): Promise<boolean> {
-    const result = write(step.key);
+    const result = write(step.input);
     // A void writer has already fulfilled before an observer can replace the frame.
     if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
     const fulfilled = await this.own(result);
@@ -159,13 +159,18 @@ export class TrustAttempt {
   }
 }
 
+/**
+ * A cursor answer never sends a relative arrow or a bare Enter (docs/cli-behavior.md).
+ * Claude 2.1.310 remounts its dialog with the cursor back on "No, exit" once its input
+ * guard settles, and a retried arrow can land after the first already moved; a bare
+ * Enter decided from the earlier frame then confirms the decline. The absolute selection
+ * lands on the same row however often it repeats, and Enter travels only in the same
+ * write as it, once the rendered cursor sits on the affirmative.
+ */
 function trustStep(option: SelectableOption) {
   if (option.style === "numbered")
-    return { key: `${option.number}\r`, offset: undefined, confirm: true, pollMs: retryMs };
-  return {
-    key: option.offset === 0 ? "\r" : option.offset < 0 ? "\u001b[A" : "\u001b[B",
-    offset: option.offset,
-    confirm: option.offset === 0,
-    pollMs: observationMs,
-  };
+    return { input: `${option.number}\r`, confirm: true, pollMs: retryMs };
+  const select = cursorSelection(option);
+  const confirm = option.offset === 0;
+  return { input: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
 }

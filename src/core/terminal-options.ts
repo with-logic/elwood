@@ -12,7 +12,14 @@ export type NumberedOption = { readonly number: string; readonly label: string }
 /** One answerable option, with style-specific selection data. */
 export type SelectableOption =
   | { readonly style: "numbered"; readonly label: string; readonly number: string }
-  | { readonly style: "cursor"; readonly label: string; readonly offset: number };
+  | {
+      readonly style: "cursor";
+      readonly label: string;
+      /** Rows from the rendered cursor to this option (negative above it). */
+      readonly offset: number;
+      /** Absolute row within the cursor block; Home lands on index 0. */
+      readonly index: number;
+    };
 
 type Position = { readonly row: number };
 type PositionedNumberedOption = Extract<SelectableOption, { readonly style: "numbered" }> &
@@ -38,16 +45,26 @@ export function selectableOptions(text: string): readonly SelectableOption[] {
 /** Bounded, printable selection description used in startup-prompt activity. */
 export function optionInput(option: SelectableOption): string {
   if (option.style === "numbered") return option.number;
-  if (option.offset === 0) return "enter";
-  const direction = option.offset < 0 ? "up" : "down";
-  return `${`${direction}+`.repeat(Math.abs(option.offset))}enter`;
+  return ["home", ...new Array<string>(option.index).fill("down"), "enter"].join("+");
 }
 
-/** Raw PTY writes for a numbered option or cursor movement plus confirmation. */
+/**
+ * Absolute cursor selection: Home, then one Down per row above the option. Unlike a
+ * relative arrow, it lands on the same row however often it repeats and whatever the
+ * cursor was on, so a delayed or duplicated write cannot move past the option.
+ */
+export function cursorSelection(option: Extract<SelectableOption, { style: "cursor" }>): string {
+  return `\u001b[H${"\u001b[B".repeat(option.index)}`;
+}
+
+/**
+ * Raw PTY writes that answer `option` from the rendered frame: the number, or (when the
+ * cursor is elsewhere) the bare selection followed by selection+Enter as ONE write.
+ */
 export function optionKeystrokes(option: SelectableOption): readonly string[] {
   if (option.style === "numbered") return [`${option.number}\r`];
-  const key = option.offset < 0 ? "\u001b[A" : "\u001b[B";
-  return [...new Array<string>(Math.abs(option.offset)).fill(key), "\r"];
+  const select = cursorSelection(option);
+  return option.offset === 0 ? [`${select}\r`] : [select, `${select}\r`];
 }
 
 /**
@@ -110,6 +127,7 @@ function positionedCursorOptions(lines: readonly string[]): readonly PositionedC
       style: "cursor" as const,
       label: row === selectedRow ? (selected[3] as string).trim() : line.trim(),
       offset: row - selectedRow,
+      index,
     };
   });
 }
