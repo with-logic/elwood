@@ -11,9 +11,11 @@ import { PickerHold } from "../../src/runtime/session/picker-hold.ts";
 import {
   claudeClosedPickerViewport,
   claudePickerViewport,
+  codexPickerViewport,
 } from "../helpers/model-dialog-viewports.ts";
 import { codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import {
+  closedComposer,
   escapeKey,
   failure,
   guardedPickerHarness,
@@ -91,24 +93,27 @@ const blankingEscape = (input: string, shown: { text: string }) => {
 };
 
 test.each([
-  ["the operation saw", 0],
-  ["only cleanup saw, after the failure", 300],
-] as const)("C-API-55 a picker %s stays held through a blank repaint until the composer clears", async (_name, opensAfterMs) => {
+  ["Claude", "the operation saw", claudeModelPicker, claudePickerViewport, 0],
+  ["Claude", "only cleanup saw, after the failure", claudeModelPicker, claudePickerViewport, 300],
+  ["Codex", "the operation saw", codexModelPicker, codexPickerViewport, 0],
+  ["Codex", "only cleanup saw, after the failure", codexModelPicker, codexPickerViewport, 300],
+] as const)("C-API-55 a %s picker %s stays held through a blank repaint until the composer clears", async (_agent, _name, spec, dialog, opensAfterMs) => {
   const { screen, queue, picker, delivered } = guardedPickerHarness(
-    claudeClosedPickerViewport,
+    closedComposer(spec),
     blankingEscape,
+    spec,
   );
   const failed = expect(
-    picker.run("set_model", claudeModelPicker, 5000, async (io) => {
+    picker.run("set_model", spec, 5000, async (io) => {
       await io.submit("/model", new AbortController().signal);
-      if (opensAfterMs === 0) screen.text = claudePickerViewport;
+      if (opensAfterMs === 0) screen.text = dialog;
       io.terminal.snapshot();
       throw failure;
     }),
   ).rejects.toBe(failure);
   if (opensAfterMs > 0)
     setTimeout(() => {
-      screen.text = claudePickerViewport;
+      screen.text = dialog;
     }, opensAfterMs);
   await vi.advanceTimersByTimeAsync(1100);
   await failed;
@@ -116,10 +121,10 @@ test.each([
   expect(screen.text).toBe("");
   const message = queue.send("hello", "message");
   await vi.advanceTimersByTimeAsync(1000);
-  screen.text = claudePickerViewport;
+  screen.text = dialog;
   await vi.advanceTimersByTimeAsync(1000);
   expect(delivered("hello")).toBe(0);
-  screen.text = claudeClosedPickerViewport;
+  screen.text = closedComposer(spec);
   await vi.advanceTimersByTimeAsync(1000);
   await message;
   expect(delivered("hello")).toBe(1);

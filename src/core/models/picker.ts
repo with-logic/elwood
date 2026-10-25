@@ -3,6 +3,7 @@
  * Implements PRD §5.3, §5.7, C-API-23, and C-API-24.
  */
 
+import type { ElwoodAgentKind } from "../activity/index.ts";
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import { sendPickerInput } from "./input.ts";
@@ -31,7 +32,7 @@ export type ModelPickerIo = {
 };
 
 export type ModelPickerSpec = {
-  readonly agent: string;
+  readonly agent: ElwoodAgentKind;
   /** A native model-dialog shell can hold input before its rows finish. */
   readonly isCandidate: (text: string) => boolean;
   /** Positive native composer evidence for releasing a foreign-dialog hold. */
@@ -42,6 +43,12 @@ export type ModelPickerSpec = {
    * never authorizes a write.
    */
   readonly hasPickerHeader: (text: string) => boolean;
+  /**
+   * Positive evidence that the bottom-most dialog is the caller's own, which replaced
+   * ours: Claude's `PreModelSwitch` hook confirmation. Elwood neither answers it nor keeps
+   * it as a survivor; it is left for the caller (PRD §5.3).
+   */
+  readonly isCallerDialog: (text: string) => boolean;
   /**
    * The live, bottom-most model dialog: the only one Elwood may cancel or hold input on.
    * `authority` is REQUIRED and carries proof Elwood opened this dialog (see
@@ -79,9 +86,12 @@ const opened: ModelDialogAuthority = { opened: true };
 
 /**
  * True only while THIS operation's own COMPLETE picker is the bottom-most region: never its
- * `painting` shell and never a `follow-up` stage, which hold input but are not sent keys.
+ * `painting` shell and never a `follow-up` stage. It gates every shared navigation,
+ * selection, and cancelling key, and each adapter's selecting key; a follow-up is answered
+ * only by the adapter's `apply`, under that stage's own guard (Claude's cache warning,
+ * Codex's reasoning level).
  */
-const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
+export const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
   spec.activeDialog(text, opened) === "picker";
 
 /**

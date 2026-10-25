@@ -50,6 +50,12 @@ export class PickerTransactions {
       this.survivorHold.hold();
       return true;
     }
+    // The caller's own dialog replaced ours, so nothing of ours is left to hold on: a
+    // `PreModelSwitch` hook confirmation, whether cleanup ended on it or on its painting shell.
+    if (this.survivor.isCallerDialog(text)) {
+      this.survivor = undefined;
+      return false;
+    }
     // An UNRECOGNIZED frame is not proof the survivor is gone: a picker repainting between
     // stages, or half-painted, matches neither grammar, and forgetting it there would release
     // queued input into the frame that follows. Only sustained positive clearance does.
@@ -173,16 +179,17 @@ export class PickerTransactions {
     progress: Progress,
     closed: AbortSignal,
   ): Promise<void> {
-    const released = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
-    // Released means nothing of OURS is recognizable, which is not proof our dialog is gone:
-    // a blank or half-painted repaint matches neither grammar, and the picker can paint again
-    // after it. So once our dialog was seen, or while a picker header is up, anything short of
-    // a positively clear composer is kept as a survivor, held and never written to. A frame
-    // that shows neither is not ours (a `PreModelSwitch` hook's confirmation is left for the
-    // caller), and a terminated session holds nothing.
+    const noneRecognized = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
+    // Nothing of OURS being recognizable is not proof our dialog is gone: a blank or
+    // half-painted repaint matches neither grammar, and the picker can paint again after it.
+    // So once our dialog was seen, or while a picker header is up, anything short of a
+    // positively clear composer is kept as a survivor, held and never written to. A frame
+    // that shows neither is not ours, and a terminated session holds nothing. A dialog the
+    // caller owns that replaced ours is left for the caller: `blocksInput` forgets the
+    // survivor on it.
     const text = this.deps.terminal.snapshot().text;
     const mayBeOurs = progress.dialogSeen || spec.hasPickerHeader(text);
-    if (released && (closed.aborted || spec.isClear(text) || !mayBeOurs)) return;
+    if (noneRecognized && (closed.aborted || spec.isClear(text) || !mayBeOurs)) return;
     this.survivor = spec;
     this.survivorHold.hold();
   }

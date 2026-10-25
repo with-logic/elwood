@@ -82,6 +82,10 @@ export const ours: ModelDialogAuthority = { opened: true };
  * stays up: a second Escape on a slow repaint would land on the composer. A `painting`
  * shell is never written to. Termination aborts every read and write. A dialog still
  * visible at the bound keeps queued input held.
+ *
+ * Resolves `true` once no dialog of ours is recognizable (or the session terminated). That
+ * is NOT positive composer clearance: a blank or half-painted repaint is unrecognizable
+ * too, so the caller decides whether what is left on screen is kept as a survivor.
  */
 export async function cleanUpDialog(
   source: ScreenTerminal & InputTerminal,

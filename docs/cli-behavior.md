@@ -235,8 +235,9 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   picker can paint again after it. So once the operation or its cleanup has seen its
   dialog, or while the picker header is up, a cleanup that ends on anything short of a
   positively clear composer keeps queued input held until the composer is clear: Enter on
-  that picker would apply its highlighted row. The header only ever holds; it never
-  authorizes a key. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
+  that picker would apply its highlighted row. Only a dialog the caller owns replacing it,
+  a complete `PreModelSwitch` hook confirmation, ends that hold early; the hook's prompt is
+  left for the caller. The header only ever holds; it never authorizes a key. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
   C-API-23, C-API-24, C-API-55.
 - **Codex 0.164.0 shortened its dialog hints.** The picker closes with `enter select ·
   esc back` and the reasoning screen with `enter default · s session · esc back` (one
