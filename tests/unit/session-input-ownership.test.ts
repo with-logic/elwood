@@ -102,3 +102,28 @@ test("C-TRUST-01 a closed session stops handing caller input to its startup prom
     inner.dispose();
   }
 });
+
+test("C-API-55 caller input sent from inside an automated write still revokes", async () => {
+  const writes: string[] = [];
+  const inner = createHeadlessTerminal({ cols: 80, rows: 24 }, (input) =>
+    writes.push(String(input)),
+  );
+  const owner = new SessionInputOwnership(inner);
+  const signal = owner.signal();
+  // A host listener that types the moment it sees Elwood's key, inside that write.
+  const listener = inner.xterm.onData((data) => {
+    if (data === "/model") owner.caller.xterm.input("human");
+  });
+  try {
+    await owner.automated.sendInput("/model");
+    expect(signal.reason).toMatchObject({ code: "model_automation_failed" });
+    // Elwood's own writes in the same scope stay automated.
+    const next = owner.signal();
+    await owner.automated.sendInput("x");
+    expect(next.aborted).toBe(false);
+    expect(writes).toEqual(["/model", "human", "x"]);
+  } finally {
+    listener.dispose();
+    inner.dispose();
+  }
+});
