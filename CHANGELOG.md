@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `listModels` and `setModel` now read each picker frame they wait for while
+  opening and moving through the picker as soon as it renders, rather than at the
+  next 100 ms poll. They return sooner and hold the session's
+  input queue for less time. The poll remains as a fallback when no render
+  notification arrives.
 - Removing a Codex transcript that Elwood was reading now emits
   `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
   file is missing, and at the final flush if it is still gone, as a removed Claude

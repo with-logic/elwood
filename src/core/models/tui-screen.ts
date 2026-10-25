@@ -5,10 +5,13 @@
 
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
+import { RenderWakeup } from "../input/render-wakeup.ts";
 
 export type ScreenTerminal = {
   sendInput(data: string | Uint8Array): void | Promise<void>;
   snapshot(): { readonly text: string };
+  /** Subscribes to completed renders, when the terminal can report them (`waitForScreen`). */
+  readonly subscribeRender?: ((listener: () => void) => () => void) | undefined;
 };
 
 export const defaultModelTimeoutMs = 20_000;
@@ -16,7 +19,10 @@ const pollMs = 100;
 const openNudgeDelayMs = 2_000;
 
 /**
- * Polls until `test` passes, the deadline elapses, or `signal` aborts.
+ * Polls until `test` passes, the deadline elapses, or `signal` aborts. A terminal that
+ * reports completed renders (`subscribeRender`) is also read on each one, so a frame is
+ * seen as soon as it lands rather than up to one poll interval later; the poll still
+ * runs in case no render follows. The subscription lasts only as long as the wait.
  *
  * `signal` is the OPERATION's budget, shared by every phase; `timeoutMs` bounds this phase.
  * Without the signal a timed-out operation kept polling through each remaining phase's own
@@ -31,18 +37,28 @@ export async function waitForScreen(
   label: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    signal?.throwIfAborted();
-    const text = terminal.snapshot().text;
-    if (test(text)) {
+  const wakeup = new RenderWakeup(terminal.subscribeRender);
+  try {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
       signal?.throwIfAborted();
-      return text;
+      // Consumed BEFORE the read: a render that lands after it, even while `test` runs,
+      // leaves the wakeup set, so the wait below returns at once instead of missing it.
+      wakeup.consume();
+      const text = terminal.snapshot().text;
+      if (test(text)) {
+        signal?.throwIfAborted();
+        return text;
+      }
+      await (terminal.subscribeRender === undefined
+        ? delay(pollMs)
+        : wakeup.wait(undefined, pollMs));
     }
-    await delay(pollMs);
+    signal?.throwIfAborted();
+    throw elwoodError("model_automation_failed", `Timed out waiting for ${label}.`);
+  } finally {
+    wakeup.dispose();
   }
-  signal?.throwIfAborted();
-  throw elwoodError("model_automation_failed", `Timed out waiting for ${label}.`);
 }
 
 export async function openCommandScreen(input: {
