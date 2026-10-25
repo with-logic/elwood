@@ -260,9 +260,10 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   its `↑`-marked row (see the windowed list below). Any other caret or numbered row
   (`❯ 1. Yes`, `  1. Yes`, a staged `❯ 1. fix this  then that`) restarts the
   numbering, follows the blank or rule that separates the composer, or lacks the
-  column, and marks the region as someone else's. The block must also be COMPLETE before Elwood treats it as live:
-  every captured picker and reasoning screen carries at least two numbered rows and
-  a closing hint row (`Esc to cancel`, `esc to go back`). A header with neither —
+  column, and marks the region as someone else's. The block must also be COMPLETE
+  before Elwood treats it as live: every captured picker and reasoning screen carries
+  at least two numbered rows and a closing hint row (`Esc to cancel`, `esc to go
+  back`, `esc back`). A header with neither —
   a transcript quoting `Select model` above a trust or hook prompt, or above a
   reply's own numbered list — is a fragment, and Escaping it would dismiss the live
   prompt underneath. The CURSOR is deliberately not required: a complete picker
