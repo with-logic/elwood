@@ -234,7 +234,28 @@ only when its `prompt_id` matches that submit's.
 **Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
 sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
 evidence is a transcript `event_msg` `task_complete` carrying `error`, with
-`last_agent_message: null`, as first measured on 0.155.0.
+`last_agent_message: null`, as first measured on 0.155.0. The record's `turn_id`
+(and `root_turn_id`) equal the `UserPromptSubmit` `turn_id`. `error.message` is the
+service's raw JSON body (`{"type":"error","status":400,"error":{...,"code":
+"model_not_found"}}`, "…model is not supported when using Codex with a ChatGPT
+account."), and `error.codex_error_info` is `"other"`. The binary's
+`CodexErrorInfo` kinds are bare strings (`usage_limit_exceeded`, `bad_request`,
+`other`, …) or one-key objects for kinds with fields (`http_connection_failed`,
+`response_stream_connection_failed`, `response_stream_disconnected`, …). The
+screen still reached `ready` 1.4 s after the submit hook and 0.15 s before the record.
+
+On 0.164.0 the turn binds the submit's `turn_id`, and only a private `Stop` or a
+classified rendered completion ends it. A rejected turn has no `Stop`, so its end
+depended on the rendered path. In the A/B runs (load 60–100), `CodexSession.send`
+resolved `""` about 20 s after submission, and `elwood run` exited 0 with
+`"response": ""`, the same empty success 0.155.0 showed. In one earlier probe, run
+beside a full test suite at load ~100, `send` stayed pending for over five minutes
+and resolved `""` only when the CLI was killed. Elwood now
+reads a failed `task_complete` that names the accepted `turn_id` as that turn's
+native boundary (`confirmCodexRejection`) and fails it with `turn_failed`. The
+message is `error.message` and `details.agentError` is the `codex_error_info`
+kind. A second turn on the same session is rejected the same way, so the first
+released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
 
 ## Codex transcript replies
 

@@ -1,11 +1,12 @@
 /**
  * What an adapter's turn boundary carries, and the accessors the runner reads it with.
- * Implements PRD §5.8 / §10 / §12A and C-API-59: the completeness signal, plus OPTIONAL
- * evidence that the agent itself rejected the turn, surfaced as `turn_failed`. Separate from
- * the reader contract so the failure shape has one home.
+ * Implements PRD §5.8 / §10 / §12A and C-API-59 / C-API-60: the completeness signal, plus
+ * OPTIONAL evidence that the agent itself rejected the turn, surfaced as `turn_failed`.
+ * Separate from the reader contract so the failure shape has one home.
  */
 
 import { type ElwoodError, elwoodError } from "../errors.ts";
+import type { TurnGate } from "./turn-gate.ts";
 import type { TurnBoundaryHook } from "./turn-types.ts";
 
 /**
@@ -55,4 +56,40 @@ export function signalFailure(signal: BoundarySignal | undefined): TurnFailure |
 export function turnRejection(failure: TurnFailure): ElwoodError {
   const details = failure.agentError === undefined ? {} : { agentError: failure.agentError };
   return elwoodError("turn_failed", failure.message, details);
+}
+
+type BoundaryGate = Pick<TurnGate, "fail" | "expectText">;
+
+/**
+ * An untagged hook's boundary: its text is the completeness oracle, or its rejection fails the
+ * turn. An earlier turn's late rejection is not this turn's: only a rejection after this turn's
+ * own submission, which the adapter matches to it, fails the turn (C-API-59).
+ */
+export function settleHookBoundary(
+  gate: BoundaryGate,
+  signal: BoundarySignal | undefined,
+  acceptedBy: TurnBoundaryHook | undefined,
+): void {
+  const failure = signalFailure(signal);
+  if (!failure) gate.expectText(boundaryExpectation(signal));
+  else if (acceptedBy && (failure.belongsTo?.(acceptedBy) ?? true))
+    gate.fail(turnRejection(failure));
+}
+
+/**
+ * A native boundary already names this turn (its identity matched the turn id), so its
+ * rejection fails the turn outright; otherwise its text is the completeness oracle (C-API-60).
+ */
+export function settleNativeBoundary(gate: BoundaryGate, signal: BoundarySignal): void {
+  const failure = boundaryFailure(signal);
+  if (failure) gate.fail(turnRejection(failure));
+  else gate.expectText(boundaryText(signal));
+}
+
+const maxDiagnosticLength = 2_000;
+
+/** A nonblank agent diagnostic, bounded so a rejection message stays small (§6.1). */
+export function boundedDiagnostic(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  return value.length <= maxDiagnosticLength ? value : `${value.slice(0, maxDiagnosticLength)}…`;
 }
