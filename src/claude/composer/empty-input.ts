@@ -4,14 +4,9 @@ import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { loginRenewalNotice } from "../login/notice.ts";
 import { claudeComposerRow } from "../screen-table.ts";
 import { claudeNamedBorder } from "./border.ts";
-import { claudeManualModeFooter } from "./footer.ts";
+import { claudeComposerFooter, claudeFooterOverflow } from "./footer.ts";
 
 const rule = /^[─━]{3,}\s*$/;
-const mode =
-  /^\s*(?:-- INSERT -- )?(?:⏵⏵ (?:bypass permissions|don['’]t ask|auto mode) on \(shift\+tab to cycle\)|⏸ manual mode on)(?: · ← for agents)?(?: +[\d,.]+[kKmM]? tokens)?\s*$/;
-// Separate effort footer captured below collapsed text in Claude 2.1.281.
-const effort = /^\s*◐ medium · \/effort\s*$/;
-
 export function claudeEmptyInputFrame(terminal: ElwoodTerminal) {
   return emptyInputFrame(terminal, claudeEmptyInputRows);
 }
@@ -31,15 +26,12 @@ export function claudeEmptyInputRows(
   const below = rows.slice(cursorRow + 2).filter((row) => row.trim() !== "");
   return (
     (rows.some((row) => /Claude Code v[\d.]+/.test(row)) ||
-      below.some(
-        (row) => mode.test(row) || claudeManualModeFooter.test(row) || stagedFooter?.test(row),
-      )) &&
+      below.some((row) => claudeComposerFooter.test(row) || stagedFooter?.test(row))) &&
     below.every(
       (row) =>
-        mode.test(row) ||
-        claudeManualModeFooter.test(row) ||
+        claudeComposerFooter.test(row) ||
+        claudeFooterOverflow.test(row) ||
         loginRenewalNotice.test(row) ||
-        effort.test(row) ||
         stagedFooter?.test(row),
     )
   );

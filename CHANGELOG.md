@@ -31,6 +31,14 @@ back each entry are listed in `prd/14-conformance.md`.
   empty-input checks from matching: a named session in an untrusted folder
   stayed `blocked` after autotrust answered the trust prompt.
 
+- Claude sessions recognize their idle composer in every permission mode after
+  the version banner has scrolled away. Elwood accepted only the exact footers
+  captured earlier (auto mode and don't ask on 2.1.278, manual mode on 2.1.305).
+  On Claude Code 2.1.310 it missed bypass permissions, accept edits and plan mode,
+  footers that end in a token count or effort level, and footers that have
+  dropped the `← for agents` hint. In a long session, trust clearance, the
+  model-picker hold and empty-input checks then never saw the idle composer.
+
 ## [0.2.1] - 2026-10-24
 
 - Reduce median active Elwood CPU by 11.3% in the measured 50-session workload

@@ -1257,6 +1257,60 @@ session stayed `blocked` on the idle composer; in a trusted folder it reached `r
 through hooks and hid the gap. The top rule may now carry one inset label
 (`src/claude/composer/border.ts`). See `tests/fixtures/claude-2.1.310/`.
 
+### Claude permission-mode footers (2026-10-25)
+
+Startup-only captures from Claude Code 2.1.310 launched with each
+`--permission-mode`, with no model prompt sent. The footer is the row directly
+under the composer's bottom rule. With the developer's settings
+(`editorMode: "vim"`, `verbose: true`):
+
+```
+-- INSERT -- ⏸ manual mode on · ← for agents                        0 tokens
+-- INSERT -- ⏸ plan mode on (shift+tab to cycle) · ← for agents     0 tokens
+-- INSERT -- ⏵⏵ accept edits on (shift+tab to cycle) · ← for agents  0 tokens
+-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents    0 tokens
+-- INSERT -- ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents    0 tokens
+-- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents  0 tokens
+```
+
+The effort level (`● high · /effort`) sits on the next row. With
+`editorMode: "normal"` and `verbose: false` (passed through `--settings`, never
+written to user config) there is no `-- INSERT --` and no token count, and the
+effort level moves to the footer's right edge:
+`⏸ manual mode on · ? for shortcuts · ← for agents   ● high · /effort`. Only
+manual mode lacks `(shift+tab to cycle)`, and in this layout only manual mode
+shows `? for shortcuts`. A `default` launch renders `manual mode`. Vim normal mode,
+after an Escape at the idle composer, drops the `-- INSERT --` prefix. Each
+effort level has its own glyph: `○ low`, `◐ medium`, `● high`, `◉ xhigh`,
+`◈ max`.
+
+Some pieces are transient. Release notes embedded in the 2.1.310 binary say
+`← for agents` hides 10 seconds after a session opens. In the captures it was still present at 13 s
+and gone by 27 s. Late frames also lost the effort level: no effort row in the
+vim layout, an empty right edge in the plain one.
+
+Elwood accepted only the 2.1.278 auto and don't-ask footers with the agents hint
+and no right edge, plus the 2.1.305 manual footer. On 2.1.310 only the late
+plain manual footer, identical to 2.1.305's, still matched. Trust clearance then depended on the version banner, which
+scrolls out of the viewport in a long session. Model-picker hold release never
+saw the banner at all, because it reads only the last composer and the rows
+beneath it. Empty-input observation rejected every 2.1.310 effort row. The shared
+grammar is `src/claude/composer/footer.ts`, and trust clearance requires the
+footer directly under the bottom rule, so a quoted footer cannot pass for chrome.
+Sanitized 100x8 bannerless frames for every mode are in
+`tests/fixtures/claude-2.1.310/mode-footers/`. `tests/e2e/permission-footer-claude.e2e.ts`
+checks a real bypass-permissions session. C-TRUST-01, C-API-55, C-API-56.
+
+Narrow terminals are not covered. Below roughly 64 to 90 columns, depending on the
+mode and layout, Claude cuts the footer mid-hint, sometimes with an ellipsis:
+`⏵⏵ bypass permissions on (shift+tab to`, `(shift+tab to cycle) · ← fo…`,
+or just `⏵⏵ bypass permissions`. It also moves the token count and effort level
+onto their own rows. A cut footer does not prove the composer, so the hold stays
+until the terminal is widened. The hand-opened 2.1.310 picker itself
+(`● High effort ←/→ to adjust`, a `↓ 8.` scroll marker, `… +5 models`) falls
+outside the model-dialog grammar on `main` at the time of writing, so that
+grammar is the remaining gap before a foreign hold engages on it.
+
 ## Claude question editor captures (2026-10-20)
 
 Claude Code 2.1.305 accepts a single question on Enter. Grouped questions advance
