@@ -6,12 +6,11 @@
  * buffered only up to a bounded ceiling; a record past it is discarded through its
  * next newline so a no-newline giant line can't OOM or re-concatenate quadratically.
  *
- * Both adapters share these forward-read semantics verbatim. `readLiveChunk()` adds the
- * existence policy (§5.7, C-CLAUDE-24): until a stat has seen the file, ENOENT means "not
- * created yet"; after that it is a removal that throws for the caller's fs guard. Claude
- * reads through it everywhere and extends the base with a backward baseline-tail scan and
- * an async `needsScan`. `readChunk()` alone takes a missing file as empty, as Codex's
- * watcher reads it.
+ * Both adapters share these forward-read semantics verbatim, and every read goes through
+ * `readLiveChunk()`'s existence policy (§5.7, C-CLAUDE-24, C-CODEX-23): until a stat has
+ * seen the file, ENOENT means "not created yet"; after that it is a removal that throws for
+ * the caller's fs guard. Claude extends the base with a backward baseline-tail scan and an
+ * async `needsScan`.
  */
 
 import { statSync } from "node:fs";
@@ -102,9 +101,9 @@ export class BoundedTranscriptCursor {
 
   /**
    * Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed.
-   * `size` comes from the caller's stat; the default reads a missing file as empty.
+   * `size` comes from the policy-aware stat that sized this read.
    */
-  readChunk(size = fileSize(this.path)): ChunkRead {
+  private readChunk(size: number): ChunkRead {
     // Truncation restarts from 0, but the offset is COMMITTED only after the read
     // succeeds, so a truncate-then-read throw doesn't replay already-emitted data.
     // The buffered partial line and any in-progress oversized discard belonged to

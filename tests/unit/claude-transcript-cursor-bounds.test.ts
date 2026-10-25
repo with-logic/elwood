@@ -113,16 +113,16 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     expect(() => new TranscriptCursor(join(file, "child.jsonl"))).toThrow();
   });
 
-  test("readChunk commits the offset only after a successful read (no replay)", () => {
+  test("readLiveChunk commits the offset only after a successful read (no replay)", () => {
     // The offset must not be reset before the read succeeds. Truncate to empty,
     // read (empty), then regrow: the new content emits once, and the pre-truncate
     // content is never re-read — the offset commit is atomic with the read.
     const path = tmpFile();
     writeFileSync(path, "one\ntwo\n");
     const cursor = new TranscriptCursor(path); // baselines at EOF (offset = 8)
-    expect(cursor.readChunk()).toEqual({ text: "", canContinueNow: false }); // nothing new
+    expect(cursor.readLiveChunk()).toEqual({ text: "", canContinueNow: false }); // nothing new
     writeFileSync(path, ""); // truncate to empty: size (0) < offset (8) → from 0
-    expect(cursor.readChunk()).toEqual({ text: "", canContinueNow: false });
+    expect(cursor.readLiveChunk()).toEqual({ text: "", canContinueNow: false });
     writeFileSync(path, "three\n"); // regrow
     expect(drainAll(cursor)).toBe("three\n"); // only the new content, no replay
   });
@@ -143,7 +143,7 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
       throw Object.assign(new Error("EIO"), { code: "EIO" }); // fail the truncation read
     });
     // The read throws; a pre-fix impl already reset the offset to 0 by now.
-    expect(() => cursor.readChunk()).toThrow("EIO");
+    expect(() => cursor.readLiveChunk()).toThrow("EIO");
     // Regrow past the old offset. Fixed: offset still 15 → reads only "DD\n".
     // Pre-fix: offset 0 → would replay "aaaa\n...\nDD\n". Assert no replay.
     writeFileSync(path, "aaaa\nbbbb\ncccc\nDD\n"); // 18 bytes

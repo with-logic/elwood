@@ -50,7 +50,7 @@ export function fakeEmitter(
 export function drainAll(cursor: TranscriptCursor): string {
   let out = "";
   for (let budget = 1000; budget > 0; budget--) {
-    const { text, canContinueNow } = cursor.readChunk();
+    const { text, canContinueNow } = cursor.readLiveChunk();
     out += text;
     if (!canContinueNow) break;
   }
