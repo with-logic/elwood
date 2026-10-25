@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Elwood now runs at most 8 login-shell probes (`--version`, `--help`, `update`,
+  and PATH lookups) at once in a process; more wait their turn, and a probe's time
+  bounds start when it runs. Each probe starts an interactive login shell, and with
+  a heavy shell profile many at once slowed every one of them.
+
 - A `claude --version` or `codex --version` check that fails (it exits nonzero,
   times out, or cannot start) no longer fails every later start of that adapter
   in the process. Elwood kept the failed result and replayed it as the same
