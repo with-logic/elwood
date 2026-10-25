@@ -8,6 +8,7 @@ import type { BoundarySignal } from "./boundary-signal.ts";
 
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
 import type { ImageInput } from "../images/types.ts";
+import { sanitizePasteText } from "../input/sanitize.ts";
 import type { TurnEvent } from "./events.ts";
 import type { NativeTurnReader } from "./turn-identity.ts";
 
@@ -39,8 +40,9 @@ export type TurnBoundaryContract = {
  * are DISTINCT: `undefined` means "not a turn boundary" (the runner ignores the event — an
  * installed oracle stays installed), while a `BoundarySignal` means "a turn boundary whose
  * expected final assistant text is this" — an EMPTY string is a boundary that carries no text
- * (`null`/absent `last_assistant_message`, e.g. `StopFailure`) and clears the oracle →
- * quiet-window settle.
+ * (`null`/absent `last_assistant_message`) and clears the oracle → quiet-window settle. The
+ * object form also reports that the agent REJECTED the turn (Claude `StopFailure`), which fails
+ * it with `turn_failed`.
  * This is the ONE seam where adapter hook shape meets the adapter-neutral runner: `runTurn`
  * consumes only this normalized signal, never raw `hook_event_name`/`last_assistant_message`, so
  * the core is not coupled to adapter hook fields. Each `SessionBase` subclass supplies its own
@@ -61,10 +63,21 @@ export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: strin
 export const defaultBoundarySignal: BoundarySignalReader = (event) =>
   event.hook_event_name === "Stop" ? (event.last_assistant_message ?? "") : undefined;
 
-/** Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. */
+/**
+ * Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. The agent
+ * echoes the text Elwood pasted, which is the prompt with control characters removed (§5.3).
+ */
 export const defaultAcceptanceSignal: AcceptanceSignalReader = (event, prompt) =>
   event.hook_event_name === "Stop" ||
-  (event.hook_event_name === "UserPromptSubmit" && event.prompt === prompt);
+  (event.hook_event_name === "UserPromptSubmit" && event.prompt === sanitizePasteText(prompt));
+
+/** A submit hook's identity without its prompt, which can be large and is not read again. */
+export function submitIdentity({
+  prompt: _prompt,
+  ...identity
+}: TurnBoundaryHook): TurnBoundaryHook {
+  return identity;
+}
 
 /**
  * Compile-time conformance probe: `true` only if `T` declares every `TurnBoundaryContract` key

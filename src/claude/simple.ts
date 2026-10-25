@@ -9,7 +9,7 @@
 import { assertClaudeHighTrust } from "../core/high-trust.ts";
 import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
-import { type AssertStopBoundary, defaultBoundarySignal } from "../core/simple/turn.ts";
+import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
@@ -17,6 +17,7 @@ import type {
   Unsubscribe,
 } from "../core/types.ts";
 import type { ClaudeHookEventFor } from "./hooks/events.ts";
+import { claudeBoundarySignal } from "./hooks/stop-failure.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
 import { startClaude } from "./session/index.ts";
 import type { ClaudeSessionApi } from "./session/interface.ts";
@@ -53,8 +54,8 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
     return startClaude(this.options);
   }
 
-  /** Claude's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
-  protected readBoundarySignal = defaultBoundarySignal;
+  /** `Stop` carries the completeness text; `StopFailure` rejects the turn (C-API-59). */
+  protected readBoundarySignal = claudeBoundarySignal;
 
   /** Typed event subscription over the Claude event map (buffered before start). */
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe {
