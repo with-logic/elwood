@@ -16,14 +16,21 @@ export function byteLen(text: string): number {
 }
 
 export function fileSize(path: string): number {
-  // One stat, no exists-then-stat TOCTOU window: ENOENT means "no file yet" (size
-  // 0); any other error propagates to the caller's fs guard. The errno is read via
-  // `errnoCode` (object-ness narrowed first) so a thrown null/non-Error is
-  // preserved and rethrown, never replaced by a secondary TypeError (C-ERR-01).
+  return observedSize(path) ?? 0;
+}
+
+/**
+ * The file's size from one stat, or `undefined` when it does not exist. One stat, no
+ * exists-then-stat TOCTOU window: any other error propagates to the caller's fs guard.
+ * The errno is read via `errnoCode` (object-ness narrowed first) so a thrown
+ * null/non-Error is preserved and rethrown, never replaced by a secondary TypeError
+ * (C-ERR-01).
+ */
+export function observedSize(path: string): number | undefined {
   try {
     return statSync(path).size;
   } catch (error) {
-    if (errnoCode(error) === "ENOENT") return 0;
+    if (errnoCode(error) === "ENOENT") return undefined;
     throw error;
   }
 }

@@ -40,6 +40,10 @@ back each entry are listed in `prd/14-conformance.md`.
   limit now counts only time the prompt is on screen. Queued input is still
   held until Claude's composer appears.
 
+- A fresh Claude session no longer emits `transcript_read_error` (`ENOENT`) while it waits
+  for its first turn. Claude names its transcript at startup but writes the file only once
+  a turn begins, and Elwood had reported each poll of the missing file as a read error.
+  Removing a transcript after it existed still warns, as does any other read failure.
 - `listModels` and `setModel` no longer send a picker key into a prompt that has
   reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
   answer and Escape is now decided after every received byte is rendered, like

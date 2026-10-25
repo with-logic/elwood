@@ -48,9 +48,10 @@ export class BoundedTranscriptCursor {
   // (and including) the next newline instead of buffering them.
   private discarding = false;
 
-  constructor(path: string) {
+  /** `offset` is where reading starts: the file's current end unless the caller observed it. */
+  constructor(path: string, offset = fileSize(path)) {
     this.path = path;
-    this.offset = fileSize(path);
+    this.offset = offset;
   }
 
   /** Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed. */

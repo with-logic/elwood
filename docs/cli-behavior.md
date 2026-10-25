@@ -1075,11 +1075,18 @@ five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
 - When Elwood itself runs nested inside a Claude Code session (`CLAUDECODE` and
   `CLAUDE_CODE_*` set), claude >= 2.1.201 skips transcript persistence for the
   nested instance; a headless run then fails `wait_timeout` ("transcript did not
-  catch up after ready") and floods `transcript_read_error (ENOENT)`. The e2e
-  helper strips those variables; do the same for manual smoke runs.
-- Even outside nesting, one `transcript_read_error (ENOENT)` warning appears at
-  Claude startup before the first turn creates the transcript file. It is
-  pre-existing run behavior, not specific to `models`.
+  catch up after ready"). The e2e helper strips those variables; do the same
+  for manual smoke runs.
+- **Claude 2.1.310 creates the transcript file only when the first turn is
+  submitted (2026-10-25).** `SessionStart` already carries `transcript_path`, but
+  the file was still absent 4 s after `ready` in every probe and appeared about
+  1 s after the first prompt. Elwood used to report each 500 ms poll of that
+  missing file as `transcript_read_error (ENOENT)`: 12–13 warnings per session
+  with a 4 s idle, and a flood when nested persistence never creates the file.
+  The Claude cursor now treats ENOENT as "not created yet" until a stat has
+  seen the file. ENOENT after that, and any other read error, still warns.
+  Codex never warned here: its shared cursor's `fileSize` already maps ENOENT
+  to an empty file. C-CLAUDE-24.
 
 `elwood sessions` reports `live` from the presence of a `.sock` file in the
 session's stable socket home. A connect probe was rejected on purpose: the

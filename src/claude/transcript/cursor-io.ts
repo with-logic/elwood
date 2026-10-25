@@ -13,6 +13,7 @@ export {
   type ByteReader,
   byteLen,
   fileSize,
+  observedSize,
   type RangeRead,
   readBytes,
   readRange,
