@@ -5,11 +5,12 @@ import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { ComposerCleanup, stageComposer } from "../../src/core/input/composer-cleanup.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
+import { synchronousRender } from "../helpers/synchronous-render.ts";
 
 afterEach(() => vi.useRealTimers());
 
 function setup() {
-  const terminal = { snapshot: () => ({ text: "❯ " }), sendInput: vi.fn() };
+  const terminal = { ...synchronousRender, snapshot: () => ({ text: "❯ " }), sendInput: vi.fn() };
   const closing = new AbortController();
   let blocked = true;
   const cleanup = new ComposerCleanup(
