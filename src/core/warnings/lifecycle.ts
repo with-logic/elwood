@@ -1,5 +1,5 @@
 /**
- * Lifecycle warning shapes split out of the main warning union (§6.4, §9.2) to
+ * Lifecycle warning shapes split out of the main warning union (§5.7, §6.4, §9.2) to
  * keep `index.ts` under the file-size cap. These are ordinary `ElwoodWarningEvent` members.
  */
 
@@ -50,3 +50,18 @@ export type InitialReadyObserverFailedWarning = {
 };
 
 export type ObserverFailureWarning = HookObserverFailedWarning | InitialReadyObserverFailedWarning;
+
+/**
+ * Content-free: `stop`/`teardown` saw no record of the turn its `Stop` hook ended within
+ * the full bound and is about to shut Codex down, so that turn may be lost (§5.7,
+ * C-LIFE-13).
+ */
+export type TurnCommitWaitExpiredWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "turn_commit_wait_expired";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: string;
+};

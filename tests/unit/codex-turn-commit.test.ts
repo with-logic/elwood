@@ -1,15 +1,28 @@
 /**
  * The bounded wait that holds a graceful Codex shutdown for the turn's commit
- * (PRD §5.7, C-LIFE-13): which transcript records release it, and its bound.
+ * (PRD §5.7, C-LIFE-13): which transcript records release it, its bound, and the
+ * report when the bound ends it.
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexTurnCommit, turnCommitWaitMs } from "../../src/codex/session/turn-commit.ts";
+import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 
 const never = new Promise<never>(() => undefined);
 
-function commit(within: (timeoutMs: number) => Promise<boolean> = () => never) {
+type Warnings = readonly ElwoodWarningEvent[];
+
+/** The session's `emitWarnings` defaults to recording each warning's code in `order`. */
+function commit(
+  within: (timeoutMs: number) => Promise<boolean> = () => never,
+  emitWarnings?: (warnings: Warnings) => void,
+) {
   const order: string[] = [];
-  const turn = new CodexTurnCommit(() => order.push("poll"), { within });
+  const session = {
+    elwoodSessionId: "s1",
+    emitWarnings:
+      emitWarnings ?? ((warnings: Warnings) => order.push(...warnings.map((w) => w.code))),
+  };
+  const turn = new CodexTurnCommit(() => order.push("poll"), { within }, session);
   const shutdown = () => {
     order.push("shutdown");
     return Promise.resolve();
@@ -82,7 +95,7 @@ test("C-LIFE-13 a blocked Stop releases the wait for its turn only", async () =>
   expect(order.at(-1)).toBe("shutdown");
 });
 
-test("C-LIFE-13 the wait is bounded, and a turn not recorded in time is not waited for again", async () => {
+test("C-LIFE-13 the bound ends the wait and is reported, and that turn is not waited for again", async () => {
   const bounds: number[] = [];
   const { turn, order, shutdown } = commit((timeoutMs) => {
     bounds.push(timeoutMs);
@@ -92,9 +105,34 @@ test("C-LIFE-13 the wait is bounded, and a turn not recorded in time is not wait
   await turn.beforeShutdown(shutdown);
   expect(bounds).toEqual([turnCommitWaitMs]);
   expect(turnCommitWaitMs).toBe(2_000);
+  expect(order.slice(-2)).toEqual(["turn_commit_wait_expired", "shutdown"]);
   order.length = 0;
   void turn.beforeShutdown(shutdown);
   expect(order).toEqual(["shutdown"]);
+});
+
+test("C-LIFE-13 neither the CLI's exit nor the turn's record is reported as expiry", async () => {
+  const exited = commit(() => Promise.resolve(true));
+  exited.turn.expect("t1");
+  await exited.turn.beforeShutdown(exited.shutdown);
+  const recorded = commit();
+  recorded.turn.expect("t1");
+  const done = recorded.turn.beforeShutdown(recorded.shutdown);
+  recorded.turn.observe({ payload: { type: "task_complete", turn_id: "t1" } });
+  await done;
+  expect([...exited.order, ...recorded.order]).not.toContain("turn_commit_wait_expired");
+});
+
+test("C-LIFE-13 a failing expiry report does not keep Codex running", async () => {
+  const { turn, order, shutdown } = commit(
+    () => Promise.resolve(false),
+    () => {
+      throw new Error("warning listener failed");
+    },
+  );
+  turn.expect("t1");
+  await turn.beforeShutdown(shutdown);
+  expect(order.at(-1)).toBe("shutdown");
 });
 
 test("C-LIFE-13 a newer Stop replaces the pending turn", async () => {
@@ -104,4 +142,17 @@ test("C-LIFE-13 a newer Stop replaces the pending turn", async () => {
   const done = turn.beforeShutdown(shutdown);
   turn.observe({ payload: { type: "task_complete", turn_id: "t2" } });
   await expect(done).resolves.toBeUndefined();
+});
+
+test("C-LIFE-13 overlapping shutdowns share one wait and one expiry report", async () => {
+  let waits = 0;
+  const { turn, order, shutdown } = commit(() => {
+    waits += 1;
+    return Promise.resolve(false);
+  });
+  turn.expect("t1");
+  await Promise.all([turn.beforeShutdown(shutdown), turn.beforeShutdown(shutdown)]);
+  expect(waits).toBe(1);
+  expect(order.filter((step) => step === "turn_commit_wait_expired")).toHaveLength(1);
+  expect(order.filter((step) => step === "shutdown")).toHaveLength(2);
 });

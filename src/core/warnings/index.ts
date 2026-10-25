@@ -41,6 +41,7 @@ export type ElwoodWarningEvent =
     }
   | lifecycle.AgentUpdateFailedWarning
   | lifecycle.ObserverFailureWarning
+  | lifecycle.TurnCommitWaitExpiredWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";
