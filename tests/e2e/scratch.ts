@@ -62,6 +62,21 @@ export function codexAuthMissing(): string | undefined {
 }
 
 /**
+ * Creates the private Codex home `home`: a 0600 copy of the user's `auth.json` and the given
+ * `config.toml`, whose path it returns. Filesystem only; callers decide who names the home.
+ */
+export function seedCodexHome(home: string, config: string): string {
+  if (!existsSync(codexAuthPath)) throw new Error(codexAuthMissing());
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  const authCopy = join(home, "auth.json");
+  copyFileSync(codexAuthPath, authCopy);
+  chmodSync(authCopy, 0o600);
+  const configPath = join(home, "config.toml");
+  writeFileSync(configPath, config);
+  return configPath;
+}
+
+/**
  * Points `CODEX_HOME` at a private directory under `project.cwd` holding a 0600 copy of
  * the user's `auth.json` and the given `config.toml`. Tear sessions down BEFORE
  * `dispose()`: it removes the sandbox, so an in-flight session could otherwise
@@ -69,14 +84,8 @@ export function codexAuthMissing(): string | undefined {
  * beyond the auth copy.
  */
 export function sandboxedCodexHome(project: E2eProject, config: string): CodexSandbox {
-  if (!existsSync(codexAuthPath)) throw new Error(codexAuthMissing());
   const home = join(project.cwd, "codex-home");
-  mkdirSync(home, { recursive: true, mode: 0o700 });
-  const authCopy = join(home, "auth.json");
-  copyFileSync(codexAuthPath, authCopy);
-  chmodSync(authCopy, 0o600);
-  const configPath = join(home, "config.toml");
-  writeFileSync(configPath, config);
+  const configPath = seedCodexHome(home, config);
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = home;
   return {
