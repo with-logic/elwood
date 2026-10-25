@@ -6,8 +6,10 @@
  * walk (`pgrep -P`) cannot find it afterwards — but node-pty starts the leader
  * as its own session/process-group leader, and group membership is inherited
  * and survives reparenting. So we reap by SIGKILLing the leader's process group,
- * which reaches every descendant in one in-process syscall: no subprocess, no
- * PATH lookup, no post-exit reparenting blind spot.
+ * which reaches every descendant still IN that group in one in-process syscall: no
+ * subprocess, no PATH lookup, no post-exit reparenting blind spot. A descendant that
+ * started its own group is outside it: Claude and Codex start every hook with
+ * `setsid()` (docs/cli-behavior.md, "Hook and MCP process groups").
  */
 
 import { errnoCode } from "../../core/errors.ts";
