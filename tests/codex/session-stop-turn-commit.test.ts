@@ -107,10 +107,13 @@ test("C-LIFE-13 a transcript read failure during the wait is reported, and the b
   const { shutdown } = await shutdownAtReady(session, cwd, "stop", path);
   failScans();
   // Contained, not an uncaught exception from the wait's poll timer.
-  await vi.waitFor(() => {
-    if (!warnings.some((warning) => warning.code === "transcript_poll_stopped"))
-      throw new Error("no transcript_poll_stopped warning");
-  });
+  await vi.waitFor(
+    () => {
+      if (!warnings.some((warning) => warning.code === "transcript_poll_stopped"))
+        throw new Error("no transcript_poll_stopped warning");
+    },
+    { timeout: 5_000 }, // the wait's poll runs on a real timer
+  );
   expect(ptys[0]!.killSignals).toEqual([]);
   await shutdown;
   expect(ptys[0]!.killSignals).toEqual(["SIGTERM"]);
