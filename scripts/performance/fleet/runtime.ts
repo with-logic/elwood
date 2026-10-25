@@ -11,7 +11,7 @@ import {
   setPlatformForTests,
   setPtyFactoryForTests,
 } from "../../../src/runtime/seams.ts";
-import { setGroupKillerForTests } from "../../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../../src/runtime/shutdown/reap-tree.ts";
 import { setStartupWaitMsForTests } from "../../../src/runtime/startup/index.ts";
 import { FakePty } from "../../../tests/helpers/fake-pty.ts";
 
@@ -24,7 +24,7 @@ export async function createFleet(count: number) {
   const sessions: ElwoodAgentSession[] = [];
   setPlatformForTests("darwin");
   setStartupWaitMsForTests(1);
-  setGroupKillerForTests({
+  setProcessTreeOpsForTests({
     killGroup() {
       /* Producer PIDs are synthetic; never signal user processes. */
     },

@@ -12,8 +12,11 @@
 
 import { errnoCode } from "../../core/errors.ts";
 
-/** Injectable so tests never signal real process groups; production uses `process.kill`. */
-export type ProcessGroupKiller = {
+/**
+ * The process-tree operations teardown performs, injectable so tests never signal real
+ * processes. Production SIGKILLs with `process.kill`.
+ */
+export type ProcessTreeOps = {
   /** SIGKILLs the process group `pgid` (via `kill(-pgid)`); tolerates an empty/dead group. */
   readonly killGroup: (pgid: number) => void;
 };
@@ -46,12 +49,12 @@ function isReapableGroupId(pgid: number): boolean {
  * (leader and children exited together) is the normal case and its `ESRCH` is
  * swallowed; a real kill failure such as `EPERM` propagates.
  */
-export function reapProcessGroup(leaderPid: number, ops: ProcessGroupKiller = activeKiller): void {
+export function reapProcessGroup(leaderPid: number, ops: ProcessTreeOps = activeOps): void {
   if (!isReapableGroupId(leaderPid)) return;
   ops.killGroup(leaderPid);
 }
 
-const defaultKiller: ProcessGroupKiller = {
+const defaultOps: ProcessTreeOps = {
   killGroup(pgid: number): void {
     try {
       process.kill(-pgid, "SIGKILL");
@@ -61,17 +64,17 @@ const defaultKiller: ProcessGroupKiller = {
   },
 };
 
-// The killer used when a caller does not inject one. A test seam so session
-// lifecycle tests can observe (and neutralize) the group SIGKILL without a real
-// signal, and without every session/terminate call site taking a killer param.
-let activeKiller: ProcessGroupKiller = defaultKiller;
+// The ops used when a caller does not inject them. A test seam so session lifecycle
+// tests can observe (and neutralize) the group SIGKILL without a real signal, and
+// without every session/terminate call site taking an ops param.
+let activeOps: ProcessTreeOps = defaultOps;
 
-export function setGroupKillerForTests(killer: ProcessGroupKiller): void {
-  activeKiller = killer;
+export function setProcessTreeOpsForTests(ops: ProcessTreeOps): void {
+  activeOps = ops;
 }
 
-export function resetGroupKillerForTests(): void {
-  activeKiller = defaultKiller;
+export function resetProcessTreeOpsForTests(): void {
+  activeOps = defaultOps;
 }
 
 /**
@@ -99,10 +102,10 @@ export function rethrowUnlessGroupGone(error: unknown): void {
  */
 export class SessionReaper {
   private readonly leaderPid: number;
-  private readonly ops: ProcessGroupKiller;
+  private readonly ops: ProcessTreeOps;
   private done = false;
 
-  constructor(leaderPid: number, ops: ProcessGroupKiller = activeKiller) {
+  constructor(leaderPid: number, ops: ProcessTreeOps = activeOps) {
     this.leaderPid = leaderPid;
     this.ops = ops;
   }
