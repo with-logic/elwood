@@ -19,7 +19,7 @@ describe("C-LIFE-10 sweep failures", () => {
     const groups = Array.from({ length: 20 }, (_, index) => 7000 + index);
     failures.record("could not stop a live descendant group", undefined, groups);
     failures.record("could not stop a live descendant group", undefined, [7000]);
-    expect(failures.result()?.groups).toEqual(groups.slice(0, MAX_REPORTED_GROUPS));
+    expect(failures.result()?.processGroupIds).toEqual(groups.slice(0, MAX_REPORTED_GROUPS));
   });
 
   test("keeps the first errno-shaped token and drops raw error text", () => {
@@ -31,7 +31,7 @@ describe("C-LIFE-10 sweep failures", () => {
       message:
         "Could not reap detached descendants: process table unreadable (ETIMEDOUT); could not kill a stopped descendant group (EPERM)",
       code: "ETIMEDOUT",
-      groups: [7001],
+      processGroupIds: [7001],
     });
   });
 });

@@ -9,8 +9,8 @@ import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 
 export const LEADER = 5000;
 
-/** A `leaderExited` that never sees the exit. */
-export const alive = (): boolean => false;
+/** A `leaderExited` predicate that never reports the leader's exit. */
+export const leaderNeverExits = (): boolean => false;
 
 export const leaderRow: ProcessEntry = {
   pid: LEADER,
@@ -20,11 +20,24 @@ export const leaderRow: ProcessEntry = {
   stopped: false,
 };
 
-/** A setsid hook heading its own group, under the leader unless `ppid` says otherwise. */
+/**
+ * A descendant row: by default a setsid hook heading its own group under the leader,
+ * running. `pgid`, `ppid`, and the state can each be set to model a multi-process group.
+ */
 export const hook = (
   pid: number,
-  { zombie = false, ppid = LEADER }: { readonly zombie?: boolean; readonly ppid?: number } = {},
-): ProcessEntry => ({ pid, ppid, pgid: pid, zombie, stopped: false });
+  {
+    zombie = false,
+    ppid = LEADER,
+    pgid = pid,
+    stopped = false,
+  }: {
+    readonly zombie?: boolean;
+    readonly ppid?: number;
+    readonly pgid?: number;
+    readonly stopped?: boolean;
+  } = {},
+): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped });
 
 export const errno = (code: string): Error =>
   Object.assign(new Error(`raw ${code} detail`), { code });

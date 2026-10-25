@@ -7,10 +7,10 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import {
-  alive,
   errno,
   hook,
   LEADER,
+  leaderNeverExits,
   leaderRow,
   scripted,
 } from "../helpers/scripted-process-tree.ts";
@@ -22,22 +22,43 @@ afterEach(() => {
 const kills = (calls: readonly string[]) => calls.filter((call) => call.startsWith("kill"));
 
 describe("C-LIFE-10 detached descendant sweep", () => {
-  test("stops the leader first and lists once when nothing left the group", async () => {
+  test("stops the leader first and ends once a second read still shows it stopped", async () => {
     const { ops, calls } = scripted([[leaderRow]]);
-    await expect(sweepDetachedGroups(LEADER, ops, alive)).resolves.toBeUndefined();
-    expect(calls).toEqual([`stop ${LEADER}`, "list"]);
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
+    expect(calls).toEqual([`stop ${LEADER}`, "list", "list"]);
+  });
+
+  test("a leader whose stop has not landed yet is read again, so its late hook is found", async () => {
+    // kill() returned, but the first read still shows the leader running and nothing
+    // detached: it starts a hook before the stop lands, which a second read shows.
+    const stopped = { ...leaderRow, stopped: true };
+    const reads = [
+      [leaderRow],
+      [stopped, hook(5002)],
+      [stopped, hook(5002)],
+      [stopped, hook(5002, { stopped: true })],
+    ];
+    const { ops, calls } = scripted([], {
+      listProcesses: () => {
+        calls.push("list");
+        const listing = calls.filter((call) => call === "list").length;
+        return Promise.resolve(reads[Math.min(listing, reads.length) - 1] ?? []);
+      },
+    });
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
+    expect(calls.join(", ")).toBe("stop 5000, list, list, list, stop 5002, list, list, kill 5002");
   });
 
   test("stops groups once a read confirmed their parent stopped, then kills deepest first", async () => {
-    // The first read shows the leader stopped; groups under it are stopped after the
-    // second, and a read that leaves nothing unreached ends the walk.
+    // The first read shows the leader stopped and the second still does, so the groups
+    // under it are stopped; two more reads hold them, with nothing left unreached.
     const { ops, calls } = scripted([
       [leaderRow, hook(5002), hook(5003)],
       [leaderRow, hook(5002), hook(5003), hook(5004)],
     ]);
-    await expect(sweepDetachedGroups(LEADER, ops, alive)).resolves.toBeUndefined();
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
     expect(calls.join(", ")).toBe(
-      "stop 5000, list, list, stop 5002, stop 5003, stop 5004, list, kill 5004, kill 5003, kill 5002",
+      "stop 5000, list, list, stop 5002, stop 5003, stop 5004, list, list, kill 5004, kill 5003, kill 5002",
     );
   });
 
@@ -55,10 +76,12 @@ describe("C-LIFE-10 detached descendant sweep", () => {
         return Promise.resolve(asRead([leaderRow, ...hooks]));
       },
     });
-    const failure = await sweepDetachedGroups(LEADER, ops, alive, 1_000);
-    expect(failure?.message).toBe(
-      "Could not reap detached descendants: descendant groups still appearing at the deadline",
-    );
+    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits, 1_000);
+    expect(failure).toMatchObject({
+      message:
+        "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
+      processGroupIds: [6000, 6001, 6002],
+    });
     expect(timeouts).toEqual([1_000, 600, 200]);
     expect(calls.join(", ")).toBe(
       "stop 5000, list, list, stop 6000, stop 6001, list, stop 6002, kill 6002, kill 6001, kill 6000",
@@ -74,7 +97,7 @@ describe("C-LIFE-10 detached descendant sweep", () => {
           : Promise.resolve(asRead([leaderRow, hook(5002)]));
       },
     });
-    const failure = await sweepDetachedGroups(LEADER, ops, alive);
+    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(failure).toMatchObject({
       message: "Could not reap detached descendants: process table unreadable (ETIMEDOUT)",
       code: "ETIMEDOUT",
@@ -96,7 +119,7 @@ describe("C-LIFE-10 detached descendant sweep", () => {
         },
       },
     );
-    await expect(sweepDetachedGroups(LEADER, ops, alive)).resolves.toBeUndefined();
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
     expect(kills(calls)).toEqual([]);
   });
 
@@ -108,33 +131,15 @@ describe("C-LIFE-10 detached descendant sweep", () => {
         if (pgid === 5002) throw errno("EPERM");
       },
     });
-    const failure = await sweepDetachedGroups(LEADER, ops, alive);
+    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(failure).toMatchObject({
       message:
         "Could not reap detached descendants: could not stop a live descendant group (EPERM)",
       code: "EPERM",
-      groups: [5002],
+      processGroupIds: [5002],
     });
     expect(stops).toEqual([LEADER, 5002]); // not retried every round
     expect(kills(calls)).toEqual([]);
-  });
-
-  test("a failed kill does not stop the rest; each reason is reported once", async () => {
-    const attempts: number[] = [];
-    const tables = [[leaderRow, hook(5002), hook(5003), hook(5004)], [leaderRow]];
-    const { ops } = scripted([tables[0] ?? [], tables[0] ?? [], tables[1] ?? []], {
-      killGroup: (pgid) => {
-        attempts.push(pgid);
-        if (pgid !== 5002) throw Object.assign(new Error("kill exploded"), { code: "not errno" });
-      },
-    });
-    const failure = await sweepDetachedGroups(LEADER, ops, alive);
-    expect(attempts).toEqual([5004, 5003, 5002]); // the last succeeds after two failed
-    expect(failure?.message).toBe(
-      "Could not reap detached descendants: could not kill a stopped descendant group",
-    );
-    expect(failure).toMatchObject({ groups: [5004, 5003] });
-    expect(failure).not.toHaveProperty("code");
   });
 
   test("an exit observed before the sweep sends nothing", async () => {

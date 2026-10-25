@@ -9,10 +9,10 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import {
-  alive,
   errno,
   hook,
   LEADER,
+  leaderNeverExits,
   leaderRow,
   scripted,
 } from "../helpers/scripted-process-tree.ts";
@@ -27,9 +27,9 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     // once 5002's stop landed, so 5002 could not have reaped it and freed its id.
     const tree = [leaderRow, hook(5002), hook(5004, { ppid: 5002 })];
     const { ops, calls } = scripted([tree]);
-    await expect(sweepDetachedGroups(LEADER, ops, alive)).resolves.toBeUndefined();
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
     expect(calls.join(", ")).toBe(
-      "stop 5000, list, list, stop 5002, list, list, stop 5004, list, kill 5004, kill 5002",
+      "stop 5000, list, list, stop 5002, list, list, stop 5004, list, list, kill 5004, kill 5002",
     );
   });
 
@@ -43,13 +43,45 @@ describe("C-LIFE-10 detached sweep ownership", () => {
         return Promise.resolve([leaderRow, hook(5002)]); // the leader never reads stopped
       },
     });
-    const failure = await sweepDetachedGroups(LEADER, ops, alive, 1_000);
+    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits, 1_000);
     expect(failure).toMatchObject({
       message:
-        "Could not reap detached descendants: descendant groups still appearing at the deadline",
-      groups: [5002],
+        "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
+      processGroupIds: [5002, LEADER],
     });
     expect(calls.join(", ")).toBe("stop 5000, list, list, list");
+  });
+
+  test("only the specific parent, held across consecutive reads, anchors a group", async () => {
+    // Group 7000 has two members: its head 7000 and 7001, the parent of group 7100. 7001
+    // reads running after its group's stop, then stopped, then running again: neither
+    // its group's other member nor a stale observation may anchor 7100.
+    const head = (stopped: boolean) => hook(7000, { stopped });
+    const parent = (stopped: boolean) => hook(7001, { ppid: 7000, pgid: 7000, stopped });
+    const child = (stopped = false) => hook(7101, { ppid: 7001, pgid: 7100, stopped });
+    const held = { ...leaderRow, stopped: true };
+    const reads = [
+      [held, head(false), parent(false), child()],
+      [held, head(false), parent(false), child()],
+      [held, head(true), parent(false), child()], // 7000 stopped; 7001 not yet
+      [held, head(true), parent(true), child()], // 7001 stopped for the first time
+      [held, head(true), parent(false), child()], // 7001 running again
+      [held, head(true), parent(true), child()], // stopped, but the last read had it running
+      [held, head(true), parent(true), child()], // held: 7100 is stopped now
+      [held, head(true), parent(true), child(true)],
+      [held, head(true), parent(true), child(true)],
+    ];
+    const { ops, calls } = scripted([], {
+      listProcesses: () => {
+        calls.push("list");
+        const listing = calls.filter((call) => call === "list").length;
+        return Promise.resolve(reads[Math.min(listing, reads.length) - 1] ?? []);
+      },
+    });
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
+    expect(calls.join(", ")).toBe(
+      "stop 5000, list, list, stop 7000, list, list, list, list, list, stop 7100, list, list, kill 7100, kill 7000",
+    );
   });
 
   test("a group under a parent group that refused its stop is never signaled", async () => {
@@ -60,11 +92,11 @@ describe("C-LIFE-10 detached sweep ownership", () => {
         if (pgid === 5002) throw errno("EPERM");
       },
     });
-    const failure = await sweepDetachedGroups(LEADER, ops, alive);
+    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(failure).toMatchObject({
       message:
         "Could not reap detached descendants: could not stop a live descendant group (EPERM)",
-      groups: [5002],
+      processGroupIds: [5002],
     });
     expect(calls.join(", ")).toBe("stop 5000, list, list, stop 5002, list");
   });
@@ -77,11 +109,11 @@ describe("C-LIFE-10 detached sweep ownership", () => {
           throw thrown;
         },
       });
-      const failure = await sweepDetachedGroups(LEADER, ops, alive);
+      const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
       const token = thrown === undefined ? "" : " (EPERM)";
       expect(failure).toMatchObject({
         message: `Could not reap detached descendants: could not stop the leader's group${token}`,
-        groups: [5002],
+        processGroupIds: [5002],
       });
       expect(calls.join(", ")).toBe("stop 5000, list");
     }
@@ -93,7 +125,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
         throw errno("ESRCH");
       },
     });
-    await expect(sweepDetachedGroups(LEADER, ops, alive)).resolves.toBeUndefined();
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
     expect(calls).toEqual(["list"]);
   });
 
@@ -112,7 +144,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     expect(failure).toMatchObject({
       message:
         "Could not reap detached descendants: the leader exited before every descendant group was stopped",
-      groups: [5004],
+      processGroupIds: [5004],
     });
     expect(calls.join(", ")).toBe("stop 5000, list, list, stop 5002, list, kill 5002");
   });

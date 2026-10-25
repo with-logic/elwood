@@ -25,13 +25,16 @@ const realOps: SweepOps = {
   listProcesses: listProcessTable,
 };
 
-/** Reads the table until `pid`'s row satisfies `check`, for up to five seconds. */
+/** Reads the table until `pid`'s row satisfies `check`, for at most five seconds in all. */
 async function rowWhen(pid: number, check: (row: ProcessEntry | undefined) => boolean) {
-  const deadline = Date.now() + 5_000;
-  while (true) {
-    const row = (await listProcessTable(10_000)).find((entry) => entry.pid === pid);
-    if (check(row) || Date.now() > deadline) return row;
+  const deadline = performance.now() + 5_000;
+  let row: ProcessEntry | undefined;
+  for (let remainingMs = 5_000; remainingMs > 0; ) {
+    row = (await listProcessTable(remainingMs)).find((entry) => entry.pid === pid);
+    if (check(row)) return row;
+    remainingMs = Math.ceil(deadline - performance.now());
   }
+  return row;
 }
 
 describe("C-LIFE-10 detached sweep on real processes", () => {
@@ -60,8 +63,8 @@ describe("C-LIFE-10 detached sweep on real processes", () => {
         stopped: false,
       });
     } finally {
-      stopPair(pair);
       bystander.kill("SIGKILL");
+      await stopPair(pair);
     }
   }, 60_000);
 });
