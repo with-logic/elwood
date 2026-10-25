@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Removing a Codex transcript that Elwood was reading now emits
+  `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
+  file is missing, as a removed Claude transcript already does. Elwood used to
+  read the missing file as an empty, truncated one and say nothing, so a host lost
+  the session's transcript activity without a warning. A transcript that has not
+  been created yet still waits silently.
+
+
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has
   been the bottom of the screen across five readings at least 40 ms apart. Before,

@@ -8,8 +8,8 @@
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
-import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
+import { CodexTranscriptCursor } from "./cursor.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
 import { CodexLineEmitter } from "./emit.ts";
@@ -28,7 +28,7 @@ const defaultScanIntervalMs = 250; // poll cadence: transcript activity is not l
 const scanChunksPerScan = 16;
 
 export class CodexTranscriptWatcher {
-  private cursor: BoundedTranscriptCursor | undefined;
+  private cursor: CodexTranscriptCursor | undefined;
   private interval: ReturnType<typeof setInterval> | undefined;
   // A permanent terminal latch: once finished, no scan/flush/observe restarts it.
   private finished = false;
@@ -62,7 +62,7 @@ export class CodexTranscriptWatcher {
   observe(path: string): void {
     if (this.finished || this.cursor?.path === path) return;
     this.stop();
-    this.cursor = this.guard.read(path, () => new BoundedTranscriptCursor(path));
+    this.cursor = this.guard.read(path, () => new CodexTranscriptCursor(path));
     if (!this.cursor) return;
     // A scan() throw (a throwing drop/activity/warning listener) must not escape the
     // timer as an uncaught exception — contain it, stop, and route a bounded live
@@ -86,6 +86,8 @@ export class CodexTranscriptWatcher {
   scan(): void {
     const cursor = this.cursor;
     if (this.finished || !cursor) return;
+    // A transcript not created yet waits silently; one removed after it existed warns.
+    if (!this.guard.read(cursor.path, () => cursor.present())) return;
     const budget = { chunks: scanChunksPerScan };
     while (budget.chunks > 0) {
       budget.chunks -= 1;
