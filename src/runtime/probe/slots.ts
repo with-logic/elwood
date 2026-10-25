@@ -5,7 +5,13 @@
  * a shell for every probe at once and slow all of them. Implements PRD §9.2 and C-PERF-07.
  */
 
-/** At most this many probes run at once; the rest wait their turn in arrival order. */
+/**
+ * At most this many probes run at once; the rest wait their turn in arrival order. Eight keeps a
+ * heavy profile near 5 s per probe on a loaded 16-CPU host, against about 2 s at four and 7-19 s
+ * at sixteen, so a cold fleet still starts eight sessions at a time while each stays well inside
+ * its 60 s launch bound (C-PERF-05). The measurements are in docs/cli-behavior.md, "Probe shell
+ * startup under concurrency".
+ */
 export const maxConcurrentProbes = 8;
 
 let running = 0;
