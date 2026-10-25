@@ -163,7 +163,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     configPath,
   );
   const activeSession = bindTurnSubmission(session, observers);
-  bindStartupLifetime(activeSession, promptResponder, readiness);
+  bindStartupLifetime(activeSession, promptResponder, readiness, terminal);
   frameObserver.refresh();
   const sessionCleanup = activeSession.startupCleanupResources(readiness.ready.cancel);
   await guardStartupRegion(

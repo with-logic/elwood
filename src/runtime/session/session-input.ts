@@ -16,6 +16,14 @@ const automationScopes = new WeakMap<
   (work: AutomatedWork) => Promise<void>
 >();
 
+/** Keyed by the session's xterm, which every terminal view of that session shares. */
+const callerInputListeners = new WeakMap<object, Set<() => void>>();
+
+/** Run `listener` whenever caller input revokes automation in this terminal's session. */
+export function onCallerInput(terminal: { readonly xterm: object }, listener: () => void) {
+  callerInputListeners.get(terminal.xterm)?.add(listener);
+}
+
 /** Preserve the same ownership scope for startup writers that retain their own input policy. */
 export function withAutomatedInput(terminal: ElwoodTerminal, work: AutomatedWork): Promise<void> {
   return automationScopes.get(terminal.xterm)?.(work) ?? work();
@@ -28,9 +36,13 @@ export class SessionInputOwnership {
 
   constructor(inner: ElwoodTerminal) {
     let automating = false;
+    const listeners = new Set<() => void>();
+    callerInputListeners.set(inner.xterm, listeners);
+    // Runs before the caller's keys are written, so no automation can follow them.
     const revoke = () => {
       this.current.abort(callerInputIntervention());
       this.current = new AbortController();
+      for (const listener of listeners) listener();
     };
     // onData also carries parser-generated protocol replies; only input invocations
     // represent caller keys. Native startup queries must not revoke draft ownership.

@@ -74,6 +74,11 @@ export class CodexStartupPromptResponder {
     this.trust.dispose();
   }
 
+  /** Raw caller input owns the trust gate on screen (C-TRUST-01). */
+  callerInput(): void {
+    this.trust.callerInput();
+  }
+
   get inputBlocking(): boolean {
     return this.trust.inputBlocking;
   }

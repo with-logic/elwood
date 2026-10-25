@@ -9,6 +9,7 @@ import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
+import { onCallerInput } from "./picker-input.ts";
 import type { ReadinessGate } from "./readiness.ts";
 
 type FrameSession = Pick<
@@ -99,13 +100,18 @@ export function createSessionFrameObserver(
   };
 }
 
-/** Cancel automation synchronously before signaling or disposing its PTY. */
+/**
+ * Cancel automation synchronously before signaling or disposing its PTY, and hand the
+ * gate on screen to the caller as soon as raw caller input reaches `terminal`.
+ */
 export function bindStartupLifetime(
   session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold">,
-  trust: TrustState,
+  trust: TrustState & { callerInput(): void },
   readiness: ReadinessGate,
+  terminal: { readonly xterm: object },
 ): void {
   session.bindInitialReadinessHold(readiness.isHeld);
+  onCallerInput(terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
     "abort",
     () => {

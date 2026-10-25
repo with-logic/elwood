@@ -161,7 +161,7 @@ export async function buildClaudeSession(
     loopDefinitions,
   );
   const active = bindTurnSubmission(session, observers);
-  bindStartupLifetime(active, promptResponder, readiness);
+  bindStartupLifetime(active, promptResponder, readiness, terminal);
   frameObserver.refresh();
   const sessionCleanup = active.startupCleanupResources(ready.cancel);
   await guardStartupRegion(
