@@ -9,10 +9,14 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
 import test from "node:test";
-import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { defaultIds, drawnCodexDefault } from "./codex-default.ts";
+import type { CodexSessionApi } from "../../src/index.ts";
+import {
+  configureCodexModel,
+  defaultIds,
+  drawnCodexDefault,
+  startReadyCodex,
+} from "./codex-default.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -20,13 +24,10 @@ import {
   sandboxedCodexHome,
   skipIf,
   skipReason,
-  waitFor,
 } from "./helpers.ts";
 
 // Launch, readiness, and two picker listings, each of which boots no further process.
 const testTimeoutMs = 150_000;
-// Codex fires SessionStart within seconds of launch; a minute without it is a failure.
-const readyTimeoutMs = 60_000;
 
 test("C-API-23 real Codex marks the configured default model, independent of the current one", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
@@ -36,19 +37,7 @@ test("C-API-23 real Codex marks the configured default model, independent of the
   const sandbox = sandboxedCodexHome(project, 'model_reasoning_effort = "medium"\n');
   let session: CodexSessionApi | undefined;
   try {
-    session = await startCodex({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      sandbox: "read-only",
-      approvalPolicy: "never",
-      autotrust: true,
-      hooks: {},
-    });
-    await waitFor(
-      () => (session?.status === "ready" ? true : undefined),
-      "codex ready",
-      readyTimeoutMs,
-    );
+    session = await startReadyCodex(project);
     const unconfigured = await session.listModels();
     const current = unconfigured.find((model) => model.isCurrent);
     assert.ok(current, "the launch model is current");
@@ -56,10 +45,7 @@ test("C-API-23 real Codex marks the configured default model, independent of the
     const drawn = drawnCodexDefault(unconfigured);
     const configured = unconfigured.find((model) => !model.isCurrent && model.id !== drawn);
     assert.ok(configured, "another model is listed");
-    // Root keys precede every table, so the new key goes first; Codex's boot-time
-    // bookkeeping below it is kept.
-    const config = readFileSync(sandbox.configPath, "utf8");
-    writeFileSync(sandbox.configPath, `model = "${configured.id}"\n${config}`);
+    configureCodexModel(sandbox.configPath, configured.id);
     const listed = await session.listModels();
     assert.equal(listed.find((model) => model.isCurrent)?.id, current.id, "session model kept");
     // The markerless layout reports the configured row; a drawn marker outranks it.
