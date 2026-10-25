@@ -8,8 +8,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { startCodex } from "../../src/index.ts";
-import { stopCodex } from "./codex-ready.ts";
+import type { CodexSessionApi } from "../../src/index.ts";
+import { startReadyCodex, stopCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -25,8 +25,8 @@ const CODEX_CONFIG = 'model = "gpt-6-luna"\nmodel_reasoning_effort = "low"\n';
 const READY_MS = 60_000;
 const TURN_MS = 60_000;
 
-/** The `type` and `turn_id` of every rollout record, in order. */
-function rolloutRecords(path: string): readonly { type: unknown; turnId: unknown }[] {
+/** The `payload.type` and `payload.turn_id` of every rollout record, in order. */
+function rolloutRecords(path: string): readonly { payloadType: unknown; turnId: unknown }[] {
   return readFileSync(path, "utf8")
     .trim()
     .split("\n")
@@ -34,7 +34,7 @@ function rolloutRecords(path: string): readonly { type: unknown; turnId: unknown
       const payload: unknown = JSON.parse(line)?.payload;
       const fields = typeof payload === "object" && payload !== null ? payload : {};
       return {
-        type: "type" in fields ? fields.type : undefined,
+        payloadType: "type" in fields ? fields.type : undefined,
         turnId: "turn_id" in fields ? fields.turn_id : undefined,
       };
     });
@@ -46,17 +46,15 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, CODEX_CONFIG);
-  const session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    autotrust: true,
-    hooks: {},
-  });
+  let started: CodexSessionApi | undefined;
   let failure: unknown;
   try {
-    await session.waitForStatus((status) => status === "ready", READY_MS);
+    const session = await startReadyCodex(project, {
+      readyTimeoutMs: READY_MS,
+      onStarted: (launched) => {
+        started = launched;
+      },
+    });
     let stopHook: { transcriptPath: string | null | undefined; turnId: string } | undefined;
     session.on("hook", (event) => {
       if (event.hook_event_name === "Stop")
@@ -83,16 +81,16 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
     const { transcriptPath, turnId } = stopHook ?? { transcriptPath: undefined, turnId: "" };
     assert.ok(transcriptPath, "the Stop hook carried the rollout path");
     const records = rolloutRecords(transcriptPath);
-    const tail = records.slice(-4).map((record) => String(record.type));
+    const tail = records.slice(-4).map((record) => String(record.payloadType));
     assert.ok(
-      records.some((record) => record.type === "task_complete" && record.turnId === turnId),
+      records.some((record) => record.payloadType === "task_complete" && record.turnId === turnId),
       `rollout has no task_complete for ${turnId}; it ends ${tail.join(",")}`,
     );
   } catch (error) {
     failure = error;
     throw error;
   } finally {
-    const shutdownFailures = await stopCodex(session);
+    const shutdownFailures = started ? await stopCodex(started) : [];
     if (shutdownFailures.length === 0) sandbox.dispose();
     else {
       const errors = failure === undefined ? shutdownFailures : [failure, ...shutdownFailures];

@@ -12,13 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Stopping a Codex session as soon as a turn ends no longer leaves that turn
-  unfinished in Codex's own history. Codex records a turn as complete only after its
-  `Stop` hook returns, and Elwood reports `ready` from that hook, so a `stop()` or
-  `teardown()` called at that `ready` could end Codex before it wrote the record.
-  Resuming the conversation then showed "Conversation interrupted". Both now wait for
-  Codex to record the turn before signaling it, at most 2 seconds and about 100 ms
-  in practice. `kill()` still ends Codex at once.
+- Stopping a Codex session as soon as a turn ends no longer cuts off Codex before it
+  records the turn. Codex records a turn as complete only after its `Stop` hook
+  returns, and Elwood reports `ready` from that hook, so a `stop()` or `teardown()`
+  called at that `ready`, or from a `Stop` hook observer, could end Codex before it
+  wrote the record. Resuming the conversation then showed "Conversation interrupted".
+  Both now give Codex up to 2 seconds to record the turn before signaling it, about
+  100 ms in practice; past that bound they proceed and the turn can still be lost.
+  `kill()` still ends Codex at once.
 - `listModels` and `setModel` now read each picker frame they wait for while
   opening and moving through the picker as soon as it renders, rather than at the
   next 100 ms poll. They return sooner and hold the session's

@@ -55,8 +55,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // killed, and torn_down even when its signal did not take.
   private readonly cliExit: PtyExitLatch;
   private readonly configPath: string;
-  private readonly turnCommit = new CodexTurnCommit(
-    () => this.scanTranscript(),
+  /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
+  readonly turnCommit = new CodexTurnCommit(
+    () => this.transcriptWatcher?.poll(),
     (timeoutMs) => this.cliExit.wait(timeoutMs),
   );
   constructor(
@@ -178,17 +179,16 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);
   }
-  /** An unblocked `Stop` ended this turn; `stop`/`teardown` wait for its commit (C-LIFE-13). */
-  expectTurnCommit(path: string | null | undefined, turnId: string): void {
-    if (path) this.turnCommit.expect(turnId);
-  }
+  // Queued input and loops stop at once; only the signal waits for the turn's record.
   override stop(): Promise<void> {
-    this.closing.abort(); // Queued input is rejected at once; only the signal waits.
-    return this.turnCommit.before(() => super.stop());
+    this.closing.abort();
+    this.loops.pause();
+    return this.turnCommit.beforeShutdown(() => super.stop());
   }
   override teardown(): Promise<void> {
     this.closing.abort();
-    return this.turnCommit.before(() => super.teardown());
+    this.loops.prepareClear();
+    return this.turnCommit.beforeShutdown(() => super.teardown());
   }
   /** One bounded per-pass scan of the committed transcript (an unblocked `Stop`, §7A.3). */
   scanTranscript(): void {

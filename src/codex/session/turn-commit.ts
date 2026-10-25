@@ -1,20 +1,23 @@
 /**
- * Holds a graceful Codex shutdown until the turn its last `Stop` hook ended is committed.
- * Implements PRD §5.7 (shutting down after a Codex turn) and C-LIFE-13.
+ * Gives Codex a bounded time to record the turn its `Stop` hook ended before a graceful
+ * shutdown signals it. Implements PRD §5.7 (shutting down after a Codex turn) and C-LIFE-13.
  *
  * Codex runs the `Stop` hook before it records the turn's completion in its transcript,
- * and Elwood reports `ready` from that hook. Codex 0.164.0 signaled in that gap exits
- * without the record, and the resumed conversation then ends in "Conversation
- * interrupted" (docs/cli-behavior.md, "Resume lifecycle").
+ * and Elwood reports `ready` from that hook. Codex 0.164.0 signaled after the hook returns
+ * but before that record is written exits without it, and the resumed conversation then
+ * ends in "Conversation interrupted" (docs/cli-behavior.md, "Resume lifecycle"). The wait
+ * also ends when the CLI exits or after `turnCommitWaitMs`; shutdown then proceeds, and a
+ * turn Codex has still not recorded can be lost.
  */
 
 import { isRecord } from "../../core/predicates.ts";
+import { outsideStopInput } from "../../core/stop-input.ts";
+import { isTurnEndPayload } from "../transcript/turn-end.ts";
 
-/** The longest `stop`/`teardown` wait for the commit before signaling anyway. */
+/** The longest `stop`/`teardown` wait for the record before signaling anyway. */
 export const turnCommitWaitMs = 2_000;
 /** Transcript re-read cadence while waiting; the watcher's own poll is 250 ms. */
-const turnCommitScanMs = 20;
-const turnEndTypes = new Set(["task_complete", "turn_complete", "turn_aborted", "turn_failed"]);
+const turnCommitPollMs = 20;
 
 type PendingCommit = {
   readonly turnId: string;
@@ -24,49 +27,59 @@ type PendingCommit = {
 
 export class CodexTurnCommit {
   private pending: PendingCommit | undefined;
-  private readonly scan: () => void;
-  private readonly exited: (timeoutMs: number) => Promise<unknown>;
+  private readonly poll: () => void;
+  private readonly waitForCliExitOrTimeout: (timeoutMs: number) => Promise<unknown>;
 
   /**
-   * `scan` reads newly committed transcript items into `observe`; `exited` resolves when
-   * the CLI exits or `timeoutMs` passes.
+   * `poll` reads newly committed transcript items into `observe` and contains its own
+   * failures; `waitForCliExitOrTimeout` resolves when the CLI exits or `timeoutMs` passes.
    */
-  constructor(scan: () => void, exited: (timeoutMs: number) => Promise<unknown>) {
-    this.scan = scan;
-    this.exited = exited;
+  constructor(poll: () => void, waitForCliExitOrTimeout: (timeoutMs: number) => Promise<unknown>) {
+    this.poll = poll;
+    this.waitForCliExitOrTimeout = waitForCliExitOrTimeout;
   }
 
-  /** An unblocked `Stop` hook ended `turnId`, which Codex has not recorded as complete yet. */
+  /**
+   * A `Stop` hook for `turnId` arrived. Registered before any observer of that hook runs,
+   * since an observer may shut the session down at once.
+   */
   expect(turnId: string): void {
     const { promise, resolve } = Promise.withResolvers<void>();
     this.pending = { turnId, committed: promise, release: resolve };
   }
 
-  /** Reads one committed transcript item; the pending turn's end releases the wait. */
-  observe(item: unknown): void {
+  /** Ends the wait for `turnId`: its end was recorded, or its `Stop` was blocked. */
+  release(turnId: string): void {
     const pending = this.pending;
-    const payload = isRecord(item) && isRecord(item["payload"]) ? item["payload"] : undefined;
-    const type = payload?.["type"];
-    if (!pending || typeof type !== "string" || !turnEndTypes.has(type)) return;
-    // A record without a turn id cannot belong to another turn: the hook-time scan
-    // already read every record committed before this turn's `Stop`.
-    const turnId = payload?.["turn_id"];
-    if (typeof turnId === "string" && turnId !== pending.turnId) return;
+    if (pending?.turnId !== turnId) return;
     this.pending = undefined;
     pending.release();
   }
 
   /**
-   * Runs `shutdown` once the pending turn is committed, the CLI exits, or
-   * `turnCommitWaitMs` passes, re-reading the transcript meanwhile. With no turn
-   * pending, `shutdown` starts in the same tick. A commit that never came is not
-   * waited for again.
+   * Reads one committed transcript item. Only a turn-end record carrying the pending
+   * turn's id releases the wait: every captured end record carries one, and a record
+   * without it could be an older turn's backlog.
    */
-  before(shutdown: () => Promise<void>): Promise<void> {
+  observe(item: unknown): void {
+    const payload = isRecord(item) && isRecord(item["payload"]) ? item["payload"] : undefined;
+    const turnId = payload?.["turn_id"];
+    if (payload && isTurnEndPayload(payload) && typeof turnId === "string") this.release(turnId);
+  }
+
+  /**
+   * Runs `shutdown` once the pending turn is recorded, the CLI exits, or
+   * `turnCommitWaitMs` passes, re-reading the transcript meanwhile. With no turn
+   * pending, `shutdown` starts in the same tick. A turn not recorded within the bound
+   * is not waited for again.
+   */
+  beforeShutdown(shutdown: () => Promise<void>): Promise<void> {
     const pending = this.pending;
     if (!pending) return shutdown();
-    const poll = setInterval(this.scan, turnCommitScanMs);
-    return Promise.race([pending.committed, this.exited(turnCommitWaitMs)]).then(() => {
+    // Internal work outlives a Stop callback that called `stop()` (C-HOOK-22).
+    const poll = outsideStopInput(() => setInterval(this.poll, turnCommitPollMs));
+    const bound = this.waitForCliExitOrTimeout(turnCommitWaitMs);
+    return Promise.race([pending.committed, bound]).then(() => {
       clearInterval(poll);
       if (this.pending === pending) this.pending = undefined;
       return shutdown();

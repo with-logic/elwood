@@ -167,8 +167,8 @@ misattributed to a CLI regression.)
   `■ Conversation interrupted - use /feedback if something went wrong`. Before the
   placeholder fix, that banner closed the spinner's phantom turn early and a second
   phantom followed: `saw: running,ready,running,ready`. The `uncommitted-turn`
-  capture retains that replay. `stop()` and `teardown()` now wait up to 2 s for the
-  record before signaling Codex. With the wait, a stop at `ready` took 70 to 126 ms
+  capture retains that replay. `stop()` and `teardown()` now give Codex up to 2 s to
+  write the record before signaling it. With the wait, a stop at `ready` took 70 to 126 ms
   instead of 13 to 29 ms, and the record was always written.
   `src/codex/session/turn-commit.ts`, C-TURN-03, C-LIFE-13.
 - **A caller submission can precede the resumed composer's repaint.** The old

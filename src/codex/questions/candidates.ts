@@ -4,6 +4,7 @@ import { isRecord } from "../../core/predicates.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { isTurnEndPayload } from "../transcript/turn-end.ts";
 import { type Candidate, CandidateStore } from "./candidate-store.ts";
 import {
   jsonRecord,
@@ -32,13 +33,7 @@ export class CodexQuestionCandidates extends CandidateStore {
     if (event.agent !== "codex" || event.source !== "transcript") return false;
     const payload = payloadOf(event.raw);
     if (!payload) return false;
-    const type = payload["type"];
-    if (
-      typeof type === "string" &&
-      ["task_complete", "turn_complete", "turn_aborted", "turn_failed"].includes(type)
-    ) {
-      return this.endTurn();
-    }
+    if (isTurnEndPayload(payload)) return this.endTurn();
     const native = questionEnvelope(payload);
     if (native) {
       if (this.disabled) return this.reserveOpaqueReservation();
