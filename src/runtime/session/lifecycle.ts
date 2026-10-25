@@ -141,11 +141,8 @@ export abstract class SessionLifecycle {
   startLoops(): void {
     this.loops.start();
   }
-  pauseLoopsForStartupCleanup(cancelReadiness: () => void): void {
-    this.closing.abort();
-    cancelReadiness();
-    this.loops.pause();
-  }
+  readonly startupCleanupResources = (cancelReadiness: () => void) =>
+    this.shutdown.startupCleanupResources(() => this.closing.abort(), cancelReadiness);
   protected isInputBlocked(): boolean {
     const held = this.inputBlocking || this.trustInputBlocking;
     return this.closing.signal.aborted || held || this.status === "blocked";

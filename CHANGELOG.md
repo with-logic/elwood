@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A failed start or resume no longer signals a CLI that already exited during startup,
+  and no longer reaps its process group a second time. The leader's pid could already
+  belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and
+  wait about six seconds for an exit that had already happened.
+
 - Resuming a Codex 0.164.0 session no longer reports a phantom `running` → `ready`
   turn shortly after readiness, which a host could show as a false unread reply.
   Codex 0.164.0 first paints `Resuming session…` above its composer and then loads the

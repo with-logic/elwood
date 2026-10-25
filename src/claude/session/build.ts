@@ -163,7 +163,7 @@ export async function buildClaudeSession(
   const active = bindTurnSubmission(session, observers);
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
-  const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
+  const sessionCleanup = active.startupCleanupResources(ready.cancel);
   await guardStartupRegion(
     async () => {
       active.startLoops();
@@ -187,7 +187,7 @@ export async function buildClaudeSession(
       frameObserver.blockOnceLive(active);
       input.activate();
     },
-    { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+    { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
   if (preflightWarning !== undefined) {
     warnGate.emitWarnings([preflightEvent(record.elwoodSessionId, preflightWarning)]);
