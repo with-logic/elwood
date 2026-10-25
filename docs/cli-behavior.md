@@ -334,9 +334,43 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   overflow line (before this, it rejected every frame of such a list, so `setModel` failed
   on its first arrow key with "The model picker was replaced"), and `setModel` must settle
   on the cursor row's identity, not its index, because a target's index changes as the
-  window scrolls under the cursor. `listModels` returns the rendered window only (C-API-23);
-  rows hidden below it are not enumerated. Fixtures:
+  window scrolls under the cursor. Fixtures:
   `tests/fixtures/claude-2.1.310/model-picker/`. C-API-23, C-API-24.
+- **Arrow keys walk Claude's picker window without applying anything (2.1.310, 2026-10-25).**
+  Row numbers are absolute positions, so a window starting past row 1 hides the rows
+  above it and `… +K models` counts the rows below; `listModels` reads the whole list by
+  walking the cursor one row at a time and merging the windows by number. Measured on a
+  13-model account: the window scrolls DOWN only once the cursor passes its last row, keeping
+  the cursor ON the last visible row (`↑ 2.` … `❯ 11.`), but scrolls UP while one row is
+  still above the cursor (`↑ 3.` `❯ 4.`), so the cursor never sits on the first row of a
+  scrolled window. Both ends WRAP: `↓` on row 13 jumps to `❯ 1.` with the top window, and
+  `↑` on row 1 jumps to `❯ 13.` with `↑ 4.`–`13.`; Elwood never presses past an end. Opened
+  at the top, 12 `↓` reveal rows 11–13; opened scrolled on row 12, one `↓` and 11 `↑`
+  reveal rows 13, 2, and 1. After 28 arrow presses, Escape printed `⎿ Kept model as Opus
+  5.5 (default)`, the header kept `with xhigh effort`, and the reopened picker showed the
+  same current row and effort, even though the effort row had followed the highlight
+  (`◐`, `●`, `○ Effort not supported`) on the way. A session started with `--name` adds a
+  rule carrying the name above the picker and walks identically. Fixtures:
+  `walk-down-from-top.txt`, `walk-opened-scrolled.txt` (frames separated by `--- ↓`/`--- ↑`,
+  each the screen after that key). A move that scrolls the window can be read before its
+  overflow line is repainted: a real listing that read on every render (2026-10-25) read
+  the move to `❯ 11.` with a `… +K models` count that was missing or did not add up to 13,
+  so the walk waits for a frame whose count adds up instead of failing on that one.
+  The raw stream shows why: the renderer writes only the cells that change, top to bottom,
+  and the PTY delivers the paint in reads of about 1 KB, so a frame can be read between
+  two reads. Scrolling to row 11 arrived as a 1,020-byte read carrying the new rows and a
+  71-byte read carrying the `3`→`2` of the count. The opening paint is ordered the same way:
+  the `… +K models` line is written before the effort row and the footer, and Elwood reads
+  the picker as complete only once its `Esc to cancel` footer is on screen, so a complete
+  frame always carries its count. Replaying every byte prefix of two real listings (opened
+  on row 2 and walked to 13; opened on row 10, where a count-less frame would read as a
+  complete ten-row list) found no complete frame stating fewer than 13 rows; the only
+  inconsistent ones were the stale-count frames above (`claude-picker-paint-order.test.ts`
+  pins the row-10 opening, `opening-on-row-10.json`, captured paint bytes over a placeholder
+  screen). If a later Claude painted the footer before the count, the walk could take a
+  full window with the cursor on its last row for the whole list: a listing would come back
+  short, and `setModel` would reject a hidden id as unknown. No key would go anywhere else,
+  since every key is still gated on the operation's own complete picker. C-API-23, C-API-24.
 - **The picker's effort row follows the HIGHLIGHTED model, and `●` is one of its glyphs.**
   On 2.1.310 the row under the list reads `○ Low effort`, `◐ Medium effort`, `● High
   effort`, `◉ xHigh effort`, or `◈ Max effort` (each `←/→ to adjust`, with `(default)` when
