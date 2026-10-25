@@ -103,8 +103,9 @@ export async function cleanUpDialog(
       // Decide the WRITE on everything received, not the last rendered frame: a permission
       // or hook dialog can already be in the PTY buffer while the observed screen still
       // shows the picker, and an Escape chosen from that stale frame would dismiss it.
-      // `writeUnsafe` fails closed, so an unvouchable screen skips this Escape and the
-      // next poll re-decides rather than writing blind (C-API-56).
+      // `writeUnsafe` fails closed, so an unvouchable screen gets no Escape at all: a failed
+      // render never recovers, and an observation that timed out has outlived this
+      // one-second bound. The dialog is then left to the survivor hold (C-API-56).
       if (await writeUnsafe(source, undefined, closed)) continue;
       await sendPickerInput({ terminal }, escapeKey, isActive, true);
     }
