@@ -40,6 +40,11 @@ back each entry are listed in `prd/14-conformance.md`.
   limit now counts only time the prompt is on screen. Queued input is still
   held until Claude's composer appears.
 
+- A fresh Claude session no longer emits `transcript_read_error` (`ENOENT`) while it waits
+  for its first turn. Claude names its transcript at startup but writes the file only once
+  a turn begins, and Elwood had reported each poll of the missing file as a read error.
+  Removing a transcript after it existed still warns, as does any other read failure.
+
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
   that has not finished painting or to a bare `Select model` header, which agent output
