@@ -53,6 +53,13 @@ back each entry are listed in `prd/14-conformance.md`.
   for its first turn. Claude names its transcript at startup but writes the file only once
   a turn begins, and Elwood had reported each poll of the missing file as a read error.
   Removing a transcript after it existed still warns, as does any other read failure.
+- `listModels` and `setModel` no longer send a picker key into a prompt that has
+  reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
+  answer and Escape is now decided after every received byte is rendered, like
+  queued input and failure cleanup already were. If the screen cannot be verified,
+  the key is withheld and the operation fails with `model_automation_failed`.
+  Before, an arrow chosen from the stale picker frame could move a permission or
+  question prompt's selection.
 
 - A Claude turn that Claude itself rejects, such as one sent with a model that does not
   exist, now fails with the new `turn_failed` error instead of passing as a successful
