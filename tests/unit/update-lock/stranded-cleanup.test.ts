@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test, vi } from "vitest";
-import { processGroupGone } from "../../../src/runtime/probe-cleanup.ts";
+import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { tempDir } from "../../helpers/tmp.ts";
 

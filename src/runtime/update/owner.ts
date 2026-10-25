@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ElwoodError, errnoCode } from "../../core/errors.ts";
-import { processGroupGone } from "../probe-cleanup.ts";
+import { processGroupGone } from "../probe/cleanup.ts";
 
 export const ownerFile = "owner";
 /** Marks a lease directory already retired by its owner and awaiting deletion. */

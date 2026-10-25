@@ -26,6 +26,16 @@ describe("buildUpdateWarning", () => {
     });
   });
 
+  test("C-PERF-05 a login shell that never ran the update reports login_shell_failed", () => {
+    const error = elwoodError("claude_update_failed", "`claude update` failed.", {
+      stderr: "",
+      cause: "login shell did not start the probe command within 60000 ms",
+      errno: "ETIMEDOUT",
+      phase: "login_shell",
+    });
+    expect(buildUpdateWarning("claude", "2.1.310", error).errorCode).toBe("login_shell_failed");
+  });
+
   test("falls back to a generic error code and empty stderr for a non-ElwoodError / no details", () => {
     const warning = buildUpdateWarning("codex", "0.132.0", new Error("plain failure"));
     expect(warning.errorCode).toBe("update_failed"); // no allowlisted errno available
@@ -79,7 +89,7 @@ test("C-PERF-04 contention reports a skipped active updater rather than a failed
 
 // The second contention reason shares `update_active` but names a different cause, and it
 // must stay distinguishable in the message: a lease held by a surviving process group is
-// not a peer that is merely slow, and it is reported without waiting out the 60s bound.
+// not a peer that is merely slow, and it is reported without waiting out the contention bound.
 test.each([
   ["claude", "2.1.200"],
   ["codex", "0.154.0"],

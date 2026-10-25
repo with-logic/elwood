@@ -8,9 +8,10 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 /**
  * Best-effort `claude update` / `codex update` failed but the INSTALLED CLI still meets the
  * minimum, so the session started from it. Safe diagnostics only: the installed version in use,
- * an allowlisted `errorCode` (a probe timeout/`errno`), and bounded `raw` stderr — never terminal
- * transcripts, prompts, tokens, or environment secrets.
- * Contention uses `errorCode: "update_active"` and a canonical skipped-update message.
+ * an allowlisted `errorCode` (a probe timeout/`errno`), and bounded `raw` updater stderr — never
+ * terminal transcripts, prompts, tokens, or environment secrets.
+ * Contention uses `errorCode: "update_active"` and a canonical skipped-update message. A login
+ * shell that failed before the update ran uses `errorCode: "login_shell_failed"` with empty `raw`.
  */
 export type AgentUpdateFailedWarning = {
   readonly elwoodSessionId: string;

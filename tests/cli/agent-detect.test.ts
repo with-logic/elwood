@@ -15,7 +15,7 @@ import {
 } from "../../src/cli/request/agent-detect.ts";
 import type { CliAgent } from "../../src/cli/types.ts";
 import { resetRuntimeSeamsForTests, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { userShell } from "../../src/runtime/shell.ts";
+import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 /**
  * A hermetic stand-in for the user's login shell. It enforces the same
@@ -101,12 +101,13 @@ describe("agent auto-detection", () => {
     const calls: { readonly command: string; readonly args: readonly string[] }[] = [];
     setCommandRunnerForTests((command, args) => {
       calls.push({ command, args });
-      return { status: args.at(-1) === "command -v 'codex'" ? 0 : 1, stdout: "", stderr: "" };
+      const codex = args.at(-1) === probeShellCommand("command -v 'codex'").at(-1);
+      return { status: codex ? 0 : 1, stdout: "", stderr: "" };
     });
     await expect(detectAvailableAgent()).resolves.toBe("codex");
     expect(calls).toEqual([
-      { command: userShell(), args: ["-l", "-i", "-c", "command -v 'claude'"] },
-      { command: userShell(), args: ["-l", "-i", "-c", "command -v 'codex'"] },
+      { command: userShell(), args: probeShellCommand("command -v 'claude'") },
+      { command: userShell(), args: probeShellCommand("command -v 'codex'") },
     ]);
   });
 
@@ -160,5 +161,25 @@ describe("agent auto-detection", () => {
       code: "no_agent_found",
       message: expect.stringContaining(`login shell ${JSON.stringify(userShell())} did not run`),
     });
+  });
+
+  test("C-PERF-05 a login shell that fails before the check names its own failure", async () => {
+    setCommandRunnerForTests(() => ({
+      status: null,
+      stdout: "",
+      stderr: "export ELWOOD_SENTINEL_SECRET=hunter2\n",
+      error: {
+        message: "login shell exited with status 0 before starting the probe command",
+        phase: "login_shell",
+      },
+    }));
+    const error = await detectAvailableAgent().then(
+      () => undefined,
+      (failure: unknown) => failure as Error,
+    );
+    expect(error?.message).toContain(
+      "failed before running the check (login shell exited with status 0 before starting the probe command)",
+    );
+    expect(error?.message).not.toContain("hunter2");
   });
 });

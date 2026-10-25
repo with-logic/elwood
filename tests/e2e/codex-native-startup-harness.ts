@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node-pty";
-import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { makeProject, sandboxedCodexHome, waitFor } from "./helpers.ts";
 
@@ -46,7 +46,7 @@ startup_timeout_sec = 2
     child = spawn(
       userShell(),
       [
-        ...probeShellCommand(
+        ...loginShellCommand(
           "exec codex --no-alt-screen --sandbox read-only --ask-for-approval never",
         ),
       ],

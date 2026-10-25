@@ -1,7 +1,7 @@
 /** Real-process probe fixture for preserving the caller PTY foreground group (C-CLI-18). */
 
 import { execFileSync } from "node:child_process";
-import { runProbe } from "../../src/runtime/probe.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
 
 await runProbe("/bin/zsh", ["-f", "-i", "-c", "/bin/sleep 0.05"]);
 

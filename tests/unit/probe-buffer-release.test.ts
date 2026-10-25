@@ -6,7 +6,7 @@
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import { afterEach, expect, test, vi } from "vitest";
-import { runProbe } from "../../src/runtime/probe.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
 import type { CommandResult } from "../../src/runtime/seams.ts";
 
 const kill = process.kill.bind(process);

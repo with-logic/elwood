@@ -13,7 +13,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import type { PtyExit } from "../../../src/pty/types.ts";
-import { runProbe } from "../../../src/runtime/probe.ts";
+import { runProbe } from "../../../src/runtime/probe/index.ts";
 import { attachPtyTerminal } from "../../../src/terminal/headless.ts";
 import { parentCodexConfigurationFingerprint } from "../codex-parent-state.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";

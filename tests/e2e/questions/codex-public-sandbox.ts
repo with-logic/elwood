@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
 import type { ElwoodQuestionRequest } from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
-import { runProbe } from "../../../src/runtime/probe.ts";
+import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
