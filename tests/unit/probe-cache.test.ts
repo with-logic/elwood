@@ -96,8 +96,11 @@ test("C-PERF-02 a run that settles after clear() is not kept and cannot evict it
   await expect(cache.get("a", ok("unused"))).resolves.toBe("F");
   const staleSuccess = cache.get("b", run("stale b"));
   cache.clear();
+  const freshB = cache.get("b", run("fresh b"));
   await settle("stale b", "late B");
   await expect(staleSuccess).resolves.toBe("late B");
-  await expect(cache.get("b", ok("B2"))).resolves.toBe("B2");
-  expect(runs).toEqual(["stale", "fresh", "stale b"]);
+  expect(cache.get("b", ok("unused"))).toBe(freshB); // the late success did not replace it
+  await settle("fresh b", "B2");
+  await expect(cache.get("b", ok("unused"))).resolves.toBe("B2");
+  expect(runs).toEqual(["stale", "fresh", "stale b", "fresh b"]);
 });
