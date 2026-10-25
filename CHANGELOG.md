@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A successful `listModels` or `setModel` no longer releases queued input on the
+  first frame without the picker. It now waits until no part of the picker has
+  been the bottom of the screen across five readings at least 40 ms apart. Before,
+  a blank or half-painted repaint could end the operation and let a queued
+  message's Enter land in the picker when it painted again, applying the
+  highlighted model. Picker text quoted above the composer does not hold the
+  operation. Each reading first renders all output the terminal has received, and
+  one that cannot fails the operation with `model_automation_failed` instead of
+  reporting success.
 - A Codex turn the agent rejects, for example one run with an unknown model, now
   fails with `turn_failed`. `CodexSession.send` rejects, `stream` throws after the
   events it already yielded, and `elwood run` exits 1, as Claude rejections already

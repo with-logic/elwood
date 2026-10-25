@@ -2,8 +2,9 @@
  * Holds input on a model dialog, whoever opened it, until positive composer clearance is
  * sustained across time-spaced readings (C-API-55).
  */
+
+import { clearReadingGapMs, clearReadings } from "../../core/models/clearance.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
-import { clearReadingGapMs, clearReadings } from "./picker-cleanup.ts";
 
 export class PickerHold {
   private held = false;
