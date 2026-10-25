@@ -26,6 +26,7 @@ import { codexSessionQuestions } from "../questions/session.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
+import { confirmCodexRejection } from "../transcript/rejection.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { CliExitBarrier } from "./cli-exit.ts";
@@ -80,6 +81,8 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.transcriptWatcher = transcriptWatcher;
     this.cliExit = new CliExitBarrier(pty);
     this.configPath = configPath;
+    // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
+    emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {

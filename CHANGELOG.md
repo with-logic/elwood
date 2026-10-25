@@ -12,6 +12,16 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Codex turn the agent rejects, for example one run with an unknown model, now
+  fails with `turn_failed`. `CodexSession.send` rejects, `stream` throws after the
+  events it already yielded, and `elwood run` exits 1, as Claude rejections already
+  do. Codex fires no `Stop` hook for such a turn. On Codex 0.164.0, `send` resolved
+  `''` about 20 seconds later, as if the turn had succeeded with an empty reply, or
+  stayed pending until the CLI exited, and `elwood run` exited 0 with an empty
+  `response`. The evidence is the transcript's failed `task_complete` for the turn's own
+  `turn_id`. The error message is Codex's `error.message`, and
+  `details.agentError` is its `codex_error_info` kind (for example `other`).
+
 - `autotrust` now reports an answered Claude folder-trust prompt. Claude erases
   the dialog as soon as it is answered, then shows a blank or banner-only screen
   until its composer paints. Elwood treated that screen as the answer being
@@ -100,7 +110,7 @@ back each entry are listed in `prd/14-conformance.md`.
   print Claude's error text as the response. A late rejection whose `prompt_id` names an
   earlier submission than the current turn's does not fail the current turn. When either
   hook lacks a `prompt_id`, a rejection that arrives during a turn is attributed to that
-  turn. Codex rejections are not recognized yet.
+  turn.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
