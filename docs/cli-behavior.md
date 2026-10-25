@@ -1038,6 +1038,40 @@ side-effect-free signal. C-CLI-21 through C-CLI-24.
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
 
+### Concurrent cold starts race Codex's state migrations (2026-10-25)
+
+Codex 0.164.0 creates and migrates its SQLite state under `CODEX_HOME` at launch
+(61 migrations in `state_5.sqlite`, 2 in `goals_1.sqlite`), and nothing serializes
+those migrations across processes. When two Codex processes start together in a home
+whose databases are not yet migrated, both try to apply the same migration. The loser
+exits 1 with `Codex couldn't start because its local database appears to be damaged`,
+and the cause names the collision, such as `table thread_goals already exists` or
+`duplicate column name`. Six different migrations collided across the runs below. The
+exit landed 2 to 10 s after spawn. In every Elwood run that was after `startCodex` had
+resolved, so Elwood reported `running` → `exited` (`terminal_exited`) and the session
+never reached `ready`.
+
+C-CODEX-14's e2e started its two sessions with `Promise.all` in a fresh sandbox. The
+same start lost a session in 4 of 5 probes and in 5 of 6 e2e runs. The test's readiness
+poll then ran out its full minute, and the surviving session, which `Promise.all`
+dropped, kept the test file running. Replaying Elwood's exact launch command through a
+bare node-pty, with no Elwood code, crashed one of the two in 3 of 4 runs. One launch
+alone never crashed. Bare pairs with only `--sandbox`, `--ask-for-approval`, and `--cd`
+never crashed in 16 runs. Adding `-c model_reasoning_effort="low"` alone or
+`--dangerously-bypass-hook-trust` alone crashed 3 of 3, and `-c features.hooks=true`
+alone crashed 0 of 3. The runs do not show why the bare pairs escaped, so treat any
+pair of simultaneous launches as exposed.
+
+A single launch at load 50 finished every migration about 1.5 s after spawn, as its
+composer painted. The composer does not prove migration is done: a launch killed one
+second after its composer appeared left migrations for the next pair, which raced in 1
+of 4 runs. The e2e now starts the second session after the first reports `ready`, which
+on a cold start is the 10 s deadline from the first frame. The concurrency it tests is
+the model switch.
+
+Production homes already hold migrated databases. The exposure is the first launch of
+a Codex release that adds a migration, if several sessions start at that moment.
+
 ### Codex commentary and final-answer phases (2026-10-20)
 
 The reported completed `response_item` fixture retains assistant text in an
