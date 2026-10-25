@@ -96,6 +96,9 @@ export class RowBlock {
   private isRow(line: string, row: string): boolean {
     if (!(rowPattern.test(row) || (!this.complete && numberedRow.test(row)))) return false;
     const number = Number(numberedRow.exec(row)?.[1]);
+    // A number that rounds is not the row the CLI drew, and rows that round together would
+    // pass for consecutive ones.
+    if (!Number.isSafeInteger(number)) return false;
     if (this.scroll?.above.test(line) === true) return this.rowCount === 0 && number > 1;
     return number === this.nextRowNumber;
   }

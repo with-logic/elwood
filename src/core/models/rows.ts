@@ -94,13 +94,15 @@ function parseRows(
     if (overflow)
       hiddenRowCountBelow = mayBeOverflow ? positiveCount(overflow.groups?.["hidden"]) : undefined;
     const match = rowPattern.exec(unmarkedRow(line, scroll));
-    if (!match) continue;
+    const absoluteRowNumber = Number(match?.[2]);
+    // As in the region grammar, a number that rounds is not the row the CLI drew.
+    if (!(match && Number.isSafeInteger(absoluteRowNumber))) continue;
     if (match[1]) cursorOptionIndex = rows.length;
     // A `below` marker says rows are hidden; only the overflow line under it says how many.
     if (scroll?.below.test(line) === true) hiddenRowCountBelow = undefined;
     overflowMayFollow = overflowMayFollowRow(line, scroll);
     rows.push({
-      absoluteRowNumber: Number(match[2]),
+      absoluteRowNumber,
       option: {
         ...decorate(match[3] as string),
         description: match[4] as string,

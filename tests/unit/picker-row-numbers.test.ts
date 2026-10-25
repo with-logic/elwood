@@ -5,7 +5,7 @@
  */
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
-import { parseCodexModelPicker } from "../../src/core/models/rows.ts";
+import { ownOperation, parseCodexModelPicker } from "../../src/core/models/rows.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { codexPickerViewport } from "../helpers/model-dialog-viewports.ts";
 
@@ -33,7 +33,7 @@ test.each([
 
 test("C-API-23 a Codex list numbers its rows and hides none", () => {
   const parsed = parseCodexModelPicker(codexPickerViewport);
-  expect(parsed.rows.map((row) => row.absoluteRowNumber)).toEqual(range(1, parsed.rows.length));
+  expect(parsed.rows.map((row) => row.absoluteRowNumber)).toEqual([1, 2, 3, 4, 5]);
   expect(parsed.hiddenRowCountBelow).toBe(0);
 });
 
@@ -46,4 +46,17 @@ test.each([
   const text = frame("top-window").replace(drawn, forged);
   expect(text).not.toBe(frame("top-window"));
   expect(hidden(text)).toBeUndefined();
+});
+
+test("C-API-24 a row number past exact integers is neither a picker row nor a parsed one", () => {
+  // 9007199254740993 rounds to 9007199254740992; 400 nines round to Infinity, so every row
+  // would carry the same number and still pass for consecutive.
+  const rounded = frame("both-markers").replace("↑ 3.", "↑ 9007199254740993.");
+  const huge = frame("both-markers").replace(/(\s)\d+\.(\s)/g, `$1${"9".repeat(400)}.$2`);
+  expect(rounded).not.toBe(frame("both-markers"));
+  expect(huge).not.toMatch(/\s\d{1,2}\.\s/);
+  for (const text of [rounded, huge])
+    expect(claudeModelPicker.activeDialog(text, ownOperation)).toBeUndefined();
+  expect(numbers(rounded)).toEqual(range(4, 12));
+  expect(numbers(huge)).toEqual([]);
 });
