@@ -36,7 +36,6 @@ export { invokeHookBridge, parseJsonOutput } from "./bridge-helpers.ts";
 export {
   type CodexSandbox,
   codexAuthMissing,
-  codexAuthPath,
   type E2eProject,
   makeProject,
   sandboxedCodexHome,
