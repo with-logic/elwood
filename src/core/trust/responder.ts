@@ -5,7 +5,7 @@ import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
 import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
-import { newEpisode } from "./types.ts";
+import { leaveFrame, newEpisode } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
@@ -86,7 +86,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);
-    const settled = attempt.start(write, read, this.deadline.deadlineAtMs).then(
+    const settled = attempt.start(write, read, this.deadline).then(
       (completion) => {
         this.attempts.delete(attempt);
         if (this.disposed || attempt.invalidated) return "cancelled" as const;
@@ -143,10 +143,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     if (view.kind === "unknown") {
       // Unknown/partial replacements retain human ownership until verified clearance.
       if (this.episode) {
-        this.episode.attempt?.cancel();
-        this.episode.attempt = undefined;
-        this.episode.attemptedIdentity = undefined;
-        this.episode.lastIdentity = undefined;
+        leaveFrame(this.episode);
         // No human can act on a gate that left the frame; its budget waits for its return.
         this.deadline.pause();
       }

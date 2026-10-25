@@ -22,7 +22,7 @@ test("C-TRUST-01 unavailable frames withhold first and retry writes until curren
   let view: TrustView | undefined;
   const write = vi.fn();
   const completion = owned
-    .start(write, () => view, Date.now() + 1_000)
+    .start(write, () => view, { deadlineAtMs: Date.now() + 1_000 })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(200);
   expect(write).not.toHaveBeenCalled();
@@ -46,7 +46,7 @@ test.each([
   const { owned } = attempt();
   const write = vi.fn();
   const completion = owned
-    .start(write, () => undefined, Date.now() + 95)
+    .start(write, () => undefined, { deadlineAtMs: Date.now() + 95 })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(40);
   if (end === "cancel") owned.cancel();
@@ -62,7 +62,7 @@ test("C-TRUST-01 a replacement revealed after unavailable output never receives 
   let view: TrustView | undefined;
   const write = vi.fn();
   const completion = owned
-    .start(write, () => view, Date.now() + 1_000)
+    .start(write, () => view, { deadlineAtMs: Date.now() + 1_000 })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(40);
   view = { kind: "unknown" };

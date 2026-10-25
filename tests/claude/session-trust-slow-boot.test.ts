@@ -3,7 +3,8 @@
  * the trust dialog: autotrust answered within a second, the dialog was erased, and the
  * screen stayed blank, then showed only the banner, while Claude booted. That boot is not
  * a human decision, so it must not surface as `blocked` or attention (C-ATTN-03,
- * C-TRUST-01), while queued input stays held until the composer (C-API-28).
+ * C-TRUST-01), while queued input stays held until the composer (C-API-28). The answer
+ * is reported once, when the composer verifies it (C-CLAUDE-10, C-TRUST-01).
  */
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
@@ -44,6 +45,8 @@ function chunkIndexOf(marker: string): number {
 
 const dialogChunkIndex = chunkIndexOf("trust");
 const composerChunkIndex = chunkIndexOf("❯\u00a0");
+if (capture[composerChunkIndex]!.atMs - capture[dialogChunkIndex]!.atMs <= 5_000)
+  throw new Error("the capture's composer must paint more than five seconds after its dialog");
 let session: ClaudeSessionApi | undefined;
 
 afterEach(async () => {
@@ -53,6 +56,20 @@ afterEach(async () => {
   session = undefined;
   resetFakes();
 });
+
+/** Emit every captured chunk at its recorded offset; `beforeComposer` runs just before the
+ * composer chunk, nearly nine seconds after the dialog first painted. */
+async function replay(beforeComposer: () => void): Promise<void> {
+  vi.useFakeTimers();
+  let elapsed = 0;
+  for (const [index, chunk] of capture.entries()) {
+    await vi.advanceTimersByTimeAsync(chunk.atMs - elapsed);
+    elapsed = chunk.atMs;
+    if (index === composerChunkIndex) beforeComposer();
+    ptys[0]!.emitData(chunk.data);
+  }
+  await vi.advanceTimersByTimeAsync(2_000);
+}
 
 test("C-ATTN-03 a real 2.1.310 boot that outlasts the trust budget after the answer never blocks", async () => {
   installFakes();
@@ -65,25 +82,30 @@ test("C-ATTN-03 a real 2.1.310 boot that outlasts the trust budget after the ans
     if (event.kind === "attention") attention.push(event.label);
   });
   const queued = live.sendMessage("hello");
-  vi.useFakeTimers();
   const pty = ptys[0]!;
-  let elapsed = 0;
-  for (const [index, chunk] of capture.entries()) {
-    await vi.advanceTimersByTimeAsync(chunk.atMs - elapsed);
-    elapsed = chunk.atMs;
-    if (index === composerChunkIndex) {
-      // Nearly nine seconds after the dialog first painted: answered, still held, never
-      // reported blocked.
-      expect(elapsed - capture[dialogChunkIndex]!.atMs).toBeGreaterThan(5_000);
-      expect(pty.writes.some((input) => input.includes("\r"))).toBe(true);
-      expect(pty.writes.join("")).not.toContain("hello");
-      expect(statuses).not.toContain("blocked");
-    }
-    pty.emitData(chunk.data);
-  }
-  await vi.advanceTimersByTimeAsync(2_000);
+  await replay(() => {
+    // Answered, still held, never reported blocked.
+    expect(pty.writes.some((input) => input.includes("\r"))).toBe(true);
+    expect(pty.writes.join("")).not.toContain("hello");
+    expect(statuses).not.toContain("blocked");
+  });
   await queued;
   expect(pty.writes).toContain("\u001b[200~hello\u001b[201~");
   expect(statuses).not.toContain("blocked");
   expect(attention).toEqual([]);
+});
+
+test("C-CLAUDE-10 the same real 2.1.310 launch reports its answer once, when the composer verifies it", async () => {
+  installFakes();
+  const live = await startClaude({ cwd: tempDir(), autotrust: true });
+  session = live;
+  const answered: string[] = [];
+  live.on("activity", (event) => {
+    if (event.kind === "startup_prompt") answered.push(`${event.label}: ${event.text}`);
+  });
+  // The blank and banner-only frames after the erase are not clearance (C-TRUST-01).
+  await replay(() => expect(answered).toEqual([]));
+  expect(answered).toEqual([
+    "workspace_trust: Detected claude workspace_trust prompt; sent home+down+enter.",
+  ]);
 });
