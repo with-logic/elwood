@@ -1,23 +1,11 @@
 /** A named Claude session keeps its labelled border under the questionnaire (PRD §5.10). */
 import { expect, test } from "vitest";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
-import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
-import { fixture, frame } from "./helpers.ts";
+import { fixture, frame, testPick } from "./helpers.ts";
 
-const testPick: QuestionDefinition = {
-  prompt: "Which option would you like to pick for this test?",
-  header: "Test pick",
-  options: [
-    { label: "Option A", description: "First option." },
-    { label: "Option B", description: "Second option." },
-    { label: "Option C", description: "Third option." },
-  ],
-  selection: "single",
-  textMode: "alternative",
-  supportsSecretInput: false,
-};
-// The 140-column capture's last row: the session name inset into the bottom border.
-const namedBorder = `${"─".repeat(123)} Question Asker ─`;
+// The capture's last row: the session name inset into the full-width bottom border.
+const label = " Question Asker ─";
+const namedBorderRow = `${"─".repeat(fixture("named-single-question", "2.1.310").cols - label.length)}${label}`;
 
 function named(change: (text: string) => string = (text) => text) {
   const captured = fixture("named-single-question", "2.1.310");
@@ -26,7 +14,7 @@ function named(change: (text: string) => string = (text) => text) {
 
 test("C-QUESTION-03 parses the questionnaire above a named session's border", () => {
   const captured = fixture("named-single-question", "2.1.310");
-  expect(captured.lines).toContain(namedBorder);
+  expect(captured.lines).toContain(namedBorderRow);
   expect(parseClaudeQuestionScreen(captured, [testPick])).toMatchObject({
     kind: "question",
     questionIndex: 0,
@@ -35,12 +23,15 @@ test("C-QUESTION-03 parses the questionnaire above a named session's border", ()
 });
 
 test.each([
-  ["a composer row", (text: string) => text.replace(namedBorder, "❯ draft")],
-  ["prose", (text: string) => text.replace(namedBorder, "Question Asker")],
-  ["content after the border", (text: string) => text.replace(namedBorder, `${namedBorder}\nok`)],
+  ["a composer row", (text: string) => text.replace(namedBorderRow, "❯ draft")],
+  ["prose", (text: string) => text.replace(namedBorderRow, "Question Asker")],
+  [
+    "content after the border",
+    (text: string) => text.replace(namedBorderRow, `${namedBorderRow}\nok`),
+  ],
   [
     "a second border",
-    (text: string) => text.replace(namedBorder, `${namedBorder}\n${namedBorder}`),
+    (text: string) => text.replace(namedBorderRow, `${namedBorderRow}\n${namedBorderRow}`),
   ],
 ])("rejects %s below the questionnaire footer", (_name, change) => {
   expect(parseClaudeQuestionScreen(named(change), [testPick])).toBeUndefined();

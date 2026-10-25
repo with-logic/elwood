@@ -30,6 +30,19 @@ export const definitions: readonly ClaudeQuestionFixture[] = [
     supportsSecretInput: false,
   },
 ];
+/** The single-question request captured from Claude Code 2.1.310. */
+export const testPick: QuestionDefinition = {
+  prompt: "Which option would you like to pick for this test?",
+  header: "Test pick",
+  options: [
+    { label: "Option A", description: "First option." },
+    { label: "Option B", description: "Second option." },
+    { label: "Option C", description: "Third option." },
+  ],
+  selection: "single",
+  textMode: "alternative",
+  supportsSecretInput: false,
+};
 export function registry() {
   return new QuestionRegistry("claude", "s", { emit: () => {} });
 }
