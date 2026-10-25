@@ -134,6 +134,17 @@ export function codexComposerRow(frameRows: readonly string[], liveClear: boolea
   return at >= 0 && nativeComposerRegion(frameRows, at, liveClear) ? at : -1;
 }
 
+/**
+ * Codex paints its model footer beneath the composer only once its session is configured.
+ * The composer it paints while booting has none, and under load its directory-trust gate
+ * can follow seconds later, so readiness waits for this footer (C-API-28).
+ */
+export function codexComposerConfigured(frame: string): boolean {
+  const rows = frame.split("\n").map((row) => row.trimEnd());
+  const at = rows.findLastIndex((row) => /^›(?:\s|$)/.test(row));
+  return at >= 0 && nativeComposerRegion(rows, at, false);
+}
+
 /** Require the composer's own footer unless the caller permits welcome evidence. */
 function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
   // Native Codex right-aligns this badge even with a model-only status line.

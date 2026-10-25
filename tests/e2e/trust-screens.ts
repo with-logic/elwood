@@ -4,7 +4,7 @@
 export function trustPromptVisible(frame: string, agent: "claude" | "codex"): boolean {
   const text = frame.replace(/\s+/g, " ");
   if (agent === "codex")
-    return /trust the contents of this directory|Hooks need review/i.test(text);
+    return /trust the contents of this directory|Trust this folder\?|Hooks need review/i.test(text);
   return /trust this folder|Is this a project you|Accessing workspace:|(?:trust|load) (?:this|the) (?:skill|plugin|MCP server)|New MCP server found|running in Bypass Permissions mode/i.test(
     text,
   );
