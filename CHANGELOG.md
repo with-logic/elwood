@@ -12,8 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- `listModels` and `setModel` now read each picker frame as soon as it renders,
-  rather than at the next 100 ms poll. They return sooner and hold the session's
+- `listModels` and `setModel` now read each picker frame they wait for while
+  opening and moving through the picker as soon as it renders, rather than at the
+  next 100 ms poll. They return sooner and hold the session's
   input queue for less time. The poll remains as a fallback for a frame that no
   render reports.
 - A successful `listModels` or `setModel` no longer releases queued input on the
