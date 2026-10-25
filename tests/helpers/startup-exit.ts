@@ -12,16 +12,21 @@ export const startupExit = { exitCode: 12, signal: 15 } as const;
 
 type Factory = (options: PtySpawnOptions) => FakePty;
 
+// How long the fake CLI waits for the session to listen for its exit before giving up.
+const EXIT_LISTENER_WAIT_MS = 10_000;
+
 /** A fake CLI that exits during startup, as soon as the session listens for its exit. */
 export function exitingDuringStartup(ptys: FakePty[]): Factory {
   return (options) => {
     const pty = new FakePty(options, 1000 + ptys.length);
     ptys.push(pty);
+    const deadline = Date.now() + EXIT_LISTENER_WAIT_MS;
     const timer = setInterval(() => {
-      if (pty.exitHandlers.length === 0) return;
-      clearInterval(timer);
-      pty.emitExit(startupExit);
+      if (pty.exitHandlers.length > 0) pty.emitExit(startupExit);
+      else if (Date.now() < deadline) return;
+      clearInterval(timer); // Exited, or the start failed before anything listened.
     }, 0);
+    timer.unref();
     return pty;
   };
 }

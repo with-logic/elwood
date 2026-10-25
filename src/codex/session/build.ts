@@ -164,7 +164,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
-  const sessionCleanup = activeSession.startupCleanup(readiness.ready.cancel);
+  const sessionCleanup = activeSession.startupCleanupResources(readiness.ready.cancel);
   await guardStartupRegion(
     async () => {
       activeSession.startLoops();

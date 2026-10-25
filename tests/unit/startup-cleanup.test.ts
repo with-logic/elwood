@@ -1,6 +1,6 @@
 /**
  * Unit coverage for the guarded startup region and startup-failure cleanup
- * (PRD §9.1/§9.4, C-LIFE-10, C-ERR-07): a failure AFTER the session's live resources
+ * (PRD §9.1/§9.4, C-LIFE-10): a failure AFTER the session's live resources
  * exist runs every cleanup step before rethrowing. The session ends its PTY first, then
  * the bridge, watcher, and terminal are released, and a failed step never skips a later
  * one. How the session ends the PTY and reaps its group is covered on the public paths in
@@ -14,12 +14,10 @@ import {
   type StartupPty,
 } from "../../src/runtime/startup/cleanup.ts";
 
-const LEADER = 4242;
 const fastTimeouts = { gracefulMs: 0, forceMs: 0 } as const;
 
 /** A session-owned PTY end that logs each call and its window, failing with `failure`. */
 const startupPty = (calls: string[], failure?: unknown): StartupPty => ({
-  pid: LEADER,
   terminate: (timeouts) => {
     calls.push(`pty.terminate ${timeouts.gracefulMs}/${timeouts.forceMs}`);
     return failure === undefined ? Promise.resolve() : Promise.reject(failure);
@@ -69,7 +67,7 @@ describe("cleanupStartupResources", () => {
     expect(calls).toEqual(["pty.terminate 5000/1000"]);
   });
 
-  test("C-ERR-07 runs every step even when the bridge stop rejects", async () => {
+  test("C-LIFE-10 runs every step even when the bridge stop rejects", async () => {
     const calls: string[] = [];
     await cleanupStartupResources({
       before: () => calls.push("before"),
@@ -82,7 +80,7 @@ describe("cleanupStartupResources", () => {
     expect(calls).toEqual(["before", "pty.terminate 0/0", "watcher.stop", "terminal.dispose"]);
   });
 
-  test("C-ERR-07 a bridge stop that throws synchronously is contained too", async () => {
+  test("C-LIFE-10 a bridge stop that throws synchronously is contained too", async () => {
     const calls: string[] = [];
     await expect(
       cleanupStartupResources({

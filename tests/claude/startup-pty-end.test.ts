@@ -1,14 +1,15 @@
 /**
  * Public-path coverage for ending a failed Claude start's PTY (PRD §9.1, C-LIFE-10). A
- * CLI that exits during a start or resume is never signaled again, and the session's own
- * reaper SIGKILLs its group once. A CLI still running gets one SIGTERM and one group
- * reap, and its group is reaped even when the signal throws. Signals and group kills
- * reach injected fakes only.
+ * CLI that exits during a start or resume is never signaled again. The session's own
+ * reaper SIGKILLs its group once, or retries once if the exit's reap failed. A CLI still
+ * running gets one SIGTERM and one group reap, and its group is reaped even when the
+ * signal throws. Signals and group kills reach injected fakes only.
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   exitingDuringStartup,
   rejection,
@@ -28,6 +29,23 @@ describe("C-LIFE-10 ending a failed Claude start's PTY", () => {
     expect(failure.details).toEqual(startupExit);
     expect(ptys[0]!.killSignals).toEqual([]);
     expect(reapedGroups).toEqual([ptys[0]!.pid]);
+  });
+
+  test("a failed exit-path reap is retried by cleanup's shared reaper, still unsignaled", async () => {
+    installFakes();
+    const attempts: number[] = [];
+    setGroupKillerForTests({
+      killGroup: (pgid) => {
+        attempts.push(pgid);
+        if (attempts.length === 1) throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+      },
+    });
+    setPtyFactoryForTests(exitingDuringStartup(ptys));
+    const failure = await rejection(startClaude({ cwd: tempDir() }));
+    expect(failure.code).toBe("claude_start_failed");
+    expect(failure.details).toEqual(startupExit);
+    expect(ptys[0]!.killSignals).toEqual([]);
+    expect(attempts).toEqual([ptys[0]!.pid, ptys[0]!.pid]);
   });
 
   test("a CLI that exits during a resume is never signaled again either", async () => {

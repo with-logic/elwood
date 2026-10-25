@@ -115,7 +115,10 @@ export class SessionShutdownBinding {
    * so the PTY is never signaled again: only that shared reaper runs, which does nothing
    * if the exit's reap succeeded and retries it if it failed.
    */
-  startupCleanup(closeSession: () => void, cancelReadiness: () => void): SessionStartupCleanup {
+  startupCleanupResources(
+    closeSession: () => void,
+    cancelReadiness: () => void,
+  ): SessionStartupCleanup {
     const { pty, reapPolicy, loops } = this.input;
     return {
       before: () => {
@@ -124,7 +127,6 @@ export class SessionShutdownBinding {
         loops.pause();
       },
       pty: {
-        pid: pty.pid,
         terminate: async (timeouts) => {
           if (this.exitFinalization === undefined) {
             await terminatePty(pty, "SIGTERM", reapPolicy.reaper, timeouts);

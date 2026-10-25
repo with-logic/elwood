@@ -10,8 +10,6 @@ export type StartupTerminationTimeouts = {
 
 /** A failed startup's PTY, ended by the session that owns its exit and its reaper. */
 export type StartupPty = {
-  /** The leader's pid, which is also its process-group id. */
-  readonly pid: number;
   /** Ends the PTY and reaps its group; never signals a PTY whose exit was already seen. */
   readonly terminate: (timeouts: StartupTerminationTimeouts) => Promise<void>;
 };
