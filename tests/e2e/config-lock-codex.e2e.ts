@@ -22,7 +22,6 @@ import {
   sandboxedCodexHome,
   skipIf,
   skipReason,
-  waitFor,
 } from "./helpers.ts";
 
 // A known baseline default the sandbox starts from; concurrent switches must restore it.
@@ -34,6 +33,11 @@ function rootModelKeys(configPath: string): readonly string[] {
   return text.split("\n").filter((line) => /^(model|model_reasoning_effort)\s*=/.test(line));
 }
 
+/**
+ * Starts one session and waits for it to become ready. A session that exits or never
+ * becomes ready is torn down here, because the caller never receives it, and the error
+ * carries Codex's own screen so a startup crash names itself.
+ */
 async function startReady(): Promise<CodexSessionApi> {
   const project = makeProject("codex");
   const session = await startCodex({
@@ -44,8 +48,20 @@ async function startReady(): Promise<CodexSessionApi> {
     autotrust: true,
     hooks: {},
   });
-  await waitFor(() => (session.status === "ready" ? true : undefined), "codex ready", 60_000);
-  return session;
+  try {
+    // Rejects as soon as the session reaches a terminal status such as `exited`,
+    // rather than polling out the whole minute for a `ready` that cannot come.
+    await session.waitForStatus((status) => status === "ready", 60_000);
+    return session;
+  } catch (error) {
+    const status = session.status;
+    // The exit can be reported before its final output renders; Codex prints its
+    // startup error last.
+    await session.terminal.settled();
+    const screen = session.terminal.snapshot().text.trim();
+    await cleanup(session);
+    throw new Error(`codex did not become ready (status ${status}):\n${screen}`, { cause: error });
+  }
 }
 
 test("C-CODEX-14 concurrent Codex model switches restore the user default (real CLI)", {
@@ -57,7 +73,12 @@ test("C-CODEX-14 concurrent Codex model switches restore the user default (real 
   let a: CodexSessionApi | undefined;
   let b: CodexSessionApi | undefined;
   try {
-    [a, b] = await Promise.all([startReady(), startReady()]);
+    // Start the sessions one after the other; the concurrency under test is the model
+    // switch below. Codex 0.164.0 does not serialize its SQLite migrations across
+    // processes, so two cold starts in this fresh sandbox race them and one exits with
+    // "local database appears to be damaged" (docs/cli-behavior.md).
+    a = await startReady();
+    b = await startReady();
     const models = await a.listModels();
     const target = models.find((model) => !model.isCurrent);
     assert.ok(target, "another model is available to switch to");
