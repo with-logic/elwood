@@ -190,7 +190,7 @@ export class ClaudeTranscriptWatcher {
   private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): void {
     while (budget.chunks > 0) {
       budget.chunks -= 1;
-      const chunk = this.guard.read(cursor.path, () => cursor.readChunk());
+      const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
       if (chunk === undefined) return; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.canContinueNow) return;
