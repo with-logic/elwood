@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -80,7 +80,7 @@ test.each([
   writeFileSync(path, "");
   let fail = true;
   let attempts = 0;
-  setGroupKillerForTests({
+  setProcessTreeOpsForTests({
     killGroup: () => {
       attempts += 1;
       if (fail) throw new Error("reap refused");

@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -18,7 +18,7 @@ afterEach(() => {
 
 /** A group killer that always throws EPERM — never a real system kill (injected fake). */
 function throwingKiller(): void {
-  setGroupKillerForTests({
+  setProcessTreeOpsForTests({
     killGroup: () => {
       throw Object.assign(new Error("EPERM"), { code: "EPERM" });
     },

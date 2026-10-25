@@ -15,8 +15,8 @@ import {
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
 import {
-  resetGroupKillerForTests,
-  setGroupKillerForTests,
+  resetProcessTreeOpsForTests,
+  setProcessTreeOpsForTests,
 } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   resetStartupWaitMsForTests,
@@ -48,7 +48,7 @@ export function installFakes(options: { readonly supportsHookTrustBypass?: boole
   setPlatformForTests("darwin");
   setCommandRunnerForTests(versionOk(options.supportsHookTrustBypass ?? true));
   setStartupWaitMsForTests(25);
-  setGroupKillerForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
+  setProcessTreeOpsForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
   setPtyFactoryForTests((options) => {
     const pty = new FakePty(options, 1000 + ptys.length);
     ptys.push(pty);
@@ -62,7 +62,7 @@ export function resetFakes(): void {
   resetPreflightCacheForTests();
   resetCodexPreflightCacheForTests();
   resetCodexSessionSeamsForTests();
-  resetGroupKillerForTests();
+  resetProcessTreeOpsForTests();
   ptys.length = 0;
   reapedGroups.length = 0;
 }
