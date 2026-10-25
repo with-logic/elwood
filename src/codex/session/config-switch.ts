@@ -4,7 +4,7 @@
  * Implements PRD §5.3 setModel restore and C-CODEX-14.
  */
 
-import { isPickerIntervention } from "../../core/models/intervention.ts";
+import { isCallerInputIntervention } from "../../core/models/intervention.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
@@ -38,7 +38,7 @@ export function switchCodexModel(
     cancel: { signal, error: () => signal.reason },
     restore: (snapshot) => {
       // Raw input that took over the picker revokes restore authority.
-      const outcome = isPickerIntervention(signal.reason)
+      const outcome = isCallerInputIntervention(signal.reason)
         ? snapshotCodexConfig(path) === snapshot
           ? "unchanged"
           : "interrupted"

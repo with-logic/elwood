@@ -48,6 +48,17 @@ export function makeProject(agent: AgentName): E2eProject {
   };
 }
 
+/**
+ * Keeps scratch roots past the file's sweep, for a test that could not confirm its agent
+ * exited: a surviving process may still be using them, and they stay for diagnosis.
+ */
+export function keepScratch(...roots: readonly string[]): void {
+  for (const root of roots) {
+    const index = scratchRoots.indexOf(root);
+    if (index >= 0) scratchRoots.splice(index, 1);
+  }
+}
+
 /** Skip reason when the user has no Codex login to seed a sandboxed `CODEX_HOME` from. */
 export function codexAuthMissing(): string | undefined {
   if (existsSync(userCodexAuthPath)) return undefined;
@@ -68,15 +79,19 @@ export function seedCodexHome(home: string, config: string): string {
 }
 
 /**
- * Points `CODEX_HOME` at a private directory under `project.cwd` holding a 0600 copy of
- * the user's `auth.json` and the given `config.toml`. Tear sessions down BEFORE
- * `dispose()`: it removes the sandbox, so an in-flight session could otherwise
- * rewrite a config nobody is watching. `dispose()` restores the suite's default home
- * (`codex-home.ts`). The user's own Codex home is never read or written beyond the auth
- * copy.
+ * Points `CODEX_HOME` at a private directory (mkdtemp makes it 0700) holding a 0600
+ * copy of the user's `auth.json` and the given `config.toml`. The directory is a
+ * scratch root of its own, outside `project.cwd`, so the credential copy is not in
+ * the workspace the agent works in, and the file's sweep removes it if a test never
+ * reaches `dispose()`. Tear sessions down BEFORE `dispose()`: it removes the sandbox,
+ * so an in-flight session could otherwise rewrite a config nobody is watching.
+ * `dispose()` restores the suite's default home (`codex-home.ts`). The user's own Codex
+ * home is never read or written beyond the auth copy.
  */
 export function sandboxedCodexHome(project: E2eProject, config: string): CodexSandbox {
-  const home = join(project.cwd, "codex-home");
+  // Named after the project's scratch root so a leftover is attributable to its test.
+  const home = mkdtempSync(`${project.cwd}-codex-home-`);
+  scratchRoots.push(home);
   const configPath = seedCodexHome(home, config);
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = home;

@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { CodexSessionApi, ElwoodWarningEvent } from "../../src/index.ts";
-import { startReadyCodex, stopCodex } from "./codex-ready.ts";
+import { startReadyCodex, teardownOrKillCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -95,7 +95,7 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
     failure = error;
     throw error;
   } finally {
-    const shutdownFailures = started ? await stopCodex(started) : [];
+    const shutdownFailures = started ? await teardownOrKillCodex(started) : [];
     if (shutdownFailures.length === 0) sandbox.dispose();
     else {
       const errors = failure === undefined ? shutdownFailures : [failure, ...shutdownFailures];

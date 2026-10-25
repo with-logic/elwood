@@ -13,7 +13,7 @@ import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { SessionLifecycle } from "./lifecycle.ts";
-import type { PickerInputOwnership } from "./picker-input.ts";
+import type { SessionInputOwnership } from "./session-input.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 export abstract class QuestionSessionBase extends SessionLifecycle {
@@ -24,7 +24,7 @@ export abstract class QuestionSessionBase extends SessionLifecycle {
     stateDir: string,
     runtime: SessionRuntime,
     pty: PtyProcess,
-    input: PickerInputOwnership,
+    input: SessionInputOwnership,
     events: SessionStatusEmitter,
     replay: TerminalReplayBuffer,
     loops: readonly PersistedLoopDefinition[],

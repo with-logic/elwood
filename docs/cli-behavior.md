@@ -1361,6 +1361,29 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
 
+### A rate-limited Codex turn stays running for minutes (2026-10-25)
+
+Codex 0.164.0 retries a `429 Too Many Requests` after the server's retry delay. In
+Codex's own log (`~/.codex/logs_2.sqlite`, target `codex_core::responses_retry`)
+the delay for four e2e turns on one account's default model was 110 to 509 s. All
+four retries were scheduled for the same instant, the end of a usage window. While
+it waits, Codex paints
+`• Reconnecting... 1/5 (44s • esc to interrupt)` over
+`└ Exceeded retry limit, last status: 429 Too Many Requests`. The rollout ends at
+the user message with no reply, and no `Stop` hook fires. Elwood correctly stays
+`running`, because the turn has not ended. A real-turn e2e that inherits the
+developer's `~/.codex` shares that model's limit with every Codex session on the
+account, so it can wait out a backoff no test timeout covers. A test avoids this by
+pinning a private `CODEX_HOME` and a small model. `tests/e2e/resume-ready-codex.e2e.ts`
+does, and bounds its readiness, turn and submission waits so a stuck step fails with
+its label and the screen.
+
+A private home whose `config.toml` points
+`model_provider` at a local `[model_providers.<id>]` with `base_url =
+"http://127.0.0.1:<port>/v1"` and `wire_api = "responses"` reproduces this
+without quota. That provider answers every request with 429 and `retry-after: 300`.
+Codex still lists models from it before the first turn. C-API-28.
+
 ### Concurrent cold starts race Codex's state migrations (2026-10-25)
 
 Codex 0.164.0 creates and migrates its SQLite state under `CODEX_HOME` at launch
