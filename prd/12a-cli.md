@@ -405,7 +405,9 @@ Listing sessions resolves only state-directory and output settings. Adapter,
 model, permission, trust, and turn-lifecycle environment defaults are irrelevant
 and MUST NOT prevent listing. Config files still undergo strict schema decoding.
 Interactive foreground launches MUST resolve the executable in the same
-interactive login-shell environment used by auto-detection. If the shell exits
+interactive login-shell environment used by auto-detection, through the same
+bounded probe, so the user's startup files get the login shell's launch bound and
+the lookup the command bound (§9.2, C-PERF-05). If the shell exits
 successfully without returning a complete PATH probe frame, the foreground
 launch MUST preserve the inherited PATH. A complete frame containing an empty
 PATH remains authoritative. C-CLI-24/25.

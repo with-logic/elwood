@@ -5,12 +5,12 @@
  */
 import type { ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { errnoCode } from "../core/errors.ts";
+import { errnoCode } from "../../core/errors.ts";
 import {
   boundedErrorToken,
   isReapErrorCode,
   type ReapErrorCode,
-} from "../core/warnings/reasons.ts";
+} from "../../core/warnings/reasons.ts";
 
 /**
  * Unconfirmed cleanup names both the reason and the group still outstanding; confirmed

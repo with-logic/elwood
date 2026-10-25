@@ -5,7 +5,7 @@
 import { opendir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../probe.ts";
+import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../probe/index.ts";
 import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.ts";
 
 /**

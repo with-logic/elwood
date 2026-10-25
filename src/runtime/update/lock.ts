@@ -9,7 +9,7 @@ import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
-import { waitForProbeGroups } from "../probe-cleanup.ts";
+import { waitForProbeGroups } from "../probe/cleanup.ts";
 import {
   type LeaseOwner,
   ownerFile,

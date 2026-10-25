@@ -15,7 +15,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
-import { runProbe } from "../../../src/runtime/probe.ts";
+import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,

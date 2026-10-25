@@ -4,9 +4,10 @@
  * Implements PRD §12A.9 and C-CLI-25.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { causeDetails, elwoodError, errnoCode } from "../../core/errors.ts";
+import { type CommandResult, currentCommandRunner } from "../../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import type { CliAgent } from "../types.ts";
 
@@ -54,22 +55,24 @@ function spawnFailure(launch: InteractiveLaunch, error: unknown) {
   );
 }
 
-/** Match detection PATH without inserting a shell between terminal signals and the agent. */
-function loginShellPath(): Promise<string | undefined> {
-  return new Promise((resolve, reject) => {
-    // NUL framing separates the exported PATH from incidental shell-startup stdout.
-    execFile(
-      userShell(),
-      probeShellCommand("printf '\\0%s\\0' \"$PATH\""),
-      { timeout: 10_000 },
-      (error, stdout) => {
-        if (error) reject(error);
-        else {
-          const parts = stdout.split("\u0000");
-          // Early-exiting shell startup can succeed without running the probe.
-          resolve(parts.length >= 3 ? parts.at(-2) : process.env["PATH"]);
-        }
-      },
-    );
-  });
+/**
+ * Match detection PATH without inserting a shell between terminal signals and the agent. The
+ * lookup is a probe like detection's, so the user's profile gets the login shell's own bound
+ * and the `printf` the command's (§9.2, C-PERF-05).
+ */
+async function loginShellPath(): Promise<string | undefined> {
+  // NUL framing separates the exported PATH from incidental shell-startup stdout.
+  const command = probeShellCommand("printf '\\0%s\\0' \"$PATH\"");
+  const result = await currentCommandRunner()(userShell(), command);
+  // A shell that exited on its own, successfully, may never have run the lookup (§12A.9).
+  const status = result.error === undefined ? result.status : result.error.shellStatus;
+  if (status !== 0) throw lookupFailure(result);
+  const parts = result.stdout.split("\u0000");
+  // Early-exiting shell startup can succeed without running the probe.
+  return parts.length >= 3 ? parts.at(-2) : process.env["PATH"];
+}
+
+function lookupFailure({ status, error }: CommandResult): Error {
+  const message = error?.message ?? `login shell exited with status ${status}`;
+  return Object.assign(new Error(message), error?.code === undefined ? {} : { code: error.code });
 }

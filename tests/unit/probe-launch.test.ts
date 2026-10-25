@@ -12,7 +12,7 @@ import {
   resetProbeTimeoutsForTests,
   runProbe,
   setProbeTimeoutsForTests,
-} from "../../src/runtime/probe.ts";
+} from "../../src/runtime/probe/index.ts";
 import { probeShellCommand } from "../../src/runtime/shell.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -93,6 +93,7 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
   expect(result.error).toEqual({
     message: "login shell exited with status 0 before starting the probe command",
     phase: "login_shell",
+    shellStatus: 0,
   });
 });
 

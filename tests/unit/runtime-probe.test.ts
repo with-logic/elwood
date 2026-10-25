@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe.ts";
+import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 import { currentCommandRunner } from "../../src/runtime/seams.ts";
 import { tempDir } from "../helpers/tmp.ts";
 

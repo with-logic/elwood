@@ -5,7 +5,7 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { probeFailureDetails } from "../../src/core/errors.ts";
-import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe.ts";
+import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 
 const kill = process.kill.bind(process);
 afterEach(() => vi.restoreAllMocks());

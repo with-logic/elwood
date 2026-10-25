@@ -12,8 +12,8 @@ import {
   probeLaunchTimeoutMs,
   resetProbeTimeoutsForTests,
   runProbe,
-} from "../../src/runtime/probe.ts";
-import { probeStartScript } from "../../src/runtime/probe-start.ts";
+} from "../../src/runtime/probe/index.ts";
+import { probeStartScript } from "../../src/runtime/probe/start.ts";
 import type { CommandResult } from "../../src/runtime/seams.ts";
 import { tempDir } from "../helpers/tmp.ts";
 

@@ -10,7 +10,7 @@ import {
   preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
-import { probeStartScript } from "../../src/runtime/probe-start.ts";
+import { probeStartScript } from "../../src/runtime/probe/start.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   resetAutoupdateForTests,

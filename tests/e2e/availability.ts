@@ -12,7 +12,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
-import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe.ts";
+import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 export type AgentName = "claude" | "codex";

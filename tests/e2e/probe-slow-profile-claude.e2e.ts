@@ -14,7 +14,7 @@ import {
   probeLaunchTimeoutMs,
   resetProbeTimeoutsForTests,
   setProbeTimeoutsForTests,
-} from "../../src/runtime/probe.ts";
+} from "../../src/runtime/probe/index.ts";
 import { shellQuote, userShell } from "../../src/runtime/shell.ts";
 import { resolvedAgentPath } from "./availability.ts";
 import { e2eTimeoutMs, makeProject, skipIf, skipReason } from "./helpers.ts";

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { probeCommandStartLine } from "../../src/runtime/probe-start.ts";
+import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
 import { loginShellCommand, probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 vi.mock("node:os", async (importOriginal) => {

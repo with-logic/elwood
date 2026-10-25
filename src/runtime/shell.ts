@@ -4,7 +4,7 @@
  */
 
 import { userInfo } from "node:os";
-import { probeStartScript } from "./probe-start.ts";
+import { probeStartScript } from "./probe/start.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";

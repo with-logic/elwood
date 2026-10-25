@@ -8,10 +8,10 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
-import { completeUtf8Length } from "../core/utf8.ts";
-import { abortProbe } from "./probe-cleanup.ts";
-import { announcesStart, ProbeStartWatcher, probeControlFd } from "./probe-start.ts";
-import type { CommandResult } from "./seams.ts";
+import { completeUtf8Length } from "../../core/utf8.ts";
+import type { CommandResult } from "../seams.ts";
+import { abortProbe } from "./cleanup.ts";
+import { announcesStart, ProbeStartWatcher, probeControlFd } from "./start.ts";
 
 /** The probe command's own default bound, from the shell's start line (C-PERF-03). */
 export const probeCommandTimeoutMs = 15_000;
@@ -174,7 +174,8 @@ function launchTimedOut(stdout: string, stderr: string): CommandResult {
 
 function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
   const message = `login shell exited with status ${status} before starting the probe command`;
-  return { status: null, stdout, stderr, error: { message, phase: "login_shell" } };
+  const error = { message, phase: "login_shell", shellStatus: status } as const;
+  return { status: null, stdout, stderr, error };
 }
 
 function overflow(stdout: string, stderr: string): CommandResult {

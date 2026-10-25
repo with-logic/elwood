@@ -9,7 +9,7 @@ import {
   ProbeStartWatcher,
   probeCommandStartLine,
   probeStartScript,
-} from "../../src/runtime/probe-start.ts";
+} from "../../src/runtime/probe/start.ts";
 
 const line = `${probeCommandStartLine}\n`;
 

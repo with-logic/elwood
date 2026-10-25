@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test, vi } from "vitest";
-import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe.ts";
-import { processGroupGone } from "../../src/runtime/probe-cleanup.ts";
+import { processGroupGone } from "../../src/runtime/probe/cleanup.ts";
+import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const fixture = fileURLToPath(new URL("../fixtures/probe-descendant.ts", import.meta.url));

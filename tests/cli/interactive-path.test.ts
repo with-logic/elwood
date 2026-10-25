@@ -5,10 +5,15 @@ import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { spawnInteractiveAgent } from "../../src/cli/interactive/spawn.ts";
 import { loginShellResolves } from "../../src/cli/request/agent-detect.ts";
+import {
+  resetProbeTimeoutsForTests,
+  setProbeTimeoutsForTests,
+} from "../../src/runtime/probe/index.ts";
 import * as shell from "../../src/runtime/shell.ts";
 
 const roots: string[] = [];
 afterEach(() => {
+  resetProbeTimeoutsForTests();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -86,4 +91,32 @@ test("C-CLI-25 a framed empty PATH remains authoritative", async () => {
       cwd: f.root,
     }),
   ).rejects.toMatchObject({ code: "codex_not_found" });
+});
+
+test("C-PERF-05 interactive PATH lookup gives a slow profile the login shell's own bound", async () => {
+  const f = fixture();
+  const profile = readFileSync(f.startup, "utf8").replace("shift\n", "sleep 1\nshift\n");
+  writeFileSync(f.startup, profile);
+  writeFileSync(join(f.bin, "elwood-test-agent"), "#!/bin/sh\nexit 7\n", { mode: 0o700 });
+  // The profile outlasts the command's bound and still resolves the shell's PATH.
+  setProbeTimeoutsForTests({ commandMs: 300, launchMs: 10_000 });
+  const launch = { agent: "claude", command: "elwood-test-agent", args: [], cwd: f.root } as const;
+  expect(await spawnInteractiveAgent(launch)).toBe(7);
+  // A profile that outlasts the launch bound fails as the login shell, not as a hang.
+  setProbeTimeoutsForTests({ commandMs: 300, launchMs: 200 });
+  await expect(spawnInteractiveAgent(launch)).rejects.toMatchObject({
+    code: "claude_start_failed",
+    details: { cause: expect.stringContaining("login shell did not start"), errno: "ETIMEDOUT" },
+  });
+});
+
+test("C-CLI-25 a shell that fails after running the lookup maps to an adapter start error", async () => {
+  const f = fixture();
+  writeFileSync(f.startup, '#!/bin/sh\nshift\nshift\n/bin/sh "$@"\nexit 3\n');
+  await expect(
+    spawnInteractiveAgent({ agent: "codex", command: "unused", args: [], cwd: f.root }),
+  ).rejects.toMatchObject({
+    code: "codex_start_failed",
+    details: { cause: "login shell exited with status 3" },
+  });
 });
