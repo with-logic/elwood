@@ -189,6 +189,17 @@ back each entry are listed in `prd/14-conformance.md`.
   `… +K models`) and every measured effort glyph, and follows the cursor across a
   scrolling window. `listModels` also returns the `↓`-marked last visible row, with the
   marker kept in its `raw`.
+- Claude `listModels()` and `listClaudeModels()` return every model the `/model`
+  picker lists, not just its ten-row window: an account with 13 models now gets 13
+  rows, in picker order. Elwood reveals the hidden rows with arrow keys and then
+  cancels, so the model and effort are unchanged. `setModel` can select any listed
+  row, including one outside the window, walking only until that row is on screen,
+  and an unknown id's error lists every row. The list's length is the highest
+  rendered row plus the `… +K models` count, and `K` falls as the window scrolls
+  while that sum stays the same. A frame whose implied length is missing or differs
+  from the first one read is never acted on: Elwood waits for a repaint that matches,
+  and fails with `model_automation_failed` at the timeout rather than returning part
+  of the list.
 - `listModels` and `listClaudeModels` no longer return a partial catalog read while
   the picker was still painting. Claude draws it over the slash-command menu, so a
   probe could return only `default`, or fail with "Could not parse any model picker

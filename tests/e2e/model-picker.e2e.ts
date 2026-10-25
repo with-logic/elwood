@@ -17,6 +17,11 @@ import {
   listCodexModels,
   startClaude,
 } from "../../src/index.ts";
+import {
+  hasCompletePickerOrder,
+  readClaudePicker,
+  savedClaudeModel,
+} from "./claude-picker-oracle.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import { startReadyCodex } from "./codex-ready.ts";
 import {
@@ -55,6 +60,7 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
     await waitFor(() => (session?.status === "ready" ? true : undefined), "claude ready", 60_000);
     const models = await session.listModels();
     assert.ok(models.length >= 3, "picker lists several models");
+    assert.ok(hasCompletePickerOrder(models), "every row, none missing, in picker order");
     // Claude paints the picker over its slash-command menu; a list read mid-paint is short.
     assert.deepEqual(await session.listModels(), models, "an unchanged picker lists the same rows");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
@@ -74,15 +80,28 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       models.find((model) => model.isDefault)?.id,
       "user default model is untouched",
     );
-    // The last rendered row, so the cursor crosses every row's effort control. This needs an
-    // account whose list is longer than Claude's ten-row window: then that row is the
-    // `↓`-marked one above `… +K models`, and a shorter list cannot exercise the window.
+    // The last row, so the cursor crosses every row's effort control. Past the ten-row window it
+    // stays hidden until the walk reaches it, and the next picker opens scrolled to it.
     const last = after.at(-1);
-    assert.ok(last && !last.isCurrent, "the last rendered row is another model");
-    assert.match(last.raw, /^↓ \d+\. /, "the picker windows a list of more than ten models");
+    assert.ok(last && !last.isCurrent, "the last row is another model");
+    assert.ok(after.length > 10, "the picker windows a list of more than ten models");
     await session.setModel(last.id);
+    const shown = await readClaudePicker(session);
+    assert.ok(shown.effortRow, "the picker shows the current model's effort");
+    const saved = savedClaudeModel();
     const final = await session.listModels();
+    assert.equal(savedClaudeModel(), saved, "the walking listing saves no default model");
     assert.equal(final.find((model) => model.isCurrent)?.id, last.id);
+    // Opened scrolled on its last row, the picker hides the rows ABOVE its window instead.
+    assert.deepEqual(
+      final.map((model) => model.id),
+      models.map((model) => model.id),
+      "a picker opened scrolled lists the complete catalog",
+    );
+    // The walk's arrows move only the highlight; its Escape keeps the model AND its effort.
+    const reread = await readClaudePicker(session);
+    assert.equal(reread.effortRow, shown.effortRow, "listing keeps the current effort");
+    assert.equal(models.length, reread.rowCount, "every row the picker lists");
   } finally {
     await cleanup(session);
   }
@@ -137,6 +156,10 @@ test("C-API-41 real listClaudeModels returns models without a caller-held sessio
   const project = makeProject("claude");
   const models = await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir });
   assert.ok(models.length >= 3, "session-less probe lists several models");
+  assert.ok(
+    hasCompletePickerOrder(models),
+    "every row, none missing, in picker order, past Claude's ten-row window",
+  );
   // A probe that read the picker mid-paint returned one row, or none, in 3 of 5 runs.
   for (let probe = 0; probe < 2; probe += 1)
     assert.deepEqual(

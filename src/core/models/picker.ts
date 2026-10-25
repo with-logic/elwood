@@ -10,14 +10,17 @@ import type { ObservedTerminal } from "../input/abort.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
 import { waitUntilClosed } from "./close-wait.ts";
 import { sendPickerInput } from "./input.ts";
-import {
-  type AgentModelOption,
-  type ModelDialogAuthority,
-  type ModelDialogStage,
-  ownOperation,
-  type ParsedModelPicker,
+import { isOwnCompletePicker } from "./own-picker.ts";
+import type {
+  AgentModelOption,
+  ModelDialogAuthority,
+  ModelDialogStage,
+  ParsedModelPicker,
 } from "./rows.ts";
 import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
+import { cursorOption, revealPickerRows } from "./window.ts";
+
+export { isOwnCompletePicker } from "./own-picker.ts";
 
 export function pickerTimeout(options?: { readonly timeoutMs?: number }): number {
   return options?.timeoutMs ?? defaultModelTimeoutMs;
@@ -74,60 +77,59 @@ export type ModelPickerSpec = {
   readonly apply: (io: ModelPickerIo, timeoutMs: number) => Promise<void>;
 };
 
-/**
- * True only while THIS operation's own COMPLETE picker is the bottom-most region: never its
- * `painting` shell and never a `follow-up` stage. It gates every shared navigation,
- * selection, and cancelling key, and each adapter's selecting key; a follow-up is answered
- * only by the adapter's `apply`, under that stage's own guard (Claude's cache warning,
- * Codex's reasoning level).
- *
- * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority
- * (`ownOperation`). A header match alone is untrusted: a transcript or the agent's own output
- * can print `Select model`, so navigating or Escaping on it could send keys into a running
- * turn, the real composer, or another prompt (C-API-24). The header gates only the `/model`
- * open wait (`openAndParse`); the cursor-settle wait reads a parsed row, and the close wait
- * (`waitUntilClosed`) reads only the bottom-most region. None of them writes.
- */
-export const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, ownOperation) === "picker";
-
 const escapeKey = "\u001b";
 const arrowStepMs = 80;
 
+/**
+ * Every row the picker lists, rows outside its window included. Cancels with Escape after the
+ * walk, so neither the model nor its effort changes, and returns once the picker is closed.
+ */
 export async function listPickerModels(
   io: ModelPickerIo,
   spec: ModelPickerSpec,
   timeoutMs: number,
 ): Promise<readonly AgentModelOption[]> {
-  const parsed = await openAndParse(io, spec, timeoutMs);
+  const opening = await openAndParse(io, spec, timeoutMs);
+  const { options } = await revealPickerRows(io, spec, opening, { timeoutMs });
   await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
   await waitUntilClosed(io, spec, timeoutMs);
-  return parsed.options;
+  return options;
 }
 
+/**
+ * Selects `id`, walking a scrolling window only until that row is rendered, then moving to it
+ * and applying it with the adapter's own `apply`. An unknown id cancels, and the rejection
+ * lists every row the walk saw.
+ */
 export async function setPickerModel(
   io: ModelPickerIo,
   spec: ModelPickerSpec,
   id: string,
   timeoutMs: number,
 ): Promise<void> {
-  const parsed = await openAndParse(io, spec, timeoutMs);
+  const opening = await openAndParse(io, spec, timeoutMs);
   const wanted = id.toLowerCase();
   // Row ids are already lower-cased labels (`rows.ts`), so matching the id
   // alone covers a caller that passes the display label in any case.
-  const target = parsed.options.findIndex((option) => option.id === wanted);
+  const isTarget = (option: AgentModelOption) => option.id === wanted;
+  const ownCompletePicker = isOwnCompletePicker(spec);
+  // A row outside a scrolling window is as selectable as a rendered one: walk only until it
+  // is rendered. An unknown id walks the whole list, so the error names every row.
+  const walk = { timeoutMs, found: isTarget };
+  const { frame: parsed, options } = await revealPickerRows(io, spec, opening, walk);
+  const target = parsed.options.findIndex(isTarget);
   if (target === -1 || parsed.cursorOptionIndex === -1) {
-    await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
+    await sendPickerInput(io, escapeKey, ownCompletePicker);
     const reason =
       target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
     throw elwoodError("model_automation_failed", reason, {
-      available: parsed.options.map((option) => option.id),
+      available: options.map((option) => option.id),
     });
   }
   const delta = target - parsed.cursorOptionIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
-    await sendPickerInput(io, key, isOwnCompletePicker(spec));
+    await sendPickerInput(io, key, ownCompletePicker);
     await delay(arrowStepMs);
   }
   // Settle on the cursor row's identity, not its index: a scrolled Claude window shifts
@@ -141,11 +143,6 @@ export async function setPickerModel(
   );
   await spec.apply(io, timeoutMs);
   await waitUntilClosed(io, spec, timeoutMs);
-}
-
-/** The highlighted option, or undefined while no cursor is painted. */
-function cursorOption(parsed: ParsedModelPicker): AgentModelOption | undefined {
-  return parsed.options[parsed.cursorOptionIndex];
 }
 
 async function openAndParse(
