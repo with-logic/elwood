@@ -58,6 +58,23 @@ Because `SessionStart` is Elwood's authoritative Codex readiness signal
 comes from that hook, bounded by a **10 s starvation deadline** armed on the
 first render frame (`src/runtime/readiness/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
 
+**Codex 0.164 paints a boot composer before its session is configured
+(2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
+anything` and `? for shortcuts` with no model footer; the header may read
+`loading` or already show the path. The model footer (`GPT-6.1-Sol default ·
+<path>`) appears only once the session is configured, which for an untrusted
+folder is after the directory-trust gate is answered. On a loaded machine (load
+average 20 to 127, 8 concurrent launches with `autotrust`, fresh `git init`
+folders) the gate painted 11.1 to 30.6 s after the first output in 24 of 32
+launches, and every one of those 24 reported `ready` at 10.0 s, onto a screen
+showing the boot composer without a footer. The other 8 painted their gate at
+8.9 to 9.0 s and readied after it, on footed composers. Unloaded, the gate came
+3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
+composer with its model footer (`codexComposerConfigured`,
+`src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
+gate delay, releases readiness if no footer is ever recognized. Fixtures:
+`tests/fixtures/codex-0.164.0/boot/`. C-API-28.
+
 **Codex 0.153.3 can still swallow the deadline-released first paste under load.**
 Its cold composer may accept the paste visually, repaint another startup spinner,
 clear the prompt without firing `SessionStart` or `UserPromptSubmit`, and then

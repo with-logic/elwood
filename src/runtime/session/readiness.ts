@@ -18,29 +18,58 @@ import {
 export type ReadinessGate = {
   readonly ready: InitialReady;
   readonly isHeld: () => boolean;
-  readonly observeFrameHold: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
+  readonly observeFrameHold: (
+    facts: ComposerReadyFacts,
+    trustInputBlocking?: boolean,
+    frame?: string,
+  ) => void;
   /** Per rendered frame: update the blocking gate, reconcile a deferred mark, and
    * (on resume) mark readiness on the first quiet, non-blocking composer. */
-  readonly observeReadinessFrame: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
+  readonly observeReadinessFrame: (
+    facts: ComposerReadyFacts,
+    trustInputBlocking?: boolean,
+    frame?: string,
+  ) => void;
 };
 
-export function createReadinessGate(onReady: () => void, resumed: boolean): ReadinessGate {
+/**
+ * `composerConfigured`, when an adapter supplies it, proves a rendered composer belongs
+ * to a configured session rather than to the boot screen (Codex's model footer). The
+ * starvation deadline then marks only onto such a frame (C-API-28).
+ */
+export function createReadinessGate(
+  onReady: () => void,
+  resumed: boolean,
+  composerConfigured?: (frame: string) => boolean,
+): ReadinessGate {
   let readinessHeld = false;
-  const observeFrameHold = (facts: ComposerReadyFacts, trustInputBlocking = false) => {
+  let composerPainted = false;
+  const observeFrameHold = (facts: ComposerReadyFacts, trustInputBlocking = false, frame = "") => {
     // A dialog's deferred mark waits for idle; ordinary cold-start work still
     // retains the existing hook/deadline path instead of waiting on itself.
     readinessHeld =
       facts.blocking_prompt_visible ||
       trustInputBlocking ||
       (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
+    // Work may animate forever (a failing MCP server's retry spinner), so only the
+    // configured composer itself, not idleness, is required before the deadline marks.
+    composerPainted =
+      facts.composer_visible &&
+      !facts.blocking_prompt_visible &&
+      composerConfigured?.(frame) === true;
   };
-  const ready = initialReady(onReady, undefined, () => readinessHeld);
+  const ready = initialReady(
+    onReady,
+    undefined,
+    () => readinessHeld,
+    composerConfigured && (() => composerPainted),
+  );
   return {
     ready,
     isHeld: () => readinessHeld,
     observeFrameHold,
-    observeReadinessFrame: (facts, trustInputBlocking = false) => {
-      observeFrameHold(facts, trustInputBlocking);
+    observeReadinessFrame: (facts, trustInputBlocking = false, frame = "") => {
+      observeFrameHold(facts, trustInputBlocking, frame);
       markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
       ready.retryWhenReleased(readinessHeld); // reconcile only after an idle clearance frame
     },

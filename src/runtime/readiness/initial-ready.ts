@@ -59,15 +59,37 @@ export function markReadyOnResumeComposer(
     ready.mark();
 }
 
+/**
+ * `isComposerPainted` reports whether the latest frame shows a configured session's
+ * composer outside any blocking dialog. The starvation deadline marks only onto such a
+ * frame: a CLI that has not configured its session is still booting, and under load can
+ * paint a trust gate after the deadline, so an earlier mark would drain the queue into
+ * the boot screen or that gate. A deadline that expires first waits for that frame, and
+ * `backstopMs` after the first frame marks anyway, so an unrecognized composer delays
+ * readiness but never starves it (C-API-28).
+ */
 export function initialReady(
   callback: () => void,
   maxWaitMs = 10_000,
   isReadinessHeld: () => boolean = () => false,
+  isComposerPainted: () => boolean = () => true,
+  backstopMs = 60_000,
 ): InitialReady {
   let ready = false;
   let cancelled = false;
   let deferredByHold = false;
+  let awaitingComposer = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
+  let backstop: ReturnType<typeof setTimeout> | undefined;
+  /** Timer marks are contained; on failure `ready` stays false and a later signal retries. */
+  const markFromTimer = (composerRequired: boolean) => {
+    try {
+      awaitingComposer = composerRequired && !isComposerPainted();
+      if (!awaitingComposer) mark();
+    } catch {
+      // Retried by a subsequent readiness hook or rendered composer frame.
+    }
+  };
   const mark = () => {
     if (ready || cancelled) return;
     // createReadinessGate owns the composite hold: human/automation gates and
@@ -84,30 +106,28 @@ export function initialReady(
     // a failed transition must never permanently starve the queue (C-API-28).
     callback();
     ready = true;
+    clearTimeout(deadline);
+    clearTimeout(backstop);
   };
   return {
     cancel: () => {
       cancelled = true;
-      if (deadline) clearTimeout(deadline);
+      clearTimeout(deadline);
+      clearTimeout(backstop);
     },
     mark,
     retryWhenReleased: (readinessHeld) => {
-      if (!ready && deferredByHold && !readinessHeld) mark();
+      if (ready || readinessHeld) return;
+      if (deferredByHold || (awaitingComposer && isComposerPainted())) mark();
     },
     replay: () => void (!cancelled && ready && callback()),
     // Arms on the first frame regardless of hook arrival, so a missing or failed
-    // readiness hook cannot starve readiness forever. The deadline's mark is contained
-    // (a throwing callback on a timer would otherwise be an uncaught exception); if it
-    // fails, `ready` stays false so a later hook or composer frame still retries.
+    // readiness hook cannot starve readiness forever. Timer marks are contained (a
+    // throwing callback on a timer would otherwise be an uncaught exception).
     armDeadline: () => {
-      if (cancelled) return;
-      deadline ??= setTimeout(() => {
-        try {
-          mark();
-        } catch {
-          // Retried by a subsequent readiness hook or rendered composer frame.
-        }
-      }, maxWaitMs);
+      if (cancelled || ready) return;
+      deadline ??= setTimeout(() => markFromTimer(true), maxWaitMs);
+      backstop ??= setTimeout(() => markFromTimer(false), backstopMs);
     },
   };
 }
