@@ -4,7 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 
-/** `capturedFrame("claude-2.1.310/model-picker/top-window")` reads that `.txt` capture. */
+/** `capturedFrame("codex-0.164.0/model-picker/picker")` reads that `.txt` capture. */
 export function capturedFrame(path: string): string {
   return readFileSync(new URL(`../fixtures/${path}.txt`, import.meta.url), "utf8");
 }

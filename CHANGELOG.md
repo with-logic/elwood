@@ -12,8 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Codex `setModel` works on Codex 0.164.0, whose picker and reasoning screens close
-  with `enter select · esc back` hints. It failed on its first key with "The model
+- Codex `setModel` works on Codex 0.164.0, whose model picker closes with an
+  `enter select · esc back` hint and whose reasoning screen closes with
+  `enter default · s session · esc back`. It failed on its first key with "The model
   picker was replaced".
 
 - Queued input stays held on a model dialog until the composer is positively

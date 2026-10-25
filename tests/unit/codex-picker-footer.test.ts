@@ -1,7 +1,8 @@
 /**
- * Codex 0.164.0 closes its picker and reasoning screens with terse hint rows
- * (`enter select · esc back`), and both must still read as Elwood's own live dialog: every
- * key the picker is sent is gated on recognition (PRD §5.7, C-API-23, C-API-24).
+ * Codex 0.164.0 closes its picker with `enter select · esc back` and its reasoning screen
+ * with `enter default · s session · esc back`, and both must still read as Elwood's own live
+ * dialog: every key the picker is sent is gated on recognition (PRD §5.7, C-API-23,
+ * C-API-24).
  */
 import { expect, test } from "vitest";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
@@ -11,7 +12,8 @@ import { capturedFrame } from "../helpers/captured-frames.ts";
 import { scripted } from "./scripted-terminal.ts";
 
 /** A full real Codex 0.164.0 viewport (2026-10-25, project path trimmed). */
-const viewport = (name: string) => capturedFrame(`codex-0.164.0/model-picker/${name}`);
+const viewport = (name: "picker" | "reasoning") =>
+  capturedFrame(`codex-0.164.0/model-picker/${name}`);
 
 const opened: ModelDialogAuthority = { opened: true };
 
