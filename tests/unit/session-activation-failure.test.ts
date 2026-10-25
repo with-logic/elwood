@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
 import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { writePrivateFileAtomic } from "../../src/state/files.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
@@ -44,7 +44,7 @@ for (const adapter of [
         // The initial durable read already passed; only commit sees this corruption.
         writePrivateFileAtomic(join(dir, "loops.json"), "not-json");
         if (reapFails)
-          setGroupKillerForTests({
+          setProcessTreeOpsForTests({
             killGroup: () => {
               throw new Error("reap denied");
             },
@@ -67,7 +67,7 @@ for (const adapter of [
         }),
       ).resolves.toMatchObject({ exitCode: 0 });
     } finally {
-      setGroupKillerForTests({ killGroup: () => undefined });
+      setProcessTreeOpsForTests({ killGroup: () => undefined });
       adapter.helpers.ptys[1]?.emitExit({ exitCode: 0 });
       await prior.teardown();
     }

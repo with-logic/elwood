@@ -1,7 +1,7 @@
 /** Destructive shutdown preserves cancellation events for formerly live loops (C-LOOP-19). */
 import { afterEach, expect, test } from "vitest";
 import { type ElwoodLoopEvent, startClaude, startCodex } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 
@@ -49,7 +49,7 @@ for (const adapter of [
   test(`C-LOOP-19 ${adapter.name} failed kill retains notification eligibility for its retry`, async () => {
     adapter.helpers.installFakes();
     let fail = true;
-    setGroupKillerForTests({
+    setProcessTreeOpsForTests({
       killGroup: () => {
         if (fail) throw new Error("reap denied");
       },

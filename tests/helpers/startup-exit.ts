@@ -6,7 +6,7 @@
 
 import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtySpawnOptions } from "../../src/pty/types.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { FakePty } from "./fake-pty.ts";
 
 export const startupExit = { exitCode: 12, signal: 15 } as const;
@@ -44,7 +44,7 @@ export function runningWithStartupOutput(ptys: FakePty[], output: string): Facto
 
 /** Makes every group kill fail with `EPERM` (an injected fake; nothing is signaled). */
 export function refuseGroupKills(): void {
-  setGroupKillerForTests({
+  setProcessTreeOpsForTests({
     killGroup: () => {
       throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
     },
