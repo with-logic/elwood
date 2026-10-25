@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import { existsSync, realpathSync, unlinkSync } from "node:fs";
+import { isAbsolute, relative, sep } from "node:path";
 import test from "node:test";
 import { CodexSession, type ElwoodWarningEvent } from "../../src/index.ts";
 import {
@@ -52,7 +53,9 @@ test("C-CODEX-23 a real Codex transcript removed after it existed emits transcri
     // records, so the watcher has read the file before it is removed.
     await live.sendMessage("Reply with exactly OK.");
     const path = await waitFor(() => transcriptPath, "SessionStart transcript_path");
-    assert.ok(path.startsWith(realpathSync(sandbox.home)), path);
+    // Segment-aware containment: only a file inside this sandbox is ever unlinked.
+    const inside = relative(realpathSync(sandbox.home), realpathSync(path));
+    assert.ok(inside !== "" && !isAbsolute(inside) && inside.split(sep)[0] !== "..", path);
     await waitFor(() => (records.includes("task_complete") ? true : undefined), "task_complete");
     assert.ok(existsSync(path), "the transcript exists after the turn");
     assert.deepEqual(readErrors(), [], "no read error while the transcript exists");
