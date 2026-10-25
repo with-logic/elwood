@@ -1,6 +1,7 @@
 /** Private native Claude questionnaire grammar (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { claudeNamedBorder } from "../composer/border.ts";
 import {
   normalizeClaudeQuestionText,
   OTHER_CONTINUATION_INDENT_COLUMNS,
@@ -26,8 +27,6 @@ export type ClaudeQuestionScreen =
 const CLAUDE_REVIEW_TITLE = "Review your answers";
 const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
-// A named session (`--name`) labels the prompt box's bottom border, under the footer.
-const namedBorder = /^[─━]{3,} \S.* [─━]$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
 const questionFooter = /^Enter to select · .+ · Esc to cancel$/;
 const reviewCancelRow = /^(?:❯| )\s+2\. Cancel$/;
@@ -132,7 +131,8 @@ export function matchesClaudeQuestionTabs(
 function hasOnlyOptionalNamedBorder(footerTail: readonly string[]): boolean {
   const visibleRows = footerTail.filter((line) => line.trim());
   return (
-    visibleRows.length === 0 || (visibleRows.length === 1 && namedBorder.test(visibleRows[0]!))
+    visibleRows.length === 0 ||
+    (visibleRows.length === 1 && claudeNamedBorder.test(visibleRows[0]!))
   );
 }
 

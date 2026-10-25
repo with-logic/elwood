@@ -1234,6 +1234,18 @@ profile timed out before `codex --version` at 15 seconds; the same pinned binary
 with an empty private profile directory returned its version in 52 ms. This
 preflight failure submitted no model turn. Parent environment values stay intact.
 
+### Claude named-session composer rule (2026-10-24)
+
+`claude --name` (Elwood's `name` option; Coal Harbor names every agent) insets the
+name into the composer's top rule on Claude Code 2.1.310: `──── Question Asker ─`.
+The rule below the composer stays plain, and the terminal title becomes
+`✳ Question Asker` instead of `✳ Claude Code`. Composer recognition required plain
+rules on both sides, so trust clearance and empty-input observation never matched a
+named session. In an untrusted folder, autotrust answered the trust prompt but the
+session stayed `blocked` on the idle composer; in a trusted folder it reached `ready`
+through hooks and hid the gap. The top rule may now carry one inset label
+(`src/claude/composer/border.ts`). See `tests/fixtures/claude-2.1.310/`.
+
 ## Claude question editor captures (2026-10-20)
 
 Claude Code 2.1.305 accepts a single question on Enter. Grouped questions advance
