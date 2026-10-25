@@ -10,7 +10,6 @@ import {
   coalesceUnstarted,
   detachedDescendantGroups,
   listProcessTable,
-  listProcessTableShared,
   type ProcessEntry,
   parseProcessTable,
 } from "../../src/runtime/shutdown/process-table.ts";
@@ -18,9 +17,14 @@ import {
 const LEADER = 5000;
 const HOST = 4000;
 
-function entry(pid: number, ppid: number, pgid: number, zombie = false): ProcessEntry {
+type Row = { readonly pid: number; readonly ppid: number; readonly pgid: number };
+
+function row({ pid, ppid, pgid }: Row, zombie = false): ProcessEntry {
   return { pid, ppid, pgid, zombie };
 }
+
+const walk = (table: readonly ProcessEntry[]) =>
+  detachedDescendantGroups(table, { leaderPid: LEADER, hostPid: HOST });
 
 describe("C-LIFE-10 process table", () => {
   test("parses ps rows, flags zombies, and skips anything that is not a row", () => {
@@ -32,38 +36,46 @@ describe("C-LIFE-10 process table", () => {
       "",
     ].join("\n");
     expect(parseProcessTable(stdout)).toEqual([
-      entry(1, 0, 1),
-      entry(LEADER, HOST, LEADER),
-      entry(5001, LEADER, 5001, true),
+      row({ pid: 1, ppid: 0, pgid: 1 }),
+      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
+      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, true),
     ]);
   });
 
-  test("lists the real host table, including this process under its parent", async () => {
-    const table = await listProcessTable(10_000);
-    expect(table.find((row) => row.pid === process.pid)).toMatchObject({ ppid: process.ppid });
-  });
-
-  test("rejects when ps cannot finish inside its timeout", async () => {
-    await expect(listProcessTable(1)).rejects.toThrow();
+  test("runs /bin/ps with its timeout, a 16 MiB output cap, and SIGKILL", async () => {
+    const runs: unknown[] = [];
+    const table = await listProcessTable(1_234, (file, args, options) => {
+      runs.push({ file, args, options });
+      return Promise.resolve({ stdout: " 5000  4000  5000 S\n" });
+    });
+    expect(table).toEqual([row({ pid: LEADER, ppid: HOST, pgid: LEADER })]);
+    expect(runs).toEqual([
+      {
+        file: "/bin/ps",
+        args: ["-A", "-o", "pid=,ppid=,pgid=,stat="],
+        options: { timeout: 1_234, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL" },
+      },
+    ]);
   });
 });
 
 describe("C-LIFE-10 detached descendant groups", () => {
   test("walks parent pids transitively and keeps only groups outside the leader's", () => {
     const table = [
-      entry(HOST, 1, 3999),
-      entry(LEADER, HOST, LEADER),
-      entry(5001, LEADER, LEADER), // same group: the group reap already covers it
-      entry(5002, LEADER, 5002), // setsid hook
-      entry(5003, 5002, 5002), // the hook's own child
-      entry(5004, 5003, 5004), // a grandchild that made yet another session
-      entry(5005, 5001, 5005), // detached child of an in-group child
-      entry(6000, 1, 6000), // unrelated process: never selected
-      entry(6001, HOST, 6001), // the host's other child: not a leader descendant
+      row({ pid: HOST, ppid: 1, pgid: 3999 }),
+      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
+      row({ pid: 5001, ppid: LEADER, pgid: LEADER }), // same group: the group reap already covers it
+      row({ pid: 5002, ppid: LEADER, pgid: 5002 }), // setsid hook
+      row({ pid: 5003, ppid: 5002, pgid: 5002 }), // the hook's own child
+      row({ pid: 5004, ppid: 5003, pgid: 5004 }), // a grandchild that made yet another session
+      row({ pid: 5005, ppid: 5001, pgid: 5005 }), // detached child of an in-group child
+      row({ pid: 6000, ppid: 1, pgid: 6000 }), // unrelated process: never selected
+      row({ pid: 6001, ppid: HOST, pgid: 6001 }), // the host's other child: not a leader descendant
     ];
-    // Each group maps to the groups of its members' parents: 5004's parent is 5003, in
-    // the hook's group, and 5005's parent is in the leader's own group.
-    expect(detachedDescendantGroups(table, LEADER, HOST)).toEqual(
+    // Each group maps to the distinct other groups its members' parents are in: 5003's
+    // parent shares its group and adds nothing, 5004's parent 5003 is in the hook's
+    // group, and 5005's parent 5001 is in the leader's own group.
+    expect(walk(table)).toEqual(
       new Map([
         [5002, new Set([LEADER])],
         [5004, new Set([5002])],
@@ -74,44 +86,48 @@ describe("C-LIFE-10 detached descendant groups", () => {
 
   test("a descendant whose own parent already exited is out of reach", () => {
     // The hook exited and its child was reparented to PID 1: no parent pid links it now.
-    const table = [entry(LEADER, HOST, LEADER), entry(5004, 1, 5004)];
-    expect(detachedDescendantGroups(table, LEADER, HOST).size).toBe(0);
+    const table = [
+      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
+      row({ pid: 5004, ppid: 1, pgid: 5004 }),
+    ];
+    expect(walk(table).size).toBe(0);
   });
 
   test("ignores groups whose descendants are all zombies", () => {
-    const table = [entry(LEADER, HOST, LEADER), entry(5002, LEADER, 5002, true)];
-    expect(detachedDescendantGroups(table, LEADER, HOST).size).toBe(0);
+    const table = [
+      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
+      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, true),
+    ];
+    expect(walk(table).size).toBe(0);
   });
 
   test("never selects the host's group, the leader's group, or a misrouted id", () => {
     const table = [
-      entry(HOST, 1, 3999),
-      entry(LEADER, HOST, 4500), // a leader whose group differs from its pid
-      entry(5001, LEADER, 4500),
-      entry(5002, LEADER, 3999), // impossible in practice: shares the host's group
-      entry(5003, LEADER, 1),
-      entry(5004, LEADER, 0),
-      entry(5005, LEADER, LEADER),
+      row({ pid: HOST, ppid: 1, pgid: 3999 }),
+      row({ pid: LEADER, ppid: HOST, pgid: 4500 }), // a leader whose group differs from its pid
+      row({ pid: 5001, ppid: LEADER, pgid: 4500 }),
+      row({ pid: 5002, ppid: LEADER, pgid: 3999 }), // impossible in practice: shares the host's group
+      row({ pid: 5003, ppid: LEADER, pgid: 1 }),
+      row({ pid: 5004, ppid: LEADER, pgid: 0 }),
+      row({ pid: 5005, ppid: LEADER, pgid: LEADER }),
     ];
-    expect(detachedDescendantGroups(table, LEADER, HOST).size).toBe(0);
+    expect(walk(table).size).toBe(0);
   });
 
   test("a leader missing from the read still parents its listed children by its pid", () => {
     // `ps` can read a leader's children in the same pass the leader's own row left.
-    expect(detachedDescendantGroups([entry(5002, LEADER, 5002)], LEADER, HOST)).toEqual(
+    expect(walk([row({ pid: 5002, ppid: LEADER, pgid: 5002 })])).toEqual(
       new Map([[5002, new Set([LEADER])]]),
     );
   });
 
   test("survives a parent-pid cycle", () => {
     const table = [
-      entry(LEADER, HOST, LEADER),
-      entry(5002, LEADER, 5002),
-      entry(LEADER, 5002, LEADER), // a duplicate row closing a cycle back to the leader
+      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
+      row({ pid: 5002, ppid: LEADER, pgid: 5002 }),
+      row({ pid: LEADER, ppid: 5002, pgid: LEADER }), // a duplicate row closing a cycle back to the leader
     ];
-    expect(detachedDescendantGroups(table, LEADER, HOST)).toEqual(
-      new Map([[5002, new Set([LEADER])]]),
-    );
+    expect(walk(table)).toEqual(new Map([[5002, new Set([LEADER])]]));
   });
 });
 
@@ -142,10 +158,5 @@ describe("C-LIFE-10 coalesced process listing", () => {
     const second = list(1_000);
     resolve();
     expect(await Promise.all([first, second])).toEqual([1, 2]);
-  });
-
-  test("the production listing reads the real host table", async () => {
-    const table = await listProcessTableShared(10_000);
-    expect(table.some((row) => row.pid === process.pid)).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Reads the host process table and finds the process groups a PTY leader's
- * descendants have moved into. Implements PRD §5.3 and §9.4 (C-LIFE-10): Claude
- * starts every hook command with `setsid()`, so a hook runs in its OWN session and
+ * descendants have moved into. Implements PRD §5.3 and §9.4 (C-LIFE-10): Claude and
+ * Codex start every hook command with `setsid()`, so a hook runs in its OWN session and
  * process group and a SIGKILL of the leader's group cannot reach it. The parent-pid
  * chain is the only thing tying such a descendant to the leader, and it holds only
  * while every process between them is alive: when any of them exits, the processes
@@ -10,6 +10,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 /** One row of the host process table. */
 export type ProcessEntry = {
@@ -29,19 +30,34 @@ const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat="] as const;
 const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)/;
 
+/** The bounds a `ps` run gets: its timeout, its output cap, and the signal that ends it. */
+export type PsRunOptions = {
+  readonly timeout: number;
+  readonly maxBuffer: number;
+  readonly killSignal: "SIGKILL";
+};
+
+/** Runs a file to completion and resolves its stdout; `execFile`, promisified. */
+export type PsRunner = (
+  file: string,
+  args: readonly string[],
+  options: PsRunOptions,
+) => Promise<{ readonly stdout: string }>;
+
+export const runFile: PsRunner = promisify(execFile);
+
 /** Lists every process on the host, rejecting when `ps` fails or exceeds `timeoutMs`. */
-export function listProcessTable(timeoutMs: number): Promise<readonly ProcessEntry[]> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      PS_PATH,
-      [...PS_ARGS],
-      { timeout: timeoutMs, maxBuffer: PS_MAX_OUTPUT_BYTES, killSignal: "SIGKILL" },
-      (error, stdout) => {
-        if (error) reject(error);
-        else resolve(parseProcessTable(stdout));
-      },
-    );
-  });
+export async function listProcessTable(
+  timeoutMs: number,
+  run: PsRunner = runFile,
+): Promise<readonly ProcessEntry[]> {
+  const options: PsRunOptions = {
+    timeout: timeoutMs,
+    maxBuffer: PS_MAX_OUTPUT_BYTES,
+    killSignal: "SIGKILL",
+  };
+  const { stdout } = await run(PS_PATH, PS_ARGS, options);
+  return parseProcessTable(stdout);
 }
 
 /**
@@ -93,20 +109,20 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
 
 /**
  * The process groups, other than the leader's own, that hold at least one LIVE
- * descendant of `leaderPid`, each mapped to the groups its linked members' parents are
- * in. Descent follows parent pids transitively, so only descendants still linked to the
- * leader when the table was read are found. A returned group holds only descendants: a
- * group lives inside one session, and every member of the leader's session or of a
- * session a descendant created is itself a descendant. Its id is only a snapshot, and
- * is free for reuse once the group is gone, so the parent groups let a caller signal it
- * only once a parent's group is frozen: a stopped parent cannot reap its exited child,
- * so that child keeps its pid and the group keeps its id. The host's group (`hostPid`'s)
+ * descendant of `leaderPid`, each mapped to the distinct groups, other than its own,
+ * that its members' parents are in (a parent in the same group adds nothing). Descent
+ * follows parent pids transitively, so only descendants still linked to the leader
+ * when the table was read are found. A returned group holds only descendants: a group
+ * lives inside one session, and every member of the leader's session or of a session
+ * a descendant created is itself a descendant. Its id is only a snapshot, and is free
+ * for reuse once the group is gone, so the parent groups let a caller signal it only
+ * once a parent's group is frozen: a stopped parent cannot reap its exited child, so
+ * that child keeps its pid and the group keeps its id. The host's group (`hostPid`'s)
  * and the ids `kill(-pgid)` would misroute (`<= 1`) are never returned.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
-  leaderPid: number,
-  hostPid: number,
+  { leaderPid, hostPid }: { readonly leaderPid: number; readonly hostPid: number },
 ): ReadonlyMap<number, ReadonlySet<number>> {
   const children = childrenByParent(table);
   const leaderGroup = table.find((entry) => entry.pid === leaderPid)?.pgid ?? leaderPid;
