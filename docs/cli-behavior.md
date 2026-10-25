@@ -1254,6 +1254,24 @@ the highlighted option glyph. The captures used private configuration and
 authentication copies with synthetic prompts; see
 `tests/fixtures/claude-2.1.305/questions/`.
 
+### Claude 2.1.310 question chip and named-session border (2026-10-24)
+
+Claude Code 2.1.310 renders a single question's header chip as ` ☐ Test pick `:
+the highlight's right padding is a written trailing space, so the terminal row
+keeps it. 2.1.305 rendered ` ☐ Note` with no padding. Exact equality on the tab
+row therefore rejected every single-question panel on 2.1.310, and Elwood never
+raised the request even though the native dialog was on screen. The pinned
+2.1.305 proof could not see it. Tab matching now ignores trailing whitespace
+only; the leading space and the header text still have to match exactly.
+
+A session launched with `--name` (Coal Harbor names every agent) draws its label
+into the prompt box's bottom border — `──── Question Asker ─` — and that border
+stays one row under the questionnaire footer. The rule above the header chip
+stays plain. The questionnaire grammar used to require nothing but blank rows
+after the footer, so it rejected every question in a named session. It now
+accepts exactly one labelled border there and still rejects anything else. See
+`tests/fixtures/claude-2.1.310/questions/`.
+
 ### Claude question dialogs and manual composer (2026-10-20)
 
 Claude Code 2.1.305 renders `AskUserQuestion` as a fenced questionnaire with

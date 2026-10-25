@@ -33,9 +33,11 @@ export const definitions: readonly ClaudeQuestionFixture[] = [
 export function registry() {
   return new QuestionRegistry("claude", "s", { emit: () => {} });
 }
-export function fixture(name: string): QuestionFrame {
+export function fixture(name: string, version = "2.1.305"): QuestionFrame {
   const text = readFileSync(
-    fileURLToPath(new URL(`../../fixtures/claude-2.1.305/questions/${name}.txt`, import.meta.url)),
+    fileURLToPath(
+      new URL(`../../fixtures/claude-${version}/questions/${name}.txt`, import.meta.url),
+    ),
     "utf8",
   );
   return frame(text);

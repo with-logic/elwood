@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Claude questions are raised again on Claude Code 2.1.310 and in named
+  sessions (`name`). 2.1.310 pads the single-question header chip with a
+  trailing space, and a named session draws its label into the border below the
+  questionnaire; either one left the native dialog on screen without raising
+  the question.
+
 ## [0.2.1] - 2026-10-24
 
 - Reduce median active Elwood CPU by 11.3% in the measured 50-session workload

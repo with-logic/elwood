@@ -1,0 +1,44 @@
+Using Node v24.7.0
+ ▐▛███▛█   Claude Code v2.1.310
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /tmp/ELWOOD_QUESTION/project
+
+
+❯ Call the AskUserQuestion tool exactly once with one question: question "Which option would you like to pick for this test?", header "Test 
+  pick", multiSelect false, options "Option A" (description "First option."), "Option B" ("Second option."), "Option C" ("Third option.").  
+  Do nothing else.                                                                                                                          
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Test pick 
+
+Which option would you like to pick for this test?
+
+❯ 1. Option A
+     First option.
+  2. Option B
+     Second option.
+  3. Option C
+     Third option.
+  4. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Question Asker ─
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
