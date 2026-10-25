@@ -146,6 +146,8 @@ async function observeAndRequest(
             turnId: event.turn_id,
             signal: event.last_assistant_message ?? "",
           });
+        // Before `ready`: a status listener may stop the session at once (C-LIFE-13).
+        session?.expectTurnCommit(event.transcript_path, event.turn_id);
         session?.submitEvidence("hook_turn_ended");
       });
   }

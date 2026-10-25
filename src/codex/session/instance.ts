@@ -32,6 +32,7 @@ import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
 import { observeCodexInitialReady } from "./initial-ready.ts";
+import { CodexTurnCommit } from "./turn-commit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import { clipboardRestoreFailedWarning } from "./warnings.ts";
 
@@ -54,6 +55,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // killed, and torn_down even when its signal did not take.
   private readonly cliExit: PtyExitLatch;
   private readonly configPath: string;
+  private readonly turnCommit = new CodexTurnCommit(
+    () => this.scanTranscript(),
+    (timeoutMs) => this.cliExit.wait(timeoutMs),
+  );
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -89,6 +94,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.configPath = configPath;
     // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
+    emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
@@ -171,6 +177,18 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);
+  }
+  /** An unblocked `Stop` ended this turn; `stop`/`teardown` wait for its commit (C-LIFE-13). */
+  expectTurnCommit(path: string | null | undefined, turnId: string): void {
+    if (path) this.turnCommit.expect(turnId);
+  }
+  override stop(): Promise<void> {
+    this.closing.abort(); // Queued input is rejected at once; only the signal waits.
+    return this.turnCommit.before(() => super.stop());
+  }
+  override teardown(): Promise<void> {
+    this.closing.abort();
+    return this.turnCommit.before(() => super.teardown());
   }
   /** One bounded per-pass scan of the committed transcript (an unblocked `Stop`, §7A.3). */
   scanTranscript(): void {

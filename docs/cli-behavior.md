@@ -155,13 +155,22 @@ misattributed to a CLI regression.)
   placeholder has painted and the load's spinner has been seen, the first quiet
   composer ends settling. A five-frame streak never arrives from an idle Codex.
   Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
-- **Stopping right after a Codex `Stop`-hook `ready` can leave the turn
-  uncommitted.** Two of six stop-at-ready runs killed Codex before it wrote
-  `task_complete`. Resuming that conversation replays it ending in
+- **Codex records a turn's completion only after its `Stop` hook returns
+  (2026-10-25).** Elwood reports `ready` from that hook, so a host that stops the
+  session at that `ready` signals Codex 0.164.0 before it writes the turn's
+  `task_complete`, and Codex exits without it. Stopping in the `ready` listener lost
+  the record in 3 of 3 probe runs and in 2 of 2 runs of
+  `tests/e2e/codex-stop-commit.e2e.ts` on `main`. Stopping 66 ms later lost it too;
+  at 156 ms and at 1 s it was written. The record carries the hook's `turn_id`, and
+  its own timestamp falls 3 to 94 ms after the hook reached Elwood. Resuming such a
+  conversation replays it ending in
   `■ Conversation interrupted - use /feedback if something went wrong`. Before the
-  placeholder fix, that banner closed the spinner's phantom turn early. A second
-  phantom followed: `saw: running,ready,running,ready`. The
-  `uncommitted-turn` capture retains that replay. C-TURN-03.
+  placeholder fix, that banner closed the spinner's phantom turn early and a second
+  phantom followed: `saw: running,ready,running,ready`. The `uncommitted-turn`
+  capture retains that replay. `stop()` and `teardown()` now wait up to 2 s for the
+  record before signaling Codex. With the wait, a stop at `ready` took 70 to 126 ms
+  instead of 13 to 29 ms, and the record was always written.
+  `src/codex/session/turn-commit.ts`, C-TURN-03, C-LIFE-13.
 - **A caller submission can precede the resumed composer's repaint.** The old
   idle composer may remain visible briefly after `caller_submitted`; that frame
   is not a turn end. Resume settling now synchronizes to current rendered work
