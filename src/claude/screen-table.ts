@@ -15,7 +15,9 @@ import { claudeComposerFooterRow } from "./composer/footer.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 import { claudeQuestionCandidate } from "./questions/screen.ts";
 
-const claudeWorkingTitle = /^[⠀-⣿◐]\s/;
+// Claude's working title: a braille spinner, or the half circles 2.1.310 alternates between
+// (`◐`, `◑`); the idle title is `✳`. Reading `◑` as idle reported `ready` mid-turn (C-TURN-05).
+const claudeWorkingTitle = /^[⠀-⣿◐◑]\s/;
 /** Zero-based input position after Claude's two-cell "❯ " composer prefix. */
 export const claudeComposerInputColumn = 2;
 /** Native empty-composer row shape; callers own activity and dialog checks. */
@@ -85,7 +87,8 @@ export function liveClaudeClearance(
  */
 export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
-  verifiedAgainst: "claude 2.1.258; question dialog and manual footer: 2.1.305",
+  verifiedAgainst:
+    "claude 2.1.258; question dialog and manual footer: 2.1.305; working title: 2.1.310",
   rules: [
     {
       id: "claude-question-dialog",
