@@ -24,6 +24,7 @@ import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import type { CodexPreflightWarning } from "../preflight.ts";
 import { spawnCodexPty } from "../pty.ts";
+import { codexComposerConfigured } from "../screen/clearance.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
@@ -91,10 +92,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const readiness = createReadinessGate(() => {
+  const onReady = () => {
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
-  }, resumed);
+  };
+  const readiness = createReadinessGate(onReady, resumed, codexComposerConfigured);
   const clearance = liveCodexClearance(() => terminal);
   const snapshot = () => renderedSnapshot(terminal);
   const observers = {

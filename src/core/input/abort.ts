@@ -109,6 +109,7 @@ export function behindReceivedOutputBarrier(
   return {
     snapshot: () => view.snapshot(),
     sendInput: (input) => view.sendInput(input),
+    subscribeRender: view.subscribeRender,
     settled: () => source.settled(),
     get renderFailed() {
       return source.renderFailed;

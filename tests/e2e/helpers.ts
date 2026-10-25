@@ -40,6 +40,7 @@ export {
   type E2eProject,
   makeProject,
   sandboxedCodexHome,
+  seedCodexHome,
 } from "./scratch.ts";
 export { waitFor } from "./wait-for.ts";
 

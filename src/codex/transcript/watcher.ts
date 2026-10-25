@@ -4,7 +4,8 @@
  * are sourced from the JSONL transcript Codex writes; reads are bounded (fixed-size
  * chunks, a max-pending ceiling, a per-scan chunk budget) so a hundreds-of-MiB file
  * never OOMs or blocks the event loop, and lost committed data is surfaced through
- * bounded, content-free drop notices.
+ * bounded, content-free drop notices. A transcript not created yet is waited on silently;
+ * one removed after it existed is a read race that warns (§5.7, C-CODEX-23).
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
@@ -68,12 +69,14 @@ export class CodexTranscriptWatcher {
     // timer as an uncaught exception — contain it, stop, and route a bounded live
     // diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
     this.interval = outsideStopInput(() =>
-      setInterval(() => this.runScan(), this.scanIntervalMs ?? defaultScanIntervalMs),
+      setInterval(() => this.poll(), this.scanIntervalMs ?? defaultScanIntervalMs),
     );
     this.interval.unref?.();
   }
 
-  private runScan(): void {
+  /** One `scan()` that never throws, as the poll timer runs it: a failure finishes the
+   * watcher and reports `onPollError`. For callers that scan from their own timers. */
+  poll(): void {
     try {
       this.scan();
     } catch (error) {
@@ -89,7 +92,9 @@ export class CodexTranscriptWatcher {
     const budget = { chunks: scanChunksPerScan };
     while (budget.chunks > 0) {
       budget.chunks -= 1;
-      const chunk = this.guard.read(cursor.path, () => cursor.readChunk());
+      // Each read is sized by its own stat: a file not created yet reads nothing, and a
+      // removal after it existed throws for the guard rather than reading as a truncation.
+      const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
       if (!chunk) break; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.canContinueNow) break;

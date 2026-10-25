@@ -36,17 +36,17 @@ describe("Codex bounded cursor-io", () => {
 });
 
 describe("Codex bounded cursor", () => {
-  test("C-CODEX-20 readChunk caps at 256 KiB and streams the remainder", () => {
+  test("C-CODEX-20 readLiveChunk caps at 256 KiB and streams the remainder", () => {
     // Construct the cursor on an EMPTY file (baselines at offset 0), then append a
     // > 256 KiB record so the first read is capped and a second drains the rest.
     const path = join(tempDirForUnit(), "empty.jsonl");
     writeFileSync(path, "");
     const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, `${"x".repeat(300 * 1024)}\n`);
-    const first = cursor.readChunk();
+    const first = cursor.readLiveChunk();
     expect(Buffer.byteLength(first.text, "utf8")).toBe(256 * 1024);
     expect(first.canContinueNow).toBe(true);
-    expect(cursor.readChunk().canContinueNow).toBe(false);
+    expect(cursor.readLiveChunk().canContinueNow).toBe(false);
   });
 
   test("C-CODEX-20 a read that consumes ZERO bytes (incomplete UTF-8 tail) reports canContinueNow:false — no spin", () => {
@@ -59,22 +59,22 @@ describe("Codex bounded cursor", () => {
     const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, Buffer.from([0xc3])); // lead byte of "é", rest not yet written
     setByteReaderForTests(() => Buffer.from([0xc3]));
-    const chunk = cursor.readChunk();
+    const chunk = cursor.readLiveChunk();
     expect(chunk).toEqual({ text: "", canContinueNow: false }); // no progress, no spin
   });
 
-  test("C-CODEX-20 readChunk restarts at 0 on truncation and reports no growth", () => {
+  test("C-CODEX-20 readLiveChunk restarts at 0 on truncation and reports no growth", () => {
     const path = join(tempDirForUnit(), "trunc.jsonl");
     writeFileSync(path, "aaaa\n");
     const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, "bbbb\n");
-    expect(cursor.readChunk().text).toBe("bbbb\n");
+    expect(cursor.readLiveChunk().text).toBe("bbbb\n");
     // No new bytes: an empty read that commits the current offset (the `size<=from`
     // branch), returning canContinueNow:false without a read.
-    expect(cursor.readChunk()).toEqual({ text: "", canContinueNow: false });
+    expect(cursor.readLiveChunk()).toEqual({ text: "", canContinueNow: false });
     // Shrink below the offset: the next read restarts from 0.
     writeFileSync(path, "cc\n");
-    expect(cursor.readChunk().text).toBe("cc\n");
+    expect(cursor.readLiveChunk().text).toBe("cc\n");
   });
 
   test("C-CODEX-20 takeLines discards an over-length un-terminated record", () => {
@@ -118,7 +118,7 @@ describe("Codex bounded cursor", () => {
     const path = join(tempDirForUnit(), "shrink.jsonl");
     writeFileSync(path, "aaaaaaaa\n");
     const cursor = new BoundedTranscriptCursor(path);
-    cursor.readChunk(); // no new bytes; offset stays at the original EOF
+    cursor.readLiveChunk(); // no new bytes; offset stays at the original EOF
     // Truncate below the offset so `size > offset` is false and remainingBytes
     // reports 0 (no negative backlog).
     writeFileSync(path, "x");

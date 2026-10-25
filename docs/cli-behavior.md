@@ -55,8 +55,28 @@ invalid and will conclude the hook "never fires". (This once produced a false
 sandboxed homes, and user `config.toml` hooks merge additively with `-c` hooks.)
 Because `SessionStart` is Elwood's authoritative Codex readiness signal
 (`markInitialReadyFromHook`, `src/codex/session/hooks.ts`), cold-start readiness
-comes from that hook, bounded by a **10 s starvation deadline** armed on the
-first render frame (`src/runtime/readiness/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
+comes from that hook, bounded by a **two-stage starvation deadline** armed on the
+first render frame (`src/runtime/readiness/initial-ready.ts`): after 10 s
+(`initialDeadlineMs`) Codex readiness waits for a configured composer, described
+below, and after 60 s (`initialBackstopMs`) it is released without one. C-API-28.
+
+**Codex 0.164 paints a boot composer before its session is configured
+(2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
+anything` and `? for shortcuts` with no model footer; the header may read
+`loading` or already show the path. The model footer (`GPT-6.1-Sol default ·
+<path>`) appears only once the session is configured, which for an untrusted
+folder is after the directory-trust gate is answered. On a loaded machine (load
+average 20 to 127, 8 concurrent launches with `autotrust`, fresh `git init`
+folders) the gate painted 11.1 to 30.6 s after the first output in 24 of 32
+launches, and every one of those 24 reported `ready` at 10.0 s, onto a screen
+showing the boot composer without a footer. The other 8 painted their gate at
+8.9 to 9.0 s and readied after it, on footed composers. Unloaded, the gate came
+3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
+composer with its model footer (`codexComposerConfigured`,
+`src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
+gate delay, releases readiness if no footer is ever recognized; a gate painting
+later than that would still follow `ready`. Fixtures:
+`tests/fixtures/codex-0.164.0/boot/`. C-API-28.
 
 **Codex 0.153.3 can still swallow the deadline-released first paste under load.**
 Its cold composer may accept the paste visually, repaint another startup spinner,
@@ -135,13 +155,22 @@ misattributed to a CLI regression.)
   placeholder has painted and the load's spinner has been seen, the first quiet
   composer ends settling. A five-frame streak never arrives from an idle Codex.
   Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
-- **Stopping right after a Codex `Stop`-hook `ready` can leave the turn
-  uncommitted.** Two of six stop-at-ready runs killed Codex before it wrote
-  `task_complete`. Resuming that conversation replays it ending in
+- **Codex records a turn's completion only after its `Stop` hook returns
+  (2026-10-25).** Elwood reports `ready` from that hook, so a host that stops the
+  session at that `ready` signals Codex 0.164.0 before it writes the turn's
+  `task_complete`, and Codex exits without it. Stopping in the `ready` listener lost
+  the record in 3 of 3 probe runs and in 2 of 2 runs of
+  `tests/e2e/codex-stop-commit.e2e.ts` on `main`. Stopping 66 ms later lost it too;
+  at 156 ms and at 1 s it was written. The record carries the hook's `turn_id`, and
+  its own timestamp falls 3 to 94 ms after the hook reached Elwood. Resuming such a
+  conversation replays it ending in
   `■ Conversation interrupted - use /feedback if something went wrong`. Before the
-  placeholder fix, that banner closed the spinner's phantom turn early. A second
-  phantom followed: `saw: running,ready,running,ready`. The
-  `uncommitted-turn` capture retains that replay. C-TURN-03.
+  placeholder fix, that banner closed the spinner's phantom turn early and a second
+  phantom followed: `saw: running,ready,running,ready`. The `uncommitted-turn`
+  capture retains that replay. `stop()` and `teardown()` now give Codex up to 2 s to
+  write the record before signaling it. With the wait, a stop at `ready` took 70 to 126 ms
+  instead of 13 to 29 ms, and the record was always written.
+  `src/codex/session/turn-commit.ts`, C-TURN-03, C-LIFE-13.
 - **A caller submission can precede the resumed composer's repaint.** The old
   idle composer may remain visible briefly after `caller_submitted`; that frame
   is not a turn end. Resume settling now synchronizes to current rendered work
@@ -1224,6 +1253,18 @@ five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
   seen the file. ENOENT after that, and any other read error, still warns.
   Codex never warned here: its shared cursor's `fileSize` already maps ENOENT
   to an empty file. C-CLAUDE-24.
+- **That same mapping hid a removed Codex transcript (2026-10-25).** On Codex
+  0.164.0, `SessionStart` arrives only with the first submission, and its
+  `transcript_path` is a realpath (`/private/var/…/sessions/YYYY/MM/DD/rollout-…jsonl`
+  under `CODEX_HOME`); the file exists by the time that turn's `task_complete` is
+  committed. Deleting it afterwards made the next poll read size 0, which the
+  cursor took for a truncation, so nothing warned and the session's later
+  transcript activity was silently gone: no `transcript_read_error` within 10 s
+  on `main`. The Codex scan now reads through the shared cursor's existence
+  policy, as Claude's does: until a stat has seen the file, ENOENT waits silently;
+  after that, every poll, and the final flush, warns with `ENOENT` while the file is
+  missing. A file that reappears is read with the
+  existing truncation rule. C-CODEX-23.
 
 `elwood sessions` reports `live` from the presence of a `.sock` file in the
 session's stable socket home. A connect probe was rejected on purpose: the

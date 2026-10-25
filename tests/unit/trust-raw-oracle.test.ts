@@ -6,6 +6,7 @@ import {
   folderTrustScreenVisible,
   trustPromptVisible,
 } from "../e2e/trust-screens.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 
 test.each([
   ["claude", "Do you trust this folder?\nNew upstream copy\n❯ Yes\n  No"],
@@ -14,6 +15,11 @@ test.each([
 ] as const)("C-E2E-09 raw %s oracle still sees a production false negative", (agent, frame) => {
   expect(recognized(frame, agent)).toBe(false);
   expect(trustPromptVisible(frame, agent)).toBe(true);
+});
+
+test("C-E2E-09 the raw Codex oracle sees the captured folder-access gate", () => {
+  // Codex 0.156.1 introduced this gate and 0.164 still draws it.
+  expect(trustPromptVisible(capturedFrame("codex-0.156.1/folder-access"), "codex")).toBe(true);
 });
 
 test("C-E2E-09 a wrapped or wording-drifted complete Claude gate is not a silent skip", () => {

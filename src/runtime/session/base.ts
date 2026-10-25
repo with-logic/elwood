@@ -23,7 +23,7 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
-import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
+import { currentRenderedFrame, renderedSnapshot, subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { CommandSurface } from "./commands.ts";
 import {
@@ -76,6 +76,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
         const read = () => renderedSnapshot(terminal).text;
         terminal.xterm.onWriteParsed(() => listener(read));
       },
+      subscribeRender: (listener) => subscribeRender(terminal, listener),
       statusEvents,
       status: () => this.status,
       everReady: () => this.everReady,

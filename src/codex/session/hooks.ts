@@ -87,6 +87,10 @@ async function observeAndRequest(
     event.hook_event_name === "Stop"
       ? session?.stopCompletion.captureSubmissionGeneration()
       : undefined;
+  // Before any observer runs: one may stop the session at once, and Codex records the
+  // turn's end only after this hook returns (C-LIFE-13).
+  if (event.hook_event_name === "Stop" && event.transcript_path)
+    session?.turnCommit.expect(event.turn_id);
   const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
   observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
   if (event.hook_event_name === "SessionStart") {
@@ -118,6 +122,8 @@ async function observeAndRequest(
   );
   const serialized = serializeCodexHookResult(event.hook_event_name, outcome.result);
   const blocked = isCodexBlock(outcome.result);
+  // A blocked Stop continues the turn, so no end record is coming.
+  if (event.hook_event_name === "Stop" && blocked) session?.turnCommit.release(event.turn_id);
   observation.run("activity", () =>
     emitter.emit(
       "activity",

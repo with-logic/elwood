@@ -12,6 +12,39 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Stopping a Codex session as soon as a turn ends no longer cuts off Codex before it
+  records the turn. Codex records a turn as complete only after its `Stop` hook
+  returns, and Elwood reports `ready` from that hook, so a `stop()` or `teardown()`
+  called at that `ready`, or from a `Stop` hook observer, could end Codex before it
+  wrote the record. Resuming the conversation then showed "Conversation interrupted".
+  Both now give Codex up to 2 seconds to record the turn before signaling it, about
+  100 ms in practice; past that bound they proceed and the turn can still be lost.
+  `kill()` still ends Codex at once.
+- `listModels` and `setModel` now read each picker frame they wait for while
+  opening and moving through the picker as soon as it renders, rather than at the
+  next 100 ms poll. They return sooner and hold the session's
+  input queue for less time. The poll remains as a fallback when no render
+  notification arrives.
+- Removing a Codex transcript that Elwood was reading now emits
+  `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
+  file is missing, and at the final flush if it is still gone, as a removed Claude
+  transcript already does. Elwood used to
+  read the missing file as an empty, truncated one and say nothing, so a host lost
+  the session's transcript activity without a warning. A transcript that has not
+  been created yet still waits silently.
+
+- A Codex session no longer reports `ready` before a late directory-trust prompt
+  is answered. Codex paints an empty composer while it boots, before its session is
+  configured, and under load its trust prompt followed 11 to 31 seconds after the
+  first frame. Elwood's 10-second readiness deadline fired on that boot composer,
+  so the session reported `ready` before the prompt even appeared (24 of 32
+  loaded launches on Codex 0.164). The deadline now waits for the composer with
+  Codex's model footer, which appears once the session is configured, so a cold
+  start can now take longer than 10 seconds to report `ready`.
+  A backstop still releases readiness 60 seconds after the first frame if that
+  footer is never recognized; a prompt painted after that would still follow
+  `ready`.
+
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has
   been the bottom of the screen across five readings at least 40 ms apart. Before,
