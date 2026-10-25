@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import {
   codexDefaultSandbox,
+  defaultRowIds,
   drivePty,
   invoke,
   type ListedModel,
@@ -155,13 +156,15 @@ for (const agent of ["claude", "codex"] as const) {
       assert.equal(json.agent, agent);
       assert.ok(json.models.length >= 2, JSON.stringify(json));
       assert.equal(json.models.filter((model) => model.isCurrent).length, 1);
-      if (codexHome) codexHome.configureDefault(json.models);
-      else assert.ok(json.models.some((model) => model.isDefault));
+      const expectedDefault = codexHome
+        ? codexHome.configureDefault(json.models)
+        : json.models.find((model) => model.isDefault)?.id;
+      assert.ok(expectedDefault, JSON.stringify(json));
       const text = await invoke(["models", `--agent=${agent}`, state, "--timeout=2m"], project.cwd);
       assert.equal(text.status, 0, text.stderr);
       assert.match(text.stdout, /^CURRENT\s+ID\s+LABEL\s+DEFAULT\s+DESCRIPTION\n/);
       assert.match(text.stdout, /\n\*\s+\S/);
-      assert.ok(text.stdout.includes("(default)"), text.stdout);
+      assert.deepEqual(defaultRowIds(text.stdout), [expectedDefault], text.stdout);
       assert.ok(!text.stdout.includes("\u001b"), "table contains terminal escapes");
       const listed = parse<SessionsDocument>(
         await invoke(["sessions", state, "--output=json"], tmpdir()),

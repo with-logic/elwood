@@ -1,28 +1,28 @@
+/**
+ * Shared unit-test helpers: temp dirs, a sandboxed `CODEX_HOME` for the Codex config
+ * tests (PRD §5.3, C-API-23, C-CODEX-14), and raw bridge-socket clients for the bridge
+ * request-framing tests (PRD §6).
+ */
+
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { useCodexHome } from "../helpers/codex-home.ts";
+
+export { restoreCodexHome } from "../helpers/codex-home.ts";
 
 export function tempDirForUnit(): string {
   return mkdtempSync(join(tmpdir(), "elwood-unit-"));
 }
-
-const originalCodexHome = process.env["CODEX_HOME"];
 
 /**
  * Points `CODEX_HOME` at a fresh temp dir and returns its `config.toml` path, writing
  * `contents` there when given. Pair with `restoreCodexHome` in `afterEach`.
  */
 export function tempCodexHome(contents?: string): string {
-  const home = tempDirForUnit();
-  process.env["CODEX_HOME"] = home;
-  const path = join(home, "config.toml");
+  const path = useCodexHome(tempDirForUnit());
   if (contents !== undefined) writeFileSync(path, contents);
   return path;
-}
-
-export function restoreCodexHome(): void {
-  if (originalCodexHome === undefined) delete process.env["CODEX_HOME"];
-  else process.env["CODEX_HOME"] = originalCodexHome;
 }
 
 export function sendBridge(socketPath: string, payload: string): Promise<string> {

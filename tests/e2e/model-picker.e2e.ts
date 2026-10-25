@@ -18,6 +18,7 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
+import { defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -96,9 +97,11 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
     const models = await session.listModels();
     assert.ok(models.length >= 3, "picker lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    // Codex marks only the current row, so the default is the configured model (§5.3):
-    // name one that is neither the launch model nor the switch target.
-    const configured = models.find((model) => !model.isCurrent);
+    // The baseline names no model, so a default here is one Codex drew (none on 0.164).
+    // Without one, the default is the configured model (§5.3): name one that is neither
+    // the launch model nor the switch target.
+    const drawn = drawnCodexDefault(models);
+    const configured = models.find((model) => !model.isCurrent && model.id !== drawn);
     const target = models.findLast((model) => !model.isCurrent);
     assert.ok(configured && target && configured !== target, "two other models are listed");
     const config = readFileSync(sandbox.configPath, "utf8");
@@ -108,8 +111,8 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
     const after = await session.listModels();
     assert.equal(after.find((model) => model.isCurrent)?.id, target.id, "session keeps the switch");
     assert.deepEqual(
-      after.filter((model) => model.isDefault).map((model) => model.id),
-      [configured.id],
+      defaultIds(after),
+      [drawn ?? configured.id],
       "codex default model is unchanged",
     );
     // C-CODEX-14: Elwood itself restored the sandbox's model defaults after the CLI
@@ -150,11 +153,8 @@ test("C-API-41 real listCodexModels returns models and leaves config.toml untouc
     const models = await listCodexModels({ cwd: project.cwd, stateDir: project.stateDir });
     assert.ok(models.length >= 2, "session-less probe lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    // The baseline names no model, and Codex names no default on screen (§5.3).
-    assert.deepEqual(
-      models.filter((model) => model.isDefault),
-      [],
-    );
+    // The baseline names no model, so at most the one default Codex drew (§5.3).
+    drawnCodexDefault(models);
     // The probe only opens and cancels the picker (never applies a selection), so
     // the sandbox's model defaults are untouched.
     assert.deepEqual(

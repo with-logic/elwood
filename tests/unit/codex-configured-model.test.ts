@@ -65,6 +65,29 @@ describe("Codex configured default model", () => {
     expect(configuredCodexModel()).toBe("gpt-6-luna");
   });
 
+  test("C-API-23 prefers the model of a single-quoted root-selected profile", () => {
+    tempCodexHome(
+      `model = "gpt-6.1-sol"\nprofile = 'fast'\n\n[profiles.fast]\nmodel = "gpt-6-luna"\n`,
+    );
+    expect(configuredCodexModel()).toBe("gpt-6-luna");
+  });
+
+  test.each([
+    ["a multiline basic string", ['notes = """', 'model = "gpt-wrong"', "", '"""']],
+    ["a multiline literal string", ["notes = '''", "[profiles.wrong]", "'''"]],
+    ["an escaped quote in a multiline string", ['notes = """say \\"""', 'model = "x"', '"""']],
+    ["a comment quoting a delimiter", ['# notes = """']],
+    [
+      "single-line strings quoting delimiters",
+      [`a = "'''"`, `b = '"""'`, "c = 'C:\\' # it's \"\"\""],
+    ],
+    ["a multiline string closed on its line", ['notes = """one""" # """']],
+    ["an unterminated single-line string", ['notes = "open']],
+  ])("C-API-23 never reads a key or header from inside %s", (_name, before) => {
+    tempCodexHome([...before, 'model = "gpt-6.1-sol"', "", "[hooks]"].join("\n"));
+    expect(configuredCodexModel()).toBe("gpt-6.1-sol");
+  });
+
   test("C-API-23 falls back to the root model when the selected profile sets none", () => {
     tempCodexHome(
       'model = "gpt-6.1-sol"\nprofile = "fast"\n\n[profiles.fast]\nmodel_reasoning_effort = "low"\n[profiles.deep]\nmodel = "gpt-6-astra"\n',

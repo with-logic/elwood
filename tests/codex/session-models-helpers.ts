@@ -5,6 +5,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { useCodexHome } from "../helpers/codex-home.ts";
 import {
   asScreen,
   codexPickerCurrentMarkerOnly,
@@ -14,6 +15,7 @@ import {
 } from "../helpers/model-pickers.ts";
 import { ptys } from "./helpers.ts";
 
+export { restoreCodexHome } from "../helpers/codex-home.ts";
 export { until };
 
 export const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[hooks]\n';
@@ -21,9 +23,9 @@ export const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\
 export function sandboxCodexHome(cwd: string): string {
   const home = join(cwd, "codex-home");
   mkdirSync(home, { recursive: true });
-  writeFileSync(join(home, "config.toml"), userConfig);
-  process.env["CODEX_HOME"] = home;
-  return join(home, "config.toml");
+  const configPath = useCodexHome(home);
+  writeFileSync(configPath, userConfig);
+  return configPath;
 }
 
 export async function driveSetModel(
@@ -66,11 +68,4 @@ export function becomeReadyFor(elwoodSessionId: string, cwd: string, ptyIndex: n
     model: "gpt-5.3-codex",
     source: "startup",
   });
-}
-
-const originalCodexHome = process.env["CODEX_HOME"];
-
-export function restoreCodexHome(): void {
-  if (originalCodexHome === undefined) delete process.env["CODEX_HOME"];
-  else process.env["CODEX_HOME"] = originalCodexHome;
 }

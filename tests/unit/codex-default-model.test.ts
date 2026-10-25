@@ -76,11 +76,15 @@ describe("Codex configured default under the config lock", () => {
     const listing = withCodexDefault(rows, new AbortController().signal).finally(() => {
       settled = true;
     });
-    await setImmediate();
-    expect(readFileSync(path, "utf8")).toBe('model = "gpt-6-luna"\n');
-    expect(settled, "the listing must not read the switch's temporary selection").toBe(false);
-    finishApply();
-    await switching;
+    try {
+      await setImmediate();
+      expect(readFileSync(path, "utf8")).toBe('model = "gpt-6-luna"\n');
+      expect(settled, "the listing must not read the switch's temporary selection").toBe(false);
+    } finally {
+      // Release the process-wide lock even when an assertion fails.
+      finishApply();
+      await switching;
+    }
     expect(defaultIds(await listing)).toEqual(["gpt-6-astra"]);
   });
 
@@ -95,11 +99,14 @@ describe("Codex configured default under the config lock", () => {
         }),
       restore: () => undefined,
     });
-    const deadline = new AbortController();
-    const listing = withCodexDefault(rows, deadline.signal);
-    deadline.abort(new Error("Timed out waiting for model picker operation."));
-    await expect(listing).rejects.toThrow("Timed out waiting for model picker operation.");
-    release();
-    await held;
+    try {
+      const deadline = new AbortController();
+      const listing = withCodexDefault(rows, deadline.signal);
+      deadline.abort(new Error("Timed out waiting for model picker operation."));
+      await expect(listing).rejects.toThrow("Timed out waiting for model picker operation.");
+    } finally {
+      release();
+      await held;
+    }
   });
 });

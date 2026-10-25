@@ -8,6 +8,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawn as spawnPty } from "node-pty";
 import type { AgentModelOption } from "../../src/index.ts";
+import { drawnCodexDefault } from "./codex-default.ts";
 import { type E2eProject, e2eTimeoutMs, sandboxedCodexHome } from "./helpers.ts";
 
 export type Invocation = {
@@ -28,22 +29,30 @@ export const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import
 export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault">;
 
 /**
- * A sandboxed `CODEX_HOME` for `elwood models`. Codex names its default only through
- * config.toml (PRD §5.3): with no model configured a probe marks no default, and naming
- * a non-current row there makes the next probe mark that row `(default)`.
+ * A sandboxed `CODEX_HOME` for `elwood models`. `configureDefault` names a non-current
+ * row in config.toml and returns the id the next probe must mark `(default)`: that row
+ * on Codex 0.164, which draws no marker, else the marker older Codex drew (PRD §5.3).
  */
 export function codexDefaultSandbox(project: E2eProject) {
   const sandbox = sandboxedCodexHome(project, "");
   return {
-    configureDefault(models: readonly ListedModel[]): void {
-      if (models.some((model) => model.isDefault))
-        throw new Error("A Codex default was reported with no model configured.");
-      const configured = models.find((model) => !model.isCurrent);
+    configureDefault(unconfigured: readonly ListedModel[]): string {
+      const drawn = drawnCodexDefault(unconfigured);
+      const configured = unconfigured.find((model) => !model.isCurrent && model.id !== drawn);
       if (!configured) throw new Error("No other Codex model is listed.");
       writeFileSync(sandbox.configPath, `model = "${configured.id}"\n`);
+      return drawn ?? configured.id;
     },
     dispose: sandbox.dispose,
   };
+}
+
+/** The ids of the rows a `elwood models` text table marks `(default)`. */
+export function defaultRowIds(table: string): readonly string[] {
+  return table
+    .split("\n")
+    .filter((line) => line.includes("(default)"))
+    .map((line) => line.replace(/^\*/, "").trim().split(/\s+/)[0] ?? "");
 }
 
 export function parse<T>(result: Invocation, expectedStatus = 0): T {
