@@ -107,15 +107,16 @@ test("C-API-28 a failing backstop report never undoes readiness or breaks a fram
   vi.useFakeTimers();
   let ready = 0;
   let held = true;
+  const report = vi.fn(() => {
+    throw new Error("warning sink");
+  });
   const r = initialReady(
     () => ready++,
     10,
     () => held,
     {
       shown: () => false,
-      onBackstopRelease: () => {
-        throw new Error("warning sink");
-      },
+      onBackstopRelease: report,
       backstopMs: 100,
     },
   );
@@ -124,6 +125,7 @@ test("C-API-28 a failing backstop report never undoes readiness or breaks a fram
   held = false;
   expect(() => r.retryWhenReleased(false)).not.toThrow(); // released by a rendered frame
   expect(ready).toBe(1);
+  expect(report).toHaveBeenCalledTimes(1);
 });
 
 test("C-API-28 the backstop marks when no configured composer ever paints", () => {

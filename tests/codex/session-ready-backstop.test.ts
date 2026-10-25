@@ -1,6 +1,11 @@
 /** Codex readiness the backstop released says so; ordinary readiness does not (C-API-28). */
 import { afterEach, expect, test, vi } from "vitest";
-import { type CodexSessionApi, type ElwoodWarningEvent, startCodex } from "../../src/index.ts";
+import {
+  type CodexSessionApi,
+  type ElwoodSessionStatus,
+  type ElwoodWarningEvent,
+  startCodex,
+} from "../../src/index.ts";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -14,13 +19,15 @@ afterEach(async () => {
 
 /** Codex 0.164's boot composer: painted before the session is configured, without the footer. */
 const boot = capturedFrame("codex-0.164.0/boot/boot-composer").trimEnd();
+/** Screen text the content-free warning must never carry. */
+const sentinel = "elwood-backstop-sentinel";
 
 async function start() {
   installFakes();
   const session = await startCodex({ cwd: tempDir() });
   sessions.push(session);
   const warnings: ElwoodWarningEvent[] = [];
-  const statuses: string[] = [];
+  const statuses: ElwoodSessionStatus[] = [];
   session.on("warning", (warning) => warnings.push(warning));
   session.on("status", ({ status }) => statuses.push(status));
   vi.useFakeTimers();
@@ -29,7 +36,7 @@ async function start() {
 
 test("C-API-28 Codex readiness released by the backstop warns initial_ready_backstop once", async () => {
   const { session, warnings, statuses } = await start();
-  ptys[0]!.emitData(codexTty(boot));
+  ptys[0]!.emitData(codexTty(boot.replace("loading", `loading ${sentinel}`)));
   await vi.advanceTimersByTimeAsync(59_900);
   expect(statuses).toEqual([]);
   expect(warnings).toEqual([]);
@@ -42,10 +49,13 @@ test("C-API-28 Codex readiness released by the backstop warns initial_ready_back
       source: "lifecycle",
       code: "initial_ready_backstop",
       severity: "warning",
-      message: expect.stringContaining("No configured Codex composer"),
+      message:
+        "No configured Codex composer was recognized within 60 seconds of the first frame; readiness was released without it.",
       raw: "initial_ready_backstop",
     },
   ]);
+  expect(session.terminal.snapshot().text).toContain(sentinel);
+  expect(JSON.stringify(warnings)).not.toContain(sentinel);
 });
 
 test("C-API-28 Codex readiness on its configured composer does not warn", async () => {

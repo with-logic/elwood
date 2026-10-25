@@ -50,9 +50,9 @@ export type InitialReadyObserverFailedWarning = {
 };
 
 /**
- * Codex's cold-start readiness found no configured composer (its model footer) by the
- * 60-second backstop and was released without one, for example after a footer layout
- * change. Content-free (§5.3, C-API-28).
+ * Codex's initial-readiness backstop released readiness while the latest frame showed no
+ * configured composer (its model footer), for example after a footer layout change.
+ * Content-free (§5.3, C-API-28).
  */
 export type InitialReadyBackstopWarning = {
   readonly elwoodSessionId: string;

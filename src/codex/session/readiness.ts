@@ -4,6 +4,7 @@
  * `initial_ready_backstop` warning (PRD §5.3, §5.7, C-API-28).
  */
 import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.ts";
+import { initialBackstopMs } from "../../runtime/readiness/initial-ready.ts";
 import { createReadinessGate, type ReadinessGate } from "../../runtime/session/readiness.ts";
 import { codexComposerConfigured } from "../screen/clearance.ts";
 
@@ -27,8 +28,7 @@ function backstopWarning(elwoodSessionId: string): InitialReadyBackstopWarning {
     source: "lifecycle",
     code: "initial_ready_backstop",
     severity: "warning",
-    message:
-      "No configured Codex composer was recognized within 60 seconds of the first frame; readiness was released without it.",
+    message: `No configured Codex composer was recognized within ${initialBackstopMs / 1_000} seconds of the first frame; readiness was released without it.`,
     raw: "initial_ready_backstop",
   };
 }
