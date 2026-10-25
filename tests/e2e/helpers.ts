@@ -39,6 +39,7 @@ export {
   type E2eProject,
   makeProject,
   sandboxedCodexHome,
+  seedCodexHome,
 } from "./scratch.ts";
 
 export type E2eSession = ClaudeSessionApi | CodexSessionApi;
