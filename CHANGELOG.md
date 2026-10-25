@@ -49,10 +49,14 @@ back each entry are listed in `prd/14-conformance.md`.
   `codex_start_failed` ("`--version` failed", `ETIMEDOUT`). Preflight probes run
   through the user's interactive login shell, and the fixed 15-second bound counted
   loading that profile as the CLI's time. Under 16 concurrent headless runs on a
-  loaded machine the profile alone took 9–19 seconds, while the CLI answered in
+  loaded machine the profile alone took 7–19 seconds, while the CLI answered in
   milliseconds. The shell now has 60 seconds to load the profile, and the CLI still
-  has 15 seconds from then. A shell that never starts the probe fails with
-  `ETIMEDOUT` and a cause naming the login shell.
+  has 15 seconds from then. A shell that never starts the probe, by timing out or by
+  exiting first, fails with a cause naming the login shell and `details.phase:
+  "login_shell"`; for `autoupdate` the `agent_update_failed` warning carries
+  `errorCode: "login_shell_failed"`. A contender waiting on another process's update
+  now waits up to 165 seconds instead of 60, so it does not give up and re-read the
+  version while the owner's version and update probes are still within their bounds.
 
 - `autotrust` no longer reports a Claude folder-trust prompt that it has
   already answered as needing attention. Claude erases the dialog at once but

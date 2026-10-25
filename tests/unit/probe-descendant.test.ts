@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test, vi } from "vitest";
-import { runProbe, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
+import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe.ts";
 import { processGroupGone } from "../../src/runtime/probe-cleanup.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -46,7 +46,7 @@ test("C-PERF-03 a reaped leader's group id is only observed, never signaled as a
   // reachable from probes that ARE shell-gated, and a path taken from argv and passed on as
   // an argument is the shape that drew 30 command-injection alerts.
   process.env["ELWOOD_PROBE_FIXTURE_ROOT"] = root;
-  setProbeTimeoutMsForTests(1_500);
+  setProbeTimeoutsForTests({ commandMs: 1_500, launchMs: 1_500 });
   const intervals = vi.spyOn(globalThis, "setInterval");
   const cleared = vi.spyOn(globalThis, "clearInterval");
   let allowGroupSignal = false;
@@ -79,11 +79,15 @@ test("C-PERF-03 a reaped leader's group id is only observed, never signaled as a
 test("C-PERF-03 group retries reach real descendants while the unreaped leader pins the id", async () => {
   const root = tempDir("elwood-probe-retry-");
   process.env["ELWOOD_PROBE_FIXTURE_ROOT"] = root;
-  setProbeTimeoutMsForTests(1_500);
+  setProbeTimeoutsForTests({ commandMs: 1_500, launchMs: 1_500 });
   const attempts = denyGroupSignals(() => attempts.length > 3);
   try {
     const result = await runProbe(process.execPath, ["--no-warnings", fixture, "linger"]);
-    expect(result.error).toEqual({ code: "ETIMEDOUT", message: expect.any(String) });
+    expect(result.error).toEqual({
+      code: "ETIMEDOUT",
+      message: expect.any(String),
+      phase: "login_shell",
+    });
     expect(attempts).toHaveLength(4);
     expect(processGroupGone(Number(readFileSync(join(root, "leader"), "utf8")))).toBe(true);
   } finally {

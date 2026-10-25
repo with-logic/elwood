@@ -131,12 +131,15 @@ export function probeFailureDetails(result: {
     // the constraint is enforced at the producer and documented here.
     readonly cleanupErrorCode?: string;
     readonly cleanupProcessGroupId?: number;
+    /** The user's login shell, not the probe command, failed (§9.2). */
+    readonly phase?: string;
   };
 }): Readonly<Record<string, string | number>> {
   const details: Record<string, string | number> = { stderr: result.stderr };
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;
+    if (result.error.phase !== undefined) details["phase"] = result.error.phase;
     if (result.error.cleanupErrorCode !== undefined)
       details["cleanupErrorCode"] = result.error.cleanupErrorCode;
     if (result.error.cleanupProcessGroupId !== undefined)

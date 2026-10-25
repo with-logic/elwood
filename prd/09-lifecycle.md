@@ -87,9 +87,11 @@ a second update. This mutual exclusion also applies across separate Elwood paren
 processes for the same macOS user and adapter: an atomic lease names the adapter in
 a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
-running a duplicate update. Contender waiting is bounded to 60 seconds; an owner
-that has not finished by then causes the contender to skip its update and warn,
-without deleting the owner's lease. This warning uses `errorCode: "update_active"`
+running a duplicate update. Contender waiting is bounded to 165 seconds: the owner
+runs two probes under the lease, a `--version` read confirming the CLI exists and then
+the update, each allowed 75 seconds by its launch and command bounds (§9.2), and the
+rest covers their abort cleanup. An owner that has not finished by then causes the
+contender to skip its update and warn, without deleting the owner's lease. This warning uses `errorCode: "update_active"`
 and a canonical message explaining that the update was skipped because another
 updater is still active; no local update command ran, so it carries no exit status
 or stderr. The lease records the owner's process id and a unique
@@ -145,14 +147,20 @@ loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
 bounded separately. After the startup files load, and immediately before the probe
-command runs, the probe shell writes the line `elwood-probe-command-start` to
-stderr. The shell has 60 seconds from spawn to write that line (the launch bound),
-and the probe command then has a default timeout of 15 seconds from that line
-until it exits. The line is removed from the probe's captured stderr. A probe that
+command runs, the probe shell writes a fixed start line of Elwood's own to stderr.
+The shell has 60 seconds from spawn to write that line (the launch bound), and the
+probe command then has a default timeout of 15 seconds from that line until it
+exits. Only the shell's start line is removed from the probe's captured stderr; the
+command's own stderr is kept whole, even where it repeats that line. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
-Either timeout reports `ETIMEDOUT`; a launch-bound timeout's cause names the login
-shell rather than the probe command. Abort cleanup has an
+Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
+exits without writing the start line (a startup file that `exec`s another program,
+say), never ran the probe command, so the probe fails as a login-shell failure
+rather than reporting the shell's exit status as the command's: its cause names the
+login shell, and its typed error details carry `phase: "login_shell"`. A best-effort
+update probe that fails this way surfaces the `agent_update_failed` warning with
+`errorCode: "login_shell_failed"`. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,
 falls back to terminating the direct child once group signals have kept failing,
 and awaits exit within that window. A process-group id is signaled only while the

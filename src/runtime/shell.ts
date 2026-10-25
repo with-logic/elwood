@@ -4,7 +4,7 @@
  */
 
 import { userInfo } from "node:os";
-import { probeCommandStartLine } from "./probe-start.ts";
+import { probeStartScript } from "./probe-start.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
@@ -31,5 +31,5 @@ export function loginShellCommand(command: string): readonly string[] {
  * so the probe runner can bound the user's profile and the CLI separately (C-PERF-05).
  */
 export function probeShellCommand(command: string): readonly string[] {
-  return loginShellCommand(`echo ${probeCommandStartLine} >&2; ${command}`);
+  return loginShellCommand(`${probeStartScript}${command}`);
 }

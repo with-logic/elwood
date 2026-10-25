@@ -5,38 +5,44 @@
  * start line under test is the one `probeShellCommand` writes, without loading a profile.
  */
 
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
-  resetProbeTimeoutForTests,
+  resetProbeTimeoutsForTests,
   runProbe,
-  setProbeTimeoutMsForTests,
+  setProbeTimeoutsForTests,
 } from "../../src/runtime/probe.ts";
 import { probeShellCommand } from "../../src/runtime/shell.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 /** A probe shell whose "profile" takes `profile` before the production probe command runs. */
 function probe(profile: string, command: string) {
   return runProbe("/bin/sh", ["-c", `${profile}; ${probeShellCommand(command).at(-1)}`]);
 }
 
-afterEach(() => resetProbeTimeoutForTests());
+afterEach(() => resetProbeTimeoutsForTests());
 
 test("C-PERF-05 a profile slower than the command bound does not fail a fast command", async () => {
-  setProbeTimeoutMsForTests(150, 10_000);
+  setProbeTimeoutsForTests({ commandMs: 150, launchMs: 10_000 });
   const result = await probe("sleep 0.6", "echo 2.1.310");
   expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });
 
 test("C-PERF-05 a shell that never writes the start line is killed at the launch bound", async () => {
-  setProbeTimeoutMsForTests(10_000, 150);
+  setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 150 });
   const result = await runProbe("/bin/sh", ["-c", "echo profile-noise >&2; sleep 30"]);
   expect(result.status).toBeNull();
   expect(result.stderr).toBe("profile-noise\n");
-  expect(result.error?.code).toBe("ETIMEDOUT");
-  expect(result.error?.message).toBe("login shell did not start the probe command within 150 ms");
+  expect(result.error).toMatchObject({
+    code: "ETIMEDOUT",
+    message: "login shell did not start the probe command within 150 ms",
+    phase: "login_shell",
+  });
 });
 
 test("C-PERF-03 the command bound starts at the start line and still kills a hung command", async () => {
-  setProbeTimeoutMsForTests(150, 10_000);
+  setProbeTimeoutsForTests({ commandMs: 150, launchMs: 10_000 });
   const started = performance.now();
   const result = await probe("true", "sleep 30");
   expect(result.error?.code).toBe("ETIMEDOUT");
@@ -48,4 +54,44 @@ test("C-PERF-03 the command bound starts at the start line and still kills a hun
 test("C-PERF-05 the start line never reaches captured stderr", async () => {
   const result = await probe("printf warn >&2", "echo err >&2; exit 2");
   expect(result).toEqual({ status: 2, stdout: "", stderr: "warnerr\n" });
+});
+
+async function pollGone(pid: number): Promise<boolean> {
+  for (let i = 0; i < 100; i += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return false;
+}
+
+test("C-PERF-03 a command-bound timeout kills the command's whole process group", async () => {
+  // Generous: the bound must not expire before the command has recorded its grandchild.
+  setProbeTimeoutsForTests({ commandMs: 2_000, launchMs: 10_000 });
+  const pidFile = join(tempDir("elwood-probe-"), "grandchild.pid");
+  const result = await probe("true", `sleep 30 & echo $! > '${pidFile}'; wait`);
+  expect(result.error).toMatchObject({
+    code: "ETIMEDOUT",
+    message: "probe timed out after 2000 ms",
+  });
+  const grandchild = Number(readFileSync(pidFile, "utf8").trim());
+  expect(grandchild).toBeGreaterThan(0);
+  expect(await pollGone(grandchild)).toBe(true);
+});
+
+test("C-PERF-05 a login shell that exits before announcing its command fails the probe", async () => {
+  // An rc file that never returns to the probe, as one that `exec`s another shell would.
+  const rc = join(tempDir("elwood-probe-"), "exit.rc");
+  writeFileSync(rc, "exit 0\n");
+  const script = probeShellCommand("echo 2.1.310").at(-1)!;
+  const result = await runProbe("/bin/bash", ["--rcfile", rc, "-i", "-c", script]);
+  expect(result.status).toBeNull();
+  expect(result.stdout).toBe("");
+  expect(result.error).toEqual({
+    message: "login shell exited with status 0 before starting the probe command",
+    phase: "login_shell",
+  });
 });

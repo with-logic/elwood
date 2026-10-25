@@ -5,8 +5,10 @@
 
 import { expect, test } from "vitest";
 import {
+  announcesStart,
   ProbeStartWatcher,
   probeCommandStartLine,
+  probeStartScript,
   withoutStartLine,
 } from "../../src/runtime/probe-start.ts";
 
@@ -31,4 +33,10 @@ test("C-PERF-05 output without the full start line never ends the launch phase",
 test("C-PERF-05 only the shell's first start line is removed from stderr", () => {
   expect(withoutStartLine(`warn\n${line}err\n${line}`)).toBe(`warn\nerr\n${line}`);
   expect(withoutStartLine("no start line\n")).toBe("no start line\n");
+});
+
+test("C-PERF-05 only a script that writes the start line first announces its command", () => {
+  expect(announcesStart(["-l", "-i", "-c", `${probeStartScript}claude --version`])).toBe(true);
+  expect(announcesStart(["-e", "process.exit(0)"])).toBe(false);
+  expect(announcesStart([])).toBe(false);
 });

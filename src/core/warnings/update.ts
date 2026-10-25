@@ -32,7 +32,7 @@ const maxStderr = 2_000;
  * Reasons an update was skipped rather than attempted, and how each reads to a user. A
  * skipped update carries no errno or updater stderr, because no local updater ran. Both
  * reach the consumer as `errorCode: "update_active"` and differ only in timing:
- * `active_owner` follows the full 60-second contention wait, while `cleanup_pending` is
+ * `active_owner` follows the full 165-second contention wait, while `cleanup_pending` is
  * immediate, because a surviving updater group may outlive any bound worth waiting out.
  */
 const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
@@ -70,7 +70,19 @@ export function buildUpdateWarning(
         ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
         : `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
-    errorCode: skipped === undefined ? (errno ?? "update_failed") : "update_active",
+    errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),
   };
+}
+
+/**
+ * A login shell that timed out or exited before running `update` is the user's profile, not the
+ * updater, so it reports as `login_shell_failed` rather than the probe's errno (§9.2, C-PERF-05).
+ */
+function failureCode(
+  details: Readonly<Record<string, unknown>>,
+  errno: string | undefined,
+): string {
+  if (details["phase"] === "login_shell") return "login_shell_failed";
+  return errno ?? "update_failed";
 }

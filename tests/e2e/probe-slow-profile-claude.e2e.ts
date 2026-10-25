@@ -6,29 +6,23 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { ClaudeSession, ElwoodError } from "../../src/index.ts";
-import { resetProbeTimeoutForTests, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
-import { loginShellCommand, shellQuote, userShell } from "../../src/runtime/shell.ts";
+import {
+  probeLaunchTimeoutMs,
+  resetProbeTimeoutsForTests,
+  setProbeTimeoutsForTests,
+} from "../../src/runtime/probe.ts";
+import { shellQuote, userShell } from "../../src/runtime/shell.ts";
+import { resolvedAgentPath } from "./availability.ts";
 import { e2eTimeoutMs, makeProject, skipIf, skipReason } from "./helpers.ts";
 
 // The profile sleeps twice the command bound. Real `claude --version` answered in at most
 // 0.12 s across 16 concurrent runs on a loaded host, so the command bound is ample.
 const profileSeconds = 4;
 const commandBoundMs = 2_000;
-
-/** The directory the user's real login shell resolves `claude` from. */
-function claudeDirectory(): string {
-  const resolved = spawnSync(userShell(), [...loginShellCommand("command -v claude")], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 75_000,
-  });
-  return dirname(resolved.stdout.trim());
-}
 
 test("C-PERF-05 a real Claude session starts when its login profile outlasts the probe command bound", {
   skip: skipIf(
@@ -44,11 +38,11 @@ test("C-PERF-05 a real Claude session starts when its login profile outlasts the
   mkdirSync(zdotdir);
   writeFileSync(
     join(zdotdir, ".zshrc"),
-    `sleep ${profileSeconds}\nexport PATH=${shellQuote(claudeDirectory())}:"$PATH"\n`,
+    `sleep ${profileSeconds}\nexport PATH=${shellQuote(dirname(resolvedAgentPath("claude")))}:"$PATH"\n`,
   );
   const previous = process.env["ZDOTDIR"];
   process.env["ZDOTDIR"] = zdotdir;
-  setProbeTimeoutMsForTests(commandBoundMs, 60_000);
+  setProbeTimeoutsForTests({ commandMs: commandBoundMs, launchMs: probeLaunchTimeoutMs });
   const session = new ClaudeSession({
     cwd: project.cwd,
     stateDir: project.stateDir,
@@ -69,6 +63,6 @@ test("C-PERF-05 a real Claude session starts when its login profile outlasts the
     await session.teardown().catch(() => session.kill());
     if (previous === undefined) delete process.env["ZDOTDIR"];
     else process.env["ZDOTDIR"] = previous;
-    resetProbeTimeoutForTests();
+    resetProbeTimeoutsForTests();
   }
 });

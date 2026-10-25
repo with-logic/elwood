@@ -20,7 +20,7 @@ import {
   unresolvedProbeGroup,
 } from "./owner.ts";
 import { retainLease } from "./retained-lease.ts";
-import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
+import { defaultWaitMs, pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
 
 export type UpdateAdapter = "claude" | "codex";
 
@@ -36,7 +36,6 @@ const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
 const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
-const defaultWaitMs = 60_000;
 const defaultRetainRetryMs = 1_000;
 
 function defaultLeaseRoot(): string {
@@ -52,7 +51,7 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * Runs `update` only for the lease owner. A contender waits until that owner
  * settles and then returns without a duplicate update; callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
- * After 60 seconds by default, a still-active owner rejects with the adapter's
+ * After 165 seconds by default, a still-active owner rejects with the adapter's
  * update_failed error and updateReason active_owner; preflight warns and continues.
  * A lease held by a surviving updater group skips that wait and rejects immediately with
  * updateReason cleanup_pending, since those groups may outlive any bound worth setting.

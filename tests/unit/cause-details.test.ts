@@ -57,6 +57,14 @@ describe("probeFailureDetails", () => {
   const failed = (error: Record<string, unknown>) =>
     probeFailureDetails({ stderr: "boom", error: error as never });
 
+  test("C-PERF-05 names a login-shell failure's phase", () => {
+    expect(failed({ message: "login shell exited", phase: "login_shell" })).toEqual({
+      stderr: "boom",
+      cause: "login shell exited",
+      phase: "login_shell",
+    });
+  });
+
   test("C-PERF-03 omits cleanup fields when the probe reported no cleanup", () => {
     expect(failed({ message: "spawn failed", code: "ENOENT" })).toEqual({
       stderr: "boom",

@@ -11,6 +11,14 @@
  */
 export const probeCommandStartLine = "elwood-probe-command-start";
 
+/** The probe shell's script prefix: it writes the start line, then the probe command runs. */
+export const probeStartScript = `echo ${probeCommandStartLine} >&2; `;
+
+/** Whether a probe runs a script that announces its command with the start line. */
+export function announcesStart(args: readonly string[]): boolean {
+  return args.at(-1)?.startsWith(probeStartScript) ?? false;
+}
+
 const startLine = `${probeCommandStartLine}\n`;
 const startBytes = Buffer.from(startLine);
 
@@ -18,6 +26,11 @@ const startBytes = Buffer.from(startLine);
 export class ProbeStartWatcher {
   private tail = Buffer.alloc(0);
   private seen = false;
+
+  /** Whether the start line has been seen: the probe command has begun. */
+  get started(): boolean {
+    return this.seen;
+  }
 
   /** True exactly once: for the chunk that completes the start line. */
   feed(chunk: Buffer): boolean {

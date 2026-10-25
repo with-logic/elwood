@@ -9,6 +9,7 @@
 
 import { spawnSync } from "node:child_process";
 import type { TestContext } from "node:test";
+import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 export type AgentName = "claude" | "codex";
@@ -20,7 +21,16 @@ export const skipTurns = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 dis
 /** With `ELWOOD_E2E_REQUIRE=1` a would-be skip is a failure (CI must exercise the CLIs). */
 export const requireAll = process.env["ELWOOD_E2E_REQUIRE"] === "1";
 
-const probed = new Map<AgentName, string | undefined>();
+type Probed = { readonly path?: string; readonly skip?: string };
+const probed = new Map<AgentName, Probed>();
+
+function probedAgent(agent: AgentName): Probed {
+  const known = probed.get(agent);
+  if (known) return known;
+  const fresh = probe(agent);
+  probed.set(agent, fresh);
+  return fresh;
+}
 
 /**
  * Why `agent` cannot be exercised here, or `undefined` when it can. The probe runs
@@ -31,22 +41,30 @@ const probed = new Map<AgentName, string | undefined>();
 export function skipReason(agent: AgentName): string | undefined {
   const envKey = `ELWOOD_E2E_SKIP_${agent.toUpperCase()}`;
   if (process.env[envKey] === "1") return `${envKey}=1`;
-  if (!probed.has(agent)) probed.set(agent, probe(agent));
-  return probed.get(agent);
+  return probedAgent(agent).skip;
 }
 
-function probe(agent: AgentName): string | undefined {
+/** The absolute path the user's login shell resolves `agent` to, from the same memoized probe. */
+export function resolvedAgentPath(agent: AgentName): string {
+  const { path, skip } = probedAgent(agent);
+  if (path === undefined) throw new Error(skip);
+  return path;
+}
+
+function probe(agent: AgentName): Probed {
   const shell = userShell();
   const result = spawnSync(shell, [...probeShellCommand(`command -v ${agent}`)], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     // The production probe's launch plus command bounds (§9.2, C-PERF-05): a loaded host's
     // interactive profile alone can exceed 15 s, which must not read as a missing CLI.
-    timeout: 75_000,
+    timeout: probeLaunchTimeoutMs + probeCommandTimeoutMs,
   });
-  if (result.status === 0) return undefined;
+  // `command -v` prints the path last; an interactive profile may print its own lines first.
+  const path = result.stdout.trim().split("\n").at(-1);
+  if (result.status === 0 && path) return { path };
   const detail = result.error ? ` (${result.error.message})` : "";
-  return `${agent} CLI does not resolve in the login shell ${shell}${detail}`;
+  return { skip: `${agent} CLI does not resolve in the login shell ${shell}${detail}` };
 }
 
 /**

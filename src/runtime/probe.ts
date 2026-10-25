@@ -9,27 +9,32 @@
 import { spawn } from "node:child_process";
 import { completeUtf8Length } from "../core/utf8.ts";
 import { abortProbe } from "./probe-cleanup.ts";
-import { ProbeStartWatcher, withoutStartLine } from "./probe-start.ts";
+import { announcesStart, ProbeStartWatcher, withoutStartLine } from "./probe-start.ts";
 import type { CommandResult } from "./seams.ts";
 
-// The probe command's own bound, from the shell's start line (C-PERF-03).
-const defaultProbeTimeoutMs = 15_000;
-// The login shell's bound, from spawn to its start line (C-PERF-05). Loading the
-// user's interactive profile took 9-19 s at 16 concurrent probes on a loaded host.
-const defaultLaunchTimeoutMs = 60_000;
+/** The probe command's own default bound, from the shell's start line (C-PERF-03). */
+export const probeCommandTimeoutMs = 15_000;
+/**
+ * The login shell's default bound, from spawn to its start line (C-PERF-05). Loading the
+ * user's interactive profile took 7-19 s at 16 concurrent probes on a loaded host.
+ */
+export const probeLaunchTimeoutMs = 60_000;
 const maxProbeOutputBytes = 1_000_000;
-let probeTimeoutMs = defaultProbeTimeoutMs;
-let launchTimeoutMs = defaultLaunchTimeoutMs;
+let commandTimeoutMs = probeCommandTimeoutMs;
+let launchTimeoutMs = probeLaunchTimeoutMs;
 
-/** Direct (non-shell) test commands never write the start line, so both bounds default together. */
-export function setProbeTimeoutMsForTests(value: number, launchValue = value): void {
-  probeTimeoutMs = value;
-  launchTimeoutMs = launchValue;
+/** Overrides each phase's bound. A direct test command never writes the start line, so it hits `launchMs`. */
+export function setProbeTimeoutsForTests(bounds: {
+  readonly commandMs: number;
+  readonly launchMs: number;
+}): void {
+  commandTimeoutMs = bounds.commandMs;
+  launchTimeoutMs = bounds.launchMs;
 }
 
-export function resetProbeTimeoutForTests(): void {
-  probeTimeoutMs = defaultProbeTimeoutMs;
-  launchTimeoutMs = defaultLaunchTimeoutMs;
+export function resetProbeTimeoutsForTests(): void {
+  commandTimeoutMs = probeCommandTimeoutMs;
+  launchTimeoutMs = probeLaunchTimeoutMs;
 }
 
 /** Accumulates stream chunks up to a hard byte cap, tracking overflow. */
@@ -111,6 +116,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       if (out.overflowed || err.overflowed) settle(overflow(...captured()), true);
     };
     const start = new ProbeStartWatcher();
+    const announced = announcesStart(args);
     child.stdout.on("data", onData(out));
     child.stderr.on("data", onData(err));
     // The start line ends the login shell's launch phase: the command's own bound begins
@@ -118,7 +124,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     child.stderr.on("data", (chunk: Buffer) => {
       if (settled || !start.feed(chunk)) return;
       clearTimeout(timer);
-      timer = boundBy(probeTimeoutMs, () => timedOut(...captured()));
+      timer = boundBy(commandTimeoutMs, () => timedOut(...captured()));
     });
     // Spawn failure (e.g. ENOENT) fires `error` and not `close`. Node's spawn
     // `error` always carries a `code`, which preflight maps to `*_not_found`.
@@ -128,7 +134,10 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     });
     child.on("close", (code) => {
       const [stdout, stderr] = captured();
-      settle({ status: code, stdout, stderr });
+      // A shell that exits without announcing its command never ran it (an rc file that
+      // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
+      if (announced && !start.started) settle(shellExited(code, stdout, stderr));
+      else settle({ status: code, stdout, stderr });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
     let timer = boundBy(launchTimeoutMs, () => launchTimedOut(...captured()));
@@ -143,13 +152,19 @@ function mapError(error: NodeJS.ErrnoException): {
 }
 
 function timedOut(stdout: string, stderr: string): CommandResult {
-  const message = `probe timed out after ${probeTimeoutMs} ms`;
+  const message = `probe timed out after ${commandTimeoutMs} ms`;
   return { status: null, stdout, stderr, error: { code: "ETIMEDOUT", message } };
 }
 
 function launchTimedOut(stdout: string, stderr: string): CommandResult {
   const message = `login shell did not start the probe command within ${launchTimeoutMs} ms`;
-  return { status: null, stdout, stderr, error: { code: "ETIMEDOUT", message } };
+  const error = { code: "ETIMEDOUT", message, phase: "login_shell" } as const;
+  return { status: null, stdout, stderr, error };
+}
+
+function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
+  const message = `login shell exited with status ${status} before starting the probe command`;
+  return { status: null, stdout, stderr, error: { message, phase: "login_shell" } };
 }
 
 function overflow(stdout: string, stderr: string): CommandResult {

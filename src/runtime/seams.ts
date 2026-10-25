@@ -5,14 +5,19 @@
 
 import { nodePtyFactory } from "../pty/node.ts";
 import type { PtyFactory } from "../pty/types.ts";
-import { resetProbeTimeoutForTests, runProbe } from "./probe.ts";
+import { resetProbeTimeoutsForTests, runProbe } from "./probe.ts";
 import type { ProbeCleanup } from "./probe-cleanup.ts";
 
 export type CommandResult = {
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
-  readonly error?: { readonly code?: string | undefined; readonly message: string } & ProbeCleanup;
+  readonly error?: {
+    readonly code?: string | undefined;
+    readonly message: string;
+    /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
+    readonly phase?: "login_shell";
+  } & ProbeCleanup;
 };
 
 /**
@@ -57,5 +62,5 @@ export function resetRuntimeSeamsForTests(): void {
   ptyFactory = null;
   commandRunner = runProbe;
   platform = process.platform;
-  resetProbeTimeoutForTests();
+  resetProbeTimeoutsForTests();
 }
