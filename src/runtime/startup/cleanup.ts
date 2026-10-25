@@ -3,24 +3,31 @@
  * Implements PRD §9.1 and §10 error stability.
  */
 
-import type { PtyProcess } from "../../pty/types.ts";
-import { SessionReaper } from "../shutdown/reap-tree.ts";
-import { terminatePty } from "../shutdown/terminate.ts";
-
 export type StartupTerminationTimeouts = {
   readonly gracefulMs: number;
   readonly forceMs: number;
 };
 
+/** A failed startup's PTY, ended by the session that owns its exit and its reaper. */
+export type StartupPty = {
+  /** The leader's pid, which is also its process-group id. */
+  readonly pid: number;
+  /** Ends the PTY and reaps its group; never signals a PTY whose exit was already seen. */
+  readonly terminate: (timeouts: StartupTerminationTimeouts) => Promise<void>;
+};
+
 export type StartupCleanupResources = {
   readonly before?: () => void;
   readonly bridge?: { readonly stop: () => Promise<void> };
-  readonly pty?: PtyProcess;
+  readonly pty?: StartupPty;
   readonly terminal?: { readonly dispose: () => void };
   readonly after?: () => void;
   /** Overrides the bounded PTY termination window (tests only; production defaults). */
   readonly terminationTimeouts?: StartupTerminationTimeouts;
 };
+
+/** The parts of a failed startup's cleanup that the session itself owns. */
+export type SessionStartupCleanup = Required<Pick<StartupCleanupResources, "before" | "pty">>;
 
 /**
  * Wraps the ENTIRE `start*FromRecord` body so the fresh per-launch socket FILE the
@@ -54,22 +61,21 @@ const startupTermination: StartupTerminationTimeouts = { gracefulMs: 5_000, forc
 
 export async function cleanupStartupResources(resources: StartupCleanupResources): Promise<void> {
   tryCall(resources.before);
-  // Route the PTY through the SAME group-reaping primitive the normal exit path
-  // uses: it signals, waits (bounded), and SIGKILLs the leader's process group on
-  // EVERY path — even when the PTY signal throws — so CLI descendants (e.g. a
-  // hook-bridge grandchild reparented to PID 1) cannot survive a failed startup
-  // (PRD §9.1, §9.4, C-LIFE-10). A termination/reap failure stays SECONDARY: it is
-  // contained here so the original startup error is the one that rejects.
+  // The session ends its PTY with the reaper its exit path uses, so the leader's group
+  // is SIGKILLed once (PRD §9.1, §9.4, C-LIFE-10). That kill is attempted even when the
+  // PTY signal throws, so a hook-bridge grandchild reparented to PID 1 is not left
+  // behind. A termination/reap failure stays SECONDARY: it is contained here so the
+  // original startup error is the one that rejects.
   if (resources.pty)
-    await reapPtyGroup(resources.pty, resources.terminationTimeouts ?? startupTermination);
+    await endPty(resources.pty, resources.terminationTimeouts ?? startupTermination);
   await stopQuietly(resources.bridge);
   tryCall(resources.after);
   tryCall(resources.terminal?.dispose.bind(resources.terminal));
 }
 
-async function reapPtyGroup(pty: PtyProcess, timeouts: StartupTerminationTimeouts): Promise<void> {
+async function endPty(pty: StartupPty, timeouts: StartupTerminationTimeouts): Promise<void> {
   try {
-    await terminatePty(pty, "SIGTERM", new SessionReaper(pty.pid), timeouts);
+    await pty.terminate(timeouts);
   } catch {
     // Preserve the original startup error; a reap/termination failure is secondary.
   }

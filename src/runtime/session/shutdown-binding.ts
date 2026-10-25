@@ -1,10 +1,12 @@
-/** Binds one session's lifecycle callbacks to coordinated shutdown (PRD §9.4). */
+/** Binds one session's lifecycle callbacks to coordinated shutdown (PRD §9.1, §9.4). */
 
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { removeSessionFiles } from "../../state/store.ts";
 import { ShutdownCoordinator } from "../shutdown/coordinator.ts";
+import { terminatePty } from "../shutdown/terminate.ts";
+import type { SessionStartupCleanup } from "../startup/cleanup.ts";
 import type { StatusEvidenceKind } from "../status-evidence.ts";
 import type { SessionLoops } from "./loops.ts";
 import type { SessionReapPolicy } from "./reap.ts";
@@ -23,6 +25,7 @@ type ShutdownBindingInput = {
 };
 
 export class SessionShutdownBinding {
+  private readonly input: ShutdownBindingInput;
   private pending: ShutdownEvidence | undefined;
   private readonly prepareClear: () => void;
   private readonly managed: ReturnType<typeof managedShutdown>;
@@ -31,6 +34,7 @@ export class SessionShutdownBinding {
   private resolveExitFinalization: (() => void) | undefined;
 
   constructor(input: ShutdownBindingInput) {
+    this.input = input;
     this.prepareClear = () => input.loops.prepareClear();
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
       pty: input.pty,
@@ -101,6 +105,35 @@ export class SessionShutdownBinding {
       .finally(() => this.waitingShutdowns.delete(work));
     this.waitingShutdowns.set(work, pending);
     return pending;
+  }
+
+  /**
+   * The session's share of a failed startup's cleanup (PRD §9.1, C-LIFE-10). `before`
+   * closes the session and pauses its loops. `pty.terminate` ends the PTY with the
+   * session's own one-shot reaper, the one its exit path reaps with, so the group is
+   * reaped once. Once the session has seen the PTY exit, the leader's pid may be reused,
+   * so the PTY is never signaled again: only that shared reaper runs, which does nothing
+   * if the exit's reap succeeded and retries it if it failed.
+   */
+  startupCleanup(closeSession: () => void, cancelReadiness: () => void): SessionStartupCleanup {
+    const { pty, reapPolicy, loops } = this.input;
+    return {
+      before: () => {
+        closeSession();
+        cancelReadiness();
+        loops.pause();
+      },
+      pty: {
+        pid: pty.pid,
+        terminate: async (timeouts) => {
+          if (this.exitFinalization === undefined) {
+            await terminatePty(pty, "SIGTERM", reapPolicy.reaper, timeouts);
+          } else {
+            reapPolicy.reaper.reap();
+          }
+        },
+      },
+    };
   }
 
   exitEvidence(): ShutdownEvidence | "terminal_exited" {
