@@ -1,10 +1,11 @@
 /**
  * Scratch state for real-agent e2e tests (PRD §12): per-test project roots under
- * tmpdir that are swept after the file's tests finish, and a sandboxed `CODEX_HOME`
- * seeded with only the user's `auth.json` so Codex config persistence (C-CODEX-14)
- * never touches the developer's real `~/.codex`. Claude has no equivalent sandbox:
- * its credentials live in the macOS keychain, so Claude e2e runs use the real
- * `~/.claude` state.
+ * tmpdir that are swept after the file's tests finish, and a per-test `CODEX_HOME`
+ * seeded with only the user's `auth.json` and a given `config.toml`, for Codex config
+ * persistence (C-CODEX-14). Importing this module installs the suite's default Codex
+ * home (`codex-home.ts`), so no Codex e2e touches the developer's own Codex home.
+ * Claude has no equivalent sandbox: its credentials live in the macOS keychain, so
+ * Claude e2e runs use the real `~/.claude` state.
  */
 
 import {
@@ -16,10 +17,13 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after } from "node:test";
 import type { AgentName } from "./availability.ts";
+import { codexAuthPath } from "./codex-home.ts";
+
+export { codexAuthPath };
 
 export type E2eProject = {
   readonly cwd: string;
@@ -33,8 +37,6 @@ export type CodexSandbox = {
   /** Restores `CODEX_HOME` and removes the sandbox (including the auth.json copy). */
   dispose(): void;
 };
-
-export const codexAuthPath = join(homedir(), ".codex", "auth.json");
 
 const scratchRoots: string[] = [];
 
@@ -58,7 +60,7 @@ export function makeProject(agent: AgentName): E2eProject {
 
 /** Skip reason when the user has no Codex login to seed a sandboxed `CODEX_HOME` from. */
 export function codexAuthMissing(): string | undefined {
-  return existsSync(codexAuthPath) ? undefined : "no ~/.codex/auth.json for a sandboxed CODEX_HOME";
+  return existsSync(codexAuthPath) ? undefined : `no ${codexAuthPath} for a sandboxed CODEX_HOME`;
 }
 
 /**
@@ -80,8 +82,9 @@ export function seedCodexHome(home: string, config: string): string {
  * Points `CODEX_HOME` at a private directory under `project.cwd` holding a 0600 copy of
  * the user's `auth.json` and the given `config.toml`. Tear sessions down BEFORE
  * `dispose()`: it removes the sandbox, so an in-flight session could otherwise
- * rewrite a config nobody is watching. Real `~/.codex` is never read or written
- * beyond the auth copy.
+ * rewrite a config nobody is watching. `dispose()` restores the suite's default home
+ * (`codex-home.ts`). The user's own Codex home is never read or written beyond the auth
+ * copy.
  */
 export function sandboxedCodexHome(project: E2eProject, config: string): CodexSandbox {
   const home = join(project.cwd, "codex-home");

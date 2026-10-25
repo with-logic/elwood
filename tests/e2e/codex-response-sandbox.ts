@@ -15,6 +15,7 @@ import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
+import "./codex-home.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
 
 export const responseModel = "gpt-6-luna";

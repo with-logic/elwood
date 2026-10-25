@@ -516,6 +516,20 @@ cover both `autotrust` settings. A native rerun with this grammar answered the g
 and attached the first image; its later cancelled-draft cleanup failed separately,
 so this is trust/attachment evidence, not a passing successor-cleanup run. C-TRUST-01.
 
+**Codex 0.164.0 asked for folder trust only in a Git repository, and saved the answer to
+`CODEX_HOME`.** Real launches on 2026-10-25, each with a fresh `CODEX_HOME`: in a plain
+scratch directory, Codex reached `ready` and wrote no trust entry, with and without
+`--sandbox read-only --ask-for-approval never` and with and without a seeded
+`config.toml`; no trust gate rendered in the launches whose screens were captured. After
+`git init` in the same kind of directory it showed `Folder access` with `Note: You’re in
+a subdirectory of a Git project. Trusting will apply to the repository root:` and the
+resolved path (`/private/var/...` for a `/var/...` cwd). `Trust and continue` then saved
+`[projects."<that path>"]` with `trust_level = "trusted"` to `$CODEX_HOME/config.toml`.
+Every launch also wrote `[tui] screen_reader_detection_done = true` there, plus state
+and log databases, a models cache, and plugin and skill caches. An e2e that leaves
+`CODEX_HOME` unset therefore writes into the developer's own `~/.codex`, so the suite
+gives every process a private one (`tests/e2e/codex-home.ts`, C-E2E-22).
+
 ### Where the clearance grammar lives
 
 "This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout
