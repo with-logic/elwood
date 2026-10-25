@@ -4,12 +4,13 @@
  * are sourced from the JSONL transcript Codex writes; reads are bounded (fixed-size
  * chunks, a max-pending ceiling, a per-scan chunk budget) so a hundreds-of-MiB file
  * never OOMs or blocks the event loop, and lost committed data is surfaced through
- * bounded, content-free drop notices.
+ * bounded, content-free drop notices. A transcript not created yet is waited on silently;
+ * one removed after it existed is a read race that warns (§5.7, C-CODEX-23).
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
+import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
-import { CodexTranscriptCursor } from "./cursor.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
 import { CodexLineEmitter } from "./emit.ts";
@@ -28,7 +29,7 @@ const defaultScanIntervalMs = 250; // poll cadence: transcript activity is not l
 const scanChunksPerScan = 16;
 
 export class CodexTranscriptWatcher {
-  private cursor: CodexTranscriptCursor | undefined;
+  private cursor: BoundedTranscriptCursor | undefined;
   private interval: ReturnType<typeof setInterval> | undefined;
   // A permanent terminal latch: once finished, no scan/flush/observe restarts it.
   private finished = false;
@@ -62,7 +63,7 @@ export class CodexTranscriptWatcher {
   observe(path: string): void {
     if (this.finished || this.cursor?.path === path) return;
     this.stop();
-    this.cursor = this.guard.read(path, () => new CodexTranscriptCursor(path));
+    this.cursor = this.guard.read(path, () => new BoundedTranscriptCursor(path));
     if (!this.cursor) return;
     // A scan() throw (a throwing drop/activity/warning listener) must not escape the
     // timer as an uncaught exception — contain it, stop, and route a bounded live
@@ -86,12 +87,12 @@ export class CodexTranscriptWatcher {
   scan(): void {
     const cursor = this.cursor;
     if (this.finished || !cursor) return;
-    // A transcript not created yet waits silently; one removed after it existed warns.
-    if (!this.guard.read(cursor.path, () => cursor.present())) return;
     const budget = { chunks: scanChunksPerScan };
     while (budget.chunks > 0) {
       budget.chunks -= 1;
-      const chunk = this.guard.read(cursor.path, () => cursor.readChunk());
+      // Each read is sized by its own stat: a file not created yet reads nothing, and a
+      // removal after it existed throws for the guard rather than reading as a truncation.
+      const chunk = this.guard.read(cursor.path, () => cursor.readLive());
       if (!chunk) break; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.canContinueNow) break;

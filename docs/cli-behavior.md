@@ -1231,9 +1231,9 @@ five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
   committed. Deleting it afterwards made the next poll read size 0, which the
   cursor took for a truncation, so nothing warned and the session's later
   transcript activity was silently gone: no `transcript_read_error` within 10 s
-  on `main`. The Codex cursor now tracks whether the file has existed, like
-  Claude's: before that, ENOENT waits silently; after it, every poll warns with
-  `ENOENT` while the file is missing. A file that reappears is read with the
+  on `main`. The Codex scan now reads through the shared cursor's existence
+  policy, as Claude's does: until a stat has seen the file, ENOENT waits silently;
+  after that, every poll warns with `ENOENT` while the file is missing. A file that reappears is read with the
   existing truncation rule. C-CODEX-23.
 
 `elwood sessions` reports `live` from the presence of a `.sock` file in the

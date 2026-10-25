@@ -3,7 +3,7 @@
  * one not created yet waits silently (PRD §5.7, C-CODEX-23). Mirrors C-CLAUDE-24.
  */
 
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -13,6 +13,7 @@ import * as cursorIo from "../../src/core/transcript/cursor-io.ts";
 const roots: string[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
+  cursorIo.resetByteReaderForTests();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -95,5 +96,29 @@ test("C-CODEX-23 a non-ENOENT failure warns before the file was ever seen", () =
   writeFileSync(path, "not a directory");
   watcher.scan();
   expect(errors).toEqual(["ENOTDIR"]);
+  watcher.finish();
+});
+
+test("C-CODEX-23 a removal between a scan's reads warns and is never read as a truncation", () => {
+  const path = transcriptPath();
+  writeFileSync(path, "");
+  const { watcher, errors, labels } = watch(path);
+  // More than one 256 KiB read, so one scan reads the file twice.
+  const names = Array.from({ length: 8_000 }, (_, index) => `r${index}`);
+  const content = names.map(record).join("");
+  writeFileSync(path, content);
+  let reads = 0;
+  cursorIo.setByteReaderForTests((file, start, length) => {
+    const bytes = readFileSync(file).subarray(start, start + length);
+    reads += 1;
+    if (reads === 1) unlinkSync(file); // gone after the scan's first read
+    return bytes;
+  });
+  watcher.scan();
+  expect(errors).toEqual(["ENOENT"]);
+  writeFileSync(path, content); // back before the next scan: resumes, no replay
+  watcher.scan();
+  watcher.scan();
+  expect({ errors, labels }).toEqual({ errors: ["ENOENT"], labels: names });
   watcher.finish();
 });
