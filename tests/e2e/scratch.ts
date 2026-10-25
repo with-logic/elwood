@@ -8,22 +8,12 @@
  * Claude e2e runs use the real `~/.claude` state.
  */
 
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after } from "node:test";
 import type { AgentName } from "./availability.ts";
-import { codexAuthPath } from "./codex-home.ts";
-
-export { codexAuthPath };
+import { copyCodexAuth, userCodexAuthPath } from "./codex-home.ts";
 
 export type E2eProject = {
   readonly cwd: string;
@@ -60,7 +50,8 @@ export function makeProject(agent: AgentName): E2eProject {
 
 /** Skip reason when the user has no Codex login to seed a sandboxed `CODEX_HOME` from. */
 export function codexAuthMissing(): string | undefined {
-  return existsSync(codexAuthPath) ? undefined : `no ${codexAuthPath} for a sandboxed CODEX_HOME`;
+  if (existsSync(userCodexAuthPath)) return undefined;
+  return "no auth.json in the user's Codex home for a sandboxed CODEX_HOME";
 }
 
 /**
@@ -68,11 +59,9 @@ export function codexAuthMissing(): string | undefined {
  * `config.toml`, whose path it returns. Filesystem only; callers decide who names the home.
  */
 export function seedCodexHome(home: string, config: string): string {
-  if (!existsSync(codexAuthPath)) throw new Error(codexAuthMissing());
+  if (!existsSync(userCodexAuthPath)) throw new Error(codexAuthMissing());
   mkdirSync(home, { recursive: true, mode: 0o700 });
-  const authCopy = join(home, "auth.json");
-  copyFileSync(codexAuthPath, authCopy);
-  chmodSync(authCopy, 0o600);
+  copyCodexAuth(home);
   const configPath = join(home, "config.toml");
   writeFileSync(configPath, config);
   return configPath;

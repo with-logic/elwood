@@ -7,12 +7,14 @@
  * (docs/cli-behavior.md); answering it makes Codex save a `[projects."<root>"]` entry to
  * its `config.toml`. The run asserts that entry landed in the `CODEX_HOME` the helpers set,
  * so the parent's "the user's home is untouched" check cannot pass because Codex never
- * wrote anything.
+ * wrote anything. Before launch it checks that the helpers seeded that home with only a
+ * 0600 `auth.json`, whatever else the user's home holds, and it reports the home's path
+ * to the parent, which checks that it is removed.
  */
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import test from "node:test";
 import { startCodex } from "../../src/index.ts";
@@ -23,6 +25,14 @@ test("C-E2E-22 a default Codex e2e session trusts its project inside the suite's
 }, async () => {
   const codexHome = process.env["CODEX_HOME"];
   assert.ok(codexHome, "the shared e2e helpers set CODEX_HOME");
+  const report = process.env["ELWOOD_E2E_GUARD_REPORT"];
+  if (report) writeFileSync(report, codexHome);
+  assert.deepEqual(
+    readdirSync(codexHome),
+    ["auth.json"],
+    "the suite's Codex home starts as auth only",
+  );
+  assert.equal(statSync(join(codexHome, "auth.json")).mode & 0o777, 0o600);
   const project = makeProject("codex");
   execFileSync("git", ["init", "--quiet"], { cwd: project.cwd });
   const session = await startCodex({

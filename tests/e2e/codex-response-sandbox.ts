@@ -15,7 +15,7 @@ import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
-import "./codex-home.ts";
+import { copyCodexAuth } from "./codex-home.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
 
 export const responseModel = "gpt-6-luna";
@@ -36,8 +36,7 @@ export async function nativeResponseSandbox() {
     for (const dir of [home, cwd, stateDir, bin]) mkdirSync(dir, { mode: 0o700 });
     copyFileSync(responseBinary, binary);
     chmodSync(binary, 0o700);
-    copyFileSync(join(homedir(), ".codex/auth.json"), join(home, "auth.json"));
-    chmodSync(join(home, "auth.json"), 0o600);
+    copyCodexAuth(home);
     writeFileSync(
       join(home, "config.toml"),
       `check_for_update_on_startup = false\n[projects.${JSON.stringify(cwd)}]\ntrust_level = "trusted"\n[tui]\nstatus_line = ["model-with-reasoning"]\n`,

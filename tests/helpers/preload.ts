@@ -11,13 +11,19 @@
  * (`src/state/socket-home.ts`).
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach } from "vitest";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { privateTempDir } from "./private-temp.ts";
 
-const home = mkdtempSync(join(tmpdir(), "elwood_test_home-"));
+// Recorded by a worker's first test file, before any preload has replaced HOME/CODEX_HOME.
+const userCodexHomeKey = "ELWOOD_TEST_USER_CODEX_HOME";
+const userCodexHome =
+  process.env[userCodexHomeKey] ?? process.env["CODEX_HOME"] ?? join(homedir(), ".codex");
+process.env[userCodexHomeKey] = userCodexHome;
+const home = privateTempDir("elwood_test_home-", userCodexHome);
 mkdirSync(join(home, ".codex"));
 process.env["HOME"] = home;
 process.env["CODEX_HOME"] = join(home, ".codex");
