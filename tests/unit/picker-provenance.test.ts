@@ -74,7 +74,7 @@ test.each([
  * which would deadlock Elwood's own picker (C-API-55).
  */
 test("C-API-55 a human's model picker withholds non-picker writes but not readiness", () => {
-  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.useFakeTimers({ toFake: ["performance"] });
   onTestFinished(() => {
     vi.useRealTimers();
   });

@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
-import { clearObservationGapMs } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearReadingGapMs } from "../../src/runtime/session/picker-cleanup.ts";
 import { PickerHold } from "../../src/runtime/session/picker-hold.ts";
 import {
   claudeClosedPickerViewport,
@@ -32,12 +32,25 @@ test("C-API-55 readings bunched into one instant count once toward clearance", (
   expect(releasesAfterClearStreak(() => hold.observe(codexComposer, codexModelPicker))).toBe(true);
 });
 
+// Literal times, not the production constant, so lowering the gap turns this red.
+test("C-API-55 a clear reading counts 40 ms after the last counted one, not 39", () => {
+  const hold = new PickerHold();
+  hold.hold();
+  expect(hold.observe(codexComposer, codexModelPicker)).toBe(true);
+  for (let counted = 2; counted <= 5; counted += 1) {
+    vi.advanceTimersByTime(39);
+    expect(hold.observe(codexComposer, codexModelPicker)).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(hold.observe(codexComposer, codexModelPicker)).toBe(counted < 5);
+  }
+});
+
 test("C-API-55 a frame that is not positively clear restarts the clearance streak", () => {
   const hold = new PickerHold();
   hold.hold();
   for (let read = 0; read < 4; read += 1) {
     expect(hold.observe(codexComposer, codexModelPicker)).toBe(true);
-    vi.advanceTimersByTime(clearObservationGapMs);
+    vi.advanceTimersByTime(clearReadingGapMs);
   }
   expect(hold.observe("", codexModelPicker)).toBe(true);
   expect(releasesAfterClearStreak(() => hold.observe(codexComposer, codexModelPicker))).toBe(true);

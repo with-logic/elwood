@@ -10,7 +10,7 @@ import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
-import { clearFrames, clearObservationGapMs } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearReadingGapMs, clearReadings } from "../../src/runtime/session/picker-cleanup.ts";
 
 export const escapeKey = String.fromCharCode(27);
 
@@ -20,9 +20,9 @@ export const escapeKey = String.fromCharCode(27);
  * bunched into one instant: each is repeated before the clock moves (C-API-55).
  */
 export function releasesAfterClearStreak(held: () => boolean): boolean {
-  for (let reading = 1; reading < clearFrames; reading += 1) {
+  for (let reading = 1; reading < clearReadings; reading += 1) {
     if (!(held() && held())) return false;
-    vi.advanceTimersByTime(clearObservationGapMs);
+    vi.advanceTimersByTime(clearReadingGapMs);
   }
   return !held();
 }
@@ -33,21 +33,51 @@ export type Screen = { text: string };
 const dialogTitle =
   /Select model|Select Model and Effort|Select Reasoning Level|Switch model\?|Change effort level\?/;
 
+/**
+ * A fake CLI screen. `react` scripts how it repaints after each command or key Elwood
+ * writes; `barrier` is observation-barrier state a real terminal carries (`renderFailed`).
+ */
+function scriptedTerminal(
+  text: string,
+  react: (input: string, screen: Screen) => void,
+  barrier: { readonly renderFailed?: boolean } = {},
+) {
+  const screen: Screen = { text };
+  const writes: string[] = [];
+  const terminal = {
+    ...barrier,
+    snapshot: () => ({ text: screen.text }),
+    sendInput: (input: string | Uint8Array) => {
+      writes.push(String(input));
+      // Returned, so a scripted write can fail the way a real one does.
+      return react(String(input), screen);
+    },
+  };
+  return { screen, writes, terminal };
+}
+
+/** The real transaction owner over a scripted terminal and its queue. */
+function transactions(
+  terminal: ReturnType<typeof scriptedTerminal>["terminal"],
+  controlQueue: ControlQueue,
+  spec: ModelPickerSpec,
+) {
+  return new PickerTransactions({
+    terminal,
+    controlQueue,
+    blocked: () => false,
+    picker: () => spec,
+    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
+  });
+}
+
 /** `react` scripts how the fake CLI repaints after each command or key Elwood writes. */
 export function pickerHarness(
   text: string,
   react: (input: string, screen: Screen) => void,
   spec: ModelPickerSpec = claudeModelPicker,
 ) {
-  const screen: Screen = { text };
-  const writes: string[] = [];
-  const terminal = {
-    snapshot: () => ({ text: screen.text }),
-    sendInput: (input: string | Uint8Array) => {
-      writes.push(String(input));
-      react(String(input), screen);
-    },
-  };
+  const { screen, writes, terminal } = scriptedTerminal(text, react);
   /** Queued input dispatched while any model dialog title was on screen. */
   const leaked: string[] = [];
   const queue = new ControlQueue(
@@ -58,13 +88,7 @@ export function pickerHarness(
     () => new Error("closed"),
     () => {},
   );
-  const picker = new PickerTransactions({
-    terminal,
-    controlQueue: queue,
-    blocked: () => false,
-    picker: () => spec,
-    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
-  });
+  const picker = transactions(terminal, queue, spec);
   queue.markReady();
   return { screen, writes, leaked, queue, picker };
 }
@@ -79,15 +103,7 @@ export function guardedPickerHarness(
   react: (input: string, screen: Screen) => void = () => {},
   spec: ModelPickerSpec = claudeModelPicker,
 ) {
-  const screen: Screen = { text };
-  const writes: string[] = [];
-  const terminal = {
-    snapshot: () => ({ text: screen.text }),
-    sendInput: (input: string | Uint8Array) => {
-      writes.push(String(input));
-      react(String(input), screen);
-    },
-  };
+  const { screen, writes, terminal } = scriptedTerminal(text, react);
   const holds: { picker?: PickerTransactions } = {};
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {
@@ -99,13 +115,7 @@ export function guardedPickerHarness(
     () => new Error("closed"),
     () => {},
   );
-  const picker = new PickerTransactions({
-    terminal,
-    controlQueue: queue,
-    blocked: () => false,
-    picker: () => spec,
-    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
-  });
+  const picker = transactions(terminal, queue, spec);
   holds.picker = picker;
   queue.markReady();
   const delivered = (payload: string) => writes.filter((write) => write.includes(payload)).length;
@@ -119,16 +129,7 @@ export function cleanupHarness(
   /** Observation-barrier state a real terminal carries (`renderFailed`, `settled`). */
   barrier: { readonly renderFailed?: boolean } = {},
 ) {
-  const screen: Screen = { text: "❯ " };
-  const writes: string[] = [];
-  const terminal = {
-    ...barrier,
-    snapshot: () => ({ text: screen.text }),
-    sendInput: (input: string | Uint8Array) => {
-      writes.push(String(input));
-      return react(String(input), screen);
-    },
-  };
+  const { screen, writes, terminal } = scriptedTerminal("❯ ", react, barrier);
   /** The harness stands in for a transaction Elwood opened. */
   const opened: ModelDialogAuthority = { opened: true };
   const leaked: string[] = [];
@@ -140,13 +141,7 @@ export function cleanupHarness(
     () => new Error("closed"),
     () => {},
   );
-  const picker = new PickerTransactions({
-    terminal,
-    controlQueue: queue,
-    blocked: () => false,
-    picker: () => spec,
-    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
-  });
+  const picker = transactions(terminal, queue, spec);
   queue.markReady();
   /** An operation that fails with `dialog` still on screen. */
   const failWith = (dialog: string) =>

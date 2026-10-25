@@ -6,7 +6,7 @@ import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
-import { clearObservationGapMs } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearReadingGapMs } from "../../src/runtime/session/picker-cleanup.ts";
 import { PickerHold } from "../../src/runtime/session/picker-hold.ts";
 import { PickerInputOwnership } from "../../src/runtime/session/picker-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
@@ -23,7 +23,7 @@ test.each([
   "codex",
 ] as const)("C-API-55 %s holds foreign input until native render evidence clears", async (agent) => {
   // Only the clock is fake: clearance readings count a gap apart, and xterm renders for real.
-  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.useFakeTimers({ toFake: ["performance"] });
   onTestFinished(() => {
     vi.useRealTimers();
   });
@@ -48,7 +48,7 @@ test.each([
   const held = () => {
     for (let read = 0; read < 6; read += 1) {
       expect(observe()).toBe(true);
-      vi.advanceTimersByTime(clearObservationGapMs);
+      vi.advanceTimersByTime(clearReadingGapMs);
     }
   };
   try {
