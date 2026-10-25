@@ -29,8 +29,8 @@ for (const agent of ["claude", "codex"] as const) {
     const pty = fake.ptys[0]!;
     let empty = agent === "claude" ? claudeTty(claudeComposer) : codexTty(codexComposer);
     if (mode === "native-chrome") {
-      // Native banner still establishes chrome when the compact footer omits a picker hint.
-      empty = empty.replace(" · ← for agents", "");
+      // The native banner still establishes chrome when a narrow terminal cuts the footer.
+      empty = empty.replace(" (shift+tab to cycle) · ← for agents", " (shift+tab to");
     }
     if (mode === "history") empty = claudeTty(`❯ previous message\n${claudeComposer}`);
     const draft = empty.replace(

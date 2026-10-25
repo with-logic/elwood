@@ -3,10 +3,12 @@ import { readStagedComposer } from "../../core/input/staged-composer.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { claudeScreenFactTable } from "../screen-table.ts";
 import { claudeEmptyInputFrame, claudeEmptyInputRows } from "./empty-input.ts";
+import { claudeTokenCount } from "./footer.ts";
 
 // Captured Claude 2.1.281 staged-only hints; these do not establish empty input.
-const stagedFooter =
-  /^\s*(?:paste again to expand(?: +[\d,.]+[kKmM]? tokens)?|Ctrl\+Y to paste deleted text|ctrl\+g to edit in Nvim)\s*$/;
+const stagedFooter = new RegExp(
+  String.raw`^\s*(?:paste again to expand(?: +${claudeTokenCount})?|Ctrl\+Y to paste deleted text|ctrl\+g to edit in Nvim)\s*$`,
+);
 const matchesEmptyInputWithStagedFooter = (rows: readonly string[], viewportCursorRow: number) =>
   claudeEmptyInputRows(rows, viewportCursorRow, stagedFooter);
 

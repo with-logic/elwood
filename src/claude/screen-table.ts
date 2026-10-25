@@ -11,7 +11,7 @@ import { cursorViewportRow } from "../terminal/coordinates.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
-import { claudeManualModeFooter } from "./composer/footer.ts";
+import { claudeComposerFooterRow } from "./composer/footer.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 import { claudeQuestionCandidate } from "./questions/screen.ts";
 
@@ -22,25 +22,22 @@ export const claudeComposerInputColumn = 2;
 export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
 
 /** A composer fenced by rules; a named session labels the top rule (`claudeNamedLabel`). */
-const fencedComposer = new RegExp(
-  String.raw`(?:^|\n)[─━]{3,}(?:${claudeNamedLabel})?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}`,
-);
+const fence = String.raw`(?:^|\n)[─━]{3,}(?:${claudeNamedLabel})?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}`;
+const fencedComposer = new RegExp(fence);
+/** The fence with Claude's footer as the very next row, where transcript text cannot sit. */
+const footedComposer = new RegExp(String.raw`${fence}[ \t]*\n${claudeComposerFooterRow}(?:\n|$)`);
 
 /**
  * Claude's trust-clearance grammar, owned HERE beside the rest of Claude's verified
- * screen facts (C-TRUST-01). Clearance needs Claude's own chrome — the version banner or
- * the permission-mode or manual-mode footer — plus the composer fenced between rule
- * lines, so a frame that merely contains a `❯` is not mistaken for an answered gate.
+ * screen facts (C-TRUST-01). Clearance needs the composer fenced between rule lines plus
+ * Claude's own chrome: its permission-mode footer directly under the fence, or the version
+ * banner, which scrolls away in a long session. A frame that merely contains a `❯` is
+ * therefore not mistaken for an answered gate.
  */
 export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
   (frame) =>
-    (/Claude Code v[\d.]+/.test(frame) ||
-      claudeManualModeFooter.test(frame) ||
-      /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
-        frame,
-      )) &&
-    fencedComposer.test(frame),
+    footedComposer.test(frame) || (/Claude Code v[\d.]+/.test(frame) && fencedComposer.test(frame)),
 );
 
 /** A per-batch composer cannot release trust until every received byte has rendered. */

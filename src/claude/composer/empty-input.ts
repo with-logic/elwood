@@ -4,18 +4,28 @@ import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { loginRenewalNotice } from "../login/notice.ts";
 import { claudeComposerRow } from "../screen-table.ts";
 import { claudeNamedBorder } from "./border.ts";
-import { claudeManualModeFooter } from "./footer.ts";
+import { claudeComposerFooter, claudeFooterOverflow } from "./footer.ts";
 
 const rule = /^[─━]{3,}\s*$/;
-const mode =
-  /^\s*(?:-- INSERT -- )?(?:⏵⏵ (?:bypass permissions|don['’]t ask|auto mode) on \(shift\+tab to cycle\)|⏸ manual mode on)(?: · ← for agents)?(?: +[\d,.]+[kKmM]? tokens)?\s*$/;
-// Separate effort footer captured below collapsed text in Claude 2.1.281.
-const effort = /^\s*◐ medium · \/effort\s*$/;
-
 export function claudeEmptyInputFrame(terminal: ElwoodTerminal) {
   return emptyInputFrame(terminal, claudeEmptyInputRows);
 }
 
+/**
+ * Whether viewport `rows` show Claude's live, empty composer (PRD §5.3, §5.4; C-API-56).
+ *
+ * `cursorRow` is the viewport index of the terminal cursor's row. That row must be the empty
+ * `❯` composer, with the composer's top rule (plain, or labelled by a named session) at
+ * `cursorRow - 1` and a plain bottom rule at `cursorRow + 1`.
+ *
+ * The footer is the row directly under the bottom rule, `cursorRow + 2`: a permission-mode
+ * footer (`claudeComposerFooter`) or, when the caller passes `stagedFooter`, one of its
+ * staged-input hint rows. That row is the composer's chrome. Without it, the row must be
+ * blank or absent and the version banner must be visible somewhere in `rows`; a footer
+ * further down never counts. Every non-blank row after it must be a footer item on its own
+ * row (`claudeFooterOverflow`: a token count or effort level), the login-renewal notice, or
+ * a `stagedFooter` row.
+ */
 export function claudeEmptyInputRows(
   rows: readonly string[],
   cursorRow: number,
@@ -28,19 +38,19 @@ export function claudeEmptyInputRows(
   const hasComposerTopRule = rule.test(topRule) || claudeNamedBorder.test(topRule);
   const hasPlainBottomRule = rule.test(rows[cursorRow + 1] ?? "");
   if (!(hasComposerTopRule && hasPlainBottomRule)) return false;
-  const below = rows.slice(cursorRow + 2).filter((row) => row.trim() !== "");
+  const footer = rows[cursorRow + 2] ?? "";
+  const footed = claudeComposerFooter.test(footer) || stagedFooter?.test(footer) === true;
+  const bannered = footer.trim() === "" && rows.some((row) => /Claude Code v[\d.]+/.test(row));
   return (
-    (rows.some((row) => /Claude Code v[\d.]+/.test(row)) ||
-      below.some(
-        (row) => mode.test(row) || claudeManualModeFooter.test(row) || stagedFooter?.test(row),
-      )) &&
-    below.every(
-      (row) =>
-        mode.test(row) ||
-        claudeManualModeFooter.test(row) ||
-        loginRenewalNotice.test(row) ||
-        effort.test(row) ||
-        stagedFooter?.test(row),
-    )
+    (footed || bannered) &&
+    rows
+      .slice(cursorRow + 3)
+      .every(
+        (row) =>
+          row.trim() === "" ||
+          claudeFooterOverflow.test(row) ||
+          loginRenewalNotice.test(row) ||
+          stagedFooter?.test(row),
+      )
   );
 }
