@@ -2,7 +2,7 @@
  * A turn the real Codex CLI rejects fails instead of hanging or passing as a reply.
  * Implements PRD §5.8/§12A.2 and C-E2E-21 for C-API-60/C-CLI-28. Codex fires no `Stop` for
  * a rejected turn, so its failed transcript `task_complete` is the only evidence. A bogus
- * `--model` is refused before any model quota is consumed, so this runs out of quota too.
+ * `--model` is refused before any model quota is consumed, so this needs no model quota.
  */
 
 import assert from "node:assert/strict";

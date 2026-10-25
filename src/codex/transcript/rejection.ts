@@ -18,7 +18,7 @@ export function codexTurnRejection(
   if (!isRecord(payload) || payload["type"] !== "task_complete") return undefined;
   const error = payload["error"];
   const turnId = payload["turn_id"];
-  if (!isRecord(error) || typeof turnId !== "string" || turnId === "") return undefined;
+  if (!isRecord(error) || typeof turnId !== "string" || turnId.trim() === "") return undefined;
   const agentError = errorInfoName(error["codex_error_info"]);
   const message =
     boundedDiagnostic(error["message"]) ??

@@ -73,10 +73,12 @@ describe("codexTurnRejection", () => {
       { type: "response_item", payload: completed(error).payload },
       { type: "event_msg" },
       { type: "event_msg", payload: { type: "turn_aborted", turn_id: "turn-1", error } },
+      { type: "event_msg", payload: { type: "task_complete", turn_id: "turn-1" } },
       completed(null),
       completed("failed"),
       { type: "event_msg", payload: { type: "task_complete", error } },
       completed(error, ""),
+      completed(error, " \t"),
       completed(error, 7),
     ])
       expect(codexTurnRejection(item)).toBeUndefined();

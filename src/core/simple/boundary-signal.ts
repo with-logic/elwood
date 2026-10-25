@@ -20,9 +20,15 @@ export type BoundarySignal = string | { readonly text: string; readonly failure:
 
 /** An adapter's evidence that the agent itself rejected the turn (PRD §12A.5). */
 export type TurnFailure = {
-  /** Human-readable reason, bounded by the adapter. */
+  /**
+   * The agent's own diagnostic, bounded by the adapter: Claude's `error_details`, or Codex's
+   * `error.message` (often the service's raw JSON error body). Diagnostic, not display prose.
+   */
   readonly message: string;
-  /** The agent's own error name (Claude's `error`), DIAGNOSTIC ONLY — never decides failure. */
+  /**
+   * The agent's own error kind, DIAGNOSTIC ONLY — never decides failure: Claude's `error` name
+   * (`model_not_found`) or Codex's `codex_error_info` kind (`other`, `http_connection_failed`).
+   */
   readonly agentError?: string | undefined;
   /**
    * Whether the rejection names the submission the turn accepted (the hook that accepted it).
@@ -52,7 +58,7 @@ export function signalFailure(signal: BoundarySignal | undefined): TurnFailure |
   return signal === undefined ? undefined : boundaryFailure(signal);
 }
 
-/** The consumer-facing `turn_failed` error for an adapter's rejection evidence (C-API-59). */
+/** The consumer-facing `turn_failed` error for an adapter's rejection evidence (C-API-59/60). */
 export function turnRejection(failure: TurnFailure): ElwoodError {
   const details = failure.agentError === undefined ? {} : { agentError: failure.agentError };
   return elwoodError("turn_failed", failure.message, details);

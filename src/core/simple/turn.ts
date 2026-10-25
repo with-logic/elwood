@@ -4,7 +4,8 @@
  * or terminal status. Codex acceptance and Stop identity come from private adapter evidence;
  * public running/ready alone cannot bind or finish its turn. Untagged adapters retain the
  * serialized passive oracle. The Stop oracle checks completeness; it never supplies output.
- * Adapter rejection evidence of the turn's own submission fails it as `turn_failed` (C-API-59).
+ * Adapter rejection evidence of the turn's own submission fails it as `turn_failed`: Claude's
+ * `StopFailure` (C-API-59) or Codex's failed `task_complete` (C-API-60).
  * Whole-turn deadlines start after physical submission; catch-up deadlines start after idle.
  */
 

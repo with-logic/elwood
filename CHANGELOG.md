@@ -110,7 +110,7 @@ back each entry are listed in `prd/14-conformance.md`.
   print Claude's error text as the response. A late rejection whose `prompt_id` names an
   earlier submission than the current turn's does not fail the current turn. When either
   hook lacks a `prompt_id`, a rejection that arrives during a turn is attributed to that
-  turn. Codex rejections are not recognized yet.
+  turn.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
