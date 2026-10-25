@@ -6,8 +6,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentModelOption, ClaudeSessionApi } from "../../src/index.ts";
-import { waitFor } from "./helpers.ts";
+import { isRecord } from "../../src/core/predicates.ts";
+import { type AgentModelOption, type ClaudeSessionApi, startClaude } from "../../src/index.ts";
+import { cleanup, type E2eProject, waitFor } from "./helpers.ts";
 
 /**
  * Opens the picker with raw keys and reads the count it announces, its last rendered row's
@@ -41,9 +42,22 @@ export async function readClaudePicker(
   return { rowCount: Math.max(...rows) + hidden, effortRow };
 }
 
+/** The picker's own row count for `project`'s account, read in a fresh session. */
+export async function claudePickerRowCount(project: E2eProject): Promise<number> {
+  let session: ClaudeSessionApi | undefined;
+  try {
+    session = await startClaude({ ...project, autotrust: true, hooks: {} });
+    await waitFor(() => (session?.status === "ready" ? true : undefined), "claude ready", 60_000);
+    return (await readClaudePicker(session)).rowCount;
+  } finally {
+    await cleanup(session);
+  }
+}
+
 /**
  * The list is complete AND in picker order: each row carries its own position, so none is
- * missing or out of place, and the last hides nothing below it.
+ * missing or out of place, and the last hides nothing below it. A last row the cursor sits
+ * on shows `❯` instead of `↓`, so this cannot see rows past it: pair it with a row count.
  */
 export function hasCompletePickerOrder(models: readonly AgentModelOption[]): boolean {
   return (
@@ -58,7 +72,8 @@ export function hasCompletePickerOrder(models: readonly AgentModelOption[]): boo
  */
 export function savedClaudeModel(): unknown {
   const path = join(homedir(), ".claude", "settings.json");
-  return existsSync(path)
-    ? (JSON.parse(readFileSync(path, "utf8")) as { model?: unknown }).model
-    : undefined;
+  if (!existsSync(path)) return undefined;
+  const settings: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!isRecord(settings)) throw new Error(`${path} does not hold a JSON object.`);
+  return settings["model"];
 }

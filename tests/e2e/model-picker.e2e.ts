@@ -18,6 +18,7 @@ import {
   startClaude,
 } from "../../src/index.ts";
 import {
+  claudePickerRowCount,
   hasCompletePickerOrder,
   readClaudePicker,
   savedClaudeModel,
@@ -155,11 +156,8 @@ test("C-API-41 real listClaudeModels returns models without a caller-held sessio
 }, async () => {
   const project = makeProject("claude");
   const models = await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir });
-  assert.ok(models.length >= 3, "session-less probe lists several models");
-  assert.ok(
-    hasCompletePickerOrder(models),
-    "every row, none missing, in picker order, past Claude's ten-row window",
-  );
+  assert.equal(models.length, await claudePickerRowCount(project), "every row the picker counts");
+  assert.ok(hasCompletePickerOrder(models), "every row, none missing, in picker order");
   // A probe that read the picker mid-paint returned one row, or none, in 3 of 5 runs.
   for (let probe = 0; probe < 2; probe += 1)
     assert.deepEqual(

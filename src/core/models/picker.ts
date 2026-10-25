@@ -117,16 +117,18 @@ export async function setPickerModel(
   // is rendered. An unknown id walks the whole list, so the error names every row.
   const walk = { timeoutMs, found: isTarget };
   const { frame: parsed, options } = await revealPickerRows(io, spec, opening, walk);
-  const target = parsed.options.findIndex(isTarget);
-  if (target === -1 || parsed.cursorOptionIndex === -1) {
+  const targetOptionIndex = parsed.options.findIndex(isTarget);
+  if (targetOptionIndex === -1 || parsed.cursorOptionIndex === -1) {
     await sendPickerInput(io, escapeKey, ownCompletePicker);
     const reason =
-      target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
+      targetOptionIndex === -1
+        ? `Unknown model id "${id}".`
+        : "Could not locate the picker cursor.";
     throw elwoodError("model_automation_failed", reason, {
       available: options.map((option) => option.id),
     });
   }
-  const delta = target - parsed.cursorOptionIndex;
+  const delta = targetOptionIndex - parsed.cursorOptionIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
     await sendPickerInput(io, key, ownCompletePicker);

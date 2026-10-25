@@ -47,7 +47,10 @@ export type RevealedPicker = {
  * read from the first frame that states one; a frame that marks rows hidden below without
  * a positive count, has a row number or length that is not an exact integer, or states a
  * different length is never acted on, so the walk times out if no other frame renders.
- * Only rows actually rendered are stored.
+ * A frame that marks nothing hidden is a list ending at its highest row. With the cursor on
+ * row 10, `❯` replaces the `↓` marker, so only the count line says more rows follow; that
+ * relies on Claude painting the count before the footer the complete picker needs
+ * (`docs/cli-behavior.md`). Only rows actually rendered are stored.
  */
 export async function revealPickerRows(
   io: ModelPickerIo,
@@ -89,20 +92,22 @@ export async function revealPickerRows(
     const cursor = frame.rows[frame.cursorOptionIndex];
     if (cursor === undefined) throw walkFailed("Could not locate the picker cursor.", seen);
     const down = !seen.has(length);
-    const row = cursor.absoluteRowNumber + (down ? 1 : -1);
+    const nextAbsoluteRowNumber = cursor.absoluteRowNumber + (down ? 1 : -1);
     await sendPickerInput(io, down ? arrowDown : arrowUp, ownCompletePicker);
     const listed = length;
     frame = await next(
-      (moved) => cursorRowNumber(moved) === row && listLength(moved) === listed,
-      `cursor on row ${row} of ${listed}`,
+      (moved) =>
+        cursorAbsoluteRowNumber(moved) === nextAbsoluteRowNumber && listLength(moved) === listed,
+      `cursor on row ${nextAbsoluteRowNumber} of ${listed}`,
     );
   }
 }
 
 /**
  * The list's length by `frame`'s own account, its highest rendered row plus those hidden, or
- * undefined when the frame cannot say: no valid count, or a sum that is not an exactly
- * representable integer. The grammar already refuses row numbers that round.
+ * undefined when the parser marks the count unknown (rows hidden below without a positive
+ * count) or the sum is not an exactly representable integer. The grammar already refuses
+ * row numbers that round. A frame that marks nothing hidden ends at its highest row.
  */
 function listLength(frame: ParsedModelPicker): number | undefined {
   if (frame.hiddenRowCountBelow === undefined) return undefined;
@@ -116,7 +121,7 @@ export function cursorOption(parsed: ParsedModelPicker): AgentModelOption | unde
   return parsed.options[parsed.cursorOptionIndex];
 }
 
-function cursorRowNumber(parsed: ParsedModelPicker): number | undefined {
+function cursorAbsoluteRowNumber(parsed: ParsedModelPicker): number | undefined {
   return parsed.rows[parsed.cursorOptionIndex]?.absoluteRowNumber;
 }
 

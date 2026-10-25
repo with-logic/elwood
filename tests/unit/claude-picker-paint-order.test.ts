@@ -9,6 +9,7 @@ import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { isOwnCompletePicker } from "../../src/core/models/own-picker.ts";
 import type { ParsedModelPicker } from "../../src/core/models/rows.ts";
+import { isRecord } from "../../src/core/predicates.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 type Capture = {
@@ -21,7 +22,25 @@ type Capture = {
   readonly paint: string;
 };
 
-const capture: Capture = JSON.parse(
+const isCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+const isLines = (value: unknown): value is readonly string[] =>
+  Array.isArray(value) && value.every((line) => typeof line === "string");
+
+/** Checked field by field, so an edited fixture fails here rather than replaying wrongly. */
+function parseCapture(text: string): Capture {
+  const value: unknown = JSON.parse(text);
+  if (isRecord(value) && isRecord(value["cursor"])) {
+    const { cols, rows, screen, paint } = value;
+    const { x, y } = value["cursor"];
+    const counts = isCount(cols) && isCount(rows) && isCount(x) && isCount(y);
+    if (counts && isLines(screen) && typeof paint === "string")
+      return { cols, rows, cursor: { x, y }, screen, paint };
+  }
+  throw new Error("opening-on-row-10.json is not a picker capture.");
+}
+
+const capture = parseCapture(
   readFileSync(
     new URL("../fixtures/claude-2.1.310/model-picker/opening-on-row-10.json", import.meta.url),
     "utf8",
