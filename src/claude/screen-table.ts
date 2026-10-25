@@ -77,13 +77,15 @@ export function liveClaudeClearance(
  * matching the question plus the numbered-Yes line together avoids matching
  * model prose that merely quotes the phrase. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and "✳ " when idle
- * on 2.1.258; 2.1.281 also emits the captured "◐ " working prefix
+ * on 2.1.258; 2.1.281 also emits the captured "◐ " working prefix, and 2.1.310
+ * alternates "◐ " and "◑ " for the whole turn
  * — a width-independent working signal that survives Claude's footer elision
  * on narrow screens. Model/effort switch dialogs use either `❯` or `›` and
  * can be numbered or unnumbered; their complete title/action shape blocks the
  * dialog caret from being mistaken for the idle composer. Verified on claude
  * 2.1.258. The questionnaire blocking pattern and manual-mode footer were
- * captured on 2.1.305; other rules retain the earlier version evidence.
+ * captured on 2.1.305, and the working-title rule (both half circles) on
+ * 2.1.310; every other rule retains the 2.1.258 evidence.
  */
 export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
