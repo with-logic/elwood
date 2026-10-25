@@ -6,25 +6,32 @@
 
 import { rowPattern } from "./rows.ts";
 
+/**
+ * What one CLI's model dialog looks like beyond the shared block rules. Each adapter owns
+ * its own, so one CLI's layout change cannot widen what counts as the other's dialog.
+ */
+export type DialogGrammar = {
+  /** The dialog's title. */
+  readonly header: RegExp;
+  /** The phrase the closing hint row carries (`Esc to cancel`), matched in hint clauses only. */
+  readonly footer: RegExp;
+  /** A row of the CLI's own that may sit between the rows and the footer. */
+  readonly controlRow?: RegExp;
+};
+
 // An agent reply or the composer renders below any header the transcript merely quotes.
 const replyRow = /^\s*[●•⏺]/;
 const caretRow = /^\s*[❯›]/;
 const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
 // Both CLIs separate the transcript from the composer or a lower dialog with one of these.
 const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
-// Every captured picker and reasoning screen closes with one of these hint rows. The row is
-// ONLY hints — `key to action` clauses joined by `·` — so the phrase cannot be matched
-// inside a sentence of the agent's own prose that happens to mention pressing Esc.
-const dialogFooter = /\b(?:esc to cancel|esc to go back)\b/i;
+// The closing hint row is ONLY hints — `key to action` clauses joined by `·` — so the footer
+// phrase cannot be matched inside a sentence of the agent's own prose that mentions Esc.
 const hintClause = /^[^.!?]{0,48}$/;
-// Claude paints a radio-style control row under its rows (`◉ xHigh effort ←/→ to adjust`).
-// It is part of the dialog, so it may sit between the rows and the footer — but it is a
-// marker row, not free prose, which is what keeps this from reopening the mid-list gap.
-const controlRow = /^\s*[◉○◎●]\s*\S/;
 
 /** A closing hint row: the footer phrase standing on its own row, not buried in prose. */
-function isFooterRow(line: string): boolean {
-  if (!dialogFooter.test(line)) return false;
+function isFooterRow(line: string, grammar: DialogGrammar): boolean {
+  if (!grammar.footer.test(line)) return false;
   return line
     .split(/[·•]/)
     .every((clause) => hintClause.test(clause.trim()) && clause.trim().length > 0);
@@ -49,10 +56,12 @@ function opensRegion(header: string): boolean {
  * only a blank or rule, the CLI's own control row (`◉ xHigh effort ←/→ to adjust`), or the
  * closing hint row may appear; free prose mid-list means these rows are not one block.
  */
-function mayAppearBesideRows(line: string, rowsStarted: boolean): boolean {
+function mayAppearBesideRows(line: string, rowsStarted: boolean, grammar: DialogGrammar) {
   if (replyRow.test(line) || caretRow.test(line) || numberedRow.test(line)) return false;
   if (!rowsStarted) return true;
-  return blockEnd.test(line) || controlRow.test(line) || isFooterRow(line);
+  return (
+    blockEnd.test(line) || grammar.controlRow?.test(line) === true || isFooterRow(line, grammar)
+  );
 }
 
 /**
@@ -77,7 +86,7 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean): boolean {
  *
  * `lines` always starts at the matched header row, so `header` is never absent.
  */
-function isNativeRegion(lines: readonly string[], complete = true): boolean {
+function isNativeRegion(lines: readonly string[], grammar: DialogGrammar, complete: boolean) {
   const [header, ...body] = lines as [string, ...string[]];
   if (!opensRegion(header)) return false;
   let next = 1;
@@ -98,8 +107,8 @@ function isNativeRegion(lines: readonly string[], complete = true): boolean {
     // is not this dialog's, so the region is not one native block.
     const candidateRow = !complete && numberedRow.test(line);
     if (!(rowPattern.test(line) || candidateRow) || Number(numberedRow.exec(line)?.[1]) !== next) {
-      if (!mayAppearBesideRows(line, next > 1)) return false;
-      footer = isFooterRow(line);
+      if (!mayAppearBesideRows(line, next > 1, grammar)) return false;
+      footer = isFooterRow(line, grammar);
       continue;
     }
     next += 1;
@@ -109,24 +118,24 @@ function isNativeRegion(lines: readonly string[], complete = true): boolean {
 }
 
 /**
- * The row of the last `header` when it opens the bottom-most native region, else -1.
+ * The row of the last header when it opens the bottom-most native region, else -1.
  * Both CLIs replace the composer with the dialog, so a header with anything foreign at
  * or below it is transcript, composer, or another dialog's content. Elwood must neither
  * cancel such text (Escape would interrupt a running turn, clear staged input, or
  * dismiss a human's prompt) nor hold input on it (C-API-24).
  */
-export function bottomDialogRow(text: string, header: RegExp): number {
+export function bottomDialogRow(text: string, grammar: DialogGrammar): number {
   const lines = text.split("\n");
-  const start = lines.findLastIndex((line) => header.test(line));
+  const start = lines.findLastIndex((line) => grammar.header.test(line));
   // No header, no dialog. Scanning from row 0 instead would ask whether the whole viewport
   // happens to look native, which is a different and much weaker question.
   if (start < 0) return -1;
-  return isNativeRegion(lines.slice(start)) ? start : -1;
+  return isNativeRegion(lines.slice(start), grammar, true) ? start : -1;
 }
 
 /** A bottom-most native picker shell may hold input before its rows/footer finish. */
-export function bottomDialogCandidate(text: string, header: RegExp): boolean {
+export function bottomDialogCandidate(text: string, grammar: DialogGrammar): boolean {
   const lines = text.split("\n");
-  const start = lines.findLastIndex((line) => header.test(line));
-  return start >= 0 && isNativeRegion(lines.slice(start), false);
+  const start = lines.findLastIndex((line) => grammar.header.test(line));
+  return start >= 0 && isNativeRegion(lines.slice(start), grammar, false);
 }

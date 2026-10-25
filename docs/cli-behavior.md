@@ -192,6 +192,15 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the default from `config.toml`. The cached catalog (`models_cache.json`) carries
   no default flag, so Codex's built-in default in an unconfigured home cannot be
   identified at all.
+- **Codex 0.164.0 shortened its dialog hints.** The picker closes with `enter select ·
+  esc back` and the reasoning screen with `enter default · s session · esc back` (one
+  Escape still returns to the picker). Neither matched the old closing-hint phrases
+  (`esc to cancel`, `esc to go back`), so the grammar never recognized either dialog:
+  `setModel` failed on its first key with "The model picker was replaced", and only the
+  header-parsing `listModels` kept working. Each CLI now supplies its own hint phrase,
+  so Claude's `Esc to cancel` no longer closes a Codex dialog either. The new `s session`
+  key is a session-only apply. Fixtures: `tests/fixtures/codex-0.164.0/model-picker/`.
+  C-API-23, C-API-24.
 - **A model dialog replaces the composer; nothing renders below it.** Full-viewport
   captures from Claude 2.1.274 and Codex 0.154.0 (2026-09-17,
   `tests/helpers/model-dialog-viewports.ts`) show the picker, Codex's reasoning
