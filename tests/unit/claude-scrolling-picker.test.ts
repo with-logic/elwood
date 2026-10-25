@@ -69,6 +69,7 @@ test.each([
   ["an unmarked block starting past 1", "  ↑ 3.  Fable 5.1  ", "    3.  Fable 5.1  "],
   ["a `↑ 1.` row, which hides nothing", "  ↑ 3.  Fable 5.1  ", "  ↑ 1.  Fable 5.1  "],
   ["a row under the `↓` row", "     … +1 model", "    13. Sonnet 4.6               Efficient"],
+  ["the overflow line under an unmarked row", "  ↓ 12.", "    12."],
   ["the overflow line apart from the rows", "     … +1 model", "\n     … +1 model"],
   ["a second overflow line", "     … +1 model", "     … +1 model\n     … +1 model"],
   ["a reply bullet as its control row", "◐ Medium effort (default) ←/→ to adjust", "● It shows:"],

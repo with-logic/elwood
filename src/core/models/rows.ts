@@ -30,8 +30,8 @@ export const rowPattern = /^\s*(❯|›)?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
  * ordinary option; its `raw` keeps the marker as rendered.
  */
 export function parseClaudeModelPicker(text: string, scroll?: ScrollGrammar): ParsedModelPicker {
-  const rows = (line: string) => unmarkedRow(line, scroll);
-  return parseRows(pickerRegion(text, claudeModelPickerHeader), rows, (labelText) => {
+  const normalizeRow = (line: string) => unmarkedRow(line, scroll);
+  return parseRows(pickerRegion(text, claudeModelPickerHeader), normalizeRow, (labelText) => {
     const isCurrent = labelText.includes("✔");
     const isDefault = /\(recommended\)/i.test(labelText);
     const label = labelText
@@ -63,13 +63,13 @@ type RowFlags = Pick<AgentModelOption, "id" | "label" | "isCurrent" | "isDefault
 
 function parseRows(
   region: string,
-  row: (line: string) => string,
+  normalizeRow: (line: string) => string,
   decorate: (labelText: string) => RowFlags,
 ): ParsedModelPicker {
   const options: AgentModelOption[] = [];
   let cursorIndex = -1;
   for (const line of region.split("\n")) {
-    const match = rowPattern.exec(row(line));
+    const match = rowPattern.exec(normalizeRow(line));
     if (!match) continue;
     if (match[1]) cursorIndex = options.length;
     options.push({

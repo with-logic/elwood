@@ -174,7 +174,7 @@ async function openAndParse(
   // The header paints before the rows finish: Claude draws the picker over its slash-command
   // menu, so a frame that merely shows `Select model` can hold three rows above stale
   // commands. Parse only the complete dialog the grammar recognizes as ours, the same guard
-  // every key write already passes, or a partial list is returned as the catalog.
+  // every navigation and selection key passes, or a partial list is returned as the catalog.
   let text: string;
   try {
     text = await waitForScreen(
@@ -185,7 +185,8 @@ async function openAndParse(
       io.signal,
     );
   } catch (error) {
-    // Our picker whose rows never formed a recognizable dialog is still ours to close, and
+    // Our picker whose rows never formed a recognizable dialog is still ours to close, so this
+    // Escape takes the header-only `oursOrOpen` guard rather than the complete dialog, and
     // only while the operation lives: failure cleanup cancels only dialogs it recognizes.
     if (!io.signal?.aborted) await sendPickerInput(io, escapeKey, oursOrOpen(spec));
     throw error;

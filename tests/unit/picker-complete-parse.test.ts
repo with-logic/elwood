@@ -3,26 +3,22 @@
  * shows the header can hold a few rows above Claude's stale slash-command menu, and a list
  * parsed from it is a partial catalog (PRD §5.3, C-API-23, C-API-24).
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { listPickerModels, setPickerModel } from "../../src/core/models/picker.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { scripted } from "./scripted-terminal.ts";
 
 /** A real Claude 2.1.310 frame (2026-10-24): header to viewport bottom, 13 models. */
-function frame(name: string): string {
-  const url = new URL(`../fixtures/claude-2.1.310/model-picker/${name}.txt`, import.meta.url);
-  return readFileSync(fileURLToPath(url), "utf8");
-}
+const frame = (name: string) => capturedFrame(`claude-2.1.310/model-picker/${name}`);
 
-/** Submitting `/model` paints the real partial frames in order, then the complete picker. */
-function painting(partials: readonly string[], complete: string) {
+/** Submitting `/model` paints the named real partial frames in order, then `complete`. */
+function painting(partials: readonly [string, ...string[]], complete: string) {
   const terminal = scripted("❯ ");
   const submit = () => {
-    terminal.text = partials[0] as string;
+    terminal.text = frame(partials[0]);
     partials.slice(1).forEach((partial, index) => {
-      setTimeout(() => (terminal.text = partial), 150 * (index + 1));
+      setTimeout(() => (terminal.text = frame(partial)), 150 * (index + 1));
     });
     setTimeout(() => (terminal.text = complete), 150 * partials.length);
     return Promise.resolve();
@@ -36,8 +32,8 @@ test.each([
   ["three rows above the slash-command menu", ["painting-three-rows"]],
   ["seven rows above the slash-command menu", ["painting-seven-rows"]],
   ["each partial frame in turn", ["painting-three-rows", "painting-seven-rows"]],
-])("C-API-23 listPickerModels waits out a picker painting %s", async (_name, names) => {
-  const { terminal, submit } = painting(names.map(frame), frame("top-window"));
+] as const)("C-API-23 listPickerModels waits out a picker painting %s", async (_name, names) => {
+  const { terminal, submit } = painting(names, frame("top-window"));
   terminal.onInput = (input) => {
     if (input === "\u001b") terminal.text = "❯ ";
   };
@@ -47,7 +43,7 @@ test.each([
 });
 
 test("C-API-24 setPickerModel finds a row the partial frame had not painted yet", async () => {
-  const { terminal, submit } = painting([frame("painting-three-rows")], frame("top-window"));
+  const { terminal, submit } = painting(["painting-three-rows"], frame("top-window"));
   let downs = 0;
   terminal.onInput = (input) => {
     if (input === "\u001b[B") downs += 1;
@@ -63,7 +59,7 @@ test("C-API-24 setPickerModel finds a row the partial frame had not painted yet"
  * written: the failure is handed to cleanup instead of Escaping from here.
  */
 test("C-API-55 an aborted operation writes nothing while the rows are still painting", async () => {
-  const { terminal, submit } = painting([frame("painting-three-rows")], frame("top-window"));
+  const { terminal, submit } = painting(["painting-three-rows"], frame("top-window"));
   const operation = new AbortController();
   const reason = new Error("operation deadline");
   setTimeout(() => operation.abort(reason), 50);
