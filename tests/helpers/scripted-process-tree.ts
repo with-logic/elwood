@@ -45,11 +45,14 @@ export const errno = (code: string): Error =>
 /**
  * Fake ops that serve one table per listing (the last repeats) and log every call. A
  * group's rows read as stopped once a stop of that group returned, as a delivered
- * SIGSTOP leaves them; `asRead` applies the same to rows a test lists itself.
+ * SIGSTOP leaves them; `asRead` applies the same to rows a test lists itself. A pid in
+ * `forkedDuringStop` misses every stop of its group sent before the first listing that
+ * shows it, as a child forked while `killpg` signals its group can; a later stop reaches it.
  */
 export function scripted(
   tables: readonly (readonly ProcessEntry[])[],
   overrides: Partial<SweepOps> = {},
+  forkedDuringStop: ReadonlySet<number> = new Set(),
 ): {
   ops: SweepOps;
   calls: string[];
@@ -58,9 +61,17 @@ export function scripted(
 } {
   const calls: string[] = [];
   const timeouts: number[] = [];
-  const delivered = new Set<number>();
+  const stops = new Map<number, number>();
+  const missed = new Map<number, number>();
+  const reached = (row: ProcessEntry): boolean => {
+    const sent = stops.get(row.pgid) ?? 0;
+    if (!forkedDuringStop.has(row.pid)) return sent > 0;
+    const before = missed.get(row.pid) ?? sent;
+    missed.set(row.pid, before);
+    return sent > before;
+  };
   const asRead = (rows: readonly ProcessEntry[]) =>
-    rows.map((row) => (delivered.has(row.pgid) ? { ...row, stopped: true } : row));
+    rows.map((row) => (reached(row) ? { ...row, stopped: true } : row));
   const stop = overrides.stopGroup ?? ((pgid: number) => void calls.push(`stop ${pgid}`));
   let listing = 0;
   const ops: SweepOps = {
@@ -75,7 +86,7 @@ export function scripted(
     ...overrides,
     stopGroup: (pgid) => {
       stop(pgid);
-      delivered.add(pgid);
+      stops.set(pgid, (stops.get(pgid) ?? 0) + 1);
     },
   };
   return { ops, calls, timeouts, asRead };

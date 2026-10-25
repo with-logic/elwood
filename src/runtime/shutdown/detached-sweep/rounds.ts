@@ -5,7 +5,8 @@
  * moment, so a process counts as held only when this read AND the one before it showed
  * it stopped inside a group the sweep stopped. A held parent can neither reap an exited
  * child, which keeps that child's group id from being reused, nor start a process the
- * next read could miss.
+ * next read could miss. A stopped group can still hold a running member: `killpg`
+ * signals the members it finds, so a child forked while it runs can miss the SIGSTOP.
  */
 
 import { errnoCode } from "../../../core/errors.ts";
@@ -90,6 +91,34 @@ export function stopAnchoredGroups(
   );
   for (const [group] of anchored) stopGroup(group, ops, state);
   return anchored.length > 0 || waiting;
+}
+
+/**
+ * Sends SIGSTOP again to each frozen group this read shows with a live member that is
+ * not stopped, such as a child forked while the group's first stop went out (it keeps
+ * running until signaled; macOS showed one in 150 stops of a shell forking pipelines,
+ * and a real Claude teardown's login shell had one still running three seconds later).
+ * Each id still names its group: the caller has just seen the leader alive, and a
+ * descendant group stays anchored by the held parent the kill pass relies on too.
+ */
+export function restopEscapedGroups(
+  table: readonly ProcessEntry[],
+  ops: SweepOps,
+  state: SweepState,
+): void {
+  const escaped = table.filter((row) => !(row.zombie || row.stopped) && state.frozen.has(row.pgid));
+  for (const group of new Set(escaped.map((row) => row.pgid))) {
+    try {
+      ops.stopGroup(group);
+    } catch (error) {
+      if (errnoCode(error) === "ESRCH") continue;
+      const descendant = state.stopped.includes(group);
+      const reason = descendant
+        ? "could not stop a live descendant group"
+        : "could not stop the leader's group";
+      state.failures.record(reason, error, [group]);
+    }
+  }
 }
 
 /** A parent this read and the one before both showed stopped inside a frozen group. */

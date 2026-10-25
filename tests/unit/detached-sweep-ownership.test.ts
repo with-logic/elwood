@@ -40,7 +40,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
       listProcesses: () => {
         calls.push("list");
         clock += 400;
-        return Promise.resolve([leaderRow, hook(5002)]); // the leader never reads stopped
+        return Promise.resolve([leaderRow, hook(5002)]); // never reads stopped: stopped again
       },
     });
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits, 1_000);
@@ -49,13 +49,14 @@ describe("C-LIFE-10 detached sweep ownership", () => {
         "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
       processGroupIds: [5002, LEADER],
     });
-    expect(calls.join(", ")).toBe("stop 5000, list, list, list");
+    expect(calls.join(", ")).toBe("stop 5000, list, stop 5000, list, stop 5000, list, stop 5000");
   });
 
   test("only the specific parent, held across consecutive reads, anchors a group", async () => {
     // Group 7000 has two members: its head 7000 and 7001, the parent of group 7100. 7001
-    // reads running after its group's stop, then stopped, then running again: neither
-    // its group's other member nor a stale observation may anchor 7100.
+    // reads running after its group's stop, then stopped, then running again (each running
+    // read stops 7000 again): neither its group's other member nor a stale observation may
+    // anchor 7100.
     const head = (stopped: boolean) => hook(7000, { stopped });
     const parent = (stopped: boolean) => hook(7001, { ppid: 7000, pgid: 7000, stopped });
     const child = (stopped = false) => hook(7101, { ppid: 7001, pgid: 7100, stopped });
@@ -80,7 +81,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     });
     await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
     expect(calls.join(", ")).toBe(
-      "stop 5000, list, list, stop 7000, list, list, list, list, list, stop 7100, list, list, kill 7100, kill 7000",
+      "stop 5000, list, list, stop 7000, list, stop 7000, list, list, stop 7000, list, list, stop 7100, list, list, kill 7100, kill 7000",
     );
   });
 

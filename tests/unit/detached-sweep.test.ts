@@ -30,7 +30,8 @@ describe("C-LIFE-10 detached descendant sweep", () => {
 
   test("a leader whose stop has not landed yet is read again, so its late hook is found", async () => {
     // kill() returned, but the first read still shows the leader running and nothing
-    // detached: it starts a hook before the stop lands, which a second read shows.
+    // detached, so it is stopped again: it starts a hook before the stop lands, which a
+    // second read shows.
     const stopped = { ...leaderRow, stopped: true };
     const reads = [
       [leaderRow],
@@ -46,7 +47,9 @@ describe("C-LIFE-10 detached descendant sweep", () => {
       },
     });
     await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
-    expect(calls.join(", ")).toBe("stop 5000, list, list, list, stop 5002, list, list, kill 5002");
+    expect(calls.join(", ")).toBe(
+      "stop 5000, list, stop 5000, list, list, stop 5002, list, list, kill 5002",
+    );
   });
 
   test("stops groups once a read confirmed their parent stopped, then kills deepest first", async () => {

@@ -12,8 +12,9 @@
  * two consecutive reads show (see `rounds.ts`): a group is stopped once a parent of one
  * of its members is held, stopped in this read and the one before inside a group the
  * sweep stopped; and the walk ends only on a read that leaves no live group unreached
- * while every live member of every stopped group, the leader's included, is held. With
- * no hook in flight that takes two reads; each level of nesting adds two more. Then the
+ * while every live member of every stopped group, the leader's included, is held. A
+ * read that shows a stopped group's member running stops that group again. With no
+ * hook in flight that takes two reads; each level of nesting adds two more. Then the
  * stopped groups are SIGKILLed deepest first (`kill.ts`). (A parent that ignores SIGCHLD
  * would have its exited children reaped while stopped; the CLIs and hook shells don't.)
  */
@@ -23,6 +24,7 @@ import { type SweepFailure, SweepFailures } from "./failures.ts";
 import { killStoppedGroups } from "./kill.ts";
 import {
   newSweepState,
+  restopEscapedGroups,
   type SweepOps,
   type SweepState,
   stopAnchoredGroups,
@@ -77,7 +79,8 @@ export async function sweepDetachedGroups(
 
 /**
  * Reads the table round by round until `deadline`, recording into `state`: each read
- * refreshes `live` and `unheld`, then stops the unreached groups a held parent anchors.
+ * refreshes `live` and `unheld`, stops again each frozen group with a running member,
+ * then stops the unreached groups a held parent anchors.
  * It returns once a read leaves no live group unreached and every frozen group held, so
  * nothing the sweep stopped could have started a process that read missed. It also
  * returns when no unreached group can still become reachable and every frozen group is
@@ -106,6 +109,7 @@ async function stopDescendantGroups(
         const reason = "the leader exited before every descendant group was stopped";
         return state.failures.record(reason, undefined, unreached);
       }
+      restopEscapedGroups(table, ops, state);
       const reachable = stopAnchoredGroups(unreached, table, ops, state);
       if (!reachable && state.unheld.length === 0) return;
     }
