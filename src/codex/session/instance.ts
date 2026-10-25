@@ -53,13 +53,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private hookReadyObservation: HookObservation | undefined;
   // The PTY's own exit. Session status cannot stand in for it: shutdown records stopped,
   // killed, and torn_down even when its signal did not take.
-  private readonly cliExit: PtyExitLatch;
+  private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly configPath: string;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
-  readonly turnCommit = new CodexTurnCommit(
-    () => this.transcriptWatcher?.poll(),
-    (timeoutMs) => this.cliExit.wait(timeoutMs),
-  );
+  readonly turnCommit = new CodexTurnCommit(() => this.transcriptWatcher?.poll(), this.cliExit);
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -91,7 +88,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
-    this.cliExit = new PtyExitLatch(pty);
     this.configPath = configPath;
     // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
@@ -121,8 +117,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // A closing session rejects the picker at once, while the dying CLI can still persist
   // the selection it had confirmed, so the restore waits on the PTY's own exit.
   private waitForCliExit(): Promise<unknown> | undefined {
-    if (!this.closing.signal.aborted) return undefined;
-    return this.cliExit.within(cliExitWaitMs);
+    return this.closing.signal.aborted ? this.cliExit.within(cliExitWaitMs) : undefined;
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
@@ -144,7 +139,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
   // Codex has no staged chip; the composer still shows the paste's last line.
   protected readonly recoveryComposer = createCodexRecoveryComposer(this.terminal);
-
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
   // held while a dialog is on screen so it never confirms one (C-API-46/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>

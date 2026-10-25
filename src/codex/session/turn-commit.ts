@@ -11,6 +11,7 @@
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
+import type { PtyExitLatch } from "../../pty/exit-latch.ts";
 import { payloadOf } from "../transcript/payload.ts";
 import { isTurnEndPayload } from "../transcript/turn-end.ts";
 
@@ -29,15 +30,15 @@ type PendingCommit = {
 export class CodexTurnCommit {
   private pending: PendingCommit | undefined;
   private readonly poll: () => void;
-  private readonly waitForCliExitOrTimeout: (timeoutMs: number) => Promise<unknown>;
+  private readonly cliExit: Pick<PtyExitLatch, "within">;
 
   /**
    * `poll` reads newly committed transcript items into `observe` and contains its own
-   * failures; `waitForCliExitOrTimeout` resolves when the CLI exits or `timeoutMs` passes.
+   * failures; `cliExit` is the session's shared latch on the CLI's exit.
    */
-  constructor(poll: () => void, waitForCliExitOrTimeout: (timeoutMs: number) => Promise<unknown>) {
+  constructor(poll: () => void, cliExit: Pick<PtyExitLatch, "within">) {
     this.poll = poll;
-    this.waitForCliExitOrTimeout = waitForCliExitOrTimeout;
+    this.cliExit = cliExit;
   }
 
   /**
@@ -79,7 +80,7 @@ export class CodexTurnCommit {
     if (!pending) return shutdown();
     // Internal work outlives a Stop callback that called `stop()` (C-HOOK-22).
     const poll = outsideStopInput(() => setInterval(this.poll, turnCommitPollMs));
-    const bound = this.waitForCliExitOrTimeout(turnCommitWaitMs);
+    const bound = this.cliExit.within(turnCommitWaitMs);
     return Promise.race([pending.waitFinished, bound]).then(() => {
       clearInterval(poll);
       if (this.pending === pending) this.pending = undefined;

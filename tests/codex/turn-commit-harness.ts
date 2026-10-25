@@ -6,9 +6,9 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { vi } from "vitest";
-import { CliExitBarrier } from "../../src/codex/session/cli-exit.ts";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/index.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
+import { PtyExitLatch } from "../../src/pty/exit-latch.ts";
 import { launchArtifactPaths } from "../helpers/launch-artifacts.ts";
 import { becomeReady, ptys, readBridgeScript } from "./helpers.ts";
 
@@ -122,9 +122,9 @@ export async function shutdownAtReady(
 /** Lifts the 2-second bound past any test's timeout, so only the turn's record or the
  * CLI's exit can end the wait. */
 export function unboundedCommitWait(): void {
-  const wait = CliExitBarrier.prototype.wait;
-  vi.spyOn(CliExitBarrier.prototype, "wait").mockImplementation(function (this: CliExitBarrier) {
-    return wait.call(this, 3_600_000);
+  const within = PtyExitLatch.prototype.within;
+  vi.spyOn(PtyExitLatch.prototype, "within").mockImplementation(function (this: PtyExitLatch) {
+    return within.call(this, 3_600_000);
   });
 }
 

@@ -7,9 +7,9 @@ import { CodexTurnCommit, turnCommitWaitMs } from "../../src/codex/session/turn-
 
 const never = new Promise<never>(() => undefined);
 
-function commit(waitForCliExitOrTimeout: (timeoutMs: number) => Promise<unknown> = () => never) {
+function commit(within: (timeoutMs: number) => Promise<boolean> = () => never) {
   const order: string[] = [];
-  const turn = new CodexTurnCommit(() => order.push("poll"), waitForCliExitOrTimeout);
+  const turn = new CodexTurnCommit(() => order.push("poll"), { within });
   const shutdown = () => {
     order.push("shutdown");
     return Promise.resolve();
@@ -86,7 +86,7 @@ test("C-LIFE-13 the wait is bounded, and a turn not recorded in time is not wait
   const bounds: number[] = [];
   const { turn, order, shutdown } = commit((timeoutMs) => {
     bounds.push(timeoutMs);
-    return Promise.resolve();
+    return Promise.resolve(false);
   });
   turn.expect("t1");
   await turn.beforeShutdown(shutdown);
