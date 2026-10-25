@@ -41,7 +41,7 @@ test.each([
   responder.dispose();
 });
 
-test("C-TRUST-01 arrows alone cannot report trust answered when the composer appears", async () => {
+test("C-TRUST-01 a selection without Enter cannot report trust answered when the composer appears", async () => {
   let frame = `${claudeTrust}\n❯ No\n  Yes`;
   const write = vi.fn(() => {
     frame = claudeComposer;

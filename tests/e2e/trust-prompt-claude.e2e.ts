@@ -129,10 +129,11 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
       return;
     }
     // The REAL frame is recognized as workspace_trust AND the responder wrote the
-    // EXACT affirmative option (not just any non-empty input): the number the CLI
-    // rendered for its "Yes/proceed/trust" option, followed by Enter. This would
-    // catch a regression that selected a decline option (C-E2E-09 requires the
-    // affirmative option against the captured wording).
+    // EXACT affirmative answer (not just any non-empty input): on a numbered layout, the
+    // number the CLI rendered for its "Yes/proceed/trust" option followed by Enter; on a
+    // cursor layout, Home plus one Down per option above the affirmative, then Enter, in
+    // one write. This would catch a regression that selected a decline option (C-E2E-09
+    // requires the affirmative option against the captured wording).
     const input = await trustInputFor(capture.frame);
     const expected = affirmativeOptionKeys(capture.frame);
     assert.ok(expected, "the captured frame renders an affirmative option");

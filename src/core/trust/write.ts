@@ -69,7 +69,7 @@ export class TrustAttempt {
     deadlineAtMs: number,
   ): Promise<StartupWriteCompletion> {
     let retryAt = 0;
-    let previousKey: string | undefined;
+    let previousInput: string | undefined;
     while (!this.controller.signal.aborted && Date.now() < deadlineAtMs) {
       const view = read();
       if (view === undefined) {
@@ -83,10 +83,10 @@ export class TrustAttempt {
       const option = this.readChoice(view);
       if (typeof option === "string") return option;
       const step = trustStep(option);
-      if (Date.now() >= retryAt || step.key !== previousKey) {
+      if (Date.now() >= retryAt || step.input !== previousInput) {
         if (this.controller.signal.aborted) return this.completion();
         if (!(await this.send(write, step))) return this.completion();
-        previousKey = step.key;
+        previousInput = step.input;
         retryAt = Date.now() + retryMs;
       }
       if (!(await this.pause(Math.min(step.pollMs, retryAt - Date.now()))))
@@ -99,7 +99,7 @@ export class TrustAttempt {
     write: (input: string) => TrustWriteResult,
     step: ReturnType<typeof trustStep>,
   ): Promise<boolean> {
-    const result = write(step.key);
+    const result = write(step.input);
     // A void writer has already fulfilled before an observer can replace the frame.
     if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
     const fulfilled = await this.own(result);
@@ -169,8 +169,8 @@ export class TrustAttempt {
  */
 function trustStep(option: SelectableOption) {
   if (option.style === "numbered")
-    return { key: `${option.number}\r`, confirm: true, pollMs: retryMs };
+    return { input: `${option.number}\r`, confirm: true, pollMs: retryMs };
   const select = cursorSelection(option);
   const confirm = option.offset === 0;
-  return { key: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
+  return { input: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
 }

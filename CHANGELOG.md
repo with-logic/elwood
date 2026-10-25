@@ -49,8 +49,9 @@ back each entry are listed in `prd/14-conformance.md`.
   Claude's trust options by absolute position (Home, then Down) and sends Enter
   in the same write as that selection, so a reset, a delayed key, or a retried
   key can no longer confirm another option. The `startup_prompt` input text for
-  these prompts now reads `home+down+enter` (or `home+enter`) instead of
-  `down+enter`.
+  cursor-layout prompts now names the absolute sequence (`home+enter`, or
+  `home+` then one `down+` per row above the affirmative, then `enter`) instead
+  of a cursor-relative label such as `enter`, `up+enter`, or `down+enter`.
 
 - Codex `listModels()` and `listCodexModels()` no longer report the session's
   current model as the configured default. Codex 0.164 marks only the current
