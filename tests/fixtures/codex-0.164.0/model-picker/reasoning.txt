@@ -1,0 +1,48 @@
+
+  >_ OpenAI Codex (v0.164.0)
+     ~/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Select Reasoning Level for GPT-6.1-Sol
+
+
+  1. Low (default)     Fast responses with lighter reasoning
+› 2. Medium (current)  Balances speed and reasoning depth for everyday tasks
+  3. High              Greater reasoning depth for complex problems
+  4. Extra high        Extra high reasoning depth for complex problems
+  5. More reasoning…   Max and Ultra consume usage limits faster
+
+  enter default · s session · esc back

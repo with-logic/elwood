@@ -9,6 +9,7 @@ import {
   bottomDialogCandidate,
   bottomDialogRow,
   codexModelPickerHeader,
+  type DialogGrammar,
   ownOperation,
   parseCodexModelPicker,
 } from "../core/models/rows.ts";
@@ -18,21 +19,25 @@ import { withCodexDefault } from "./config/default-model.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
 
 const reasoningHeader = /Select Reasoning Level/;
+// Both screens close with `Press enter to confirm or esc to go back` on 0.154.0 and with
+// `enter select · esc back` / `enter default · s session · esc back` on 0.164.0.
+const footer = /\besc (?:to go )?back\b/i;
+const pickerGrammar: DialogGrammar = { header: codexModelPickerHeader, footer };
+const reasoningGrammar: DialogGrammar = { header: reasoningHeader, footer };
 const changeConfirmed = /Model changed to/;
 
 export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
   isClear: codexComposerClearance,
   isCandidate: (text) =>
-    bottomDialogCandidate(text, codexModelPickerHeader) ||
-    bottomDialogCandidate(text, reasoningHeader),
+    bottomDialogCandidate(text, pickerGrammar) || bottomDialogCandidate(text, reasoningGrammar),
   isOpen: (text) => codexModelPickerHeader.test(text),
   activeDialog: (text, authority) => {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to
     // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).
     if (!authority.opened) return undefined;
-    const picker = bottomDialogRow(text, codexModelPickerHeader);
-    const level = bottomDialogRow(text, reasoningHeader);
+    const picker = bottomDialogRow(text, pickerGrammar);
+    const level = bottomDialogRow(text, reasoningGrammar);
     if (picker < 0 && level < 0) return undefined;
     return level > picker ? "follow-up" : "picker";
   },
