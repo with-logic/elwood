@@ -577,6 +577,41 @@ PTY exit cancel pending automation and timers before disposal. Only a rejected
 PTY write belonging to a still-live matching attempt emits
 `startup_prompt_write_failed`; cancellation and late settlement stay quiet.
 
+**The five seconds count on-screen time only (Claude 2.1.310, 2026-10-25).** After
+an accepted folder-trust answer, Claude erases the dialog at once but takes
+seconds to paint its composer. In 30 fresh-folder `autotrust` launches, 10 at a
+time (load average 30–70), the dialog was erased 0.17–0.98 s after it first
+painted. The screen then stayed blank, then showed only the welcome banner
+(logo, version, model, path, one rule). The composer painted 4.0–8.9 s after
+the dialog first appeared. That deadline used to run from the first candidate to
+verified composer clearance, so it timed Claude's boot rather than the gate.
+Every launch whose composer came after 5 s went `blocked` with
+`claude-workspace_trust-prompt` attention at +5.0 s, then `ready` when the
+composer painted: 17 of the 27 launches that reached `ready`. At each of those
+blocks the rendered frame held no trust dialog. Another 100 launches the same
+day show the same split: 51 of 94 `ready` launches blocked; the dialog was
+erased 0.05–1.06 s after first paint; erase to composer took 0.72–8.23 s, median
+4.6 s. Headless `elwood run` treats that rule id as a human prompt and kills the
+session: 5 of 7 runs, 14 at once in fresh `$TMPDIR` folders, failed with
+`blocked_prompt`, against none with this change.
+
+The budget therefore elapses only on frames that show the gate. A frame without
+it pauses the budget, and the same gate's return resumes the remainder, so a
+gate that flickers still exhausts one budget. The input hold does not change: it
+lasts until verified composer or successor clearance. No separate post-answer
+bound replaces the old one. Boot time grows with load, so any fixed bound only
+moves the false attention later. A CLI that never paints after an answered gate
+leaves the session held, as before, but no longer reported as a trust prompt.
+Interleaved under the same load, 16 at once, the old rule blocked 10 of 16
+launches and this one 0 of 16, with 10 boots over 5 s in each arm. Sixteen
+launches matter: eight on a quiet machine all booted in under 4 s and never
+reached the condition. The sanitized PTY bytes of the slowest launch are in
+`tests/fixtures/claude-2.1.310/trust-slow-boot/`;
+`tests/claude/session-trust-slow-boot.test.ts` replays them at their recorded
+times. `tests/e2e/trust-slow-boot-claude.e2e.ts` launches 16 fresh folders at
+once against the real CLI and logs how many boots exceeded 5 s. C-ATTN-03,
+C-TRUST-01.
+
 Both CLIs reword gates often, so an off-allowlist gate behind a recognized header
 prefix fails closed: a header-shaped region (`headerStart` in
 `src/core/trust/dialog.ts`) with real header text, selectable options, only

@@ -12,6 +12,17 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `autotrust` no longer reports a Claude folder-trust prompt that it has
+  already answered as needing attention. Claude erases the dialog at once but
+  can take several seconds to paint its composer, longer under load. Elwood
+  counted that wait against the prompt's five-second limit, so the session
+  briefly went `blocked` with `claude-workspace_trust-prompt` attention while no
+  prompt was on screen. That happened in 17 of 27 concurrent fresh-folder
+  launches on Claude Code 2.1.310. Headless `elwood run` killed those sessions
+  and failed with `blocked_prompt` (5 of 7 concurrent fresh-folder runs). The
+  limit now counts only time the prompt is on screen. Queued input is still
+  held until Claude's composer appears.
+
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
   that has not finished painting or to a bare `Select model` header, which agent output

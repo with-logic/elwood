@@ -83,7 +83,14 @@ test("C-TRUST-01 unknown replacements remain blocked until positively cleared", 
   await vi.advanceTimersByTimeAsync(250);
   await expect(attempt).resolves.toBe("cancelled");
   expect(responder.inputBlocking).toBe(true);
-  await vi.advanceTimersByTimeAsync(4_750);
+  // The gate left the frame, so its budget waits; a stable gate then exhausts it.
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(responder.blockedPrompt).toBeUndefined();
+  responder.handle(unsupported, write);
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(responder.blockedPrompt).toBe("workspace_trust");
+  responder.handle("Enable elevated access?\n❯ Yes", write);
+  await vi.advanceTimersByTimeAsync(10_000);
   expect(responder.blockedPrompt).toBe("workspace_trust");
   responder.handle("Ready\n❯", write);
   expect(responder.inputBlocking).toBe(true);

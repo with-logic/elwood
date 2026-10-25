@@ -1,7 +1,8 @@
-/** Owns trust episodes, bounded attempts, and recoverable blocking (PRD §5.4/C-TRUST-01). */
+/** Owns trust episodes, on-screen budgets, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { optionInput } from "../terminal-options.ts";
 import type { TrustClearance } from "./clearance.ts";
+import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
 import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
 import { newEpisode } from "./types.ts";
@@ -11,11 +12,10 @@ import { TrustAttempt } from "./write.ts";
 export type { TrustPromptAutomation, TrustPromptResult, TrustWriteResult } from "./types.ts";
 export { trustPromptVisible } from "./view.ts";
 
-const episodeTimeoutMs = 5_000;
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private episode: Episode | undefined;
   private humanPrompt: TrustPromptId | undefined;
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly deadline = new GateDeadline();
   private readonly attempts = new Set<TrustAttempt>();
   private disposed = false;
   private readonly agent: A;
@@ -86,7 +86,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);
-    const settled = attempt.start(write, read, episode.deadlineAtMs).then(
+    const settled = attempt.start(write, read, this.deadline.deadlineAtMs).then(
       (completion) => {
         this.attempts.delete(attempt);
         if (this.disposed || attempt.invalidated) return "cancelled" as const;
@@ -95,7 +95,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         if (attempt.lostChoice) episode.attemptedIdentity = undefined;
         if (read === undefined && completion === "answered") {
           episode.legacyAnswered = true;
-          clearTimeout(this.timer);
+          this.deadline.cancel();
         }
         if (read === undefined) return completion;
         const latest = read();
@@ -130,7 +130,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   /** Session closing owns all cancellation, including writes whose promises settle late. */
   dispose(): void {
     this.disposed = true;
-    clearTimeout(this.timer);
+    this.deadline.cancel();
     for (const attempt of this.attempts) attempt.cancel();
     this.episode = undefined;
     this.humanPrompt = undefined;
@@ -147,6 +147,8 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         this.episode.attempt = undefined;
         this.episode.attemptedIdentity = undefined;
         this.episode.lastIdentity = undefined;
+        // No human can act on a gate that left the frame; its budget waits for its return.
+        this.deadline.pause();
       }
       return;
     }
@@ -158,6 +160,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     }
     if (this.episode?.candidate.key === view.key) {
       this.episode.lastIdentity = choiceIdentity(view);
+      this.deadline.resume();
       return;
     }
     const blocked = this.blockedPrompt !== undefined;
@@ -171,21 +174,18 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     this.arm(episode);
   }
   private arm(episode: Episode): void {
-    clearTimeout(this.timer);
     episode.expired = false;
-    episode.deadlineAtMs = Date.now() + episodeTimeoutMs;
-    this.timer = setTimeout(() => {
+    this.deadline.start(gateBudgetMs, () => {
       episode.expired = true;
       episode.expiredIdentity = episode.lastIdentity;
       episode.blocked = true;
       episode.attempt?.cancel();
       episode.attempt = undefined;
       this.notify();
-    }, episodeTimeoutMs);
-    this.timer.unref();
+    });
   }
   private release(cleared: boolean): void {
-    clearTimeout(this.timer);
+    this.deadline.cancel();
     this.episode?.attempt?.cancel(cleared);
     this.episode = undefined;
     this.humanPrompt = undefined;
