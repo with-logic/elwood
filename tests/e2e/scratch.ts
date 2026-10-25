@@ -7,15 +7,7 @@
  * `~/.claude` state.
  */
 
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after } from "node:test";
@@ -62,16 +54,19 @@ export function codexAuthMissing(): string | undefined {
 }
 
 /**
- * Points `CODEX_HOME` at a private directory under `project.cwd` holding a 0600 copy of
- * the user's `auth.json` and the given `config.toml`. Tear sessions down BEFORE
- * `dispose()`: it removes the sandbox, so an in-flight session could otherwise
- * rewrite a config nobody is watching. Real `~/.codex` is never read or written
- * beyond the auth copy.
+ * Points `CODEX_HOME` at a private directory (mkdtemp makes it 0700) holding a 0600
+ * copy of the user's `auth.json` and the given `config.toml`. The directory is a
+ * scratch root of its own, outside `project.cwd`, so the credential copy is not in
+ * the workspace the agent works in, and the file's sweep removes it if a test never
+ * reaches `dispose()`. Tear sessions down BEFORE `dispose()`: it removes the sandbox,
+ * so an in-flight session could otherwise rewrite a config nobody is watching. Real
+ * `~/.codex` is never read or written beyond the auth copy.
  */
 export function sandboxedCodexHome(project: E2eProject, config: string): CodexSandbox {
   if (!existsSync(codexAuthPath)) throw new Error(codexAuthMissing());
-  const home = join(project.cwd, "codex-home");
-  mkdirSync(home, { recursive: true, mode: 0o700 });
+  // Named after the project's scratch root so a leftover is attributable to its test.
+  const home = mkdtempSync(`${project.cwd}-codex-home-`);
+  scratchRoots.push(home);
   const authCopy = join(home, "auth.json");
   copyFileSync(codexAuthPath, authCopy);
   chmodSync(authCopy, 0o600);
