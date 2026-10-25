@@ -595,9 +595,11 @@ erased 0.05–1.06 s after first paint; erase to composer took 0.72–8.23 s, me
 session: 5 of 7 runs, 14 at once in fresh `$TMPDIR` folders, failed with
 `blocked_prompt`, against none with this change.
 
-The budget therefore elapses only on frames that show the gate. A frame without
-it pauses the budget, and the same gate's return resumes the remainder, so a
-gate that flickers still exhausts one budget. The input hold does not change: it
+The budget therefore elapses only on frames that show the gate: it is five
+seconds of cumulative visible time. A frame without it pauses the budget, and
+the same gate's return resumes the remainder rather than a fresh five seconds,
+so a gate that flickers still exhausts one budget. Only a gate that stays absent
+from its departure through verified clearance is guaranteed never to block. The input hold does not change: it
 lasts until verified composer or successor clearance. No separate post-answer
 bound replaces the old one. Boot time grows with load, so any fixed bound only
 moves the false attention later. A CLI that never paints after an answered gate

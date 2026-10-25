@@ -11,34 +11,17 @@ import assert from "node:assert/strict";
 import { realpathSync } from "node:fs";
 import test from "node:test";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { nodePtyFactory } from "../../src/pty/node.ts";
-import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { isAbsoluteAnswer, isTrustInput, recordLaunchEvidence } from "./trust-launch-evidence.ts";
 import { folderTrustScreenVisible } from "./trust-screens.ts";
 
 const launches = 5;
-const home = "\u001b[H";
-const down = "\u001b[B";
-
-/**
- * An answer that carries its own absolute selection: a numbered option (`1\r`, the layout
- * Claude 2.1.206 renders) or a cursor selection anchored at Home (`\x1b[H\x1b[B\r`).
- */
-function isAbsoluteAnswer(input: string): boolean {
-  if (/^\d+\r$/.test(input)) return true;
-  if (!input.startsWith(home)) return false;
-  const downs = input.slice(home.length).replace(/\r$/, "");
-  return downs.split(down).every((between) => between === "");
-}
-const isTrustInput = (input: string) =>
-  ["\r", "\u001b[A", "\u001b[B"].some((key) => input.includes(key));
 
 test("C-E2E-09 concurrent fresh-folder autotrust launches all clear the REAL Claude trust gate", {
   skip: skipIf(skipReason("claude")),
   timeout: 240_000,
 }, async (t) => {
-  /** Every physical write, keyed by the PTY's working directory: one fresh folder per launch. */
-  const writes = new Map<string, string[]>();
   const sessions: ClaudeSessionApi[] = [];
   const exits: number[] = [];
   t.after(async () => {
@@ -49,19 +32,7 @@ test("C-E2E-09 concurrent fresh-folder autotrust launches all clear the REAL Cla
     }
   });
   // Delegate to the real PTY; record every physical write each session makes.
-  setPtyFactoryForTests((options) => {
-    const pty = nodePtyFactory(options);
-    const folder = realpathSync(options.cwd);
-    const recorded = writes.get(folder) ?? [];
-    writes.set(folder, recorded);
-    return {
-      ...pty,
-      write(data) {
-        pty.write(data);
-        recorded.push(typeof data === "string" ? data : Buffer.from(data).toString());
-      },
-    };
-  });
+  const evidence = recordLaunchEvidence();
   const folders = Array.from({ length: launches }, () => makeProject("claude"));
   // Every launch settles before any failure is reported, so cleanup sees each session that
   // did start, including one that finished after a sibling's rejection.
@@ -98,7 +69,7 @@ test("C-E2E-09 concurrent fresh-folder autotrust launches all clear the REAL Cla
   );
   assert.deepEqual(exits, [], "no launch exited at its trust gate");
   for (const project of folders) {
-    const answers = (writes.get(realpathSync(project.cwd)) ?? []).filter(isTrustInput);
+    const answers = (evidence.get(realpathSync(project.cwd))?.writes ?? []).filter(isTrustInput);
     assert.ok(answers.length > 0, `the launch in ${project.cwd} answered its own trust gate`);
     for (const input of answers) {
       // A relative arrow or bare Enter is decided from a frame the CLI may already have

@@ -1,6 +1,7 @@
 /** The trust budget is spent only while its gate is on screen (C-TRUST-01, C-ATTN-03). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
+import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import {
   claudeComposer,
@@ -29,21 +30,25 @@ const agents = {
     boot: "",
     composer: codexComposer,
   },
-} as const;
+} as const satisfies Record<
+  ElwoodAgentKind,
+  { readonly gate: string; readonly boot: string; readonly composer: string }
+>;
+/** Every adapter must cover this shared coordinator test. */
+const agentKinds = Object.keys(agents) as (keyof typeof agents)[];
 const unsupported = "Do you trust this folder?\nNew native explanation\n1. Yes";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-function settled<A extends "claude" | "codex">(result: TrustPromptResult<A>) {
+function settled<A extends ElwoodAgentKind>(result: TrustPromptResult<A>) {
   if (result?.kind !== "attempted") throw new Error("expected attempt");
   return result.settled;
 }
 
-test.each([
-  "claude",
-  "codex",
-] as const)("C-ATTN-03 %s: an answered gate that left the frame never blocks while the CLI boots", async (agent) => {
+test.each(
+  agentKinds,
+)("C-ATTN-03 %s: an answered gate that left the frame never blocks while the CLI boots", async (agent) => {
   const { gate, boot, composer } = agents[agent];
   const responder = new TrustPromptResponder(agent, clearanceFor(agent), true);
   let frame: string = gate;

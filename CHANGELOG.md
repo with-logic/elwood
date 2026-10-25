@@ -17,8 +17,9 @@ back each entry are listed in `prd/14-conformance.md`.
   can take several seconds to paint its composer, longer under load. Elwood
   counted that wait against the prompt's five-second limit, so the session
   briefly went `blocked` with `claude-workspace_trust-prompt` attention while no
-  prompt was on screen. That happened in 17 of 27 concurrent fresh-folder
-  launches on Claude Code 2.1.310. Headless `elwood run` killed those sessions
+  prompt was on screen. That happened in 17 of the 27 launches that reached
+  `ready` (out of 30 started, 10 at a time in fresh folders) on Claude Code
+  2.1.310. Headless `elwood run` killed those sessions
   and failed with `blocked_prompt` (5 of 7 concurrent fresh-folder runs). The
   limit now counts only time the prompt is on screen. Queued input is still
   held until Claude's composer appears.
