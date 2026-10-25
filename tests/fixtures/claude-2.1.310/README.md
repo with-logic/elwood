@@ -46,3 +46,13 @@ gate of a fresh, untrusted directory, captured on 2026-10-25 through Elwood at
 cursor on its default "No, exit"; the second follows a written `Home` + `Down`.
 The workspace path is normalized to `/tmp/ELWOOD_CAPTURE/project` and trailing
 blank rows are removed. The dialog was torn down without being answered.
+
+## Working title (`working-half-right.txt`)
+
+A turn's working frame captured on 2026-10-25 from Claude Code 2.1.310 with Opus 5.5, in
+a 189-column session started by Elwood, while the OSC title read
+`◑ Slow counting from one to twenty`. Sampling the title every 50 ms through that turn gave
+`✳ ◐ ◑ ◐ ◑ ◐ ✳`: the working title alternates between `◐` and `◑`, and the idle title is
+`✳`. The spinner row is `✢ Nebulizing… (2s)` with no `esc to interrupt`, which no frame in
+the turn showed, so the title is the only working signal. The project path is normalized to
+`/tmp/ELWOOD_CAPTURE/project`.
