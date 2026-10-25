@@ -130,6 +130,10 @@ for (const agent of ["claude", "codex"] as const) {
           last_assistant_message: "",
           turn_id: "image-turn",
         });
+        // A timed-out turn holds the next one for a 750 ms drain after that ready. Advance
+        // the clock through it here: left to vi.waitFor's 50 ms per check, it took 15 of
+        // the 20 checks a 1 s real budget fits, and a loaded suite fit fewer.
+        await vi.advanceTimersByTimeAsync(750);
       }
       await vi.waitFor(() => expect(attached).toHaveLength(2));
       expect(attached[1]).toEqual(Buffer.from(png));
