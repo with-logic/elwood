@@ -33,14 +33,14 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(attempts).toEqual([5004, 5003, 5002]); // the last succeeds after two failed
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: could not kill a stopped descendant group",
+      "Could not reap detached descendants: could not kill a signaled descendant group",
     );
     expect(failure).toMatchObject({ processGroupIds: [5004, 5003] });
     expect(failure).not.toHaveProperty("code");
   });
 
   test("a kill refused because the group holds only zombies is not a failure", async () => {
-    const refused = "could not kill a stopped descendant group (EPERM)";
+    const refused = "could not kill a signaled descendant group (EPERM)";
     const refusals = [
       { reread: [leaderRow, hook(5002, { zombie: true })], reasons: undefined },
       { reread: [leaderRow, hook(5002)], reasons: refused }, // a live member is still there
@@ -93,7 +93,7 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
     });
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: could not kill a stopped descendant group (EPERM)",
+      "Could not reap detached descendants: could not kill a signaled descendant group (EPERM)",
     );
     expect(calls.at(-1)).toBe("kill 5002"); // no read after the kill
   });

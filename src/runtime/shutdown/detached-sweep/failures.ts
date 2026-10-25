@@ -18,7 +18,7 @@ export type FailureReason =
   | "the leader exited before every group was confirmed stopped"
   | "could not stop the leader's group"
   | "could not stop a live descendant group"
-  | "could not kill a stopped descendant group";
+  | "could not kill a signaled descendant group";
 
 // An errno-shaped token (`EPERM`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`): fixed by the
 // platform, never process or user content, so it can travel in a public message.

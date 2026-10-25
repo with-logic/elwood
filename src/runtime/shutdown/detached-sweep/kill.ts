@@ -23,14 +23,14 @@ export async function killSignaledGroups(
       ops.killGroup(group);
     } catch (error) {
       if (errnoCode(error) === "EPERM") refused.set(group, error);
-      else state.failures.record("could not kill a stopped descendant group", error, [group]);
+      else state.failures.record("could not kill a signaled descendant group", error, [group]);
     }
   }
   if (refused.size === 0) return;
   const confirmation = await confirmLiveGroups(ops, deadline);
   for (const [group, error] of refused) {
     if (!confirmedGone(confirmation, group)) {
-      state.failures.record("could not kill a stopped descendant group", error, [group]);
+      state.failures.record("could not kill a signaled descendant group", error, [group]);
     }
   }
   recordFailedRead(confirmation, state, [...refused.keys()]);
