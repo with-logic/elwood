@@ -1,14 +1,15 @@
 /**
  * Real-CLI proof that stopping a Codex session from the `ready` its `Stop` hook produces
- * leaves the turn committed (PRD §5.7, C-LIFE-13). Codex records the turn's
- * `task_complete` only after that hook returns. Signaled in the gap, Codex 0.164.0 exits
- * without it, and the resumed conversation ends in "Conversation interrupted".
+ * leaves the turn committed, with no expiry warning (PRD §5.7, C-LIFE-13). Codex records
+ * the turn's `task_complete` only after that hook returns. Signaled in the gap, Codex
+ * 0.164.0 exits without it, and the resumed conversation ends in "Conversation
+ * interrupted".
  */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import type { CodexSessionApi } from "../../src/index.ts";
+import type { CodexSessionApi, ElwoodWarningEvent } from "../../src/index.ts";
 import { startReadyCodex, teardownOrKillCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
@@ -60,6 +61,8 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
       if (event.hook_event_name === "Stop")
         stopHook = { transcriptPath: event.transcript_path, turnId: event.turn_id };
     });
+    const warnings: ElwoodWarningEvent["code"][] = [];
+    session.on("warning", (event) => warnings.push(event.code));
     let stopping: Promise<void> | undefined;
     const statuses: string[] = [];
     // A host closing a finished session: stop in the same tick as the hook's `ready`.
@@ -86,6 +89,8 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
       records.some((record) => record.payloadType === "task_complete" && record.turnId === turnId),
       `rollout has no task_complete for ${turnId}; it ends ${tail.join(",")}`,
     );
+    // The record came within the bound, so the stop is not reported as a lost turn.
+    assert.ok(!warnings.includes("turn_commit_wait_expired"), `warnings: ${warnings.join(",")}`);
   } catch (error) {
     failure = error;
     throw error;

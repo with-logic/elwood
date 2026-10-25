@@ -1,9 +1,10 @@
 /**
  * Builders for the Codex session's lifecycle warnings: the config.toml restore
- * outcomes after a model switch (PRD §5.3, C-CODEX-14) and the clipboard-restore
- * failure after an image attach (§5.3, C-API-46). Every warning is live-only
- * (§5.7) and content-free: `raw` carries a path or a bounded errno code, never
- * config contents, clipboard data, or a raw error message.
+ * outcomes after a model switch (PRD §5.3, C-CODEX-14), the clipboard-restore
+ * failure after an image attach (§5.3, C-API-46), and a shutdown that signaled Codex
+ * before it recorded the ended turn (§5.7, C-LIFE-13). Every warning is live-only
+ * (§5.7) and content-free: `raw` carries a path, a fixed token, or a bounded errno
+ * code, never config contents, clipboard data, or a raw error message.
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
@@ -73,5 +74,21 @@ export function clipboardRestoreFailedWarning(elwoodSessionId: string): ElwoodWa
     severity: "warning",
     message: CLIPBOARD_RESTORE_FAILED_MESSAGE,
     raw: "clipboard_restore_failed",
+  };
+}
+
+/** `stop`/`teardown` stopped waiting `waitMs` for the ended turn's record; shutdown proceeds. */
+export function turnCommitWaitExpiredWarning(
+  elwoodSessionId: string,
+  waitMs: number,
+): ElwoodWarningEvent {
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "lifecycle",
+    code: "turn_commit_wait_expired",
+    severity: "warning",
+    message: `Elwood did not see Codex record the turn its Stop hook ended within ${waitMs / 1000} seconds of the shutdown request, and is shutting Codex down anyway. A resumed conversation may show that turn as interrupted.`,
+    raw: "turn_commit_wait_expired",
   };
 }
