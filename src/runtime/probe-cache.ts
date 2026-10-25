@@ -12,13 +12,13 @@ export type ProbeCache<T> = {
 
 /**
  * Concurrent callers for one key share its single in-flight run, which is never evicted. Only
- * the `limit` most recently used SUCCESSES are kept once settled; the least recently used goes
- * first. A rejection, or a value `succeeded` refuses (a probe that resolves with its failure),
+ * the `maxSettledSuccesses` most recently used SUCCESSES are kept once settled; the least
+ * recently used goes first. In-flight runs do not count toward that bound. A rejection, or a value `succeeded` refuses (a probe that resolves with its failure),
  * is never kept, so a failure cannot poison later callers. A run that settles after `clear()`
  * is dropped rather than cached.
  */
 export function createProbeCache<T>(
-  limit: number,
+  maxSettledSuccesses: number,
   succeeded: (value: T) => boolean = () => true,
 ): ProbeCache<T> {
   const running = new Map<string, Promise<T>>();
@@ -43,7 +43,7 @@ export function createProbeCache<T>(
         if (!succeeded(value)) return;
         settled.set(key, { value });
         for (const oldest of settled.keys()) {
-          if (settled.size <= limit) break;
+          if (settled.size <= maxSettledSuccesses) break;
           settled.delete(oldest);
         }
       },

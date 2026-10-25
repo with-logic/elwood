@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import {
   detectCodexCliCapabilities,
+  preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
@@ -83,16 +84,29 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     resetPreflight();
   });
 
-  test.each([
+  const failedReads = [
     { status: 1, stdout: "", stderr: "boom" },
     { status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT", message: "timed out" } },
-  ])("C-LIFE-11 a failed --version read is not kept, so a later start re-reads it", async (failed) => {
+  ];
+  const adapters = [
+    { agent: "claude", preflight: preflightClaude, version: "2.1.144" },
+    { agent: "codex", preflight: preflightCodex, version: "codex-cli 0.132.0" },
+  ] as const;
+  test.each(
+    adapters.flatMap((adapter) => failedReads.map((failed) => ({ ...adapter, failed }))),
+  )("C-LIFE-11 a failed $agent --version read is not kept, so a later start re-reads it", async ({
+    agent,
+    preflight,
+    version,
+    failed,
+  }) => {
     let reads = 0;
-    setCommandRunnerForTests(() =>
-      ++reads === 1 ? failed : { status: 0, stdout: "2.1.144", stderr: "" },
-    );
-    await expect(preflightClaude(false)).rejects.toMatchObject({ code: "claude_start_failed" });
-    await expect(preflightClaude(false)).resolves.toBeUndefined();
+    setCommandRunnerForTests((_command, args) => {
+      if (!args.join(" ").includes("--version")) return { status: 0, stdout: "", stderr: "" };
+      return ++reads === 1 ? failed : { status: 0, stdout: version, stderr: "" };
+    });
+    await expect(preflight(false)).rejects.toMatchObject({ code: `${agent}_start_failed` });
+    await expect(preflight(false)).resolves.toBeUndefined();
     expect(reads).toBe(2);
   });
 

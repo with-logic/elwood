@@ -70,10 +70,10 @@ const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
 };
 
 /**
- * Reads the adapter's `--version` at most once per process. Concurrent first callers share the
- * single in-flight read and its outcome; later callers reuse a successful result. A read that
- * rejects, or resolves with a failed probe (nonzero exit, timeout, spawn error), is not
- * retained, so a transient failure does not poison later callers — they re-attempt (C-LIFE-11).
+ * Reads the adapter's `--version` once per process for as long as a read succeeds. Concurrent
+ * callers share the single in-flight read and its outcome; later callers reuse a successful
+ * result. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
+ * error), is not retained, so the next caller after it settles reads again (C-LIFE-11).
  * Invalidated after an autoupdate so the post-update version is re-read.
  */
 export function cachedVersionRead(
