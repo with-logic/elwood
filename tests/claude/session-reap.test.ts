@@ -81,6 +81,31 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     await rejected;
   });
 
+  test("C-ERR-01 stop() and kill() reject with termination_failed when signaling the PTY throws", async () => {
+    // The group reap succeeds, so only the PTY signal failed. The public verbs must
+    // still reject with the documented code, keeping the underlying cause and errno.
+    for (const verb of ["stop", "kill"] as const) {
+      installFakes();
+      const session = await startClaude({ cwd: tempDir() });
+      try {
+        const pty = ptys.at(-1)!;
+        vi.spyOn(pty, "kill").mockImplementation(() => {
+          throw Object.assign(new Error("kill ESRCH"), { code: "ESRCH", syscall: "kill" });
+        });
+        await expect(session[verb]()).rejects.toMatchObject({
+          code: "termination_failed",
+          details: { cause: "kill ESRCH", errno: "ESRCH", syscall: "kill" },
+        });
+        expect(reapedGroups).toContain(pty.pid);
+      } finally {
+        // The rejected verb never reached runtime cleanup; teardown stops the hook bridge
+        // without signaling the PTY again.
+        await session.teardown();
+        resetFakes();
+      }
+    }
+  });
+
   test("C-LIFE-10 stop() after a successful exit-reap does NOT re-signal the dead PTY", async () => {
     // A stop() racing after the first exit callback already reaped must one-shot
     // no-op (reaper latched) and resolve promptly — never re-signal the dead PTY

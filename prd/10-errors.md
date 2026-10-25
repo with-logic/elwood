@@ -30,7 +30,7 @@ Initial required error names:
 | `hook_bridge_failed` | The hook bridge or IPC endpoint could not be initialized. |
 | `input_queue_full` | A live session control queue would exceed 1,024 outstanding operations or 8 MiB aggregate UTF-8 input text; no input or attachment is performed for the rejected operation. |
 | `session_not_running` | Operation requires a running process but the session is stopped. |
-| `termination_failed` | A stop/kill request did not observe process exit after escalation, or the PTY exited but its process group could not be confirmed reaped. |
+| `termination_failed` | A stop/kill request could not signal the PTY, did not observe process exit after escalation, or the PTY exited but its process group could not be confirmed reaped. A PTY signaling failure keeps the underlying message as `cause` and any `errno`/`syscall`/`path` in `details`. |
 | `teardown_failed` | Elwood could not remove all owned session files. |
 | `compact_failed` | A requested conversation compaction did not report completion in time. |
 | `interrupt_failed` | A requested turn interrupt did not return the session to ready in time. |

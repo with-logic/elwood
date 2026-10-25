@@ -39,7 +39,7 @@ test("C-API-51 failed stop and kill still cancel the caller waiting on its perso
     await expect(facade.close()).rejects.toMatchObject({
       code: "termination_failed",
       details: {
-        cause: "kill failed",
+        cause: "Could not terminate the PTY: kill failed",
         killCause: "Could not reap the PTY process group.",
       },
     });

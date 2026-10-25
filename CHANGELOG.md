@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `stop()` and `kill()` reject with `termination_failed` when signaling the PTY itself
+  throws. They used to pass the raw system error through, whose own `code` (for example
+  `ESRCH`) read like an Elwood error name. The underlying message is kept as
+  `details.cause`, with `errno`, `syscall` and `path` when present.
+
 - `autotrust` no longer reports a Claude folder-trust prompt that it has
   already answered as needing attention. Claude erases the dialog at once but
   can take several seconds to paint its composer, longer under load. Elwood

@@ -52,10 +52,10 @@ describe("C-LIFE-10 terminatePty", () => {
     });
   });
 
-  test("a PLAIN-Error termination still preserves the reap cause when both fail", async () => {
-    // When pty.kill() throws a plain Error (not an ElwoodError) and the reap also
-    // fails, the original error keeps its identity/message AND carries the reap
-    // cause on `.reapError` — neither cause is dropped (C-LIFE-10).
+  test("a throwing PTY kill is typed and still preserves the reap cause when both fail", async () => {
+    // When pty.kill() throws a plain Error and the reap also fails, the rejection is
+    // the documented `termination_failed` carrying BOTH the kill cause and the reap
+    // cause — neither is dropped (C-LIFE-10, C-ERR-01).
     const throwingKillPty = {
       ...deadPty,
       kill: () => {
@@ -64,7 +64,29 @@ describe("C-LIFE-10 terminatePty", () => {
     };
     await expect(
       terminatePty(throwingKillPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toMatchObject({ message: "kill exploded", reapError: "reap failure" });
+    ).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { cause: "kill exploded", reapError: "reap failure" },
+    });
+  });
+
+  test("a throwing exit subscription is typed with its errno and the group is still reaped", async () => {
+    const killed: number[] = [];
+    const throwingOnExitPty = {
+      ...deadPty,
+      onExit: () => {
+        throw Object.assign(new Error("onExit EBADF"), { code: "EBADF", syscall: "ioctl" });
+      },
+    };
+    const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
+    await expect(
+      terminatePty(throwingOnExitPty, "SIGTERM", reaper, { gracefulMs: 0, forceMs: 0 }),
+    ).rejects.toMatchObject({
+      code: "termination_failed",
+      message: "Could not terminate the PTY: onExit EBADF",
+      details: { cause: "onExit EBADF", errno: "EBADF", syscall: "ioctl" },
+    });
+    expect(killed).toEqual([LEADER]);
   });
 
   test("a non-Error reap failure is stringified into the diagnostic", async () => {

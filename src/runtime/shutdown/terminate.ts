@@ -3,7 +3,13 @@
  * Implements PRD §5.3 and §9.4.
  */
 
-import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
+import {
+  causeDetails,
+  type ElwoodError,
+  elwoodError,
+  errnoCode,
+  toError,
+} from "../../core/errors.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
@@ -27,7 +33,7 @@ export async function terminatePty(
   reaper: Pick<SessionReaper, "reap">,
   timeouts: TerminationTimeouts = defaultTimeouts,
 ): Promise<void> {
-  let terminationError: unknown;
+  let terminationError: ElwoodError | undefined;
   let observedExit = false;
   try {
     const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
@@ -47,7 +53,7 @@ export async function terminatePty(
       );
     }
   } catch (error) {
-    terminationError = error;
+    terminationError = ptyOperationFailed(error);
   }
   // Reap on every path — even if the wait timed out or a PTY call threw — so a
   // termination_failed outcome never leaks the descendant tree (C-LIFE-10). The
@@ -85,27 +91,29 @@ async function reapAfterTermination(
 
 /**
  * Builds one error preserving BOTH the termination and the reap failure causes.
- * The reap cause is carried on a dedicated `.reapError` string property (NOT the
- * standard `.cause`, which the termination error may already use for its own root
- * cause): an ElwoodError gets it in `details.reapError`; any other Error gets it as
- * a `.reapError` property added in place, preserving the original identity/stack.
- * Either way neither cause is dropped, whether termination failed with a typed
- * ElwoodError or a plain PTY Error (C-LIFE-10). Callers/tests read `.reapError`.
+ * The reap cause is carried in `details.reapError` (NOT `details.cause`, which the
+ * termination error may already use for its own root cause), so neither cause is
+ * dropped (C-LIFE-10). Callers/tests read `details.reapError`.
  */
-function bothFailed(terminationError: unknown, reapError: unknown): unknown {
-  const reap = reapError instanceof Error ? reapError.message : String(reapError);
-  if (terminationError instanceof ElwoodError) {
-    return elwoodError(terminationError.code, terminationError.message, {
-      ...terminationError.details,
-      reapError: reap,
-    });
-  }
-  // Any other termination error reaching here is always an Error (ElwoodError is
-  // handled above; a thrown PTY value was normalized to Error in
-  // waitForExitAfterSignal). Preserve the reap cause on it without losing the
-  // original identity/stack.
-  (terminationError as Error & { reapError?: string }).reapError = reap;
-  return terminationError;
+function bothFailed(terminationError: ElwoodError, reapError: unknown): ElwoodError {
+  return elwoodError(terminationError.code, terminationError.message, {
+    ...terminationError.details,
+    reapError: toError(reapError).message,
+  });
+}
+
+/**
+ * Wraps a throwing PTY operation (`kill` or `onExit`) as the documented typed
+ * `termination_failed`, keeping the underlying message and errno/syscall/path in
+ * details, so `stop()`/`kill()` never reject with a raw system error whose own
+ * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
+ */
+function ptyOperationFailed(error: unknown): ElwoodError {
+  return elwoodError(
+    "termination_failed",
+    `Could not terminate the PTY: ${toError(error).message}`,
+    causeDetails(error),
+  );
 }
 
 /**
@@ -145,7 +153,7 @@ function waitForExitAfterSignal(
     } catch (error) {
       clearTimeout(timer);
       unsubscribe?.();
-      reject(error instanceof Error ? error : new Error(String(error)));
+      reject(error);
     }
   });
 }
