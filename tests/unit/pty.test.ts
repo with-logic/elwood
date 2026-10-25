@@ -169,7 +169,7 @@ describe("node PTY adapter", () => {
     }
   });
 
-  test("C-LIFE-10 a throwing PTY kill still reaps and surfaces the error", async () => {
+  test("C-LIFE-10 a throwing PTY kill still reaps and surfaces a typed error", async () => {
     for (const thrown of [new Error("pty gone"), "raw string failure"]) {
       const reaped: number[] = [];
       await expect(
@@ -188,7 +188,10 @@ describe("node PTY adapter", () => {
           testReaper(reaped),
           { gracefulMs: 0, forceMs: 0 },
         ),
-      ).rejects.toThrow(String(thrown).replace(/^Error: /, ""));
+      ).rejects.toMatchObject({
+        code: "termination_failed",
+        details: { cause: String(thrown).replace(/^Error: /, "") },
+      });
       expect(reaped).toEqual([1000]); // reaped even when the PTY op threw
     }
   });
