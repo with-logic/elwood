@@ -3,16 +3,19 @@
  * detached-sweep proofs (PRD §5.3 and §9.4, C-LIFE-10): a PTY leader whose child, and
  * that child's own child, each start with `setsid()`, so each heads its own session
  * and process group and is tied to its parent only by its parent pid. Everything here
- * is scoped to processes the calling test spawned: cleanup kills a pid only while its
- * command line still names this tree's own temp directory.
+ * is scoped to processes the calling test spawned: cleanup kills a process only while
+ * its command line names this tree's own temp directory, and it runs when the test
+ * finishes however it ends, so a failed sweep, a thrown assertion, or a timeout cannot
+ * leave the tree running.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { onTestFinished } from "vitest";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
-import { delay, killIfCommandHas, POLL_INTERVAL_MS } from "./process-liveness.ts";
+import { delay, killGroupsWhoseCommandHas, POLL_INTERVAL_MS } from "./process-liveness.ts";
 import { tempDir } from "./tmp.ts";
 
 // `hold.cjs <dir> <name> [next] [mode]`: records its pid as <dir>/<name>.pid, optionally
@@ -81,30 +84,29 @@ export function detachedShape(
 }
 
 /**
- * Cleans up anything the test started even when an assertion failed, including a tree
- * only partly up. No handle reaches the detached processes, so each is killed only
- * while its command line names this tree's directory.
+ * Ends every process running from `dir` (a tree's leader, child and grandchild, or any
+ * part of one) by SIGKILLing each one's group until a read finds none, and throws if
+ * one outlives five seconds. It needs no pid file, because a process starts its
+ * successor before it records its own pid, and a timed-out test's directory may
+ * already be gone.
  */
-export async function killSurvivors(tree: DetachedTree): Promise<void> {
-  killIfCommandHas(tree.pty.pid, tree.dir);
-  await killRecorded(tree.dir);
+export async function killTreeIn(dir: string): Promise<void> {
+  const deadline = performance.now() + 5_000;
+  while (killGroupsWhoseCommandHas(dir) > 0) {
+    if (performance.now() >= deadline) throw new Error(`a process from ${dir} outlived cleanup`);
+    await delay(POLL_INTERVAL_MS);
+  }
 }
 
 /**
- * Kills the child and the grandchild of the tree in `dir`, each found by its own pid
- * file. A process starts its successor before it writes its own pid, so the
- * grandchild's file can appear while the child's never does.
+ * Writes the hold script into a fresh temp directory and returns that directory. When
+ * the test finishes, every process running from it is killed (`killTreeIn`) before the
+ * directory is removed: Vitest runs a test's finish hooks last-registered first.
  */
-export async function killRecorded(dir: string): Promise<void> {
-  const names = ["child", "grandchild"];
-  const pids = await Promise.all(names.map((name) => waitForPid(dir, name, 2_000)));
-  for (const pid of pids) if (pid !== undefined) killIfCommandHas(pid, dir);
-}
-
-/** Writes the hold script into a fresh temp directory and returns that directory. */
 export function holdDir(prefix: string): string {
   const dir = tempDir(prefix);
   writeFileSync(join(dir, "hold.cjs"), HOLD);
+  onTestFinished(() => killTreeIn(dir));
   return dir;
 }
 
