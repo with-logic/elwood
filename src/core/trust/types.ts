@@ -23,7 +23,6 @@ export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
 /** Mutable coordinator state stays owned by a single observed trust generation. */
 export type Episode = {
   candidate: TrustCandidate;
-  deadlineAtMs: number;
   blocked: boolean;
   expired: boolean;
   expiredIdentity: string | undefined;
@@ -38,7 +37,6 @@ export type Episode = {
 export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode {
   return {
     candidate,
-    deadlineAtMs: 0,
     blocked,
     expired: false,
     expiredIdentity: undefined,
