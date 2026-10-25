@@ -18,14 +18,18 @@
 const mode =
   "(?:⏸ (?:manual|plan) mode|⏵⏵ (?:accept edits|auto mode|don['’]t ask|bypass permissions)) on";
 const hints = String.raw`(?: \(shift\+tab to cycle\))?(?: · \? for shortcuts)?(?: · ← for agents)?`;
-const tokenCount = String.raw`[\d,.]+[kKmM]? tokens`;
+/**
+ * A token count as Claude prints it: 2.1.310 formats with compact notation, lowercased
+ * (`0`, `999`, `1.0k`, `12.3k`, `2.1m`); the grouped and uppercase forms stay accepted.
+ */
+export const claudeTokenCount = String.raw`[\d,.]+[kKmM]? tokens`;
 const effortLevel = String.raw`[○◐●◉◈] (?:low|medium|high|xhigh|max) · \/effort`;
 
 /** One footer row, as a single-line fragment with no anchors. */
-export const claudeComposerFooterRow = String.raw`[ \t]*(?:-- INSERT -- )?${mode}${hints}(?: +(?:${tokenCount}|${effortLevel}))?[ \t]*`;
+export const claudeComposerFooterRow = String.raw`[ \t]*(?:-- INSERT -- )?${mode}${hints}(?: +(?:${claudeTokenCount}|${effortLevel}))?[ \t]*`;
 export const claudeComposerFooter = new RegExp(`^${claudeComposerFooterRow}$`);
 
 /** A footer item on its own row: effort below a token count, or the count when narrow. */
 export const claudeFooterOverflow = new RegExp(
-  String.raw`^\s*(?:${tokenCount}|${effortLevel})\s*$`,
+  String.raw`^\s*(?:${claudeTokenCount}|${effortLevel})\s*$`,
 );

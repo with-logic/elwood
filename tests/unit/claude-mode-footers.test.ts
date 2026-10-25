@@ -28,8 +28,10 @@ const footers = [
   ["manual", "⏸ manual mode on"],
   ["auto", "⏵⏵ auto mode on (shift+tab to cycle)"],
   ["dont-ask", "⏵⏵ don't ask on (shift+tab to cycle)"],
-].flatMap(([mode, footer]) =>
-  ["vim", "plain"].map((layout) => [`${layout}-${mode}`, footer ?? ""] as const),
+] as const satisfies readonly (readonly [string, string])[];
+
+const captures = footers.flatMap(([mode, footer]) =>
+  (["vim", "plain"] as const).map((layout) => [`${layout}-${mode}`, footer] as const),
 );
 
 async function replay<T>(frame: Frame, read: (terminal: ElwoodTerminal) => T): Promise<T> {
@@ -52,7 +54,7 @@ function withFooter(frame: Frame, ...replacement: string[]): string {
 }
 
 test.each(
-  footers,
+  captures,
 )("C-TRUST-01 C-API-55 the bannerless %s composer is idle", async (name, footer) => {
   const frame = capture(name);
   expect(frame.text).not.toMatch(/Claude Code v/);
@@ -116,6 +118,31 @@ test("C-API-56 a narrow footer may move its token count and effort onto their ow
 });
 
 test.each([
+  // 2.1.310 prints counts in lowercased compact notation (999, 1.0k or 1k, 12.3k, 2.1m).
+  "999 tokens",
+  "1.0k tokens",
+  "1k tokens",
+  "12.3k tokens",
+  "2.1m tokens",
+  // Grouped and uppercase counts stay accepted.
+  "1,234 tokens",
+  "2.1M tokens",
+])("C-TRUST-01 C-API-55 C-API-56 a footer counting %s clears, inline or on its own row", (count) => {
+  const frame = capture("vim-bypass-permissions");
+  const footer = "  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents";
+  for (const text of [
+    withFooter(frame, `${footer}        ${count}`),
+    withFooter(frame, footer, `                                                  ${count}`),
+  ]) {
+    expect([
+      claudeTrustClearance(text),
+      claudeModelPicker.isClear(text),
+      claudeEmptyInputRows(text.split("\n"), frame.cursorY),
+    ]).toEqual([true, true, true]);
+  }
+});
+
+test.each([
   ["a working footer", ["  -- INSERT -- ⏵⏵ bypass permissions on · esc to interrupt"]],
   // Captured at 60 columns: Claude truncates the hint, so the row no longer proves the mode.
   ["a truncated footer", ["  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to"]],
@@ -123,11 +150,34 @@ test.each([
     "a blank row above the footer",
     ["", "  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle)"],
   ],
+  [
+    "an overflow row above the footer",
+    ["  0 tokens", "  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle)"],
+  ],
   ["an unknown footer", ["  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle) · new"]],
-])("C-TRUST-01 C-API-55 %s does not prove an idle composer", (_name, replacement) => {
+])("C-TRUST-01 C-API-55 C-API-56 %s does not prove an idle composer", (_name, replacement) => {
   const frame = capture("vim-bypass-permissions");
   const text = withFooter(frame, ...replacement);
-  expect([claudeTrustClearance(text), claudeModelPicker.isClear(text)]).toEqual([false, false]);
+  expect([
+    claudeTrustClearance(text),
+    claudeModelPicker.isClear(text),
+    claudeEmptyInputRows(text.split("\n"), frame.cursorY),
+  ]).toEqual([false, false, false]);
+});
+
+test("C-API-56 the version banner does not excuse a footer separated from the composer", () => {
+  const frame = capture("vim-bypass-permissions");
+  const footer = "  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle)";
+  const rows = withFooter(frame, "", footer).split("\n");
+  // The capture's top row, the banner's last line, becomes its version line.
+  rows.splice(0, 1, " ▐▛███▜▌   Claude Code v2.1.310");
+  expect(claudeEmptyInputRows(rows, frame.cursorY)).toBe(false);
+  rows.splice(frame.cursorY + 2, 2, "", "");
+  expect(claudeEmptyInputRows(rows, frame.cursorY)).toBe(true);
+  // With no row under the bottom rule, only the banner can prove the composer.
+  const fenced = rows.slice(0, frame.cursorY + 2);
+  expect(claudeEmptyInputRows(fenced, frame.cursorY)).toBe(true);
+  expect(claudeEmptyInputRows(fenced.slice(1), frame.cursorY - 1)).toBe(false);
 });
 
 test("C-TRUST-01 a footer quoted above the composer is transcript, not chrome", () => {

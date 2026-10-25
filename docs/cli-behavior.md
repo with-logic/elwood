@@ -1282,7 +1282,9 @@ manual mode lacks `(shift+tab to cycle)`, and in this layout only manual mode
 shows `? for shortcuts`. A `default` launch renders `manual mode`. Vim normal mode,
 after an Escape at the idle composer, drops the `-- INSERT --` prefix. Each
 effort level has its own glyph: `○ low`, `◐ medium`, `● high`, `◉ xhigh`,
-`◈ max`.
+`◈ max`. The captures only show `0 tokens`. The binary formats counts with
+`Intl.NumberFormat` compact notation, then lowercases them: `999`, `1.0k` (or
+`1k` where it strips `.0`), `12.3k`, `2.1m`. Counts are never digit-grouped.
 
 Some pieces are transient. Release notes embedded in the 2.1.310 binary say
 `← for agents` hides 10 seconds after a session opens. In the captures it was still present at 13 s
@@ -1297,6 +1299,10 @@ saw the banner at all, because it reads only the last composer and the rows
 beneath it. Empty-input observation rejected every 2.1.310 effort row. The shared
 grammar is `src/claude/composer/footer.ts`, and trust clearance requires the
 footer directly under the bottom rule, so a quoted footer cannot pass for chrome.
+Empty-input observation requires the same row. None of the 159 composer frames
+captured on 2.1.310, and none in the 2.1.278 to 2.1.305 fixtures, has a blank row
+between the bottom rule and the footer. Overflow rows and the login-renewal notice
+only ever follow the footer.
 Sanitized 100x8 bannerless frames for every mode are in
 `tests/fixtures/claude-2.1.310/mode-footers/`. `tests/e2e/permission-footer-claude.e2e.ts`
 checks a real bypass-permissions session. C-TRUST-01, C-API-55, C-API-56.
