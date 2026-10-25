@@ -11,7 +11,9 @@ export type ScreenFactKind =
   | "composer_visible"
   | "working_visible"
   | "interrupt_complete_visible"
-  | "blocking_prompt_visible";
+  | "blocking_prompt_visible"
+  /** The CLI's own resume-loading placeholder: the resumed conversation is not loaded yet. */
+  | "resume_loading_visible";
 
 /** Which rendered source a rule's patterns match against. */
 export type ScreenFactRegion = "screen" | "title";
@@ -90,6 +92,7 @@ export function readScreenFacts(
     working_visible: false,
     interrupt_complete_visible: false,
     blocking_prompt_visible: false,
+    resume_loading_visible: false,
   };
   const matched: MatchedScreenRule[] = [];
   for (const rule of table.rules) {

@@ -19,7 +19,8 @@ import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 
-const verifiedAgainst = "codex-cli 0.142.5; work pulses and question panels: 0.163.0";
+const verifiedAgainst =
+  "codex-cli 0.142.5; work pulses and question panels: 0.163.0; resume loading: 0.164.0";
 
 /**
  * Original rules verified against codex-cli 0.142.5; 0.163.0 captures additionally
@@ -35,11 +36,15 @@ const verifiedAgainst = "codex-cli 0.142.5; work pulses and question panels: 0.1
  * directory name when idle. The update-prompt rule takes its matcher as a
  * parameter: production injects per-session update generation tracking and a
  * retained input hold until positive native composer clearance. Both belong to
- * this table; startup automation only needs update generation tracking.
+ * this table; startup automation only needs update generation tracking. A resumed
+ * 0.164.0 session first paints "Resuming session…" above its composer, before it
+ * loads the conversation under a working title (docs/cli-behavior.md, "Resume
+ * lifecycle"); C-TURN-03 resume settling reads that placeholder.
  */
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
     { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
+    { id: "codex-resume-loading", fact: "resume_loading_visible", all: [/^\s*Resuming session…/m] },
     { id: "codex-working-spinner", fact: "working_visible", all: [codexWorkingScreen] },
     {
       id: "codex-working-title",

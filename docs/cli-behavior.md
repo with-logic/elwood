@@ -119,6 +119,29 @@ misattributed to a CLI regression.)
   quiet frame is not proof it finished. Evidence-driven turns (a caller
   submission, a hook) bypass settling immediately. `src/core/turn-state.ts`,
   C-TURN-03.
+- **Codex 0.164.0 paints a `Resuming session…` placeholder before it loads the
+  conversation (2026-10-25).** Five captured resumes in private Codex homes, at load
+  averages of 20 to 60, all had the same shape. First comes the header, then
+  `Resuming session…`, then the live composer and `? for shortcuts`. That frame
+  repaints 8 to 11 times with no visible change. Elwood latches resume readiness on
+  its first composer frame. 0.5 to 1.6 s later, Codex sets a braille title spinner
+  and `OSC 7501;state=working:app=codex`. It replaces the placeholder with the
+  replayed transcript, either in the spinner's first frame or one frame later. The
+  spinner runs 0.7 to 1.5 s. Then the title goes idle with `state=idle`, at most one
+  cursor repaint follows, and Codex sends nothing more until input arrives. The quiet streak counted the
+  placeholder's repaints and released settling before the load. The spinner then
+  became a phantom `running → ready` on every capture. The real-CLI e2e reported it
+  as `saw: running,ready`. Placeholder frames are no longer quiet. Once the
+  placeholder has painted and the load's spinner has been seen, the first quiet
+  composer ends settling. A five-frame streak never arrives from an idle Codex.
+  Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
+- **Stopping right after a Codex `Stop`-hook `ready` can leave the turn
+  uncommitted.** Two of six stop-at-ready runs killed Codex before it wrote
+  `task_complete`. Resuming that conversation replays it ending in
+  `■ Conversation interrupted - use /feedback if something went wrong`. Before the
+  placeholder fix, that banner closed the spinner's phantom turn early. A second
+  phantom followed: `saw: running,ready,running,ready`. The
+  `uncommitted-turn` capture retains that replay. C-TURN-03.
 - **A caller submission can precede the resumed composer's repaint.** The old
   idle composer may remain visible briefly after `caller_submitted`; that frame
   is not a turn end. Resume settling now synchronizes to current rendered work

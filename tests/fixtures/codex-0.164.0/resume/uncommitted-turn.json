@@ -1,0 +1,130 @@
+{
+  "version": "codex-cli 0.164.0",
+  "size": {
+    "cols": 189,
+    "rows": 48
+  },
+  "note": "Real codex-cli 0.164.0 PTY output captured through Elwood on 2026-10-25 while resuming a conversation stopped right after its Stop-hook ready, before Codex wrote task_complete, so the replay ends in Conversation interrupted. One chunk per terminal:data event; atMs is relative to the first chunk. The temporary workspace id is normalized at equal length.",
+  "chunks": [
+    {
+      "atMs": 0,
+      "data": "\u001b[?2004h\u001b[>4;0m\u001b[>7u\u001b[?1004h\u001b[6n\u001b]10;?\u001b\\\u001b]11;?\u001b\\\u001b[?u\u001b[c"
+    },
+    {
+      "atMs": 301,
+      "data": "\u001b[?2026h\u001b[?25l\u001b[?1049h\u001b[>4;0m\u001b[>7u\u001b[?1007l\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1006h\u001b[?25l\u001b[1;1H\u001b[J\u001b[?2026h\u001b[?25l\u001b[1;2H\u001b[0m\u001b[49m\u001b[K\u001b[2;29H\u001b[0m\u001b[49m\u001b[K\u001b[3;13H\u001b[0m\u001b[49m\u001b[K\u001b[4;20H\u001b[0m\u001b[49m\u001b[K\u001b[5;2H\u001b[0m\u001b[49m\u001b[K\u001b[6;2H\u001b[0m\u001b[49m\u001b[K\u001b[7;2H\u001b[0m\u001b[49m\u001b[K\u001b[8;2H\u001b[0m\u001b[49m\u001b[K\u001b[9;2H\u001b[0m\u001b[49m\u001b[K\u001b[10;2H\u001b[0m\u001b[49m\u001b[K\u001b[11;2H\u001b[0m\u001b[49m\u001b[K\u001b[12;2H\u001b[0m\u001b[49m\u001b[K\u001b[13;2H\u001b[0m\u001b[49m\u001b[K\u001b[14;2H\u001b[0m\u001b[49m\u001b[K\u001b[15;2H\u001b[0m\u001b[49m\u001b[K\u001b[16;2H\u001b[0m\u001b[49m\u001b[K\u001b[17;2H\u001b[0m\u001b[49m\u001b[K\u001b[18;2H\u001b[0m\u001b[49m\u001b[K\u001b[19;2H\u001b[0m\u001b[49m\u001b[K\u001b[20;2H\u001b[0m\u001b[49m\u001b[K\u001b[21;2H\u001b[0m\u001b[49m\u001b[K\u001b[22;2H\u001b[0m\u001b[49m\u001b[K\u001b[23;2H\u001b[0m\u001b[49m\u001b[K\u001b[24;2H\u001b[0m\u001b[49m\u001b[K\u001b[25;2H\u001b[0m\u001b[49m\u001b[K\u001b[26;2H\u001b[0m\u001b[49m\u001b[K\u001b[27;2H\u001b[0m\u001b[49m\u001b[K\u001b[28;2H\u001b[0m\u001b[49m\u001b[K\u001b[29;2H\u001b[0m\u001b[49m\u001b[K\u001b[30;2H\u001b[0m\u001b[49m\u001b[K\u001b[31;2H\u001b[0m\u001b[49m\u001b[K\u001b[32;2H\u001b[0m\u001b[49m\u001b[K\u001b[33;2H\u001b[0m\u001b[49m\u001b[K\u001b[34;2H\u001b[0m\u001b[49m\u001b[K\u001b[35;2H\u001b[0m\u001b[49m\u001b[K\u001b[36;2H\u001b[0m\u001b[49m\u001b[K\u001b[37;2H\u001b[0m\u001b[49m\u001b[K\u001b[38;2H\u001b[0m\u001b[49m\u001b[K\u001b[39;2H\u001b[0m\u001b[49m\u001b[K\u001b[40;2H\u001b[0m\u001b[49m\u001b[K\u001b[41;2H\u001b[0m\u001b[49m\u001b[K\u001b[42;2H\u001b[0m\u001b[49m\u001b[K\u001b[43;2H\u001b[0m\u001b[49m\u001b[K\u001b[44;2H\u001b[0m\u001b[49m\u001b[K\u001b[45;27H\u001b[0m\u001b[49m\u001b[K\u001b[46;2H\u001b[0m\u001b[49m\u001b[K\u001b[47;2H\u001b[0m\u001b[49m\u001b[K\u001b[48;18H\u001b[0m\u001b[49m\u001b[K\u001b[1;1H \u001b[2;1H  \u001b[38;2;99;168;248;49m>_ \u001b[1m\u001b[39;49mOpenAI Codex\u001b[22m\u001b[2m\u001b[2m (v0.164.0)\u001b[3;1H\u001b[22m     \u001b[2mloading\u001b[4;1H  Resuming session…\u001b[5;1H\u001b[22m \u001b[6;1H \u001b[7;1H \u001b[8;1H \u001b[9;1H \u001b[10;1H \u001b[11;1H \u001b[12;1H \u001b[13;1H \u001b[14;1H \u001b[15;1H \u001b[16;1H \u001b[17;1H \u001b[18;1H \u001b[19;1H \u001b[20;1H \u001b[21;1H \u001b[22;1H \u001b[23;1H \u001b[24;1H \u001b[25;1H \u001b[26;1H \u001b[27;1H \u001b[28;1H \u001b[29;1H \u001b[30;1H \u001b[31;1H \u001b[32;1H \u001b[33;1H \u001b[34;1H \u001b[35;1H \u001b[36;1H \u001b[37;1H \u001b[38;1H \u001b[39;1H \u001b[40;1H \u001b[41;1H \u001b[42;1H \u001b[43;1H \u001b[44;1H \u001b[45;1H\u001b[1m›\u001b[22m \u001b[2mAsk Codex to do anything\u001b[46;1H\u001b[22m \u001b[47;1H \u001b[48;1H  \u001b[1m?\u001b[22m for shortcuts\u001b[39m\u001b[49m\u001b[0m\u001b[1;1H\u001b[0 q\u001b[1;1H \u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 305,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 312,
+      "data": "\u001b[?2026h\u001b[?25l\u001b[3;6H\u001b[2m/v\u001b[3;9Hr/folders/78/0000000000000000000000000000gn/T/elwood_e2e_codex-FIXTUR\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 558,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 583,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 644,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 922,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h"
+    },
+    {
+      "atMs": 925,
+      "data": "\u001b[?2026l"
+    },
+    {
+      "atMs": 936,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 942,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 1413,
+      "data": "\u001b]0;elwood_e2e_codex-FIXTUR\u0007\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 1890,
+      "data": "\u001b]0;⠼ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 1966,
+      "data": "\u001b]0;⠴ elwood_e2e_codex-FIXTUR\u0007\u001b]7501;state=working:app=codex\u001b\\\u001b[?2026h\u001b[?25l\u001b[4;2H\u001b[0m\u001b[49m\u001b[K\u001b[4;1H \u001b[5;1H\u001b[2m  To get started, describe a task or try one of these commands:\u001b[7;3H\u001b[22m/init\u001b[2m - create an AGENTS.md file with instructions for Codex\u001b[8;3H\u001b[22m/status\u001b[2m - show current session configuration\u001b[9;3H\u001b[22m/permissions\u001b[2m - choose what Codex is allowed to do\u001b[10;3H\u001b[22m/model\u001b[2m - choose what model and reasoning effort to use\u001b[11;3H\u001b[22m/review\u001b[2m - review any changes and find issues\u001b[14;1H\u001b[1m› \u001b[22m\u001b[22mReply\u001b[14;9Hexactly:\u001b[14;18HOK.\u001b[14;22HDo\u001b[14;25Hnot\u001b[14;29Huse\u001b[14;33Htools.\u001b[17;1H\u001b[2m• \u001b[22mOK.\u001b[19;1H■\u001b[19;3HConversation\u001b[19;16Hinterrupted\u001b[19;28H-\u001b[19;30Huse\u001b[19;34H/feedback\u001b[19;44Hif\u001b[19;47Hsomething\u001b[19;57Hwent\u001b[19;62Hwrong\u001b[47;3H\u001b[38;2;246;226;183;49mGPT-6.1-Sol xhigh\u001b[47;21H\u001b[39;49m·\u001b[47;23H\u001b[38;2;171;223;167;49m/var/folders/78/0000000000000000000000000000gn/T/elwood_e2e_codex-FIXTUR\u001b[48;164H\u001b[39;49m⚠\u001b[48;166H\u001b[38;2;196;167;103;49m3 warnings\u001b[48;177H\u001b[39;49m·\u001b[48;179H\u001b[1mf2\u001b[48;182H\u001b[22mto\u001b[48;185Hview\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 2075,
+      "data": "\u001b]0;⠦ elwood_e2e_codex-FIXTUR\u0007\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 2093,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 2264,
+      "data": "\u001b]0;⠇ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 2276,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 2294,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 2312,
+      "data": "\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    },
+    {
+      "atMs": 2423,
+      "data": "\u001b]0;⠋ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 2560,
+      "data": "\u001b]0;⠙ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 2662,
+      "data": "\u001b]0;⠹ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 2772,
+      "data": "\u001b]0;⠸ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 2882,
+      "data": "\u001b]0;⠼ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 2983,
+      "data": "\u001b]0;⠴ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 3136,
+      "data": "\u001b]0;⠧ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 3293,
+      "data": "\u001b]0;⠇ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 3389,
+      "data": "\u001b]0;⠏ elwood_e2e_codex-FIXTUR\u0007"
+    },
+    {
+      "atMs": 3404,
+      "data": "\u001b]0;elwood_e2e_codex-FIXTUR\u0007\u001b]7501;state=idle:app=codex\u001b\\\u001b[?2026h\u001b[39m\u001b[49m\u001b[0m\u001b[45;3H\u001b[?25h\u001b[?2026l"
+    }
+  ]
+}
