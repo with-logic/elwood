@@ -68,27 +68,27 @@ export type ModelPickerSpec = {
 
 /**
  * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority.
- * Every key and Escape below is gated on `ours(spec)`, the complete dialog recognized as the
- * operation's own, never on `hasPickerHeader`. A header match alone is untrusted: a
- * transcript or the agent's own output can print `Select model`, so navigating or Escaping
- * on it could send keys into a running turn, the real composer, or another prompt
- * (C-API-24). The header only gates the `/model` open wait and the `closing` wait, and the
- * cursor-settle wait reads a parsed row; none of those writes.
+ * Every key and Escape below is gated on `ours(spec)`: the operation's own COMPLETE picker,
+ * never a `painting` dialog and never `hasPickerHeader`. A header match alone is untrusted:
+ * a transcript or the agent's own output can print `Select model`, so navigating or
+ * Escaping on it could send keys into a running turn, the real composer, or another prompt
+ * (C-API-24). The header gates only two waits, the `/model` open wait (`openAndParse`) and
+ * the `closing` wait; the cursor-settle wait reads a parsed row. None of them writes.
  */
 const opened: ModelDialogAuthority = { opened: true };
 
-/** True only while THIS operation's own dialog is the bottom-most region of the screen. */
+/** True only while THIS operation's own complete picker is the bottom-most region. */
 const ours = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, opened) !== undefined;
+  spec.activeDialog(text, opened) === "picker";
 
 /**
  * The CLOSE wait after Elwood's own Escape, and deliberately weaker than `ours` because it
- * only waits: while the header still shows, the picker may be mid-close, and resolving there
- * would let the next operation find picker text already on screen. It never gates a write —
- * every key, Escape included, needs `ours`, since a bare header is untrusted evidence.
+ * only waits: while any stage of the dialog or its header still shows, the picker may be
+ * mid-close, and resolving there would let the next operation find picker text already on
+ * screen. It never gates a write: every key, Escape included, needs `ours`.
  */
 const closing = (spec: ModelPickerSpec) => (text: string) =>
-  ours(spec)(text) || spec.hasPickerHeader(text);
+  spec.activeDialog(text, opened) !== undefined || spec.hasPickerHeader(text);
 
 const escapeKey = "\u001b";
 const arrowDown = "\u001b[B";

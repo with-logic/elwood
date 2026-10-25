@@ -9,7 +9,12 @@ import {
   claudeClosedPickerViewport,
   claudePickerViewport,
 } from "../helpers/model-dialog-viewports.ts";
-import { escapeKey, pickerHarness, releasesAfterClearStreak } from "../helpers/picker-harness.ts";
+import {
+  escapeKey,
+  guardedPickerHarness,
+  pickerHarness,
+  releasesAfterClearStreak,
+} from "../helpers/picker-harness.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -96,7 +101,7 @@ test("C-API-55 a painting switch dialog is not written to until it is complete",
 
 /** Claude never finishes painting the picker: its header sits over stale slash commands. */
 function timedOutListing(partial: string) {
-  const harness = pickerHarness(claudeClosedPickerViewport, (input, shown) => {
+  const harness = guardedPickerHarness(claudeClosedPickerViewport, (input, shown) => {
     if (input === "/model") shown.text = partial;
   });
   const failed = harness.picker
@@ -107,27 +112,55 @@ function timedOutListing(partial: string) {
   return { ...harness, failed };
 }
 
-test("C-API-55 a listing that times out on a half-painted picker holds input until the composer clears", async () => {
+test("C-API-55 a listing that times out on a half-painted picker holds a queued message until the composer clears", async () => {
   const partial = capturedFrame("claude-2.1.310/model-picker/painting-three-rows");
-  const { screen, writes, queue, picker, failed } = timedOutListing(partial);
+  const { screen, writes, queue, failed, delivered } = timedOutListing(partial);
+  const message = queue.send("hello", "message");
   await vi.advanceTimersByTimeAsync(1200);
   expect(await failed).toMatchObject({ code: "model_automation_failed" });
   // Nothing recognizable was ever on screen, so nothing but the command was written...
   expect(writes).toEqual(["/model"]);
-  // ...yet a picker is still up, and Enter on it would apply its highlighted row.
-  expect(picker.blocksInput()).toBe(true);
-  expect(picker.blocksInput()).toBe(true);
+  // ...yet a picker is still up, and Enter on it would apply its highlighted row, so the
+  // queued message waits however long the picker stays half-painted.
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(delivered("hello")).toBe(0);
   screen.text = claudeClosedPickerViewport;
-  expect(releasesAfterClearStreak(() => picker.blocksInput())).toBe(true);
+  await vi.advanceTimersByTimeAsync(1000);
+  await message;
+  expect(delivered("hello")).toBe(1);
   queue.close();
 });
 
 test("C-API-55 a picker header quoted above a clear composer holds nothing after cleanup", async () => {
   const quoted = `⏺ The dialog title reads "Select model".\n\n${claudeClosedPickerViewport}`;
-  const { writes, queue, picker, failed } = timedOutListing(quoted);
+  const { writes, queue, picker, failed, delivered } = timedOutListing(quoted);
   await vi.advanceTimersByTimeAsync(1200);
   expect(await failed).toMatchObject({ code: "model_automation_failed" });
   expect(writes).toEqual(["/model"]);
   expect(picker.blocksInput()).toBe(false);
+  const message = queue.send("hello", "message");
+  await vi.advanceTimersByTimeAsync(1000);
+  await message;
+  expect(delivered("hello")).toBe(1);
+  queue.close();
+});
+
+test("C-API-24 no key is written to the operation's own dialog while it is still painting", async () => {
+  const arrowDown = "\u001b[B";
+  const { writes, queue, picker } = pickerHarness(claudeClosedPickerViewport, (input, screen) => {
+    if (input === "/model") screen.text = claudePickerViewport;
+    // The first step repaints the dialog: a frame with its title and copy but no options.
+    if (input === arrowDown) screen.text = claudeCacheWarningPartialViewport;
+  });
+  const setting = expect(
+    picker.run("set_model", claudeModelPicker, 5000, (io) =>
+      setPickerModel(io, claudeModelPicker, "sonnet", 5000),
+    ),
+  ).rejects.toMatchObject({ code: "model_automation_failed" });
+  // Past the cursor-settle wait, so a key written into the painting frame fails here.
+  await vi.advanceTimersByTimeAsync(7000);
+  await setting;
+  // Sonnet is two rows down, but the second step would land in a dialog with no options.
+  expect(writes).toEqual(["/model", arrowDown]);
   queue.close();
 });
