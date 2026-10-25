@@ -147,9 +147,10 @@ loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
 bounded separately. After the startup files load, and immediately before the probe
-command runs, the probe shell writes a fixed start line of Elwood's own on a private
-channel that is neither stdout nor stderr, so a startup file that redirects either
-cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
+command runs, the probe shell writes a start line of Elwood's own, ending in a random
+token chosen once per parent process so that no startup file's output can pass for it,
+on a private channel that is neither stdout nor stderr, so a startup file that
+redirects either cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
 started as an interactive login shell, closes every inherited descriptor above
 stderr) writes the line on stdout instead. Not stderr, which a startup file may
 discard or merge into stdout: a startup file that hid stdout would also hide the

@@ -78,7 +78,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
     // controlling terminal and can leave its short-lived command's process group in the
     // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
-    // A fourth pipe carries only the probe shell's start line (C-PERF-05).
+    // A fourth pipe carries only the probe shell's start line, unless the shell closed it.
     const child = spawn(command, [...args], {
       detached: true,
       stdio: ["pipe", "pipe", "pipe", "pipe"],
@@ -112,7 +112,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
         }),
       );
     };
-    const captured = (): [string, string] => [start.stdout(out.text()), err.text()];
+    const captured = (): [string, string] => [start.stripFromStdout(out.text()), err.text()];
     // Each phase's bound aborts the probe with its own typed timeout when it expires.
     const boundBy = (ms: number, result: () => CommandResult) => {
       const bound = setTimeout(() => settle(result(), true), ms);

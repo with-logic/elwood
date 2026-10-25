@@ -50,7 +50,7 @@ test("C-PERF-05 the first channel to carry the start line starts the command, on
   expect(viaControl.feed("control", Buffer.from(line))).toBe(true);
   expect(viaControl.started).toBe(true);
   expect(viaControl.feed("stdout", Buffer.from(line))).toBe(false); // the command's own output
-  expect(viaControl.stdout(`2.1.310\n${line}`)).toBe(`2.1.310\n${line}`);
+  expect(viaControl.stripFromStdout(`2.1.310\n${line}`)).toBe(`2.1.310\n${line}`);
   const viaStdout = new ProbeStart();
   expect(viaStdout.started).toBe(false);
   expect(viaStdout.feed("stdout", Buffer.from(`noise ${line}`))).toBe(true);
@@ -60,8 +60,9 @@ test("C-PERF-05 the first channel to carry the start line starts the command, on
 
 test("C-PERF-05 a start line that arrived on stdout is removed from captured stdout", () => {
   const start = new ProbeStart();
-  expect(start.stdout(`noise ${line}2.1.310\n`)).toBe(`noise ${line}2.1.310\n`); // not yet seen
+  const captured = `noise ${line}2.1.310\n`;
+  expect(start.stripFromStdout(captured)).toBe(captured); // not yet seen
   start.feed("stdout", Buffer.from(`noise ${line}`));
-  expect(start.stdout(`noise ${line}2.1.310\n`)).toBe("noise 2.1.310\n");
-  expect(start.stdout("")).toBe(""); // a settled probe's released capture
+  expect(start.stripFromStdout(captured)).toBe("noise 2.1.310\n");
+  expect(start.stripFromStdout("")).toBe(""); // a settled probe's released capture
 });

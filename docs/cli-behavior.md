@@ -1328,9 +1328,12 @@ probe passed. A stderr fallback would have been discarded by the first and moved
 stdout by the second. A profile that hid stdout would hide the command's own output and
 fail the probe regardless. The runner removes the line from captured stdout. A profile
 that runs `exec 3>&-` itself now falls back too. Only a profile that reopens descriptor 3
-onto something else still loses the line. `tests/unit/probe-closed-descriptor.test.ts`
-covers this with a `/bin/sh` stand-in that closes descriptor 3 on every host, and with
-real `/bin/bash -l -i` where `/bin/bash` is 3.x. All nine of its tests fail on `main` at
+onto something else still loses the line. Because stdout is now watched for every probe,
+the line ends in a random per-process token: a profile that printed the bare
+`elwood-probe-command-start` would otherwise start the command's bound while the profile
+was still loading. `tests/unit/probe-closed-descriptor.test.ts` covers this with a
+`/bin/sh` stand-in that closes descriptor 3 on every host, and with real `/bin/bash -l -i`
+where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main` at
 613b3ea5.
 
 ## Testing against the real CLIs

@@ -62,6 +62,24 @@ test("C-PERF-05 a start line on stdout ends the launch phase while the command s
   expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });
 
+test.each([
+  "closed",
+  "open",
+])("C-PERF-05 a profile printing the bare start line does not start the command bound (descriptor 3 %s)", async (descriptor) => {
+  // stdout is watched for every probe, so only the line's per-process token marks the start.
+  setProbeTimeoutsForTests({ commandMs: 150, launchMs: 10_000 });
+  const profile = "echo elwood-probe-command-start; sleep 0.6";
+  const [, , , script] = shell.probeShellCommand("echo 2.1.310");
+  const result = await (descriptor === "closed"
+    ? runProbe(closingShell(profile), ["-l", "-i", "-c", script])
+    : runProbe("/bin/sh", ["-c", `${profile}; ${script}`]));
+  expect(result).toEqual({
+    status: 0,
+    stdout: "elwood-probe-command-start\n2.1.310\n",
+    stderr: "",
+  });
+});
+
 // Pinned to the bash 3.2 that macOS ships as /bin/bash. Linux's bash 5.2 keeps descriptor 3 as
 // an interactive login shell, so there this would pass without reaching the stdout path, which
 // the stand-in above covers on every host.
