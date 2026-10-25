@@ -28,8 +28,8 @@ async function waitForQuietScreen(session: CodexSessionApi): Promise<void> {
   while (Date.now() - started < QUIET_DEADLINE_MS) {
     const title = session.terminal.title;
     const text = `${title}\n${session.terminal.snapshot().text}`;
-    const working = /esc to interrupt|Resuming session…/i.test(text) || /^[⠀-⣿]/.test(title);
-    const quiet = text === last && !working;
+    const unsettled = /esc to interrupt|Resuming session…/i.test(text) || /^[⠀-⣿]/.test(title);
+    const quiet = text === last && !unsettled;
     if (!quiet) quietSince = Date.now();
     if (Date.now() - quietSince >= QUIET_STREAK_MS) return;
     last = text;

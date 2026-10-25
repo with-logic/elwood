@@ -68,6 +68,14 @@ describe("C-TURN-03 resume settling through a CLI-announced load", () => {
   test("a placeholder that clears without load work falls back to the full quiet streak", () => {
     const watcher = new TurnStateWatcher();
     watcher.arm(true);
+    // No spinner ever follows the placeholder, so only the five-frame streak releases.
+    expect(edges(watcher, [at(loading), ...repeat(5, at(replayed))])).toEqual(repeat(6, undefined));
+    expect(watcher.observe(at(replayed, spinner))).toBe("started");
+  });
+
+  test("a spinner after the placeholder cleared still belongs to the load", () => {
+    const watcher = new TurnStateWatcher();
+    watcher.arm(true);
     expect(edges(watcher, [at(loading), ...repeat(4, at(replayed))])).toEqual(repeat(5, undefined));
     // Four quiet frames are short of the streak, so this frame is still the load's.
     expect(watcher.observe(at(replayed, spinner))).toBeUndefined();
