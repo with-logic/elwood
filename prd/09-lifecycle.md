@@ -194,8 +194,9 @@ flush of any transcript diagnostics buffered before the session sink existed
 (emitted as live warnings), PTY-exit registration, the readiness/authentication
 assertion, and the startup-usable evidence. If ANY of them fails, Elwood tears
 down the now-live PTY, hook bridge, terminal, and transcript watcher before
-rejecting, so a failed `startClaude`/`startCodex` never leaks a live process, IPC
-endpoint, or file watcher. (The one-shot version/preflight warning is NOT part of
+rejecting. This teardown is best-effort: it stops the hook bridge and the transcript
+watcher and disposes the terminal on every path, but a CLI process it could not confirm
+reaped may remain (see below). (The one-shot version/preflight warning is NOT part of
 this boundary — it is scheduled for delivery AFTER start resolves, per C-API-14.)
 The session ends the PTY with the same one-shot process-group reaper its exit path
 uses (§9.4, C-LIFE-10), so the leader's group is SIGKILLed once, not once per path.
@@ -204,10 +205,17 @@ startup), the PTY is not signaled again: the leader's pid may already belong to 
 unrelated process, so only that shared reaper runs. That reaper does nothing if the
 exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled, its
 exit is awaited within a bounded window, and the leader's process group is SIGKILLed on
-every path, even if the PTY signal throws, so a CLI-spawned descendant such as a
-hook-bridge grandchild (which POSIX reparents to PID 1 the instant the leader exits)
-cannot survive or reparent past a failed startup. The original startup error is preserved; a cleanup or reap failure is
-secondary and never replaces it.
+every path, even if the PTY signal throws. That kill is what stops a CLI-spawned
+descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
+the leader exits. The original startup error is preserved; a cleanup or reap failure
+is secondary and never replaces it. When that PTY termination or group reap cannot be
+confirmed, part of the CLI's process tree may still be running, and a typed startup
+error keeps its code and message and gains two details. `cleanupErrorCode` is
+content-free: the failed group reap's errno if there is one, else the termination's,
+when that errno is on the reap allowlist; otherwise `UnknownError`.
+`cleanupProcessGroupId` is the leader's group id, for diagnosis only: it may already
+have been reissued to an unrelated group, so it must never be signaled. A startup error
+that is not one of Elwood's typed errors is rethrown unchanged.
 
 ### 9.3 Resume
 

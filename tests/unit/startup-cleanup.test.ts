@@ -4,7 +4,7 @@
  * exist runs every cleanup step before rethrowing. The session ends its PTY first, then
  * the bridge, watcher, and terminal are released, and a failed step never skips a later
  * one. How the session ends the PTY and reaps its group is covered on the public paths in
- * `tests/claude/startup-pty-end.test.ts` and its Codex twin.
+ * `tests/claude/startup-cleanup-diagnostic.test.ts` and its Codex twin.
  */
 
 import { describe, expect, test } from "vitest";
@@ -14,10 +14,12 @@ import {
   type StartupPty,
 } from "../../src/runtime/startup/cleanup.ts";
 
+const LEADER = 4242;
 const fastTimeouts = { gracefulMs: 0, forceMs: 0 } as const;
 
 /** A session-owned PTY end that logs each call and its window, failing with `failure`. */
 const startupPty = (calls: string[], failure?: unknown): StartupPty => ({
+  pid: LEADER,
   terminate: (timeouts) => {
     calls.push(`pty.terminate ${timeouts.gracefulMs}/${timeouts.forceMs}`);
     return failure === undefined ? Promise.resolve() : Promise.reject(failure);
@@ -95,9 +97,10 @@ describe("cleanupStartupResources", () => {
     expect(calls).toEqual(["watcher.stop"]); // later steps still ran
   });
 
-  test("C-LIFE-10 a failed PTY end stays secondary and every later step still runs", async () => {
+  test("C-LIFE-10 an unconfirmed PTY end is returned, never thrown, and later steps run", async () => {
     // The original startup error must survive: a failed termination or group reap (e.g.
-    // EPERM) is contained, and the bridge, watcher, and terminal are still released.
+    // EPERM) comes back as a content-free diagnostic, and the bridge, watcher, and
+    // terminal are still released.
     const calls: string[] = [];
     const failure = Object.assign(new Error("reap failure"), { code: "EPERM" });
     await expect(
@@ -106,7 +109,7 @@ describe("cleanupStartupResources", () => {
         ...liveResources(calls),
         terminationTimeouts: fastTimeouts,
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ cleanupErrorCode: "EPERM", cleanupProcessGroupId: LEADER });
     expect(calls).toEqual(["pty.terminate 0/0", "bridge.stop", "watcher.stop", "terminal.dispose"]);
   });
 });

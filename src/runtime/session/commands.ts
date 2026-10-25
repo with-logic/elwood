@@ -9,7 +9,7 @@
 
 import { compactCommand, sessionCompact } from "../../core/compact.ts";
 import type { ControlQueue } from "../../core/control-queue/index.ts";
-import { holdWhileUnsafe } from "../../core/input/abort.ts";
+import { holdWhileUnsafe, type ObservedTerminal } from "../../core/input/abort.ts";
 import { ignoreInputFailure } from "../../core/input/index.ts";
 import { interruptKey, sessionInterrupt } from "../../core/interrupt.ts";
 import {
@@ -19,7 +19,6 @@ import {
   setPickerModel,
 } from "../../core/models/picker.ts";
 import type { AgentModelOption, ModelDialogAuthority } from "../../core/models/rows.ts";
-import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import { PickerTransactions } from "./picker.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
@@ -42,7 +41,7 @@ type Timeout = { readonly timeoutMs?: number };
  * the base constructor, so it is resolved per call.
  */
 export type CommandSurfaceDeps = {
-  readonly terminal: ScreenTerminal;
+  readonly terminal: ObservedTerminal;
   readonly statusEvents: SessionStatusEmitter;
   readonly status: () => ElwoodSessionStatus;
   readonly everReady: () => boolean;

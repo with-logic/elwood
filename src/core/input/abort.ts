@@ -2,6 +2,7 @@
 
 import { elwoodError } from "../errors.ts";
 import { isPickerIntervention } from "../models/intervention.ts";
+import type { ScreenTerminal } from "../models/tui-screen.ts";
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
 import { observeRender } from "./render-observation.ts";
 
@@ -14,6 +15,15 @@ export type InputTerminal = {
   sendInput(data: string | Uint8Array): void | Promise<void>;
   settled?(): Promise<void>;
   readonly renderFailed?: boolean;
+};
+
+/**
+ * A terminal whose received output can be observed before a write. Model-picker keys
+ * require it, so no caller can drive the picker without the barrier (C-API-56).
+ */
+export type ObservedTerminal = ScreenTerminal & {
+  settled(): Promise<void>;
+  readonly renderFailed: boolean;
 };
 
 export function waitForInput(ms: number, signal?: AbortSignal): Promise<void> {
@@ -85,6 +95,26 @@ export async function writeUnsafe(
   )
     return true;
   return terminal.renderFailed === true || guard?.blocked?.() === true;
+}
+
+/**
+ * `view` behind `source`'s received-output barrier, so a picker key written through it is
+ * decided on everything received and withheld when that cannot be observed (C-API-56).
+ * `renderFailed` stays live: a render can fail after the view is made.
+ */
+export function behindReceivedOutputBarrier(
+  source: ObservedTerminal,
+  view: ScreenTerminal,
+): ObservedTerminal {
+  return {
+    snapshot: () => view.snapshot(),
+    sendInput: (input) => view.sendInput(input),
+    subscribeRender: view.subscribeRender,
+    settled: () => source.settled(),
+    get renderFailed() {
+      return source.renderFailed;
+    },
+  };
 }
 
 export function throwIfInputAborted(signal?: AbortSignal): void {

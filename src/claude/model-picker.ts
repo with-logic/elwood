@@ -3,6 +3,7 @@
  * Implements PRD §5.3, C-API-23, and C-API-24.
  */
 
+import { arrowDown, arrowUp } from "../core/input/constants.ts";
 import { sendPickerInput } from "../core/models/input.ts";
 import { isOwnCompletePicker, type ModelPickerSpec } from "../core/models/picker.ts";
 import {
@@ -22,8 +23,6 @@ import {
 } from "./model-switch-confirmation.ts";
 
 const enterKey = "\r";
-const arrowDown = "\u001b[B";
-const arrowUp = "\u001b[A";
 
 /**
  * Claude's picker closes with `Esc to cancel`, windows a list longer than ten rows, and

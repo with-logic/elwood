@@ -1,4 +1,8 @@
-/** Shared composer keys and bounded input-recovery cadence (PRD §5.3, C-API-56). */
+/** Shared input keys and bounded input-recovery cadence (PRD §5.3, C-API-56). */
+
+/** Cursor keys as a terminal sends them in normal mode; native pickers and questions move on them. */
+export const arrowUp = "\u001b[A";
+export const arrowDown = "\u001b[B";
 
 export const bracketedPasteStart = "\u001b[200~";
 export const bracketedPasteEnd = "\u001b[201~";

@@ -7,6 +7,7 @@
  */
 
 import { elwoodError } from "../../core/errors.ts";
+import { arrowDown } from "../../core/input/constants.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import { abortError, holdWhileBlocked, pollDelay, raceSettle } from "./abort.ts";
 import type { LoginIo } from "./driver.ts";
@@ -30,7 +31,6 @@ const loginMethodRow: Readonly<Record<ClaudeLoginMethod, number>> = {
   third_party: 2,
 };
 
-const cursorDown = "\u001b[B";
 const enter = "\r";
 
 /** True once the flow has clearly moved past the method picker (or ended). */
@@ -56,7 +56,7 @@ export async function selectMethodIfShown(
   );
   if (!methodPickerVisible.test(shown)) return;
   const rows = loginMethodRow[options.method ?? "claudeai"];
-  for (let i = 0; i < rows; i += 1) await write(io, cursorDown, signal);
+  for (let i = 0; i < rows; i += 1) await write(io, arrowDown, signal);
   await write(io, enter, signal);
 }
 

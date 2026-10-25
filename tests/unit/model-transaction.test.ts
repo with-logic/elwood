@@ -7,6 +7,7 @@ import { writeQueuedInput } from "../../src/core/input/index.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { CommandSurface } from "../../src/runtime/session/commands.ts";
 import { claudePicker } from "../helpers/model-pickers.ts";
+import { synchronousRender } from "../helpers/synchronous-render.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -15,6 +16,7 @@ test("C-API-23 overlapping lists and a message wait for each picker to close", a
   let screen = "❯ ";
   const writes: { input: string; inPicker: boolean }[] = [];
   const terminal = {
+    ...synchronousRender,
     snapshot: () => ({ text: screen }),
     sendInput(input: string | Uint8Array) {
       writes.push({ input: String(input), inPicker: screen.includes("Select model") });

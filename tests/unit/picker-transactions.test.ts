@@ -6,6 +6,7 @@ import { delay } from "../../src/core/delay.ts";
 import { listPickerModels } from "../../src/core/models/picker.ts";
 import { waitForScreen } from "../../src/core/models/tui-screen.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
+import { synchronousRender } from "../helpers/synchronous-render.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -16,6 +17,7 @@ function setup() {
   const writes: string[] = [];
   const attempts = { count: 0 };
   const terminal = {
+    ...synchronousRender,
     snapshot: () => ({ text: "❯ " }),
     sendInput: (input: string | Uint8Array) => void writes.push(String(input)),
   };

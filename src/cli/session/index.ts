@@ -1,15 +1,13 @@
 /**
  * Exact new/resume session facade for headless CLI execution.
- * Implements PRD §12A.2/§12A.5 and C-CLI-03/C-CLI-04/C-CLI-08/C-CLI-15.
+ * Implements PRD §12A.2/§12A.5 and C-CLI-03/C-CLI-04/C-CLI-08/C-CLI-15/C-CLI-28.
  */
 
 import { randomUUID } from "node:crypto";
-import { codexTurnIdentity } from "../../codex/accepted-turn.ts";
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../core/agent-session.ts";
 import { elwoodError } from "../../core/errors.ts";
 import type { TurnEvent } from "../../core/simple/events.ts";
 import { SessionBase } from "../../core/simple/session.ts";
-import { defaultBoundarySignal } from "../../core/simple/turn.ts";
 import type { TurnOptions } from "../../core/simple/turn-types.ts";
 import type { ElwoodSessionStatus, TerminalSize, Unsubscribe } from "../../core/types.ts";
 import { readPrivateSessionRecord, removeSessionIdentity } from "../../state/private-session.ts";
@@ -21,6 +19,7 @@ import {
   createCliLaunch,
   defaultCliLaunchDependencies,
 } from "./launch.ts";
+import { type CliTurnReaders, cliTurnReaders } from "./turn-readers.ts";
 
 export type CliSessionDependencies = {
   readonly randomId: () => string;
@@ -95,14 +94,15 @@ export class HeadlessCliSession
     super();
     this.request = request;
     this.agent = request.agent;
-    this.readNativeTurn = request.agent === "codex" ? codexTurnIdentity : undefined;
+    this.readNativeTurn = cliTurnReaders[request.agent].native;
+    this.readBoundarySignal = cliTurnReaders[request.agent].boundary; // C-CLI-28
     this.id = id;
     this.resumed = request.resume !== undefined;
     this.launchSession = launch;
   }
 
-  protected readonly readBoundarySignal = defaultBoundarySignal;
-  protected override readonly readNativeTurn: typeof codexTurnIdentity | undefined;
+  protected readonly readBoundarySignal: CliTurnReaders["boundary"];
+  protected override readonly readNativeTurn: CliTurnReaders["native"];
 
   protected launch(): Promise<ElwoodAgentSession> {
     const pending = this.validatedLaunch();

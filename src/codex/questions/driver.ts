@@ -1,7 +1,7 @@
 /** Guard private native Codex question navigation and answer writes (PRD §4). */
 import { delay } from "../../core/delay.ts";
 import { bracketedPasteEnd, bracketedPasteStart } from "../../core/input/constants.ts";
-import { pasteSettleDelayMs } from "../../core/input/index.ts";
+import { arrowDown, arrowUp, pasteSettleDelayMs } from "../../core/input/index.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
@@ -154,7 +154,7 @@ async function stageAnswer(
     while (view.selected !== selected) {
       const before = view.selected!;
       const after = before + (before < selected ? 1 : -1);
-      await io.write(before < selected ? "\x1b[B" : "\x1b[A", (current) => {
+      await io.write(before < selected ? arrowDown : arrowUp, (current) => {
         const currentView = match(current);
         return currentView?.selected === before && unownedChoice(currentView, question);
       });

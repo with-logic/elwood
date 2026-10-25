@@ -16,6 +16,14 @@ back each entry are listed in `prd/14-conformance.md`.
   rather than at the next 100 ms poll. They return sooner and hold the session's
   input queue for less time. The poll remains as a fallback for a frame that no
   render reports.
+- A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
+  `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
+  reaped now says so. The typed startup error keeps its code and
+  message and gains `details.cleanupErrorCode` (an allowlisted errno, else
+  `UnknownError`) and `details.cleanupProcessGroupId`, which is for diagnosis only and
+  must never be signaled. Before, that failure was dropped silently. When a PTY is not
+  confirmed terminated and its group reap fails too, `termination_failed` now also
+  carries the reap's errno as `details.reapErrno`, next to `details.reapError`.
 - A failed start or resume no longer signals a CLI that already exited during startup,
   and no longer reaps its process group a second time. The leader's pid could already
   belong to another process. Cleanup used to send that pid SIGTERM and then SIGKILL and
@@ -43,6 +51,28 @@ back each entry are listed in `prd/14-conformance.md`.
   and failed with `blocked_prompt` (5 of 7 concurrent fresh-folder runs). The
   limit now counts only time the prompt is on screen. Queued input is still
   held until Claude's composer appears.
+
+- A fresh Claude session no longer emits `transcript_read_error` (`ENOENT`) while it waits
+  for its first turn. Claude names its transcript at startup but writes the file only once
+  a turn begins, and Elwood had reported each poll of the missing file as a read error.
+  Removing a transcript after it existed still warns, as does any other read failure.
+- `listModels` and `setModel` no longer send a picker key into a prompt that has
+  reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
+  answer and Escape is now decided after every received byte is rendered, like
+  queued input and failure cleanup already were. If the screen cannot be verified,
+  the key is withheld and the operation fails with `model_automation_failed`.
+  Before, an arrow chosen from the stale picker frame could move a permission or
+  question prompt's selection.
+
+- A Claude turn that Claude itself rejects, such as one sent with a model that does not
+  exist, now fails with the new `turn_failed` error instead of passing as a successful
+  reply. `ClaudeSession.send` rejects and `stream` throws after its collected events;
+  `error.details.agentError` carries Claude's error name (for example `model_not_found`).
+  `elwood run` exits 1 with a `turn_failed` error record where it used to exit 0 and
+  print Claude's error text as the response. A late rejection whose `prompt_id` names an
+  earlier submission than the current turn's does not fail the current turn. When either
+  hook lacks a `prompt_id`, a rejection that arrives during a turn is attributed to that
+  turn. Codex rejections are not recognized yet.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker

@@ -25,7 +25,7 @@ export { sanitizePasteText } from "./sanitize.ts";
 export const commandEnterDelayMs = 150;
 export const pasteSettleDelayMs = 150;
 export const pasteNudgeDelayMs = 1_000;
-export { pasteNudgeAttempts } from "./constants.ts";
+export { arrowDown, arrowUp, pasteNudgeAttempts } from "./constants.ts";
 
 /** Explicitly best-effort input for startup/recovery automation. */
 export function ignoreInputFailure(input: void | Promise<void>): void {

@@ -106,8 +106,10 @@ setup turn and discards that turn's response before observing the user turn. It
 is a real agent turn: tools and other side effects performed during persona setup
 remain even though its assistant response is omitted from CLI output. Explicit
 persona plus resume is a usage error. An agent process exit before
-CLI-requested cleanup is `agent_exited`, including a zero-status exit. Response
-data already collected remains available on later failure.
+CLI-requested cleanup is `agent_exited`, including a zero-status exit. A Claude turn
+the agent rejects (§5.8), including the persona setup turn, is `turn_failed`
+rather than a successful result. Response data already collected remains
+available on later failure.
 
 Cleanup runs exactly once. A cleanup failure never masks a primary usage,
 agent, timeout, or interruption outcome, and it changes an otherwise successful
@@ -217,9 +219,10 @@ regular where applicable, symlink-safe, and atomically written. One session
 identity supports at most one live owner; concurrent exact resumes may fail on
 the adapter's underlying startup conflict in v1.
 
-Exit status is 0 for success or consumer closure, 1 for agent or cleanup
-failure, 2 for usage or configuration failure, 124 for timeout, and 130 for
-interruption. A primary nonzero status survives cleanup failure. Text errors are
+Exit status is 0 for success or consumer closure, 1 for agent failure
+(including `agent_exited` and `turn_failed`) or cleanup failure, 2 for usage
+or configuration failure, 124 for timeout, and 130 for interruption. A primary
+nonzero status survives cleanup failure. Text errors are
 concise and go to stderr while structured protocols retain stable error codes.
 Unknown long options identify the token and suggest the nearest documented
 option when the match is unambiguous. Validation messages identify relevant

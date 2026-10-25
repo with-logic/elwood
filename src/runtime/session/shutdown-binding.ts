@@ -127,6 +127,7 @@ export class SessionShutdownBinding {
         loops.pause();
       },
       pty: {
+        pid: pty.pid,
         terminate: async (timeouts) => {
           if (this.exitFinalization === undefined) {
             await terminatePty(pty, "SIGTERM", reapPolicy.reaper, timeouts);
