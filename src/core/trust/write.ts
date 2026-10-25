@@ -1,13 +1,11 @@
 /** One abortable, generation-owned trust attempt for both layouts (PRD §5.4/C-TRUST-01). */
 import type { StartupWriteCompletion } from "../startup/write.ts";
-import { cursorSelection, type SelectableOption } from "../terminal-options.ts";
+import type { SelectableOption } from "../terminal-options.ts";
 import { abortableDelay, ownWrite, untilWoken } from "./abortable.ts";
 import type { GateDeadline } from "./deadline.ts";
+import { numberedRetry, observationMs, retryMs, type TrustStep, trustStep } from "./step.ts";
 import type { TrustWriteResult } from "./types.ts";
 import { choiceIdentity, type TrustCandidate, type TrustView } from "./view.ts";
-
-const retryMs = 250;
-const observationMs = 20;
 
 export class TrustAttempt {
   readonly candidate: TrustCandidate;
@@ -16,6 +14,8 @@ export class TrustAttempt {
   private clearance = false;
   private retryAt = 0;
   private previousInput: string | undefined;
+  /** A frame rendered after the last write: only such a frame can show it was ignored. */
+  private renderedSinceWrite = false;
   private wakeWaiter: (() => void) | undefined;
   /** The confirming write fulfilled; that is not clearance, which only a frame verifies. */
   confirmationWriteFulfilled = false;
@@ -32,8 +32,9 @@ export class TrustAttempt {
     return this.clearance;
   }
 
-  /** A frame rendered: a waiting answer re-reads it (see `awaiting`). */
+  /** A frame rendered: a waiting answer or retry re-reads it (`awaiting`, `numberedRetry`). */
   wake(): void {
+    this.renderedSinceWrite = true;
     const waiter = this.wakeWaiter;
     this.wakeWaiter = undefined;
     waiter?.();
@@ -97,14 +98,30 @@ export class TrustAttempt {
         if (!(await this.pause(Math.min(observationMs, remainingMs)))) return this.completion();
         continue;
       }
-      const option = this.readChoice(view);
-      if (typeof option === "string") return option;
-      const step = trustStep(option);
-      if (!(await this.send(write, step))) return this.completion();
-      if (!(await this.pause(Math.min(step.pollMs, this.retryAt - Date.now()))))
-        return this.completion();
+      const next = this.answer(write, view);
+      if (typeof next === "string") return next;
+      if (!(await next)) return this.completion();
     }
     return this.completion();
+  }
+
+  /**
+   * `view`'s choice settled, or the wait for the next read: false once aborted. Not async,
+   * so a rejected write reaches `run` in as few turns as a direct `send` would.
+   */
+  private answer(
+    write: (input: string) => TrustWriteResult,
+    view: TrustView,
+  ): StartupWriteCompletion | Promise<boolean> {
+    const option = this.readChoice(view);
+    if (typeof option === "string") return option;
+    const step = this.stepFor(option);
+    return step === undefined ? this.nextFrame() : this.send(write, step);
+  }
+
+  private stepFor(option: SelectableOption): TrustStep | undefined {
+    if (option.style !== "numbered" || !this.confirmationWriteFulfilled) return trustStep(option);
+    return numberedRetry(option, this.candidate.spec.agent, this.renderedSinceWrite);
   }
 
   /**
@@ -133,21 +150,24 @@ export class TrustAttempt {
     return abortableDelay(this.controller.signal, ms);
   }
 
-  /** Write `step` unless it repeats the last input within the retry interval. */
+  /** Write `step` unless it repeats the last input within the retry interval, then pause. */
   private async send(
     write: (input: string) => TrustWriteResult,
-    step: ReturnType<typeof trustStep>,
+    step: TrustStep,
   ): Promise<boolean> {
-    if (Date.now() < this.retryAt && step.input === this.previousInput) return true;
-    if (this.controller.signal.aborted) return false;
-    const result = write(step.input);
-    // A void writer has already fulfilled before an observer can replace the frame.
-    if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
-    const fulfilled = await this.own(result);
-    if (fulfilled && step.confirm) this.confirmationWriteFulfilled = true;
-    this.previousInput = step.input;
-    this.retryAt = Date.now() + retryMs;
-    return fulfilled;
+    if (Date.now() >= this.retryAt || step.input !== this.previousInput) {
+      if (this.controller.signal.aborted) return false;
+      this.renderedSinceWrite = false;
+      const result = write(step.input);
+      // A void writer has already fulfilled before an observer can replace the frame.
+      if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
+      const fulfilled = await this.own(result);
+      if (fulfilled && step.confirm) this.confirmationWriteFulfilled = true;
+      this.previousInput = step.input;
+      this.retryAt = Date.now() + retryMs;
+      if (!fulfilled) return false;
+    }
+    return this.pause(Math.min(step.pollMs, this.retryAt - Date.now()));
   }
 
   private readChoice(view: TrustView): SelectableOption | StartupWriteCompletion {
@@ -163,20 +183,4 @@ export class TrustAttempt {
     }
     return view.option!; // Identity exists only for a validated affirmative.
   }
-}
-
-/**
- * A cursor answer never sends a relative arrow or a bare Enter (docs/cli-behavior.md).
- * Claude 2.1.310 remounts its dialog with the cursor back on "No, exit" once its input
- * guard settles, and a retried arrow can land after the first already moved; a bare
- * Enter decided from the earlier frame then confirms the decline. The absolute selection
- * lands on the same row however often it repeats, and Enter travels only in the same
- * write as it, once the rendered cursor sits on the affirmative.
- */
-function trustStep(option: SelectableOption) {
-  if (option.style === "numbered")
-    return { input: `${option.number}\r`, confirm: true, pollMs: retryMs };
-  const select = cursorSelection(option);
-  const confirm = option.offset === 0;
-  return { input: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
 }

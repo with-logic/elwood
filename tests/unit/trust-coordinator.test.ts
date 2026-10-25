@@ -56,10 +56,11 @@ test("C-TRUST-01 newly valid recovery rearms once while blocked status remains l
   const first = settled(responder.handle(trust, write, () => trust));
   await vi.advanceTimersByTimeAsync(5_000);
   await expect(first).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledTimes(20);
+  // No output followed the answer, so it was never typed again.
+  expect(write).toHaveBeenCalledTimes(1);
   expect(responder.handle(trust, write, () => trust)).toBeUndefined();
   await vi.advanceTimersByTimeAsync(5_000);
-  expect(write).toHaveBeenCalledTimes(20);
+  expect(write).toHaveBeenCalledTimes(1);
   responder.handle(unsupported, write);
   let frame = trust;
   const recovered = settled(responder.handle(trust, write, () => frame));
@@ -70,7 +71,7 @@ test("C-TRUST-01 newly valid recovery rearms once while blocked status remains l
   await expect(recovered).resolves.toBe("answered");
   expect(responder.blockedPrompt).toBeUndefined();
   expect(responder.inputBlocking).toBe(false);
-  expect(write).toHaveBeenCalledTimes(21);
+  expect(write).toHaveBeenCalledTimes(2);
 });
 
 test("C-TRUST-01 unknown replacements remain blocked until positively cleared", async () => {

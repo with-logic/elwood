@@ -724,7 +724,8 @@ high-trust probe, a manual repeat at eight seconds cleared that same gate; the
 first write had already produced premature startup activity at roughly one second.
 Numbered automation therefore retries every 250 ms for at most five seconds,
 revalidates the same header and exact option identity before each write, and
-reports answered only after the gate clears. A native directory-to-hook transition
+reports answered only after the gate clears. Only the first write carries the
+number; see "Codex numbered trust retries" below for what a retry may send. A native directory-to-hook transition
 confirms directory clearance without sending an old answer to the hook gate.
 An observed clear-and-reappear generation cancels the old attempt.
 
@@ -833,6 +834,53 @@ the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
 A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the welcome
 box can scroll away while its composer and model/reasoning/path footer remain.
 Those native rows also prove clearance; welcome presence is not required.
+
+### Codex numbered trust retries (0.164, 2026-10-25)
+
+Under `autotrust`, Codex 0.164 sometimes received "1" as a user message right
+after its directory-trust gate. Elwood wrote `1\r` when the `Folder access` gate
+painted, then wrote `1\r` again 250 ms later because the frame still showed the
+gate. Under load Codex had taken the first answer but painted its composer after
+the retry, so the second `1\r` submitted "1" as a turn. In one capture the writes
+landed at 21.26 s and 21.52 s, and the transcript then showed `› 1` with the turn
+running at 24.7 s.
+
+Codex also discards keys written as the gate paints. In 8 fresh git folders
+launched at once (load average about 140), with `autotrust` off and a probe
+typing `1\r` 8–33 ms after the gate's first frame, 7 of the 8 answers were
+dropped. No output followed for 3 s. A bare `\r` then confirmed the
+highlighted `› 1. Trust and continue` 24–156 ms later in all 7. The eighth
+answer (written 13 ms after the gate's first frame) was taken. Once each
+composer painted, a bare `\r` on the empty composer submitted nothing in 8 of
+8: no hook fired, no `Working` row, and the status stayed `ready`. Typing `1`
+alone selects option 1 without confirming it (the gate stayed for 40 s). So
+neither a time limit nor new output can tell a dropped answer from one Codex
+is still processing, and a dropped answer produces no output to wait for.
+
+Elwood therefore types the number once per appearance of the gate. While the
+rendered caret is on the affirmative, a Codex retry is Enter alone, every
+250 ms within the gate's five on-screen seconds. On the gate it confirms the
+highlighted affirmative; on the empty composer it does nothing. Claude never
+gets a bare Enter (its list remounts with the caret on the decline; see the
+next section), and Codex's hook gate opens with its caret on `Review hooks`.
+Those numbered gates are answered again only after a frame rendered from
+output that arrived after the last write still shows them.
+`tests/codex/session-trust-slow-answer.test.ts` covers both cases.
+
+Measured with 8 fresh git folders launched at once per round, two rounds per
+arm, load average 20–60 on a machine that leaked shell processes were also
+slowing: on the previous code, 9 of 16 launches typed `1` into the composer (2
+to 11 `1\r` writes each), and only 5 of 16 reported their answer. With this
+change, 0 of 16 did: each typed the number once, then 1 to 15 bare Enters, and
+all 16 reported `sent 1`. `tests/e2e/trust-retry-codex.e2e.ts` makes the lag
+certain by holding Codex's output from Elwood for 2 s after the answer while
+Codex runs normally. On the previous code it failed both runs: seven more `1\r`
+writes reached the composer, "11" was submitted, and the model answered "What
+would you like me to do with 11?". With this change it passed 3 of 3. Freezing
+Codex itself (SIGSTOP for 2 s right after the answer) does not work as a test:
+Codex then exits with `timed out discarding buffered terminal input`, whatever
+Elwood types. Codex 0.164 discards buffered input at screen changes like this
+one, and a stalled discard is fatal.
 
 ### Claude trust selection reset (2.1.310, 2026-10-25)
 
@@ -1254,8 +1302,9 @@ Four real-PTY edges were invisible to the unit fixtures:
 - Codex 0.153.3 can paint the numbered menu before its input loop accepts the first
   hotkey. A successful PTY write therefore does not prove the dialog cleared. The
   responder runs one bounded retry operation while a safe numbered option remains
-  on the current rendered frame; once it disappears, no delayed key can reach the
-  composer. Some PTY hosts close their input side before process completion and
+  on the current rendered frame. A frame showing the option does not prove the key
+  was ignored, so a retry can still reach the composer; it is Enter alone, or it
+  waits for new output (see "Codex numbered trust retries"). Some PTY hosts close their input side before process completion and
   then return `EIO` from `setRawMode(false)`; contain only terminal-gone restoration
   errors because that host is already the sole remaining terminal-mode owner.
 - Interactive login-shell probes can give their external command control of the
