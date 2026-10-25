@@ -14,7 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Removing a Codex transcript that Elwood was reading now emits
   `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
-  file is missing, as a removed Claude transcript already does. Elwood used to
+  file is missing, and at the final flush if it is still gone, as a removed Claude
+  transcript already does. Elwood used to
   read the missing file as an empty, truncated one and say nothing, so a host lost
   the session's transcript activity without a warning. A transcript that has not
   been created yet still waits silently.

@@ -92,7 +92,7 @@ export class CodexTranscriptWatcher {
       budget.chunks -= 1;
       // Each read is sized by its own stat: a file not created yet reads nothing, and a
       // removal after it existed throws for the guard rather than reading as a truncation.
-      const chunk = this.guard.read(cursor.path, () => cursor.readLive());
+      const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
       if (!chunk) break; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.canContinueNow) break;

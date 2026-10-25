@@ -1233,7 +1233,8 @@ five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
   transcript activity was silently gone: no `transcript_read_error` within 10 s
   on `main`. The Codex scan now reads through the shared cursor's existence
   policy, as Claude's does: until a stat has seen the file, ENOENT waits silently;
-  after that, every poll warns with `ENOENT` while the file is missing. A file that reappears is read with the
+  after that, every poll, and the final flush, warns with `ENOENT` while the file is
+  missing. A file that reappears is read with the
   existing truncation rule. C-CODEX-23.
 
 `elwood sessions` reports `live` from the presence of a `.sock` file in the

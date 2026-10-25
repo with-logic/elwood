@@ -122,3 +122,18 @@ test("C-CODEX-23 a removal between a scan's reads warns and is never read as a t
   expect({ errors, labels }).toEqual({ errors: ["ENOENT"], labels: names });
   watcher.finish();
 });
+
+test("C-CODEX-23 the final flush reports a removed transcript but not one never created", () => {
+  const removed = transcriptPath();
+  const seen = watch(removed);
+  writeFileSync(removed, record("first"));
+  seen.watcher.scan();
+  unlinkSync(removed);
+  seen.watcher.finish(); // the final flush reads the removed file
+  const never = watch(transcriptPath());
+  never.watcher.finish();
+  expect({ removed: seen.errors, never: never.errors }).toEqual({
+    removed: ["ENOENT"],
+    never: [],
+  });
+});
