@@ -20,6 +20,8 @@ import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./
 const QUIET_STREAK_MS = 2_000;
 const QUIET_DEADLINE_MS = 15_000;
 const FRAME_MS = 250;
+// Twelve measured resumes latched `ready` 0.25 to 0.32 s after Codex's first output.
+const COMPOSER_TO_READY_MS = 2_000;
 
 async function waitForQuietScreen(session: CodexSessionApi): Promise<void> {
   const started = Date.now();
@@ -66,19 +68,34 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     await first.stop();
 
     const startedAt = Date.now();
-    resumed = await resumeCodex({ ...opts, elwoodSessionId: id });
+    const observed = await resumeCodex({ ...opts, elwoodSessionId: id });
+    resumed = observed;
     // Capture status transitions from resume start: the transcript replay must NOT
     // fabricate a phantom running->ready cycle after readiness (a host application
     // surfaced that as a false "unread reply").
     const transitions: string[] = [];
     resumed.on("status", (event) => transitions.push(event.status));
+    // Codex paints nothing for 1.5 to 8 s after the resume spawns it through the user's
+    // login shell, longer on a loaded machine, so readiness is timed from its first
+    // composer frame (the screen table's composer rule). A composer-driven ready follows
+    // that frame within a fraction of a second. The ~10 s fallback deadline starts at
+    // Codex's first rendered frame, which comes within a quarter second of the composer,
+    // so a deadline-driven ready would trail the composer by about 10 s.
+    let composerAt: number | undefined;
+    resumed.on("terminal:data", () => {
+      if (composerAt === undefined && /^\s*›/m.test(observed.terminal.snapshot().text))
+        composerAt = Date.now();
+    });
     await waitFor(() => (resumed?.status === "ready" ? true : undefined), "resumed ready", 30_000);
-    const elapsed = Date.now() - startedAt;
-    // The 10s deadline was the old floor; the composer path reaches ready well under
-    // it. Allow generous headroom for CI while still proving we don't pay the deadline.
+    const readyAt = Date.now();
+    const composer =
+      composerAt === undefined
+        ? "no composer frame yet"
+        : `composer at ${composerAt - startedAt}ms`;
     assert.ok(
-      elapsed < 8_000,
-      `resumed reached ready in ${elapsed}ms (must beat the ~10s deadline)`,
+      composerAt !== undefined && readyAt - composerAt < COMPOSER_TO_READY_MS,
+      `resumed reached ready ${readyAt - startedAt}ms after resume began, ${composer};` +
+        ` ready must follow the composer within ${COMPOSER_TO_READY_MS}ms`,
     );
     // Wait for the transcript replay to finish painting (a sustained quiet screen),
     // then assert no phantom turn fired: once ready, the settling watcher swallows
