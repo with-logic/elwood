@@ -87,16 +87,22 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     for (const verb of ["stop", "kill"] as const) {
       installFakes();
       const session = await startClaude({ cwd: tempDir() });
-      const pty = ptys.at(-1)!;
-      vi.spyOn(pty, "kill").mockImplementation(() => {
-        throw Object.assign(new Error("kill ESRCH"), { code: "ESRCH", syscall: "kill" });
-      });
-      await expect(session[verb]()).rejects.toMatchObject({
-        code: "termination_failed",
-        details: { cause: "kill ESRCH", errno: "ESRCH", syscall: "kill" },
-      });
-      expect(reapedGroups).toContain(pty.pid); // the group was still reaped
-      resetFakes();
+      try {
+        const pty = ptys.at(-1)!;
+        vi.spyOn(pty, "kill").mockImplementation(() => {
+          throw Object.assign(new Error("kill ESRCH"), { code: "ESRCH", syscall: "kill" });
+        });
+        await expect(session[verb]()).rejects.toMatchObject({
+          code: "termination_failed",
+          details: { cause: "kill ESRCH", errno: "ESRCH", syscall: "kill" },
+        });
+        expect(reapedGroups).toContain(pty.pid);
+      } finally {
+        // The rejected verb never reached runtime cleanup; teardown stops the hook bridge
+        // without signaling the PTY again.
+        await session.teardown();
+        resetFakes();
+      }
     }
   });
 

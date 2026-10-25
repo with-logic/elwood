@@ -70,6 +70,25 @@ describe("C-LIFE-10 terminatePty", () => {
     });
   });
 
+  test("a throwing exit subscription is typed with its errno and the group is still reaped", async () => {
+    const killed: number[] = [];
+    const throwingOnExitPty = {
+      ...deadPty,
+      onExit: () => {
+        throw Object.assign(new Error("onExit EBADF"), { code: "EBADF", syscall: "ioctl" });
+      },
+    };
+    const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
+    await expect(
+      terminatePty(throwingOnExitPty, "SIGTERM", reaper, { gracefulMs: 0, forceMs: 0 }),
+    ).rejects.toMatchObject({
+      code: "termination_failed",
+      message: "Could not terminate the PTY: onExit EBADF",
+      details: { cause: "onExit EBADF", errno: "EBADF", syscall: "ioctl" },
+    });
+    expect(killed).toEqual([LEADER]);
+  });
+
   test("a non-Error reap failure is stringified into the diagnostic", async () => {
     // The reap killer throws a bare string (not an Error): its String() form is
     // still carried, never dropped, when termination also fails.
