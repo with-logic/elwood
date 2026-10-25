@@ -83,6 +83,19 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     resetPreflight();
   });
 
+  test.each([
+    { status: 1, stdout: "", stderr: "boom" },
+    { status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT", message: "timed out" } },
+  ])("C-LIFE-11 a failed --version read is not kept, so a later start re-reads it", async (failed) => {
+    let reads = 0;
+    setCommandRunnerForTests(() =>
+      ++reads === 1 ? failed : { status: 0, stdout: "2.1.144", stderr: "" },
+    );
+    await expect(preflightClaude(false)).rejects.toMatchObject({ code: "claude_start_failed" });
+    await expect(preflightClaude(false)).resolves.toBeUndefined();
+    expect(reads).toBe(2);
+  });
+
   test("detectCodexCliCapabilities does not poison later starts after a failed `codex --help`", async () => {
     let helps = 0;
     setCommandRunnerForTests((_command, args) => {

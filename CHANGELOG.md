@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `claude --version` or `codex --version` check that fails (it exits nonzero,
+  times out, or cannot start) no longer fails every later start of that adapter
+  in the process. Elwood kept the failed result and replayed it as the same
+  `claude_start_failed` or `codex_start_failed`; a later start now runs the
+  check again. Concurrent starts still share one check and its outcome.
 - A Codex `stop()` or `teardown()` that gives up waiting for the ended turn's record
   now says so. When the 2-second wait runs out with Codex still running, the session
   emits one content-free `turn_commit_wait_expired` warning, with its `activity`, before

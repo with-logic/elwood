@@ -49,6 +49,17 @@ test("C-LIFE-11 a rejected run is not kept, so the next caller runs again", asyn
   expect(runs).toEqual(["a", "a"]);
 });
 
+test("C-LIFE-11 a settled value its probe calls failed is shared in flight but not kept", async () => {
+  let runs = 0;
+  const run = () => Promise.resolve(++runs === 1 ? "failed" : "ok");
+  const cache = createProbeCache<string>(2, (value) => value !== "failed");
+  expect(await Promise.all([cache.get("k", run), cache.get("k", run)])).toEqual([
+    "failed",
+    "failed",
+  ]);
+  expect([await cache.get("k", run), await cache.get("k", run), runs]).toEqual(["ok", "ok", 2]);
+});
+
 test("C-PERF-02 only the most recently used settled results are kept", async () => {
   const cache = createProbeCache<string>(2);
   await cache.get("a", ok("A"));

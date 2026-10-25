@@ -58,18 +58,23 @@ function finalizeAutoupdate(
   }
 }
 
-// The in-flight/settled `--version` read per adapter. Caching the PROMISE (not the value) means N
-// concurrent first spawns share ONE subprocess rather than each starting its own.
+/** A `--version` read that ran and exited 0; a killed, unspawnable, or failing one is not kept. */
+const readSucceeded = (result: CommandResult): boolean =>
+  result.status === 0 && result.error === undefined;
+
+// The `--version` read per adapter. Concurrent first spawns share the in-flight PROMISE, so N of
+// them start ONE subprocess; once it settles, only a successful read is kept, as a value.
 const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
-  claude: createProbeCache(1),
-  codex: createProbeCache(1),
+  claude: createProbeCache(1, readSucceeded),
+  codex: createProbeCache(1, readSucceeded),
 };
 
 /**
  * Reads the adapter's `--version` at most once per process. Concurrent first callers share the
- * single in-flight read; later callers reuse the settled result. A REJECTED read is evicted (not
- * retained), so a transient failure does not poison later callers — they re-attempt. Invalidated
- * after an autoupdate so the post-update version is re-read.
+ * single in-flight read and its outcome; later callers reuse a successful result. A read that
+ * rejects, or resolves with a failed probe (nonzero exit, timeout, spawn error), is not
+ * retained, so a transient failure does not poison later callers — they re-attempt (C-LIFE-11).
+ * Invalidated after an autoupdate so the post-update version is re-read.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
@@ -95,6 +100,5 @@ export function setUpdateCoordinatorForTests(coordinator: typeof coordinatedAuto
 }
 
 export function resetPreflightCacheForTests(): void {
-  versionReads.claude.clear();
-  versionReads.codex.clear();
+  for (const cache of Object.values(versionReads)) cache.clear();
 }
