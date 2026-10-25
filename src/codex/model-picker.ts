@@ -4,7 +4,7 @@
  */
 
 import { sendPickerInput } from "../core/models/input.ts";
-import type { ModelPickerSpec } from "../core/models/picker.ts";
+import { isOwnCompletePicker, type ModelPickerSpec } from "../core/models/picker.ts";
 import {
   bottomDialogCandidate,
   bottomDialogRow,
@@ -31,7 +31,9 @@ export const codexModelPicker: ModelPickerSpec = {
   isClear: codexComposerClearance,
   isCandidate: (text) =>
     bottomDialogCandidate(text, pickerGrammar) || bottomDialogCandidate(text, reasoningGrammar),
-  isOpen: (text) => codexModelPickerHeader.test(text),
+  hasPickerHeader: (text) => codexModelPickerHeader.test(text),
+  // Codex's switch has no dialog of the caller's own to replace the picker.
+  isCallerDialog: () => false,
   activeDialog: (text, authority) => {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to
     // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).
@@ -50,11 +52,7 @@ export const codexModelPicker: ModelPickerSpec = {
   apply: async (io, timeoutMs) => {
     // Enter CONFIRMS a model, so it is revalidated against the operation's own picker
     // rather than a bare header a transcript could print (C-API-24).
-    await sendPickerInput(
-      io,
-      "\r",
-      (text) => codexModelPicker.activeDialog(text, ownOperation) === "picker",
-    );
+    await sendPickerInput(io, "\r", isOwnCompletePicker(codexModelPicker));
     await waitForScreen(
       io.terminal,
       (text) => reasoningHeader.test(text),

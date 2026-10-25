@@ -3,6 +3,7 @@
  * Implements PRD §5.3, §5.7, C-API-23, and C-API-24.
  */
 
+import type { ElwoodAgentKind } from "../activity/index.ts";
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import { sendPickerInput } from "./input.ts";
@@ -31,12 +32,23 @@ export type ModelPickerIo = {
 };
 
 export type ModelPickerSpec = {
-  readonly agent: string;
+  readonly agent: ElwoodAgentKind;
   /** A native model-dialog shell can hold input before its rows finish. */
   readonly isCandidate: (text: string) => boolean;
   /** Positive native composer evidence for releasing a foreign-dialog hold. */
   readonly isClear: (text: string) => boolean;
-  readonly isOpen: (text: string) => boolean;
+  /**
+   * Only that the picker's title is on screen: a transcript can print it, and a picker
+   * still painting shows it over stale rows. It may hold input or end a close wait; it
+   * never authorizes a write.
+   */
+  readonly hasPickerHeader: (text: string) => boolean;
+  /**
+   * Positive evidence that the bottom-most dialog is the caller's own, which replaced
+   * ours: Claude's `PreModelSwitch` hook confirmation. Elwood neither answers it nor keeps
+   * it as a survivor; it is left for the caller (PRD §5.3).
+   */
+  readonly isCallerDialog: (text: string) => boolean;
   /**
    * The live, bottom-most model dialog: the only one Elwood may cancel or hold input on.
    * `authority` is REQUIRED and carries proof Elwood opened this dialog (see
@@ -63,37 +75,34 @@ export type ModelPickerSpec = {
 
 /**
  * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority.
- * Every wait and write below is gated on `ours(spec)` rather than the raw `isOpen` header:
- * a header match alone is untrusted candidate evidence — a transcript or the agent's own
- * output can print `Select model` — so navigating or Escaping on it could send keys into a
- * running turn, the real composer, or another prompt (C-API-24).
+ * Every key and Escape below is gated on `isOwnCompletePicker(spec)`: the operation's own COMPLETE picker,
+ * never a `painting` dialog and never `hasPickerHeader`. A header match alone is untrusted:
+ * a transcript or the agent's own output can print `Select model`, so navigating or
+ * Escaping on it could send keys into a running turn, the real composer, or another prompt
+ * (C-API-24). The header gates only two waits, the `/model` open wait (`openAndParse`) and
+ * the `closing` wait; the cursor-settle wait reads a parsed row. None of them writes.
  */
 const opened: ModelDialogAuthority = { opened: true };
 
-/** True only while THIS operation's own dialog is the bottom-most region of the screen. */
-const ours = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, opened) !== undefined;
+/**
+ * True only while THIS operation's own COMPLETE picker is the bottom-most region: never its
+ * `painting` shell and never a `follow-up` stage. It gates every shared navigation,
+ * selection, and cancelling key, and each adapter's selecting key; a follow-up is answered
+ * only by the adapter's `apply`, under that stage's own guard (Claude's cache warning,
+ * Codex's reasoning level).
+ */
+export const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
+  spec.activeDialog(text, opened) === "picker";
 
 /**
- * The guard for a CANCELLING Escape, which is deliberately weaker than `ours`.
- *
- * Navigation and selection must land on a fully recognized dialog, because an arrow or
- * Enter on the wrong screen changes something. Escape only closes, and this operation
- * opened the screen that is up: a picker whose rows never parsed is still OUR picker, and
- * abandoning it because the grammar cannot describe it would leave it open for the next
- * queued write. So the header is enough here, and only here.
+ * The CLOSE wait after Elwood's own Escape, and deliberately weaker than `isOwnCompletePicker` because it
+ * only waits: while any stage of the dialog or its header still shows, the picker may be
+ * mid-close, and resolving there would let the next operation find picker text already on
+ * screen. It never gates a write: every key, Escape included, needs `isOwnCompletePicker`.
  */
-const oursOrOpen = (spec: ModelPickerSpec) => (text: string) =>
-  ours(spec)(text) || spec.isOpen(text);
+const closing = (spec: ModelPickerSpec) => (text: string) =>
+  spec.activeDialog(text, opened) !== undefined || spec.hasPickerHeader(text);
 
-/**
- * How long the picker may take to finish painting once its header is up. Real Claude 2.1.310
- * frames held the header above stale rows for 10–500 ms on a loaded machine. The bound is
- * generous because the failure directions are asymmetric: a paint that outlasts it fails
- * the operation, while a layout the grammar cannot recognize only fails later. It exists so
- * that failure still Escapes the picker inside the operation's own budget.
- */
-const paintMs = 5_000;
 const escapeKey = "\u001b";
 const arrowDown = "\u001b[B";
 const arrowUp = "\u001b[A";
@@ -105,10 +114,10 @@ export async function listPickerModels(
   timeoutMs: number,
 ): Promise<readonly AgentModelOption[]> {
   const parsed = await openAndParse(io, spec, timeoutMs);
-  await sendPickerInput(io, escapeKey, oursOrOpen(spec));
+  await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
   await waitForScreen(
     io.terminal,
-    (text) => !oursOrOpen(spec)(text),
+    (text) => !closing(spec)(text),
     timeoutMs,
     `${spec.agent} model picker to close`,
     io.signal,
@@ -128,7 +137,7 @@ export async function setPickerModel(
   // alone covers a caller that passes the display label in any case.
   const target = parsed.options.findIndex((option) => option.id === wanted);
   if (target === -1 || parsed.cursorIndex === -1) {
-    await sendPickerInput(io, escapeKey, oursOrOpen(spec));
+    await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
     const reason =
       target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
     throw elwoodError("model_automation_failed", reason, {
@@ -138,7 +147,7 @@ export async function setPickerModel(
   const delta = target - parsed.cursorIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
-    await sendPickerInput(io, key, ours(spec));
+    await sendPickerInput(io, key, isOwnCompletePicker(spec));
     await delay(arrowStepMs);
   }
   // Settle on the cursor row's identity, not its index: a scrolled Claude window shifts
@@ -167,29 +176,22 @@ async function openAndParse(
     terminal: io.terminal,
     ...(io.signal === undefined ? {} : { signal: io.signal }),
     submit: (signal) => io.submit("/model", signal),
-    isOpen: spec.isOpen,
+    isOpen: spec.hasPickerHeader,
     timeoutMs,
     label: `${spec.agent} model picker`,
   });
   // The header paints before the rows finish: Claude draws the picker over its slash-command
   // menu, so a frame that merely shows `Select model` can hold three rows above stale
   // commands. Parse only the complete dialog the grammar recognizes as ours, the same guard
-  // every navigation and selection key passes, or a partial list is returned as the catalog.
-  let text: string;
-  try {
-    text = await waitForScreen(
-      io.terminal,
-      (screen) => spec.activeDialog(screen, opened) === "picker",
-      Math.min(timeoutMs, paintMs),
-      `${spec.agent} model picker rows`,
-      io.signal,
-    );
-  } catch (error) {
-    // Our picker whose rows never formed a recognizable dialog is still ours to close, so this
-    // Escape takes the header-only `oursOrOpen` guard rather than the complete dialog, and
-    // only while the operation lives: failure cleanup cancels only dialogs it recognizes.
-    if (!io.signal?.aborted) await sendPickerInput(io, escapeKey, oursOrOpen(spec));
-    throw error;
-  }
+  // every key write passes, or a partial list is returned as the catalog. A picker that
+  // never completes is not written to here: the transaction's failure cleanup Escapes it
+  // once it is recognizable, and a candidate that never is keeps queued input held.
+  const text = await waitForScreen(
+    io.terminal,
+    isOwnCompletePicker(spec),
+    timeoutMs,
+    `${spec.agent} model picker rows`,
+    io.signal,
+  );
   return spec.parse(text);
 }

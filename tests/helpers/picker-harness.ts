@@ -5,14 +5,24 @@
 
 import { vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
+import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
 import { clearReadingGapMs, clearReadings } from "../../src/runtime/session/picker-cleanup.ts";
+import { claudeClosedPickerViewport, codexClosedPickerViewport } from "./model-dialog-viewports.ts";
 
 export const escapeKey = String.fromCharCode(27);
+
+const closedViewports: Readonly<Record<ElwoodAgentKind, string>> = {
+  claude: claudeClosedPickerViewport,
+  codex: codexClosedPickerViewport,
+};
+
+/** The real composer a CLI shows once its model dialog closes: positive clearance. */
+export const closedComposer = (spec: ModelPickerSpec) => closedViewports[spec.agent];
 
 /**
  * Reads `held` (under fake timers) until it releases, asserting it stayed held for the full

@@ -82,6 +82,10 @@ export const ours: ModelDialogAuthority = { opened: true };
  * stays up: a second Escape on a slow repaint would land on the composer. A `painting`
  * shell is never written to. Termination aborts every read and write. A dialog still
  * visible at the bound keeps queued input held.
+ *
+ * Resolves `true` once no dialog of ours is recognizable (or the session terminated). That
+ * is NOT positive composer clearance: a blank or half-painted repaint is unrecognizable
+ * too, so the caller decides whether what is left on screen is kept as a survivor.
  */
 export async function cleanUpDialog(
   source: ScreenTerminal & InputTerminal,
@@ -117,6 +121,8 @@ export async function cleanUpDialog(
       }
       clearStreak = 0;
       sawDialog = true;
+      // Recorded for the transaction too: a dialog seen here may still repaint after release.
+      progress.dialogSeen = true;
       lateDialogPossible = false;
       // A `painting` shell may turn out to be a hook confirmation: wait, never write.
       if (stage === "painting" || stage === escaped) continue;

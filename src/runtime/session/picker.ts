@@ -35,11 +35,13 @@ export class PickerTransactions {
    * Whether a model dialog is on screen that queued input must not be written into.
    *
    * TWO cases, and the difference matters. A SURVIVOR is a dialog our own cleanup could not
-   * cancel: it is ours, and it is remembered until it clears. A dialog nobody here opened —
-   * a human who typed `/model` themselves — is NOT ours and never becomes a survivor, but
-   * Enter on it still applies its highlighted row, and Escape still discards the human's
-   * state. So writes are held on any visible model dialog, whoever opened it; ownership
-   * decides what Elwood may DRIVE, not what it may safely type over (C-API-55).
+   * cancel, or what its cleanup left on a frame that is not positively clear (a blank or
+   * half-painted repaint): it is ours, and it is remembered until the composer is clear. A
+   * dialog nobody here opened — a human who typed `/model` themselves — is NOT ours and
+   * never becomes a survivor, but Enter on it still applies its highlighted row, and Escape
+   * still discards the human's state. So writes are held on any visible model dialog,
+   * whoever opened it; ownership decides what Elwood may DRIVE, not what it may safely type
+   * over (C-API-55).
    */
   blocksInput(): boolean {
     if (this.survivor === undefined) return false;
@@ -47,6 +49,12 @@ export class PickerTransactions {
     if (this.survivor.activeDialog(text, ours) !== undefined) {
       this.survivorHold.hold();
       return true;
+    }
+    // The caller's own dialog replaced ours, so nothing of ours is left to hold on: a
+    // `PreModelSwitch` hook confirmation, whether cleanup ended on it or on its painting shell.
+    if (this.survivor.isCallerDialog(text)) {
+      this.survivor = undefined;
+      return false;
     }
     // An UNRECOGNIZED frame is not proof the survivor is gone: a picker repainting between
     // stages, or half-painted, matches neither grammar, and forgetting it there would release
@@ -96,13 +104,13 @@ export class PickerTransactions {
         kind,
         async (closed) => {
           // Elwood cannot tell its own dialog from picker text that precedes its command: a
-          // human's dialog, or a transcript quote the unanchored `isOpen` would drive.
+          // human's dialog, or a transcript quote the unanchored `hasPickerHeader` would drive.
           const human = this.deps.inputSignal?.();
           const before = this.deps.terminal.snapshot().text;
           // We have NOT written `/model` yet, so nothing here is ours. We still ask the
           // grammar under a hypothetical authority: anything it would call a dialog is
           // someone else's, which is precisely why the operation must refuse to start.
-          if (spec.isOpen(before) || spec.activeDialog(before, ours) !== undefined)
+          if (spec.hasPickerHeader(before) || spec.activeDialog(before, ours) !== undefined)
             throw elwoodError(
               "model_automation_failed",
               "Model picker text was already visible before the operation began.",
@@ -171,8 +179,17 @@ export class PickerTransactions {
     progress: Progress,
     closed: AbortSignal,
   ): Promise<void> {
-    const released = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
-    if (released) return;
+    const noneRecognized = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
+    // Nothing of OURS being recognizable is not proof our dialog is gone: a blank or
+    // half-painted repaint matches neither grammar, and the picker can paint again after it.
+    // So once our dialog was seen, or while a picker header is up, anything short of a
+    // positively clear composer is kept as a survivor, held and never written to. A frame
+    // that shows neither is not ours, and a terminated session holds nothing. A dialog the
+    // caller owns that replaced ours is left for the caller: `blocksInput` forgets the
+    // survivor on it.
+    const text = this.deps.terminal.snapshot().text;
+    const mayBeOurs = progress.dialogSeen || spec.hasPickerHeader(text);
+    if (noneRecognized && (closed.aborted || spec.isClear(text) || !mayBeOurs)) return;
     this.survivor = spec;
     this.survivorHold.hold();
   }

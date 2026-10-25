@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A failed model operation no longer releases queued input on a blank or half-painted
+  frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
+  that has not finished painting or to a bare `Select model` header, which agent output
+  can print; failure cleanup cancels the dialog once it is recognizable. Until the
+  composer is positively clear, queued input stays held, because Enter on a repainting
+  picker applies its highlighted model.
+
 - Claude `listModels`, `listClaudeModels` and `setModel` work on accounts whose model
   list is longer than the picker's ten-row window, and on any row whose effort control
   is Medium, High or Max. Elwood now recognizes the scrolled picker (`↑`/`↓` rows,

@@ -4,13 +4,12 @@
  */
 
 import { sendPickerInput } from "../core/models/input.ts";
-import type { ModelPickerSpec } from "../core/models/picker.ts";
+import { isOwnCompletePicker, type ModelPickerSpec } from "../core/models/picker.ts";
 import {
   bottomDialogCandidate,
   bottomDialogRow,
   claudeModelPickerHeader,
   type DialogGrammar,
-  ownOperation,
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
@@ -47,7 +46,8 @@ export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isClear: claudeModelComposerClearance,
   isCandidate: (text) => bottomDialogCandidate(text, pickerGrammar) || isClaudeSwitchShell(text),
-  isOpen: (text) => claudeModelPickerHeader.test(text),
+  hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
+  isCallerDialog: (text) => parseClaudeSwitchConfirmation(text)?.isCacheWarning === false,
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
   activeDialog: (text, authority) => {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to
@@ -68,11 +68,7 @@ export const claudeModelPicker: ModelPickerSpec = {
     // The `s` key applies a model, so it is revalidated against the OPERATION'S OWN picker
     // rather than a bare header: transcript or agent output can print `Select model`, and
     // this key would then select whatever that screen is showing (C-API-24).
-    await sendPickerInput(
-      io,
-      "s",
-      (text) => claudeModelPicker.activeDialog(text, ownOperation) === "picker",
-    );
+    await sendPickerInput(io, "s", isOwnCompletePicker(claudeModelPicker));
     const next = await waitForScreen(
       io.terminal,
       (text) => cacheConfirmationWithCursor(text) || switchSettled(text),
