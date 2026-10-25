@@ -4,19 +4,15 @@
  * picker is parsed only once recognized, and every key it is sent is gated on recognition
  * (PRD §5.7, C-API-23, C-API-24).
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { listPickerModels } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { scripted } from "./scripted-terminal.ts";
 
 /** A full real Codex 0.164.0 viewport (2026-10-25, project path trimmed). */
-function viewport(name: string): string {
-  const url = new URL(`../fixtures/codex-0.164.0/model-picker/${name}.txt`, import.meta.url);
-  return readFileSync(fileURLToPath(url), "utf8");
-}
+const viewport = (name: string) => capturedFrame(`codex-0.164.0/model-picker/${name}`);
 
 const opened: ModelDialogAuthority = { opened: true };
 
@@ -34,6 +30,20 @@ test("C-API-24 the terse hint inside a sentence does not close a dialog", () => 
     "  Then press enter select · esc back. to leave the list",
   );
   expect(codexModelPicker.activeDialog(prose, opened)).toBeUndefined();
+});
+
+/** Scroll markers and the overflow line are Claude's; on a Codex list they are foreign. */
+test.each([
+  ["a `↓` row", "  7. GPT-5.6-Luna ", "↓ 7. GPT-5.6-Luna "],
+  [
+    "an overflow line",
+    "  7. GPT-5.6-Luna           Older fast and efficient model.",
+    "  7. GPT-5.6-Luna           Older fast and efficient model.\n     … +2 models",
+  ],
+])("C-API-24 a Codex picker with %s is not a live picker", (_name, from, to) => {
+  const text = viewport("picker").replace(from, to);
+  expect(text).not.toBe(viewport("picker"));
+  expect(codexModelPicker.activeDialog(text, opened)).toBeUndefined();
 });
 
 test("C-API-23 listPickerModels reads every row of the 0.164.0 picker", async () => {

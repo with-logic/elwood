@@ -327,9 +327,11 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   gave 9, 1, error, 9, error over five runs), and Coal Harbor persisted a one-row
   `default` catalog as a successful discovery. The picker is therefore parsed only once
   the region grammar recognizes the complete dialog, footer included — the same check
-  every key write already passed — and a picker that never completes is Escaped after a
-  bounded paint wait. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
-  C-API-23, C-API-24.
+  every key write passes. A picker that never completes is never written to, because a
+  bare header is untrusted (the agent can print one): the operation fails, and failure
+  cleanup Escapes the dialog once it is recognizable, while an unrecognized candidate
+  keeps queued input held. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
+  C-API-23, C-API-24, C-API-55.
 - **Codex 0.164.0 shortened its dialog hints and dropped the `(default)` marker.** The
   picker closes with `enter select · esc back` and the reasoning screen with `enter
   default · s session · esc back` (one Escape still returns to the picker). Neither

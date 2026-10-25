@@ -3,19 +3,15 @@
  * rendered rows are all options: the `↑`/`↓` scroll markers and the `… +K models` line are
  * part of the dialog, never foreign content (PRD §5.3, C-API-23, C-API-24).
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { setPickerModel } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { scripted } from "./scripted-terminal.ts";
 
 /** A real Claude 2.1.310 frame (2026-10-24): header to viewport bottom, 13 models. */
-function frame(name: string): string {
-  const url = new URL(`../fixtures/claude-2.1.310/model-picker/${name}.txt`, import.meta.url);
-  return readFileSync(fileURLToPath(url), "utf8");
-}
+const frame = (name: string) => capturedFrame(`claude-2.1.310/model-picker/${name}`);
 
 const opened: ModelDialogAuthority = { opened: true };
 const ids = (text: string) => claudeModelPicker.parse(text).options.map((option) => option.id);

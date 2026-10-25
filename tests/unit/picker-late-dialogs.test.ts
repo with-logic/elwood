@@ -4,6 +4,7 @@ import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { listPickerModels } from "../../src/core/models/picker.ts";
 import { waitForScreen } from "../../src/core/models/tui-screen.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { codexReasoningViewport } from "../helpers/model-dialog-viewports.ts";
 import {
   claudeModelCacheConfirmationOnNo,
@@ -135,5 +136,32 @@ test.each([
   await failed;
   expect(writes).toEqual([]);
   expect(picker.blocksInput()).toBe(false);
+  queue.close();
+});
+
+/**
+ * Claude paints `/model` over its slash-command menu, so the header can stand above a
+ * half-painted dialog past the operation's deadline. Nothing is written to that frame: the
+ * picker gets exactly one Escape, from cleanup, once it is recognizably complete.
+ */
+test("C-API-55 a picker still painting at the deadline gets one Escape, from cleanup", async () => {
+  const painting = capturedFrame("claude-2.1.310/model-picker/painting-three-rows");
+  const { screen, writes, leaked, queue, picker } = pickerHarness("❯ ", (input, shown) => {
+    if (input === "/model") shown.text = painting;
+    escapes("", claudePicker)(input, shown);
+  });
+  const failed = expect(
+    picker.run("list_models", claudeModelPicker, 50, (io) =>
+      listPickerModels(io, claudeModelPicker, 5000),
+    ),
+  ).rejects.toMatchObject({ code: "model_automation_failed" });
+  setTimeout(() => {
+    screen.text = capturedFrame("claude-2.1.310/model-picker/top-window");
+  }, 300);
+  const message = queue.send("hello", "message");
+  await vi.advanceTimersByTimeAsync(1500);
+  await Promise.all([failed, message]);
+  expect(leaked).toEqual([]);
+  expect(writes).toEqual(["/model", escapeKey]);
   queue.close();
 });

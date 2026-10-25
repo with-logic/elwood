@@ -9,6 +9,7 @@ import {
   bottomDialogCandidate,
   bottomDialogRow,
   claudeModelPickerHeader,
+  type DialogGrammar,
   ownOperation,
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
@@ -25,11 +26,24 @@ const enterKey = "\r";
 const arrowDown = "\u001b[B";
 const arrowUp = "\u001b[A";
 
+/**
+ * Claude's picker closes with `Esc to cancel`, windows a list longer than ten rows (`↑`/`↓`,
+ * `… +K models`), and paints a radio-style effort row between its rows and that footer. The
+ * effort row follows the HIGHLIGHTED model (2.1.310): ○ low, ◐ medium, ● high, ◉ xhigh,
+ * ◈ max, or `○ Effort not supported for Haiku 4.5`. It is matched by its own copy because
+ * `●` is also a reply bullet, which the region grammar otherwise rejects as transcript.
+ */
+const pickerGrammar: DialogGrammar = {
+  header: claudeModelPickerHeader,
+  footer: /\besc to cancel\b/i,
+  controlRow: /^\s*[○◐●◉◈] (?:\S.* ←\/→ to adjust|Effort not supported for \S.*?)\s*$/,
+  scrolls: true,
+};
+
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isClear: claudeModelComposerClearance,
-  isCandidate: (text) =>
-    bottomDialogCandidate(text, claudeModelPickerHeader) || isClaudeSwitchShell(text),
+  isCandidate: (text) => bottomDialogCandidate(text, pickerGrammar) || isClaudeSwitchShell(text),
   isOpen: (text) => claudeModelPickerHeader.test(text),
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
   activeDialog: (text, authority) => {
@@ -42,7 +56,7 @@ export const claudeModelPicker: ModelPickerSpec = {
     if (confirmation !== undefined) return confirmation.isCacheWarning ? "follow-up" : undefined;
     // The title without its options yet: hold input on it, but never write to it.
     if (isClaudeSwitchShell(text)) return "painting";
-    return bottomDialogRow(text, claudeModelPickerHeader) < 0 ? undefined : "picker";
+    return bottomDialogRow(text, pickerGrammar) < 0 ? undefined : "picker";
   },
   parse: parseClaudeModelPicker,
   // "s" applies for this session only. Enter or a number key would save the

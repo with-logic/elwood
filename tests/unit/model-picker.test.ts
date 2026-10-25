@@ -67,12 +67,14 @@ describe("model picker automation", () => {
     expect(terminal.inputs).toEqual(["\u001b"]);
   });
 
-  test("C-API-23 unparseable screens reject after closing the picker", async () => {
+  // A bare header is untrusted evidence: the agent can print it. Escaping it could interrupt
+  // a running turn, so the operation fails without a write and leaves the dialog to cleanup.
+  test("C-API-24 a header whose dialog never completes rejects without a write", async () => {
     const terminal = scripted("  Select model\n  no rows rendered here");
     await expect(
       listPickerModels({ terminal, submit: submitOk }, claudeModelPicker, 2_000),
     ).rejects.toMatchObject({ code: "model_automation_failed" });
-    expect(terminal.inputs).toEqual(["\u001b"]);
+    expect(terminal.inputs).toEqual([]);
   });
 
   test("C-API-24 codex apply confirms the model and its default reasoning level", async () => {
