@@ -91,14 +91,16 @@ async function reapAfterTermination(
 
 /**
  * Builds one error preserving BOTH the termination and the reap failure causes.
- * The reap cause is carried in `details.reapError` (NOT `details.cause`, which the
- * termination error may already use for its own root cause), so neither cause is
- * dropped (C-LIFE-10). Callers/tests read `details.reapError`.
+ * The reap cause is carried in `details.reapError`, with its errno in
+ * `details.reapErrno` (NOT `details.cause`/`errno`, which the termination error may
+ * already use for its own root cause), so neither cause is dropped (C-LIFE-10).
  */
 function bothFailed(terminationError: ElwoodError, reapError: unknown): ElwoodError {
+  const reapErrno = errnoCode(reapError);
   return elwoodError(terminationError.code, terminationError.message, {
     ...terminationError.details,
     reapError: toError(reapError).message,
+    ...(reapErrno === undefined ? {} : { reapErrno }),
   });
 }
 

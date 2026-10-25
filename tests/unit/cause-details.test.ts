@@ -4,7 +4,13 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { causeDetails, errnoCode, probeFailureDetails } from "../../src/core/errors.ts";
+import {
+  causeDetails,
+  elwoodError,
+  errnoCode,
+  probeFailureDetails,
+  underlyingErrno,
+} from "../../src/core/errors.ts";
 
 describe("causeDetails", () => {
   test("C-ERR-08 stringifies non-Error failures", () => {
@@ -84,5 +90,17 @@ describe("probeFailureDetails", () => {
       cause: "aborted",
       cleanupProcessGroupId: 99,
     });
+  });
+});
+
+describe("underlyingErrno", () => {
+  test("C-ERR-01 reads a typed error's errno detail, else the thrown value's own errno", () => {
+    expect(underlyingErrno(elwoodError("termination_failed", "x", { errno: "EPERM" }))).toBe(
+      "EPERM",
+    );
+    expect(underlyingErrno(elwoodError("termination_failed", "x", { errno: 1 }))).toBeUndefined();
+    expect(underlyingErrno(elwoodError("termination_failed", "x"))).toBeUndefined();
+    expect(underlyingErrno(Object.assign(new Error("x"), { code: "ESRCH" }))).toBe("ESRCH");
+    expect(underlyingErrno(null)).toBeUndefined();
   });
 });

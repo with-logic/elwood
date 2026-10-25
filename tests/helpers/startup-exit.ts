@@ -1,11 +1,12 @@
 /**
- * Failed-start test helpers (PRD §9.1, C-LIFE-10): a fake CLI that exits during
- * startup, a running one whose startup output makes the start fail, and a reader for
- * the typed rejection.
+ * Failed-start test helpers (PRD §9.1, C-LIFE-10, C-ERR-08): a fake CLI that exits
+ * during startup, a running one whose startup output makes the start fail, a group
+ * killer that refuses every kill, and a reader for the typed rejection.
  */
 
 import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtySpawnOptions } from "../../src/pty/types.ts";
+import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { FakePty } from "./fake-pty.ts";
 
 export const startupExit = { exitCode: 12, signal: 15 } as const;
@@ -39,6 +40,15 @@ export function runningWithStartupOutput(ptys: FakePty[], output: string): Facto
     queueMicrotask(() => pty.emitData(output));
     return pty;
   };
+}
+
+/** Makes every group kill fail with `EPERM` (an injected fake; nothing is signaled). */
+export function refuseGroupKills(): void {
+  setGroupKillerForTests({
+    killGroup: () => {
+      throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+    },
+  });
 }
 
 /** Resolves to the typed error `launch` rejected with; anything else fails the test. */
