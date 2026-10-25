@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { PtyFactory } from "../../src/pty/types.ts";
-import type { runProbe } from "../../src/runtime/probe.ts";
+import type { runProbe } from "../../src/runtime/probe/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { claudeQuestionVersion } from "../e2e/questions/claude-cases.ts";
 import {
@@ -44,8 +44,8 @@ vi.mock("node:fs", async (original) => {
   mocks.remove.mockImplementation(fs.rmSync);
   return { ...fs, rmSync: mocks.remove };
 });
-vi.mock("../../src/runtime/probe.ts", async (original) => ({
-  ...(await original<typeof import("../../src/runtime/probe.ts")>()),
+vi.mock("../../src/runtime/probe/index.ts", async (original) => ({
+  ...(await original<typeof import("../../src/runtime/probe/index.ts")>()),
   runProbe: mocks.probe,
 }));
 vi.mock("../../src/pty/node.ts", () => ({ nodePtyFactory: mocks.pty }));

@@ -4,7 +4,7 @@
  * the lease for the owner host's lifetime.
  */
 import { setTimeout as delay } from "node:timers/promises";
-import { processGroupGone } from "../probe-cleanup.ts";
+import { processGroupGone } from "../probe/cleanup.ts";
 import { type LeaseOwner, releaseLease, retainProbeOwner } from "./owner.ts";
 
 /**

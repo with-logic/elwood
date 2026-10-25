@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { processGroupGone } from "../../../src/runtime/probe-cleanup.ts";
+import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { serializeOwner } from "../../../src/runtime/update/owner.ts";
 import { tempDir } from "../../helpers/tmp.ts";
