@@ -106,6 +106,32 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     }
   });
 
+  test("C-LIFE-10 an unresolved detached sweep keeps every later shutdown failing", async () => {
+    // kill() could not read the process table, so a detached hook may still run under
+    // PID 1. The leader is dead and its group reaped, so nothing can confirm it any
+    // more: a later stop() or teardown() must keep rejecting, never report success.
+    installFakes();
+    setProcessTreeOpsForTests({
+      killGroup: (pgid) => reapedGroups.push(pgid),
+      listProcesses: () => Promise.reject(Object.assign(new Error("ps"), { code: "EAGAIN" })),
+    });
+    const session = await startClaude({ cwd: tempDir() });
+    const unreadable = "Could not reap detached descendants: process table unreadable (EAGAIN)";
+    await expect(session.kill()).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { cause: unreadable, errno: "EAGAIN" },
+    });
+    expect(reapedGroups).toEqual([ptys.at(-1)!.pid]); // the leader group itself was reaped
+    await expect(session.stop()).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { cause: unreadable },
+    });
+    await expect(session.teardown()).rejects.toMatchObject({
+      code: "teardown_failed",
+      details: { causes: [unreadable] },
+    });
+  });
+
   test("C-LIFE-10 stop() after a successful exit-reap does NOT re-signal the dead PTY", async () => {
     // A stop() racing after the first exit callback already reaped must one-shot
     // no-op (reaper latched) and resolve promptly — never re-signal the dead PTY

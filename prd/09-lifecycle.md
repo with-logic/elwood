@@ -234,8 +234,9 @@ exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled
 exit is awaited within a bounded window, and the leader's process group is SIGKILLed on
 every path, even if the PTY signal throws. That kill is what stops a CLI-spawned
 descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
-the leader exits. The original startup error is preserved; a cleanup or reap failure
-is secondary and never replaces it. When that PTY termination or group reap cannot be
+the leader exits. A leader that ignores the SIGTERM has its detached descendants
+reaped before the escalating SIGKILL, as §5.3 specifies. The original startup error is
+preserved; a cleanup or reap failure is secondary and never replaces it. When that PTY termination or group reap cannot be
 confirmed, part of the CLI's process tree may still be running, and a typed startup
 error keeps its code and message and gains two details. `cleanupErrorCode` is
 content-free: the failed group reap's errno if there is one, else the termination's,

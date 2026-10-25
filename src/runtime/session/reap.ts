@@ -14,9 +14,10 @@
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { reapFailureWarning } from "../../core/activity/index.ts";
-import { causeDetails, elwoodError } from "../../core/errors.ts";
+import { causeDetails, elwoodError, toError } from "../../core/errors.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { SessionReaper } from "../shutdown/reap-tree.ts";
+import { detachedGroupsDetail } from "../shutdown/terminate.ts";
 
 export class SessionReapPolicy {
   readonly reaper: SessionReaper;
@@ -41,13 +42,17 @@ export class SessionReapPolicy {
     }
   }
 
-  /** Reap on explicit shutdown; wrap any failure as a typed `termination_failed`. */
+  /**
+   * Reap on explicit shutdown, including an unresolved detached sweep; wrap any failure
+   * as a typed `termination_failed`.
+   */
   orThrow(): void {
     try {
-      this.reaper.reap();
+      this.reaper.reapAndThrowOnDetachedSweepFailure();
     } catch (error) {
       throw elwoodError("termination_failed", "Could not reap the PTY process group.", {
         ...causeDetails(error),
+        ...detachedGroupsDetail(toError(error)),
         processGroupId: this.leaderPid,
       });
     }

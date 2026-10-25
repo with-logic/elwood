@@ -118,7 +118,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // A closing session rejects the picker at once, while the dying CLI can still persist
   // the selection it had confirmed, so the restore waits on the PTY's own exit.
   private waitForCliExit(): Promise<unknown> | undefined {
-    return this.closing.signal.aborted ? this.cliExit.within(cliExitWaitMs) : undefined;
+    return this.closing.signal.aborted
+      ? this.cliExit.within(cliExitWaitMs, { unref: true })
+      : undefined;
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);

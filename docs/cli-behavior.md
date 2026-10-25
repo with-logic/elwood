@@ -1063,7 +1063,53 @@ When Claude exits on SIGTERM within the graceful window it kills its in-flight
 hooks itself: a `stop()` during the same `sleep 45` hook exited in about 1 s with
 no survivors. On macOS, `killpg` on a group whose members are all unreaped zombies
 returns `EPERM`, not `ESRCH`. `src/runtime/shutdown/process-table.ts` reads the
-table and finds these groups by walking parent pids from the leader. C-LIFE-10.
+table and finds these groups by walking parent pids from the leader.
+
+Elwood therefore walks the tree only before a SIGKILL it sends to a live leader. It
+SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=`. A
+group id from `ps` is only a snapshot, `kill()` returning means the SIGSTOP was sent,
+not delivered, and `ps` reads each process's state at its own moment (on macOS it
+takes the set of pids first and each row's state afterwards). So Elwood relies only
+on a process that read stopped (`stat` starting with `T`), inside a group it stopped,
+in two consecutive listings. A group that holds a live descendant is stopped once
+such a process is a parent of one of its members: that parent cannot reap the
+member, so the group keeps its id until the signal. The walk succeeds only on a
+listing that shows the leader live, leaves no live group unreached, and holds every
+live process in every stopped group that way, the leader's included, so none of them
+can have started a process the listing missed; a leader exit observed first fails it,
+because the leader's detached children are then out of reach. Then the stopped groups
+are SIGKILLed deepest first
+(`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
+flight, and two more per level of nesting. A process whose own parent exited before
+the walk is already under PID 1 and out of reach. macOS refuses a stop or a kill of
+a group whose members are all unreaped zombies with `EPERM`, so either counts as a
+failure only if a later listing still shows a live member of that group.
+
+`killpg` is not atomic against `fork` (measured 2026-10-25, Claude 2.1.310, macOS
+Darwin 25.5): a child forked while the group's SIGSTOP goes out can miss it and keep
+running. The PTY leader is the user's interactive login shell (§4.2), and in one
+Claude `teardown()` out of nine, with no hook in flight, `claude` had already exited
+and the shell was running a `$(… | tr …)` pipeline from the user's shell
+configuration. One subshell of it read `R` on every listing for the whole
+three-second deadline while the rest of the group read `T`, so the leader's group was
+never held and `teardown()` rejected. A zsh group forking `$(echo a | tr a b)` in a
+loop, SIGSTOPped once, left one member running in 1 of 150 stops, and a second
+SIGSTOP stopped it every time. So any listing that shows a live process in a stopped
+group not stopped sends that group SIGSTOP again: the leader's only while its exit
+has not been observed, a descendant group because its held parent keeps the id. A
+listing cannot tell a stop still in flight from a missed one, and a second SIGSTOP
+to a stopped process does nothing, so the walk does not try to. With the re-stop, 40
+of 40 real no-hook teardowns completed, 5 of them sending the leader's group a
+second SIGSTOP; without it, 1 of 9 had rejected.
+
+The walk's cost, measured 2026-10-25 on Claude 2.1.310 on a shared machine: one `ps`
+listing of about 1,800 rows took 110–240 ms at load 33–35. At load 19–26, ten
+`teardown()`s with no hook in flight took 81–291 ms (median 227, two listings), and
+ten with a `SessionStart` hook in flight 175–567 ms (median 373, four), against 2–3
+ms and 7–18 ms with the walk disabled, where the in-flight hook survived every time. `tests/e2e/teardown-reap.e2e.ts` drives the
+real CLIs: Claude `teardown()` with a hook in its own group, a `stop()` whose
+`SessionEnd` hook outlasts the graceful window, and Codex `teardown()` with a hook.
+With the walk disabled all three fail with the hook still running.
 
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
