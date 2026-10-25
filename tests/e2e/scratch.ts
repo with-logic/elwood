@@ -48,6 +48,17 @@ export function makeProject(agent: AgentName): E2eProject {
   };
 }
 
+/**
+ * Keeps scratch roots past the file's sweep, for a test that could not confirm its agent
+ * exited: a surviving process may still be using them, and they stay for diagnosis.
+ */
+export function keepScratch(...roots: readonly string[]): void {
+  for (const root of roots) {
+    const index = scratchRoots.indexOf(root);
+    if (index >= 0) scratchRoots.splice(index, 1);
+  }
+}
+
 /** Skip reason when the user has no Codex login to seed a sandboxed `CODEX_HOME` from. */
 export function codexAuthMissing(): string | undefined {
   return existsSync(codexAuthPath) ? undefined : "no ~/.codex/auth.json for a sandboxed CODEX_HOME";

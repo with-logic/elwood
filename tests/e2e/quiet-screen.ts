@@ -14,7 +14,8 @@
 import type { CodexSessionApi } from "../../src/index.ts";
 
 const QUIET_STREAK_MS = 2_000;
-const QUIET_DEADLINE_MS = 15_000;
+/** The longest `waitForQuietScreen` waits before returning anyway. */
+export const QUIET_DEADLINE_MS = 15_000;
 const FRAME_MS = 250;
 
 export async function waitForQuietScreen(session: CodexSessionApi): Promise<void> {

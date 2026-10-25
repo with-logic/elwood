@@ -4,17 +4,24 @@
  * Supports PRD §12 and C-E2E-03.
  */
 
-import { type E2eSession, waitFor } from "./helpers.ts";
+import { waitFor } from "./wait-for.ts";
+
+/** The part of a Claude or Codex session a bounded step reads or drives. */
+export type StepSession = {
+  readonly status: string;
+  readonly terminal: { snapshot(): { readonly text: string } };
+  sendMessage(text: string): Promise<void>;
+};
 
 /** Explains a timed-out step with the session's status and the screen's tail. */
-function stuck(session: E2eSession, reason: string): Error {
+function stuck(session: StepSession, reason: string): Error {
   const screen = session.terminal.snapshot().text.trimEnd().split("\n").slice(-12).join("\n");
   return new Error(`${reason} (status ${session.status}); screen:\n${screen}`);
 }
 
 /** Waits until `condition` holds, failing with the screen after `timeoutMs`. */
 export async function waitForCondition(
-  session: E2eSession,
+  session: StepSession,
   condition: () => boolean,
   label: string,
   timeoutMs: number,
@@ -33,7 +40,7 @@ export async function waitForCondition(
  * timeout. The caller's teardown then rejects the abandoned send.
  */
 export async function sendWithin(
-  session: E2eSession,
+  session: StepSession,
   text: string,
   label: string,
   timeoutMs: number,

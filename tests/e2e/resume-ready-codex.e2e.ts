@@ -8,8 +8,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
+import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
-import { stopCodex } from "./codex-ready.ts";
+import { endCodexTest } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -18,21 +19,20 @@ import {
   skipReason,
   skipTurns,
 } from "./helpers.ts";
-import { waitForQuietScreen } from "./quiet-screen.ts";
+import { QUIET_DEADLINE_MS, waitForQuietScreen } from "./quiet-screen.ts";
 
 // A private CODEX_HOME holding a copy of the developer's ~/.codex/auth.json and this
 // config. Nothing else in the real ~/.codex is read (its default model, effort, MCP
-// servers or plugins), and nothing there is written. Its default model's rate limit is shared with every Codex session on the
-// account: on 2026-10-25 that model answered 429 Too Many Requests and Codex backed
-// off for 110-509 s, so the first turn never settled. The test needs only a
-// resumable conversation, so it pins a small model at low effort.
+// servers or plugins), and nothing there is written. Its default model's rate limit is
+// shared with every Codex session on the account: on 2026-10-25 that model answered 429
+// Too Many Requests and Codex backed off for 110-509 s, so the first turn never settled.
+// The test needs only a resumable conversation, so it pins a small model at low effort.
 const CODEX_CONFIG = 'model = "gpt-6-luna"\nmodel_reasoning_effort = "low"\n';
 
-// Each readiness, turn and submission wait is bounded, and the bounds sum to less than
-// the test timeout, so a stuck step fails under its own label with the session's
-// screen instead of the runner's unlabeled timeout. (Unbounded, `waitFor` would use
-// the suite-wide e2e timeout, which equals this test's old 180 s budget.)
-const TEST_TIMEOUT_MS = 300_000;
+// Each readiness, turn and submission wait is bounded, and the test timeout covers every
+// bound, so a stuck step fails under its own label with the session's screen instead of
+// the runner's unlabeled timeout. (Unbounded, `waitFor` would use the suite-wide e2e
+// timeout, which equals this test's old 180 s budget.)
 const READY_MS = 45_000;
 const TURN_MS = 45_000;
 const RESUMED_READY_MS = 20_000;
@@ -43,6 +43,19 @@ const SEND_MS = 10_000;
 const COMPOSER_TO_READY_MS = 2_000;
 // SessionStart fires at the first prompt, so it has come by the time that turn settles.
 const SESSION_START_MS = 10_000;
+
+// The test's steps: the first turn, the observed resume, and the drained ONE and TWO.
+const FIRST_TURN_MS = READY_MS + SEND_MS + TURN_MS + SESSION_START_MS;
+const DRAINS_MS = RESUMED_READY_MS + 2 * (SEND_MS + TURN_MS);
+const STEPS_MS = FIRST_TURN_MS + RESUMED_READY_MS + QUIET_DEADLINE_MS + DRAINS_MS;
+// Before it spawns Codex, each of the three launches may run a cold CLI probe. Then two
+// stops and up to two teardowns, each at most about 10 s: 5 s graceful and 1 s forced
+// termination, a 1 s terminal drain, and Codex's exit.
+const LAUNCHES_MS = 3 * (probeLaunchTimeoutMs + probeCommandTimeoutMs);
+const TEST_TIMEOUT_MS = STEPS_MS + LAUNCHES_MS + 4 * 10_000;
+
+const ONE = "Reply exactly: ONE. Do not use tools.";
+const TWO = "Reply exactly: TWO. Do not use tools.";
 
 test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s deadline)", {
   skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
@@ -61,8 +74,15 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
   let first: CodexSessionApi | undefined;
   let resumed: CodexSessionApi | undefined;
   let failure: unknown;
+  // A start or resume that rejects may leave a Codex process the test holds no handle to.
+  let launchRejected = false;
+  const launch = (attempt: Promise<CodexSessionApi>) =>
+    attempt.catch((error: unknown) => {
+      launchRejected = true;
+      throw error;
+    });
   try {
-    const session = await startCodex(opts);
+    const session = await launch(startCodex(opts));
     first = session;
     // Codex fires `SessionStart` lazily, at the first prompt, and it alone carries the
     // conversation id a resume needs.
@@ -75,33 +95,24 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     // resolves after its submission moved the session to running, so this wait
     // cannot pass on the pre-send ready.
     await sendWithin(session, "Reply exactly: OK. Do not use tools.", "the first turn", SEND_MS);
-    await waitForCondition(
-      session,
-      () => session.status === "ready",
-      "first turn settled",
-      TURN_MS,
-    );
+    await waitForCondition(session, () => session.status === "ready", "first turn", TURN_MS);
     await waitForCondition(session, () => sessionStarted, "first SessionStart", SESSION_START_MS);
-    const id = session.elwoodSessionId;
+    const elwoodSessionId = session.elwoodSessionId;
     await session.stop();
 
     const startedAt = Date.now();
-    const resumedSession = await resumeCodex({ ...opts, elwoodSessionId: id });
+    const resumedSession = await launch(resumeCodex({ ...opts, elwoodSessionId }));
     resumed = resumedSession;
     // Capture status transitions from resume start: the transcript replay must NOT
     // fabricate a phantom running->ready cycle after readiness (a host application
     // surfaced that as a false "unread reply").
     const transitions: string[] = [];
     resumedSession.on("status", (event) => transitions.push(event.status));
-    // Codex paints nothing for 1.5 to 8 s after the resume spawns it through the user's
-    // login shell, longer on a loaded machine, so readiness is timed from its first
-    // composer frame (the screen table's composer rule). A composer-driven ready follows
-    // that frame within a fraction of a second. The ~10 s fallback deadline starts at
-    // Codex's first rendered frame, which comes within a quarter second of the composer,
-    // so a deadline-driven ready would trail the composer by about 10 s. Subscribing
-    // replays output rendered before it; a composer already in that replay is dated to
-    // the resume's start, the earliest it could have painted, which can only overstate
-    // the latency.
+    // Codex paints nothing for 1.5 to 8 s after the resume spawns it, so readiness is timed
+    // from its first composer frame. A composer-driven ready follows within a fraction of
+    // a second; the ~10 s fallback deadline starts within a quarter second of the composer,
+    // so a deadline-driven ready trails it by about 10 s. A composer already in the replay
+    // that subscribing delivers is dated to the resume's start, which can only overstate.
     let composerAt: number | undefined;
     let replaying = true;
     resumedSession.on("terminal:data", () => {
@@ -146,48 +157,36 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     // a SECOND message must drain after it, proving the queue is live post-resume and
     // the turn-state watcher tracks real turns without relying on a Stop hook.
     let stops = 0;
-    const draining = await resumeCodex({
-      ...opts,
-      elwoodSessionId: id,
-      hooks: {
-        Stop: () => {
-          stops += 1;
+    const prompts: string[] = [];
+    const draining = await launch(
+      resumeCodex({
+        ...opts,
+        elwoodSessionId,
+        hooks: {
+          UserPromptSubmit: (event) => {
+            prompts.push(event.prompt);
+          },
+          Stop: () => {
+            stops += 1;
+          },
         },
-      },
-    });
+      }),
+    );
     resumed = draining;
     // Queued before ready: the send resolves only once it dispatches.
-    await sendWithin(
-      draining,
-      "Reply exactly: ONE. Do not use tools.",
-      "ONE",
-      RESUMED_READY_MS + SEND_MS,
-    );
-    await waitForCondition(
-      draining,
-      () => stops >= 1,
-      "queued-before-ready message drained",
-      TURN_MS,
-    );
-    await sendWithin(draining, "Reply exactly: TWO. Do not use tools.", "TWO", SEND_MS);
-    await waitForCondition(draining, () => stops >= 2, "second message drained", TURN_MS);
+    await sendWithin(draining, ONE, "ONE", RESUMED_READY_MS + SEND_MS);
+    await waitForCondition(draining, () => stops >= 1, "queued ONE drained", TURN_MS);
+    await sendWithin(draining, TWO, "TWO", SEND_MS);
+    await waitForCondition(draining, () => stops >= 2, "TWO drained", TURN_MS);
     assert.equal(draining.status, "ready", "settled to ready after both turns");
+    // Codex accepted each queued message once, in order, and answered each once.
+    assert.deepEqual(prompts, [ONE, TWO]);
+    assert.equal(stops, 2);
   } catch (error) {
     failure = error;
     throw error;
   } finally {
-    // The auth copy goes only once every Codex process that could use it is confirmed
-    // gone. Otherwise it stays for the file's scratch sweep, and the test fails with
-    // both the shutdown failures and any earlier failure.
-    const shutdownFailures: unknown[] = [];
-    for (const session of [resumed, first]) {
-      if (session) shutdownFailures.push(...(await stopCodex(session)));
-    }
-    if (shutdownFailures.length === 0) sandbox.dispose();
-    else {
-      const errors = failure === undefined ? shutdownFailures : [failure, ...shutdownFailures];
-      // biome-ignore lint/correctness/noUnsafeFinally: a process that outlives the test must fail it.
-      throw new AggregateError(errors, "Codex sessions did not shut down");
-    }
+    // The sandbox goes only once every Codex process that could use it is confirmed gone.
+    await endCodexTest({ sessions: [resumed, first], project, sandbox, launchRejected, failure });
   }
 });

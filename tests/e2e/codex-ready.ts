@@ -1,10 +1,12 @@
 /**
  * A ready read-only Codex session for the real-Codex e2e tests, and its teardown, shared by
- * the model-picker, configured-default, and config-lock tests. Supports PRD §12 and C-E2E-03.
+ * the model-picker, configured-default, config-lock, and resume tests. Supports PRD §12 and
+ * C-E2E-03.
  */
 
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import type { E2eProject } from "./helpers.ts";
+import type { CodexSandbox, E2eProject } from "./helpers.ts";
+import { keepScratch } from "./scratch.ts";
 
 // Codex fires SessionStart within seconds of launch; a minute without it is a failure.
 const defaultReadyTimeoutMs = 60_000;
@@ -17,7 +19,7 @@ export type StartReadyCodexOptions = {
 };
 
 /** Tears a session down, falling back to kill; returns what failed rather than hiding it. */
-export async function stopCodex(session: CodexSessionApi): Promise<readonly unknown[]> {
+export async function teardownOrKillCodex(session: CodexSessionApi): Promise<readonly unknown[]> {
   try {
     await session.teardown();
     return [];
@@ -63,7 +65,7 @@ export async function startReadyCodex(
     return session;
   } catch (error) {
     const status = session.status;
-    const cleanupFailures = await stopCodex(session);
+    const cleanupFailures = await teardownOrKillCodex(session);
     const cleanupNote = cleanupFailures.length
       ? `\ncleanup also failed: ${cleanupFailures.map(String).join("; ")}`
       : "";
@@ -73,4 +75,42 @@ export async function startReadyCodex(
   } finally {
     offScreen();
   }
+}
+
+export type CodexTestEnd = {
+  /** Every session the test still holds, torn down here. */
+  readonly sessions: readonly (CodexSessionApi | undefined)[];
+  readonly project: E2eProject;
+  readonly sandbox: CodexSandbox;
+  /** A start or resume rejected, so a Codex process may be running with no handle to it. */
+  readonly launchRejected: boolean;
+  /** What failed the test before cleanup, if anything. */
+  readonly failure: unknown;
+};
+
+/**
+ * Ends a real-Codex test: tears its sessions down, then removes the sandbox only once every
+ * Codex process that could use it is confirmed gone. Otherwise the project and sandbox stay
+ * past the file's sweep, and this throws with their paths. Cleanup failures, including a
+ * failed removal, are thrown alongside the test's own failure rather than in place of it.
+ */
+export async function endCodexTest(end: CodexTestEnd): Promise<void> {
+  const cleanupFailures: unknown[] = [];
+  for (const session of end.sessions) {
+    if (session) cleanupFailures.push(...(await teardownOrKillCodex(session)));
+  }
+  const confirmed = cleanupFailures.length === 0 && !end.launchRejected;
+  if (confirmed) {
+    try {
+      end.sandbox.dispose();
+    } catch (error) {
+      cleanupFailures.push(error);
+    }
+  } else keepScratch(end.project.cwd, end.sandbox.home);
+  if (confirmed && cleanupFailures.length === 0) return;
+  const kept = confirmed
+    ? ""
+    : `; kept ${end.project.cwd} and ${end.sandbox.home}, which a Codex process may still use`;
+  const failures = end.failure === undefined ? cleanupFailures : [end.failure, ...cleanupFailures];
+  throw new AggregateError(failures, `Codex test cleanup failed${kept}`);
 }
