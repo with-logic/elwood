@@ -68,26 +68,37 @@ export function markReadyOnResumeComposer(
  */
 export const initialBackstopMs = 60_000;
 
+/** An adapter's evidence that a rendered composer belongs to a configured session. */
+export type ConfiguredComposerEvidence = {
+  /** The latest frame shows a configured session's composer outside any blocking dialog. */
+  readonly shown: () => boolean;
+  /** Readiness was released after the backstop without that composer on screen. */
+  readonly onBackstopRelease: () => void;
+  readonly backstopMs?: number;
+};
+
 /**
- * `isComposerConfigured` reports whether the latest frame shows a configured session's
- * composer outside any blocking dialog. The initial deadline marks only onto such a
- * frame: a CLI that has not configured its session is still booting, and under load can
- * paint a trust gate after the deadline, so an earlier mark would drain the queue into
- * the boot screen or that gate. A deadline that expires first waits for that frame, and
- * `backstopMs` after the first frame marks anyway, so an unrecognized composer delays
- * readiness but never starves it (C-API-28).
+ * With `composer` evidence, the initial deadline marks only onto a frame showing a
+ * configured session's composer: a CLI that has not configured its session is still
+ * booting, and under load can paint a trust gate after the deadline, so an earlier mark
+ * would drain the queue into the boot screen or that gate. A deadline that expires first
+ * waits for that frame, and the backstop after the first frame marks anyway, so an
+ * unrecognized composer delays readiness but never starves it. A release after the
+ * backstop without that composer is reported once through `onBackstopRelease`, so a host
+ * can tell it from ordinary readiness (C-API-28).
  */
 export function initialReady(
   callback: () => void,
   initialDeadlineMs = 10_000,
   isReadinessHeld: () => boolean = () => false,
-  isComposerConfigured: () => boolean = () => true,
-  backstopMs = initialBackstopMs,
+  composer?: ConfiguredComposerEvidence,
 ): InitialReady {
+  const isComposerConfigured = () => composer === undefined || composer.shown();
   let ready = false;
   let cancelled = false;
   let deferredByHold = false;
   let awaitingComposer = false;
+  let backstopFired = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let backstop: ReturnType<typeof setTimeout> | undefined;
   /**
@@ -113,6 +124,7 @@ export function initialReady(
       return;
     }
     deferredByHold = false;
+    const withoutComposer = composer !== undefined && backstopFired && !composer.shown();
     // Latch AFTER the callback returns, so if it throws (a throwing status/activity
     // listener) readiness is NOT consumed and a later hook/deadline/frame retries —
     // a failed transition must never permanently starve the queue (C-API-28).
@@ -120,6 +132,11 @@ export function initialReady(
     ready = true;
     clearTimeout(deadline);
     clearTimeout(backstop);
+    try {
+      if (withoutComposer) composer.onBackstopRelease();
+    } catch {
+      // A failing warning sink must not undo or block the readiness just released.
+    }
   };
   return {
     cancel: () => {
@@ -142,7 +159,10 @@ export function initialReady(
     armDeadline: () => {
       if (cancelled || ready) return;
       deadline ??= setTimeout(() => markFromTimer(true), initialDeadlineMs);
-      backstop ??= setTimeout(() => markFromTimer(false), backstopMs);
+      backstop ??= setTimeout(() => {
+        backstopFired = true;
+        markFromTimer(false);
+      }, composer?.backstopMs ?? initialBackstopMs);
     },
   };
 }

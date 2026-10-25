@@ -10,6 +10,7 @@
 
 import type { ComposerReadyFacts } from "../readiness/initial-ready.ts";
 import {
+  type ConfiguredComposerEvidence,
   type InitialReady,
   initialReady,
   markReadyOnResumeComposer,
@@ -33,15 +34,18 @@ export type ReadinessGate = {
 };
 
 /**
- * `composerConfigured`, when an adapter supplies it, proves a rendered composer belongs
+ * An adapter's `composer.configured`, when supplied, proves a rendered composer belongs
  * to a configured session rather than to the boot screen (Codex's model footer). The
  * initial deadline then marks only onto such a frame (C-API-28). The latest frame is
- * checked only when a waiting deadline asks, never on every render.
+ * checked only when readiness asks, never on every render.
  */
 export function createReadinessGate(
   onReady: () => void,
   resumed: boolean,
-  composerConfigured?: (frame: string) => boolean,
+  composer?: {
+    readonly configured: (frame: string) => boolean;
+    readonly onBackstopRelease: () => void;
+  },
 ): ReadinessGate {
   let readinessHeld = false;
   let latest: { facts: ComposerReadyFacts; frame: string } | undefined;
@@ -60,13 +64,14 @@ export function createReadinessGate(
   };
   // Work may animate forever (a failing MCP server's retry spinner), so only the
   // configured composer itself, not idleness, is required before the deadline marks.
-  const configuredComposerShown =
-    composerConfigured &&
-    (() =>
+  const evidence: ConfiguredComposerEvidence | undefined = composer && {
+    shown: () =>
       latest?.facts.composer_visible === true &&
       !latest.facts.blocking_prompt_visible &&
-      composerConfigured(latest.frame));
-  const ready = initialReady(onReady, undefined, () => readinessHeld, configuredComposerShown);
+      composer.configured(latest.frame),
+    onBackstopRelease: composer.onBackstopRelease,
+  };
+  const ready = initialReady(onReady, undefined, () => readinessHeld, evidence);
   return {
     ready,
     isHeld: () => readinessHeld,
