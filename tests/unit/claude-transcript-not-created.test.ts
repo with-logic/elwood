@@ -60,13 +60,15 @@ test("C-CLAUDE-24 removing a transcript that existed at observe still reports EN
   watcher.finish();
 });
 
-test("C-CLAUDE-24 a non-ENOENT failure before creation still reports its code", async () => {
-  const parent = tmpFile();
-  writeFileSync(parent, ""); // a FILE where the transcript's directory should be
+test("C-CLAUDE-24 a non-ENOENT poll failure before creation still reports its code", async () => {
+  const parent = tmpFile(); // absent at observe: the transcript is simply not created yet
   const path = join(parent, "t.jsonl");
   const { watcher, readErrors } = watch();
   watcher.observe(path);
   await watcher.pollOnceForTests();
+  expect(readErrors).toEqual([]);
+  writeFileSync(parent, ""); // now a FILE where the transcript's directory should be
+  await watcher.pollOnceForTests(); // the poll's own stat fails with ENOTDIR
   expect(readErrors).toEqual([{ elwoodSessionId: "s1", path, lastErrorCode: "ENOTDIR" }]);
   watcher.finish();
 });

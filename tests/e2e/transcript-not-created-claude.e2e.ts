@@ -13,6 +13,7 @@ import {
   type ElwoodWarningEvent,
 } from "../../src/index.ts";
 import {
+  cleanup,
   e2eTimeoutMs,
   type HookEvent,
   makeProject,
@@ -67,6 +68,6 @@ test("C-CLAUDE-24 a fresh real Claude session emits no transcript_read_error thr
       `transcript existed at ready: ${existedAtReady}; before the turn: ${existedBeforeTurn}`,
     );
   } finally {
-    await session.teardown().catch(() => session.kill());
+    await cleanup(session.session);
   }
 });

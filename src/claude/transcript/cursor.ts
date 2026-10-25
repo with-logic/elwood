@@ -6,12 +6,11 @@
  * `needsScan` that tells a transcript not created yet from one that was removed.
  */
 
-import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { errnoCode } from "../../core/errors.ts";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { scanBaselineTail } from "./baseline.ts";
-import { fileSize } from "./cursor-io.ts";
+import { fileSize, observedSize } from "./cursor-io.ts";
 
 export type { ChunkRead, TakenLines } from "../../core/transcript/cursor.ts";
 export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
@@ -25,11 +24,15 @@ export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
 export class TranscriptCursor extends BoundedTranscriptCursor {
   // `SessionStart` names the transcript before Claude writes it, so until a stat has seen
   // the file, ENOENT means "not created yet" rather than a removal or rotation (§5.7).
+  // The stat at registration or any later poll can establish that it existed.
   private created: boolean;
 
   constructor(path: string) {
-    super(path);
-    this.created = existsSync(path);
+    // One stat gives both the start offset and whether the file exists, so the two can
+    // never disagree about a file removed in between (C-CLAUDE-24).
+    const size = observedSize(path);
+    super(path, size ?? 0);
+    this.created = size !== undefined;
   }
 
   // The current (final) turn already on disk (the Stop-first edge). Delegates to
