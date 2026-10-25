@@ -15,7 +15,6 @@ import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime
 import {
   cachedAutoupdate,
   cachedVersionRead,
-  dedupeInFlight,
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
   setUpdateCoordinatorForTests,
@@ -100,17 +99,6 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     });
     // A later start re-probes (the rejected capability promise was evicted), and recovers.
     await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
-  });
-
-  test("dedupeInFlight: identity-guarded eviction never clobbers a later successful entry", async () => {
-    const cache = new Map<string, Promise<string>>();
-    // A rejecting call is cached then evicted on rejection.
-    const failing = dedupeInFlight(cache, "k", () => Promise.reject(new Error("boom")));
-    await expect(failing).rejects.toThrow(/boom/);
-    // A subsequent successful call caches its own entry; the earlier eviction must not delete it.
-    const ok = dedupeInFlight(cache, "k", () => Promise.resolve("value"));
-    await expect(ok).resolves.toBe("value");
-    expect(cache.get("k")).toBe(ok); // the successful entry survives (identity-guarded eviction)
   });
 
   test("autoupdate finalization failures are contained as outcomes", async () => {

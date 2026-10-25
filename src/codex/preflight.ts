@@ -7,9 +7,10 @@ import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
+import { createProbeCache } from "../runtime/probe-cache.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead, dedupeInFlight } from "../runtime/update/once.ts";
+import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
@@ -19,10 +20,10 @@ export type CodexPreflightWarning = DistributiveOmit<
   Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" | "agent_update_failed" }>,
   "elwoodSessionId"
 >;
-// Single-entry cache for the capability probe. `dedupeInFlight` shares one in-flight `codex --help`
-// across concurrent first spawns AND evicts on rejection, so a transient `--help` failure does not
+// Single-entry cache for the capability probe. It shares one in-flight `codex --help` across
+// concurrent first spawns AND never keeps a rejection, so a transient `--help` failure does not
 // poison every later Codex start in the process (C-LIFE-11) — a later start re-probes.
-const capabilityProbe = new Map<"codex", Promise<CodexCliCapabilities>>();
+const capabilityProbe = createProbeCache<CodexCliCapabilities>(1);
 
 export async function preflightCodex(
   strictVersionCheck: boolean,
@@ -93,9 +94,9 @@ async function readCodexVersion(): Promise<CommandResult> {
 }
 
 export function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
-  // Shared once across concurrent first spawns; a rejected probe is evicted so a later start
+  // Shared once across concurrent first spawns; a rejected probe is not kept, so a later start
   // re-probes rather than inheriting the failure.
-  return dedupeInFlight(capabilityProbe, "codex", detectCapabilities);
+  return capabilityProbe.get("codex", detectCapabilities);
 }
 
 async function detectCapabilities(): Promise<CodexCliCapabilities> {
