@@ -18,8 +18,8 @@ import { SessionLoops } from "./loops.ts";
 import { bindNativeInput } from "./native-submission.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import { PasteRecoveryRevocation } from "./paste-recovery.ts";
-import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
+import type { SessionInputOwnership } from "./session-input.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
 import { StopCompletion } from "./stop-completion.ts";
@@ -49,7 +49,7 @@ export abstract class SessionLifecycle {
     stateDir: string,
     runtime: SessionRuntime,
     pty: PtyProcess,
-    input: PickerInputOwnership,
+    input: SessionInputOwnership,
     statusEvents: SessionStatusEmitter,
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],

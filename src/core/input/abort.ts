@@ -1,7 +1,7 @@
 /** Abort-aware timing, dialog holds, and composer cleanup for queued input (PRD §5.3/§5.9, C-API-56). */
 
 import { elwoodError } from "../errors.ts";
-import { isPickerIntervention } from "../models/intervention.ts";
+import { isCallerInputIntervention } from "../models/intervention.ts";
 import type { ScreenTerminal } from "../models/tui-screen.ts";
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
 import { observeRender } from "./render-observation.ts";
@@ -127,7 +127,7 @@ export function inputAbortError(signal: AbortSignal): Error {
 
 /** Raw takeover of awaited turn input reports submission failure, preserving other errors (§5.3). */
 export function submissionError(error: unknown): unknown {
-  return isPickerIntervention(error)
+  return isCallerInputIntervention(error)
     ? elwoodError("wait_timeout", "Raw input replaced the staged turn input.")
     : error;
 }

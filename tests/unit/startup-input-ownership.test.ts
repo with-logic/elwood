@@ -1,7 +1,7 @@
 /** Startup trust automation must preserve caller-edit and draft ownership (C-API-55/56). */
 import { afterEach, expect, test, vi } from "vitest";
 import { startClaude, startCodex } from "../../src/index.ts";
-import { PickerInputOwnership } from "../../src/runtime/session/picker-input.ts";
+import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 import { claudeTrust, codexTrust, tty } from "../fixtures/trust-composer.ts";
@@ -19,9 +19,9 @@ test.each([
   const fake = agent === "claude" ? claude : codex;
   fake.installFakes();
   const signals: AbortSignal[] = [];
-  const original = PickerInputOwnership.prototype.signal;
-  vi.spyOn(PickerInputOwnership.prototype, "signal").mockImplementation(function (
-    this: PickerInputOwnership,
+  const original = SessionInputOwnership.prototype.signal;
+  vi.spyOn(SessionInputOwnership.prototype, "signal").mockImplementation(function (
+    this: SessionInputOwnership,
   ) {
     const signal = original.call(this);
     if (!signals.includes(signal)) {
