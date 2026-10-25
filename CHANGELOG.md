@@ -94,6 +94,10 @@ back each entry are listed in `prd/14-conformance.md`.
   for its first turn. Claude names its transcript at startup but writes the file only once
   a turn begins, and Elwood had reported each poll of the missing file as a read error.
   Removing a transcript after it existed still warns, as does any other read failure.
+- A Claude transcript removed between a poll's size check and its read now warns
+  `transcript_read_error` (`ENOENT`) on that poll. Before, the read took the missing file
+  for a truncation: it skipped the warning and rewound to the start, so a file restored
+  before the next poll replayed its earlier records as new activity.
 - `listModels` and `setModel` no longer send a picker key into a prompt that has
   reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
   answer and Escape is now decided after every received byte is rendered, like
