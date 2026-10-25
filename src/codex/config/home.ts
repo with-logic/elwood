@@ -21,6 +21,8 @@ const reported = /^([^\0]*)\0([^\0]*)\0$/;
 /**
  * The launch-script step that writes Codex's `CODEX_HOME` and `HOME` to `reportPath`. The
  * launch script starts Codex only if this step succeeds, so a running Codex always has one.
+ * The values go to a file, not stdout, because startup files print to the same terminal
+ * (banners, tool notices, background jobs) and nothing would separate that from the report.
  */
 export function reportCodexHomeCommand(reportPath: string): string {
   return `/bin/sh -c ${reportExported} > ${shellQuote(reportPath)}`;
@@ -32,7 +34,13 @@ export function reportCodexHomeCommand(reportPath: string): string {
  * directory, `cwd`; else `$HOME/.codex`, where an empty `HOME` falls back to the account's
  * home directory, as Codex's `home_dir` lookup does.
  */
-export function reportedCodexConfigPath(reportPath: string, cwd: string): string {
+export function reportedCodexConfigPath(report: {
+  /** The file `reportCodexHomeCommand` wrote. */
+  readonly reportPath: string;
+  /** The directory Codex runs in: the session's. */
+  readonly cwd: string;
+}): string {
+  const { reportPath, cwd } = report;
   const [, codexHome, shellHomeDir] = readReport(reportPath);
   const codexHomeDir = codexHome
     ? resolve(cwd, codexHome)
@@ -45,7 +53,7 @@ function readReport(reportPath: string): RegExpExecArray {
   try {
     text = readFileSync(reportPath, "utf8");
   } catch (error) {
-    throw unreadable(reportPath, { code: errnoCode(error) });
+    throw unreadable(reportPath, { errno: errnoCode(error) });
   }
   const match = reported.exec(text);
   if (match) return match;

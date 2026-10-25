@@ -29,23 +29,41 @@ describe("the launch shell's CODEX_HOME report", () => {
   test("an exported CODEX_HOME is the one Codex runs with", () => {
     const { report, cwd, launched } = launch("export CODEX_HOME=/from/zshrc", { HOME: home });
     expect(launched).toBe(true);
-    expect(reportedCodexConfigPath(report, cwd)).toBe("/from/zshrc/config.toml");
+    expect(reportedCodexConfigPath({ reportPath: report, cwd })).toBe("/from/zshrc/config.toml");
   });
 
   test("a relative CODEX_HOME resolves against the session's cwd", () => {
     const { report, cwd } = launch("export CODEX_HOME=relative/codex", { HOME: home });
-    expect(reportedCodexConfigPath(report, cwd)).toBe(join(cwd, "relative/codex/config.toml"));
+    expect(reportedCodexConfigPath({ reportPath: report, cwd })).toBe(
+      join(cwd, "relative/codex/config.toml"),
+    );
   });
 
   test("an assignment the startup file did not export never reaches Codex", () => {
     const { report, cwd } = launch("CODEX_HOME=/not/exported", { HOME: home });
-    expect(reportedCodexConfigPath(report, cwd)).toBe(join(home, ".codex", "config.toml"));
+    expect(reportedCodexConfigPath({ reportPath: report, cwd })).toBe(
+      join(home, ".codex", "config.toml"),
+    );
+  });
+
+  test("a CODEX_HOME with spaces in it arrives whole", () => {
+    const { report, cwd } = launch('export CODEX_HOME="/my homes/codex  two"', { HOME: home });
+    expect(reportedCodexConfigPath({ reportPath: report, cwd })).toBe(
+      "/my homes/codex  two/config.toml",
+    );
+  });
+
+  test("a HOME with spaces in it arrives whole when CODEX_HOME is unset", () => {
+    const { report, cwd } = launch("unset CODEX_HOME", { HOME: "/Users/with  two spaces" });
+    expect(reportedCodexConfigPath({ reportPath: report, cwd })).toBe(
+      "/Users/with  two spaces/.codex/config.toml",
+    );
   });
 
   test("an empty CODEX_HOME falls back to $HOME/.codex, and an empty HOME to the account's", () => {
     const empty = launch("export CODEX_HOME=", { HOME: "" });
     const fallback = join(userInfo().homedir, ".codex", "config.toml");
-    expect(reportedCodexConfigPath(empty.report, empty.cwd)).toBe(fallback);
+    expect(reportedCodexConfigPath({ reportPath: empty.report, cwd: empty.cwd })).toBe(fallback);
   });
 
   test("Codex does not start when the report cannot be written", () => {
@@ -62,17 +80,17 @@ describe("the launch shell's CODEX_HOME report", () => {
     const report = join(dir, "codex-home");
     const script = `${reportCodexHomeCommand(report)} && echo codex-launched`;
     spawnSync("/bin/sh", ["-c", script], { env: { CODEX_HOME: "/q" }, encoding: "utf8" });
-    expect(reportedCodexConfigPath(report, dir)).toBe("/q/config.toml");
+    expect(reportedCodexConfigPath({ reportPath: report, cwd: dir })).toBe("/q/config.toml");
   });
 });
 
 describe("reading the report", () => {
   test("a missing report is a model_automation_failed naming it, with its errno", () => {
     const report = join(realpathSync(tempDir()), "never-written");
-    expect(() => reportedCodexConfigPath(report, "/w")).toThrow(
+    expect(() => reportedCodexConfigPath({ reportPath: report, cwd: "/w" })).toThrow(
       expect.objectContaining({
         code: "model_automation_failed",
-        details: { path: report, code: "ENOENT" },
+        details: { path: report, errno: "ENOENT" },
       }),
     );
   });
@@ -80,7 +98,7 @@ describe("reading the report", () => {
   test("a report that is not two NUL-terminated values is refused", () => {
     const report = join(realpathSync(tempDir()), "codex-home");
     writeFileSync(report, "/only/one\0");
-    expect(() => reportedCodexConfigPath(report, "/w")).toThrow(
+    expect(() => reportedCodexConfigPath({ reportPath: report, cwd: "/w" })).toThrow(
       expect.objectContaining({
         code: "model_automation_failed",
         details: { path: report, cause: "The report is not two NUL-terminated values." },
