@@ -97,7 +97,10 @@ back each entry are listed in `prd/14-conformance.md`.
 - A Claude transcript removed between a poll's size check and its read now warns
   `transcript_read_error` (`ENOENT`) on that poll. Before, the read took the missing file
   for a truncation: it skipped the warning and rewound to the start, so a file restored
-  before the next poll replayed its earlier records as new activity.
+  before the next poll replayed its earlier records as new activity. The same warning
+  now covers a seen transcript that is missing when a stopped subagent's transcript is
+  drained, at the final flush, and at a `Stop`-first tail recovery, which each read it
+  as empty before. A transcript that was never created still reads as nothing.
 - `listModels` and `setModel` no longer send a picker key into a prompt that has
   reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
   answer and Escape is now decided after every received byte is rendered, like

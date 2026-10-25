@@ -6,10 +6,12 @@
  * buffered only up to a bounded ceiling; a record past it is discarded through its
  * next newline so a no-newline giant line can't OOM or re-concatenate quadratically.
  *
- * Both adapters share these forward-read semantics verbatim, and one existence policy
- * (§5.7, C-CLAUDE-24): until a stat has seen the file, ENOENT means "not created yet";
- * after that it is a removal that throws for the caller's fs guard. Claude extends the
- * base with a backward baseline-tail scan and an async `needsScan`.
+ * Both adapters share these forward-read semantics verbatim. `readLiveChunk()` adds the
+ * existence policy (§5.7, C-CLAUDE-24): until a stat has seen the file, ENOENT means "not
+ * created yet"; after that it is a removal that throws for the caller's fs guard. Claude
+ * reads through it everywhere and extends the base with a backward baseline-tail scan and
+ * an async `needsScan`. `readChunk()` alone takes a missing file as empty, as Codex's
+ * watcher reads it.
  */
 
 import { statSync } from "node:fs";
@@ -65,19 +67,26 @@ export class BoundedTranscriptCursor {
   }
 
   /**
-   * One live scan read. A file not created yet reads nothing; any other failure, ENOENT
-   * after the file existed included, throws for the fs guard. The read is sized by this
-   * same stat, so a removal can never read as a truncation and reset the cursor.
+   * One bounded chunk under the existence policy; callers loop on `canContinueNow`. A
+   * file not created yet reads nothing. The chunk is sized by this read's own stat, so a
+   * removal can never read as a truncation and reset the cursor.
    */
-  readLive(): ChunkRead {
-    let size: number;
+  readLiveChunk(): ChunkRead {
+    const size = this.liveSize();
+    return size === undefined ? { text: "", canContinueNow: false } : this.readChunk(size);
+  }
+
+  /**
+   * The file's size from one stat under the existence policy: `undefined` while it has
+   * never existed. ENOENT after it existed, and any other failure, throws for the fs guard.
+   */
+  protected liveSize(): number | undefined {
     try {
-      size = this.sawSize(statSync(this.path).size);
+      return this.sawSize(statSync(this.path).size);
     } catch (error) {
       this.rethrowUnlessUncreated(error);
-      return { text: "", canContinueNow: false };
+      return undefined;
     }
-    return this.readChunk(size);
   }
 
   /** Record a stat that saw the file, returning its size. */
@@ -93,8 +102,7 @@ export class BoundedTranscriptCursor {
 
   /**
    * Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed.
-   * `size` comes from the caller's stat; the terminal drain's default reads a missing
-   * file as empty.
+   * `size` comes from the caller's stat; the default reads a missing file as empty.
    */
   readChunk(size = fileSize(this.path)): ChunkRead {
     // Truncation restarts from 0, but the offset is COMMITTED only after the read

@@ -10,19 +10,19 @@ import { expect, test } from "vitest";
 import { BoundedTranscriptCursor } from "../../src/core/transcript/cursor.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
-test("C-CLAUDE-24 readLive waits on a file not created yet, then reads it, then throws on removal", () => {
+test("C-CLAUDE-24 readLiveChunk waits on a file not created yet, then reads it, then throws on removal", () => {
   const path = join(tempDirForUnit(), "t.jsonl");
   const cursor = new BoundedTranscriptCursor(path);
-  expect(cursor.readLive()).toEqual({ text: "", canContinueNow: false });
+  expect(cursor.readLiveChunk()).toEqual({ text: "", canContinueNow: false });
   writeFileSync(path, "first\n");
-  expect(cursor.readLive()).toEqual({ text: "first\n", canContinueNow: false });
+  expect(cursor.readLiveChunk()).toEqual({ text: "first\n", canContinueNow: false });
   rmSync(path);
-  expect(() => cursor.readLive()).toThrow(expect.objectContaining({ code: "ENOENT" }));
+  expect(() => cursor.readLiveChunk()).toThrow(expect.objectContaining({ code: "ENOENT" }));
 });
 
-test("C-CLAUDE-24 readLive rethrows a non-ENOENT failure before the file was ever seen", () => {
+test("C-CLAUDE-24 readLiveChunk rethrows a non-ENOENT failure before the file was ever seen", () => {
   const parent = join(tempDirForUnit(), "parent");
   const cursor = new BoundedTranscriptCursor(join(parent, "t.jsonl"));
   writeFileSync(parent, ""); // a FILE where the transcript's directory should be
-  expect(() => cursor.readLive()).toThrow(expect.objectContaining({ code: "ENOTDIR" }));
+  expect(() => cursor.readLiveChunk()).toThrow(expect.objectContaining({ code: "ENOTDIR" }));
 });

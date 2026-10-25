@@ -92,7 +92,9 @@ describe("C-CLAUDE-15 watcher-level drop/read-error accounting", () => {
     // When the in-flight stat REJECTS after finish(), its error must NOT be
     // recorded/routed — that would emit warning activity past terminal:exit,
     // breaking the permanent latch (§5.4). The fs guard records only while
-    // `!finished`, so the post-finish rejection is swallowed.
+    // `!finished`, so the post-finish rejection is swallowed. The final flush itself
+    // reads the removed file inside finish(), before terminal:exit, and reports it once
+    // (C-CLAUDE-24); a routed post-finish rejection would make that two.
     const path = tmpFile();
     const readErrors: TranscriptReadErrorNotice[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", () => {}, {
@@ -103,7 +105,8 @@ describe("C-CLAUDE-15 watcher-level drop/read-error accounting", () => {
     rmSync(path); // the pending stat will reject ENOENT
     const polled = watcher.pollOnceForTests(); // start the poll (awaits the stat)
     watcher.finish(); // latch terminal BEFORE the rejection lands
+    expect(readErrors).toEqual([{ elwoodSessionId: "s1", path, lastErrorCode: "ENOENT" }]);
     await polled;
-    expect(readErrors).toEqual([]);
+    expect(readErrors).toHaveLength(1);
   });
 });

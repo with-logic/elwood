@@ -3,13 +3,13 @@
  * Implements PRD §5.4 / §5.7 (C-CLAUDE-15, C-CLAUDE-24). The forward bounded-read core is
  * shared with Codex (core/transcript/cursor); Claude extends it with a backward
  * baseline-tail scan (recovering just the current turn already on disk) and an async
- * `needsScan` idle gate that applies the shared not-created-versus-removed policy.
+ * `needsScan` idle gate. Every Claude read, live, baseline, or drain, applies the shared
+ * not-created-versus-removed policy.
  */
 
 import { stat } from "node:fs/promises";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { scanBaselineTail } from "./baseline.ts";
-import { fileSize } from "./cursor-io.ts";
 
 export type { ChunkRead, TakenLines } from "../../core/transcript/cursor.ts";
 export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
@@ -29,8 +29,10 @@ export class TranscriptCursor extends BoundedTranscriptCursor {
   // and, if so, the bytes beyond the window that were NOT recovered — so the caller
   // can surface that loss as a bounded, content-free drop instead of dropping it
   // silently.
+  // Sized under the existence policy: a file not created yet has no tail, and one removed
+  // after it existed throws for the fs guard rather than reading as empty (C-CLAUDE-24).
   baselineTail(): { text: string; truncated: boolean; droppedBytes: number } {
-    const size = fileSize(this.path);
+    const size = this.liveSize() ?? 0;
     const tail = scanBaselineTail(this.path, size);
     return {
       text: tail.lines.join("\n"),
