@@ -65,8 +65,12 @@ test("C-API-56 setModel withholds its arrow from a prompt received but not yet r
   expect(writes).toEqual(["/model"]);
 });
 
-test("C-API-56 setModel sends no key while the screen cannot be vouched for", async () => {
-  const { error, writes } = await switchToSonnet({ renderFailed: true });
+test("C-API-56 setModel sends no key once a render fails after the picker opened", async () => {
+  // Healthy when the operation starts; the barrier must be read live, not copied once.
+  const barrier = { renderFailed: false };
+  const { error, writes } = await switchToSonnet(barrier, () => {
+    barrier.renderFailed = true;
+  });
   expect(error).toMatchObject({
     code: "model_automation_failed",
     message: "The model picker screen could not be verified before input could be sent.",

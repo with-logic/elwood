@@ -7,6 +7,7 @@ import { vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import type { InputTerminal } from "../../src/core/input/abort.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
@@ -39,12 +40,12 @@ export function releasesAfterClearStreak(held: () => boolean): boolean {
 /** The rejection the cleanup harness's scripted operation fails with. */
 export const failure = new Error("navigation failed");
 export type Screen = { text: string };
-/** Observation-barrier state a real terminal carries (C-API-56). */
-export type Barrier = {
-  readonly renderFailed?: boolean;
-  /** Renders whatever the PTY has received but the snapshot does not show yet. */
-  readonly settled?: () => Promise<void>;
-};
+/**
+ * Observation-barrier state a real terminal carries (C-API-56). `settled` renders whatever
+ * the PTY has received but the snapshot does not show yet; both default to a terminal that
+ * renders synchronously, and `renderFailed` is read live.
+ */
+export type Barrier = Pick<InputTerminal, "settled" | "renderFailed">;
 // A raw oracle, so a recognizer regression cannot make a leak look like a clean dispatch.
 const dialogTitle =
   /Select model|Select Model and Effort|Select Reasoning Level|Switch model\?|Change effort level\?/;
@@ -61,7 +62,10 @@ function scriptedTerminal(
   const screen: Screen = { text };
   const writes: string[] = [];
   const terminal = {
-    ...barrier,
+    settled: () => barrier.settled?.() ?? Promise.resolve(),
+    get renderFailed() {
+      return barrier.renderFailed === true;
+    },
     snapshot: () => ({ text: screen.text }),
     sendInput: (input: string | Uint8Array) => {
       writes.push(String(input));
