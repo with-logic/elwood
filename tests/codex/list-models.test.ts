@@ -10,8 +10,12 @@ import { listCodexModels } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { asScreen, codexPickerCurrentIsDefault, until } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
+import { restoreCodexHome, sandboxCodexHome } from "./session-models-helpers.ts";
 
-afterEach(resetFakes);
+afterEach(() => {
+  resetFakes();
+  restoreCodexHome();
+});
 
 /**
  * The probe creates its OWN temp state dir under the given parent, then a session
@@ -52,6 +56,7 @@ describe("listCodexModels", () => {
   test("C-API-41 starts a throwaway session, lists models, and tears it down", async () => {
     const cwd = tempDir();
     const stateDir = join(cwd, "state");
+    sandboxCodexHome(cwd); // configures `model = "gpt-5.5"`, the probe's launch model
     installFakes();
     // Pass every optional launch field so each is forwarded to startCodex.
     const listing = listCodexModels({

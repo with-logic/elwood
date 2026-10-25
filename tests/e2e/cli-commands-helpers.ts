@@ -4,9 +4,10 @@
  */
 
 import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawn as spawnPty } from "node-pty";
-import { e2eTimeoutMs } from "./helpers.ts";
+import { type E2eProject, e2eTimeoutMs, sandboxedCodexHome } from "./helpers.ts";
 
 export type Invocation = {
   readonly status: number | null;
@@ -21,6 +22,31 @@ export type PtyRun = {
 };
 
 export const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import.meta.url));
+
+type ListedModel = {
+  readonly id: string;
+  readonly isCurrent: boolean;
+  readonly isDefault: boolean;
+};
+
+/**
+ * A sandboxed `CODEX_HOME` for `elwood models`. Codex names its default only through
+ * config.toml (PRD §5.3): with no model configured a probe marks no default, and naming
+ * a non-current row there makes the next probe mark that row `(default)`.
+ */
+export function codexDefaultSandbox(project: E2eProject) {
+  const sandbox = sandboxedCodexHome(project, "");
+  return {
+    configureDefault(models: readonly ListedModel[]): void {
+      if (models.some((model) => model.isDefault))
+        throw new Error("A Codex default was reported with no model configured.");
+      const configured = models.find((model) => !model.isCurrent);
+      if (!configured) throw new Error("No other Codex model is listed.");
+      writeFileSync(sandbox.configPath, `model = "${configured.id}"\n`);
+    },
+    dispose: sandbox.dispose,
+  };
+}
 
 export function parse<T>(result: Invocation, expectedStatus = 0): T {
   if (result.status !== expectedStatus) throw new Error(result.stderr);

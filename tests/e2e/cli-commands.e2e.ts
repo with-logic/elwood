@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { drivePty, invoke, parse } from "./cli-commands-helpers.ts";
+import { codexDefaultSandbox, drivePty, invoke, parse } from "./cli-commands-helpers.ts";
 import { e2eTimeoutMs, makeProject, pathRemoved, skipReason, turnsEnabled } from "./helpers.ts";
 
 type SessionsDocument = {
@@ -141,6 +141,7 @@ for (const agent of ["claude", "codex"] as const) {
   }, async () => {
     const project = makeProject(agent);
     const state = `--state-dir=${project.stateDir}`;
+    const codexHome = agent === "codex" ? codexDefaultSandbox(project) : undefined;
     try {
       const json = parse<ModelsDocument>(
         await invoke(
@@ -152,7 +153,8 @@ for (const agent of ["claude", "codex"] as const) {
       assert.equal(json.agent, agent);
       assert.ok(json.models.length >= 2, JSON.stringify(json));
       assert.equal(json.models.filter((model) => model.isCurrent).length, 1);
-      assert.ok(json.models.some((model) => model.isDefault));
+      if (codexHome) codexHome.configureDefault(json.models);
+      else assert.ok(json.models.some((model) => model.isDefault));
       const text = await invoke(["models", `--agent=${agent}`, state, "--timeout=2m"], project.cwd);
       assert.equal(text.status, 0, text.stderr);
       assert.match(text.stdout, /^CURRENT\s+ID\s+LABEL\s+DEFAULT\s+DESCRIPTION\n/);
@@ -164,6 +166,7 @@ for (const agent of ["claude", "codex"] as const) {
       );
       assert.deepEqual(listed.sessions, [], "the models probe tears its identity down");
     } finally {
+      codexHome?.dispose();
       rmSync(project.cwd, { recursive: true, force: true });
     }
   });

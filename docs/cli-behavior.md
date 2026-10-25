@@ -181,6 +181,17 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   visible catalog; every returned row correctly had `isCurrent: false`.
   Real picker tests should let the installed CLI choose its launch default,
   rather than pinning a model that can disappear from the catalog.
+- **Codex 0.164.0 marks only the `(current)` row; nothing on screen names the
+  default.** Probed 2026-10-25 in a sandboxed `CODEX_HOME` whose config sets
+  `model = "gpt-6.1-sol"`, with the session launched on `--model gpt-6-luna`: the
+  picker drew `› 4. GPT-6-Luna (current)` and no marker on GPT-6.1-Sol. A session
+  switch moves `(current)` to the new row, again with nothing on the launch model.
+  Older Codex drew `1. gpt-5.5 (default)` beside `2. gpt-5.4 (current)`
+  (`codexPickerSplitMarkers`), so reading "a lone `(current)` row is also the
+  default" reported the session's own model as the user's default. Elwood now reads
+  the default from `config.toml`. The cached catalog (`models_cache.json`) carries
+  no default flag, so Codex's built-in default in an unconfigured home cannot be
+  identified at all.
 - **A model dialog replaces the composer; nothing renders below it.** Full-viewport
   captures from Claude 2.1.274 and Codex 0.154.0 (2026-09-17,
   `tests/helpers/model-dialog-viewports.ts`) show the picker, Codex's reasoning

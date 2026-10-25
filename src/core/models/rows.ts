@@ -35,17 +35,21 @@ export function parseClaudeModelPicker(text: string): ParsedModelPicker {
   });
 }
 
-export function parseCodexModelPicker(text: string): ParsedModelPicker {
+/**
+ * A rendered `(default)` marker wins. Codex 0.164 draws none, only `(current)`, so the
+ * default is then the row whose id is the `configuredModel` read from config.toml.
+ */
+export function parseCodexModelPicker(text: string, configuredModel?: string): ParsedModelPicker {
   const parsed = parseRows(pickerRegion(text, codexModelPickerHeader), (labelText) => {
     const isCurrent = /\(current\)/i.test(labelText);
     const isDefault = /\(default\)/i.test(labelText);
     const label = labelText.replace(/\((?:current|default)\)/gi, "").trim();
     return { label, id: label.toLowerCase(), isCurrent, isDefault };
   });
-  // Codex omits the default marker when the current model is the default.
   if (parsed.options.some((option) => option.isDefault)) return parsed;
+  const defaultId = configuredModel?.toLowerCase();
   const options = parsed.options.map((option) =>
-    option.isCurrent ? { ...option, isDefault: true } : option,
+    option.id === defaultId ? { ...option, isDefault: true } : option,
   );
   return { options, cursorIndex: parsed.cursorIndex };
 }

@@ -14,6 +14,7 @@ import {
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 
+import { configuredCodexModel } from "./config/default-model.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
 
 const reasoningHeader = /Select Reasoning Level/;
@@ -35,7 +36,8 @@ export const codexModelPicker: ModelPickerSpec = {
     if (picker < 0 && level < 0) return undefined;
     return level > picker ? "follow-up" : "picker";
   },
-  parse: parseCodexModelPicker,
+  // Codex names no default on screen, so each read takes it from the config (PRD §5.3).
+  parse: (text) => parseCodexModelPicker(text, configuredCodexModel()),
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
   apply: async (io, timeoutMs) => {
