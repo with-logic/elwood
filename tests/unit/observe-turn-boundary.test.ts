@@ -1,6 +1,7 @@
 /** Passive internal turns use the ergonomic completion/drain contract (PRD §5.8, C-API-48/50). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { observeTurnBoundary } from "../../src/core/simple/observe-boundary.ts";
+import { DRAIN_MS } from "../../src/core/simple/turn-boundary.ts";
 import { activity, FakeTurnSession } from "./simple-turn-fakes.ts";
 
 beforeEach(() => vi.useFakeTimers());
@@ -74,7 +75,7 @@ test("C-API-50 a backlog failure while running waits for ready and its trailing 
   await vi.advanceTimersByTimeAsync(20_000);
   expect(settled()).toBe(false);
   session.emit("status", { status: "ready" });
-  await vi.advanceTimersByTimeAsync(750);
+  await vi.advanceTimersByTimeAsync(DRAIN_MS);
   await observer.promise;
   expect(session.listenerCount()).toBe(0);
 });
