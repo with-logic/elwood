@@ -315,7 +315,10 @@ a live `reap_failed` warning rather than aborting the exit callback. An explicit
 survivor reap (it does not re-signal the dead PTY — node-pty does not replay the
 exit event, and the pid may already be recycled) and rejects with a typed
 `termination_failed` error if that reap fails, leaving the reap retryable by a
-later `teardown()`.
+later `teardown()`. Every `stop()`/`kill()` attempt runs runtime cleanup after its
+termination or survivor reap, even when that failed: the PTY could not be signaled,
+did not exit, or its group could not be reaped. The call still rejects with that
+failure, and a cleanup failure alongside it is kept in `details.cleanupError`.
 
 Overlapping `stop()`, `kill()`, and `teardown()` calls on one session are
 serialized so the PTY is signaled at most once. The first caller owns the in-flight
