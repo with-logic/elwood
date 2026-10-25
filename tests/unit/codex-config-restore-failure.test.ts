@@ -6,10 +6,10 @@
  * read-only directory would not stop root).
  */
 
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { restoreCodexHome, tempCodexHome } from "./helpers.ts";
 
 vi.mock("node:fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs")>()),
@@ -22,18 +22,12 @@ const { restoreCodexConfig, snapshotCodexConfig } = await import(
   "../../src/codex/config/restore.ts"
 );
 
-const original = process.env["CODEX_HOME"];
-afterEach(() => {
-  if (original === undefined) delete process.env["CODEX_HOME"];
-  else process.env["CODEX_HOME"] = original;
-});
+afterEach(restoreCodexHome);
 
 describe("codex config restore write failure", () => {
   test("C-CODEX-14 a failed rename removes the temp file and rethrows the original error", () => {
-    const home = mkdtempSync(join(tmpdir(), "codex-restore-fail-"));
-    process.env["CODEX_HOME"] = home;
-    const path = join(home, "config.toml");
-    writeFileSync(path, 'model = "gpt-5.5"\n');
+    const path = tempCodexHome('model = "gpt-5.5"\n');
+    const home = dirname(path);
     const snapshot = snapshotCodexConfig();
     writeFileSync(path, 'model = "gpt-5.4"\n');
     expect(() => restoreCodexConfig(snapshot)).toThrow(/cross-device link/);

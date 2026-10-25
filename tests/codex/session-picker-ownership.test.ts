@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { afterEach, expect, test } from "vitest";
 import { withCodexConfigLock } from "../../src/codex/config/lock.ts";
 import { startCodex } from "../../src/index.ts";
-import { asScreen, codexPickerCurrentIsDefault, until } from "../helpers/model-pickers.ts";
+import { asScreen, codexPickerCurrentMarkerOnly, until } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { restoreCodexHome, sandboxCodexHome } from "./session-models-helpers.ts";
 
@@ -26,7 +26,7 @@ test("C-API-55 a foreign picker appearing during the config wait gets no command
       .setModel("gpt-5.4", { timeoutMs: 400 })
       .catch((error: unknown) => error);
     await new Promise<void>((resolve) => setImmediate(resolve));
-    ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
+    ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await session.terminal.settled();
     held.resolve();
     await holder;
@@ -57,7 +57,7 @@ test.each([
     else if (route === "bytes") await session.terminal.sendInput(Buffer.from("human"));
     else session.terminal.xterm.input("human");
     const before = [...ptys[0]!.writes];
-    ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
+    ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await session.terminal.settled();
     expect(await listing).toMatchObject({ code: "model_automation_failed" });
     expect(ptys[0]!.writes).toEqual(before);
@@ -81,7 +81,7 @@ test.each([
       .setModel("gpt-5.4", { timeoutMs: 500 })
       .catch((error: unknown) => error);
     await until(() => ptys[0]!.writes.includes("\r"));
-    ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
+    ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await session.terminal.settled();
     const warnings: string[] = [];
     session.on("warning", (event) => warnings.push(event.code));

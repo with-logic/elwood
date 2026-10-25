@@ -17,7 +17,8 @@ back each entry are listed in `prd/14-conformance.md`.
   row, so `isDefault` now follows `config.toml`: the `model` of the profile the
   root `profile` key selects, else the root `model`. A session launched or
   switched onto another model keeps the configured row as its default, and a
-  config that names no model reports no default.
+  config that names no model reports no default. A `config.toml` that exists but
+  cannot be read rejects the listing with `model_automation_failed`.
 
 - Claude questions are raised again on Claude Code 2.1.310 and in named
   sessions (`name`). 2.1.310 pads the single-question header chip with a

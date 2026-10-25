@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { listCodexModels } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { asScreen, codexPickerCurrentIsDefault, until } from "../helpers/model-pickers.ts";
+import { asScreen, codexPickerCurrentMarkerOnly, until } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 import { restoreCodexHome, sandboxCodexHome } from "./session-models-helpers.ts";
 
@@ -47,7 +47,7 @@ async function driveProbe(cwd: string, parent: string): Promise<void> {
     stateDir,
   );
   await until(() => pty.writes.includes("/model") && pty.writes.includes("\r"));
-  pty.emitData(asScreen(codexPickerCurrentIsDefault));
+  pty.emitData(asScreen(codexPickerCurrentMarkerOnly));
   await until(() => pty.writes.includes("\u001b"));
   pty.emitData(asScreen("› "));
 }

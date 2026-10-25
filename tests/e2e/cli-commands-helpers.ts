@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawn as spawnPty } from "node-pty";
+import type { AgentModelOption } from "../../src/index.ts";
 import { type E2eProject, e2eTimeoutMs, sandboxedCodexHome } from "./helpers.ts";
 
 export type Invocation = {
@@ -23,11 +24,8 @@ export type PtyRun = {
 
 export const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import.meta.url));
 
-type ListedModel = {
-  readonly id: string;
-  readonly isCurrent: boolean;
-  readonly isDefault: boolean;
-};
+/** The listed-row fields these e2e checks read, derived from the public row type. */
+export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault">;
 
 /**
  * A sandboxed `CODEX_HOME` for `elwood models`. Codex names its default only through

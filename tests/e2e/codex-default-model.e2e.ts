@@ -1,5 +1,5 @@
 /**
- * Real Codex reports the configured default model, never the session's current one.
+ * Real Codex reports the configured default model, independent of the session's current one.
  * Implements PRD §5.3 `isDefault` and C-API-23.
  *
  * Codex 0.164 marks only the `(current)` row of its picker, so Elwood reads the default
@@ -21,7 +21,7 @@ import {
   waitFor,
 } from "./helpers.ts";
 
-test("C-API-23 real Codex marks the configured default model, not the current one", {
+test("C-API-23 real Codex marks the configured default model, independent of the current one", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
   timeout: 150_000,
 }, async () => {

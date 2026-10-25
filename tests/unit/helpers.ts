@@ -1,9 +1,28 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export function tempDirForUnit(): string {
   return mkdtempSync(join(tmpdir(), "elwood-unit-"));
+}
+
+const originalCodexHome = process.env["CODEX_HOME"];
+
+/**
+ * Points `CODEX_HOME` at a fresh temp dir and returns its `config.toml` path, writing
+ * `contents` there when given. Pair with `restoreCodexHome` in `afterEach`.
+ */
+export function tempCodexHome(contents?: string): string {
+  const home = tempDirForUnit();
+  process.env["CODEX_HOME"] = home;
+  const path = join(home, "config.toml");
+  if (contents !== undefined) writeFileSync(path, contents);
+  return path;
+}
+
+export function restoreCodexHome(): void {
+  if (originalCodexHome === undefined) delete process.env["CODEX_HOME"];
+  else process.env["CODEX_HOME"] = originalCodexHome;
 }
 
 export function sendBridge(socketPath: string, payload: string): Promise<string> {

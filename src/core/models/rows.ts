@@ -36,22 +36,16 @@ export function parseClaudeModelPicker(text: string): ParsedModelPicker {
 }
 
 /**
- * A rendered `(default)` marker wins. Codex 0.164 draws none, only `(current)`, so the
- * default is then the row whose id is the `configuredModel` read from config.toml.
+ * Rendered markers only. Codex 0.164 draws `(current)` and never `(default)`, so a lone
+ * `(current)` says nothing about the default; the Codex spec marks it from config.toml.
  */
-export function parseCodexModelPicker(text: string, configuredModel?: string): ParsedModelPicker {
-  const parsed = parseRows(pickerRegion(text, codexModelPickerHeader), (labelText) => {
+export function parseCodexModelPicker(text: string): ParsedModelPicker {
+  return parseRows(pickerRegion(text, codexModelPickerHeader), (labelText) => {
     const isCurrent = /\(current\)/i.test(labelText);
     const isDefault = /\(default\)/i.test(labelText);
     const label = labelText.replace(/\((?:current|default)\)/gi, "").trim();
     return { label, id: label.toLowerCase(), isCurrent, isDefault };
   });
-  if (parsed.options.some((option) => option.isDefault)) return parsed;
-  const defaultId = configuredModel?.toLowerCase();
-  const options = parsed.options.map((option) =>
-    option.id === defaultId ? { ...option, isDefault: true } : option,
-  );
-  return { options, cursorIndex: parsed.cursorIndex };
 }
 
 type RowFlags = Pick<AgentModelOption, "id" | "label" | "isCurrent" | "isDefault">;

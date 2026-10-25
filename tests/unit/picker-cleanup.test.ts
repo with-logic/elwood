@@ -7,7 +7,7 @@ import {
   claudeHookSwitchConfirmation,
   claudeModelCacheConfirmationOnNo,
   claudePicker,
-  codexPickerCurrentIsDefault,
+  codexPickerCurrentMarkerOnly,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
 import {
@@ -38,7 +38,7 @@ test("C-API-55 a failed operation's picker is cancelled before queued input is r
 });
 
 test.each([
-  ["Codex reasoning level", codexModelPicker, codexReasoningScreen, codexPickerCurrentIsDefault],
+  ["Codex reasoning level", codexModelPicker, codexReasoningScreen, codexPickerCurrentMarkerOnly],
   ["Claude cache warning", claudeModelPicker, claudeModelCacheConfirmationOnNo, claudePicker],
 ] as const)("C-API-55 cancelling a %s returns to the picker, which is cancelled too", async (_name, spec, followUp, pickerText) => {
   // Real Claude 2.1.274 and Codex 0.154.0: Escape on the follow-up stage reopens the picker.
@@ -102,7 +102,7 @@ test("C-API-55 an Escape the operation already wrote is not repeated", async () 
 
 test("C-API-55 terminating during cleanup stops it before any further write", async () => {
   const { writes, queue, picker, failWith } = setup(codexModelPicker, (_input, shown) => {
-    shown.text = codexPickerCurrentIsDefault;
+    shown.text = codexPickerCurrentMarkerOnly;
   });
   const failed = expect(failWith(codexReasoningScreen)).rejects.toThrow("closed");
   await vi.advanceTimersByTimeAsync(50);

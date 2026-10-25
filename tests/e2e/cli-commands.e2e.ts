@@ -8,7 +8,13 @@ import assert from "node:assert/strict";
 import { existsSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { codexDefaultSandbox, drivePty, invoke, parse } from "./cli-commands-helpers.ts";
+import {
+  codexDefaultSandbox,
+  drivePty,
+  invoke,
+  type ListedModel,
+  parse,
+} from "./cli-commands-helpers.ts";
 import { e2eTimeoutMs, makeProject, pathRemoved, skipReason, turnsEnabled } from "./helpers.ts";
 
 type SessionsDocument = {
@@ -29,11 +35,7 @@ type ModelsDocument = {
   readonly schemaVersion: 1;
   readonly type: "models";
   readonly agent: "claude" | "codex";
-  readonly models: readonly {
-    readonly id: string;
-    readonly isCurrent: boolean;
-    readonly isDefault: boolean;
-  }[];
+  readonly models: readonly ListedModel[];
 };
 type ResultDocument = {
   readonly type: "result" | "error";

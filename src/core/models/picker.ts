@@ -49,6 +49,15 @@ export type ModelPickerSpec = {
     authority: ModelDialogAuthority,
   ) => ModelDialogStage | undefined;
   readonly parse: (text: string) => ParsedModelPicker;
+  /**
+   * Completes listed rows from state the picker does not render, inside the operation's
+   * queue slot and under its deadline/termination `signal`. Codex reads its configured
+   * default here (PRD §5.3).
+   */
+  readonly withDefaults?: (
+    options: readonly AgentModelOption[],
+    signal: AbortSignal,
+  ) => Promise<readonly AgentModelOption[]>;
   readonly apply: (io: ModelPickerIo, timeoutMs: number) => Promise<void>;
 };
 

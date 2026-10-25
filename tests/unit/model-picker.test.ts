@@ -10,7 +10,7 @@ import { listPickerModels, pickerTimeout, setPickerModel } from "../../src/core/
 import {
   claudePicker,
   claudePickerCursorOnHaiku,
-  codexPickerCurrentIsDefault,
+  codexPickerCurrentMarkerOnly,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
 import { scripted } from "./scripted-terminal.ts";
@@ -76,7 +76,7 @@ describe("model picker automation", () => {
   });
 
   test("C-API-24 codex apply confirms the model and its default reasoning level", async () => {
-    const terminal = scripted(codexPickerCurrentIsDefault);
+    const terminal = scripted(codexPickerCurrentMarkerOnly);
     let enters = 0;
     terminal.onInput = (input) => {
       if (input !== "\r") return;

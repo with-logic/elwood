@@ -4,7 +4,7 @@ import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { openCommandScreen } from "../../src/core/models/tui-screen.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
-import { codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
+import { codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -30,7 +30,7 @@ test("C-API-55 a failed model command never authorizes cleanup of a foreign pick
     blocked: () => false,
     picker: () => codexModelPicker,
     submitDirect: () => {
-      text = codexPickerCurrentIsDefault;
+      text = codexPickerCurrentMarkerOnly;
       return Promise.reject(failedWrite);
     },
   });

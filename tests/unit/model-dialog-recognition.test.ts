@@ -16,7 +16,7 @@ import {
   claudeModelCacheConfirmationOnYes,
   claudePicker,
   claudePickerCursorOnHaiku,
-  codexPickerCurrentIsDefault,
+  codexPickerCurrentMarkerOnly,
   codexPickerSplitMarkers,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
@@ -67,7 +67,7 @@ test.each([
     "follow-up",
   ],
   ["Claude closed picker viewport", claudeModelPicker, claudeClosedPickerViewport, undefined],
-  ["Codex picker", codexModelPicker, codexPickerCurrentIsDefault, "picker"],
+  ["Codex picker", codexModelPicker, codexPickerCurrentMarkerOnly, "picker"],
   ["Codex picker below a transcript row", codexModelPicker, codexPickerSplitMarkers, "picker"],
   ["Codex 0.154.0 picker viewport", codexModelPicker, codexPickerViewport, "picker"],
   ["Codex reasoning level", codexModelPicker, codexReasoningScreen, "follow-up"],
@@ -75,7 +75,7 @@ test.each([
   [
     "Codex picker reopened below its reasoning level",
     codexModelPicker,
-    `${codexReasoningScreen}\n${codexPickerCurrentIsDefault}`,
+    `${codexReasoningScreen}\n${codexPickerCurrentMarkerOnly}`,
     "picker",
   ],
   ["Codex closed picker viewport", codexModelPicker, codexClosedPickerViewport, undefined],
@@ -140,7 +140,7 @@ test.each([
   [
     "a composer row continuing the quoted numbering",
     codexModelPicker,
-    `• It shows:\n${codexPickerCurrentIsDefault}\n\n› 5. another model  described like a row`,
+    `• It shows:\n${codexPickerCurrentMarkerOnly}\n\n› 5. another model  described like a row`,
   ],
   [
     "an approval prompt whose options carry no caret",

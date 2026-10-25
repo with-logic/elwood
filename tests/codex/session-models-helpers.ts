@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   asScreen,
-  codexPickerCurrentIsDefault,
+  codexPickerCurrentMarkerOnly,
   codexPickerSplitMarkers,
   codexReasoningScreen,
   until,
@@ -48,7 +48,7 @@ export async function driveUntilConfigWritten(
 ): Promise<void> {
   const pty = ptys[ptyIndex]!;
   await until(() => pty.writes.join("").includes("/model\r"));
-  pty.emitData(asScreen(codexPickerCurrentIsDefault));
+  pty.emitData(asScreen(codexPickerCurrentMarkerOnly));
   await until(() => pty.writes.filter((w) => w === "[B").length === 1);
   pty.emitData(asScreen(codexPickerSplitMarkers));
   await until(() => pty.writes.filter((w) => w === "\r").length >= 2);
