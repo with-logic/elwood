@@ -1,6 +1,6 @@
 /**
  * Reads a frame captured from a real CLI, stored under `tests/fixtures/<cli>-<version>/`.
- * Supports the model-picker recognition tests (C-API-23, C-API-24).
+ * Supports the recognition tests that read real captures (C-API-23, C-API-24, C-API-28, C-E2E-09).
  */
 import { readFileSync } from "node:fs";
 

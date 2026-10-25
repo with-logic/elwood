@@ -40,15 +40,13 @@ const directoryTrustOutput = /trustthisfolder\?|trustthecontentsofthisdirectory/
 type Launch = {
   heldAt?: number;
   releasedAt?: number;
-  /** The gate reached the raw output before the boot composer did. */
-  gateFirst: boolean;
   displayed: boolean;
   answeredAt?: number;
 };
 
 /** Holds the CLI's output from Elwood for `holdMs` once its boot composer is out. */
 function holdAfterBootComposer(): Launch {
-  const launch: Launch = { gateFirst: false, displayed: false };
+  const launch: Launch = { displayed: false };
   const plainText = createCliSanitizer();
   setPtyFactoryForTests((options) => {
     const pty = nodePtyFactory(options);
@@ -73,7 +71,6 @@ function holdAfterBootComposer(): Launch {
         output += data;
         const plain = plainText(output).replace(/\s+/g, "");
         launch.displayed = directoryTrustOutput.test(plain);
-        launch.gateFirst = launch.displayed && launch.heldAt === undefined;
         if (launch.heldAt === undefined && !launch.displayed && bootComposerOutput.test(plain)) {
           deliver(data); // Elwood sees the boot composer itself, then nothing for `holdMs`.
           hold();
@@ -108,12 +105,14 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   const launch = holdAfterBootComposer();
   let session: CodexSessionApi | undefined;
   t.after(async () => {
+    let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) await stopCodex(session);
+      if (session !== undefined) failures = await stopCodex(session);
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();
     }
+    if (failures.length > 0) throw new AggregateError(failures, "Codex teardown failed");
   });
   session = await startCodex({
     cwd: project.cwd,
@@ -145,8 +144,9 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
     return;
   }
   assert.ok(reached, `no answered ready; status ${live.status}; screen:\n${screen}`);
-  if (launch.gateFirst || launch.heldAt === undefined) {
-    skipNow(t, `Codex painted its gate before any boot composer, so nothing was held:\n${screen}`);
+  // A hold starts only on a boot composer seen before the gate.
+  if (launch.heldAt === undefined) {
+    skipNow(t, `no boot composer was recognized before the gate, so nothing was held:\n${screen}`);
     return;
   }
   const { heldAt, releasedAt, answeredAt } = launch;

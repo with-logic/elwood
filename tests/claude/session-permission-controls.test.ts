@@ -19,10 +19,14 @@ test.each([
   }, true);
   gate.observeReadinessFrame(
     readScreenFacts(claudeScreenFactTable, { text: menu(selected), title: "" }).facts,
+    false,
+    "",
   );
   expect(ready).toBe(false);
   gate.observeReadinessFrame(
     readScreenFacts(claudeScreenFactTable, { text: "❯ ", title: "" }).facts,
+    false,
+    "",
   );
   expect(ready).toBe(true);
   gate.ready.cancel();

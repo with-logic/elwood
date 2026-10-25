@@ -20,22 +20,23 @@ export type ReadinessGate = {
   readonly isHeld: () => boolean;
   readonly observeFrameHold: (
     facts: ComposerReadyFacts,
-    trustInputBlocking?: boolean,
-    frame?: string,
+    trustInputBlocking: boolean,
+    frame: string,
   ) => void;
-  /** Per rendered frame: update the blocking gate, reconcile a deferred mark, and
-   * (on resume) mark readiness on the first quiet, non-blocking composer. */
+  /** Per rendered frame: update the blocking gate, reconcile a deferred or waiting mark,
+   * and (on resume) mark readiness on the first quiet, non-blocking composer. */
   readonly observeReadinessFrame: (
     facts: ComposerReadyFacts,
-    trustInputBlocking?: boolean,
-    frame?: string,
+    trustInputBlocking: boolean,
+    frame: string,
   ) => void;
 };
 
 /**
  * `composerConfigured`, when an adapter supplies it, proves a rendered composer belongs
  * to a configured session rather than to the boot screen (Codex's model footer). The
- * starvation deadline then marks only onto such a frame (C-API-28).
+ * initial deadline then marks only onto such a frame (C-API-28). The latest frame is
+ * checked only when a waiting deadline asks, never on every render.
  */
 export function createReadinessGate(
   onReady: () => void,
@@ -43,35 +44,37 @@ export function createReadinessGate(
   composerConfigured?: (frame: string) => boolean,
 ): ReadinessGate {
   let readinessHeld = false;
-  let composerPainted = false;
-  const observeFrameHold = (facts: ComposerReadyFacts, trustInputBlocking = false, frame = "") => {
+  let latest: { facts: ComposerReadyFacts; frame: string } | undefined;
+  const observeFrameHold = (
+    facts: ComposerReadyFacts,
+    trustInputBlocking: boolean,
+    frame: string,
+  ) => {
     // A dialog's deferred mark waits for idle; ordinary cold-start work still
     // retains the existing hook/deadline path instead of waiting on itself.
     readinessHeld =
       facts.blocking_prompt_visible ||
       trustInputBlocking ||
       (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
-    // Work may animate forever (a failing MCP server's retry spinner), so only the
-    // configured composer itself, not idleness, is required before the deadline marks.
-    composerPainted =
-      facts.composer_visible &&
-      !facts.blocking_prompt_visible &&
-      composerConfigured?.(frame) === true;
+    latest = { facts, frame };
   };
-  const ready = initialReady(
-    onReady,
-    undefined,
-    () => readinessHeld,
-    composerConfigured && (() => composerPainted),
-  );
+  // Work may animate forever (a failing MCP server's retry spinner), so only the
+  // configured composer itself, not idleness, is required before the deadline marks.
+  const configuredComposerShown =
+    composerConfigured &&
+    (() =>
+      latest?.facts.composer_visible === true &&
+      !latest.facts.blocking_prompt_visible &&
+      composerConfigured(latest.frame));
+  const ready = initialReady(onReady, undefined, () => readinessHeld, configuredComposerShown);
   return {
     ready,
     isHeld: () => readinessHeld,
     observeFrameHold,
-    observeReadinessFrame: (facts, trustInputBlocking = false, frame = "") => {
+    observeReadinessFrame: (facts, trustInputBlocking, frame) => {
       observeFrameHold(facts, trustInputBlocking, frame);
       markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
-      ready.retryWhenReleased(readinessHeld); // reconcile only after an idle clearance frame
+      ready.retryWhenReleased(readinessHeld);
     },
   };
 }

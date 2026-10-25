@@ -1,8 +1,8 @@
 /** The cold-start readiness deadline never drains input before a slow trust gate (C-API-28). */
-import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { codexComposer, codexTty, tty } from "../fixtures/trust-composer.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const sessions: CodexSessionApi[] = [];
@@ -12,13 +12,12 @@ afterEach(async () => {
   resetFakes();
 });
 
-const fixture = (path: string) =>
-  readFileSync(new URL(`../fixtures/${path}`, import.meta.url), "utf8").trimEnd();
+const fixture = (path: string) => capturedFrame(path).trimEnd();
 /** Codex 0.164's boot composer: painted before the gate, without the model footer. */
-const boot = fixture("codex-0.164.0/boot/boot-composer.txt");
+const boot = fixture("codex-0.164.0/boot/boot-composer");
 const paste = "\u001b[200~hello\u001b[201~";
 /** The folder-access gate Codex 0.156.1 introduced and 0.164 still draws. */
-const folderAccess = fixture("codex-0.156.1/folder-access.txt");
+const folderAccess = fixture("codex-0.156.1/folder-access");
 
 test("C-API-28 a trust gate painted after the readiness deadline still precedes ready", async () => {
   installFakes();

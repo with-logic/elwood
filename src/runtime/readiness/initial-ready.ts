@@ -1,5 +1,5 @@
 /**
- * Shared hook-backed initial-readiness marker with a starvation deadline.
+ * Shared hook-backed initial-readiness marker with a two-stage starvation deadline.
  * Implements PRD §5.3/§9.4, C-API-19, and C-API-28.
  *
  * On a COLD start both adapters gate the first queued message on a pre-input
@@ -15,7 +15,8 @@
  * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
  * race, whichever arrives first (readiness is idempotent). `armDeadline` is the ultimate
  * fallback for both start and resume so a missing readiness signal never starves the
- * queue forever.
+ * queue forever: its deadline marks onto a configured composer, and its backstop marks
+ * regardless.
  */
 
 export type InitialReady = {
@@ -26,8 +27,9 @@ export type InitialReady = {
   /** Fire readiness now (one-shot) — the pre-input readiness hook path. */
   readonly mark: () => void;
   /**
-   * Re-attempt a deferred hook/deadline mark once the composite readiness hold
-   * releases: a dialog must clear to a nonblocking idle composer (C-API-28).
+   * Per rendered frame: re-attempt a hook/deadline mark the composite readiness hold
+   * deferred, once it releases (a dialog must clear to a nonblocking idle composer), or
+   * a deadline mark still waiting for a configured composer (C-API-28).
    */
   readonly retryWhenReleased: (readinessHeld: boolean) => void;
 };
@@ -60,8 +62,15 @@ export function markReadyOnResumeComposer(
 }
 
 /**
- * `isComposerPainted` reports whether the latest frame shows a configured session's
- * composer outside any blocking dialog. The starvation deadline marks only onto such a
+ * Twice the longest measured Codex 0.164 trust-gate delay (30.6 s after first output,
+ * docs/cli-behavior.md): readiness without a configured composer this long after the
+ * first frame is no longer racing a late gate (C-API-28).
+ */
+export const initialBackstopMs = 60_000;
+
+/**
+ * `isComposerConfigured` reports whether the latest frame shows a configured session's
+ * composer outside any blocking dialog. The initial deadline marks only onto such a
  * frame: a CLI that has not configured its session is still booting, and under load can
  * paint a trust gate after the deadline, so an earlier mark would drain the queue into
  * the boot screen or that gate. A deadline that expires first waits for that frame, and
@@ -70,10 +79,10 @@ export function markReadyOnResumeComposer(
  */
 export function initialReady(
   callback: () => void,
-  maxWaitMs = 10_000,
+  initialDeadlineMs = 10_000,
   isReadinessHeld: () => boolean = () => false,
-  isComposerPainted: () => boolean = () => true,
-  backstopMs = 60_000,
+  isComposerConfigured: () => boolean = () => true,
+  backstopMs = initialBackstopMs,
 ): InitialReady {
   let ready = false;
   let cancelled = false;
@@ -81,13 +90,16 @@ export function initialReady(
   let awaitingComposer = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let backstop: ReturnType<typeof setTimeout> | undefined;
-  /** Timer marks are contained; on failure `ready` stays false and a later signal retries. */
+  /**
+   * Timer marks are contained. A mark whose callback throws leaves `ready` false; a later
+   * readiness hook, or for the deadline the backstop, retries it.
+   */
   const markFromTimer = (composerRequired: boolean) => {
     try {
-      awaitingComposer = composerRequired && !isComposerPainted();
+      awaitingComposer = composerRequired && !isComposerConfigured();
       if (!awaitingComposer) mark();
     } catch {
-      // Retried by a subsequent readiness hook or rendered composer frame.
+      // Retried by a later readiness hook or timer, as above.
     }
   };
   const mark = () => {
@@ -118,7 +130,10 @@ export function initialReady(
     mark,
     retryWhenReleased: (readinessHeld) => {
       if (ready || readinessHeld) return;
-      if (deferredByHold || (awaitingComposer && isComposerPainted())) mark();
+      // A hold-deferred mark retries once the hold releases; a deadline that expired
+      // before the configured composer retries on the first frame showing it, even
+      // while work is on screen.
+      if (deferredByHold || (awaitingComposer && isComposerConfigured())) mark();
     },
     replay: () => void (!cancelled && ready && callback()),
     // Arms on the first frame regardless of hook arrival, so a missing or failed
@@ -126,7 +141,7 @@ export function initialReady(
     // throwing callback on a timer would otherwise be an uncaught exception).
     armDeadline: () => {
       if (cancelled || ready) return;
-      deadline ??= setTimeout(() => markFromTimer(true), maxWaitMs);
+      deadline ??= setTimeout(() => markFromTimer(true), initialDeadlineMs);
       backstop ??= setTimeout(() => markFromTimer(false), backstopMs);
     },
   };

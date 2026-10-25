@@ -55,8 +55,10 @@ invalid and will conclude the hook "never fires". (This once produced a false
 sandboxed homes, and user `config.toml` hooks merge additively with `-c` hooks.)
 Because `SessionStart` is Elwood's authoritative Codex readiness signal
 (`markInitialReadyFromHook`, `src/codex/session/hooks.ts`), cold-start readiness
-comes from that hook, bounded by a **10 s starvation deadline** armed on the
-first render frame (`src/runtime/readiness/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
+comes from that hook, bounded by a **two-stage starvation deadline** armed on the
+first render frame (`src/runtime/readiness/initial-ready.ts`): after 10 s
+(`initialDeadlineMs`) Codex readiness waits for a configured composer, described
+below, and after 60 s (`initialBackstopMs`) it is released without one. C-API-28.
 
 **Codex 0.164 paints a boot composer before its session is configured
 (2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
@@ -72,7 +74,8 @@ showing the boot composer without a footer. The other 8 painted their gate at
 3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
 composer with its model footer (`codexComposerConfigured`,
 `src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
-gate delay, releases readiness if no footer is ever recognized. Fixtures:
+gate delay, releases readiness if no footer is ever recognized; a gate painting
+later than that would still follow `ready`. Fixtures:
 `tests/fixtures/codex-0.164.0/boot/`. C-API-28.
 
 **Codex 0.153.3 can still swallow the deadline-released first paste under load.**
