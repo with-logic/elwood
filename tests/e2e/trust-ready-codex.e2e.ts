@@ -7,7 +7,8 @@
  * holds the CLI's output from Elwood for 12 seconds, so Elwood's deadline expires on the
  * boot composer while Codex itself runs normally. The launch must show and answer the real
  * gate, or the run skips loudly. No model turn is sent, and the session uses a bogus model
- * so that a stray one would be refused before using quota. Covers C-API-28 (§5.3).
+ * so that a stray one would be refused before using quota. Readiness must come from the
+ * real configured composer, so no `initial_ready_backstop` warning. Covers C-API-28 (§5.3).
  */
 
 import assert from "node:assert/strict";
@@ -123,6 +124,10 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   const live = session;
   let readyAt: number | undefined;
   let readyScreen = "";
+  const backstopWarnings: string[] = [];
+  live.on("warning", (warning) => {
+    if (warning.code === "initial_ready_backstop") backstopWarnings.push(warning.message);
+  });
   live.on("status", ({ status }) => {
     if (status !== "ready" || readyAt !== undefined) return;
     readyAt = Date.now();
@@ -170,4 +175,6 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
     false,
     `ready on the gate:\n${readyScreen}`,
   );
+  // Readiness came from the real configured composer, not from the 60-second backstop.
+  assert.deepEqual(backstopWarnings, [], `no backstop release:\n${readyScreen}`);
 });
