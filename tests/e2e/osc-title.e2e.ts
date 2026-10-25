@@ -17,7 +17,7 @@ async function titleFlow(
 ): Promise<{ working: boolean; idle: boolean }> {
   await waitFor(() => (session.status === "ready" ? true : undefined), "initial ready", 60_000);
   await session.sendMessage("Count slowly from 1 to 20, one per line. Do not use tools.");
-  // Claude 2.1.281 also uses the captured half-circle working prefix.
+  // Claude also uses half-circle working prefixes: `◐`, and on 2.1.310 `◑` in turn.
   const working = await waitFor(
     () => (spinner.test(session.terminal.title) ? true : undefined),
     "spinner title while working",
@@ -43,7 +43,7 @@ test("C-TURN-05 real Claude emits a working spinner in the OSC title", {
     autotrust: true,
   });
   try {
-    const outcome = await titleFlow(session, /^[⠀-⣿◐]\s/);
+    const outcome = await titleFlow(session, /^[⠀-⣿◐◑]\s/);
     assert.ok(outcome.working, "spinner title observed while working");
     assert.ok(outcome.idle, "non-spinner title observed when idle");
   } finally {

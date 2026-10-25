@@ -119,6 +119,11 @@ test("C-API-15 a raw tail in the owned write's drain refreshes its cached frame"
     owned.push(renderedSnapshot(terminal).text);
     terminal.xterm.write("\u001b[Hother\u001b[H");
   });
+  // xterm parses queued writes in 12 ms slices timed by performance.now(). On a loaded
+  // machine the slice can end before the raw tail, which then parses in a later drain,
+  // a case the raw-write tests above cover. Freeze the clock so the tail stays in this
+  // drain.
+  const clock = vi.spyOn(performance, "now").mockReturnValue(0);
   try {
     await terminal.writeOutput("\u001b[Hfirst\u001b[H");
     expect(owned).toHaveLength(1);
@@ -129,6 +134,7 @@ test("C-API-15 a raw tail in the owned write's drain refreshes its cached frame"
   } finally {
     unsubscribe();
     terminal.dispose();
+    clock.mockRestore();
   }
 });
 
