@@ -28,7 +28,7 @@ test("C-API-59 a StopFailure before ready fails the turn; the boundary waits for
   await vi.advanceTimersByTimeAsync(10_000);
   await expect(events).rejects.toMatchObject({
     code: "turn_failed",
-    details: { info: "model_not_found" },
+    details: { agentError: "model_not_found" },
   });
   expect(released).toBe(false); // the agent has not reached its real boundary yet
   s.emit("status", { status: "ready" });
@@ -72,4 +72,71 @@ test("C-API-59 an empty Stop with the Claude reader is still a successful empty 
   const events = collect(turn.events);
   await vi.runAllTimersAsync();
   expect(await events).toEqual([]);
+});
+
+// Claude names each submission with the same `prompt_id` on its submit and rejection hooks.
+const submitted = { hook_event_name: "UserPromptSubmit", prompt: "go", prompt_id: "p2" } as const;
+const earlierRejected = { ...rejection, prompt_id: "p1" } as const;
+const ownRejected = { ...rejection, prompt_id: "p2" } as const;
+
+/** One turn read with Claude's boundary reader, driven by `script` once submitted. */
+function okTurn(script: (s: ReturnType<typeof drive>) => void) {
+  const s = drive(script);
+  const turn = runTurnFake(s, { readBoundarySignal: claudeBoundarySignal });
+  return { s, events: collect(turn.events) };
+}
+
+test("C-API-59 an earlier turn's StopFailure arriving before this turn's prompt does not fail it", async () => {
+  const { events } = okTurn((s) => {
+    s.emit("hook", earlierRejected); // the previous turn settled before its hook arrived
+    s.emit("hook", submitted);
+    s.emit("status", { status: "running" });
+    s.emit("activity", activity({ text: "OK" }));
+    s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "OK" });
+    s.emit("status", { status: "ready" });
+  });
+  await vi.runAllTimersAsync();
+  expect(await events).toEqual([{ type: "text", text: "OK" }]);
+});
+
+test("C-API-59 a StopFailure naming an earlier submission after this turn's prompt is ignored", async () => {
+  const { events } = okTurn((s) => {
+    s.emit("hook", submitted);
+    s.emit("status", { status: "running" });
+    s.emit("hook", earlierRejected);
+    s.emit("activity", activity({ text: "OK" }));
+    s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "OK" });
+    s.emit("status", { status: "ready" });
+  });
+  await vi.runAllTimersAsync();
+  expect(await events).toEqual([{ type: "text", text: "OK" }]);
+});
+
+test("C-API-59 a StopFailure naming this turn's own submission fails it", async () => {
+  const { events } = okTurn((s) => {
+    s.emit("hook", submitted);
+    s.emit("status", { status: "running" });
+    s.emit("hook", ownRejected);
+    s.emit("status", { status: "ready" });
+  });
+  events.catch(() => undefined);
+  await vi.runAllTimersAsync();
+  await expect(events).rejects.toMatchObject({ code: "turn_failed" });
+});
+
+test("C-API-59 a reader that cannot correlate is trusted once the turn has accepted", async () => {
+  const s = drive((s) => {
+    s.emit("hook", submitted);
+    s.emit("status", { status: "running" });
+    s.emit("hook", rejection);
+    s.emit("status", { status: "ready" });
+  });
+  const readBoundarySignal = (event: { readonly hook_event_name?: string }) =>
+    event.hook_event_name === "StopFailure"
+      ? { text: "", failure: { message: "rejected" } }
+      : undefined;
+  const events = collect(runTurnFake(s, { readBoundarySignal }).events);
+  events.catch(() => undefined);
+  await vi.runAllTimersAsync();
+  await expect(events).rejects.toMatchObject({ code: "turn_failed", message: "rejected" });
 });

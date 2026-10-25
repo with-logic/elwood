@@ -74,7 +74,7 @@ test("C-E2E-20 ClaudeSession.send rejects a real Claude rejection with turn_fail
     assert.ok("error" in outcome, `expected a rejection; send resolved ${JSON.stringify(outcome)}`);
     assert.ok(outcome.error instanceof ElwoodError, String(outcome.error));
     assert.equal(outcome.error.code, "turn_failed");
-    assert.equal(outcome.error.details["info"], "model_not_found");
+    assert.equal(outcome.error.details["agentError"], "model_not_found");
     // Claude reports the rejection with StopFailure INSTEAD of Stop.
     assert.ok(hooks.includes("StopFailure"), hooks.join(","));
     assert.ok(!hooks.includes("Stop"), hooks.join(","));

@@ -4,14 +4,14 @@
  * or terminal status. Codex acceptance and Stop identity come from private adapter evidence;
  * public running/ready alone cannot bind or finish its turn. Untagged adapters retain the
  * serialized passive oracle. The Stop oracle checks completeness; it never supplies output.
- * Adapter rejection evidence fails the turn as `turn_failed` (C-API-59).
+ * Adapter rejection evidence of the turn's own submission fails it as `turn_failed` (C-API-59).
  * Whole-turn deadlines start after physical submission; catch-up deadlines start after idle.
  */
 
 import { toError } from "../errors.ts";
 import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
-import { boundaryExpectation, boundaryRejection } from "./boundary-signal.ts";
+import { boundaryExpectation, signalFailure, turnRejection } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { withSubmissionAttempt } from "./submission-context.ts";
 import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn/defaults.ts";
@@ -23,6 +23,7 @@ import {
   defaultBoundarySignal,
   type RunningTurn,
   type StreamTurnOptions,
+  type TurnBoundaryHook,
   type TurnSession,
 } from "./turn-types.ts";
 
@@ -68,6 +69,7 @@ export function runTurn(
   let turnId: string | undefined;
   let started = false;
   let sawReady = false; // a `ready` after the turn started was observed (agent turn is idle/done)
+  let acceptedBy: TurnBoundaryHook | undefined; // this turn's own matching submit hook
   let consumerSettled = false;
 
   // Listeners are removed only once BOTH the consumer has settled AND the real boundary is
@@ -125,11 +127,19 @@ export function runTurn(
       if (identity.observe(event)) acceptance.accept();
       return; // Public Stop precedes its callback outcome; only private confirmation owns the oracle.
     }
-    if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
+    if (defaultAcceptanceSignal(event, prompt)) {
+      acceptance.accept();
+      if (event.hook_event_name === "UserPromptSubmit") acceptedBy = event;
+    }
     const signal = readBoundarySignal(event);
-    const rejection = boundaryRejection(signal); // the agent rejected the turn (C-API-59)
-    if (rejection) gate.fail(rejection);
-    else gate.expectText(boundaryExpectation(signal));
+    const failure = signalFailure(signal);
+    if (!failure) {
+      gate.expectText(boundaryExpectation(signal));
+      return;
+    }
+    // An earlier turn's late rejection is not this turn's: only a rejection after this turn's
+    // own submission, which the adapter matches to it, fails the turn (C-API-59).
+    if (acceptedBy && (failure.belongsTo?.(acceptedBy) ?? true)) gate.fail(turnRejection(failure));
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") {

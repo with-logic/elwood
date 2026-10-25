@@ -3,7 +3,11 @@
  * Claude's turn-boundary reader, which turns `StopFailure` into a rejection (PRD §5.8, C-API-59).
  */
 
-import { type BoundarySignalReader, defaultBoundarySignal } from "../../core/simple/turn-types.ts";
+import {
+  type BoundarySignalReader,
+  defaultBoundarySignal,
+  type TurnBoundaryHook,
+} from "../../core/simple/turn-types.ts";
 
 const maxDiagnosticLength = 2_000;
 
@@ -22,16 +26,37 @@ export function stopFailureDiagnostic(event: {
   };
 }
 
+/** The Claude-only fields this reader needs, read as unknown from the adapter-neutral hook. */
+type ClaudeBoundaryHook = TurnBoundaryHook & {
+  readonly prompt_id?: unknown;
+  readonly error?: unknown;
+  readonly error_details?: unknown;
+};
+
 /**
  * Claude fires `StopFailure` INSTEAD of `Stop` when it rejects a turn (an unknown model, an API
  * error). It is a boundary that carries no completeness text plus the rejection; `Stop` and every
  * other hook keep the default reading. Its `last_assistant_message` is Claude's own error text,
- * so it is deliberately not the diagnostic (§6.1).
+ * so it is deliberately not the diagnostic (§6.1). Claude 2.1.310 names the submission with the
+ * same `prompt_id` on `UserPromptSubmit` and `StopFailure`; a rejection naming another
+ * submission belongs to an earlier turn whose hook arrived late (C-API-59).
  */
-export const claudeBoundarySignal: BoundarySignalReader = (event) =>
-  event.hook_event_name === "StopFailure"
-    ? { text: "", failure: stopFailureDiagnostic(event) }
-    : defaultBoundarySignal(event);
+export const claudeBoundarySignal: BoundarySignalReader = (event: ClaudeBoundaryHook) => {
+  if (event.hook_event_name !== "StopFailure") return defaultBoundarySignal(event);
+  const { message, info } = stopFailureDiagnostic(event);
+  const rejected = promptId(event);
+  const belongsTo = (acceptedBy: ClaudeBoundaryHook) => {
+    const own = promptId(acceptedBy);
+    return rejected === undefined || own === undefined || own === rejected;
+  };
+  return { text: "", failure: { message, agentError: info, belongsTo } };
+};
+
+function promptId(event: ClaudeBoundaryHook): string | undefined {
+  return typeof event.prompt_id === "string" && event.prompt_id !== ""
+    ? event.prompt_id
+    : undefined;
+}
 
 function diagnosticField(value: unknown): string | undefined {
   if (typeof value !== "string" || value.trim().length === 0) return undefined;

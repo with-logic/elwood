@@ -1,15 +1,9 @@
-/**
- * Drift-tolerant Claude rejection ingress, diagnostics, and boundary reading;
- * PRD §6.1 / §5.8, C-HOOK-20 / C-API-59.
- */
+/** Drift-tolerant Claude rejection ingress and diagnostics; PRD §6.1 / C-HOOK-20. */
 
 import { expect, test } from "vitest";
 import { summarizeHookEvent } from "../../dev/web/log.ts";
 import type { ClaudeHookEventFor } from "../../src/claude/hooks/index.ts";
-import {
-  claudeBoundarySignal,
-  stopFailureDiagnostic,
-} from "../../src/claude/hooks/stop-failure.ts";
+import { stopFailureDiagnostic } from "../../src/claude/hooks/stop-failure.ts";
 import { isClaudeHookInput } from "../../src/claude/validate/input.ts";
 
 const common = { hook_event_name: "StopFailure", session_id: "s1", cwd: "/tmp" } as const;
@@ -71,22 +65,4 @@ test.each([
   const event = { ...common, error, error_details: "Please wait." };
   expect(stopFailureDiagnostic(event)).toEqual({ message: "Please wait." });
   expect(summarizeHookEvent(event)).toBe("hook StopFailure: Please wait.");
-});
-
-test("C-API-59 Claude's boundary reader turns StopFailure into a rejection and keeps Stop", () => {
-  expect(
-    claudeBoundarySignal({
-      hook_event_name: "StopFailure",
-      error: "model_not_found",
-      last_assistant_message: "There's an issue with the selected model.",
-    }),
-  ).toEqual({
-    text: "",
-    failure: { message: "Claude rejected the turn: model_not_found", info: "model_not_found" },
-  });
-  expect(claudeBoundarySignal({ hook_event_name: "Stop", last_assistant_message: "OK" })).toBe(
-    "OK",
-  );
-  expect(claudeBoundarySignal({ hook_event_name: "Stop", last_assistant_message: null })).toBe("");
-  expect(claudeBoundarySignal({ hook_event_name: "Notification" })).toBeUndefined();
 });

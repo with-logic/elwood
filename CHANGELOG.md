@@ -48,9 +48,11 @@ back each entry are listed in `prd/14-conformance.md`.
 - A Claude turn that Claude itself rejects, such as one sent with a model that does not
   exist, now fails with the new `turn_failed` error instead of passing as a successful
   reply. `ClaudeSession.send` rejects and `stream` throws after its collected events;
-  `error.details.info` carries Claude's classification (for example `model_not_found`).
+  `error.details.agentError` carries Claude's error name (for example `model_not_found`).
   `elwood run` exits 1 with a `turn_failed` error record where it used to exit 0 and
-  print Claude's error text as the response.
+  print Claude's error text as the response. A rejection that arrives after its own
+  turn has settled is matched by `prompt_id` and never fails the next turn. Codex
+  rejections are not recognized yet.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker

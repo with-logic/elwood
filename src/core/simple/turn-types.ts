@@ -21,9 +21,6 @@ export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
   readonly prompt?: string;
-  /** Rejection diagnostics an adapter reader may normalize into a failure (C-API-59). */
-  readonly error?: unknown;
-  readonly error_details?: unknown;
 };
 
 /**

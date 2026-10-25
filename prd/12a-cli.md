@@ -106,7 +106,7 @@ setup turn and discards that turn's response before observing the user turn. It
 is a real agent turn: tools and other side effects performed during persona setup
 remain even though its assistant response is omitted from CLI output. Explicit
 persona plus resume is a usage error. An agent process exit before
-CLI-requested cleanup is `agent_exited`, including a zero-status exit. A turn
+CLI-requested cleanup is `agent_exited`, including a zero-status exit. A Claude turn
 the agent rejects (§5.8), including the persona setup turn, is `turn_failed`
 rather than a successful result. Response data already collected remains
 available on later failure.

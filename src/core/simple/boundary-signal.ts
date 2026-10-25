@@ -6,6 +6,7 @@
  */
 
 import { type ElwoodError, elwoodError } from "../errors.ts";
+import type { TurnBoundaryHook } from "./turn-types.ts";
 
 /**
  * What a boundary carries. A bare string is the completeness signal on its own — the shorthand
@@ -20,8 +21,15 @@ export type BoundarySignal = string | { readonly text: string; readonly failure:
 export type TurnFailure = {
   /** Human-readable reason, bounded by the adapter. */
   readonly message: string;
-  /** Adapter-specific classification, DIAGNOSTIC ONLY — never used to decide failure. */
-  readonly info?: string | undefined;
+  /** The agent's own error name (Claude's `error`), DIAGNOSTIC ONLY — never decides failure. */
+  readonly agentError?: string | undefined;
+  /**
+   * Whether the rejection names the submission the turn accepted (the hook that accepted it).
+   * A late rejection of an earlier turn can arrive during a later one, so the adapter, which
+   * alone knows its submission identity, says whether it is this turn's. Absent: the adapter
+   * cannot tell, and the rejection is taken as the turn's own once the turn has accepted.
+   */
+  readonly belongsTo?: (acceptedBy: TurnBoundaryHook) => boolean;
 };
 /** The expected-text half of a boundary signal, whichever form the adapter returned. */
 export function boundaryText(signal: BoundarySignal): string {
@@ -38,13 +46,13 @@ export function boundaryExpectation(signal: BoundarySignal | undefined): string 
   return signal === undefined ? undefined : boundaryText(signal);
 }
 
-/** The consumer-facing `turn_failed` error for a rejecting signal; `undefined` otherwise. */
-export function boundaryRejection(signal: BoundarySignal | undefined): ElwoodError | undefined {
-  const failure = signal === undefined ? undefined : boundaryFailure(signal);
-  if (failure === undefined) return undefined;
-  return elwoodError(
-    "turn_failed",
-    failure.message,
-    failure.info === undefined ? {} : { info: failure.info },
-  );
+/** The failure a signal reports, if any; `undefined` for an absent or string-form signal. */
+export function signalFailure(signal: BoundarySignal | undefined): TurnFailure | undefined {
+  return signal === undefined ? undefined : boundaryFailure(signal);
+}
+
+/** The consumer-facing `turn_failed` error for an adapter's rejection evidence (C-API-59). */
+export function turnRejection(failure: TurnFailure): ElwoodError {
+  const details = failure.agentError === undefined ? {} : { agentError: failure.agentError };
+  return elwoodError("turn_failed", failure.message, details);
 }

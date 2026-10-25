@@ -208,7 +208,11 @@ entry. With four concurrent sessions at load ~55, it lagged the first `ready` by
 0.8, 2.0, 2.5 and 1.8 s. One run rendered a transient `ready → running → ready`
 before the hook. The turn fails only if the hook arrives before the turn settles,
 and a no-oracle turn settles 2 s after its last content. That is the same lag
-that can end a successful turn early when its `Stop` is late.
+that can end a successful turn early when its `Stop` is late. A hook that late can
+also land while the NEXT turn is running. Each hook is delivered by its own bridge
+process, so the next turn's `UserPromptSubmit` can even arrive first. Elwood
+therefore applies a `StopFailure` only after the turn's own `UserPromptSubmit`, and
+only when its `prompt_id` matches that submit's.
 
 **Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
 sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
