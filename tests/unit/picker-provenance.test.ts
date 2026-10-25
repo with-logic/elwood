@@ -11,6 +11,7 @@ import {
 } from "../helpers/model-dialog-viewports.ts";
 import { claudePicker, codexReasoningScreen } from "../helpers/model-pickers.ts";
 import { releasesAfterClearStreak } from "../helpers/picker-harness.ts";
+import { synchronousRender } from "../helpers/synchronous-render.ts";
 
 /** A running turn: the agent's reply quotes a dialog above the live working row and composer. */
 const quotedInReply = (bullet: string, quoted: string, caret: string) =>
@@ -37,6 +38,7 @@ test.each([
   const writes: string[] = [];
   const screen = { text: "  Working (esc to interrupt)\n\n❯ " };
   const terminal = {
+    ...synchronousRender,
     snapshot: () => ({ text: screen.text }),
     sendInput: (input: string | Uint8Array) => void writes.push(String(input)),
   };
@@ -85,7 +87,11 @@ test("C-API-55 a human's model picker withholds non-picker writes but not readin
     () => {},
   );
   const picker = new PickerTransactions({
-    terminal: { snapshot: () => ({ text: screen.text }), sendInput: () => undefined },
+    terminal: {
+      ...synchronousRender,
+      snapshot: () => ({ text: screen.text }),
+      sendInput: () => undefined,
+    },
     controlQueue: queue,
     blocked: () => false,
     picker: () => claudeModelPicker,
@@ -119,6 +125,7 @@ test("C-API-55 a survivor is not also reported as a foreign dialog", async () =>
     // A permanently failed render means cleanup can never vouch for the screen, so its
     // Escape is withheld and the dialog is latched as a survivor.
     terminal: {
+      ...synchronousRender,
       snapshot: () => ({ text: screen.text }),
       sendInput: () => undefined,
       renderFailed: true,

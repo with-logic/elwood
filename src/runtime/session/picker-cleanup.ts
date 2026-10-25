@@ -3,7 +3,11 @@
  * open, or report that one survived so queued input stays held (PRD §5.3, C-API-55).
  */
 import { delay } from "../../core/delay.ts";
-import { type InputTerminal, writeUnsafe } from "../../core/input/abort.ts";
+import {
+  behindReceivedOutputBarrier,
+  type ObservedTerminal,
+  writeUnsafe,
+} from "../../core/input/abort.ts";
 import { sendPickerInput } from "../../core/models/input.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { ModelDialogAuthority, ModelDialogStage } from "../../core/models/rows.ts";
@@ -88,12 +92,12 @@ export const ours: ModelDialogAuthority = { opened: true };
  * too, so the caller decides whether what is left on screen is kept as a survivor.
  */
 export async function cleanUpDialog(
-  source: ScreenTerminal & InputTerminal,
+  source: ObservedTerminal,
   spec: ModelPickerSpec,
   progress: Progress,
   closed: AbortSignal,
 ): Promise<boolean> {
-  const terminal = abortable(source, closed);
+  const terminal = behindReceivedOutputBarrier(source, abortable(source, closed));
   const isActive = (text: string) => spec.activeDialog(text, ours) !== undefined;
   let escaped = progress.escapeSentTo;
   let clearStreak = 0;

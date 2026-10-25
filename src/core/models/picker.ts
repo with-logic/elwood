@@ -6,6 +6,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
+import type { ObservedTerminal } from "../input/abort.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
 import { sendPickerInput } from "./input.ts";
 import type {
@@ -14,19 +15,15 @@ import type {
   ModelDialogStage,
   ParsedModelPicker,
 } from "./rows.ts";
-import {
-  defaultModelTimeoutMs,
-  openCommandScreen,
-  type ScreenTerminal,
-  waitForScreen,
-} from "./tui-screen.ts";
+import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
 
 export function pickerTimeout(options?: { readonly timeoutMs?: number }): number {
   return options?.timeoutMs ?? defaultModelTimeoutMs;
 }
 
 export type ModelPickerIo = {
-  readonly terminal: ScreenTerminal;
+  /** Every key is written behind its received-output barrier (C-API-56). */
+  readonly terminal: ObservedTerminal;
   readonly blocked?: () => boolean;
   readonly signal?: AbortSignal;
   readonly submit: (command: string, signal: AbortSignal) => Promise<void>;

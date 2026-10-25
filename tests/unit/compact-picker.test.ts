@@ -7,6 +7,7 @@ import { writeQueuedInput } from "../../src/core/input/index.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { CommandSurface } from "../../src/runtime/session/commands.ts";
 import { claudePicker } from "../helpers/model-pickers.ts";
+import { synchronousRender } from "../helpers/synchronous-render.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -24,6 +25,7 @@ function setup(closeMs: number | undefined) {
   const state = { screen: "❯ ", staged: "", swallowed: false, blocked: false };
   const writes: { input: string; inPicker: boolean }[] = [];
   const terminal = {
+    ...synchronousRender,
     snapshot: () => ({ text: state.screen }),
     sendInput(data: string | Uint8Array) {
       const input = String(data);

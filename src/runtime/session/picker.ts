@@ -1,9 +1,8 @@
 /** Exclusive model-picker queue ownership and failure cleanup (PRD §5.3, C-API-55). */
 import type { ControlQueue } from "../../core/control-queue/index.ts";
 import { elwoodError } from "../../core/errors.ts";
-import type { InputTerminal } from "../../core/input/abort.ts";
+import { behindReceivedOutputBarrier, type ObservedTerminal } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
-import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
 import { PickerHold } from "./picker-hold.ts";
 
@@ -12,8 +11,8 @@ type PickerDeps = {
   readonly observeRendered?: (listener: (read?: () => string) => void) => void;
   readonly inputSignal?: () => AbortSignal;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
-  /** Also carries the optional observation barrier (`settled`/`renderFailed`) when real. */
-  readonly terminal: ScreenTerminal & InputTerminal;
+  /** Carries the received-output barrier every picker key is written behind (C-API-56). */
+  readonly terminal: ObservedTerminal;
   readonly blocked: () => boolean;
   /** The adapter's picker spec, for recognizing a dialog nobody here opened. */
   readonly picker: () => ModelPickerSpec;
@@ -147,7 +146,8 @@ export class PickerTransactions {
 
   private io(signal: AbortSignal, spec: ModelPickerSpec, progress: Progress): ModelPickerIo {
     const live = abortable(this.deps.terminal, signal);
-    const terminal: ScreenTerminal = {
+    // Every key is decided on everything received, like cleanup's Escape (C-API-56).
+    const terminal = behindReceivedOutputBarrier(this.deps.terminal, {
       snapshot: () => {
         const snapshot = live.snapshot();
         progress.dialogSeen ||= spec.activeDialog(snapshot.text, ours) !== undefined;
@@ -160,7 +160,7 @@ export class PickerTransactions {
         else progress.keyWritten = true;
         return sent;
       },
-    };
+    });
     return {
       terminal,
       signal,

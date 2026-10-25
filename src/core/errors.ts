@@ -44,6 +44,7 @@ export type ElwoodErrorName =
   | "loop_not_found"
   | "loop_persistence_failed"
   | "loop_submission_failed"
+  | "turn_failed"
   | "wait_timeout";
 
 export class ElwoodError extends Error {
@@ -85,6 +86,16 @@ export function errnoCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null) return undefined;
   const code = (error as { code?: unknown }).code;
   return typeof code === "string" ? code : undefined;
+}
+
+/**
+ * The errno behind a failure: a typed error's `details.errno` (as `causeDetails` records
+ * it), else the thrown value's own errno; `undefined` when neither exists. Never throws.
+ */
+export function underlyingErrno(error: unknown): string | undefined {
+  if (!(error instanceof ElwoodError)) return errnoCode(error);
+  const errno = error.details["errno"];
+  return typeof errno === "string" ? errno : undefined;
 }
 
 /**
