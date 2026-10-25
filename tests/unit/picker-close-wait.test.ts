@@ -153,7 +153,7 @@ test("C-API-55 picker text above the composer does not hold a finished switch", 
 
 test("C-API-55 a switch whose terminal stops rendering is not reported closed", async () => {
   const barrier: { renderFailed?: boolean } = {};
-  const { switching, queue } = codexSwitch((shown) => {
+  const { switching, message, delivered, queue } = codexSwitch((shown) => {
     shown.text = earlier;
     barrier.renderFailed = true;
   }, barrier);
@@ -163,7 +163,10 @@ test("C-API-55 a switch whose terminal stops rendering is not reported closed", 
   });
   await vi.advanceTimersByTimeAsync(2_000);
   await failed;
+  // Its screen proves nothing, so the queued message is never written.
+  expect(delivered("hello")).toBe(0);
   queue.close();
+  await expect(message).rejects.toThrow("closed");
 });
 
 test("C-API-55 a picker that never stays closed fails the listing at its close deadline", async () => {
