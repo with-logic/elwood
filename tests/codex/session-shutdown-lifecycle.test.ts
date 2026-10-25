@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/index.ts";
 import { startCodex } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { FakePty, installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -53,7 +53,7 @@ describe("CodexSessionApi overlapping shutdown", () => {
   test("C-LIFE-10 controlled teardown retries transient post-exit EPERM", async () => {
     installFakes();
     let attempts = 0;
-    setGroupKillerForTests({
+    setProcessTreeOpsForTests({
       killGroup: () => {
         attempts += 1;
         if (attempts <= 2) throw Object.assign(new Error("transitioning"), { code: "EPERM" });

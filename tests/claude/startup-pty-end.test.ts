@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   exitingDuringStartup,
   rejection,
@@ -34,7 +34,7 @@ describe("C-LIFE-10 ending a failed Claude start's PTY", () => {
   test("a failed exit-path reap is retried by cleanup's shared reaper, still unsignaled", async () => {
     installFakes();
     const attempts: number[] = [];
-    setGroupKillerForTests({
+    setProcessTreeOpsForTests({
       killGroup: (pgid) => {
         attempts.push(pgid);
         if (attempts.length === 1) throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
