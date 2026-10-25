@@ -8,6 +8,9 @@
  * `updateReason: "active_owner"` — another process held the update lease until this caller's
  * wait expired — becomes `errorCode: "update_active"` with a message saying the update was
  * skipped, and no diagnostics, because no local updater ran to produce an errno or stderr.
+ * The user's login shell can also fail before the update command runs (§9.2): that reports
+ * `errorCode: "login_shell_failed"` with empty `raw`, since its stderr would be only the
+ * profile's startup output.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
@@ -42,8 +45,9 @@ const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
 
 /**
  * Build the warning from the contained update error. `installedVersion` is the parsed version the
- * session will actually run (the preflight re-read it after the failed update). `errorCode` is the
- * update probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
+ * session will actually run (the preflight re-read it after the failed update). `errorCode` is
+ * `login_shell_failed` when the login shell failed before the update ran, else the update
+ * probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
  *
  * An error carrying `updateReason: "active_owner"` is contention, not failure: another process
  * held the update lease until this caller's wait expired, so no local update command ran. That

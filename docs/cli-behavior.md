@@ -1169,9 +1169,16 @@ typical developer profile (oh-my-zsh with seven plugins, `nvm.sh`, `fnm env`,
 The original 15 s bound covered both phases. 16 concurrent `elwood run`s therefore
 failed `claude_start_failed` ("`claude --version` failed", `ETIMEDOUT`) at 17.5–18.9 s:
 16 of 16 in one of three fleets at load 68, and 14 of 16 in the original report. The
-probe shell now writes `elwood-probe-command-start` to stderr just before the command.
+probe shell now writes `elwood-probe-command-start` on descriptor 3, a fourth pipe the
+runner opens, just before the command, then closes it so the command does not inherit it.
+Writing it to stderr was the first version; a review pointed out that a profile running
+`exec 2>&1` or `exec 2>/dev/null` would hide it, and both shells were confirmed to
+pass descriptor 3 through: real zsh with this host's profile, zsh with either redirect in
+a private `ZDOTDIR`, and bash with `exec 2>&1` in its rc file all delivered the line, and
+only a profile that runs `exec 3>&-` itself loses it.
 The profile gets a 60 s launch bound and the CLI keeps 15 s from that line (C-PERF-05).
-Three 16-run fleets at load 48–74 then passed preflight 48 of 48. The real-shell e2e
+With the stderr version, three 16-run fleets at load 48–74 passed preflight 48 of 48;
+the bounds are the same on descriptor 3. The real-shell e2e
 uses a private `ZDOTDIR` whose `.zshrc` sleeps 4 s with a 2 s command bound; `main`
 fails it with that same `ETIMEDOUT`.
 

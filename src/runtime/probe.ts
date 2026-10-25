@@ -7,9 +7,10 @@
  */
 
 import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 import { completeUtf8Length } from "../core/utf8.ts";
 import { abortProbe } from "./probe-cleanup.ts";
-import { announcesStart, ProbeStartWatcher, withoutStartLine } from "./probe-start.ts";
+import { announcesStart, ProbeStartWatcher, probeControlFd } from "./probe-start.ts";
 import type { CommandResult } from "./seams.ts";
 
 /** The probe command's own default bound, from the shell's start line (C-PERF-03). */
@@ -77,9 +78,15 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
     // controlling terminal and can leave its short-lived command's process group in the
     // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
-    const child = spawn(command, [...args], { detached: true });
+    // A fourth pipe carries only the probe shell's start line (C-PERF-05).
+    const child = spawn(command, [...args], {
+      detached: true,
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
+    });
     const out = new CappedBuffer();
     const err = new CappedBuffer();
+    // Node exposes the extra `pipe` in `stdio` as a Readable.
+    const control = child.stdio[probeControlFd] as Readable;
     let settled = false;
     // Kill only when WE abort the probe (timeout/overflow); a normal exit or
     // spawn failure needs no signal (C-PERF-03).
@@ -87,6 +94,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      control.off("data", onControl); // a settled probe arms no command bound
       // The result already owns the decoded text. An unresolved probe's reaper retains the
       // child and its listeners, and through them these captures, so the chunks are dropped
       // here rather than left for the reaper to outlive. The listeners themselves stay: a
@@ -104,7 +112,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
         }),
       );
     };
-    const captured = (): [string, string] => [out.text(), withoutStartLine(err.text())];
+    const captured = (): [string, string] => [out.text(), err.text()];
     // Each phase's bound aborts the probe with its own typed timeout when it expires.
     const boundBy = (ms: number, result: () => CommandResult) => {
       const bound = setTimeout(() => settle(result(), true), ms);
@@ -116,16 +124,18 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       if (out.overflowed || err.overflowed) settle(overflow(...captured()), true);
     };
     const start = new ProbeStartWatcher();
-    const announced = announcesStart(args);
+    const expectsStartLine = announcesStart(args);
     child.stdout.on("data", onData(out));
     child.stderr.on("data", onData(err));
     // The start line ends the login shell's launch phase: the command's own bound begins
     // there, so the user's profile load is never charged to the CLI (C-PERF-05).
-    child.stderr.on("data", (chunk: Buffer) => {
-      if (settled || !start.feed(chunk)) return;
+    function onControl(chunk: Buffer): void {
+      if (!start.feed(chunk)) return;
+      control.off("data", onControl);
       clearTimeout(timer);
-      timer = boundBy(commandTimeoutMs, () => timedOut(...captured()));
-    });
+      timer = boundBy(commandTimeoutMs, () => commandTimedOut(...captured()));
+    }
+    control.on("data", onControl);
     // Spawn failure (e.g. ENOENT) fires `error` and not `close`. Node's spawn
     // `error` always carries a `code`, which preflight maps to `*_not_found`.
     child.on("error", (e: NodeJS.ErrnoException) => {
@@ -136,7 +146,7 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       const [stdout, stderr] = captured();
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
-      if (announced && !start.started) settle(shellExited(code, stdout, stderr));
+      if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
       else settle({ status: code, stdout, stderr });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
@@ -151,7 +161,7 @@ function mapError(error: NodeJS.ErrnoException): {
   return { code: error.code, message: error.message };
 }
 
-function timedOut(stdout: string, stderr: string): CommandResult {
+function commandTimedOut(stdout: string, stderr: string): CommandResult {
   const message = `probe timed out after ${commandTimeoutMs} ms`;
   return { status: null, stdout, stderr, error: { code: "ETIMEDOUT", message } };
 }

@@ -18,7 +18,7 @@ import { tempDir } from "../helpers/tmp.ts";
 
 /** A probe shell whose "profile" takes `profile` before the production probe command runs. */
 function probe(profile: string, command: string) {
-  return runProbe("/bin/sh", ["-c", `${profile}; ${probeShellCommand(command).at(-1)}`]);
+  return runProbe("/bin/sh", ["-c", `${profile}; ${probeShellCommand(command)[3]}`]);
 }
 
 afterEach(() => resetProbeTimeoutsForTests());
@@ -86,7 +86,7 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
   // An rc file that never returns to the probe, as one that `exec`s another shell would.
   const rc = join(tempDir("elwood-probe-"), "exit.rc");
   writeFileSync(rc, "exit 0\n");
-  const script = probeShellCommand("echo 2.1.310").at(-1)!;
+  const script = probeShellCommand("echo 2.1.310")[3];
   const result = await runProbe("/bin/bash", ["--rcfile", rc, "-i", "-c", script]);
   expect(result.status).toBeNull();
   expect(result.stdout).toBe("");
@@ -94,4 +94,28 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
     message: "login shell exited with status 0 before starting the probe command",
     phase: "login_shell",
   });
+});
+
+test.each([
+  "exec 2>&1",
+  "exec 2>/dev/null",
+])("C-PERF-05 a profile that runs `%s` still starts the command bound", async (redirect) => {
+  // The start line has its own descriptor, so a profile's stderr redirection cannot hide it.
+  setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 10_000 });
+  const rc = join(tempDir("elwood-probe-"), "redirect.rc");
+  writeFileSync(rc, `${redirect}\n`);
+  const script = probeShellCommand("echo 2.1.310")[3];
+  const result = await runProbe("/bin/bash", ["--rcfile", rc, "-i", "-c", script]);
+  expect(result).toMatchObject({ status: 0, stdout: "2.1.310\n" });
+  expect(result.error).toBeUndefined();
+  expect(result.stdout).not.toContain("elwood-probe-command-start");
+});
+
+test("C-PERF-05 a start line split across writes still ends the launch phase once complete", async () => {
+  // The launch bound would kill the probe; only the completed line hands it the command bound.
+  setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 1_500 });
+  const [head, tail] = ["elwood-probe-", "command-start"];
+  const script = `printf ${head} >&3; sleep 0.3; printf '${tail}\\n' >&3; sleep 2; echo 2.1.310`;
+  const result = await runProbe("/bin/sh", ["-c", script]);
+  expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });

@@ -9,7 +9,6 @@ import {
   ProbeStartWatcher,
   probeCommandStartLine,
   probeStartScript,
-  withoutStartLine,
 } from "../../src/runtime/probe-start.ts";
 
 const line = `${probeCommandStartLine}\n`;
@@ -30,13 +29,17 @@ test("C-PERF-05 output without the full start line never ends the launch phase",
   expect(watcher.feed(Buffer.from("x".repeat(100)))).toBe(false);
 });
 
-test("C-PERF-05 only the shell's first start line is removed from stderr", () => {
-  expect(withoutStartLine(`warn\n${line}err\n${line}`)).toBe(`warn\nerr\n${line}`);
-  expect(withoutStartLine("no start line\n")).toBe("no start line\n");
-});
-
 test("C-PERF-05 only a script that writes the start line first announces its command", () => {
   expect(announcesStart(["-l", "-i", "-c", `${probeStartScript}claude --version`])).toBe(true);
   expect(announcesStart(["-e", "process.exit(0)"])).toBe(false);
   expect(announcesStart([])).toBe(false);
+});
+
+test("C-PERF-03 the watcher keeps a copy of a split line's tail, not a view of the whole chunk", () => {
+  const watcher = new ProbeStartWatcher();
+  watcher.feed(Buffer.alloc(1_000_000, 0x61));
+  const tail: unknown = Reflect.get(watcher, "tail");
+  expect(Buffer.isBuffer(tail) && tail.length === probeCommandStartLine.length).toBe(true);
+  // An unresolved probe's reaper retains the watcher; it must not pin the 1 MB chunk.
+  expect(Buffer.isBuffer(tail) && tail.buffer.byteLength < 1_000_000).toBe(true);
 });

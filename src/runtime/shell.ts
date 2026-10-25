@@ -18,8 +18,11 @@ export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+/** The login shell's arguments; the script to run is always the fourth. */
+export type LoginShellArgs = readonly ["-l", "-i", "-c", string];
+
 /** Interactive login shell for the agent PTY — matches Terminal.app (§4.2). */
-export function loginShellCommand(command: string): readonly string[] {
+export function loginShellCommand(command: string): LoginShellArgs {
   return ["-l", "-i", "-c", command];
 }
 
@@ -27,9 +30,10 @@ export function loginShellCommand(command: string): readonly string[] {
  * Interactive login shell for the non-PTY probes (`--version`, `update`, `--help`).
  * The same shell and flags as `loginShellCommand` (C-PTY-08): the probes and the agent
  * PTY must resolve the same CLI installation, so a probe loads the same user PATH the
- * PTY launch does. The one divergence is the start line written before the command,
- * so the probe runner can bound the user's profile and the CLI separately (C-PERF-05).
+ * PTY launch does. The one divergence is the start line written, on the runner's private
+ * control descriptor, before the command, so the probe runner can bound the user's profile
+ * and the CLI separately (C-PERF-05).
  */
-export function probeShellCommand(command: string): readonly string[] {
+export function probeShellCommand(command: string): LoginShellArgs {
   return loginShellCommand(`${probeStartScript}${command}`);
 }

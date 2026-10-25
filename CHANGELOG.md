@@ -54,7 +54,8 @@ back each entry are listed in `prd/14-conformance.md`.
   has 15 seconds from then. A shell that never starts the probe, by timing out or by
   exiting first, fails with a cause naming the login shell and `details.phase:
   "login_shell"`; for `autoupdate` the `agent_update_failed` warning carries
-  `errorCode: "login_shell_failed"`. A contender waiting on another process's update
+  `errorCode: "login_shell_failed"`. The profile's own startup output is left out of
+  both, since it can contain expanded secrets. A contender waiting on another process's update
   now waits up to 165 seconds instead of 60, so it does not give up and re-read the
   version while the owner's version and update probes are still within their bounds.
 

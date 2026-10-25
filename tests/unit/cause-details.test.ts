@@ -57,12 +57,14 @@ describe("probeFailureDetails", () => {
   const failed = (error: Record<string, unknown>) =>
     probeFailureDetails({ stderr: "boom", error: error as never });
 
-  test("C-PERF-05 names a login-shell failure's phase", () => {
-    expect(failed({ message: "login shell exited", phase: "login_shell" })).toEqual({
-      stderr: "boom",
-      cause: "login shell exited",
-      phase: "login_shell",
+  test("C-PERF-05 names a login-shell failure's phase and withholds the profile's stderr", () => {
+    const profileOutput = "export ELWOOD_SENTINEL_SECRET=hunter2\n";
+    const details = probeFailureDetails({
+      stderr: profileOutput,
+      error: { message: "login shell exited", phase: "login_shell" },
     });
+    expect(details).toEqual({ stderr: "", cause: "login shell exited", phase: "login_shell" });
+    expect(JSON.stringify(details)).not.toContain("hunter2");
   });
 
   test("C-PERF-03 omits cleanup fields when the probe reported no cleanup", () => {

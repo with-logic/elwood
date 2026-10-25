@@ -147,20 +147,23 @@ loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
 bounded separately. After the startup files load, and immediately before the probe
-command runs, the probe shell writes a fixed start line of Elwood's own to stderr.
-The shell has 60 seconds from spawn to write that line (the launch bound), and the
-probe command then has a default timeout of 15 seconds from that line until it
-exits. Only the shell's start line is removed from the probe's captured stderr; the
-command's own stderr is kept whole, even where it repeats that line. A probe that
+command runs, the probe shell writes a fixed start line of Elwood's own on a private
+channel that is neither stdout nor stderr, so a startup file that redirects either
+cannot hide the line, and the probe's captured output is exactly the shell's and the
+command's. The shell has 60 seconds from spawn to write that line (the launch bound),
+and the probe command then has a default timeout of 15 seconds from that line until
+it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
 Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
-login shell, and its typed error details carry `phase: "login_shell"`. A best-effort
-update probe that fails this way surfaces the `agent_update_failed` warning with
-`errorCode: "login_shell_failed"`. Abort cleanup has an
+login shell, and its typed error details carry `phase: "login_shell"`. Its captured
+stderr is only the user's startup output, which can hold expanded secrets, so it is
+withheld: `details.stderr` is empty. A best-effort update probe that fails this way
+surfaces the `agent_update_failed` warning with `errorCode: "login_shell_failed"` and
+an empty `raw`. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,
 falls back to terminating the direct child once group signals have kept failing,
 and awaits exit within that window. A process-group id is signaled only while the

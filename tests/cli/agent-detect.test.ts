@@ -162,4 +162,24 @@ describe("agent auto-detection", () => {
       message: expect.stringContaining(`login shell ${JSON.stringify(userShell())} did not run`),
     });
   });
+
+  test("C-PERF-05 a login shell that fails before the check names its own failure", async () => {
+    setCommandRunnerForTests(() => ({
+      status: null,
+      stdout: "",
+      stderr: "export ELWOOD_SENTINEL_SECRET=hunter2\n",
+      error: {
+        message: "login shell exited with status 0 before starting the probe command",
+        phase: "login_shell",
+      },
+    }));
+    const error = await detectAvailableAgent().then(
+      () => undefined,
+      (failure: unknown) => failure as Error,
+    );
+    expect(error?.message).toContain(
+      "failed before running the check (login shell exited with status 0 before starting the probe command)",
+    );
+    expect(error?.message).not.toContain("hunter2");
+  });
 });
