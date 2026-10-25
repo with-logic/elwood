@@ -11,12 +11,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CodexSessionApi } from "../../src/index.ts";
-import {
-  configureCodexModel,
-  defaultIds,
-  drawnCodexDefault,
-  startReadyCodex,
-} from "./codex-default.ts";
+import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
+import { startReadyCodex } from "./codex-ready.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -45,7 +41,7 @@ test("C-API-23 real Codex marks the configured default model, independent of the
     const drawn = drawnCodexDefault(unconfigured);
     const configured = unconfigured.find((model) => !model.isCurrent && model.id !== drawn);
     assert.ok(configured, "another model is listed");
-    configureCodexModel(sandbox.configPath, configured.id);
+    configureCodexDefaultModel(sandbox.configPath, configured.id);
     const listed = await session.listModels();
     assert.equal(listed.find((model) => model.isCurrent)?.id, current.id, "session model kept");
     // The markerless layout reports the configured row; a drawn marker outranks it.

@@ -17,12 +17,8 @@ import {
   listCodexModels,
   startClaude,
 } from "../../src/index.ts";
-import {
-  configureCodexModel,
-  defaultIds,
-  drawnCodexDefault,
-  startReadyCodex,
-} from "./codex-default.ts";
+import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
+import { startReadyCodex } from "./codex-ready.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -111,7 +107,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
     const configured = models.find((model) => !model.isCurrent && model.id !== drawn);
     const target = models.findLast((model) => !model.isCurrent);
     assert.ok(configured && target && configured !== target, "two other models are listed");
-    configureCodexModel(sandbox.configPath, configured.id);
+    configureCodexDefaultModel(sandbox.configPath, configured.id);
     const defaultsBefore = rootModelKeys(sandbox.configPath);
     await session.setModel(target.id);
     const after = await session.listModels();
