@@ -10,7 +10,7 @@ import {
   type SweepOps,
   sweepDetachedGroups,
 } from "../../src/runtime/shutdown/detached-sweep/index.ts";
-import { listProcessTable, type ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
+import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import {
   hasExited,
   type SetsidPair,
@@ -18,24 +18,13 @@ import {
   startSetsidPair,
   stopPair,
 } from "../helpers/setsid-pair.ts";
+import { readUntil } from "../helpers/table-reads.ts";
 
 const realOps: SweepOps = {
   stopGroup: (pgid) => process.kill(-pgid, "SIGSTOP"),
   killGroup: (pgid) => process.kill(-pgid, "SIGKILL"),
   listProcesses: listProcessTable,
 };
-
-/** Reads the table until `pid`'s row satisfies `check`, for at most five seconds in all. */
-async function rowWhen(pid: number, check: (row: ProcessEntry | undefined) => boolean) {
-  const deadline = performance.now() + 5_000;
-  let row: ProcessEntry | undefined;
-  for (let remainingMs = 5_000; remainingMs > 0; ) {
-    row = (await listProcessTable(remainingMs)).find((entry) => entry.pid === pid);
-    if (check(row)) return row;
-    remainingMs = Math.ceil(deadline - performance.now());
-  }
-  return row;
-}
 
 describe("C-LIFE-10 detached sweep on real processes", () => {
   test("kills a real setsid child's group and leaves a bystander running", async () => {
@@ -53,9 +42,8 @@ describe("C-LIFE-10 detached sweep on real processes", () => {
       );
       expect(failure).toBeUndefined();
       // The leader is still stopped, so it cannot reap its killed child: a zombie remains.
-      expect(await rowWhen(childPid, (row) => row?.zombie === true)).toMatchObject({
-        zombie: true,
-      });
+      const zombieRead = await readUntil(childPid, (row) => row?.zombie === true);
+      expect(zombieRead.find((row) => row.pid === childPid)).toMatchObject({ zombie: true });
       const table = await listProcessTable(10_000);
       expect(table.find((row) => row.pid === leader.pid)).toMatchObject({ stopped: true });
       expect(table.find((row) => row.pid === bystander.pid)).toMatchObject({

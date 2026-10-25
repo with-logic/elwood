@@ -6,10 +6,7 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  type SweepOps,
-  sweepDetachedGroups,
-} from "../../src/runtime/shutdown/detached-sweep/index.ts";
+import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import {
   errno,
   hook,
@@ -17,6 +14,7 @@ import {
   leaderNeverExits,
   leaderRow,
   scripted,
+  ticking,
 } from "../helpers/scripted-process-tree.ts";
 
 afterEach(() => {
@@ -27,19 +25,6 @@ afterEach(() => {
 const shellChild = hook(5001, { pgid: LEADER });
 /** A member of hook 5002's group that its stop missed. */
 const hookChild = hook(5003, { ppid: 5002, pgid: 5002 });
-
-/** `ops` under a fake clock each listing advances, so a sweep that never settles meets its deadline. */
-function ticking(ops: SweepOps): SweepOps {
-  let clock = 0;
-  vi.spyOn(performance, "now").mockImplementation(() => clock);
-  return {
-    ...ops,
-    listProcesses: (timeoutMs) => {
-      clock += 100;
-      return ops.listProcesses(timeoutMs);
-    },
-  };
-}
 
 /** A stop that logs each call; a group's first stop lands and every later one is refused with `code`. */
 function refuseRestops(code: string, log: (line: string) => void): (pgid: number) => void {
@@ -73,13 +58,17 @@ describe("C-LIFE-10 detached sweep re-stops a group member its first stop missed
   });
 
   test("a re-stop that finds the group gone is not a failure; the next read decides", async () => {
+    // Hook 5002's group empties between the read that shows 5003 running and its re-stop.
+    const before = [leaderRow, hook(5002)];
     const run = scripted(
-      [[leaderRow, shellChild], []],
+      [before, before, [...before, hookChild], [leaderRow]],
       { stopGroup: refuseRestops("ESRCH", (line) => run.calls.push(line)) },
-      new Set([5001]),
+      new Set([5003]),
     );
     await expect(sweepDetachedGroups(LEADER, run.ops, leaderNeverExits)).resolves.toBeUndefined();
-    expect(run.calls.join(", ")).toBe("stop 5000, list, stop 5000, list");
+    expect(run.calls.join(", ")).toBe(
+      "stop 5000, list, list, stop 5002, list, stop 5002, list, kill 5002",
+    );
   });
 
   test.each([

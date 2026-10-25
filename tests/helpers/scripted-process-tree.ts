@@ -4,6 +4,7 @@
  * listing is logged, so no test signals or reads a real process.
  */
 
+import { vi } from "vitest";
 import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 
@@ -38,6 +39,22 @@ export const hook = (
     readonly stopped?: boolean;
   } = {},
 ): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped });
+
+/**
+ * `ops` under a fake clock that each listing advances 100 ms, so a sweep that never
+ * converges meets its deadline in a few reads (the caller restores `performance.now`).
+ */
+export function ticking(ops: SweepOps): SweepOps {
+  let clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
+  return {
+    ...ops,
+    listProcesses: (timeoutMs) => {
+      clock += 100;
+      return ops.listProcesses(timeoutMs);
+    },
+  };
+}
 
 export const errno = (code: string): Error =>
   Object.assign(new Error(`raw ${code} detail`), { code });

@@ -40,12 +40,14 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
   });
 
   test("a kill refused because the group holds only zombies is not a failure", async () => {
+    const refused = "could not kill a stopped descendant group (EPERM)";
     const refusals = [
-      { reread: [leaderRow, hook(5002, { zombie: true })], fails: false },
-      { reread: [leaderRow, hook(5002)], fails: true }, // a live member is still there
-      { reread: undefined, fails: true }, // no read to show otherwise
+      { reread: [leaderRow, hook(5002, { zombie: true })], reasons: undefined },
+      { reread: [leaderRow, hook(5002)], reasons: refused }, // a live member is still there
+      // No read to show otherwise, and why: after the refusal it was meant to judge.
+      { reread: undefined, reasons: `${refused}; process table unreadable (EIO)` },
     ];
-    for (const { reread, fails } of refusals) {
+    for (const { reread, reasons } of refusals) {
       const { ops, calls, asRead } = scripted([], {
         killGroup: (pgid) => {
           calls.push(`kill ${pgid}`);
@@ -63,13 +65,13 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
         "stop 5000, list, list, stop 5002, list, list, kill 5002, list",
       );
       expect(failure).toEqual(
-        fails
-          ? expect.objectContaining({
-              message:
-                "Could not reap detached descendants: could not kill a stopped descendant group (EPERM)",
+        reasons === undefined
+          ? undefined
+          : expect.objectContaining({
+              message: `Could not reap detached descendants: ${reasons}`,
               processGroupIds: [5002],
-            })
-          : undefined,
+              code: "EPERM",
+            }),
       );
     }
   });

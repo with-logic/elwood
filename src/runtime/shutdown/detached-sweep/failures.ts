@@ -15,7 +15,7 @@ export const MAX_REPORTED_GROUPS = 16;
 export type FailureReason =
   | "process table unreadable"
   | "process groups not confirmed stopped by the deadline"
-  | "the leader exited before every descendant group was stopped"
+  | "the leader exited before every group was confirmed stopped"
   | "could not stop the leader's group"
   | "could not stop a live descendant group"
   | "could not kill a stopped descendant group";

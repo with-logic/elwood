@@ -15,6 +15,7 @@ import {
   leaderNeverExits,
   leaderRow,
   scripted,
+  ticking,
 } from "../helpers/scripted-process-tree.ts";
 
 afterEach(() => {
@@ -86,6 +87,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
   });
 
   test("a group under a parent group that refused its stop is never signaled", async () => {
+    // Nothing can reach 5004, so no read converges: the deadline ends the walk.
     const tree = [leaderRow, hook(5002), hook(5004, { ppid: 5002 })];
     const { ops, calls } = scripted([tree], {
       stopGroup: (pgid) => {
@@ -93,41 +95,70 @@ describe("C-LIFE-10 detached sweep ownership", () => {
         if (pgid === 5002) throw errno("EPERM");
       },
     });
-    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
+    const failure = await sweepDetachedGroups(LEADER, ticking(ops), leaderNeverExits);
     expect(failure).toMatchObject({
       message:
-        "Could not reap detached descendants: could not stop a live descendant group (EPERM)",
-      processGroupIds: [5002],
+        "Could not reap detached descendants: process groups not confirmed stopped by the deadline; could not stop a live descendant group (EPERM)",
+      processGroupIds: [5004, 5002],
     });
-    expect(calls.join(", ")).toBe("stop 5000, list, list, stop 5002, list");
+    expect(calls.slice(0, 5).join(", ")).toBe("stop 5000, list, list, stop 5002, list");
+    expect(calls.filter((call) => call.startsWith("stop")).sort()).toEqual([
+      "stop 5000",
+      "stop 5002",
+    ]);
   });
 
-  test("when the leader's group cannot be stopped, no descendant group is signaled", async () => {
-    for (const thrown of [errno("EPERM"), undefined]) {
-      const { ops, calls } = scripted([[leaderRow, hook(5002)]], {
-        stopGroup: (pgid) => {
-          calls.push(`stop ${pgid}`);
-          throw thrown;
-        },
-      });
-      const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
-      const token = thrown === undefined ? "" : " (EPERM)";
-      expect(failure).toMatchObject({
-        message: `Could not reap detached descendants: could not stop the leader's group${token}`,
-        processGroupIds: [5002],
-      });
-      expect(calls.join(", ")).toBe("stop 5000, list");
-    }
+  test.each([
+    { thrown: errno("EPERM"), tree: [leaderRow], calls: "stop 5000, list", token: " (EPERM)" },
+    {
+      thrown: errno("EPERM"),
+      tree: [leaderRow, hook(5002)],
+      calls: "stop 5000, list",
+      token: " (EPERM)",
+    },
+    { thrown: undefined, tree: [leaderRow], calls: "stop 5000", token: "" },
+  ])("a leader's group that refuses its stop fails, found descendants or not ($calls)", async (row) => {
+    // A live leader the sweep could not freeze could start a hook after any read.
+    const { ops, calls } = scripted([row.tree], {
+      stopGroup: (pgid) => {
+        calls.push(`stop ${pgid}`);
+        throw row.thrown;
+      },
+    });
+    const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
+    expect(failure).toMatchObject({
+      message: `Could not reap detached descendants: could not stop the leader's group${row.token}`,
+      processGroupIds: [LEADER],
+    });
+    expect(calls.join(", ")).toBe(row.calls);
   });
 
-  test("an unstoppable leader's group is no failure when nothing left it", async () => {
-    const { ops, calls } = scripted([[leaderRow]], {
+  test.each([
+    { refusal: "ESRCH", tree: [], calls: "" },
+    { refusal: "EPERM", tree: [{ ...leaderRow, zombie: true }], calls: "list" },
+  ])("a leader's group refusing its stop ($refusal) because the leader already exited needs nothing", async (row) => {
+    const { ops, calls } = scripted([row.tree], {
       stopGroup: () => {
-        throw errno("ESRCH");
+        throw errno(row.refusal);
       },
     });
     await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toBeUndefined();
-    expect(calls).toEqual(["list"]);
+    expect(calls.join(", ")).toBe(row.calls);
+  });
+
+  test("a refused leader stop whose confirming read fails reports both", async () => {
+    const { ops } = scripted([], {
+      stopGroup: () => {
+        throw errno("EPERM");
+      },
+      listProcesses: () => Promise.reject(errno("EAGAIN")),
+    });
+    await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toMatchObject({
+      message:
+        "Could not reap detached descendants: could not stop the leader's group (EPERM); process table unreadable (EAGAIN)",
+      processGroupIds: [LEADER],
+      code: "EPERM",
+    });
   });
 
   test("an exit during a read stops all new signals and fails if a group was unreached", async () => {
@@ -144,22 +175,9 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     const failure = await sweepDetachedGroups(LEADER, ops, () => exited);
     expect(failure).toMatchObject({
       message:
-        "Could not reap detached descendants: the leader exited before every descendant group was stopped",
-      processGroupIds: [5004],
+        "Could not reap detached descendants: the leader exited before every group was confirmed stopped",
+      processGroupIds: [5004, 5002],
     });
     expect(calls.join(", ")).toBe("stop 5000, list, list, stop 5002, list, kill 5002");
-  });
-
-  test("an exit during a read that leaves nothing unreached is a clean sweep", async () => {
-    let exited = false;
-    const { ops, calls } = scripted([], {
-      listProcesses: () => {
-        calls.push("list");
-        exited = true;
-        return Promise.resolve([leaderRow]);
-      },
-    });
-    await expect(sweepDetachedGroups(LEADER, ops, () => exited)).resolves.toBeUndefined();
-    expect(calls).toEqual([`stop ${LEADER}`, "list"]);
   });
 });
