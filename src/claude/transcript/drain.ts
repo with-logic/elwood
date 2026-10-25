@@ -8,7 +8,8 @@
  * loop that would stall the event loop. Any backlog still unread when the shared
  * budget OR the per-call slice is spent is accounted as a content-free drop, never
  * read in an unbounded synchronous loop, so the caller returns to the event loop
- * promptly and termination/retirement always completes in bounded work.
+ * promptly and termination/retirement always completes in bounded work. A drained
+ * transcript removed after it existed warns like a live read (§5.7, C-CLAUDE-24).
  */
 
 import type { TranscriptCursor } from "./cursor.ts";
@@ -74,7 +75,7 @@ function drainCursor(
 ): boolean {
   while (budget.chunks > 0 && now() < deadline) {
     budget.chunks -= 1;
-    const chunk = context.readFs(cursor.path, () => cursor.readChunk());
+    const chunk = context.readFs(cursor.path, () => cursor.readLiveChunk());
     if (chunk === undefined) return false; // contained FS failure; nothing to account
     if (chunk.text.length > 0) context.lines.emitLines(cursor.path, chunk.text, cursor);
     if (!chunk.canContinueNow) return false;
