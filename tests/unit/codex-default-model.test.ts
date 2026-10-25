@@ -69,7 +69,7 @@ describe("Codex configured default under the config lock", () => {
         });
       },
       restore: (snapshot) => {
-        restoreCodexConfig(path, snapshot);
+        restoreCodexConfig({ path, snapshot });
       },
     });
     let settled = false;

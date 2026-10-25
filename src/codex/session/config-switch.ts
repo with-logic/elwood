@@ -42,7 +42,7 @@ export function switchCodexModel(
         ? snapshotCodexConfig(path) === snapshot
           ? "unchanged"
           : "interrupted"
-        : restoreCodexConfig(path, snapshot);
+        : restoreCodexConfig({ path, snapshot });
       if (outcome === "restored" || outcome === "unchanged") return;
       session.emitWarnings([codexRestoreSkippedWarning(elwoodSessionId, outcome, path)]);
     },

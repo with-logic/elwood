@@ -1,10 +1,10 @@
 /**
- * A Codex session reads its configured default from, and restores, the config.toml fixed at
- * its launch, even after `CODEX_HOME` in Elwood's environment changes. Covers PRD §5.3,
- * C-API-23, and C-CODEX-14.
+ * A Codex session reads its configured default from, restores, and names in its restore
+ * warnings the config.toml fixed at its launch, even after `CODEX_HOME` in Elwood's
+ * environment changes. Covers PRD §5.3, C-API-23, and C-CODEX-14.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
@@ -13,6 +13,7 @@ import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
   driveSetModel,
+  driveUntilConfigWritten,
   restoreCodexHome,
   sandboxCodexHome,
   until,
@@ -32,12 +33,14 @@ async function startThenRepoint() {
   const launchConfig = sandboxCodexHome(cwd);
   installFakes();
   const session = await startCodex({ cwd });
+  const warnings: unknown[] = [];
+  session.on("warning", (event) => warnings.push(event));
   await becomeReady(session.elwoodSessionId, cwd);
   await until(() => session.status === "ready", { label: "codex ready" });
   mkdirSync(join(cwd, "later-home"));
   const laterConfig = useCodexHome(join(cwd, "later-home"));
   writeFileSync(laterConfig, laterConfigText);
-  return { session, launchConfig, laterConfig };
+  return { session, launchConfig, laterConfig, warnings };
 }
 
 test("C-API-23 listModels reads the default from the config fixed at launch", async () => {
@@ -58,4 +61,28 @@ test("C-CODEX-14 setModel restores the config fixed at launch, not the current e
   await setting;
   expect(readFileSync(launchConfig, "utf8")).toBe(userConfig);
   expect(readFileSync(laterConfig, "utf8")).toBe(laterConfigText);
+});
+
+test("C-CODEX-14 a skipped restore's warning names the config fixed at launch", async () => {
+  const { session, launchConfig, laterConfig, warnings } = await startThenRepoint();
+  const setting = session.setModel("gpt-5.4", { timeoutMs: 30_000 });
+  // Codex's write lands beside a concurrent edit, so the compare-and-swap skips.
+  const concurrent = 'model = "gpt-5.4"\nextra = true\n\n[hooks]\n';
+  await driveSetModel(launchConfig, concurrent);
+  await setting;
+  expect(readFileSync(launchConfig, "utf8")).toBe(concurrent);
+  expect(readFileSync(laterConfig, "utf8")).toBe(laterConfigText);
+  expect(warnings).toMatchObject([{ code: "codex_default_model_persisted", raw: launchConfig }]);
+});
+
+test("C-CODEX-14 a failed restore's warning names the config fixed at launch", async () => {
+  const { session, launchConfig, warnings } = await startThenRepoint();
+  const setting = session.setModel("gpt-5.4", { timeoutMs: 1_000 });
+  await driveUntilConfigWritten(launchConfig, userConfig.replace('"gpt-5.5"', '"gpt-5.4"'));
+  rmSync(launchConfig);
+  mkdirSync(launchConfig); // the restore's read now throws EISDIR
+  await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
+  expect(warnings).toMatchObject([
+    { code: "codex_default_model_persisted", raw: `${launchConfig} (EISDIR)` },
+  ]);
 });

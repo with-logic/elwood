@@ -28,7 +28,10 @@ import { errnoCode } from "../../core/errors.ts";
  */
 type ConfigRestoreOutcome = "restored" | "skipped" | "unchanged" | "no_snapshot";
 
-/** The config.toml a Codex launch uses, read once per session at launch (`spawnCodexPty`). */
+/**
+ * Resolves the `config.toml` path once per session at launch (`spawnCodexPty`). Only the path
+ * is fixed; the file's contents are read for each listing and model switch.
+ */
 export function codexConfigPath(): string {
   return join(process.env["CODEX_HOME"] ?? join(homedir(), ".codex"), "config.toml");
 }
@@ -54,10 +57,13 @@ export function snapshotCodexConfig(path: string): string | undefined {
  * picker created is reported as `no_snapshot` rather than misreported as a
  * concurrent edit.
  */
-export function restoreCodexConfig(
-  path: string,
-  snapshot: string | undefined,
-): ConfigRestoreOutcome {
+export function restoreCodexConfig({
+  path,
+  snapshot,
+}: {
+  readonly path: string;
+  readonly snapshot: string | undefined;
+}): ConfigRestoreOutcome {
   const exists = existsSync(path);
   if (snapshot === undefined) return exists ? "no_snapshot" : "unchanged";
   if (!exists) return "skipped";

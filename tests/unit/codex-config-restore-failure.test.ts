@@ -30,7 +30,7 @@ describe("codex config restore write failure", () => {
     const home = dirname(path);
     const snapshot = snapshotCodexConfig(path);
     writeFileSync(path, 'model = "gpt-5.4"\n');
-    expect(() => restoreCodexConfig(path, snapshot)).toThrow(/cross-device link/);
+    expect(() => restoreCodexConfig({ path, snapshot })).toThrow(/cross-device link/);
     expect(readdirSync(home)).toEqual(["config.toml"]); // no temp litter
     expect(readFileSync(path, "utf8")).toBe('model = "gpt-5.4"\n'); // never truncated
   });
