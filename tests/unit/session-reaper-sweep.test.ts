@@ -8,10 +8,10 @@
 import { describe, expect, test } from "vitest";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
-  alive,
   errno,
   hook,
   LEADER,
+  leaderNeverExits,
   leaderRow,
   scripted,
 } from "../helpers/scripted-process-tree.ts";
@@ -19,11 +19,11 @@ import {
 describe("C-LIFE-10 SessionReaper detached sweep", () => {
   test("sweeps through its injected ops and refuses misrouted leader ids", async () => {
     const swept = scripted([[leaderRow, hook(5002)], [leaderRow, hook(5002)], [leaderRow]]);
-    await new SessionReaper(LEADER, swept.ops).sweepDetached(alive);
+    await new SessionReaper(LEADER, swept.ops).sweepDetached(leaderNeverExits);
     expect(swept.calls).toContain("kill 5002");
     for (const pid of [0, 1, process.pid]) {
       const refused = scripted([[leaderRow]]);
-      await new SessionReaper(pid, refused.ops).sweepDetached(alive);
+      await new SessionReaper(pid, refused.ops).sweepDetached(leaderNeverExits);
       expect(refused.calls).toEqual([]);
     }
   });
@@ -31,7 +31,7 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
   test("keeps a failed sweep: each confirmed reap reaps the group, then fails", async () => {
     const { ops, calls } = scripted([], { listProcesses: () => Promise.reject(errno("EAGAIN")) });
     const reaper = new SessionReaper(LEADER, ops);
-    await expect(reaper.sweepDetached(alive)).rejects.toMatchObject({ code: "EAGAIN" });
+    await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toMatchObject({ code: "EAGAIN" });
     const unreadable = "process table unreadable (EAGAIN)";
     expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreadable);
     expect(calls).toEqual([`stop ${LEADER}`, `kill ${LEADER}`]); // reaped before it threw
@@ -50,7 +50,9 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
     });
     const reaper = new SessionReaper(LEADER, ops);
     const unreached = "the leader exited before every descendant group was stopped";
-    await expect(reaper.sweepDetached(() => exited)).rejects.toMatchObject({ groups: [5002] });
+    await expect(reaper.sweepDetached(() => exited)).rejects.toMatchObject({
+      processGroupIds: [5002],
+    });
     expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreached);
   });
 });

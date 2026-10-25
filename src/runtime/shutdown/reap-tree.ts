@@ -13,7 +13,7 @@
  * hook with `setsid()` (docs/cli-behavior.md, "Hook and MCP process groups").
  * `sweepDetached` finds those groups by parent pid and kills them, so it has to run
  * while that link still exists: before the live leader is SIGKILLed (see
- * `detached-sweep.ts`).
+ * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
 
 import { errnoCode } from "../../core/errors.ts";

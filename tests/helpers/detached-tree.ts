@@ -7,13 +7,12 @@
  * command line still names this tree's own temp directory.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
-import { delay, killIfCommandHas } from "./process-liveness.ts";
+import { delay, killIfCommandHas, POLL_INTERVAL_MS } from "./process-liveness.ts";
 import { tempDir } from "./tmp.ts";
 
 // `hold.cjs <dir> <name> [next] [mode]`: records its pid as <dir>/<name>.pid, optionally
@@ -45,17 +44,6 @@ export function startDetachedTree(mode: "" | "ignore-term" = ""): DetachedTree {
   return { pty, dir };
 }
 
-/** Starts a detached process that is NOT the leader's descendant. */
-export function startBystander(): ChildProcess {
-  const dir = holdDir("elwood-bystander-");
-  const bystander = spawn(process.execPath, [join(dir, "hold.cjs"), dir, "bystander"], {
-    detached: true,
-    stdio: "ignore",
-  });
-  bystander.unref();
-  return bystander;
-}
-
 /** Waits for the detached child's and grandchild's pid files (the leader is `pty.pid`). */
 export async function detachedDescendantPids(tree: DetachedTree): Promise<[number, number]> {
   const child = await waitForPid(tree.dir, "child", 10_000);
@@ -66,8 +54,10 @@ export async function detachedDescendantPids(tree: DetachedTree): Promise<[numbe
   return [child, grandchild];
 }
 
-/** The parent and group of each process, to prove the detached precondition. */
-export async function shape(pids: readonly number[]): Promise<Record<number, string>> {
+/** Each process's parent and group as the real table shows them, for `detachedShape`. */
+export async function observedProcessShape(
+  pids: readonly number[],
+): Promise<Record<number, string>> {
   const table = await listProcessTable(10_000);
   const result: Record<number, string> = {};
   for (const pid of pids) {
@@ -92,31 +82,39 @@ export function detachedShape(
 
 /**
  * Cleans up anything the test started even when an assertion failed, including a tree
- * only partly up. Each process starts its detached successor before writing its own
- * pid, so once a pid file exists its successor's will follow.
+ * only partly up. No handle reaches the detached processes, so each is killed only
+ * while its command line names this tree's directory.
  */
 export async function killSurvivors(tree: DetachedTree): Promise<void> {
   killIfCommandHas(tree.pty.pid, tree.dir);
-  for (const name of ["child", "grandchild"]) {
-    const pid = await waitForPid(tree.dir, name, 2_000);
-    if (pid === undefined) return;
-    killIfCommandHas(pid, tree.dir);
-  }
+  await killRecorded(tree.dir);
 }
 
-function holdDir(prefix: string): string {
+/**
+ * Kills the child and the grandchild of the tree in `dir`, each found by its own pid
+ * file. A process starts its successor before it writes its own pid, so the
+ * grandchild's file can appear while the child's never does.
+ */
+export async function killRecorded(dir: string): Promise<void> {
+  const names = ["child", "grandchild"];
+  const pids = await Promise.all(names.map((name) => waitForPid(dir, name, 2_000)));
+  for (const pid of pids) if (pid !== undefined) killIfCommandHas(pid, dir);
+}
+
+/** Writes the hold script into a fresh temp directory and returns that directory. */
+export function holdDir(prefix: string): string {
   const dir = tempDir(prefix);
   writeFileSync(join(dir, "hold.cjs"), HOLD);
   return dir;
 }
 
 async function waitForPid(dir: string, name: string, ms: number): Promise<number | undefined> {
-  for (let waited = 0; waited <= ms; waited += 20) {
+  const deadline = performance.now() + ms;
+  for (;;) {
     const pid = readPid(dir, name);
-    if (pid !== undefined) return pid;
-    await delay(20);
+    if (pid !== undefined || performance.now() >= deadline) return pid;
+    await delay(POLL_INTERVAL_MS);
   }
-  return undefined;
 }
 
 function readPid(dir: string, name: string): number | undefined {

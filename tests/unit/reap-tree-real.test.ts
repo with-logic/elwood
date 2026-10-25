@@ -9,12 +9,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node-pty";
 import { describe, expect, test } from "vitest";
+import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { reapProcessGroup } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   delay,
   killIfCommandHas,
   POLL_INTERVAL_MS,
-  pidExists,
   pollGone,
 } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -51,7 +51,9 @@ describe("C-LIFE-10 process-group reaping (real seams)", () => {
         // depends on).
         expect(await pollGone({ pid: intermediatePid, timeoutMs: 2_000 })).toBe(true);
         expect(parentPidOf(grandchildPid)).not.toBe(intermediatePid); // reparented
-        expect(pidExists(grandchildPid)).toBe(true); // but still alive in the group
+        // ...but still running in the group: present, and not an unreaped zombie.
+        const table = await listProcessTable(10_000);
+        expect(table.find((row) => row.pid === grandchildPid)).toMatchObject({ zombie: false });
         reapProcessGroup(pty.pid);
         expect(await pollGone({ pid: grandchildPid, timeoutMs: 2_000 })).toBe(true);
       } finally {
