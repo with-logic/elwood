@@ -46,6 +46,8 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const priorIdentity = this.episode?.lastIdentity;
     const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
+    // A rendered frame is evidence for the gate's next attempt as well as its current one.
+    if (this.episode !== undefined) this.episode.phase.renderedSinceWrite = true;
     this.episode?.attempt?.wake();
     const episode = this.episode;
     if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
@@ -82,7 +84,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       readFrame === undefined
         ? undefined
         : () => readTrustView(readFrame, this.agent, this.clearance);
-    const attempt = new TrustAttempt(view, identity, this.hooks.numberedRetry);
+    const attempt = new TrustAttempt(view, identity, this.hooks.numberedRetry, episode.phase);
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);

@@ -865,12 +865,15 @@ highlighted affirmative; on the empty composer it does nothing. Claude never
 gets a bare Enter (its list remounts with the caret on the decline; see the
 next section), and Codex's hook gate opens with its caret on `Review hooks`.
 Those numbered gates are answered again only after a frame rendered from
-output that arrived after the last write still shows them.
+output that arrived after the last write still shows them. Once the number has
+been written to a gate, every later attempt at it retries this way, including
+one that starts after a write was rejected. Only another complete dialog
+replacing the gate makes its return a fresh gate that gets the number.
 `tests/codex/session-trust-slow-answer.test.ts` covers both cases.
 
-Measured with 8 fresh git folders launched at once per round, two rounds per
-arm, load average 20–60 on a machine that leaked shell processes were also
-slowing: on the previous code, 9 of 16 launches typed `1` into the composer (2
+Measured with 8 fresh git folders launched at once per round and two rounds per
+arm, at load average 20–60 (leaked shell processes were also slowing the
+machine): on the previous code, 9 of 16 launches typed `1` into the composer (2
 to 11 `1\r` writes each), and only 5 of 16 reported their answer. With this
 change, 0 of 16 did: each typed the number once, then 1 to 15 bare Enters, and
 all 16 reported `sent 1`. `tests/e2e/trust-retry-codex.e2e.ts` makes the lag

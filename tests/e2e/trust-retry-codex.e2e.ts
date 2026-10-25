@@ -13,11 +13,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { createCliSanitizer } from "../../src/cli/output/sanitize.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { nodePtyFactory } from "../../src/pty/node.ts";
-import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { stopCodex } from "./codex-ready.ts";
+import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { teardownOrKillCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -27,13 +25,13 @@ import {
   skipReason,
   waitFor,
 } from "./helpers.ts";
+import { holdCliOutput, outputMatcher } from "./output-hold.ts";
 
 /** Codex refuses a turn on an unknown model before any quota is used. */
 const bogusModel = "gpt-elwood-nonexistent-model";
 const lagMs = 2_000;
 /** How long after `ready` a stray submission has to show itself. */
 const settleMs = 5_000;
-/** Codex draws spaces as cursor moves, so the raw prompt is matched without them. */
 const directoryTrustOutput = /trustthisfolder\?|trustthecontentsofthisdirectory/i;
 
 type Launch = { displayed: boolean; answerWritten: boolean; readonly writes: string[] };
@@ -41,39 +39,17 @@ type Launch = { displayed: boolean; answerWritten: boolean; readonly writes: str
 /** Records the launch's writes; Elwood sees no output for `lagMs` after the answer write. */
 function lagAfterAnswerWrite(): Launch {
   const launch: Launch = { displayed: false, answerWritten: false, writes: [] };
-  const plainText = createCliSanitizer();
-  setPtyFactoryForTests((options) => {
-    const pty = nodePtyFactory(options);
-    const handlers = new Set<(data: string) => void>();
-    let held: string[] | undefined;
-    let output = "";
-    pty.onData((data) => {
-      if (!launch.displayed) {
-        output += data;
-        launch.displayed = directoryTrustOutput.test(plainText(output).replace(/\s+/g, ""));
-      }
-      if (held === undefined) for (const handler of handlers) handler(data);
-      else held.push(data);
-    });
-    return {
-      ...pty,
-      onData(handler) {
-        handlers.add(handler);
-        return () => handlers.delete(handler);
-      },
-      write(data) {
-        pty.write(data);
-        if (typeof data === "string") launch.writes.push(data);
-        if (data !== "1\r" || launch.answerWritten) return;
-        launch.answerWritten = true;
-        held = [];
-        setTimeout(() => {
-          const chunks = held ?? [];
-          held = undefined;
-          for (const chunk of chunks) for (const handler of handlers) handler(chunk);
-        }, lagMs);
-      },
-    };
+  const gate = outputMatcher(directoryTrustOutput);
+  holdCliOutput({
+    output(data) {
+      if (!launch.displayed) launch.displayed = gate(data);
+    },
+    input(data, output) {
+      launch.writes.push(data);
+      if (data !== "1\r" || launch.answerWritten) return;
+      launch.answerWritten = true;
+      output.hold(lagMs);
+    },
   });
   return launch;
 }
@@ -90,7 +66,7 @@ test("C-TRUST-01 a Codex whose screen trails its trust answer never receives the
   t.after(async () => {
     let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) failures = await stopCodex(session);
+      if (session !== undefined) failures = await teardownOrKillCodex(session);
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();

@@ -31,6 +31,18 @@ export function trustStep(option: SelectableOption): TrustStep {
   return { keys: confirm ? `${select}\r` : select, confirm, pollMs: observationMs };
 }
 
+/**
+ * Shared by every attempt at one gate, so a later attempt (after a rejected write, a lost
+ * choice, or expiry) retries as after the gate's last write, never by typing a number
+ * blind. Only another complete dialog replacing the gate makes its return a fresh one.
+ */
+export type TrustPhase = {
+  /** A confirming write fulfilled. That is not clearance, which only a frame verifies. */
+  confirmed: boolean;
+  /** A frame rendered after the last write: only such a frame can show it was ignored. */
+  renderedSinceWrite: boolean;
+};
+
 type NumberedOption = Extract<SelectableOption, { style: "numbered" }>;
 
 /**

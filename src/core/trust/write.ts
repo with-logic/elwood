@@ -8,6 +8,7 @@ import {
   observationMs,
   retryMs,
   retypeAfterRender,
+  type TrustPhase,
   type TrustStep,
   trustStep,
 } from "./step.ts";
@@ -21,25 +22,24 @@ export class TrustAttempt {
   private clearance = false;
   private retryAt = 0;
   private previousKeys: string | undefined;
-  /** A frame rendered after the last write: only such a frame can show it was ignored. */
-  private renderedSinceWrite = false;
   private wakeWaiter: (() => void) | undefined;
-  /** The confirming write fulfilled; that is not clearance, which only a frame verifies. */
-  confirmationWriteFulfilled = false;
   invalidated = false;
   /** The polled choice vanished mid-attempt; its return deserves a fresh attempt. */
   lostChoice = false;
-
   private readonly numberedRetry: NumberedRetry;
+  /** The gate's write phase, shared with its earlier and later attempts. */
+  readonly phase: TrustPhase;
 
   constructor(
     candidate: TrustCandidate,
     identity: string,
     numberedRetry: NumberedRetry = retypeAfterRender,
+    phase: TrustPhase = { confirmed: false, renderedSinceWrite: false },
   ) {
     this.candidate = candidate;
     this.identity = identity;
     this.numberedRetry = numberedRetry;
+    this.phase = phase;
   }
 
   get cleared(): boolean {
@@ -48,7 +48,7 @@ export class TrustAttempt {
 
   /** A frame rendered: a waiting answer or retry re-reads it (`awaiting`, `numberedRetry`). */
   wake(): void {
-    this.renderedSinceWrite = true;
+    this.phase.renderedSinceWrite = true;
     const waiter = this.wakeWaiter;
     this.wakeWaiter = undefined;
     waiter?.();
@@ -78,9 +78,7 @@ export class TrustAttempt {
   }
 
   private completion(): StartupWriteCompletion {
-    return this.clearance && this.confirmationWriteFulfilled && !this.invalidated
-      ? "answered"
-      : "cancelled";
+    return this.clearance && this.phase.confirmed && !this.invalidated ? "answered" : "cancelled";
   }
 
   private async atomic(
@@ -134,8 +132,8 @@ export class TrustAttempt {
   }
 
   private stepFor(option: SelectableOption): TrustStep | undefined {
-    if (option.style !== "numbered" || !this.confirmationWriteFulfilled) return trustStep(option);
-    return this.numberedRetry(option, this.renderedSinceWrite);
+    if (option.style !== "numbered" || !this.phase.confirmed) return trustStep(option);
+    return this.numberedRetry(option, this.phase.renderedSinceWrite);
   }
 
   /**
@@ -146,7 +144,7 @@ export class TrustAttempt {
    * gate (which a human must answer), or closing (C-TRUST-01).
    */
   private awaiting(view: TrustView | undefined): boolean {
-    if (!this.confirmationWriteFulfilled) return false;
+    if (!this.phase.confirmed) return false;
     return view === undefined || (view.kind === "unknown" && view.gate !== true);
   }
 
@@ -171,12 +169,12 @@ export class TrustAttempt {
   ): Promise<boolean> {
     if (Date.now() >= this.retryAt || step.keys !== this.previousKeys) {
       if (this.controller.signal.aborted) return false;
-      this.renderedSinceWrite = false;
+      this.phase.renderedSinceWrite = false;
       const result = write(step.keys);
       // A void writer has already fulfilled before an observer can replace the frame.
-      if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
+      if (result === undefined && step.confirm) this.phase.confirmed = true;
       const fulfilled = await this.own(result);
-      if (fulfilled && step.confirm) this.confirmationWriteFulfilled = true;
+      if (fulfilled && step.confirm) this.phase.confirmed = true;
       this.previousKeys = step.keys;
       this.retryAt = Date.now() + retryMs;
       if (!fulfilled) return false;

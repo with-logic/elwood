@@ -3,7 +3,7 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupWriteCompletion } from "../startup/write.ts";
 import { optionInput, type SelectableOption } from "../terminal-options.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
-import type { NumberedRetry } from "./step.ts";
+import type { NumberedRetry, TrustPhase } from "./step.ts";
 import { choiceIdentity, type TrustCandidate } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
 
@@ -41,6 +41,8 @@ export type Episode = {
   legacyAnswered: boolean;
   /** Raw caller input reached this gate; automation writes nothing more to it. */
   callerOwned: boolean;
+  /** Every attempt at this gate shares it, so its writes and frames outlive each attempt. */
+  readonly phase: TrustPhase;
   attempt: TrustAttempt | undefined;
 };
 
@@ -56,6 +58,7 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
     reportedPending: false,
     legacyAnswered: false,
     callerOwned: false,
+    phase: { confirmed: false, renderedSinceWrite: false },
     attempt: undefined,
   };
 }
@@ -76,8 +79,10 @@ export function attempted<A extends ElwoodAgentKind>(
  */
 export function leaveFrame(episode: Episode, offAllowlistGate: boolean): void {
   episode.lastIdentity = undefined;
-  if (episode.attempt?.confirmationWriteFulfilled && !offAllowlistGate) return;
+  if (episode.attempt !== undefined && episode.phase.confirmed && !offAllowlistGate) return;
   episode.attempt?.cancel();
   episode.attempt = undefined;
   episode.attemptedIdentity = undefined;
+  // Another complete dialog replaced the gate, so the CLI drew its return afresh.
+  if (offAllowlistGate) episode.phase.confirmed = false;
 }
