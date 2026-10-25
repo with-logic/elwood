@@ -8,12 +8,14 @@ import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import type { ObservedTerminal } from "../input/abort.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
+import { waitUntilClosed } from "./close-wait.ts";
 import { sendPickerInput } from "./input.ts";
-import type {
-  AgentModelOption,
-  ModelDialogAuthority,
-  ModelDialogStage,
-  ParsedModelPicker,
+import {
+  type AgentModelOption,
+  type ModelDialogAuthority,
+  type ModelDialogStage,
+  ownOperation,
+  type ParsedModelPicker,
 } from "./rows.ts";
 import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
 
@@ -37,8 +39,9 @@ export type ModelPickerSpec = {
   readonly isClear: (text: string) => boolean;
   /**
    * Only that the picker's title is on screen: a transcript can print it, and a picker
-   * still painting shows it over stale rows. It may hold input or end a close wait; it
-   * never authorizes a write.
+   * still painting shows it over stale rows. It gates the `/model` open wait and may hold
+   * input; it never ends a close wait (which reads only the bottom-most region) and never
+   * authorizes a write.
    */
   readonly hasPickerHeader: (text: string) => boolean;
   /**
@@ -72,34 +75,21 @@ export type ModelPickerSpec = {
 };
 
 /**
- * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority.
- * Every key and Escape below is gated on `isOwnCompletePicker(spec)`: the operation's own COMPLETE picker,
- * never a `painting` dialog and never `hasPickerHeader`. A header match alone is untrusted:
- * a transcript or the agent's own output can print `Select model`, so navigating or
- * Escaping on it could send keys into a running turn, the real composer, or another prompt
- * (C-API-24). The header gates only two waits, the `/model` open wait (`openAndParse`) and
- * the `closing` wait; the cursor-settle wait reads a parsed row. None of them writes.
- */
-const opened: ModelDialogAuthority = { opened: true };
-
-/**
  * True only while THIS operation's own COMPLETE picker is the bottom-most region: never its
  * `painting` shell and never a `follow-up` stage. It gates every shared navigation,
  * selection, and cancelling key, and each adapter's selecting key; a follow-up is answered
  * only by the adapter's `apply`, under that stage's own guard (Claude's cache warning,
  * Codex's reasoning level).
+ *
+ * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority
+ * (`ownOperation`). A header match alone is untrusted: a transcript or the agent's own output
+ * can print `Select model`, so navigating or Escaping on it could send keys into a running
+ * turn, the real composer, or another prompt (C-API-24). The header gates only the `/model`
+ * open wait (`openAndParse`); the cursor-settle wait reads a parsed row, and the close wait
+ * (`waitUntilClosed`) reads only the bottom-most region. None of them writes.
  */
 export const isOwnCompletePicker = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, opened) === "picker";
-
-/**
- * The CLOSE wait after Elwood's own Escape, and deliberately weaker than `isOwnCompletePicker` because it
- * only waits: while any stage of the dialog or its header still shows, the picker may be
- * mid-close, and resolving there would let the next operation find picker text already on
- * screen. It never gates a write: every key, Escape included, needs `isOwnCompletePicker`.
- */
-const closing = (spec: ModelPickerSpec) => (text: string) =>
-  spec.activeDialog(text, opened) !== undefined || spec.hasPickerHeader(text);
+  spec.activeDialog(text, ownOperation) === "picker";
 
 const escapeKey = "\u001b";
 const arrowStepMs = 80;
@@ -111,13 +101,7 @@ export async function listPickerModels(
 ): Promise<readonly AgentModelOption[]> {
   const parsed = await openAndParse(io, spec, timeoutMs);
   await sendPickerInput(io, escapeKey, isOwnCompletePicker(spec));
-  await waitForScreen(
-    io.terminal,
-    (text) => !closing(spec)(text),
-    timeoutMs,
-    `${spec.agent} model picker to close`,
-    io.signal,
-  );
+  await waitUntilClosed(io, spec, timeoutMs);
   return parsed.options;
 }
 
@@ -156,6 +140,7 @@ export async function setPickerModel(
     io.signal,
   );
   await spec.apply(io, timeoutMs);
+  await waitUntilClosed(io, spec, timeoutMs);
 }
 
 /** The highlighted option, or undefined while no cursor is painted. */
