@@ -18,6 +18,11 @@ back each entry are listed in `prd/14-conformance.md`.
   questionnaire; either one left the native dialog on screen without raising
   the question.
 
+- Named Claude sessions (`name`) recognize their composer again. Claude insets
+  the name into the composer's top rule, which kept trust clearance and
+  empty-input checks from matching: a named session in an untrusted folder
+  stayed `blocked` after autotrust answered the trust prompt.
+
 ## [0.2.1] - 2026-10-24
 
 - Reduce median active Elwood CPU by 11.3% in the measured 50-session workload

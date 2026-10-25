@@ -3,6 +3,7 @@ import { emptyInputFrame } from "../../core/input/empty-frame.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { loginRenewalNotice } from "../login/notice.ts";
 import { claudeComposerRow } from "../screen-table.ts";
+import { claudeNamedBorder } from "./border.ts";
 import { claudeManualModeFooter } from "./footer.ts";
 
 const rule = /^[─━]{3,}\s*$/;
@@ -22,7 +23,9 @@ export function claudeEmptyInputRows(
 ): boolean {
   const composer = rows[cursorRow];
   if (!(composer?.startsWith("❯") && claudeComposerRow.test(composer))) return false;
-  if (!(rule.test(rows[cursorRow - 1] ?? "") && rule.test(rows[cursorRow + 1] ?? ""))) return false;
+  const top = rows[cursorRow - 1] ?? "";
+  if (!((rule.test(top) || claudeNamedBorder.test(top)) && rule.test(rows[cursorRow + 1] ?? "")))
+    return false;
   const below = rows.slice(cursorRow + 2).filter((row) => row.trim() !== "");
   return (
     (rows.some((row) => /Claude Code v[\d.]+/.test(row)) ||

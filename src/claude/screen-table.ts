@@ -25,6 +25,7 @@ export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/
  * screen facts (C-TRUST-01). Clearance needs Claude's own chrome — the version banner or
  * the permission-mode or manual-mode footer — plus the composer fenced between rule
  * lines, so a frame that merely contains a `❯` is not mistaken for an answered gate.
+ * A named session's top rule carries its label (`claudeNamedBorder`).
  */
 export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
@@ -34,7 +35,9 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
       /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
         frame,
       )) &&
-    /(?:^|\n)[─━]{3,}\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(frame),
+    /(?:^|\n)[─━]{3,}(?: \S[^\n]* [─━])?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(
+      frame,
+    ),
 );
 
 /** A per-batch composer cannot release trust until every received byte has rendered. */
