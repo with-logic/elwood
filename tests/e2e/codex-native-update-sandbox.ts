@@ -8,13 +8,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
+import { seedCodexHome } from "./scratch.ts";
 
 export async function nativeUpdaterSandbox(sourceBinary: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_update-")));
@@ -28,10 +29,8 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
     const binary = join(release, "codex");
     copyFileSync(sourceBinary, binary);
     chmodSync(binary, 0o700);
-    copyFileSync(join(homedir(), ".codex/auth.json"), join(codexProofHome, "auth.json"));
-    chmodSync(join(codexProofHome, "auth.json"), 0o600);
-    writeFileSync(
-      join(codexProofHome, "config.toml"),
+    seedCodexHome(
+      codexProofHome,
       `check_for_update_on_startup = true\n[projects."${project}"]\ntrust_level = "trusted"\n`,
     );
     writeFileSync(
