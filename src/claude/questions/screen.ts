@@ -1,6 +1,7 @@
 /** Private native Claude questionnaire grammar (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { claudeNamedBorder } from "../composer/border.ts";
 import {
   normalizeClaudeQuestionText,
   OTHER_CONTINUATION_INDENT_COLUMNS,
@@ -26,8 +27,6 @@ export type ClaudeQuestionScreen =
 const CLAUDE_REVIEW_TITLE = "Review your answers";
 const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
-// A named session (`--name`) labels the prompt box's bottom border, under the footer.
-const namedBorder = /^[─━]{3,} \S.* [─━]$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
 const questionFooter = /^Enter to select · .+ · Esc to cancel$/;
 const reviewCancelRow = /^(?:❯| )\s+2\. Cancel$/;
@@ -80,7 +79,7 @@ export function parseClaudeQuestionScreen(
   if (!question) return undefined;
   const footer = body.findLastIndex((line) => questionFooter.test(line));
   const [after, ...extra] = body.slice(footer + 1).filter((line) => line.trim());
-  if (footer < 0 || extra.length > 0 || (after !== undefined && !namedBorder.test(after)))
+  if (footer < 0 || extra.length > 0 || (after !== undefined && !claudeNamedBorder.test(after)))
     return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
