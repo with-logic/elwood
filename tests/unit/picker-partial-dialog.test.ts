@@ -33,7 +33,7 @@ test("C-API-55 a surviving cache warning stays held through a partial repaint", 
   expect(picker.blocksInput()).toBe(true);
   screen.text = claudeClosedPickerViewport;
   // A stable run of clear frames releases it; one frame could be another repaint.
-  expect(releasesAfterClearStreak(picker)).toBe(true);
+  expect(releasesAfterClearStreak(() => picker.blocksInput())).toBe(true);
   queue.close();
 });
 

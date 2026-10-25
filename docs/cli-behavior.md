@@ -966,6 +966,17 @@ partial model dialog is insufficient. The sanitized Claude frame is retained in
 `tests/fixtures/claude-2.1.278/model-cancelled.txt`. With this recognition fix,
 Claude also completed automated `listModels` and returned five rows (C-API-55).
 
+### Idle CLIs do not repaint (2026-10-25)
+
+A probe started real sessions through Elwood, waited for `ready` plus 3 s, and then
+counted PTY output chunks while the session sat idle. Codex 0.164.0 emitted none in
+15 s idle, and none in the 10 s after `listModels` opened and cancelled its picker.
+Claude Code 2.1.310 emitted one chunk in each window. Clearing a model-dialog hold
+therefore cannot wait for a run of new frames, because on Codex none arrive. The
+evidence has to be the same completed frame read over time. Readings count at
+least 40 ms apart, so neither bunched readings nor a fast burst of repaints can
+release a hold early (C-API-55).
+
 
 ### Cursor provenance for Codex trust clearance
 

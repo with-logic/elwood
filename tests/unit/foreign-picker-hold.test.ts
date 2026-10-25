@@ -1,9 +1,12 @@
 /** A recognized foreign picker stays held through ambiguous redraws (C-API-55). */
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
-import { pickerHarness } from "../helpers/picker-harness.ts";
+import { pickerHarness, releasesAfterClearStreak } from "../helpers/picker-harness.ts";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
 test("C-API-55 a foreign picker remains held through missing rows and blank frames", () => {
   const { picker, screen, queue } = pickerHarness(
@@ -17,8 +20,7 @@ test("C-API-55 a foreign picker remains held through missing rows and blank fram
     for (let read = 0; read < 6; read += 1) expect(picker.foreignDialogVisible()).toBe(true);
   }
   screen.text = "› Ask Codex to do anything\n  gpt-5.5 high";
-  for (let read = 0; read < 4; read += 1) expect(picker.foreignDialogVisible()).toBe(true);
-  expect(picker.foreignDialogVisible()).toBe(false);
+  expect(releasesAfterClearStreak(() => picker.foreignDialogVisible())).toBe(true);
   queue.close();
 });
 

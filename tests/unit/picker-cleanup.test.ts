@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { setPickerModel } from "../../src/core/models/picker.ts";
+import { claudeClosedPickerViewport } from "../helpers/model-dialog-viewports.ts";
 import {
   claudeHookSwitchConfirmation,
   claudeModelCacheConfirmationOnNo,
@@ -69,11 +70,11 @@ test.each([
   await failed;
   expect(writes).toEqual(["/model", escapeKey]);
   expect(picker.blocksInput()).toBe(true);
-  screen.text = "❯ ";
+  screen.text = claudeClosedPickerViewport;
   // ONE clear frame is not proof: a picker repainting between stages is briefly
   // unrecognizable, and releasing queued input there would type into the frame that
   // follows. The hold persists for the full measured streak.
-  expect(releasesAfterClearStreak(picker)).toBe(true);
+  expect(releasesAfterClearStreak(() => picker.blocksInput())).toBe(true);
   // The hold is forgotten: the same text reappearing later belongs to someone else.
   screen.text = claudePicker;
   expect(picker.blocksInput()).toBe(false);
