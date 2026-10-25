@@ -18,8 +18,9 @@ back each entry are listed in `prd/14-conformance.md`.
   a blank or half-painted repaint could end the operation and let a queued
   message's Enter land in the picker when it painted again, applying the
   highlighted model. Picker text quoted above the composer does not hold the
-  operation, and a terminal that stops rendering during the wait fails it with
-  `model_automation_failed` instead of reporting success.
+  operation. Each reading first renders all output the terminal has received, and
+  one that cannot fails the operation with `model_automation_failed` instead of
+  reporting success.
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
   reaped now says so. The typed startup error keeps its code and

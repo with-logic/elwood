@@ -31,6 +31,9 @@ export const clearReadings = 5;
  * The least time between two clearance readings that both count toward `clearReadings`.
  * Below the 50 ms queued-write retry (`unsafeWriteRetryMs`), so each retry of a waiting
  * writer counts, while readings bunched into one instant, or a burst of repaints, count
- * once: a release takes the composer staying clear across four gaps (160 ms or more).
+ * once: a release takes four gaps (160 ms or more). What a reading must show differs by
+ * consumer: an input hold (`picker-hold.ts`) needs positive native-composer clearance, while
+ * a successful operation's close wait (`close-wait.ts`) needs only that the bottom-most
+ * region is not its dialog, since the composer is never clear during a turn.
  */
 export const clearReadingGapMs = 40;

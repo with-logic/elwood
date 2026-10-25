@@ -5,6 +5,7 @@
 
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
+import { writeUnsafe } from "../input/abort.ts";
 import { clearReadingGapMs, clearReadings } from "./clearance.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "./picker.ts";
 import { ownOperation } from "./rows.ts";
@@ -25,7 +26,8 @@ const closing = (spec: ModelPickerSpec, text: string) =>
  * picker can paint again after it, where a queued Enter released by this operation would
  * apply the highlighted model. Absence, not positive composer clearance, is what is counted:
  * clearance excludes a running turn, and model operations run during turns (C-API-35). A
- * terminal that stopped rendering shows only its last frame, which proves nothing (C-API-56).
+ * reading that cannot first render everything received proves nothing, so it fails the wait
+ * (C-API-56).
  */
 export async function waitUntilClosed(
   io: Pick<ModelPickerIo, "terminal" | "signal">,
@@ -35,11 +37,15 @@ export async function waitUntilClosed(
   const deadline = Date.now() + timeoutMs;
   for (let streak = 0; ; await delay(clearReadingGapMs)) {
     io.signal?.throwIfAborted();
-    if (io.terminal.renderFailed)
+    // Each reading is of everything received, like each picker key: a repaint still queued
+    // for rendering would otherwise leave a stale blank frame to count (C-API-56).
+    if (await writeUnsafe(io.terminal, undefined, io.signal)) {
+      io.signal?.throwIfAborted();
       throw elwoodError(
         "model_automation_failed",
-        `Could not confirm the ${spec.agent} model picker closed: the terminal stopped rendering.`,
+        `Could not confirm the ${spec.agent} model picker closed: its received output could not be rendered.`,
       );
+    }
     streak = closing(spec, io.terminal.snapshot().text) ? 0 : streak + 1;
     if (streak >= clearReadings) return;
     if (Date.now() >= deadline)

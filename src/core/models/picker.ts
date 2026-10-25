@@ -39,8 +39,9 @@ export type ModelPickerSpec = {
   readonly isClear: (text: string) => boolean;
   /**
    * Only that the picker's title is on screen: a transcript can print it, and a picker
-   * still painting shows it over stale rows. It may hold input or end a close wait; it
-   * never authorizes a write.
+   * still painting shows it over stale rows. It gates the `/model` open wait and may hold
+   * input; it never ends a close wait (which reads only the bottom-most region) and never
+   * authorizes a write.
    */
   readonly hasPickerHeader: (text: string) => boolean;
   /**
