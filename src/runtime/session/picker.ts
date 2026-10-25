@@ -4,15 +4,8 @@ import { elwoodError } from "../../core/errors.ts";
 import type { InputTerminal } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
-import { ForeignPickerHold } from "./foreign-picker.ts";
-import {
-  abortable,
-  cleanUpDialog,
-  clearFrames,
-  escapeKey,
-  ours,
-  type Progress,
-} from "./picker-cleanup.ts";
+import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
+import { PickerHold } from "./picker-hold.ts";
 
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
@@ -28,11 +21,11 @@ type PickerDeps = {
 
 export class PickerTransactions {
   private readonly deps: PickerDeps;
-  private readonly foreign = new ForeignPickerHold();
+  private readonly foreign = new PickerHold();
   private active: { signal: AbortSignal; progress: Progress } | undefined;
   private survivor: ModelPickerSpec | undefined;
-  /** Consecutive frames without the survivor; it is forgotten only after a stable run. */
-  private clearStreak = 0;
+  /** Forgets the survivor only after the composer is positively, sustainedly clear. */
+  private readonly survivorHold = new PickerHold();
   constructor(deps: PickerDeps) {
     this.deps = deps;
     deps.observeRendered?.((read) => this.foreignDialogVisible(read));
@@ -50,15 +43,15 @@ export class PickerTransactions {
    */
   blocksInput(): boolean {
     if (this.survivor === undefined) return false;
-    if (this.survivor.activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined) {
-      this.clearStreak = 0;
+    const text = this.deps.terminal.snapshot().text;
+    if (this.survivor.activeDialog(text, ours) !== undefined) {
+      this.survivorHold.hold();
       return true;
     }
-    // ONE unrecognized frame is not proof the survivor is gone: a picker repainting between
-    // stages is briefly unrecognizable, and forgetting it there would release queued input
-    // into the frame that follows. Cleanup requires the same streak for the same reason.
-    this.clearStreak += 1;
-    if (this.clearStreak < clearFrames) return true;
+    // An UNRECOGNIZED frame is not proof the survivor is gone: a picker repainting between
+    // stages, or half-painted, matches neither grammar, and forgetting it there would release
+    // queued input into the frame that follows. Only sustained positive clearance does.
+    if (this.survivorHold.observe(text, this.survivor)) return true;
     this.survivor = undefined;
     return false;
   }
@@ -179,6 +172,8 @@ export class PickerTransactions {
     closed: AbortSignal,
   ): Promise<void> {
     const released = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
-    if (!released) this.survivor = spec;
+    if (released) return;
+    this.survivor = spec;
+    this.survivorHold.hold();
   }
 }

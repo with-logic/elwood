@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Queued input stays held on a model dialog until the composer is positively
+  clear. A dialog that survived a failed model operation's cleanup could be
+  forgotten after five frames that neither grammar recognized, such as a blank
+  or half-painted repaint. Any hold could also be cleared by five readings
+  taken in the same instant. Either way, a queued message could be typed into
+  the picker, where Enter applies the highlighted model.
+
 - Codex `listModels()` and `listCodexModels()` no longer report the session's
   current model as the configured default. Codex 0.164 marks only the current
   row, so `isDefault` now follows `config.toml`: the `model` of the profile the

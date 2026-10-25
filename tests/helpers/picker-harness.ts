@@ -2,24 +2,29 @@
  * A scripted terminal driving the real ControlQueue and PickerTransactions, shared by
  * the model-picker transaction tests (C-API-55).
  */
+
+import { vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
-import { clearFrames } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearFrames, clearObservationGapMs } from "../../src/runtime/session/picker-cleanup.ts";
 
 export const escapeKey = String.fromCharCode(27);
 
 /**
- * Observes `blocksInput()` until it releases, asserting it stayed held for the full
- * measured clear streak first — one clear frame must never be enough (C-API-55).
+ * Reads `held` (under fake timers) until it releases, asserting it stayed held for the full
+ * clear streak first. One clear reading must never be enough, and neither must readings
+ * bunched into one instant: each is repeated before the clock moves (C-API-55).
  */
-export function releasesAfterClearStreak(picker: { blocksInput(): boolean }): boolean {
-  for (let frame = 1; frame < clearFrames; frame += 1) {
-    if (!picker.blocksInput()) return false;
+export function releasesAfterClearStreak(held: () => boolean): boolean {
+  for (let reading = 1; reading < clearFrames; reading += 1) {
+    if (!(held() && held())) return false;
+    vi.advanceTimersByTime(clearObservationGapMs);
   }
-  return !picker.blocksInput();
+  return !held();
 }
 /** The rejection the cleanup harness's scripted operation fails with. */
 export const failure = new Error("navigation failed");
@@ -62,6 +67,49 @@ export function pickerHarness(
   });
   queue.markReady();
   return { screen, writes, leaked, queue, picker };
+}
+
+/**
+ * Like `pickerHarness`, but queued messages go through the real queued-input writer behind
+ * the session's own hold predicates, so a test sees exactly which bytes reach the CLI.
+ * `delivered(payload)` counts the writes that carried a queued payload (C-API-55).
+ */
+export function guardedPickerHarness(
+  text: string,
+  react: (input: string, screen: Screen) => void = () => {},
+  spec: ModelPickerSpec = claudeModelPicker,
+) {
+  const screen: Screen = { text };
+  const writes: string[] = [];
+  const terminal = {
+    snapshot: () => ({ text: screen.text }),
+    sendInput: (input: string | Uint8Array) => {
+      writes.push(String(input));
+      react(String(input), screen);
+    },
+  };
+  const holds: { picker?: PickerTransactions } = {};
+  const queue = new ControlQueue(
+    queuedInputSubmitter(terminal, {
+      blocked: () =>
+        holds.picker?.blocksInput() === true || holds.picker?.foreignDialogVisible() === true,
+      // The fake composer never shows a staged paste, so each Enter submits.
+      prepareStaged: () => () => false,
+    }),
+    () => new Error("closed"),
+    () => {},
+  );
+  const picker = new PickerTransactions({
+    terminal,
+    controlQueue: queue,
+    blocked: () => false,
+    picker: () => spec,
+    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
+  });
+  holds.picker = picker;
+  queue.markReady();
+  const delivered = (payload: string) => writes.filter((write) => write.includes(payload)).length;
+  return { screen, writes, queue, picker, delivered };
 }
 
 /** `react` scripts how the fake CLI repaints after each command or key Elwood writes. */

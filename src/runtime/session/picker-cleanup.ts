@@ -41,6 +41,14 @@ const cleanupMs = 1_000;
 export const clearFrames = 5;
 
 /**
+ * The least time between two clearance readings that both count toward `clearFrames`.
+ * Below the 50 ms queued-write retry (`unsafeWriteRetryMs`), so each retry of a waiting
+ * writer counts, while readings bunched into one instant, or a burst of repaints, count
+ * once: a release takes the composer staying clear across four gaps (160 ms or more).
+ */
+export const clearObservationGapMs = 40;
+
+/**
  * Cleanup's own streak, deliberately shorter than `clearFrames`.
  *
  * Cleanup is BOUNDED at one second and must also send its Escapes inside that budget, so
