@@ -4,8 +4,6 @@
  * production `ps` options really bound a run's time and output.
  */
 
-import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { describe, expect, test } from "vitest";
 import {
   detachedDescendantGroups,
@@ -13,26 +11,7 @@ import {
   listProcessTableShared,
   runFile,
 } from "../../src/runtime/shutdown/process-table.ts";
-
-// A detached (setsid) leader that starts one detached child and prints the child's pid.
-const LEADER_SCRIPT = `
-const { spawn } = require("node:child_process");
-const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-  detached: true,
-  stdio: "ignore",
-});
-process.stdout.write(child.pid + "\\n");
-setInterval(() => {}, 1000);
-`;
-
-function killGroup(pgid: number | undefined): void {
-  if (pgid === undefined) return;
-  try {
-    process.kill(-pgid, "SIGKILL");
-  } catch {
-    // already gone
-  }
-}
+import { type SetsidPair, startSetsidPair, stopPair } from "../helpers/setsid-pair.ts";
 
 describe("C-LIFE-10 real process table", () => {
   test("lists the real host table, including this process under its parent", async () => {
@@ -45,28 +24,24 @@ describe("C-LIFE-10 real process table", () => {
     expect(table.some((row) => row.pid === process.pid)).toBe(true);
   });
 
-  test("finds a real setsid grandchild's group, linked to its leader's group", async () => {
-    const leader = spawn(process.execPath, ["-e", LEADER_SCRIPT], {
-      detached: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    let childPid: number | undefined;
+  test("finds a real setsid grandchild's group, linked to its leader's row", async () => {
+    let pair: SetsidPair | undefined;
     try {
-      const [chunk] = (await once(leader.stdout, "data")) as [Buffer];
-      childPid = Number(chunk.toString().trim());
-      const leaderPid = leader.pid as number;
+      pair = await startSetsidPair();
+      const { childPid } = pair;
+      const leaderPid = pair.leader.pid as number;
       const table = await listProcessTable(10_000);
-      expect(table.find((row) => row.pid === leaderPid)).toMatchObject({ pgid: leaderPid });
+      const leaderRow = table.find((row) => row.pid === leaderPid);
+      expect(leaderRow).toMatchObject({ pgid: leaderPid, stopped: false });
       expect(table.find((row) => row.pid === childPid)).toMatchObject({
         ppid: leaderPid,
         pgid: childPid,
       });
       expect(detachedDescendantGroups(table, { leaderPid, hostPid: process.pid })).toEqual(
-        new Map([[childPid, new Set([leaderPid])]]),
+        new Map([[childPid, new Set([leaderRow])]]),
       );
     } finally {
-      killGroup(childPid);
-      killGroup(leader.pid);
+      stopPair(pair);
     }
   });
 

@@ -19,26 +19,30 @@ const HOST = 4000;
 
 type Row = { readonly pid: number; readonly ppid: number; readonly pgid: number };
 
-function row({ pid, ppid, pgid }: Row, zombie = false): ProcessEntry {
-  return { pid, ppid, pgid, zombie };
+function row({ pid, ppid, pgid }: Row, state: "Z" | "T" | "S" = "S"): ProcessEntry {
+  return { pid, ppid, pgid, zombie: state === "Z", stopped: state === "T" };
 }
+
+const leaderRow = row({ pid: LEADER, ppid: HOST, pgid: LEADER });
 
 const walk = (table: readonly ProcessEntry[]) =>
   detachedDescendantGroups(table, { leaderPid: LEADER, hostPid: HOST });
 
 describe("C-LIFE-10 process table", () => {
-  test("parses ps rows, flags zombies, and skips anything that is not a row", () => {
+  test("parses ps rows, flags zombies and stopped rows, and skips non-rows", () => {
     const stdout = [
       "    1     0     1 Ss",
       " 5000  4000  5000 Ss+",
       " 5001  5000  5001 Z",
+      " 5002  5000  5002 T+",
       "garbage line",
       "",
     ].join("\n");
     expect(parseProcessTable(stdout)).toEqual([
       row({ pid: 1, ppid: 0, pgid: 1 }),
-      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
-      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, true),
+      leaderRow,
+      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z"),
+      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "T"),
     ]);
   });
 
@@ -48,7 +52,7 @@ describe("C-LIFE-10 process table", () => {
       runs.push({ file, args, options });
       return Promise.resolve({ stdout: " 5000  4000  5000 S\n" });
     });
-    expect(table).toEqual([row({ pid: LEADER, ppid: HOST, pgid: LEADER })]);
+    expect(table).toEqual([leaderRow]);
     expect(runs).toEqual([
       {
         file: "/bin/ps",
@@ -61,43 +65,39 @@ describe("C-LIFE-10 process table", () => {
 
 describe("C-LIFE-10 detached descendant groups", () => {
   test("walks parent pids transitively and keeps only groups outside the leader's", () => {
+    const inGroupChild = row({ pid: 5001, ppid: LEADER, pgid: LEADER });
+    const hooksChild = row({ pid: 5003, ppid: 5002, pgid: 5002 }, "T");
     const table = [
       row({ pid: HOST, ppid: 1, pgid: 3999 }),
-      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
-      row({ pid: 5001, ppid: LEADER, pgid: LEADER }), // same group: the group reap already covers it
+      leaderRow,
+      inGroupChild, // same group: the group reap already covers it
       row({ pid: 5002, ppid: LEADER, pgid: 5002 }), // setsid hook
-      row({ pid: 5003, ppid: 5002, pgid: 5002 }), // the hook's own child
+      hooksChild, // the hook's own child, read stopped
       row({ pid: 5004, ppid: 5003, pgid: 5004 }), // a grandchild that made yet another session
       row({ pid: 5005, ppid: 5001, pgid: 5005 }), // detached child of an in-group child
       row({ pid: 6000, ppid: 1, pgid: 6000 }), // unrelated process: never selected
       row({ pid: 6001, ppid: HOST, pgid: 6001 }), // the host's other child: not a leader descendant
     ];
-    // Each group maps to the distinct other groups its members' parents are in: 5003's
-    // parent shares its group and adds nothing, 5004's parent 5003 is in the hook's
-    // group, and 5005's parent 5001 is in the leader's own group.
+    // Each group maps to its members' parents that sit in other groups, as read: 5003's
+    // parent shares its group and adds nothing, 5004's parent is 5003 in the hook's
+    // group, and 5005's parent is 5001 in the leader's own group.
     expect(walk(table)).toEqual(
       new Map([
-        [5002, new Set([LEADER])],
-        [5004, new Set([5002])],
-        [5005, new Set([LEADER])],
+        [5002, new Set([leaderRow])],
+        [5004, new Set([hooksChild])],
+        [5005, new Set([inGroupChild])],
       ]),
     );
   });
 
   test("a descendant whose own parent already exited is out of reach", () => {
     // The hook exited and its child was reparented to PID 1: no parent pid links it now.
-    const table = [
-      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
-      row({ pid: 5004, ppid: 1, pgid: 5004 }),
-    ];
+    const table = [leaderRow, row({ pid: 5004, ppid: 1, pgid: 5004 })];
     expect(walk(table).size).toBe(0);
   });
 
   test("ignores groups whose descendants are all zombies", () => {
-    const table = [
-      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
-      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, true),
-    ];
+    const table = [leaderRow, row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "Z")];
     expect(walk(table).size).toBe(0);
   });
 
@@ -114,20 +114,21 @@ describe("C-LIFE-10 detached descendant groups", () => {
     expect(walk(table).size).toBe(0);
   });
 
-  test("a leader missing from the read still parents its listed children by its pid", () => {
+  test("a leader missing from the read still parents its children, as a row not stopped", () => {
     // `ps` can read a leader's children in the same pass the leader's own row left.
+    const unread = { pid: LEADER, ppid: 0, pgid: LEADER, zombie: false, stopped: false };
     expect(walk([row({ pid: 5002, ppid: LEADER, pgid: 5002 })])).toEqual(
-      new Map([[5002, new Set([LEADER])]]),
+      new Map([[5002, new Set([unread])]]),
     );
   });
 
   test("survives a parent-pid cycle", () => {
     const table = [
-      row({ pid: LEADER, ppid: HOST, pgid: LEADER }),
+      leaderRow,
       row({ pid: 5002, ppid: LEADER, pgid: 5002 }),
       row({ pid: LEADER, ppid: 5002, pgid: LEADER }), // a duplicate row closing a cycle back to the leader
     ];
-    expect(walk(table)).toEqual(new Map([[5002, new Set([LEADER])]]));
+    expect(walk(table)).toEqual(new Map([[5002, new Set([leaderRow])]]));
   });
 });
 
