@@ -31,6 +31,13 @@ export class TurnStateWatcher {
   // to stay quiet for `quietFramesToSettle` consecutive frames; any working/blocking
   // frame resets the run to 0 (C-TURN-03, real-Codex resume).
   private quietStreak = 0;
+  // Progress through a CLI-announced resume load while settling. Codex 0.164.0 paints
+  // "Resuming session…" above a live composer, repaints that frame several times, and
+  // only then loads the conversation under a working title before going idle — and an
+  // idle Codex does not repaint, so no streak may follow. Placeholder frames are never
+  // quiet; once the placeholder painted (`pending`) and its load's work was seen
+  // (`working`), the next quiet composer proves the load finished (C-TURN-03).
+  private resumeLoad: "none" | "pending" | "working" = "none";
 
   /**
    * Watching starts only after initial readiness so startup spinners that borrow the
@@ -42,15 +49,16 @@ export class TurnStateWatcher {
    * history, not work: emitting a started/ended pair for them fabricates a phantom turn
    * on EVERY resume (observed as one false unread per resumed conversation downstream).
    * So `arm(true)` enters a settling state that swallows rendered turn edges until the
-   * first QUIET composer frame (composer visible, no working marker) — the replay has
-   * finished painting and the screen is genuinely idle; detection then behaves exactly
-   * like a cold start's post-ready watcher. Evidence-based turns (`caller_submitted`,
-   * hooks) are unaffected throughout.
+   * replay has finished painting and the screen is genuinely idle (see
+   * `observeSettlingFrame`); detection then behaves exactly like a cold start's
+   * post-ready watcher. Evidence-based turns (`caller_submitted`, hooks) are
+   * unaffected throughout.
    */
   arm(resumed = false): void {
     this.armed = true;
     this.replaySettling = resumed;
     this.quietStreak = 0;
+    this.resumeLoad = "none";
   }
 
   /** Retire earlier rendered work when a queue-backed physical input is submitted. */
@@ -91,28 +99,17 @@ export class TurnStateWatcher {
   observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
     if (!this.canObserve(facts)) return undefined;
     if (this.replaySettling) {
-      if (evidenceRunning) {
-        // A real turn is ALREADY running from evidence — release settling and
-        // synchronize only to CURRENT rendered work. The stale resume composer
-        // can remain painted briefly after caller submission, so it is not an end
-        // edge until a working frame has established this turn. An interrupt
-        // banner remains a valid immediate end below even without a spinner.
-        this.replaySettling = false;
-        this.running = facts.working_visible || facts.interrupt_complete_visible;
-      } else {
-        // Without evidence, settling releases only after the composer stays QUIET and
-        // non-blocking for `quietFramesToSettle` consecutive frames — one quiet frame
-        // is not enough because the replay repaints working footers in bursts with
-        // brief quiet gaps, and releasing on a lone quiet frame lets the next burst
-        // fire a phantom `started`. A blocking dialog's option caret is byte-identical
-        // to the composer marker, so a blocking frame is NOT quiet and resets the run
-        // (matches the end-edge gate, so queued sends never drain into a dialog).
-        const quiet =
-          facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
-        this.quietStreak = quiet ? this.quietStreak + 1 : 0;
-        if (this.quietStreak >= quietFramesToSettle) this.replaySettling = false;
+      if (!evidenceRunning) {
+        this.observeSettlingFrame(facts);
         return undefined;
       }
+      // A real turn is ALREADY running from evidence — release settling and
+      // synchronize only to CURRENT rendered work. The stale resume composer
+      // can remain painted briefly after caller submission, so it is not an end
+      // edge until a working frame has established this turn. An interrupt
+      // banner remains a valid immediate end below even without a spinner.
+      this.replaySettling = false;
+      this.running = facts.working_visible || facts.interrupt_complete_visible;
     }
     if (!this.running && facts.working_visible) {
       this.running = true;
@@ -141,5 +138,30 @@ export class TurnStateWatcher {
       return "ended";
     }
     return undefined;
+  }
+
+  /**
+   * Without evidence, settling releases only after the composer stays QUIET and
+   * non-blocking for `quietFramesToSettle` consecutive frames — one quiet frame is not
+   * enough because the replay repaints working footers in bursts with brief quiet
+   * gaps, and releasing on a lone quiet frame lets the next burst fire a phantom
+   * `started`. A blocking dialog's option caret is byte-identical to the composer
+   * marker, so a blocking frame is NOT quiet and resets the run (matches the end-edge
+   * gate, so queued sends never drain into a dialog). The CLI's resume-loading
+   * placeholder is not quiet either: its repaints come BEFORE the load and replay, so
+   * counting them released settling ahead of both. A quiet composer after that
+   * announced load's work ends settling at once (C-TURN-03).
+   */
+  private observeSettlingFrame(facts: ScreenFacts): void {
+    if (facts.resume_loading_visible && this.resumeLoad === "none") this.resumeLoad = "pending";
+    if (facts.working_visible && this.resumeLoad === "pending") this.resumeLoad = "working";
+    const quiet =
+      facts.composer_visible &&
+      !facts.working_visible &&
+      !facts.blocking_prompt_visible &&
+      !facts.resume_loading_visible;
+    this.quietStreak = quiet ? this.quietStreak + 1 : 0;
+    const loaded = quiet && this.resumeLoad === "working";
+    if (loaded || this.quietStreak >= quietFramesToSettle) this.replaySettling = false;
   }
 }

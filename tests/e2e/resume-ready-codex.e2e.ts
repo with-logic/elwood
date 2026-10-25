@@ -11,9 +11,12 @@ import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.t
 import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 
 // The resumed transcript replay repaints in bursts (docs/cli-behavior.md, "Resume
-// lifecycle"), so "replay finished" means the rendered screen stayed unchanged with no
-// working marker for a SUSTAINED streak of frames — not one quiet frame, and not a
-// fixed sleep. Bounded so a never-settling screen still reaches the assertion.
+// lifecycle"), so "replay finished" means the rendered screen and window title stayed
+// unchanged with no working marker for a SUSTAINED streak of frames — not one quiet
+// frame, and not a fixed sleep. Codex 0.164 first paints a "Resuming session…"
+// placeholder for up to 1.6 s and only then loads the conversation under a title
+// spinner, so neither counts as quiet. Bounded so a never-settling screen still
+// reaches the assertion.
 const QUIET_STREAK_MS = 2_000;
 const QUIET_DEADLINE_MS = 15_000;
 const FRAME_MS = 250;
@@ -23,8 +26,10 @@ async function waitForQuietScreen(session: CodexSessionApi): Promise<void> {
   let last = "";
   let quietSince = Date.now();
   while (Date.now() - started < QUIET_DEADLINE_MS) {
-    const text = session.terminal.snapshot().text;
-    const quiet = text === last && !/esc to interrupt/i.test(text);
+    const title = session.terminal.title;
+    const text = `${title}\n${session.terminal.snapshot().text}`;
+    const unsettled = /esc to interrupt|Resuming session…/i.test(text) || /^[⠀-⣿]/.test(title);
+    const quiet = text === last && !unsettled;
     if (!quiet) quietSince = Date.now();
     if (Date.now() - quietSince >= QUIET_STREAK_MS) return;
     last = text;

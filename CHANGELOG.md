@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Resuming a Codex 0.164.0 session no longer reports a phantom `running` → `ready`
+  turn shortly after readiness, which a host could show as a false unread reply.
+  Codex 0.164.0 first paints `Resuming session…` above its composer and then loads the
+  conversation under a working title spinner; Elwood counted the placeholder's repaints
+  as proof the replay had finished. It now waits for that load to end. When the replayed
+  conversation ends in `Conversation interrupted`, the false turn appeared twice.
 - `stop()` and `kill()` reject with `termination_failed` when signaling the PTY itself
   throws. They used to pass the raw system error through, whose own `code` (for example
   `ESRCH`) read like an Elwood error name. The underlying message is kept as
