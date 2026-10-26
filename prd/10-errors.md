@@ -8,14 +8,14 @@ Initial required error names:
 | Error name | Meaning |
 |---|---|
 | `unsupported_platform` | The current OS is not supported by the implementation. |
-| `claude_not_found` | `claude` could not be resolved or spawned. `details` carry the version probe's own `cause`, `errno` and `stderr` (C-ERR-08). |
+| `claude_not_found` | `claude` could not be resolved or spawned. `details.cause` says why the version probe found none: the login shell could not be started (with its `errno`), or it found no `claude` (status 127). `details` never carry the shell's stderr (C-ERR-08). |
 | `claude_start_failed` | Claude started but exited or failed before the session was usable, or the session's `cwd` is not an existing directory (C-API-61). |
 | `claude_update_failed` | `claude update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startClaude` when the installed CLI meets the minimum). |
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
 | `claude_invalid_reasoning_effort` | `reasoningEffort` was not one of the valid `ClaudeReasoningEffort` values; rejected before spawn. |
 | `claude_high_trust_conflict` | `highTrust: true` was combined with an explicit `permissionMode`; rejected before spawn. |
-| `codex_not_found` | `codex` could not be resolved or spawned. `details` carry the version probe's own `cause`, `errno` and `stderr` (C-ERR-08). |
+| `codex_not_found` | `codex` could not be resolved or spawned. `details.cause` says why the version probe found none: the login shell could not be started (with its `errno`), or it found no `codex` (status 127). `details` never carry the shell's stderr (C-ERR-08). |
 | `codex_start_failed` | Codex started but exited or failed before the session was usable, or the session's `cwd` is not an existing directory (C-API-61). |
 | `codex_update_failed` | `codex update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startCodex` when the installed CLI meets the minimum). |
 | `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |

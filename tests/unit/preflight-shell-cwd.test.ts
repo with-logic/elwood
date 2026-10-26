@@ -7,7 +7,7 @@
  * C-PTY-08, C-PERF-04, C-LIFE-11, and C-API-61.
  */
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
@@ -19,7 +19,7 @@ import {
   dir,
   directoryLossCases,
   hookTrustBypass,
-  lostDirectory,
+  lostDirectoryFailure,
   oldClaude,
   oldCodex,
   project,
@@ -43,32 +43,49 @@ test.each([
   await expect(start({ cwd, strictVersionCheck: true })).rejects.toMatchObject(old);
 });
 
-describe.each(directoryLossCases)("a directory $how", ({ remade, message, errno }) => {
+describe.each(directoryLossCases)("a directory $how", (loss) => {
   test.each(
     agents,
   )("C-PTY-08 C-API-61 a %s start whose directory goes as its CLI is probed fails as that, with the probe's cause", async (agent, start, _preflight, version) => {
     const cwd = project(agent, version);
-    removeWhenProbed(cwd, remade ? dir("elwood-preflight-replacement-") : undefined);
-    await expect(start({ cwd })).rejects.toMatchObject({
-      code: `${agent}_start_failed`,
-      message,
-      details: lostDirectory(cwd, errno),
-    });
+    removeWhenProbed(cwd, loss.remade ? dir("elwood-preflight-replacement-") : undefined);
+    await expect(start({ cwd })).rejects.toEqual(lostDirectoryFailure(agent, cwd, loss));
     expect(launches).toEqual([]);
   });
 });
 
-test("C-PTY-08 a login shell that cannot start, in a directory that exists, is a missing CLI", async () => {
-  vi.spyOn(shell, "userShell").mockReturnValue(join(dir("elwood-preflight-noshell-"), "absent"));
-  const cwd = dir("elwood-preflight-session-");
-  const missing = { details: { cause: expect.stringMatching(/ENOENT$/), errno: "ENOENT" } };
-  await expect(preflightCodex(cwd, false)).rejects.toMatchObject({
-    code: "codex_not_found",
-    ...missing,
+test.each(
+  agents,
+)("C-PTY-08 C-API-61 a %s start whose directory goes after its probe's shell started fails as that, with the probe's cause", async (agent, start, _preflight, version) => {
+  const cwd = project(agent, version);
+  writeFileSync(join(cwd, "gone-on-login"), "");
+  const cause = `The login shell found no \`${agent}\` (status 127).`;
+  const lost = lostDirectoryFailure(agent, cwd, directoryLossCases[0], cause);
+  await expect(start({ cwd })).rejects.toEqual(lost);
+});
+
+test.each(
+  agents,
+)("C-ERR-08 a %s probe whose login shell finds no CLI says so, and keeps none of the shell's stderr", async (agent, _start, preflight) => {
+  const failure = await preflight(dir("elwood-preflight-session-"), false).catch((e: unknown) => e);
+  expect(failure).toMatchObject({ code: `${agent}_not_found` });
+  expect(failure).toHaveProperty("details", {
+    cause: `The login shell found no \`${agent}\` (status 127).`,
   });
-  await expect(preflightClaude(cwd, false)).rejects.toMatchObject({
-    code: "claude_not_found",
-    ...missing,
+});
+
+test.each(
+  agents,
+)("C-PTY-08 C-ERR-08 a %s login shell that cannot start, in a directory that exists, is a missing CLI that names the shell", async (agent, _start, preflight) => {
+  vi.spyOn(shell, "userShell").mockReturnValue(join(dir("elwood-preflight-noshell-"), "absent"));
+  const failure = await preflight(dir("elwood-preflight-session-"), false).catch((e: unknown) => e);
+  expect(failure).toMatchObject({
+    code: `${agent}_not_found`,
+    message: `The login shell could not be started to find \`${agent}\`.`,
+  });
+  expect(failure).toHaveProperty("details", {
+    cause: expect.stringMatching(/ENOENT$/),
+    errno: "ENOENT",
   });
 });
 

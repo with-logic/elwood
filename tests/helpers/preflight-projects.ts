@@ -40,7 +40,9 @@ export function useProbeProjects(): Launch[] {
       throw new Error("no PTY in this test");
     });
     const home = dir("elwood-preflight-home-");
-    writeFileSync(join(home, ".profile"), 'echo startup noise\nexport PATH="$PWD/bin:$PATH"\n');
+    // A directory holding `gone-on-login` is removed by the shell's startup, after it started there.
+    const startup = '[ -e gone-on-login ] && rm -rf "$PWD"\nexport PATH="$PWD/bin:$PATH"\n';
+    writeFileSync(join(home, ".profile"), `echo startup noise\n${startup}`);
     vi.stubEnv("HOME", home);
     vi.stubEnv("PATH", "/usr/bin:/bin"); // no global CLI: a probe elsewhere finds none
     useStandInLoginShell(home);
@@ -93,27 +95,39 @@ export function removeWhenProbed(cwd: string, replacement?: string): void {
 
 /**
  * How a launch whose directory was removed as its CLI was probed fails (C-API-61, C-PTY-08):
- * as that directory, with the probe's own failure as the cause, never "not found on PATH".
+ * as that directory, with the probe's own failure as the cause, never "not found on PATH". A
+ * directory made again in its place has no `errno` of its own, and keeps none of the probe's.
  */
 export const directoryLossCases = [
   {
     how: "removed",
     remade: false,
     message: "The working directory (`cwd`) is not an existing directory.",
-    errno: { errno: "ENOENT" },
+    errno: "ENOENT",
   },
   {
     how: "removed and made again",
     remade: true,
     message: "The working directory (`cwd`) was replaced by another directory.",
-    errno: {},
+    errno: undefined,
   },
 ] as const;
 
-/** The details a launch that lost `cwd` while it was probed fails with. */
-export function lostDirectory(cwd: string, errno: Readonly<Record<string, string>>) {
-  // The probe could not start its shell there.
-  return { cwd, cause: expect.stringMatching(/^spawn .* ENOENT$/), ...errno };
+/**
+ * Matches the error of a launch that lost `cwd`, `as` one of `directoryLossCases`. Its
+ * `details` must equal these exactly.
+ */
+export function lostDirectoryFailure(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  as: Pick<(typeof directoryLossCases)[number], "message" | "errno">,
+  cause: unknown = expect.stringMatching(/^spawn .* ENOENT$/), // the shell could not start there
+): unknown {
+  return expect.objectContaining({
+    code: `${agent}_start_failed`,
+    message: as.message,
+    details: { cwd, cause, ...(as.errno ? { errno: as.errno } : {}) },
+  });
 }
 
 /** Persists a resumable record for a session that launched in `cwd`; returns its state dir. */

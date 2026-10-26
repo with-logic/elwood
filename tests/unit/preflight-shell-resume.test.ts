@@ -14,7 +14,7 @@ import {
   dir,
   directoryLossCases,
   hookTrustBypass,
-  lostDirectory,
+  lostDirectoryFailure,
   oldClaude,
   oldCodex,
   project,
@@ -82,20 +82,16 @@ test("C-PTY-08 resumeClaude without a cwd refuses its saved directory's old clau
   expect(launches).toEqual([]);
 });
 
-describe.each(directoryLossCases)("a directory $how", ({ remade, message, errno }) => {
+describe.each(directoryLossCases)("a directory $how", (loss) => {
   test.each([
     ["codex", resumeCodex, "codex-cli 0.150.0"],
     ["claude", resumeClaude, "2.1.144 (Claude Code)"],
   ] as const)("C-PTY-08 C-API-61 a %s resume whose directory goes as its CLI is probed fails as that, with the probe's cause", async (agent, resume, version) => {
     const cwd = project(agent, version);
     const stateDir = createResumableSessionStateDir(agent, cwd);
-    removeWhenProbed(cwd, remade ? dir("elwood-preflight-replacement-") : undefined);
+    removeWhenProbed(cwd, loss.remade ? dir("elwood-preflight-replacement-") : undefined);
     const resumed = resume({ stateDir, elwoodSessionId: `${agent}-probe-cwd` });
-    await expect(resumed).rejects.toMatchObject({
-      code: `${agent}_start_failed`,
-      message,
-      details: lostDirectory(cwd, errno),
-    });
+    await expect(resumed).rejects.toEqual(lostDirectoryFailure(agent, cwd, loss));
     expect(launches).toEqual([]);
   });
 });
