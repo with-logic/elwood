@@ -23,7 +23,7 @@ function childRunDir(tmp: string, inherited?: string): string {
     env,
     encoding: "utf8",
   });
-  expect(run.status, run.stderr).toBe(0);
+  if (run.status !== 0) throw new Error(`run-dir child exited ${run.status}: ${run.stderr}`);
   return run.stdout.trim();
 }
 
