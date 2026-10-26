@@ -1186,7 +1186,9 @@ autotrust answered it. Claude then painted the resumed transcript, with
 visible cursor at column 2. Startup trust clearance used the same whole-frame check,
 so the answer never settled. The session sat at `running` for the 60 s observed and
 never reached `ready`. Startup trust clearance now uses the same predicate as attention
-clearance (`tests/fixtures/claude-2.1.310/resume-bypass/`). A folder-trust gate on
+clearance (`tests/fixtures/claude-2.1.310/resume-bypass/`). Rerun with that change, the same
+resume answered the dialog, recorded a `bypass_permissions` startup prompt, and reached
+`ready` 4.6 s after launch. A folder-trust gate on
 resume goes through the same clearance, but that case was not captured. C-TRUST-01,
 C-CLAUDE-21.
 

@@ -103,18 +103,18 @@ export async function buildClaudeSession(
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const idleComposer = liveClaudeIdleComposer(() => terminal);
+  const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
   const frameObserver = createSessionFrameObserver(
     observers,
     () => session,
     () => promptResponder,
     readiness,
-    idleComposer,
+    idleComposerClearance,
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,
     frameObserver.refresh,
-    idleComposer,
+    idleComposerClearance,
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();

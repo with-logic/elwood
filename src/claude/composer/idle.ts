@@ -6,16 +6,18 @@
  * `❯ <prompt>`, a resumed session repaints them, and `/model` stays as `❯ /model` after
  * the picker closes. So a frame whose transcript still shows one is proved idle by the
  * last composer, its enclosing rules, and its native footer instead. Both paths read the
- * same completed render and its visible input cursor.
+ * same completed render and its visible input cursor, which is checked once for both.
  */
 
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
-import { liveClaudeClearance } from "../screen-table.ts";
+import { claudeTrustClearance, liveClaudeClearance } from "../screen-table.ts";
 import { claudeLastComposerClearance } from "./last.ts";
 
 export function liveClaudeIdleComposer(readTerminal: () => ElwoodTerminal): TrustClearance {
-  const wholeFrame = liveClaudeClearance(readTerminal);
-  const lastComposer = liveClaudeClearance(readTerminal, claudeLastComposerClearance);
-  return (text) => wholeFrame(text) || lastComposer(text);
+  // One check of the live render and cursor, then either text path.
+  return liveClaudeClearance(
+    readTerminal,
+    (text) => claudeTrustClearance(text) || claudeLastComposerClearance(text),
+  );
 }
