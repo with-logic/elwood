@@ -6,12 +6,13 @@
  * stays for the attach's own cleanup to retry.
  */
 
-import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { materializeImages } from "../../src/core/images/materialize.ts";
 import type { AttachDriver } from "../../src/runtime/session/image-attach.ts";
 import { enqueueSubmission } from "../../src/runtime/session/image-attach.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const images = [{ data: PNG, format: "png" }] as const;
@@ -59,6 +60,15 @@ describe("image temps on abort (C-API-44)", () => {
     expect(existsSync(dirname(paths[0] as string))).toBe(false);
     removeNow(); // no temp dir any more: a no-op
     await cleanup();
+  });
+
+  test("C-API-44 removeNow without a temp dir removes nothing, not even the caller's image", async () => {
+    const dir = tempDir("elwood-caller-image-");
+    const file = join(dir, "mine.png");
+    writeFileSync(file, PNG);
+    const { removeNow } = await materializeImages([{ path: file }]); // path-only: no temp dir
+    removeNow();
+    expect(readdirSync(dir)).toEqual(["mine.png"]);
   });
 
   test("C-API-44 a failed removeNow never throws and the attach's cleanup still removes the dir", async () => {
