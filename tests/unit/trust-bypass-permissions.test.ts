@@ -34,8 +34,11 @@ const cursorDialog = [...header, " ❯ No, exit", "   Yes, I accept", "", " Ente
 );
 
 // The persistent footer of a session already running in bypass mode (real 2.1.268 frame).
-const runningFooter =
-  "❯ \n  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents";
+const bypassFooter = "  -- INSERT -- ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents";
+const runningFooter = `❯ \n${bypassFooter}`;
+// That footer under its fenced composer: the screen the accepted dialog gives way to.
+const rule = "─".repeat(80);
+const runningComposer = [rule, "❯ ", rule, bypassFooter].join("\n");
 
 describe("bypass-permissions acceptance dialog", () => {
   test("C-CLAUDE-21 answers the numbered layout with its own affirmative, never the decline", () => {
@@ -66,7 +69,7 @@ describe("bypass-permissions acceptance dialog", () => {
           rendered = [...header, "   No, exit", " ❯ Yes, I accept", "", " Enter to confirm"].join(
             "\n",
           );
-        if (input.endsWith("\r")) rendered = runningFooter;
+        if (input.endsWith("\r")) rendered = runningComposer;
       },
       () => rendered,
     );
@@ -75,7 +78,7 @@ describe("bypass-permissions acceptance dialog", () => {
       automation: { prompt: "bypass_permissions", input: "home+down+enter" },
     });
     if (result?.kind !== "attempted") throw new Error("expected an answered prompt");
-    await result.settled;
+    await expect(result.settled).resolves.toBe("answered");
     expect(writes).toEqual(["\u001b[H\u001b[B", "\u001b[H\u001b[B\r"]);
   });
 

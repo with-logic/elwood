@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Claude session started with `highTrust` or `permissionMode: "bypassPermissions"`
+  now answers Claude 2.1.310's bypass-permissions acceptance dialog under
+  `autotrust`, as C-CLAUDE-21 requires. Claude 2.1.310 added a sandbox warning and a
+  security-guide link to the dialog, and Elwood did not recognize the longer copy,
+  so the session stayed `blocked` wherever the dialog renders: a Claude config that
+  has never accepted it and whose settings do not set
+  `skipDangerousModePermissionPrompt`.
 - A session that ends without `teardown()` no longer leaves an empty
   `elwood-<fingerprint>` directory in the OS temp dir. `stop()`, `kill()`, the
   agent exiting on its own, and a failed start now remove the session's socket
