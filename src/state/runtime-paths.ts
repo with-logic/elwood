@@ -6,7 +6,8 @@
  * settings, bridge script, socket FILE and token are minted anew for every launch.
  * Each PTY keeps its own hook route even while another launch is pending. The socket
  * home is ensured private (0700) here. Only the current owner may remove the whole
- * home; a failed launch removes only its own socket file.
+ * home; a launch that fails or ends without teardown removes its own socket file, then
+ * the home only if that left it empty.
  */
 
 import { randomUUID } from "node:crypto";
@@ -42,9 +43,9 @@ export type SessionRuntimeInput = {
  * `(stateDir, id, adapter)` plus a fresh launch id. The socket lives in the session's
  * STABLE home (outside stateDir, since macOS caps socket paths near 104 bytes) under a FRESH per-launch
  * filename, so no stale socket is reused AND every launch's socket sits under the one
- * home that TEARDOWN can sweep — even after a parent restart. (`stop` keeps the home for
- * a later resume; the bridge unlinks its own socket file on stop.) The bridge token is
- * minted anew so no stale token round-trips.
+ * home that TEARDOWN can sweep — even after a parent restart. (A stopped launch releases
+ * its socket file and the home if it emptied it; this recreates the home for the next
+ * launch.) The bridge token is minted anew so no stale token round-trips.
  */
 export function sessionRuntime(
   input: SessionRuntimeInput,
