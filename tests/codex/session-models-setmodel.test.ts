@@ -136,7 +136,10 @@ describe("CodexSessionApi setModel", () => {
     const cwd = tempDir();
     const configPath = sandboxCodexHome(cwd);
     installFakes();
-    const [a, b] = await Promise.all([startCodex({ cwd }), startCodex({ cwd })]);
+    // Started in turn, so ptys[0] is A's and ptys[1] is B's: a concurrent start may
+    // spawn B's PTY first, and A's hook would then be dispatched through B's launch.
+    const a = await startCodex({ cwd });
+    const b = await startCodex({ cwd });
     const warningsA = collectWarnings(a);
     const warningsB = collectWarnings(b);
     await becomeReadyFor(a.elwoodSessionId, cwd, 0);
