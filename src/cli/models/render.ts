@@ -4,6 +4,7 @@
  */
 
 import type { AgentModelOption } from "../../core/models/rows.ts";
+import { textErrorLines } from "../output/cleanup-error.ts";
 import { createCliSanitizer, formatDiagnosticValue } from "../output/sanitize.ts";
 import type { AsyncOutputSink } from "../stream.ts";
 import { renderTable } from "../table.ts";
@@ -94,6 +95,8 @@ export async function renderCombinedModels(
   );
   for (const error of errors)
     await io.stderr.write(
-      `elwood: ${error.agent}: ${formatDiagnosticValue(error.error.message, clean)}\n`,
+      textErrorLines(error, `elwood: ${error.agent}: `, (text) =>
+        formatDiagnosticValue(text, clean),
+      ),
     );
 }

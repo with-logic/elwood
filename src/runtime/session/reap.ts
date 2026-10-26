@@ -4,19 +4,21 @@
  *   - `bestEffort()` for the native unsolicited-exit callback: a reap failure must
  *     never throw out of that callback, so it is contained and RETURNED as a
  *     live `reap_failed` warning (emitted once when observed), never silently dropped.
- *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session:
- *     it must NOT swallow — it throws a typed `termination_failed` so the caller
- *     rejects with an ElwoodError (C-ERR-01) and teardown can retry the
- *     still-unlatched reap.
- * `reaper` exposes the underlying one-shot for `teardown`'s retry step and the
- * `terminatePty` termination path, which own their own failure handling.
+ *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session
+ *     and for `teardown`'s retry step: it must NOT swallow — it throws a typed
+ *     `termination_failed` (with its errno and the leader's process-group id) so
+ *     the caller rejects with an ElwoodError (C-ERR-01), and the reap stays
+ *     unlatched for a later retry.
+ * `reaper` exposes the underlying one-shot for the `terminatePty` termination path,
+ * which owns its own failure handling.
  */
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { reapFailureWarning } from "../../core/activity/index.ts";
-import { causeDetails, elwoodError } from "../../core/errors.ts";
+import { causeDetails, elwoodError, toError } from "../../core/errors.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { SessionReaper } from "../shutdown/reap-tree.ts";
+import { unconfirmedGroupsDetail } from "../shutdown/terminate.ts";
 
 export class SessionReapPolicy {
   readonly reaper: SessionReaper;
@@ -41,15 +43,23 @@ export class SessionReapPolicy {
     }
   }
 
-  /** Reap on explicit shutdown; wrap any failure as a typed `termination_failed`. */
+  /**
+   * Reap on explicit shutdown, including an unresolved detached sweep; wrap any failure
+   * as a typed `termination_failed`.
+   */
   orThrow(): void {
     try {
-      this.reaper.reap();
+      this.reaper.reapAndThrowOnDetachedSweepFailure();
     } catch (error) {
-      throw elwoodError("termination_failed", "Could not reap the PTY process group.", {
-        ...causeDetails(error),
-        processGroupId: this.leaderPid,
-      });
+      throw elwoodError(
+        "termination_failed",
+        "Could not confirm the PTY process tree was reaped.",
+        {
+          ...causeDetails(error),
+          ...unconfirmedGroupsDetail(toError(error)),
+          processGroupId: this.leaderPid,
+        },
+      );
     }
   }
 }

@@ -4,14 +4,15 @@
  * or terminal status. Codex acceptance and Stop identity come from private adapter evidence;
  * public running/ready alone cannot bind or finish its turn. Untagged adapters retain the
  * serialized passive oracle. The Stop oracle checks completeness; it never supplies output.
- * Adapter rejection evidence of the turn's own submission fails it as `turn_failed` (C-API-59).
+ * Adapter rejection evidence of the turn's own submission fails it as `turn_failed`: Claude's
+ * `StopFailure` (C-API-59) or Codex's failed `task_complete` (C-API-60).
  * Whole-turn deadlines start after physical submission; catch-up deadlines start after idle.
  */
 
 import { toError } from "../errors.ts";
 import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
-import { boundaryExpectation, signalFailure, turnRejection } from "./boundary-signal.ts";
+import { settleHookBoundary, settleNativeBoundary } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { withSubmissionAttempt } from "./submission-context.ts";
 import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn/defaults.ts";
@@ -115,7 +116,7 @@ export function runTurn(
   };
   const offNativeBoundary =
     identity?.observeBoundary((signal) => {
-      gate.expectText(boundaryExpectation(signal));
+      settleNativeBoundary(gate, signal);
       nativeIdle();
     }, nativeIdle) ?? (() => undefined);
   const readBoundarySignal = options.readBoundarySignal ?? defaultBoundarySignal;
@@ -132,15 +133,7 @@ export function runTurn(
       acceptance.accept();
       if (event.hook_event_name === "UserPromptSubmit") acceptedBy = submitIdentity(event);
     }
-    const signal = readBoundarySignal(event);
-    const failure = signalFailure(signal);
-    if (!failure) {
-      gate.expectText(boundaryExpectation(signal));
-      return;
-    }
-    // An earlier turn's late rejection is not this turn's: only a rejection after this turn's
-    // own submission, which the adapter matches to it, fails the turn (C-API-59).
-    if (acceptedBy && (failure.belongsTo?.(acceptedBy) ?? true)) gate.fail(turnRejection(failure));
+    settleHookBoundary(gate, readBoundarySignal(event), acceptedBy);
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") {

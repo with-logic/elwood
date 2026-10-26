@@ -46,7 +46,7 @@ test("C-API-23 scroll-marked rows are parsed as rendered options", () => {
   expect(top.options[9]).toMatchObject({ id: "opus 4.8", isCurrent: false });
   // `raw` is the row as rendered, so a marked row keeps its marker.
   expect(top.options[9]?.raw).toMatch(/^↓ 10\. Opus 4\.8/);
-  expect(top.cursorIndex).toBe(0);
+  expect(top.cursorOptionIndex).toBe(0);
   expect(ids(frame("both-markers"))).toEqual([
     "fable 5.1",
     "sonnet 5.5",
@@ -60,7 +60,10 @@ test("C-API-23 scroll-marked rows are parsed as rendered options", () => {
     "opus 4.6",
   ]);
   const hidden = claudeModelPicker.parse(frame("opened-on-hidden-current"));
-  expect(hidden.options[hidden.cursorIndex]).toMatchObject({ id: "opus 4.6", isCurrent: true });
+  expect(hidden.options[hidden.cursorOptionIndex]).toMatchObject({
+    id: "opus 4.6",
+    isCurrent: true,
+  });
 });
 
 /** Each layout keeps exactly one shape of window; anything else is not this dialog. */

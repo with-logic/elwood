@@ -31,13 +31,14 @@ export type TranscriptFailurePhase = "poll" | "final_flush";
 /** Phase-specific message so an operator can tell WHICH phase failed. */
 const phaseMessage: Record<TranscriptFailurePhase, string> = {
   poll: "Transcript polling stopped after an unexpected error.",
-  final_flush: "Transcript final flush at exit failed after an unexpected error.",
+  final_flush: "Transcript final flush failed after an unexpected error.",
 };
 
 /**
  * A programming error escaped transcript processing; the watcher stopped (§5.4).
  * Phase-neutral by design: `phase` records WHERE it escaped — a live periodic poll
- * (`"poll"`) or the final flush at PTY exit (`"final_flush"`) — so a failed shutdown
+ * (`"poll"`) or the final flush when runtime cleanup or the PTY's exit finishes the
+ * watcher (`"final_flush"`) — so a failed shutdown
  * flush (lost trailing activity) is distinguishable from a live-watcher poll failure
  * without a separate warning code. The public `transcript_poll_stopped` code is
  * kept (PRD-required), but the builder is named for BOTH phases it now handles.

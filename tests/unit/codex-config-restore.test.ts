@@ -20,6 +20,7 @@ import {
   restoreFailureRaw,
   snapshotCodexConfig,
 } from "../../src/codex/config/restore.ts";
+import { elwoodError } from "../../src/core/errors.ts";
 import { restoreCodexHome, tempCodexHome } from "./helpers.ts";
 
 afterEach(restoreCodexHome);
@@ -127,5 +128,11 @@ describe("codex config restore", () => {
     );
     expect(restoreFailureRaw("/c.toml", new Error("secret leaked here"))).toBe("/c.toml (UNKNOWN)");
     expect(restoreFailureRaw("/c.toml", "boom")).toBe("/c.toml (UNKNOWN)");
+    // A config read that failed is typed, and keeps its errno as `details.code` (C-CODEX-25).
+    const unread = elwoodError("model_automation_failed", "x", { path: "/c.toml", code: "EFTYPE" });
+    expect(restoreFailureRaw("/c.toml", unread)).toBe("/c.toml (EFTYPE)");
+    expect(restoreFailureRaw("/c.toml", elwoodError("model_automation_failed", "x"))).toBe(
+      "/c.toml (UNKNOWN)",
+    );
   });
 });

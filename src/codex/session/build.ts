@@ -12,8 +12,7 @@ import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { withAutomatedInput } from "../../runtime/session/picker-input.ts";
-import { createReadinessGate } from "../../runtime/session/readiness.ts";
+import { withAutomatedInput } from "../../runtime/session/session-input.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -32,6 +31,7 @@ import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import { reportCallerInput } from "./caller-input.ts";
 import { buildCodexHookErrorHandler, dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
+import { createCodexReadinessGate } from "./readiness.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
 import * as transcript from "./transcript.ts";
@@ -91,10 +91,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const readiness = createReadinessGate(() => {
+  const onReady = () => {
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
-  }, resumed);
+  };
+  const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate);
   const clearance = liveCodexClearance(() => terminal);
   const snapshot = () => renderedSnapshot(terminal);
   const observers = {

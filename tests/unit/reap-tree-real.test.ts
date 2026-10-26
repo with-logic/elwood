@@ -9,7 +9,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node-pty";
 import { describe, expect, test } from "vitest";
+import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { reapProcessGroup } from "../../src/runtime/shutdown/reap-tree.ts";
+import {
+  delay,
+  killIfCommandHas,
+  POLL_INTERVAL_MS,
+  pollGone,
+} from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const zsh = "/bin/zsh";
@@ -42,14 +49,17 @@ describe("C-LIFE-10 process-group reaping (real seams)", () => {
         // the decisive reparent-to-init has actually happened — a recursive parent
         // walker would now find nothing under the leader (the guarantee C-LIFE-10
         // depends on).
-        expect(await pollGone(intermediatePid)).toBe(true);
+        expect(await pollGone({ pid: intermediatePid, timeoutMs: 2_000 })).toBe(true);
         expect(parentPidOf(grandchildPid)).not.toBe(intermediatePid); // reparented
-        expect(processAlive(grandchildPid)).toBe(true); // but still alive in the group
+        // ...but still running in the group: present, and not an unreaped zombie.
+        const table = await listProcessTable(10_000);
+        expect(table.find((row) => row.pid === grandchildPid)).toMatchObject({ zombie: false });
         reapProcessGroup(pty.pid);
-        expect(await pollGone(grandchildPid)).toBe(true);
+        expect(await pollGone({ pid: grandchildPid, timeoutMs: 2_000 })).toBe(true);
       } finally {
-        // Clean up survivors even if an assertion above failed.
-        if (processAlive(grandchildPid)) tryKill(grandchildPid);
+        // Clean up survivors even if an assertion above failed, but only while the pid
+        // is still the grandchild: its command line carries this test's unique marker.
+        killIfCommandHas(grandchildPid, marker);
         pty.kill();
       }
     },
@@ -68,7 +78,7 @@ async function readPidsWhenWritten(path: string): Promise<[number, number]> {
       const mid = parts[1] ?? 0;
       if (Number.isInteger(gc) && gc > 0 && Number.isInteger(mid) && mid > 0) return [gc, mid];
     }
-    await delay(20);
+    await delay(POLL_INTERVAL_MS);
   }
   throw new Error("grandchild/intermediate pids were never written");
 }
@@ -84,33 +94,4 @@ function parentPidOf(pid: number): number {
   } catch {
     return -1;
   }
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function tryKill(pid: number): void {
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // Already gone: nothing to clean up.
-  }
-}
-
-async function pollGone(pid: number): Promise<boolean> {
-  for (let i = 0; i < 100; i++) {
-    if (!processAlive(pid)) return true;
-    await delay(20);
-  }
-  return false;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

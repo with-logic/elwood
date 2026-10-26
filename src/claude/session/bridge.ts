@@ -5,7 +5,7 @@
 
 import { HookBridgeServer } from "../../bridge/server.ts";
 import { isClaudeHookInput } from "../validate/input.ts";
-import type { HookBridge } from "./instance.ts";
+import type { HookBridge } from "./cleanup.ts";
 
 export type ClaudeHookBridgeFactory = (
   socketPath: string,

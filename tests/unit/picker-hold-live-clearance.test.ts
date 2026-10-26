@@ -6,9 +6,9 @@ import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
-import { clearReadingGapMs } from "../../src/runtime/session/picker-cleanup.ts";
+import { clearReadingGapMs } from "../../src/core/models/clearance.ts";
 import { PickerHold } from "../../src/runtime/session/picker-hold.ts";
-import { PickerInputOwnership } from "../../src/runtime/session/picker-input.ts";
+import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { claudeTty, codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { releasesAfterClearStreak } from "../helpers/picker-harness.ts";
@@ -28,7 +28,7 @@ test.each([
     vi.useRealTimers();
   });
   const inner = createHeadlessTerminal({ cols: 200, rows: 60 }, () => undefined);
-  const terminal = new PickerInputOwnership(inner).automated;
+  const terminal = new SessionInputOwnership(inner).automated;
   const original = agent === "claude" ? claudeModelPicker : codexModelPicker;
   const spec = {
     ...original,

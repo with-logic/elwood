@@ -3,9 +3,10 @@
  * Harbor starts agents. Concurrent launches load the machine, so Claude often takes
  * more than five seconds after its answered folder-trust dialog to paint the
  * composer. That boot is not a human decision: no launch may report `blocked` or a
- * blocking attention rule id while only the banner, or nothing, is on screen. Every
- * launch must show and answer the real prompt, or the run skips loudly.
- * Implements C-E2E-09 for C-ATTN-03 and C-TRUST-01 (§5.3, §5.4).
+ * blocking attention rule id while only the banner, or nothing, is on screen, and each
+ * reports its answer exactly once, as `startup_prompt`, when the composer verifies it.
+ * Every launch must show and answer the real prompt, or the run skips loudly.
+ * Implements C-E2E-09 for C-ATTN-03, C-CLAUDE-10, and C-TRUST-01 (§5.1, §5.3, §5.4).
  */
 
 import assert from "node:assert/strict";
@@ -14,7 +15,12 @@ import test from "node:test";
 import { type ClaudeSessionApi, type ElwoodSessionStatus, startClaude } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanup, makeProject, skipIf, skipNow, skipReason, waitFor } from "./helpers.ts";
-import { isTrustAnswer, recordLaunchEvidence } from "./trust-launch-evidence.ts";
+import {
+  isTrustAnswer,
+  recordLaunchEvidence,
+  reportedTrustWrite,
+  type TrustReports,
+} from "./trust-launch-evidence.ts";
 import { folderTrustScreenVisible } from "./trust-screens.ts";
 
 // Sixteen at once pushed 10 of 16 real 2.1.310 boots past five seconds (2026-10-25);
@@ -28,6 +34,7 @@ type Launch = {
   readonly folder: string;
   readonly statuses: ElwoodSessionStatus[];
   readonly attention: string[];
+  readonly reports: TrustReports;
   readyAt?: number;
 };
 
@@ -59,14 +66,20 @@ test("C-E2E-09 concurrent autotrust launches never report an answered Claude tru
         folder: realpathSync(project.cwd),
         statuses: [],
         attention: [],
+        reports: [],
       };
       started.push(launch);
       session.on("status", ({ status }) => {
         launch.statuses.push(status);
         if (status === "ready") launch.readyAt ??= Date.now();
       });
+      // startClaude returns half a second after spawn, before Claude can paint the composer
+      // that verifies the answer, so this listener cannot miss the report.
       session.on("activity", (event) => {
         if (event.kind === "attention") launch.attention.push(event.label);
+        // Other startup prompts (browser_tools, C-CLAUDE-11) are not this gate's answer.
+        if (event.kind === "startup_prompt" && event.label === "workspace_trust")
+          launch.reports.push(`${event.label}: ${event.text}`);
       });
     }),
   );
@@ -100,10 +113,18 @@ test("C-E2E-09 concurrent autotrust launches never report an answered Claude tru
     `ready ${ready.length}/${launches}; prompt-to-ready ms: ${boots.join(", ")}; ` +
       `over 5 s: ${boots.filter((ms) => ms !== undefined && ms > 5_000).length}`,
   );
-  for (const [index, { statuses, attention }] of started.entries()) {
+  await waitFor(
+    () => (started.every(({ reports }) => reports.length > 0) ? true : undefined),
+    "every launch reports its answered trust gate",
+    10_000,
+  ).catch(() => undefined); // The per-launch assertions below name the launch that did not.
+  for (const [index, { statuses, attention, reports }] of started.entries()) {
     const launch = shown[index];
     assert.ok(launch?.displayedAt !== undefined, `launch ${index} displayed the trust prompt`);
     assert.ok(launch.writes.some(isTrustAnswer), `launch ${index} answered the trust prompt`);
+    assert.equal(reports.length, 1, `launch ${index} reported its answer once: ${reports}`);
+    const named = reportedTrustWrite(reports[0]!);
+    assert.ok(named !== undefined && launch.writes.includes(named), `report: ${reports[0]}`);
     assert.ok(!statuses.includes("blocked"), `launch ${index} never reported blocked`);
     assert.deepEqual(
       attention.filter((label) => label !== transientAttention),

@@ -30,9 +30,41 @@ export function assertStatePath(path: string): void {
   }
 }
 
-export function makeStateDirectory(path: string, mode: number): void {
+/** A private state directory: only its owner may enter it. */
+export const PRIVATE_STATE_MODE = 0o700;
+/** A shared state directory, such as the default `.elwood/`, readable by local tooling. */
+export const SHARED_STATE_MODE = 0o755;
+/** The modes a state directory may have. */
+export type StateDirectoryMode = typeof PRIVATE_STATE_MODE | typeof SHARED_STATE_MODE;
+
+/**
+ * Whether a state directory may be made: with its missing parents, only itself inside an
+ * existing parent, or not at all, when it must exist already. Under a state root, a missing
+ * parent means the root, or the project it lives in, was removed, and making it again would
+ * recreate that project (C-STATE-14).
+ */
+export type StateDirectoryPolicy = "with-parents" | "inside-parent" | "must-exist";
+
+/** Makes the state directory `path` as `policy` allows, without checking or changing it. */
+export function makeStateDirectory(
+  path: string,
+  mode: StateDirectoryMode,
+  policy: StateDirectoryPolicy,
+): void {
   assertStatePath(path);
-  mkdirSync(path, { recursive: true, mode });
+  makeAs[policy](path, mode);
+}
+
+/**
+ * Prepares the state directory `path`: makes it as `policy` allows, then checks that it is a
+ * directory the current user owns and gives it `mode`.
+ */
+export function prepareStateDirectory(
+  path: string,
+  mode: StateDirectoryMode,
+  policy: StateDirectoryPolicy,
+): void {
+  makeStateDirectory(path, mode, policy);
   const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
     const info = fstatSync(fd);
@@ -45,5 +77,25 @@ export function makeStateDirectory(path: string, mode: number): void {
     fchmodSync(fd, mode);
   } finally {
     closeSync(fd);
+  }
+}
+
+/** How each policy makes a directory; the type makes every policy name one. */
+const makeAs: Readonly<
+  Record<StateDirectoryPolicy, (path: string, mode: StateDirectoryMode) => void>
+> = {
+  "with-parents": (path, mode) => mkdirSync(path, { recursive: true, mode }),
+  "inside-parent": makeInsideParent,
+  "must-exist": () => {
+    // Never made: the open below fails with ENOENT when it is missing.
+  },
+};
+
+/** Makes `path` inside its existing parent; an existing directory is fine, a missing parent not. */
+function makeInsideParent(path: string, mode: StateDirectoryMode): void {
+  try {
+    mkdirSync(path, { mode });
+  } catch (error) {
+    if (errnoCode(error) !== "EEXIST") throw error;
   }
 }

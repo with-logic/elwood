@@ -1,9 +1,10 @@
 /** Real production cursor/PTY trust recovery with queued input (C-TRUST-01). */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
+import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import {
-  cleanup,
   codexAuthMissing,
   makeProject,
   sandboxedCodexHome,
@@ -12,36 +13,39 @@ import {
   skipTurns,
   waitFor,
 } from "./helpers.ts";
+import { codexFolderTrust } from "./trust-screens.ts";
 
 test("C-TRUST-01 production Codex holds queued input through human trust and native cursor clearance", {
   skip: skipIf(skipReason("codex"), codexAuthMissing(), skipTurns),
   timeout: 90_000,
 }, async (t) => {
   const project = makeProject("codex");
+  execFileSync("git", ["init", "-q", project.cwd]);
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
+  const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
-  t.after(async () => {
-    await cleanup(session);
-    sandbox.dispose();
-  });
+  // The sandbox goes only once every Codex process that could use it is confirmed gone.
+  t.after(() => endCodexTestAfter(t, { sessions: [session], sandbox, launches }));
   let submitted = 0;
   const order: string[] = [];
   let cursorVisible = false;
   let observedTrust = false;
-  session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    initialSize: { cols: 100, rows: 30 },
-    autotrust: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    hooks: {
-      UserPromptSubmit: () => {
-        submitted++;
-        order.push("submit");
+  session = await launches.track(
+    startCodex({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      initialSize: { cols: 100, rows: 30 },
+      autotrust: false,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      hooks: {
+        UserPromptSubmit: () => {
+          submitted++;
+          order.push("submit");
+        },
       },
-    },
-  });
+    }),
+  );
   const active = session;
   const inputs: string[] = [];
   const inputSubscription = active.terminal.xterm.onData((input) => {
@@ -56,7 +60,7 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
       if (mode) cursorVisible = mode[1] === "h";
     }
     const frame = active.terminal.snapshot();
-    if (/Do you trust the contents of this directory\?/.test(frame.text)) {
+    if (codexFolderTrust.question.test(frame.text)) {
       observedTrust = true;
       order.length = 0;
     }
@@ -69,7 +73,8 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
       /^› (?:Ask|Write|Implement|Find|Summarize|Explain|Improve|Run|Use|Type|Describe|Review|What)/.test(
         frame.lines[row] ?? "",
       ) &&
-      !/Do you trust|Yes, continue/.test(frame.text)
+      !codexFolderTrust.question.test(frame.text) &&
+      !codexFolderTrust.affirmative.test(frame.text)
     )
       order.push("native-clear");
   });
@@ -84,8 +89,8 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
   void pending.catch(() => undefined);
   await waitFor(
     () =>
-      /Do you trust the contents of this directory\?/.test(active.terminal.snapshot().text) &&
-      /Yes, continue/.test(active.terminal.snapshot().text)
+      codexFolderTrust.question.test(active.terminal.snapshot().text) &&
+      codexFolderTrust.affirmative.test(active.terminal.snapshot().text)
         ? true
         : undefined,
     "native untrusted directory dialog",

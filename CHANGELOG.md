@@ -12,6 +12,241 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Starting a session whose `cwd` was deleted no longer recreates it. The default
+  state directory lives under `cwd`, and creating it created every missing parent,
+  so a session for a deleted worktree started in a new, empty directory. A state
+  directory is now made only while `cwd` exists, and one at or under `cwd`, the
+  default `.elwood/` or your own `stateDir`, only below it, so such a start
+  rejects before spawning and the worktree stays gone, as does a `stateDir`
+  elsewhere. State writes no longer make missing parent directories either, so a
+  running session whose state directory was in its removed worktree fails its
+  later writes (a new loop rejects with `loop_persistence_failed`), and a resume
+  whose state directory is removed fails, instead of recreating either.
+- Starting or resuming a session whose `cwd` does not exist now rejects with
+  `claude_start_failed` or `codex_start_failed`, with `details.cwd` and
+  `details.errno`, before any probe, state write, or spawn (resume reads and
+  validates its record first), instead of failing on a state write. A `cwd` that
+  is a file is rejected the same way, and so is one removed while the start's
+  version probes run, and a relative `cwd` that can't be resolved because the
+  process's own working directory was deleted. A launch that fails while `cwd`
+  is gone, no longer a directory, or can't be checked reports the same error and
+  keeps the launch failure's `cause` and cleanup details. A resumed Claude
+  session with a relative `cwd` now launches in the directory it checked, even
+  if the process working directory changes during the probes.
+  rejects before spawning (for now with `ENOENT`) and the worktree stays gone,
+  as does a `stateDir` elsewhere. State writes no longer make missing parent
+  directories either, so a running session whose state directory was in its
+  removed worktree fails its later writes (a new loop rejects with
+  `loop_persistence_failed`), and a resume whose state directory is removed
+  fails, instead of recreating either.
+- Codex `listModels()` and `setModel` no longer freeze the process when
+  `config.toml` is a FIFO. Elwood read the file with a blocking read, so a FIFO
+  left in its place, by an agent that can write to its `CODEX_HOME`, blocked the
+  event loop and every session in the process until something wrote to it. Elwood
+  now opens the file without waiting, reads it only if it is a regular file of at
+  most 1 MiB, and rejects anything else with `model_automation_failed`
+  (`details.code` `EFTYPE`, `EISDIR`, or `EFBIG`). A `setModel` that cannot read
+  the config now rejects with `model_automation_failed` before it opens the picker,
+  and one that cannot reread it for the restore rejects the same way; both used to
+  reject with the raw file-system error.
+- Elwood now recognizes Codex 0.164's folder-access and `Hooks need review` gates as
+  0.164 draws them when hook trust is not bypassed: the folder gate's decline reads
+  `Back to Agent Command Center`, and the two gates end in `enter continue · esc back`
+  and `enter confirm · esc skip`. Before, both gates were held but never answered.
+  Each of these footers counts only under its own gate, so the same text under any
+  other dialog or in conversation text makes no frame a trust gate. Elwood's own
+  launches bypass hook trust, so they get the `Quit` / `enter continue · esc quit`
+  layout Elwood already handled.
+
+- The CLI now refuses a workspace that another user could swap out before the
+  agent starts in it. It checked that the workspace was yours, then launched in
+  its path, so anyone able to write to a directory on that path, or to a
+  directory holding a symlink on it, could replace it with their own in between.
+  Every directory the path is looked up through must now be owned by you or root
+  and not writable by group or others unless it is sticky (your own private group
+  is fine, but not root's group 0), or the run fails with status 2 naming the
+  directory to fix. Workspaces under `/tmp` or the macOS temporary directories,
+  and home paths, are unaffected. Owners and mode bits only: ACLs are not
+  checked.
+
+- Elwood now runs at most 8 login-shell probes (`--version`, `--help`, `update`,
+  and PATH lookups) at once in a process; more wait their turn, and a probe's time
+  bounds start when it runs. Each probe starts an interactive login shell, and with
+  a heavy shell profile many at once slowed every one of them.
+
+- A `claude --version` or `codex --version` check that fails (it exits nonzero,
+  times out, or cannot start) no longer fails every later start of that adapter
+  in the process. Elwood kept the failed result and replayed it as the same
+  `claude_start_failed` or `codex_start_failed`; a later start now runs the
+  check again. Concurrent starts still share one check and its outcome.
+
+- `teardown()`'s retry of a failed process-group reap now fails with the typed
+  `termination_failed`, as `stop()`'s and `kill()`'s retries already did. Before,
+  its raw system error made the retry an untyped step failure, so
+  `teardown_failed.details.failures` lost its errno and process-group id and the
+  CLI's cleanup diagnostic read only `Cleanup failed.` when no other step was
+  typed.
+
+- `teardown_failed` now keeps what each failed step reported. Alongside
+  `details.causes` (the messages), `details.failures` lists each failed step,
+  with its `code` and `details` when it was a typed Elwood error, so a failed
+  reap's `termination_failed` errno is no longer lost. The CLI's cleanup
+  diagnostic names those typed causes by code, plus their valid errno and reap
+  errno tokens when present, for example `Cleanup failed (termination_failed
+  EPERM).`, instead of only `Cleanup failed.`; it still never prints their
+  messages or paths. In text mode, a cleanup failure behind a timeout,
+  interruption, or other primary failure now gets its own stderr line after the
+  primary error, in `run`, `models`, and combined `models`; before, text mode
+  printed only the primary error.
+
+- A `stop()` or `kill()` whose termination fails now still cleans up the
+  session's runtime (its hook bridge and terminal renderer, and Codex's transcript
+  watcher). Before, a PTY that could not be signaled, did not exit, or could not be
+  reaped skipped that cleanup, and so did every retry while the reap kept failing,
+  until a `teardown()`. The call still rejects with the same `termination_failed`;
+  if cleanup fails as well, its message is in `details.cleanupError`. `close()`
+  keeps those messages too, as `cleanupError` and `killCleanupError`.
+
+- Raw input a host sends from inside one of Elwood's own writes, such as from an
+  `xterm.onData` listener reacting to Elwood's keys, now revokes Elwood's
+  automation like any other raw input. Before, it counted as part of Elwood's
+  write, so a model-picker operation, composer cleanup, question answer, or
+  startup-prompt answer kept writing after the caller's keys.
+
+- A Claude session's runtime cleanup now finishes its transcript watcher, as
+  Codex's already did. Before, only the Claude process's exit finished it, so
+  after a `stop()`, `kill()`, or `teardown()` that could not terminate the PTY,
+  the session kept polling the transcript and emitting its activity. Claude's
+  `transcript_poll_stopped` warning for a failed final flush now reads
+  "Transcript final flush failed after an unexpected error.", without "at exit",
+  since runtime cleanup can now run that flush while the PTY lives.
+
+- Sessions start again for macOS users whose login shell is `/bin/bash` or
+  `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
+  every inherited descriptor above stderr, so the probe start line added for
+  slow profiles never arrived on descriptor 3. Every `--version`, `--help` and
+  `update` probe, and the CLI's agent detection, failed with `login shell
+  exited with status 0 before starting the probe command`
+  (`phase: "login_shell"`), even though the command had run. A shell that
+  closed descriptor 3 now writes the line on stdout, and Elwood removes it from
+  the captured output.
+
+- A Codex `stop()` or `teardown()` that gives up waiting for the ended turn's record
+  now says so. When the 2-second wait runs out with Codex still running, the session
+  emits one content-free `turn_commit_wait_expired` warning, with its `activity`, before
+  signaling Codex, even when `stop()` and `teardown()` overlap. A host can then tell
+  that a resume may show that turn as interrupted.
+- Stopping a Codex session as soon as a turn ends no longer cuts off Codex before it
+  records the turn. Codex records a turn as complete only after its `Stop` hook
+  returns, and Elwood reports `ready` from that hook, so a `stop()` or `teardown()`
+  called at that `ready`, or from a `Stop` hook observer, could end Codex before it
+  wrote the record. Resuming the conversation then showed "Conversation interrupted".
+  Both now give Codex up to 2 seconds to record the turn before signaling it, about
+  100 ms in practice; past that bound they proceed and the turn can still be lost.
+  `kill()` still ends Codex at once.
+- `listModels` and `setModel` now read each picker frame they wait for while
+  opening and moving through the picker as soon as it renders, rather than at the
+  next 100 ms poll. They return sooner and hold the session's
+  input queue for less time. The poll remains as a fallback when no render
+  notification arrives.
+
+- A Codex session whose readiness falls back to the 60-second backstop now emits
+  an `initial_ready_backstop` warning, so a host can tell it from ordinary
+  readiness. The backstop releases readiness when Elwood never recognizes Codex's
+  configured composer (the model footer), for example after a layout change in a
+  new Codex release. Before, that readiness looked like any other.
+
+- Removing a Codex transcript that Elwood was reading now emits
+  `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
+  file is missing, and at the final flush if it is still gone, as a removed Claude
+  transcript already does. Elwood used to
+  read the missing file as an empty, truncated one and say nothing, so a host lost
+  the session's transcript activity without a warning. A transcript that has not
+  been created yet still waits silently.
+
+- A Codex session no longer reports `ready` before a late directory-trust prompt
+  is answered. Codex paints an empty composer while it boots, before its session is
+  configured, and under load its trust prompt followed 11 to 31 seconds after the
+  first frame. Elwood's 10-second readiness deadline fired on that boot composer,
+  so the session reported `ready` before the prompt even appeared (24 of 32
+  loaded launches on Codex 0.164). The deadline now waits for the composer with
+  Codex's model footer, which appears once the session is configured, so a cold
+  start can now take longer than 10 seconds to report `ready`.
+  A backstop still releases readiness 60 seconds after the first frame if that
+  footer is never recognized; a prompt painted after that would still follow
+  `ready`.
+
+- `autotrust` no longer sends "1" to Codex as a user message. On a loaded
+  machine Codex 0.164 can take the directory-trust answer (`1` + Enter) but
+  paint its composer more than 250 ms later, and Elwood's retry typed the answer
+  again into that composer, which submitted "1" as a turn to the model. The
+  number is now typed once. Codex retries are Enter alone while the gate's
+  caret is on the affirmative, which confirms the gate and does nothing on an
+  empty composer. Other numbered gates are answered again only after new output
+  still shows the gate.
+
+- With `autotrust`, keys a caller sends with `sendKeys` (or `terminal.sendInput`,
+  `xterm.input`) while a trust prompt is on screen now hand that prompt to the
+  caller: Elwood stops answering it. Before, its retry could follow the caller's
+  keys. When the CLI had already left the prompt but Elwood's screen had not caught
+  up, that retry landed in the composer and submitted the caller's text along with
+  the answer. A prompt the caller owns that stays up past five seconds is reported
+  `blocked`, as before; a later trust prompt is answered as usual. The same keys
+  also stop Elwood retrying its skip choice on a Codex update prompt, which could
+  otherwise follow them onto whatever Codex drew next. Elwood then leaves that
+  update prompt to the caller until Codex shows its composer.
+
+- A successful `listModels` or `setModel` no longer releases queued input on the
+  first frame without the picker. It now waits until no part of the picker has
+  been the bottom of the screen across five readings at least 40 ms apart. Before,
+  a blank or half-painted repaint could end the operation and let a queued
+  message's Enter land in the picker when it painted again, applying the
+  highlighted model. Picker text quoted above the composer does not hold the
+  operation. Each reading first renders all output the terminal has received, and
+  one that cannot fails the operation with `model_automation_failed` instead of
+  reporting success.
+- A Codex turn the agent rejects, for example one run with an unknown model, now
+  fails with `turn_failed`. `CodexSession.send` rejects, `stream` throws after the
+  events it already yielded, and `elwood run` exits 1, as Claude rejections already
+  do. Codex fires no `Stop` hook for such a turn. On Codex 0.164.0, `send` resolved
+  `''` about 20 seconds later, as if the turn had succeeded with an empty reply, or
+  stayed pending until the CLI exited, and `elwood run` exited 0 with an empty
+  `response`. The evidence is the transcript's failed `task_complete` for the turn's own
+  `turn_id`. The error message is Codex's `error.message`, and
+  `details.agentError` is its `codex_error_info` kind (for example `other`).
+
+- `autotrust` now reports an answered Claude folder-trust prompt. Claude erases
+  the dialog as soon as it is answered, then shows a blank or banner-only screen
+  until its composer paints. Elwood treated that screen as the answer being
+  lost, so the `startup_prompt` activity (`workspace_trust`, for example
+  `sent home+down+enter`) never fired: 0 of 30 real launches on Claude Code
+  2.1.310 emitted it. The answer is now reported once, when the composer
+  appears. Codex 0.164 lost its directory-trust answers the same way (0 of 16
+  fresh git-folder launches reported one); they are now reported too.
+
+- `kill()`, `teardown()`, and a `stop()` that has to escalate no longer leave a
+  CLI hook running after the session ends. Claude and Codex start every hook
+  command in its own session and process group, so killing the CLI's process
+  group missed a hook still in flight, such as a slow `SessionEnd` hook; it kept
+  running under PID 1. Before Elwood SIGKILLs a live CLI it now freezes it,
+  finds those descendants by parent pid, and kills their groups (a process whose
+  own parent already exited is under PID 1 and out of reach). That adds two
+  process-table reads to those paths, or four when such a hook exists, because
+  Elwood acts only on processes two consecutive reads show stopped; deeper
+  nesting, or a process forked as the CLI was frozen (Elwood stops its group
+  again), takes more reads within a three-second bound. Sessions shutting down
+  together share reads. If the walk cannot confirm every group stopped (including
+  when the CLI exits on its own first), the call still kills the CLI and then
+  rejects: `stop()` and `kill()` with `termination_failed` (with up to
+  16 of the unconfirmed process-group ids in `details.unconfirmedProcessGroupIds`),
+  `teardown()` with `teardown_failed`, and later shutdown calls on that session
+  keep rejecting. The CLI's cleanup diagnostic names those ids too, for example
+  `Cleanup failed (termination_failed EAGAIN process groups 4242).` The walk also
+  reaps the shell Codex starts a few seconds after launch to snapshot the user's
+  shell environment, which a slow shell profile keeps running. A `stop()` that
+  Codex exits on gracefully is not walked, so a snapshot shell still running then
+  is left running.
+
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
   reaped now says so. The typed startup error keeps its code and
@@ -75,6 +310,13 @@ back each entry are listed in `prd/14-conformance.md`.
   for its first turn. Claude names its transcript at startup but writes the file only once
   a turn begins, and Elwood had reported each poll of the missing file as a read error.
   Removing a transcript after it existed still warns, as does any other read failure.
+- A Claude transcript removed between a poll's size check and its read now warns
+  `transcript_read_error` (`ENOENT`) on that poll. Before, the read took the missing file
+  for a truncation: it skipped the warning and rewound to the start, so a file restored
+  before the next poll replayed its earlier records as new activity. The same warning
+  now covers a seen transcript that is missing when a stopped subagent's transcript is
+  drained, at the final flush, and at a `Stop`-first tail recovery, which each read it
+  as empty before. A transcript that was never created still reads as nothing.
 - `listModels` and `setModel` no longer send a picker key into a prompt that has
   reached the terminal but has not rendered yet. Each arrow, selecting key, follow-up
   answer and Escape is now decided after every received byte is rendered, like
@@ -91,7 +333,7 @@ back each entry are listed in `prd/14-conformance.md`.
   print Claude's error text as the response. A late rejection whose `prompt_id` names an
   earlier submission than the current turn's does not fail the current turn. When either
   hook lacks a `prompt_id`, a rejection that arrives during a turn is attributed to that
-  turn. Codex rejections are not recognized yet.
+  turn.
 
 - A failed model operation no longer releases queued input on a blank or half-painted
   frame left after its cleanup. Elwood never sends a key, Escape included, to a picker
@@ -106,6 +348,19 @@ back each entry are listed in `prd/14-conformance.md`.
   `… +K models`) and every measured effort glyph, and follows the cursor across a
   scrolling window. `listModels` also returns the `↓`-marked last visible row, with the
   marker kept in its `raw`.
+- Claude `listModels()` and `listClaudeModels()` return every model the `/model`
+  picker lists, not just its ten-row window: an account with 13 models now gets 13
+  rows, in picker order. Elwood reveals the hidden rows with arrow keys and then
+  cancels, so the model and effort are unchanged. `setModel` can select any listed
+  row, including one outside the window, walking only until that row is on screen,
+  and an unknown id's error lists every row. The list's length is the highest
+  rendered row plus the `… +K models` count, and `K` falls as the window scrolls
+  while that sum stays the same. A frame that marks rows hidden without a count, or
+  implies a different length from the first one read, is never acted on: Elwood waits
+  for a repaint that matches, and fails with `model_automation_failed` at the timeout
+  rather than returning part of the list. A frame with no count line is read as the
+  whole list; Claude 2.1.310 paints that line before the dialog's footer, so a complete
+  dialog always carries it.
 - `listModels` and `listClaudeModels` no longer return a partial catalog read while
   the picker was still painting. Claude draws it over the slash-command menu, so a
   probe could return only `default`, or fail with "Could not parse any model picker

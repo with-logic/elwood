@@ -12,7 +12,7 @@ test("C-LIFE-12 a drained resume frame after exit cannot arm a deadline or submi
   const gate = createReadinessGate(onReady, true);
   gate.ready.cancel();
   gate.ready.armDeadline();
-  gate.observeReadinessFrame({ composer_visible: true, blocking_prompt_visible: false });
+  gate.observeReadinessFrame({ composer_visible: true, blocking_prompt_visible: false }, false, "");
   gate.ready.replay();
   expect(vi.getTimerCount()).toBe(0);
   expect(onReady).not.toHaveBeenCalled();

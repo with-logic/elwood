@@ -24,7 +24,7 @@ function launch(agent, options, id, resumed) {
     const record = readSessionRecord(stateDir, id);
     if (record.adapter !== agent) throw new Error("Wrong resume adapter");
   } else {
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id, adapter: agent });
     writeSessionRecord(
       updateSessionResumeId(record, agent, `native-${id}`),

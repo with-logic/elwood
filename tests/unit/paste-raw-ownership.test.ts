@@ -1,7 +1,7 @@
 /** Raw edits revoke automated recovery Enter authority (PRD §5.3, C-API-56). */
 import { afterEach, expect, test, vi } from "vitest";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
-import { PickerInputOwnership } from "../../src/runtime/session/picker-input.ts";
+import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 afterEach(() => {
@@ -25,7 +25,7 @@ test.each([
   const terminal = createHeadlessTerminal({ cols: 100, rows: 30 }, (input) =>
     writes.push(String(input)),
   );
-  const ownership = new PickerInputOwnership(terminal);
+  const ownership = new SessionInputOwnership(terminal);
   const closing = new AbortController();
   ownership.composerCleanup(
     () => false,

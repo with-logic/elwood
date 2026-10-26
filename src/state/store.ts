@@ -9,16 +9,11 @@
 import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { elwoodError, toError } from "../core/errors.ts";
-import { assertStatePath } from "./directories.ts";
-import {
-  safeSessionDir,
-  secureMkdir,
-  sharedMkdir,
-  writePrivateFileAtomic,
-  writeSharedFile,
-} from "./files.ts";
+import { assertStatePath, PRIVATE_STATE_MODE, SHARED_STATE_MODE } from "./directories.ts";
+import { safeSessionDir, secureMkdir, writePrivateFileAtomic, writeSharedFile } from "./files.ts";
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
 import { currentFileOwner, type FileOwner, readPrivateFile } from "./private-read.ts";
+import { makeStateRoot } from "./root.ts";
 import { removeSocketHome } from "./socket-home.ts";
 import { validateSessionRecord } from "./validate.ts";
 
@@ -53,20 +48,31 @@ export function createSessionRecord(input: {
   };
 }
 
-export function prepareStateDir(
-  stateDir: string,
-  options: { readonly gitignore?: boolean } = {},
-): void {
+/** How a launch's state directory is set up. */
+export type StateDirSetup = {
+  /**
+   * The caller omitted `stateDir`, so this is Elwood's default `<cwd>/.elwood`: readable by
+   * local tooling, and given a `.gitignore` of `*` when it has none (an existing one is kept as
+   * it is). An explicit `stateDir`, even one naming that same directory, is not.
+   */
+  readonly isImplicitDefaultStateDir?: boolean;
+  /** The session's working directory, which must exist and is never made (C-STATE-14). */
+  readonly cwd: string;
+};
+
+/**
+ * Makes the state directory and its `sessions` directory, only while the session's `cwd`
+ * exists. A root at or under `cwd` is made only below it; a root elsewhere gets its missing
+ * parents. Nothing below the root is ever made with parents.
+ */
+export function prepareStateDir(stateDir: string, setup: StateDirSetup): void {
   const root = resolve(stateDir);
   assertStatePath(root);
   assertStatePath(join(root, "sessions"));
-  if (options.gitignore === true) {
-    sharedMkdir(root);
-  } else {
-    secureMkdir(root);
-  }
+  const isDefault = setup.isImplicitDefaultStateDir === true;
+  makeStateRoot(root, isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE, setup.cwd);
   const gitignorePath = join(root, ".gitignore");
-  if (options.gitignore === true && !existsSync(gitignorePath)) {
+  if (isDefault && !existsSync(gitignorePath)) {
     writeSharedFile(gitignorePath, "*\n");
   }
   secureMkdir(join(root, "sessions"));

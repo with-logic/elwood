@@ -52,7 +52,7 @@ describe("highTrust launch (Claude)", () => {
   test("C-API-54 resumeClaude expands highTrust into the relaunched posture", async () => {
     const cwd = claudeFakes.tempDir();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = updateSessionResumeId(
       createSessionRecord({ cwd, id: "resume-high-trust" }),
       "claude",
@@ -124,7 +124,7 @@ describe("highTrust launch (Codex)", () => {
   test("C-API-54 resumeCodex expands highTrust into the relaunched posture", async () => {
     const cwd = realpathSync(codexFakes.tempDir());
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id: "codex-high-trust", adapter: "codex" });
     writeSessionRecord(
       { ...record, codex: { resumeId: "codex-session-1", launch: { sandbox: "read-only" } } },

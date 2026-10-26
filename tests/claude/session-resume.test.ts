@@ -125,7 +125,7 @@ describe("ClaudeSessionApi resume options", () => {
   test("C-API-29 resume forwards permissionMode into the launched command", async () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = updateSessionResumeId(
       createSessionRecord({ cwd, id: "resume-perm" }),
       "claude",
@@ -152,7 +152,7 @@ describe("ClaudeSessionApi resume options", () => {
   test("C-API-16 resume falls back to the default terminal size", async () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = updateSessionResumeId(
       createSessionRecord({ cwd, id: "resume-no-size" }),
       "claude",

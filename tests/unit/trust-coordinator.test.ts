@@ -13,13 +13,16 @@ function settled(result: TrustPromptResult<"claude">) {
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
+const observed = (onStateChange: () => void) =>
+  new TrustPromptResponder("claude", claudeTrustClearance, true, { onStateChange });
+
 test.each([
   "Do you trust this folder?\n1. Yes\n2. No",
   unsupported,
   `${claudeTrust}\n1. Yes\nUnknown footer`,
 ])("C-TRUST-01 unsupported native candidates hold input and expire without new output: %s", async (frame) => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
+  const responder = observed(changed);
   const write = vi.fn();
   expect(responder.handle(frame, write)).toBeUndefined();
   expect(responder.inputBlocking).toBe(true);
@@ -56,10 +59,11 @@ test("C-TRUST-01 newly valid recovery rearms once while blocked status remains l
   const first = settled(responder.handle(trust, write, () => trust));
   await vi.advanceTimersByTimeAsync(5_000);
   await expect(first).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledTimes(20);
+  // No output followed the answer, so it was never typed again.
+  expect(write).toHaveBeenCalledTimes(1);
   expect(responder.handle(trust, write, () => trust)).toBeUndefined();
   await vi.advanceTimersByTimeAsync(5_000);
-  expect(write).toHaveBeenCalledTimes(20);
+  expect(write).toHaveBeenCalledTimes(1);
   responder.handle(unsupported, write);
   let frame = trust;
   const recovered = settled(responder.handle(trust, write, () => frame));
@@ -70,7 +74,7 @@ test("C-TRUST-01 newly valid recovery rearms once while blocked status remains l
   await expect(recovered).resolves.toBe("answered");
   expect(responder.blockedPrompt).toBeUndefined();
   expect(responder.inputBlocking).toBe(false);
-  expect(write).toHaveBeenCalledTimes(21);
+  expect(write).toHaveBeenCalledTimes(2);
 });
 
 test("C-TRUST-01 unknown replacements remain blocked until positively cleared", async () => {
@@ -80,8 +84,7 @@ test("C-TRUST-01 unknown replacements remain blocked until positively cleared", 
     frame = "Enable elevated access?\n❯ Yes";
   });
   const attempt = settled(responder.handle(trust, write, () => frame));
-  await vi.advanceTimersByTimeAsync(250);
-  await expect(attempt).resolves.toBe("cancelled");
+  responder.handle(frame, write, () => frame);
   expect(responder.inputBlocking).toBe(true);
   // The gate left the frame, so its budget waits; a stable gate then exhausts it.
   await vi.advanceTimersByTimeAsync(10_000);
@@ -89,6 +92,8 @@ test("C-TRUST-01 unknown replacements remain blocked until positively cleared", 
   responder.handle(unsupported, write);
   await vi.advanceTimersByTimeAsync(5_000);
   expect(responder.blockedPrompt).toBe("workspace_trust");
+  // Expiry ends the answered attempt without reporting it.
+  await expect(attempt).resolves.toBe("cancelled");
   responder.handle("Enable elevated access?\n❯ Yes", write);
   await vi.advanceTimersByTimeAsync(10_000);
   expect(responder.blockedPrompt).toBe("workspace_trust");
@@ -116,7 +121,7 @@ test("C-TRUST-01 new generations can answer the same class again after confirmed
 });
 
 test("C-TRUST-01 timer observers cannot prevent recovery by throwing", async () => {
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, () => {
+  const responder = observed(() => {
     throw new Error("observer");
   });
   responder.handle(unsupported, vi.fn());

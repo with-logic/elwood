@@ -40,7 +40,7 @@ test("C-API-51 failed stop and kill still cancel the caller waiting on its perso
       code: "termination_failed",
       details: {
         cause: "Could not terminate the PTY: kill failed",
-        killCause: "Could not reap the PTY process group.",
+        killCause: "Could not confirm the PTY process tree was reaped.",
       },
     });
     expect(kill).toHaveBeenCalledOnce();

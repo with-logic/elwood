@@ -17,8 +17,16 @@ import {
   listCodexModels,
   startClaude,
 } from "../../src/index.ts";
+import { rejectCompiledClaudeFallback } from "./claude-compiled-fallback.ts";
+import {
+  claudePickerRowCount,
+  hasCompletePickerOrder,
+  readClaudePicker,
+  savedClaudeModel,
+} from "./claude-picker-oracle.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -53,8 +61,9 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       hooks: {},
     });
     await waitFor(() => (session?.status === "ready" ? true : undefined), "claude ready", 60_000);
-    const models = await session.listModels();
+    const models = rejectCompiledClaudeFallback(await session.listModels());
     assert.ok(models.length >= 3, "picker lists several models");
+    assert.ok(hasCompletePickerOrder(models), "every row, none missing, in picker order");
     // Claude paints the picker over its slash-command menu; a list read mid-paint is short.
     assert.deepEqual(await session.listModels(), models, "an unchanged picker lists the same rows");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
@@ -74,15 +83,28 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       models.find((model) => model.isDefault)?.id,
       "user default model is untouched",
     );
-    // The last rendered row, so the cursor crosses every row's effort control. This needs an
-    // account whose list is longer than Claude's ten-row window: then that row is the
-    // `↓`-marked one above `… +K models`, and a shorter list cannot exercise the window.
+    // The last row, so the cursor crosses every row's effort control. Past the ten-row window it
+    // stays hidden until the walk reaches it, and the next picker opens scrolled to it.
     const last = after.at(-1);
-    assert.ok(last && !last.isCurrent, "the last rendered row is another model");
-    assert.match(last.raw, /^↓ \d+\. /, "the picker windows a list of more than ten models");
+    assert.ok(last && !last.isCurrent, "the last row is another model");
+    assert.ok(after.length > 10, "the picker windows a list of more than ten models");
     await session.setModel(last.id);
+    const shown = await readClaudePicker(session);
+    assert.ok(shown.effortRow, "the picker shows the current model's effort");
+    const saved = savedClaudeModel();
     const final = await session.listModels();
+    assert.equal(savedClaudeModel(), saved, "the walking listing saves no default model");
     assert.equal(final.find((model) => model.isCurrent)?.id, last.id);
+    // Opened scrolled on its last row, the picker hides the rows ABOVE its window instead.
+    assert.deepEqual(
+      final.map((model) => model.id),
+      models.map((model) => model.id),
+      "a picker opened scrolled lists the complete catalog",
+    );
+    // The walk's arrows move only the highlight; its Escape keeps the model AND its effort.
+    const reread = await readClaudePicker(session);
+    assert.equal(reread.effortRow, shown.effortRow, "listing keeps the current effort");
+    assert.equal(models.length, reread.rowCount, "every row the picker lists");
   } finally {
     await cleanup(session);
   }
@@ -94,9 +116,13 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, BASELINE_CONFIG);
-  let session: CodexSessionApi | undefined;
-  try {
-    session = await startReadyCodex(project);
+  const launches = codexLaunches();
+  const started: CodexSessionApi[] = [];
+  await runCodexTest({ sessions: () => started, sandbox, launches }, async () => {
+    const session = await startReadyCodex(project, {
+      launches,
+      onStarted: (launched) => started.push(launched),
+    });
     const models = await session.listModels();
     assert.ok(models.length >= 3, "picker lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
@@ -124,10 +150,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
       defaultsBefore,
       "user model defaults already restored by setModel",
     );
-  } finally {
-    await cleanup(session);
-    sandbox.dispose();
-  }
+  });
 });
 
 test("C-API-41 real listClaudeModels returns models without a caller-held session", {
@@ -135,8 +158,9 @@ test("C-API-41 real listClaudeModels returns models without a caller-held sessio
   timeout: 150_000,
 }, async () => {
   const project = makeProject("claude");
-  const models = await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir });
-  assert.ok(models.length >= 3, "session-less probe lists several models");
+  const models = rejectCompiledClaudeFallback(await listClaudeModels(project));
+  assert.equal(models.length, await claudePickerRowCount(project), "every row the picker counts");
+  assert.ok(hasCompletePickerOrder(models), "every row, none missing, in picker order");
   // A probe that read the picker mid-paint returned one row, or none, in 3 of 5 runs.
   for (let probe = 0; probe < 2; probe += 1)
     assert.deepEqual(
@@ -158,8 +182,9 @@ test("C-API-41 real listCodexModels returns models and leaves config.toml untouc
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, BASELINE_CONFIG);
   const defaultsBefore = rootModelKeys(sandbox.configPath);
-  try {
-    const models = await listCodexModels({ cwd: project.cwd, stateDir: project.stateDir });
+  const launches = codexLaunches();
+  await runCodexTest({ sessions: () => [], sandbox, launches }, async () => {
+    const models = await launches.track(listCodexModels(project));
     assert.ok(models.length >= 2, "session-less probe lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
     // The baseline names no model, so at most the one default Codex drew (§5.3).
@@ -171,7 +196,5 @@ test("C-API-41 real listCodexModels returns models and leaves config.toml untouc
       defaultsBefore,
       "listCodexModels leaves the user's model defaults untouched",
     );
-  } finally {
-    sandbox.dispose();
-  }
+  });
 });

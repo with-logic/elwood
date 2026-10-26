@@ -43,7 +43,11 @@ const untouchedPty: PtyProcess = {
 function recordingReap(calls: string[]): ShutdownReapPolicy {
   return {
     orThrow: () => void calls.push("reap"),
-    reaper: { reap: () => void calls.push("reap") },
+    reaper: {
+      reap: () => void calls.push("reap"),
+      reapAndThrowOnDetachedSweepFailure: () => void calls.push("reap"),
+      sweepDetached: async () => {},
+    },
   };
 }
 
@@ -57,7 +61,14 @@ function host(
   return {
     pty: untouchedPty,
     removeFiles: () => undefined,
-    reapPolicy: { orThrow: () => undefined, reaper: { reap: () => undefined } },
+    reapPolicy: {
+      orThrow: () => undefined,
+      reaper: {
+        reap: () => undefined,
+        reapAndThrowOnDetachedSweepFailure: () => undefined,
+        sweepDetached: async () => {},
+      },
+    },
     status: () => "exited",
     claimShutdown: () => undefined,
     pauseLoops: () => undefined,
@@ -146,7 +157,7 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
 
   test("teardown preserves loop_persistence_failed but still removes session files", async () => {
     const root = tempDir("elwood-shutdown-loops-");
-    prepareStateDir(root);
+    prepareStateDir(root, { cwd: root });
     const id = "teardown-loop-failure";
     const dir = sessionDir(root, id);
     writeSessionRecord(createSessionRecord({ cwd: root, id }), dir);

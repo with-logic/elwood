@@ -54,26 +54,26 @@ describe("C-API-28 createReadinessGate per-frame", () => {
   test("on RESUME the composer marks ready — but NOT while a dialog is up", () => {
     let ready = 0;
     const gate = createReadinessGate(() => ready++, true); // resumed
-    gate.observeReadinessFrame(facts(true, true)); // composer caret IS a dialog: no mark
+    gate.observeReadinessFrame(facts(true, true), false, ""); // composer caret IS a dialog: no mark
     expect(ready).toBe(0);
-    gate.observeReadinessFrame(facts(true, false)); // genuine quiet composer: ready
+    gate.observeReadinessFrame(facts(true, false), false, ""); // genuine quiet composer: ready
     expect(ready).toBe(1);
   });
 
   test("a cold-start frame never marks ready off the composer alone", () => {
     let ready = 0;
     const gate = createReadinessGate(() => ready++, false); // cold start
-    gate.observeReadinessFrame(facts(true, false)); // composer is a boot placeholder: no mark
+    gate.observeReadinessFrame(facts(true, false), false, ""); // composer is a boot placeholder: no mark
     expect(ready).toBe(0);
   });
 
   test("automation-owned trust defers both a hook and resume composer without human blocking", () => {
     let ready = 0;
     const gate = createReadinessGate(() => ready++, true);
-    gate.observeReadinessFrame(facts(true), true);
+    gate.observeReadinessFrame(facts(true), true, "");
     gate.ready.mark();
     expect(ready).toBe(0);
-    gate.observeReadinessFrame(facts(true), false);
+    gate.observeReadinessFrame(facts(true), false, "");
     expect(ready).toBe(1);
   });
 });
@@ -81,7 +81,7 @@ describe("C-API-28 createReadinessGate per-frame", () => {
 test("C-API-28 work without a prior blocking dialog keeps cold-start hook readiness", () => {
   let ready = 0;
   const gate = createReadinessGate(() => ready++, false);
-  gate.observeReadinessFrame({ ...facts(true), working_visible: true });
+  gate.observeReadinessFrame({ ...facts(true), working_visible: true }, false, "");
   gate.ready.mark();
   expect(ready).toBe(1);
 });
@@ -89,28 +89,28 @@ test("C-API-28 work without a prior blocking dialog keeps cold-start hook readin
 test("C-API-28 a deferred hook stays held through blank and working frames until idle", () => {
   let ready = 0;
   const gate = createReadinessGate(() => ready++, false);
-  gate.observeReadinessFrame(facts(true, true));
+  gate.observeReadinessFrame(facts(true, true), false, "");
   gate.ready.mark();
-  gate.observeReadinessFrame(facts(false));
+  gate.observeReadinessFrame(facts(false), false, "");
   expect(ready).toBe(0);
-  gate.observeReadinessFrame({ ...facts(true), working_visible: true });
+  gate.observeReadinessFrame({ ...facts(true), working_visible: true }, false, "");
   expect(ready).toBe(0);
-  gate.observeReadinessFrame(facts(false));
+  gate.observeReadinessFrame(facts(false), false, "");
   expect(ready).toBe(0);
-  gate.observeReadinessFrame(facts(true));
+  gate.observeReadinessFrame(facts(true), false, "");
   expect(ready).toBe(1);
 });
 
 test("C-API-28 the current frame hold updates before deferred readiness is reconciled", () => {
   let ready = 0;
   const gate = createReadinessGate(() => ready++, false);
-  gate.observeFrameHold(facts(true, true));
+  gate.observeFrameHold(facts(true, true), false, "");
   gate.ready.mark();
   expect(gate.isHeld()).toBe(true);
   expect(ready).toBe(0);
-  gate.observeFrameHold(facts(true));
+  gate.observeFrameHold(facts(true), false, "");
   expect(gate.isHeld()).toBe(false);
   expect(ready).toBe(0);
-  gate.observeReadinessFrame(facts(true));
+  gate.observeReadinessFrame(facts(true), false, "");
   expect(ready).toBe(1);
 });

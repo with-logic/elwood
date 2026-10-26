@@ -147,10 +147,16 @@ loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
 bounded separately. After the startup files load, and immediately before the probe
-command runs, the probe shell writes a fixed start line of Elwood's own on a private
-channel that is neither stdout nor stderr, so a startup file that redirects either
-cannot hide the line, and the probe's captured output is exactly the shell's and the
-command's. The shell has 60 seconds from spawn to write that line (the launch bound),
+command runs, the probe shell writes a start line of Elwood's own, ending in a random
+token chosen once per parent process so that no startup file's output can pass for it,
+on a private channel that is neither stdout nor stderr, so a startup file that
+redirects either cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
+started as an interactive login shell, closes every inherited descriptor above
+stderr) writes the line on stdout instead. Not stderr, which a startup file may
+discard or merge into stdout: a startup file that hid stdout would also hide the
+command's own output. Elwood removes the line from captured stdout, so on either
+channel the probe's captured output is exactly the shell's and the command's.
+The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
@@ -198,6 +204,12 @@ surface as a start-blocking error; it is contained and surfaces as the live
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.
 
+At most 8 non-PTY probes run at once in a parent process, because each starts an
+interactive login shell and a heavy profile slows every shell that runs beside it.
+Further probes wait their turn in arrival order. A waiting probe has not started:
+its launch bound begins when it runs, and a probe that fails frees its turn like
+one that succeeds.
+
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
 running. The default wait must be long enough to catch typical local CLI startup
@@ -228,8 +240,9 @@ exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled
 exit is awaited within a bounded window, and the leader's process group is SIGKILLed on
 every path, even if the PTY signal throws. That kill is what stops a CLI-spawned
 descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
-the leader exits. The original startup error is preserved; a cleanup or reap failure
-is secondary and never replaces it. When that PTY termination or group reap cannot be
+the leader exits. A leader that ignores the SIGTERM has its detached descendants
+reaped before the escalating SIGKILL, as §5.3 specifies. The original startup error is
+preserved; a cleanup or reap failure is secondary and never replaces it. When that PTY termination or group reap cannot be
 confirmed, part of the CLI's process tree may still be running, and a typed startup
 error keeps its code and message and gains two details. `cleanupErrorCode` is
 content-free: the failed group reap's errno if there is one, else the termination's,
@@ -298,7 +311,12 @@ not delay the native process-exit notification, terminal status, or unconditiona
 process-group reap; the final `terminal:data` tail may therefore arrive after
 `terminal:exit`. A stalled renderer, or a PTY that never goes quiet, is disposed
 when the budget expires. Explicit direct `terminal.dispose()` does not wait for
-pending output.
+pending output. Runtime cleanup also stops the hook bridge and finishes the
+transcript watcher: one bounded final flush of what the transcript already holds,
+then no more polling. So a PTY that outlives a failed shutdown produces no later
+transcript activity, and its hook commands reach no handler: the stopped bridge
+accepts no new request. A host hook handler already running when cleanup starts may
+still finish and report its result.
 
 Reaping the leader's process group is unconditional on every exit path
 (C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,
@@ -309,7 +327,11 @@ a live `reap_failed` warning rather than aborting the exit callback. An explicit
 survivor reap (it does not re-signal the dead PTY — node-pty does not replay the
 exit event, and the pid may already be recycled) and rejects with a typed
 `termination_failed` error if that reap fails, leaving the reap retryable by a
-later `teardown()`.
+later `teardown()`. Every `stop()`/`kill()` attempt runs runtime cleanup after its
+termination or survivor reap, even when that failed: the PTY could not be signaled,
+did not exit, or its group could not be reaped. The call still rejects with that
+failure, and a cleanup failure alongside it is kept as its message in
+`details.cleanupError`.
 
 Overlapping `stop()`, `kill()`, and `teardown()` calls on one session are
 serialized so the PTY is signaled at most once. The first caller owns the in-flight
@@ -327,5 +349,7 @@ and (for teardown) remove files. A settled shutdown failure is not permanently
 sticky: because signal ownership is separate from the in-flight promise, a later
 `stop()`/`kill()`/`teardown()` after a failed one runs a fresh attempt that RETRIES
 the reap, runtime cleanup, and file removal — without re-signaling the PTY — rather
-than returning the earlier rejection forever (C-LIFE-10 retry posture). Each caller
-still observes its own operation's success or typed failure.
+than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
+exception is a detached-descendant walk that could not complete (§5.3): with the
+leader gone it cannot be retried, so every later call keeps rejecting for it. Each
+caller still observes its own operation's success or typed failure.

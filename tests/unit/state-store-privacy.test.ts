@@ -20,7 +20,7 @@ import { tempDir } from "../helpers/tmp.ts";
 
 function fixture(id: string) {
   const root = tempDir("elwood-privacy-");
-  prepareStateDir(root);
+  prepareStateDir(root, { cwd: root });
   const record = createSessionRecord({ cwd: root, id });
   const dir = sessionDir(root, id);
   writeSessionRecord(record, dir);

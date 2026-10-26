@@ -12,7 +12,7 @@ import type { SendOptions } from "../../core/images/types.ts";
 import { writeQueuedInput } from "../../core/input/index.ts";
 import { submissionControlOptions } from "../../core/input/submission-cancel.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
-import { isPickerIntervention } from "../../core/models/intervention.ts";
+import { isCallerInputIntervention } from "../../core/models/intervention.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { submissionAttempt } from "../../core/simple/submission-context.ts";
@@ -23,7 +23,7 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
-import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
+import { currentRenderedFrame, renderedSnapshot, subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { CommandSurface } from "./commands.ts";
 import {
@@ -32,9 +32,9 @@ import {
   enqueueSubmission,
   type SubmitKind,
 } from "./image-attach.ts";
-import { PickerInputOwnership } from "./picker-input.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
+import { SessionInputOwnership } from "./session-input.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 type Timeout = { readonly timeoutMs?: number };
@@ -54,7 +54,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],
   ) {
-    const ownership = new PickerInputOwnership(terminal);
+    const ownership = new SessionInputOwnership(terminal);
     super(
       agent,
       record,
@@ -76,6 +76,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
         const read = () => renderedSnapshot(terminal).text;
         terminal.xterm.onWriteParsed(() => listener(read));
       },
+      subscribeRender: (listener) => subscribeRender(terminal, listener),
       statusEvents,
       status: () => this.status,
       everReady: () => this.everReady,
@@ -89,7 +90,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
           "command",
           {
             ...this.pasteGuard,
-            blocked: () => isPickerIntervention(signal.reason) || this.queuedInputBlocked(),
+            blocked: () => isCallerInputIntervention(signal.reason) || this.queuedInputBlocked(),
           },
           signal,
         ),

@@ -30,7 +30,7 @@ export class ClaudeStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
   ) {
-    this.trust = new TrustPromptResponder("claude", clearance, autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("claude", clearance, autotrust, { onStateChange });
   }
 
   get blockedPrompt() {
@@ -47,6 +47,11 @@ export class ClaudeStartupPromptResponder {
   dispose(): void {
     this.lifetime.abort();
     this.trust.dispose();
+  }
+
+  /** Raw caller input owns the trust gate on screen (C-TRUST-01). */
+  callerInput(): void {
+    this.trust.callerInput();
   }
 
   get inputBlocking(): boolean {

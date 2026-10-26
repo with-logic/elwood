@@ -49,7 +49,7 @@ describe("state store", () => {
 
   test("C-STATE the minimal record round-trips only the six kept fields", () => {
     const root = tempDir("elwood-state-");
-    prepareStateDir(root);
+    prepareStateDir(root, { cwd: root });
     const record = createSessionRecord({ cwd: root, id: "minimal", adapter: "codex" });
     const dir = sessionDir(root, "minimal");
     writeSessionRecord(record, dir);
@@ -80,7 +80,7 @@ describe("state store", () => {
 
   test("C-STATE-08 removeSessionFiles removes the derived dir and the socket home", () => {
     const root = tempDir("elwood-state-");
-    prepareStateDir(root);
+    prepareStateDir(root, { cwd: root });
     const record = createSessionRecord({ cwd: root, id: "teardown" });
     const dir = sessionDir(root, "teardown");
     writeSessionRecord(record, dir);
@@ -105,7 +105,7 @@ describe("state store", () => {
   test("C-STATE-03 C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {
     const root = tempDir("elwood-state-");
     const projectState = join(root, ".elwood");
-    prepareStateDir(projectState, { gitignore: true });
+    prepareStateDir(projectState, { cwd: root, isImplicitDefaultStateDir: true });
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("*\n");
     expect(statSync(projectState).mode & 0o777).toBe(0o755);
     expect(statSync(join(projectState, ".gitignore")).mode & 0o777).toBe(0o644);
@@ -116,10 +116,10 @@ describe("state store", () => {
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     expect(statSync(join(dir, "session.json")).mode & 0o777).toBe(0o600);
     writeFileSync(join(projectState, ".gitignore"), "!keep\n");
-    prepareStateDir(projectState, { gitignore: true });
+    prepareStateDir(projectState, { cwd: root, isImplicitDefaultStateDir: true });
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("!keep\n");
     const customState = join(root, "custom-state");
-    prepareStateDir(customState);
+    prepareStateDir(customState, { cwd: root });
     expect(existsSync(join(customState, ".gitignore"))).toBe(false);
   });
 

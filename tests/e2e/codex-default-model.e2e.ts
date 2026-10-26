@@ -13,8 +13,8 @@ import test from "node:test";
 import type { CodexSessionApi } from "../../src/index.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
-  cleanup,
   codexAuthMissing,
   makeProject,
   sandboxedCodexHome,
@@ -31,9 +31,13 @@ test("C-API-23 real Codex marks the configured default model, independent of the
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, 'model_reasoning_effort = "medium"\n');
-  let session: CodexSessionApi | undefined;
-  try {
-    session = await startReadyCodex(project);
+  const launches = codexLaunches();
+  const started: CodexSessionApi[] = [];
+  await runCodexTest({ sessions: () => started, sandbox, launches }, async () => {
+    const session = await startReadyCodex(project, {
+      launches,
+      onStarted: (launched) => started.push(launched),
+    });
     const unconfigured = await session.listModels();
     const current = unconfigured.find((model) => model.isCurrent);
     assert.ok(current, "the launch model is current");
@@ -46,8 +50,5 @@ test("C-API-23 real Codex marks the configured default model, independent of the
     assert.equal(listed.find((model) => model.isCurrent)?.id, current.id, "session model kept");
     // The markerless layout reports the configured row; a drawn marker outranks it.
     assert.deepEqual(defaultIds(listed), [drawn ?? configured.id]);
-  } finally {
-    await cleanup(session);
-    sandbox.dispose();
-  }
+  });
 });

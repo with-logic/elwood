@@ -12,6 +12,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { trustPromptAllowlist } from "./allowlist.ts";
 import type { TrustDialog } from "./dialog.ts";
+import type { GateFooter } from "./options.ts";
 
 export { trustPromptAllowlist } from "./allowlist.ts";
 
@@ -25,6 +26,8 @@ type TrustPromptBase = {
   readonly optionPattern: RegExp;
   /** Matches the exact affirmative option label for THIS prompt (per-prompt, not generic). */
   readonly accept: RegExp;
+  /** The gate-bound footer (`gateFooters`) this gate may end in; no other gate accepts it. */
+  readonly footer?: GateFooter;
 };
 
 /** The Claude trust-prompt ids: folder trust plus the CLI's first-run skill/plugin/MCP gates. */
@@ -78,7 +81,8 @@ export function activeTrustDialogVisible(
   return (
     header !== null &&
     spec.descriptionPattern.test(dialog.header.slice(header[0].length).trim()) &&
-    dialog.options.every((option) => spec.optionPattern.test(option.label))
+    dialog.options.every((option) => spec.optionPattern.test(option.label)) &&
+    (dialog.gateFooter === undefined || dialog.gateFooter === spec.footer)
   );
 }
 

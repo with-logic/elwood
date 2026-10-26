@@ -59,14 +59,15 @@ export function withTrustBlockingRules(
 /**
  * A reworded or new gate behind a recognized native header prefix (`headerStart`): the
  * bottom-most region is a COMPLETE option dialog — a real header, options, nothing
- * below them but the native footer that ends the frame, no conversation row above —
- * and NO region names an allowlisted prompt. Enter would answer it, so it holds input.
+ * below them but a generic native footer that ends the frame (never a gate-bound one),
+ * no conversation row above — and NO region names an allowlisted prompt. Enter would
+ * answer it, so it holds input.
  */
-function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): boolean {
+export function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): boolean {
   const gate = regions[0];
   return (
     gate?.validTail === true &&
-    gate.footer &&
+    gate.hasGenericFooter &&
     gate.dialog.header !== "" &&
     gate.dialog.options.length > 0 &&
     !namesAllowlistedPrompt(regions, agent)

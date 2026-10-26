@@ -55,8 +55,28 @@ invalid and will conclude the hook "never fires". (This once produced a false
 sandboxed homes, and user `config.toml` hooks merge additively with `-c` hooks.)
 Because `SessionStart` is Elwood's authoritative Codex readiness signal
 (`markInitialReadyFromHook`, `src/codex/session/hooks.ts`), cold-start readiness
-comes from that hook, bounded by a **10 s starvation deadline** armed on the
-first render frame (`src/runtime/readiness/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
+comes from that hook, bounded by a **two-stage starvation deadline** armed on the
+first render frame (`src/runtime/readiness/initial-ready.ts`): after 10 s
+(`initialDeadlineMs`) Codex readiness waits for a configured composer, described
+below, and after 60 s (`initialBackstopMs`) it is released without one. C-API-28.
+
+**Codex 0.164 paints a boot composer before its session is configured
+(2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
+anything` and `? for shortcuts` with no model footer; the header may read
+`loading` or already show the path. The model footer (`GPT-6.1-Sol default ·
+<path>`) appears only once the session is configured, which for an untrusted
+folder is after the directory-trust gate is answered. On a loaded machine (load
+average 20 to 127, 8 concurrent launches with `autotrust`, fresh `git init`
+folders) the gate painted 11.1 to 30.6 s after the first output in 24 of 32
+launches, and every one of those 24 reported `ready` at 10.0 s, onto a screen
+showing the boot composer without a footer. The other 8 painted their gate at
+8.9 to 9.0 s and readied after it, on footed composers. Unloaded, the gate came
+3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
+composer with its model footer (`codexComposerConfigured`,
+`src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
+gate delay, releases readiness if no footer is ever recognized; a gate painting
+later than that would still follow `ready`. Fixtures:
+`tests/fixtures/codex-0.164.0/boot/`. C-API-28.
 
 **Codex 0.153.3 can still swallow the deadline-released first paste under load.**
 Its cold composer may accept the paste visually, repaint another startup spinner,
@@ -135,13 +155,22 @@ misattributed to a CLI regression.)
   placeholder has painted and the load's spinner has been seen, the first quiet
   composer ends settling. A five-frame streak never arrives from an idle Codex.
   Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
-- **Stopping right after a Codex `Stop`-hook `ready` can leave the turn
-  uncommitted.** Two of six stop-at-ready runs killed Codex before it wrote
-  `task_complete`. Resuming that conversation replays it ending in
+- **Codex records a turn's completion only after its `Stop` hook returns
+  (2026-10-25).** Elwood reports `ready` from that hook, so a host that stops the
+  session at that `ready` signals Codex 0.164.0 before it writes the turn's
+  `task_complete`, and Codex exits without it. Stopping in the `ready` listener lost
+  the record in 3 of 3 probe runs and in 2 of 2 runs of
+  `tests/e2e/codex-stop-commit.e2e.ts` on `main`. Stopping 66 ms later lost it too;
+  at 156 ms and at 1 s it was written. The record carries the hook's `turn_id`, and
+  its own timestamp falls 3 to 94 ms after the hook reached Elwood. Resuming such a
+  conversation replays it ending in
   `■ Conversation interrupted - use /feedback if something went wrong`. Before the
-  placeholder fix, that banner closed the spinner's phantom turn early. A second
-  phantom followed: `saw: running,ready,running,ready`. The
-  `uncommitted-turn` capture retains that replay. C-TURN-03.
+  placeholder fix, that banner closed the spinner's phantom turn early and a second
+  phantom followed: `saw: running,ready,running,ready`. The `uncommitted-turn`
+  capture retains that replay. `stop()` and `teardown()` now give Codex up to 2 s to
+  write the record before signaling it. With the wait, a stop at `ready` took 70 to 126 ms
+  instead of 13 to 29 ms, and the record was always written.
+  `src/codex/session/turn-commit.ts`, C-TURN-03, C-LIFE-13.
 - **A caller submission can precede the resumed composer's repaint.** The old
   idle composer may remain visible briefly after `caller_submitted`; that frame
   is not a turn end. Resume settling now synchronizes to current rendered work
@@ -234,7 +263,28 @@ only when its `prompt_id` matches that submit's.
 **Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
 sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
 evidence is a transcript `event_msg` `task_complete` carrying `error`, with
-`last_agent_message: null`, as first measured on 0.155.0.
+`last_agent_message: null`, as first measured on 0.155.0. The record's `turn_id`
+(and `root_turn_id`) equal the `UserPromptSubmit` `turn_id`. `error.message` is the
+service's raw JSON body (`{"type":"error","status":400,"error":{...,"code":
+"model_not_found"}}`, "…model is not supported when using Codex with a ChatGPT
+account."), and `error.codex_error_info` is `"other"`. The binary's
+`CodexErrorInfo` kinds are bare strings (`usage_limit_exceeded`, `bad_request`,
+`other`, …) or one-key objects for kinds with fields (`http_connection_failed`,
+`response_stream_connection_failed`, `response_stream_disconnected`, …). The
+screen still reached `ready` 1.4 s after the submit hook and 0.15 s before the record.
+
+On 0.164.0 the turn binds the submit's `turn_id`, and only a private `Stop` or a
+classified rendered completion ends it. A rejected turn has no `Stop`, so its end
+depended on the rendered path. In the A/B runs (load 60–100), `CodexSession.send`
+resolved `""` about 20 s after submission, and `elwood run` exited 0 with
+`"response": ""`, the same empty success 0.155.0 showed. In one earlier probe, run
+beside a full test suite at load ~100, `send` stayed pending for over five minutes
+and resolved `""` only when the CLI was killed. Elwood now
+reads a failed `task_complete` that names the accepted `turn_id` as that turn's
+native boundary (`confirmCodexRejection`) and fails it with `turn_failed`. The
+message is `error.message` and `details.agentError` is the `codex_error_info`
+kind. A second turn on the same session is rejected the same way, so the first
+released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
 
 ## Codex transcript replies
 
@@ -284,9 +334,43 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   overflow line (before this, it rejected every frame of such a list, so `setModel` failed
   on its first arrow key with "The model picker was replaced"), and `setModel` must settle
   on the cursor row's identity, not its index, because a target's index changes as the
-  window scrolls under the cursor. `listModels` returns the rendered window only (C-API-23);
-  rows hidden below it are not enumerated. Fixtures:
+  window scrolls under the cursor. Fixtures:
   `tests/fixtures/claude-2.1.310/model-picker/`. C-API-23, C-API-24.
+- **Arrow keys walk Claude's picker window without applying anything (2.1.310, 2026-10-25).**
+  Row numbers are absolute positions, so a window starting past row 1 hides the rows
+  above it and `… +K models` counts the rows below; `listModels` reads the whole list by
+  walking the cursor one row at a time and merging the windows by number. Measured on a
+  13-model account: the window scrolls DOWN only once the cursor passes its last row, keeping
+  the cursor ON the last visible row (`↑ 2.` … `❯ 11.`), but scrolls UP while one row is
+  still above the cursor (`↑ 3.` `❯ 4.`), so the cursor never sits on the first row of a
+  scrolled window. Both ends WRAP: `↓` on row 13 jumps to `❯ 1.` with the top window, and
+  `↑` on row 1 jumps to `❯ 13.` with `↑ 4.`–`13.`; Elwood never presses past an end. Opened
+  at the top, 12 `↓` reveal rows 11–13; opened scrolled on row 12, one `↓` and 11 `↑`
+  reveal rows 13, 2, and 1. After 28 arrow presses, Escape printed `⎿ Kept model as Opus
+  5.5 (default)`, the header kept `with xhigh effort`, and the reopened picker showed the
+  same current row and effort, even though the effort row had followed the highlight
+  (`◐`, `●`, `○ Effort not supported`) on the way. A session started with `--name` adds a
+  rule carrying the name above the picker and walks identically. Fixtures:
+  `walk-down-from-top.txt`, `walk-opened-scrolled.txt` (frames separated by `--- ↓`/`--- ↑`,
+  each the screen after that key). A move that scrolls the window can be read before its
+  overflow line is repainted: a real listing that read on every render (2026-10-25) read
+  the move to `❯ 11.` with a `… +K models` count that was missing or did not add up to 13,
+  so the walk waits for a frame whose count adds up instead of failing on that one.
+  The raw stream shows why: the renderer writes only the cells that change, top to bottom,
+  and the PTY delivers the paint in reads of about 1 KB, so a frame can be read between
+  two reads. Scrolling to row 11 arrived as a 1,020-byte read carrying the new rows and a
+  71-byte read carrying the `3`→`2` of the count. The opening paint is ordered the same way:
+  the `… +K models` line is written before the effort row and the footer, and Elwood reads
+  the picker as complete only once its `Esc to cancel` footer is on screen, so a complete
+  frame always carries its count. Replaying every byte prefix of two real listings (opened
+  on row 2 and walked to 13; opened on row 10, where a count-less frame would read as a
+  complete ten-row list) found no complete frame stating fewer than 13 rows; the only
+  inconsistent ones were the stale-count frames above (`claude-picker-paint-order.test.ts`
+  pins the row-10 opening, `opening-on-row-10.json`, captured paint bytes over a placeholder
+  screen). If a later Claude painted the footer before the count, the walk could take a
+  full window with the cursor on its last row for the whole list: a listing would come back
+  short, and `setModel` would reject a hidden id as unknown. No key would go anywhere else,
+  since every key is still gated on the operation's own complete picker. C-API-23, C-API-24.
 - **The picker's effort row follows the HIGHLIGHTED model, and `●` is one of its glyphs.**
   On 2.1.310 the row under the list reads `○ Low effort`, `◐ Medium effort`, `● High
   effort`, `◉ xHigh effort`, or `◈ Max effort` (each `←/→ to adjust`, with `(default)` when
@@ -316,6 +400,26 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   a complete `PreModelSwitch` hook confirmation, ends that hold early; the hook's prompt is
   left for the caller. The header only ever holds; it never authorizes a key. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
   C-API-23, C-API-24, C-API-55.
+- **Claude can list a compiled five-row picker instead of the served catalog (2.1.310,
+  2026-10-25).** Observed: launched with `CLAUDE_CODE_MODEL_CATALOG=0`, the picker lists
+  `1. Default (recommended)`, `2. Opus`, `3. Fable`, `4. Sonnet`, and `5. Haiku`. Those are
+  bare family names with no version, and there is no overflow line. Every listing in that
+  process returns the same five rows, and Elwood reads them correctly. A listing e2e on a
+  loaded machine got the same five rows for its whole session, with no catalog variable in
+  its environment (the e2e harness strips `CLAUDE_CODE_*`).
+
+  From the 2.1.310 bundle, not observed: the choice is made once per process. The catalog
+  is off when `CLAUDE_CODE_MODEL_CATALOG` is falsy, under `--bare`, with nonessential
+  traffic disabled, with `ANTHROPIC_UNIX_SOCKET` set, with a provider that is not
+  first-party, with auth that has no catalog scope, when policy disallows
+  `allow_model_catalog`, or when the `tengu_delegated_quail` flag is off. With no catalog
+  cached in `~/.claude/cache/model-catalog/`, a first fetch slower than 1,750 ms (1,500
+  headless) also falls back.
+
+  The fallback has no hidden rows, so the listing e2e can't test the window walk against
+  it. Instead of retrying, the e2e fails with these causes
+  (`tests/e2e/claude-compiled-fallback.ts`), so a degraded environment stays visible.
+  C-API-23.
 - **Codex 0.164.0 shortened its dialog hints.** The picker closes with `enter select ·
   esc back` and the reasoning screen with `enter default · s session · esc back` (one
   Escape still returns to the picker). Neither matched the old closing-hint phrases
@@ -475,6 +579,45 @@ cover both `autotrust` settings. A native rerun with this grammar answered the g
 and attached the first image; its later cancelled-draft cleanup failed separately,
 so this is trust/attachment evidence, not a passing successor-cleanup run. C-TRUST-01.
 
+**Codex 0.164.0 asked for folder trust only in a Git repository, and saved the answer to
+`CODEX_HOME`.** Real launches on 2026-10-25, each with a fresh `CODEX_HOME`: in a plain
+scratch directory, Codex reached `ready` and wrote no trust entry, with and without
+`--sandbox read-only --ask-for-approval never` and with and without a seeded
+`config.toml`; no trust gate rendered in the launches whose screens were captured. After
+`git init` in the same kind of directory it showed `Folder access` with `Note: You’re in
+a subdirectory of a Git project. Trusting will apply to the repository root:` and the
+resolved path (`/private/var/...` for a `/var/...` cwd). `Trust and continue` then saved
+`[projects."<that path>"]` with `trust_level = "trusted"` to `$CODEX_HOME/config.toml`.
+Every launch also wrote `[tui] screen_reader_detection_done = true` there, plus state
+and log databases, a models cache, and plugin and skill caches. An e2e that leaves
+`CODEX_HOME` unset therefore writes into the developer's own `~/.codex`, so the suite
+gives every process a private one (`tests/e2e/codex-home.ts`, C-E2E-22).
+
+**Codex 0.164.0 draws its trust gates differently when hook trust is not bypassed
+(2026-10-25).** Native launches at 100 × 40 in a `git init` scratch directory with a
+fresh `CODEX_HOME`:
+
+- With `--dangerously-bypass-hook-trust` or `-c hookTrust="trust-all"` (Elwood passes
+  one of them on every launch, `src/codex/command.ts`), the `Folder access` gate is the
+  0.156.1 layout: `1. Trust and continue`, `2. Quit`, and `enter continue · esc quit`.
+  No hook gate follows.
+- With neither, as C-E2E-09 launches Codex to see both gates, the same gate's decline
+  reads `2. Back to Agent Command Center` and its footer is `enter continue · esc back`.
+  After `Trust and continue`, `Hooks need review` follows with `1 hook is new or
+  changed.`, `Hooks can run outside the sandbox after you trust them.`, `1. Review
+  hooks`, `2. Trust all and continue`, `3. Continue without trusting (hooks won't
+  run)`, and `enter confirm · esc skip`. Alternate screen or `--no-alt-screen` drew
+  the same rows.
+
+Without this grammar the unknown option and footers left both gates' option tails
+invalid, so the responder held each gate and never answered it. The two footers are
+bound to their gates (`TrustPromptSpec.footer`): each ends a dialog only under the
+header, explanation, and options of the gate that draws it, and never counts as one of
+the generic native footers that let an off-allowlist gate hold input. Under any other
+dialog, or in conversation text, they make no frame a trust gate. The sanitized
+captures, with the bypass and without, are `tests/fixtures/codex-0.164.0/trust/`.
+C-CODEX-15.
+
 ### Where the clearance grammar lives
 
 "This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout
@@ -626,7 +769,8 @@ high-trust probe, a manual repeat at eight seconds cleared that same gate; the
 first write had already produced premature startup activity at roughly one second.
 Numbered automation therefore retries every 250 ms for at most five seconds,
 revalidates the same header and exact option identity before each write, and
-reports answered only after the gate clears. A native directory-to-hook transition
+reports answered only after the gate clears. Only the first write carries the
+number; see "Codex numbered trust retries" below for what a retry may send. A native directory-to-hook transition
 confirms directory clearance without sending an old answer to the hook gate.
 An observed clear-and-reappear generation cancels the old attempt.
 
@@ -676,8 +820,9 @@ The budget therefore elapses only on frames that show the gate: it is five
 seconds of cumulative visible time. A frame without it pauses the budget, and
 the same gate's return resumes the remainder rather than a fresh five seconds,
 so a gate that flickers still exhausts one budget. Only a gate that stays absent
-from its departure through verified clearance is guaranteed never to block. The input hold does not change: it
-lasts until verified composer or successor clearance. No separate post-answer
+from its departure through verified clearance is guaranteed never to block. The
+input hold does not change: it lasts until verified composer or successor
+clearance. No separate post-answer
 bound replaces the old one. Boot time grows with load, so any fixed bound only
 moves the false attention later. A CLI that never paints after an answered gate
 leaves the session held, as before, but no longer reported as a trust prompt.
@@ -689,6 +834,30 @@ reached the condition. The sanitized PTY bytes of the slowest launch are in
 `tests/claude/session-trust-slow-boot.test.ts` replays them at their recorded
 times. `tests/e2e/trust-slow-boot-claude.e2e.ts` launches 16 fresh folders at
 once against the real CLI and logs how many boots exceeded 5 s. C-ATTN-03,
+C-TRUST-01.
+
+**An answer is reported when the composer verifies it, not when the dialog
+leaves (Claude 2.1.310, 2026-10-25).** The blank and banner-only frames between
+the erased folder-trust dialog and the composer show neither the gate nor a
+composer. The attempt read them as its choice vanishing and cancelled itself
+quietly, which is right for a choice lost before its Enter. By then, though, the
+confirming write had fulfilled, so the cancellation discarded a real answer.
+None of the 30 fresh-folder `autotrust` launches above emitted `startup_prompt`,
+although the 27 that reached `ready` had answered their gate. A confirmed
+attempt now waits through dialog-free frames and writes nothing; it re-reads the
+screen only when a new frame renders, so the wait holds no timer. Verified
+composer or successor clearance reports it once. If the same gate returns, the
+attempt answers again within the remaining on-screen budget. Expiry, a changed
+gate, a complete off-allowlist gate, or closing cancels it without a report. With this change, all 21 launches of the two Claude trust e2e
+files (5 at once, then 16 at once with every composer more than 7.5 s after the
+prompt) reported exactly one `startup_prompt`, `sent home+down+enter`. Swapping
+in the previous trust code failed both files: no launch reported its answer.
+Codex 0.164 shows its directory-trust prompt in a fresh git folder, and its
+answers were lost the same way: in four rounds of 4 such launches at once, the
+previous code reported 0 of 16 answers and this change 16 of 16, each `sent 1`.
+`tests/claude/session-trust-slow-boot.test.ts` replays the recorded launch and
+requires exactly one report, and both Claude trust e2e files require one
+`workspace_trust` `startup_prompt` per launch that names a write the launch made. C-CLAUDE-10,
 C-TRUST-01.
 
 Both CLIs reword gates often, so an off-allowlist gate behind a recognized header
@@ -710,6 +879,58 @@ the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
 A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the welcome
 box can scroll away while its composer and model/reasoning/path footer remain.
 Those native rows also prove clearance; welcome presence is not required.
+
+### Codex numbered trust retries (0.164, 2026-10-25)
+
+Under `autotrust`, Codex 0.164 sometimes received "1" as a user message right
+after its directory-trust gate. Elwood wrote `1\r` when the `Folder access` gate
+painted, then wrote `1\r` again 250 ms later because the frame still showed the
+gate. Under load Codex had taken the first answer but painted its composer after
+the retry, so the second `1\r` submitted "1" as a turn. In one capture the writes
+landed at 21.26 s and 21.52 s, and the transcript then showed `› 1` with the turn
+running at 24.7 s.
+
+Codex also discards keys written as the gate paints. In 8 fresh git folders
+launched at once (load average about 140), with `autotrust` off and a probe
+typing `1\r` 8–33 ms after the gate's first frame, 7 of the 8 answers were
+dropped. No output followed for 3 s. A bare `\r` then confirmed the
+highlighted `› 1. Trust and continue` 24–156 ms later in all 7. The eighth
+answer (written 13 ms after the gate's first frame) was taken. Once each
+composer painted, a bare `\r` on the empty composer submitted nothing in 8 of
+8: no hook fired, no `Working` row, and the status stayed `ready`. Typing `1`
+alone selects option 1 without confirming it (the gate stayed for 40 s). So
+neither a time limit nor new output can tell a dropped answer from one Codex
+is still processing, and a dropped answer produces no output to wait for.
+
+Elwood therefore types the number in its first write to a gate, and never
+again on a stale frame alone. While the
+rendered caret is on the affirmative, a Codex retry is Enter alone, every
+250 ms within the gate's five on-screen seconds. On the gate it confirms the
+highlighted affirmative; on the empty composer it does nothing. Claude never
+gets a bare Enter (its list remounts with the caret on the decline; see the
+next section), and Codex's hook gate opens with its caret on `Review hooks`.
+Those numbered gates are answered again only after a frame rendered from
+output that arrived after the last write still shows them. Once Elwood has
+started writing the number to a gate, every later attempt at it retries this
+way, even when that write or a retry was rejected, since a rejected write may
+still have reached the CLI. Only another complete dialog replacing the gate
+makes its return a fresh gate that gets the number.
+`tests/codex/session-trust-slow-answer.test.ts` covers both cases.
+
+Measured with 8 fresh git folders launched at once per round and two rounds per
+arm, at load average 20–60 (leaked shell processes were also slowing the
+machine): on the previous code, 9 of 16 launches typed `1` into the composer (2
+to 11 `1\r` writes each), and only 5 of 16 reported their answer. With this
+change, 0 of 16 did: each typed the number once, then 1 to 15 bare Enters, and
+all 16 reported `sent 1`. `tests/e2e/trust-retry-codex.e2e.ts` makes the lag
+certain by holding Codex's output from Elwood for 2 s after the answer while
+Codex runs normally. On the previous code it failed both runs: seven more `1\r`
+writes reached the composer, "11" was submitted, and the model answered "What
+would you like me to do with 11?". With this change it passed 3 of 3. Freezing
+Codex itself (SIGSTOP for 2 s right after the answer) does not work as a test:
+Codex then exits with `timed out discarding buffered terminal input`, whatever
+Elwood types. Codex 0.164 discards buffered input at screen changes like this
+one, and a stalled discard is fatal.
 
 ### Claude trust selection reset (2.1.310, 2026-10-25)
 
@@ -758,6 +979,28 @@ replays the real 100×30 frames (`tests/fixtures/claude-2.1.310/folder-trust-*.t
 against a model of this dialog. `tests/e2e/trust-prompt-claude-concurrent.e2e.ts`
 launches five fresh folders at once and checks every trust write at the PTY
 boundary.
+
+### Codex takes a trust answer before Elwood's frame shows it (0.164, 2026-10-25)
+
+Elwood decides each startup retry from the frame it has rendered, and under load that
+frame trails Codex. Codex 0.164 can take the trust answer and draw its composer while
+Elwood's frame still shows the folder-access gate. A retry decided from that stale
+frame lands in the composer. Keys a caller types in that window also reach the
+composer, so a `1\r` retry written after them would add a digit to the caller's draft
+and submit it as a turn.
+
+`tests/e2e/trust-caller-input-codex.e2e.ts` makes the window certain. It holds Codex's
+output from Elwood for 4 s after the first `1\r`, and types `hello` as soon as Codex's
+raw output draws its configured composer (the footer naming the session's model). On
+`main` at 6e396099, at load average 34, Elwood kept retrying the stale gate every
+250 ms: 14 more `1\r` writes followed `hello`. Raw caller input now hands the startup
+prompt on screen to the caller before its keys are written (C-TRUST-01). In two runs
+with that handoff, nothing followed `hello`.
+
+The Codex update skip has the same ordering. A `2` decided from a stale update prompt
+would reach whatever Codex drew next; on the trust gate, `2` is Quit. Caller input
+ends the skip, and the update stays the caller's until a native composer clears it,
+because Elwood's frame can lose and regain a stale prompt in between (C-CODEX-12).
 
 ### Native Codex startup warnings
 
@@ -939,6 +1182,115 @@ other errors, pre-exit errors, and persistent `EPERM` still fail. Controlled
 shutdown also leaves the reap to its owning termination path instead of emitting
 a competing best-effort warning. Verified against Codex 0.153.3 on macOS.
 
+## Hook and MCP process groups (2026-10-25)
+
+Claude Code 2.1.310 and Codex 0.164.0 start every hook command with `setsid()`.
+Measured on macOS with `ps -o pid,ppid,pgid,command` and `os.getsid()` while a
+slow hook was in flight under a real Elwood session:
+
+- Claude runs a hook as a direct child of the CLI (`ppid` = the PTY leader) whose
+  `pgid` and `sid` both equal its own pid. A compound command runs as
+  `/bin/sh -c '<command>'`; a plain one such as Elwood's
+  `'<node>' '<bridge>.mjs'` is executed directly. An Electron host's
+  `ELECTRON_RUN_AS_NODE=1 …` command needs the shell, consistent with the
+  reported orphan `/bin/sh -c node hook-bridge.mjs`.
+- Codex runs a hook as `/bin/zsh -c '<command>'` (the user's shell), also with its
+  own `pgid` and `sid`. Codex started an MCP server (`node ./scripts/start-mcp.mjs`,
+  from a plugin it installed in the sandboxed `CODEX_HOME`) in its own process
+  group but inside the leader's session.
+- The children the CLI starts without detaching, such as Claude's IDE probe
+  (`ps aux | grep …`), stay in the leader's group.
+
+So the leader-group SIGKILL (`kill(-leader)`) cannot reach a hook. Once the
+leader dies the hook is reparented to PID 1 and nothing ties it to the session;
+only the parent-pid chain links a hook to its leader, and only while the leader
+lives. With the group reap alone, `teardown()` during a `SessionStart` project hook
+running `sleep 45` resolved in 25 ms and left that `/bin/sh` and its `sleep` alive
+under PID 1. `stop()` while a `SessionEnd` hook ran `sleep 46` timed out after
+5 s; Claude waits for `SessionEnd` hooks on SIGTERM, so Elwood escalated to SIGKILL
+and left the hook running. On Codex, `teardown()` during a `UserPromptSubmit`
+config hook left the `zsh`/`sleep` group alive, and the MCP server group outlived
+the CLI briefly. Elwood's own bridge processes died only because teardown then
+closes the bridge socket; the reap itself never reached them.
+
+When Claude exits on SIGTERM within the graceful window it kills its in-flight
+hooks itself: a `stop()` during the same `sleep 45` hook exited in about 1 s with
+no survivors. On macOS, `killpg` on a group whose members are all unreaped zombies
+returns `EPERM`, not `ESRCH`. `src/runtime/shutdown/process-table.ts` reads the
+table and finds these groups by walking parent pids from the leader.
+
+Elwood therefore walks the tree only before a SIGKILL it sends to a live leader. It
+SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=`. A
+group id from `ps` is only a snapshot, `kill()` returning means the SIGSTOP was sent,
+not delivered, and `ps` reads each process's state at its own moment (on macOS it
+takes the set of pids first and each row's state afterwards). So Elwood relies only
+on a process that read stopped (`stat` starting with `T`), inside a group it stopped,
+in two consecutive listings. A group that holds a live descendant is stopped once
+such a process is a parent of one of its members: that parent cannot reap the
+member, so the group keeps its id until the signal. The walk succeeds only on a
+listing that shows the leader live, leaves no live group unreached, and holds every
+live process in every stopped group that way, the leader's included, so none of them
+can have started a process the listing missed; a leader exit observed first fails it,
+because the leader's detached children are then out of reach. Then the stopped groups
+are SIGKILLed deepest first
+(`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
+flight, and two more per level of nesting. A process whose own parent exited before
+the walk is already under PID 1 and out of reach. macOS refuses a stop or a kill of
+a group whose members are all unreaped zombies with `EPERM`, so either counts as a
+failure only if a later listing still shows a live member of that group.
+
+`killpg` is not atomic against `fork` (measured 2026-10-25, Claude 2.1.310, macOS
+Darwin 25.5): a child forked while the group's SIGSTOP goes out can miss it and keep
+running. The PTY leader is the user's interactive login shell (§4.2), and in one
+Claude `teardown()` out of nine, with no hook in flight, `claude` had already exited
+and the shell was running a `$(… | tr …)` pipeline from the user's shell
+configuration. One subshell of it read `R` on every listing for the whole
+three-second deadline while the rest of the group read `T`, so the leader's group was
+never held and `teardown()` rejected. A zsh group forking `$(echo a | tr a b)` in a
+loop, SIGSTOPped once, left one member running in 1 of 150 stops, and a second
+SIGSTOP stopped it every time. So any listing that shows a live process in a stopped
+group not stopped sends that group SIGSTOP again: the leader's only while its exit
+has not been observed, a descendant group because its held parent keeps the id. A
+listing cannot tell a stop still in flight from a missed one, and a second SIGSTOP
+to a stopped process does nothing, so the walk does not try to. With the re-stop, 40
+of 40 real no-hook teardowns completed, 5 of them sending the leader's group a
+second SIGSTOP; without it, 1 of 9 had rejected.
+
+The walk's cost, measured 2026-10-25 on Claude 2.1.310 on a shared machine: one `ps`
+listing of about 1,800 rows took 110–240 ms at load 33–35. At load 19–26, ten
+`teardown()`s with no hook in flight took 81–291 ms (median 227, two listings), and
+ten with a `SessionStart` hook in flight 175–567 ms (median 373, four), against 2–3
+ms and 7–18 ms with the walk disabled, where the in-flight hook survived every time. `tests/e2e/teardown-reap.e2e.ts` drives the
+real CLIs: Claude `teardown()` with a hook in its own group, a `stop()` whose
+`SessionEnd` hook outlasts the graceful window, and Codex `teardown()` with a hook.
+With the walk disabled all three fail with the hook still running.
+
+Codex also starts a shell of its own, not a hook, that the walk has to reach
+(measured 2026-10-25, Codex 0.164, macOS Darwin 25.5). A few seconds after launch
+(2.1–2.6 s after `startCodex` was called, in these runs) it snapshots the user's
+shell environment with `/bin/zsh -lc '<script>'`. The script sources
+`$ZDOTDIR/.zshrc`, else `$HOME/.zshrc`, then prints the environment. The shell is a
+session leader of its own (`stat` `Ss`, `pgid` equal to its pid) whose parent is the
+`codex` leader. With a normal profile it lived about 0.8 s. A `.zshrc` that sleeps
+only when non-interactive (`[[ -o interactive ]] || sleep 120`) holds it open without
+slowing the PTY's own interactive login shell, and with that profile:
+
+- `teardown()` with the group reap alone left the `zsh -lc` and its `sleep` running
+  under PID 1. With the walk, `teardown()` and `kill()` reaped both.
+- `stop()`'s SIGTERM: Codex exited in about 190 ms. The leader exited within the
+  graceful window, so there was no walk, and both the `zsh -lc` (now under PID 1)
+  and its `sleep` survived.
+- A human at the terminal, `/quit` then Enter, or Ctrl-C twice: Codex exited about
+  6 s after the keys. The `zsh -lc` was gone, but the profile's `sleep` survived
+  under PID 1.
+
+Claude 2.1.310 under the same profile started no shell that sources `.zshrc`
+non-interactively, and nothing survived. So the premise behind the graceful-stop
+exception, that the CLI's own SIGTERM shutdown ends its detached descendants, holds
+for Claude's hooks but not for this Codex shell: a `stop()` during the snapshot
+leaves it running. `tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open
+this way and checks that `teardown()` reaps it.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
@@ -1072,8 +1424,9 @@ Four real-PTY edges were invisible to the unit fixtures:
 - Codex 0.153.3 can paint the numbered menu before its input loop accepts the first
   hotkey. A successful PTY write therefore does not prove the dialog cleared. The
   responder runs one bounded retry operation while a safe numbered option remains
-  on the current rendered frame; once it disappears, no delayed key can reach the
-  composer. Some PTY hosts close their input side before process completion and
+  on the current rendered frame. A frame showing the option does not prove the key
+  was ignored, so a retry can still reach the composer; it is Enter alone, or it
+  waits for new output (see "Codex numbered trust retries"). Some PTY hosts close their input side before process completion and
   then return `EIO` from `setRawMode(false)`; contain only terminal-gone restoration
   errors because that host is already the sole remaining terminal-mode owner.
 - Interactive login-shell probes can give their external command control of the
@@ -1141,6 +1494,18 @@ five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
   seen the file. ENOENT after that, and any other read error, still warns.
   Codex never warned here: its shared cursor's `fileSize` already maps ENOENT
   to an empty file. C-CLAUDE-24.
+- **That same mapping hid a removed Codex transcript (2026-10-25).** On Codex
+  0.164.0, `SessionStart` arrives only with the first submission, and its
+  `transcript_path` is a realpath (`/private/var/…/sessions/YYYY/MM/DD/rollout-…jsonl`
+  under `CODEX_HOME`); the file exists by the time that turn's `task_complete` is
+  committed. Deleting it afterwards made the next poll read size 0, which the
+  cursor took for a truncation, so nothing warned and the session's later
+  transcript activity was silently gone: no `transcript_read_error` within 10 s
+  on `main`. The Codex scan now reads through the shared cursor's existence
+  policy, as Claude's does: until a stat has seen the file, ENOENT waits silently;
+  after that, every poll, and the final flush, warns with `ENOENT` while the file is
+  missing. A file that reappears is read with the
+  existing truncation rule. C-CODEX-23.
 
 `elwood sessions` reports `live` from the presence of a `.sock` file in the
 session's stable socket home. A connect probe was rejected on purpose: the
@@ -1172,15 +1537,45 @@ failed `claude_start_failed` ("`claude --version` failed", `ETIMEDOUT`) at 17.5�
 probe shell now writes `elwood-probe-command-start` on descriptor 3, a fourth pipe the
 runner opens, just before the command, then closes it so the command does not inherit it.
 Writing it to stderr was the first version; a review pointed out that a profile running
-`exec 2>&1` or `exec 2>/dev/null` would hide it, and both shells were confirmed to
-pass descriptor 3 through: real zsh with this host's profile, zsh with either redirect in
-a private `ZDOTDIR`, and bash with `exec 2>&1` in its rc file all delivered the line, and
-only a profile that runs `exec 3>&-` itself loses it.
+`exec 2>&1` or `exec 2>/dev/null` would hide it. Real zsh with this host's profile, and
+zsh with either redirect in a private `ZDOTDIR`, delivered the line on descriptor 3. The
+bash check ran `bash --rcfile … -i`, a non-login shell, which keeps descriptor 3 too; macOS's
+bash as an interactive login shell does not (next section).
 The profile gets a 60 s launch bound and the CLI keeps 15 s from that line (C-PERF-05).
 With the stderr version, three 16-run fleets at load 48–74 passed preflight 48 of 48;
 the bounds are the same on descriptor 3. The real-shell e2e
 uses a private `ZDOTDIR` whose `.zshrc` sleeps 4 s with a 2 s command bound; `main`
 fails it with that same `ETIMEDOUT`.
+
+## Probe start line under macOS bash 3.2 (2026-10-25)
+
+macOS's `/bin/bash` 3.2.57, and `/bin/sh`, which is the same bash in sh mode, close every
+inherited descriptor above stderr when started with both `-l` and `-i`, even with
+`--noprofile --norc`. Pipes a Node parent opened on 3, 9, 10 and 19 were all closed before
+the `-c` script ran. `-l` alone or `-i` alone keeps them, and so does Linux's bash 5.2.15
+(Debian, in the `node:24` image) as an interactive login shell. zsh 5.9 and ksh 93u+ keep
+them; dash keeps 3–9 but cannot name a descriptor of 10 or more, so a higher number is no
+fix. With descriptor 3 as the only channel, every probe through those shells failed `login
+shell exited with status 0 before starting the probe command` although its command ran,
+and so did `elwood`'s agent detection. Any macOS user whose login shell is bash could not
+start a session. GitHub's `macos-latest` runner user's shell is bash.
+
+The probe script now tests the write: `if { echo L >&3; } 2>/dev/null; then exec 3>&-;
+else echo L; fi`. zsh, ksh, macOS and Debian dash, non-login bash 3.2 and bash 5.2 took
+descriptor 3 when it was open and stdout when it was closed, and none printed the failed
+redirection's error. The fallback is stdout, not stderr. Under real `bash -l -i` with a
+`~/.bash_profile` of `exec 2>/dev/null` or `exec 2>&1`, the line arrived on stdout and the
+probe passed. A stderr fallback would have been discarded by the first and moved into
+stdout by the second. A profile that hid stdout would hide the command's own output and
+fail the probe regardless. The runner removes the line from captured stdout. A profile
+that runs `exec 3>&-` itself now falls back too. Only a profile that reopens descriptor 3
+onto something else still loses the line. Because stdout is now watched for every probe,
+the line ends in a random per-process token: a profile that printed the bare
+`elwood-probe-command-start` would otherwise start the command's bound while the profile
+was still loading. `tests/unit/probe-closed-descriptor.test.ts` covers this with a
+`/bin/sh` stand-in that closes descriptor 3 on every host, and with real `/bin/bash -l -i`
+where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main` at
+613b3ea5.
 
 ## Testing against the real CLIs
 
@@ -1192,6 +1587,29 @@ fails it with that same `ETIMEDOUT`.
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+### A rate-limited Codex turn stays running for minutes (2026-10-25)
+
+Codex 0.164.0 retries a `429 Too Many Requests` after the server's retry delay. In
+Codex's own log (`~/.codex/logs_2.sqlite`, target `codex_core::responses_retry`)
+the delay for four e2e turns on one account's default model was 110 to 509 s. All
+four retries were scheduled for the same instant, the end of a usage window. While
+it waits, Codex paints
+`• Reconnecting... 1/5 (44s • esc to interrupt)` over
+`└ Exceeded retry limit, last status: 429 Too Many Requests`. The rollout ends at
+the user message with no reply, and no `Stop` hook fires. Elwood correctly stays
+`running`, because the turn has not ended. A real-turn e2e that inherits the
+developer's `~/.codex` shares that model's limit with every Codex session on the
+account, so it can wait out a backoff no test timeout covers. A test avoids this by
+pinning a private `CODEX_HOME` and a small model. `tests/e2e/resume-ready-codex.e2e.ts`
+does, and bounds its readiness, turn and submission waits so a stuck step fails with
+its label and the screen.
+
+A private home whose `config.toml` points
+`model_provider` at a local `[model_providers.<id>]` with `base_url =
+"http://127.0.0.1:<port>/v1"` and `wire_api = "responses"` reproduces this
+without quota. That provider answers every request with 429 and `retry-after: 300`.
+Codex still lists models from it before the first turn. C-API-28.
 
 ### Concurrent cold starts race Codex's state migrations (2026-10-25)
 

@@ -10,6 +10,7 @@ import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
+import { onCallerInput } from "./session-input.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
@@ -68,7 +69,7 @@ export function createSessionFrameObserver(
     // Settle automation against this frame before evidence/readiness releases input.
     state.observeClearance?.(frame.text);
     // Publish this frame's hold before evidence listeners can submit readiness.
-    readiness.observeFrameHold(reading.facts, active.trustInputBlocking);
+    readiness.observeFrameHold(reading.facts, active.trustInputBlocking, frame.text);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
@@ -76,7 +77,7 @@ export function createSessionFrameObserver(
       // positive frame shows either resumed work or an idle composer.
       replayAutomationClearance(active, reading.facts);
     } finally {
-      readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking);
+      readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking, frame.text);
     }
   };
   return {
@@ -99,16 +100,24 @@ export function createSessionFrameObserver(
   };
 }
 
-/** Cancel automation synchronously before signaling or disposing its PTY. */
+/**
+ * Cancel automation synchronously before signaling or disposing its PTY, and hand the
+ * startup prompt on screen to the caller as soon as raw caller input reaches the
+ * session's terminal.
+ */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold">,
-  trust: TrustState,
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold"> & {
+    readonly terminal: { readonly xterm: object };
+  },
+  trust: TrustState & { callerInput(): void },
   readiness: ReadinessGate,
 ): void {
   session.bindInitialReadinessHold(readiness.isHeld);
+  const stopCallerInput = onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
     "abort",
     () => {
+      stopCallerInput();
       trust.dispose();
       readiness.ready.cancel();
     },

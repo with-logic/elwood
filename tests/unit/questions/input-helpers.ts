@@ -1,7 +1,7 @@
 /** Real native input fixture without transaction ownership (PRD §4). */
 import { vi } from "vitest";
 import { questionInput } from "../../../src/core/questions/input.ts";
-import { PickerInputOwnership } from "../../../src/runtime/session/picker-input.ts";
+import { SessionInputOwnership } from "../../../src/runtime/session/session-input.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 import { definitions, registry } from "./helpers.ts";
 
@@ -14,7 +14,7 @@ export function inputHarness(assertLive: () => void = () => {}) {
   const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, (input) =>
     writes.push(String(input)),
   );
-  const input = new PickerInputOwnership(terminal);
+  const input = new SessionInputOwnership(terminal);
   const closing = new AbortController();
   const operation = new AbortController();
   const requests = registry();

@@ -1,0 +1,119 @@
+/**
+ * A turn the real Codex CLI rejects fails instead of hanging or passing as a reply.
+ * Implements PRD §5.8/§12A.2 and C-E2E-21 for C-API-60/C-CLI-28. Codex fires no `Stop` for
+ * a rejected turn, so its failed transcript `task_complete` is the only evidence. A bogus
+ * `--model` is refused before any model quota is consumed, so this needs no model quota.
+ */
+
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { CliError, CliTerminalRecord } from "../../src/cli/output/types.ts";
+import { CodexSession, ElwoodError } from "../../src/index.ts";
+import { type Invocation, invoke, parse } from "./cli-commands-helpers.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
+import {
+  bogusCodexModel,
+  codexAuthMissing,
+  e2eTimeoutMs,
+  type HookEvent,
+  makeProject,
+  sandboxedCodexHome,
+  skipIf,
+  skipReason,
+  skipTurns,
+} from "./helpers.ts";
+
+const config = "check_for_update_on_startup = false\n";
+
+/**
+ * `result`, once the CLI reports that its own cleanup succeeded. A CLI that crashed or failed
+ * its cleanup may have left its Codex running, so this throws, and the tracked launch keeps
+ * the test's scratch.
+ */
+function cleanedUp(result: Invocation): Invocation {
+  let cleanup: CliTerminalRecord["cleanup"] | undefined;
+  try {
+    cleanup = (JSON.parse(result.stdout) as CliTerminalRecord).cleanup;
+  } catch {
+    cleanup = undefined;
+  }
+  if (cleanup?.status === "succeeded") return result;
+  const streams = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
+  throw new Error(`the CLI did not confirm its cleanup: ${JSON.stringify(cleanup)}\n${streams}`);
+}
+
+test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with status 1", {
+  skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
+  timeout: e2eTimeoutMs + 30_000,
+}, async () => {
+  const project = makeProject("codex");
+  const sandbox = sandboxedCodexHome(project, config);
+  const launches = codexLaunches();
+  await runCodexTest({ sessions: () => [], sandbox, launches }, async () => {
+    const cli = invoke(
+      [
+        "--agent=codex",
+        `--model=${bogusCodexModel}`,
+        `--state-dir=${project.stateDir}`,
+        "--ephemeral",
+        "--output=json",
+        "--timeout=2m",
+        "Reply with exactly OK.",
+      ],
+      project.cwd,
+    );
+    // A CLI that timed out was killed, and the Codex it launched may still be running.
+    const result = await launches.track(cli.then(cleanedUp));
+    // Report both streams on any mismatch so an unrelated startup failure is diagnosable.
+    const output = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
+    assert.equal(result.status, 1, output);
+    const document = parse<CliError>(result, 1);
+    assert.equal(document.type, "error", output);
+    assert.equal(document.agent, "codex");
+    assert.equal(document.error.code, "turn_failed", output);
+    assert.match(document.error.message, /model_not_found/u);
+  });
+});
+
+test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed", {
+  skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
+  timeout: e2eTimeoutMs + 30_000,
+}, async () => {
+  const project = makeProject("codex");
+  const sandbox = sandboxedCodexHome(project, config);
+  const session = new CodexSession({
+    cwd: project.cwd,
+    stateDir: project.stateDir,
+    model: bogusCodexModel,
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    autotrust: true,
+  });
+  const hooks: string[] = [];
+  session.on("hook", (event: HookEvent) => hooks.push(event.hook_event_name));
+  const settle = (prompt: string) =>
+    session.send(prompt).then(
+      (reply) => ({ reply }),
+      (error: unknown) => ({ error }),
+    );
+  const launches = codexLaunches();
+  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
+    // Started explicitly so a start that rejects is told apart from the turns' rejections.
+    await launches.track(session.start());
+    for (const prompt of ["Reply with exactly OK.", "Reply with exactly AGAIN."]) {
+      // The second turn proves the first released the session at its real boundary.
+      const outcome = await settle(prompt);
+      assert.ok(
+        "error" in outcome,
+        `expected a rejection; send resolved ${JSON.stringify(outcome)}`,
+      );
+      assert.ok(outcome.error instanceof ElwoodError, String(outcome.error));
+      assert.equal(outcome.error.code, "turn_failed", outcome.error.message);
+      assert.match(outcome.error.message, /model_not_found/u);
+      assert.equal(typeof outcome.error.details["agentError"], "string");
+    }
+    // Codex accepted both submissions and fired no `Stop` for either.
+    assert.equal(hooks.filter((name) => name === "UserPromptSubmit").length, 2, hooks.join(","));
+    assert.ok(!hooks.includes("Stop"), hooks.join(","));
+  });
+});

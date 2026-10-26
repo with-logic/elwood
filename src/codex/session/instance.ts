@@ -12,6 +12,7 @@ import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
+import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
@@ -26,13 +27,18 @@ import { codexSessionQuestions } from "../questions/session.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
+import { confirmCodexRejection } from "../transcript/rejection.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
-import { CliExitBarrier } from "./cli-exit.ts";
 import { switchCodexModel } from "./config-switch.ts";
 import { observeCodexInitialReady } from "./initial-ready.ts";
+import { CodexTurnCommit } from "./turn-commit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import { clipboardRestoreFailedWarning } from "./warnings.ts";
+
+/** How long a setModel interrupted by close waits for the CLI to exit before restoring. */
+const cliExitWaitMs = 5_000;
+
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   // The default and the setModel restore use the config fixed at THIS session's launch (§5.3).
   protected readonly picker: ModelPickerSpec = {
@@ -45,8 +51,12 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
-  private readonly cliExit: CliExitBarrier;
+  // The PTY's own exit. Session status cannot stand in for it: shutdown records stopped,
+  // killed, and torn_down even when its signal did not take.
+  private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly configPath: string;
+  /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
+  readonly turnCommit: CodexTurnCommit;
   constructor(
     record: SessionRecord,
     stateDir: string,
@@ -78,8 +88,11 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
-    this.cliExit = new CliExitBarrier(pty);
+    this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.configPath = configPath;
+    // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
+    emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
+    emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
@@ -102,11 +115,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     };
     return super.setModel(id, options, (flow, signal) => switchCodexModel(session, flow, signal));
   }
-  // A closing session rejects the picker at once, while the dying CLI can still persist
-  // the selection it had confirmed, so the restore waits on the PTY's own exit.
+  // A closing session's dying CLI can still persist a confirmed selection: await its exit.
   private waitForCliExit(): Promise<unknown> | undefined {
     if (!this.closing.signal.aborted) return undefined;
-    return this.cliExit.wait();
+    return this.cliExit.within(cliExitWaitMs, { unref: true }); // never holds the host open
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
@@ -128,7 +140,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
   // Codex has no staged chip; the composer still shows the paste's last line.
   protected readonly recoveryComposer = createCodexRecoveryComposer(this.terminal);
-
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
   // held while a dialog is on screen so it never confirms one (C-API-46/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
@@ -163,10 +174,18 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);
   }
-  /** One bounded per-pass scan of the committed transcript (an unblocked `Stop`, §7A.3). */
-  scanTranscript(): void {
-    this.transcriptWatcher?.scan();
+  override stop(): Promise<void> {
+    this.closing.abort();
+    this.loops.pause();
+    return this.turnCommit.beforeShutdown(() => super.stop());
   }
+  override teardown(): Promise<void> {
+    this.closing.abort();
+    this.loops.prepareClear();
+    return this.turnCommit.beforeShutdown(() => super.teardown());
+  }
+  /** One bounded per-pass scan of the committed transcript (an unblocked `Stop`, §7A.3). */
+  readonly scanTranscript = (): void => this.transcriptWatcher?.scan();
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     // No cast: each callback is the emitter's own `emit` bound to a correlated
     // event name, so a map/payload drift is a compile error here.

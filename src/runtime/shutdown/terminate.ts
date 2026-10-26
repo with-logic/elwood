@@ -10,10 +10,13 @@ import {
   errnoCode,
   toError,
 } from "../../core/errors.ts";
+import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
+import type { SweepFailure } from "./detached-sweep/failures.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
+type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached">;
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
@@ -26,34 +29,51 @@ const POST_EXIT_REAP_RETRY_MS = 25;
  * typed `termination_failed` (never swallowed) and the reaper stays unlatched so a
  * later `teardown()` RETRIES it. A successful reap latches, so a later reuse is a
  * harmless no-op (see SessionReaper) (C-LIFE-10).
+ *
+ * Before the SIGKILL — the initial signal, or the escalation after an ignored
+ * SIGTERM — the detached-descendant sweep runs while the leader is still alive and
+ * still the parent of its `setsid()` hooks. A leader that exits on SIGTERM is not
+ * swept: the CLI's own graceful shutdown ends its hooks. One exit latch spans every
+ * phase, and once it has seen the exit, nothing more is sent to the leader's pid,
+ * which may already belong to another process: an exit during the sweep's table reads
+ * cancels the SIGKILL. A sweep failure is reported like a reap failure, after the
+ * leader is still killed and reaped.
  */
 export async function terminatePty(
   pty: PtyProcess,
   signal: "SIGTERM" | "SIGKILL",
-  reaper: Pick<SessionReaper, "reap">,
+  reaper: TerminationReaper,
   timeouts: TerminationTimeouts = defaultTimeouts,
 ): Promise<void> {
   let terminationError: ElwoodError | undefined;
+  let sweepError: unknown;
   let observedExit = false;
+  let exit: PtyExitLatch | undefined;
   try {
-    const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
-    const exited = await waitForExitAfterSignal(pty, signal, timeoutMs);
-    // On a SIGTERM timeout, escalate to SIGKILL. The reported signal is the one
-    // whose wait actually failed, so an operator is sent to the right phase.
-    const escalated =
-      !exited && signal === "SIGTERM"
-        ? await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs)
-        : exited;
-    observedExit = escalated;
-    if (!escalated) {
-      const failedSignal = signal === "SIGTERM" ? "SIGKILL" : signal;
-      terminationError = elwoodError(
-        "termination_failed",
-        `PTY did not exit after ${failedSignal}.`,
-      );
+    const latch = new PtyExitLatch(pty);
+    exit = latch;
+    if (signal === "SIGTERM") {
+      pty.kill("SIGTERM");
+      observedExit = await latch.within(timeouts.gracefulMs);
+    }
+    if (!observedExit) {
+      sweepError = await reaper.sweepDetached(() => latch.exited).then(() => undefined, toError);
+      if (!latch.exited) pty.kill("SIGKILL");
+      observedExit = await latch.within(timeouts.forceMs);
+      if (!observedExit) {
+        terminationError = elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
+      }
     }
   } catch (error) {
     terminationError = ptyOperationFailed(error);
+  } finally {
+    exit?.dispose();
+  }
+  if (sweepError !== undefined) {
+    terminationError =
+      terminationError === undefined
+        ? sweepOnlyFailed(sweepError)
+        : withCause(terminationError, "sweepError", sweepError);
   }
   // Reap on every path — even if the wait timed out or a PTY call threw — so a
   // termination_failed outcome never leaks the descendant tree (C-LIFE-10). The
@@ -67,7 +87,7 @@ export async function terminatePty(
     await reapAfterTermination(reaper, observedExit);
   } catch (reapError) {
     if (terminationError === undefined) throw reapOnlyFailed(reapError);
-    throw bothFailed(terminationError, reapError);
+    throw withCause(terminationError, "reapError", reapError);
   }
   if (terminationError !== undefined) throw terminationError;
 }
@@ -90,17 +110,24 @@ async function reapAfterTermination(
 }
 
 /**
- * Builds one error preserving BOTH the termination and the reap failure causes.
- * The reap cause is carried in `details.reapError`, with its errno in
- * `details.reapErrno` (NOT `details.cause`/`errno`, which the termination error may
- * already use for its own root cause), so neither cause is dropped (C-LIFE-10).
+ * Builds one error preserving BOTH the termination failure and a secondary cause:
+ * the reap failure (`reapError`, with its errno in `reapErrno`) or the
+ * detached-descendant sweep failure (`sweepError`). The secondary cause is carried in
+ * `details` under its own keys (NOT `details.cause`/`errno`, which the termination
+ * error may already use for its own root cause), so neither cause is dropped
+ * (C-LIFE-10).
  */
-function bothFailed(terminationError: ElwoodError, reapError: unknown): ElwoodError {
-  const reapErrno = errnoCode(reapError);
+function withCause(
+  terminationError: ElwoodError,
+  key: "reapError" | "sweepError",
+  secondary: unknown,
+): ElwoodError {
+  const reapErrno = key === "reapError" ? errnoCode(secondary) : undefined;
   return elwoodError(terminationError.code, terminationError.message, {
     ...terminationError.details,
-    reapError: toError(reapError).message,
+    [key]: toError(secondary).message,
     ...(reapErrno === undefined ? {} : { reapErrno }),
+    ...(key === "sweepError" ? unconfirmedGroupsDetail(toError(secondary)) : {}),
   });
 }
 
@@ -134,28 +161,26 @@ function reapOnlyFailed(reapError: unknown): ElwoodError {
   );
 }
 
-function waitForExitAfterSignal(
-  pty: PtyProcess,
-  signal: "SIGTERM" | "SIGKILL",
-  timeoutMs: number,
-): Promise<boolean> {
-  return new Promise<boolean>((resolve, reject) => {
-    let unsubscribe: (() => void) | undefined;
-    const timer = setTimeout(() => {
-      unsubscribe?.();
-      resolve(false);
-    }, timeoutMs);
-    try {
-      unsubscribe = pty.onExit(() => {
-        clearTimeout(timer);
-        unsubscribe?.();
-        resolve(true);
-      });
-      pty.kill(signal);
-    } catch (error) {
-      clearTimeout(timer);
-      unsubscribe?.();
-      reject(error);
-    }
-  });
+/** The same typed wrapping when only the detached-descendant sweep failed. */
+function sweepOnlyFailed(sweepError: unknown): ElwoodError {
+  return elwoodError(
+    "termination_failed",
+    "PTY exited but its detached descendants could not be confirmed reaped.",
+    { ...causeDetails(sweepError), ...unconfirmedGroupsDetail(toError(sweepError)) },
+  );
+}
+
+/**
+ * `unconfirmedProcessGroupIds`: the process-group ids a sweep failure names, if any: the
+ * groups it could not confirm reaped, the leader's own included when its group was not
+ * confirmed stopped. Like `processGroupId` they are diagnostic only; an id may already
+ * belong to another group.
+ */
+export function unconfirmedGroupsDetail(error: Error): {
+  readonly unconfirmedProcessGroupIds?: number[];
+} {
+  const { processGroupIds } = error as Partial<SweepFailure>;
+  return processGroupIds !== undefined && processGroupIds.length > 0
+    ? { unconfirmedProcessGroupIds: [...processGroupIds] }
+    : {};
 }

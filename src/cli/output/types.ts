@@ -7,11 +7,10 @@ import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { CliAgent } from "../types.ts";
 
 export type CliCleanupAction = "none" | "preserve" | "teardown";
-export type CliCleanup = {
-  readonly action: CliCleanupAction;
-  readonly status: "succeeded" | "failed";
-  readonly error?: string;
-};
+/** A failed cleanup always carries its content-free diagnostic (§12A.2). */
+export type CliCleanup =
+  | { readonly action: CliCleanupAction; readonly status: "succeeded" }
+  | { readonly action: CliCleanupAction; readonly status: "failed"; readonly error: string };
 
 export type CliTerminalBase = {
   readonly schemaVersion: 1;

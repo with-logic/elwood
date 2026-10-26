@@ -15,22 +15,27 @@ import {
   hasHookError,
   type JsonObject,
 } from "./bridge-helpers.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
-  cleanup,
+  codexAuthMissing,
   e2eTimeoutMs,
   invokeHookBridge,
   makeProject,
   observeSession,
+  sandboxedCodexHome,
   skipIf,
   skipReason,
   waitFor,
 } from "./helpers.ts";
 
 test("C-E2E-03 real Codex bridge handles typed hook responses", {
-  skip: skipIf(skipReason("codex")),
+  skip: skipIf(skipReason("codex"), codexAuthMissing()),
   timeout: e2eTimeoutMs,
 }, async () => {
   const project = makeProject("codex");
+  // Its own sandbox, kept with the project if this Codex cannot be confirmed gone.
+  const sandbox = sandboxedCodexHome(project, "");
+  const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
   const transcript = join(project.cwd, "codex-transcript.jsonl");
   writeFileSync(transcript, "");
@@ -53,13 +58,15 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
     PostCompact: () => undefined,
     Stop: () => ({ continue: false, stopReason: "not ready" }),
   };
-  try {
-    session = await startCodex({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      autotrust: true,
-      hooks,
-    });
+  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
+    session = await launches.track(
+      startCodex({
+        cwd: project.cwd,
+        stateDir: project.stateDir,
+        autotrust: true,
+        hooks,
+      }),
+    );
     const observed = observeSession(session);
     const base = { session_id: "codex-bridge-e2e", cwd: project.cwd, turn_id: "turn-1" };
     await invokeHookBridge(project, session.elwoodSessionId, {
@@ -154,9 +161,7 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
       "Codex invalid hook error",
       15_000,
     );
-  } finally {
-    await cleanup(session);
-  }
+  });
 
   async function expectCodex(
     active: CodexSessionApi,

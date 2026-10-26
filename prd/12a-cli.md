@@ -106,14 +106,27 @@ setup turn and discards that turn's response before observing the user turn. It
 is a real agent turn: tools and other side effects performed during persona setup
 remain even though its assistant response is omitted from CLI output. Explicit
 persona plus resume is a usage error. An agent process exit before
-CLI-requested cleanup is `agent_exited`, including a zero-status exit. A Claude turn
-the agent rejects (§5.8), including the persona setup turn, is `turn_failed`
+CLI-requested cleanup is `agent_exited`, including a zero-status exit. A Claude or Codex
+turn the agent rejects (§5.8), including the persona setup turn, is `turn_failed`
 rather than a successful result. Response data already collected remains
 available on later failure.
 
 Cleanup runs exactly once. A cleanup failure never masks a primary usage,
 agent, timeout, or interruption outcome, and it changes an otherwise successful
-invocation to failure.
+invocation to failure. Its diagnostic names only the typed Elwood failures behind
+it. Each always appears as its error code, followed by its errno token and then
+`reap` and its reap's errno token (§10 `termination_failed`) when those are valid
+errno names, then `process groups` and the ids in its
+`unconfirmedProcessGroupIds` (positive integers, at most 16) when it has any: for
+example `Cleanup failed (termination_failed EPERM).`, `Cleanup failed
+(termination_failed reap EPERM).`, or `Cleanup failed (termination_failed EAGAIN
+process groups 4242 4243).` Those ids are for diagnosis only and may already
+belong to other groups. For a failed teardown those are its failed
+steps', in order (§10 `teardown_failed`). The diagnostic never carries their
+messages or paths, and a failure with no typed cause reads `Cleanup failed.` In
+text mode, a cleanup failure behind a different primary failure is its own stderr
+line after the primary error's; a combined `models` listing (§12A.10) prefixes it
+with the agent, as it does that agent's error.
 
 ### 12A.3 Output protocols
 
@@ -231,6 +244,26 @@ conflict, together with a concrete recovery flag when one exists. Debug mode may
 include sanitized event detail but never weakens §12A.3. Static arguments, environment, config, cwd, image, and option
 compatibility MUST be validated before session creation whenever validation
 does not require a stored resume record.
+
+The effective workspace, new or resumed, MUST be an absolute, existing directory
+owned by the current user that no other user can replace before the agent
+launches in it. Resolving its path as given, name by name and through every
+symlink, every directory a name is looked up in MUST be owned by root or the
+current user and MUST NOT be writable by group or others unless it is sticky,
+and every directory and symlink passed MUST be owned by root or the current
+user. A group-writable directory is accepted when its group is the user's
+private group: the user's primary group, with the same number as the user, as
+Debian, Ubuntu, and Fedora create it. Root's group 0 is a shared system group and
+never counts as private, even for root. Anything else is a usage error that names
+the directory or link and how to fix it. The check reads owners and mode bits
+only: an ACL that grants another user write access, or another member added to
+the user's private group, is not detected, and where the platform reports no user
+id neither the ownership nor this check applies. The path is launched and
+stored as given. A link whose target is not UTF-8, or a path that follows more
+than 40 links, fails as uninspectable, naming the link.
+Workspaces under `/tmp` and the macOS temporary directories pass, those being
+sticky or the user's own; `/tmp` itself, owned by root, fails the ownership
+rule for every user but root.
 
 ### 12A.6 Same-terminal head mode
 

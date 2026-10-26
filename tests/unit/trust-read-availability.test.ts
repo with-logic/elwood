@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
+import { freshPhase } from "../../src/core/trust/step.ts";
 import { choiceIdentity, type TrustView, trustView } from "../../src/core/trust/view.ts";
 import { TrustAttempt } from "../../src/core/trust/write.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
@@ -13,7 +14,7 @@ function attempt() {
   if (candidate.kind !== "candidate") throw new Error("expected candidate");
   const identity = choiceIdentity(candidate);
   if (identity === undefined) throw new Error("expected safe choice");
-  return { candidate, owned: new TrustAttempt(candidate, identity) };
+  return { candidate, owned: new TrustAttempt(candidate, identity, freshPhase()) };
 }
 
 test("C-TRUST-01 unavailable frames withhold first and retry writes until current evidence returns", async () => {
@@ -22,7 +23,7 @@ test("C-TRUST-01 unavailable frames withhold first and retry writes until curren
   let view: TrustView | undefined;
   const write = vi.fn();
   const completion = owned
-    .start(write, () => view, Date.now() + 1_000)
+    .start(write, () => view, { deadlineAtMs: Date.now() + 1_000 })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(200);
   expect(write).not.toHaveBeenCalled();
@@ -32,8 +33,10 @@ test("C-TRUST-01 unavailable frames withhold first and retry writes until curren
   view = undefined;
   await vi.advanceTimersByTimeAsync(500);
   expect(write).toHaveBeenCalledTimes(1);
+  // The confirmed answer waits for a render notification, not a poll.
+  expect(vi.getTimerCount()).toBe(0);
   view = { kind: "clear" };
-  await vi.advanceTimersByTimeAsync(20);
+  owned.wake();
   expect(await completion).toBe("answered");
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -46,7 +49,7 @@ test.each([
   const { owned } = attempt();
   const write = vi.fn();
   const completion = owned
-    .start(write, () => undefined, Date.now() + 95)
+    .start(write, () => undefined, { deadlineAtMs: Date.now() + 95 })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(40);
   if (end === "cancel") owned.cancel();
@@ -62,7 +65,7 @@ test("C-TRUST-01 a replacement revealed after unavailable output never receives 
   let view: TrustView | undefined;
   const write = vi.fn();
   const completion = owned
-    .start(write, () => view, Date.now() + 1_000)
+    .start(write, () => view, { deadlineAtMs: Date.now() + 1_000 })
     .catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(40);
   view = { kind: "unknown" };

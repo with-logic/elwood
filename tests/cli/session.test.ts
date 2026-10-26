@@ -156,7 +156,7 @@ describe("headless CLI session", () => {
     expect(failedKill).toHaveBeenCalledOnce();
 
     const stateDir = join(root, "state");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd: root });
     writeSessionRecord(
       createSessionRecord({ cwd: root, id: "failed", adapter: "codex" }),
       sessionDir(stateDir, "failed"),
@@ -172,7 +172,7 @@ describe("headless CLI session", () => {
   test("C-CLI-03 exact resume selects stored adapters and their config in both directions", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
     const stateDir = join(root, "state");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd: root });
     for (const agent of ["claude", "codex"] as const) {
       const id = `${agent}-saved`;
       writeSessionRecord(

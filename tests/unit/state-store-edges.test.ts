@@ -42,6 +42,7 @@ vi.mock("node:fs", async (importOriginal) => {
 describe("state store edges", () => {
   test("C-ERR-04 stringifies non-Error read failures as corrupt-state causes", () => {
     const root = tempDir("elwood-validate-");
+    prepareStateDir(root, { cwd: root });
     const record = createSessionRecord({ cwd: root, id: "raw-read" });
     writeSessionRecord(record, sessionDir(root, "raw-read"));
     const spy = vi
@@ -62,6 +63,7 @@ describe("state store edges", () => {
 
   test("C-STATE-08 stringifies non-Error failures while removing session files", () => {
     const root = tempDir("elwood-validate-");
+    prepareStateDir(root, { cwd: root });
     const record = createSessionRecord({ cwd: root, id: "raw-remove" });
     const dir = sessionDir(root, "raw-remove");
     writeSessionRecord(record, dir);
@@ -83,6 +85,7 @@ describe("state store edges", () => {
 
   test("C-STATE-08 surfaces an Error failure's message while removing session files", () => {
     const root = tempDir("elwood-validate-");
+    prepareStateDir(root, { cwd: root });
     const record = createSessionRecord({ cwd: root, id: "err-remove" });
     const dir = sessionDir(root, "err-remove");
     writeSessionRecord(record, dir);
@@ -107,7 +110,7 @@ describe("state store edges", () => {
     // NOT prevent the session-directory removal that would otherwise leave resumable
     // metadata + runtime files behind.
     const root = tempDir("elwood-validate-");
-    prepareStateDir(root);
+    prepareStateDir(root, { cwd: root });
     const dir = sessionDir(root, "attempt-all");
     writeSessionRecord(createSessionRecord({ cwd: root, id: "attempt-all" }), dir);
     const socketHome = join(root, "elwood-err-remove-home"); // owned prefix; rmSync throws

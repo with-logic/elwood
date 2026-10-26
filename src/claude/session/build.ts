@@ -8,8 +8,8 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { withAutomatedInput } from "../../runtime/session/picker-input.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
+import { withAutomatedInput } from "../../runtime/session/session-input.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -154,7 +154,7 @@ export async function buildClaudeSession(
     runtime,
     pty,
     terminal,
-    bridge,
+    { bridge, finishTranscriptWatcher: () => finishSafely() },
     emitter,
     terminalReplay,
     requestedSize,

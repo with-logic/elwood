@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "vitest";
 import { ElwoodError, elwoodError } from "../../src/core/errors.ts";
-import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
   cleanupStartupResources,
@@ -81,6 +81,7 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
       kill: (signal = "SIGTERM") => void signals.push(signal),
     };
     const refusing = new SessionReaper(LEADER, {
+      ...quietProcessTree(),
       killGroup: () => {
         throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
       },
