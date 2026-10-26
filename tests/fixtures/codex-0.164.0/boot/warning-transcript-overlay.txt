@@ -1,0 +1,39 @@
+/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /
+
+  >_ OpenAI Codex (v0.164.0)
+     /tmp/elwood-native-CAPTURE
+
+⚠ The elwood_probe MCP server is not logged in. Run `codex mcp login elwood_probe`.
+⚠ MCP startup incomplete (failed: elwood_probe)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+⌃space select
+ ↑/↓ to scroll · pgup/pgdn to page · home/end to jump
+ q close · f3 find · esc browse prompts
