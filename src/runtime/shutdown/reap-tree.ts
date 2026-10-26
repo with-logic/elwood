@@ -104,11 +104,11 @@ export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProc
   return {
     stopGroup: (pgid) => void stopped.add(pgid),
     listProcesses: () =>
-      Promise.resolve(
-        [...stopped].map((pgid) => ({ pid: pgid, ppid: 1, pgid, zombie: false, stopped: true })),
-      ),
+      Promise.resolve([...stopped].map((pgid) => ({ ...QUIET_ROW, pid: pgid, pgid }))),
   };
 }
+
+const QUIET_ROW = { ppid: 1, zombie: false, stopped: true, name: "" };
 
 export function resetProcessTreeOpsForTests(): void {
   activeOps = osProcessTreeOps;
