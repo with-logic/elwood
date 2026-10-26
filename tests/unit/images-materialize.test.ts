@@ -4,9 +4,9 @@
  * materialize failure removes the temp dir while preserving the original error.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { materializeImages } from "../../src/core/images/materialize.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -22,6 +22,7 @@ describe("materializeImages (C-API-44)", () => {
 
   test("C-API-44 materializes bytes to temp files and cleans them up", async () => {
     const { paths, cleanup } = await materializeImages([{ data: PNG, format: "png" }]);
+    onTestFinished(cleanup); // removes the temp dir even if an assertion fails first
     const file = paths[0] as string;
     expect(file.endsWith(".png")).toBe(true);
     expect(readFileSync(file)).toEqual(Buffer.from(PNG));
@@ -38,6 +39,7 @@ describe("materializeImages (C-API-44)", () => {
       { path: file },
       { data: PNG, format: "gif" },
     ]);
+    onTestFinished(cleanup);
     expect(paths[0]).toBe(file);
     expect((paths[1] as string).endsWith(".gif")).toBe(true);
     await cleanup();
@@ -60,6 +62,7 @@ describe("materializeImages (C-API-44)", () => {
       { data: PNG, format: "jpeg" },
       { data: PNG, format: "webp" },
     ]);
+    onTestFinished(cleanup);
     expect((paths[0] as string).endsWith(".jpg")).toBe(true);
     expect((paths[1] as string).endsWith(".webp")).toBe(true);
     await cleanup();
@@ -104,6 +107,13 @@ describe("materializeImages (C-API-44)", () => {
 
   test("C-API-44 a cleanup failure never masks the ORIGINAL materialize failure", async () => {
     vi.resetModules();
+    // The mocked `rm` cannot remove the temp dir, so it is made inside a scratch dir that
+    // the test's own cleanup removes.
+    const scratch = tempDirForUnit();
+    vi.stubEnv("TMPDIR", scratch);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
     vi.doMock("node:fs/promises", async () => {
       const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
       return {
@@ -117,5 +127,6 @@ describe("materializeImages (C-API-44)", () => {
     await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
       code: "image_attach_failed",
     });
+    expect(readdirSync(scratch)).toEqual([expect.stringMatching(/^elwood-image-/)]);
   });
 });

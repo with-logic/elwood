@@ -13,7 +13,9 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   childClaudeHome,
+  parseSeen,
   runChild,
+  type Seen,
   seeded,
   tree,
   userConfig,
@@ -123,5 +125,54 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
     expect(malformed.stderr).toContain("The user's Claude login is not JSON");
     expect(malformed.stderr).not.toContain("SECRET-NOT-JSON");
     expect(readdirSync(tmp)).toEqual([]); // the exit handler still removed the private dir
+  });
+
+  test("C-E2E-23 a global config that is not JSON is named without its contents", () => {
+    const tmp = tempDir("claude-home-bad-config-");
+    const user = tempDir("claude-home-user-");
+    writeFileSync(join(user, ".claude.json"), "SECRET-NOT-JSON");
+    const malformed = runChild({ TMPDIR: tmp, HOME: home(), CLAUDE_CONFIG_DIR: user });
+    expect(malformed.status).not.toBe(0);
+    expect(malformed.stderr).toContain(`${join(user, ".claude.json")} is not JSON`);
+    expect(malformed.stderr).not.toContain("SECRET-NOT-JSON");
+    expect(readdirSync(tmp)).toEqual([]);
+  });
+
+  test("C-E2E-23 a global config that cannot be read fails as the read, not as malformed JSON", () => {
+    const tmp = tempDir("claude-home-unreadable-");
+    const user = tempDir("claude-home-user-");
+    mkdirSync(join(user, ".claude.json")); // a directory: reading it fails with EISDIR
+    const unreadable = runChild({ TMPDIR: tmp, HOME: home(), CLAUDE_CONFIG_DIR: user });
+    expect(unreadable.status).not.toBe(0);
+    expect(unreadable.stderr).toContain("EISDIR");
+    expect(unreadable.stderr).not.toContain("is not JSON");
+    expect(readdirSync(tmp)).toEqual([]);
+  });
+
+  const report = {
+    dir: "/t/d",
+    env: "/t/d",
+    user: "/u",
+    global: "/u/.claude.json",
+    entries: [".claude.json"],
+    credentials: null,
+    credentialsMode: null,
+    config: "{}",
+    catalog: null,
+  } satisfies Seen;
+
+  test("C-E2E-23 the harness reads the child's report only in the shape it declares", () => {
+    expect(parseSeen(JSON.stringify(report))).toEqual(report);
+    expect(() => parseSeen("[]")).toThrow("claude-home child reported no object");
+    for (const [key, value] of [
+      ["dir", null],
+      ["entries", [1]],
+      ["entries", null],
+      ["credentials", 1],
+      ["credentialsMode", "0600"],
+    ] as const)
+      expect(() => parseSeen(JSON.stringify({ ...report, [key]: value }))).toThrow(
+        `claude-home child reported a malformed ${key}`,
+      );
   });
 });
