@@ -11,6 +11,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
 import type { LoginExpiredWarning, LoginExpiringWarning } from "./auth.ts";
+import type { ImageCopyRemovalFailedWarning } from "./images.ts";
 import type * as lifecycle from "./lifecycle.ts";
 import type {
   QuestionAutomationDisabledWarning,
@@ -30,6 +31,7 @@ export type ElwoodWarningEvent =
   | QuestionObserverFailedWarning
   | LoginExpiringWarning
   | TranscriptListenerErrorWarning
+  | ImageCopyRemovalFailedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: ElwoodAgentKind;
