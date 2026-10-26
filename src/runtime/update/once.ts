@@ -105,6 +105,11 @@ export function resetAutoupdateForTests(): void {
   coordinateUpdate = refuseRealUpdateRoot;
 }
 
+/** Whether an update would be refused: true from a reset until a test sets a coordinator. */
+export function updatesRefusedForTests(): boolean {
+  return coordinateUpdate === refuseRealUpdateRoot;
+}
+
 export function setUpdateCoordinatorForTests(coordinator: typeof coordinatedAutoupdate): void {
   // Unit tests provide in-memory command runners and must never contend with a
   // real desktop host's global update lease. Cross-process coverage calls the

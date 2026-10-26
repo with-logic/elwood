@@ -9,13 +9,20 @@
  * on `homedir()`) cannot read or write the developer's own `~/.codex`, even in a test that
  * unsets `CODEX_HOME`. The prefix does not start with `elwood-`, which socket homes use
  * (`src/state/socket-home.ts`).
+ *
+ * And every test starts with autoupdates refused until it sets an update coordinator of its
+ * own: the update module is reset each time it loads, a re-import after `vi.resetModules()`
+ * included, and again after every test. The production coordinator's lease root comes from the
+ * passwd database, not `HOME`, so the private `HOME` alone would not keep a test out of the
+ * developer's real one.
  */
 
 import { mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach } from "vitest";
+import { afterAll, afterEach, vi } from "vitest";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { resetAutoupdateForTests } from "../../src/runtime/update/once.ts";
 import { privateTempDir } from "./private-temp.ts";
 
 // Recorded by a worker's first test file, before any preload has replaced HOME/CODEX_HOME.
@@ -28,8 +35,15 @@ mkdirSync(join(home, ".codex"));
 process.env["HOME"] = home;
 process.env["CODEX_HOME"] = join(home, ".codex");
 
+vi.mock("../../src/runtime/update/once.ts", async (importOriginal) => {
+  const once = await importOriginal<typeof import("../../src/runtime/update/once.ts")>();
+  once.resetAutoupdateForTests();
+  return once;
+});
+
 afterEach(() => {
   resetRuntimeSeamsForTests();
+  resetAutoupdateForTests();
 });
 
 afterAll(() => {
