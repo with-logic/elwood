@@ -1,0 +1,11 @@
+{
+  "text": "\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  WARNING: Claude Code running in Bypass Permissions mode\n\n  In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.\n  This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.\n\n  By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.\n\n  https://code.claude.com/docs/en/security\n\n  ❯ No, exit\n    Yes, I accept\n\n  Enter to confirm · Esc to cancel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "title": "",
+  "cursorX": 2,
+  "cursorY": 11,
+  "cols": 189,
+  "rows": 48,
+  "baseY": 0,
+  "viewportY": 0,
+  "visible": false
+}
