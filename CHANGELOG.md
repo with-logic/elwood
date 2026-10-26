@@ -18,6 +18,12 @@ back each entry are listed in `prd/14-conformance.md`.
   attach left one such file behind for good. Only files the session's own transcript
   names directly in Elwood's temp directory are removed; a Codex whose login shell sets
   another `TMPDIR` keeps its copies there.
+- `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
+  the attach's `elwood-image-*` temp directory before they resolve, even while its
+  image is still being written. Before, the attach removed it only after it unwound,
+  which could come after shutdown resolved, so a host that exited right away left
+  the directory in the OS temp dir. Removal stays best-effort: one that fails at
+  shutdown is retried when the attach unwinds.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
