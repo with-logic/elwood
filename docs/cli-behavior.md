@@ -1335,7 +1335,8 @@ returns `EPERM`, not `ESRCH`. `src/runtime/shutdown/process-table.ts` reads the
 table and finds these groups by walking parent pids from the leader.
 
 Elwood therefore walks the tree only before a SIGKILL it sends to a live leader. It
-SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=`. A
+SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=,ucomm=,pid=`
+(the short name and the pid again are for Codex's daemon, below). A
 group id from `ps` is only a snapshot, `kill()` returning means the SIGSTOP was sent,
 not delivered, and `ps` reads each process's state at its own moment (on macOS it
 takes the set of pids first and each row's state afterwards). So Elwood relies only
@@ -1459,6 +1460,16 @@ names a path inside the home, plus its descendants: SIGTERM first, then SIGKILL 
 later. A sandbox where something will not stop is kept.
 `tests/e2e/scratch-processes.e2e.ts` starts a daemon with `daemon start` and checks that
 removing the sandbox, and exiting the run, stop it.
+
+## `ps` prints a process's short name raw (2026-10-26)
+
+To recognize Codex's daemon (above), each table read also lists every process's short
+name (`ucomm`), and `ps` prints it raw. A process whose name is `a`, a newline, and
+`1 5000 1 S    ` reads as two rows, the second a forged process 1 whose parent is 5000
+(measured on macOS 26). `comm` and `ps -c` escape it as `\012`, but `comm` in every table
+read doubled its cost (94 to 200 ms at a load of about 220). So each row ends with its pid
+again (`-o pid=,ppid=,pgid=,stat=,ucomm=,pid=`), and a read with any line that is not one
+whole row, or one pid twice, is unreadable: the walk fails rather than act on it.
 
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
