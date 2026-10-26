@@ -5,8 +5,10 @@
  * `ready` in bypass-permissions mode with no acceptance dialog left on screen. The
  * suite's private Claude config (`claude-home.ts`) has never accepted the dialog and
  * has no `skipDangerousModePermissionPrompt` setting, so the CLI always renders it
- * (docs/cli-behavior.md). The PTY's writes are recorded from spawn, so the answer is
- * proven even if it came before `startClaude` resolved and anyone could subscribe. A
+ * (docs/cli-behavior.md). The PTY's output and writes are recorded from spawn, so the
+ * answer is proven even if it came before `startClaude` resolved and anyone could
+ * subscribe. The folder-trust gate before it opens on `No, exit` too and takes the same
+ * keys, so each write is matched to the screen the PTY had painted when it was made. A
  * Codex session started with `highTrust: true` reaches `ready` with the persisted
  * posture `danger-full-access` / `never`.
  */
@@ -23,9 +25,9 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { nodePtyFactory } from "../../src/pty/node.ts";
-import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanup, makeProject, observeSession, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { type PtyRecord, recordPty, screenAfter } from "./pty-record.ts";
 import { trustPromptVisible } from "./trust-screens.ts";
 
 type Launch = {
@@ -43,22 +45,6 @@ function bypassDialogVisible(text: string): boolean {
   return /running in Bypass Permissions mode/i.test(text);
 }
 
-/** Every write to a real PTY spawned from now on, with its time. */
-function recordPtyWrites(): readonly { readonly at: number; readonly data: string }[] {
-  const writes: { at: number; data: string }[] = [];
-  setPtyFactoryForTests((options) => {
-    const pty = nodePtyFactory(options);
-    return {
-      ...pty,
-      write(data) {
-        writes.push({ at: Date.now(), data: Buffer.from(data).toString("utf8") });
-        pty.write(data);
-      },
-    };
-  });
-  return writes;
-}
-
 // The bypass dialog opens on `No, exit`: Elwood moves to `Yes, I accept`, then confirms it.
 const selectAccept = "\u001b[H\u001b[B";
 
@@ -68,7 +54,7 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
 }, async () => {
   const project = makeProject("claude");
   let session: ClaudeSessionApi | undefined;
-  const writes = recordPtyWrites();
+  const pty = recordPty();
   try {
     session = await startClaude({
       cwd: project.cwd,
@@ -97,12 +83,20 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
       "the persisted posture carries the expanded permission mode",
     );
     // The dialog renders in the private config, and Elwood answers it once. It can clear
-    // between two polls of the screen, so the PTY's writes are the evidence.
-    const confirms = writes.filter(({ data }) => data === `${selectAccept}\r`);
-    assert.equal(confirms.length, 1, "Elwood confirmed Yes, I accept once");
+    // between two polls of the screen, so the PTY's writes, each read against the screen
+    // painted before it, are the evidence.
+    const onDialog: PtyRecord["writes"][number][] = [];
+    for (const write of pty.writes) {
+      if (bypassDialogVisible(await screenAfter(pty, write.after))) onDialog.push(write);
+    }
+    assert.deepEqual(
+      onDialog.map(({ data }) => data),
+      [selectAccept, `${selectAccept}\r`],
+      "Elwood moved to Yes, I accept and confirmed it, once",
+    );
     // The live `startup_prompt` activity fires with the answer's first write, so an
     // observer subscribed after start sees it whenever that write came later.
-    const answeredAt = writes.find(({ data }) => data === selectAccept)?.at ?? 0;
+    const answeredAt = onDialog[0]?.at ?? 0;
     const answered = observed.activities.filter((event) => {
       const activity = event as { readonly kind?: string; readonly label?: string };
       return activity.kind === "startup_prompt" && activity.label === "bypass_permissions";
