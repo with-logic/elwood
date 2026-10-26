@@ -76,6 +76,22 @@ describe("C-LIFE-10 the daemon's path reads", () => {
     expect(started).toHaveLength(4);
   });
 
+  test("a path read that runs out of time once started fails as timed out", async () => {
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    // `execFile` ends a run past its timeout with SIGKILL, and rejects with no errno code.
+    const killed = Object.assign(new Error("Command failed"), { killed: true, signal: "SIGKILL" });
+    const run: PsRunner = () => {
+      clock = 3_000;
+      return Promise.reject(killed);
+    };
+    const one = () => Promise.resolve([leaderRow, hook(5010, { name: "codex" })]);
+    const scope = daemonScope(new Set([LEADER]));
+    await expect(listProcessTableMarkingDaemon(3_000, scope, one, run)).rejects.toMatchObject({
+      code: "ETIMEDOUT",
+    });
+  });
+
   test("a table read that took the whole deadline starts none", async () => {
     let clock = 0;
     vi.spyOn(performance, "now").mockImplementation(() => clock);

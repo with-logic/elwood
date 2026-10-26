@@ -107,6 +107,25 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
     expect(await marking).toEqual([5010, 5012, 5014]);
   });
 
+  test("marks only the daemon's rows, and returns every other row as read", async () => {
+    const { run } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE });
+    const rows = await listProcessTableMarkingDaemon(3_000, scopeOf(LEADER), list, run);
+    const daemonRows = new Set([5010, 5012]);
+    expect(rows).toEqual(table.map((row) => ({ ...row, shared: daemonRows.has(row.pid) })));
+  });
+
+  test("a daemon's pid read under another parent is read again, and may be no daemon", async () => {
+    const { run } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE });
+    const scope = scopeOf(LEADER);
+    expect(await mark(scope, run)).toEqual([5010, 5012]);
+    // 5010 exited, and its pid now names a process 5014 started: the same pid, another parent.
+    const reused = () =>
+      list().then((rows) => rows.map((row) => (row.pid === 5010 ? { ...row, ppid: 5014 } : row)));
+    const again = runner({ 5010: STANDALONE, 5014: STANDALONE });
+    expect(await mark(scope, again.run, reused)).toEqual([5012]);
+    expect(again.pids()).toEqual([5010, 5014]);
+  });
+
   test("each root is read itself, once even under another, so a daemon under PID 1 is found", async () => {
     const { run, pids } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE, 6000: DAEMON });
     expect(await mark(scopeOf(LEADER, 5010, 6000), run)).toEqual([5010, 5012, 6000]);

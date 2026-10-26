@@ -23,10 +23,7 @@ export type ProcessEntry = {
   readonly stopped: boolean;
   /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
   readonly name: string;
-  /**
-   * Serves more than the session, so never followed or killed: Codex's shared app-server
-   * daemon or its updater, run from the daemon's install (`shared-daemon.ts`).
-   */
+  /** Codex's shared daemon or its updater, never followed or killed (`shared-daemon.ts`). */
   readonly shared: boolean;
 };
 
