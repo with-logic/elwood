@@ -40,11 +40,23 @@ export type CodexSandbox = {
 
 const scratchRoots: string[] = [];
 
-// Sweep every project root once the file's tests are done. The prefix deliberately
-// does not start with `elwood-` (the socket-home prefix, `src/state/socket-home.ts`),
-// so tests that enumerate `elwood-<16hex>` homes under tmpdir never see scratch dirs.
+// Sweep every project root once the file's tests are done, after stopping what still runs
+// from it: a test that failed before its `dispose()` can leave an agent, or the daemon
+// Codex starts for a home. A root that will not stop is kept, and the sweep reports it
+// after removing the rest. The prefix deliberately does not start with `elwood-` (the
+// socket-home prefix, `src/state/socket-home.ts`), so tests that enumerate
+// `elwood-<16hex>` homes under tmpdir never see scratch dirs.
 after(() => {
-  for (const root of scratchRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  const errors: unknown[] = [];
+  for (const root of scratchRoots.splice(0)) {
+    try {
+      if (existsSync(root)) stopProcessesUnder(root);
+      rmSync(root, { recursive: true, force: true });
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) throw new AggregateError(errors, "Scratch sweep kept roots in use");
 });
 
 export function makeProject(agent: AgentName): E2eProject {

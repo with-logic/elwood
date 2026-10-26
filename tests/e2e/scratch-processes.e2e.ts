@@ -15,7 +15,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
-import { killIfCommandHas, type ProcessRow, processRows } from "../helpers/process-liveness.ts";
+import {
+  delay,
+  killGroupsWhoseCommandHas,
+  type ProcessRow,
+  processRows,
+} from "../helpers/process-liveness.ts";
 import { codexLaunches, endCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
@@ -28,6 +33,8 @@ import { processesUnder, stopProcessesUnder, TERM_GRACE_MS } from "./scratch-pro
 
 /** A daemon start first installs a copy of the CLI, about 260 MB, into the home. */
 const DAEMON_START_TIMEOUT_MS = 60_000;
+/** Each fixture process exits by itself after this, even when its test never cleans up. */
+const FIXTURE_LIFETIME_MS = 60_000;
 
 type Identity = Pick<ProcessRow, "pid" | "command">;
 const describe = (row: Identity) => `${row.pid} ${row.command}`;
@@ -42,16 +49,39 @@ function stillRunning(rows: readonly Identity[]): readonly string[] {
   return rows.map(describe).filter((row) => live.has(row));
 }
 
-/** SIGKILLs each of `rows` still running as the same process: same pid, same command line. */
-function endAll(rows: readonly Identity[]): void {
+/** Sends `name` to each of `rows` still running as the same process: same pid and command. */
+function signalAll(rows: readonly Identity[], name: NodeJS.Signals): void {
   const wanted = new Set(rows.map(describe));
   for (const row of processRows()) {
     if (!wanted.has(describe(row))) continue;
     try {
-      process.kill(row.pid, "SIGKILL");
+      process.kill(row.pid, name);
     } catch {
       // It exited between the read and the kill.
     }
+  }
+}
+
+/**
+ * Ends each of `rows` still running: SIGTERM first, which the daemon answers by stopping its
+ * MCP servers, then SIGKILL for any left after the grace period.
+ */
+async function endAll(rows: readonly Identity[]): Promise<void> {
+  signalAll(rows, "SIGTERM");
+  const deadline = Date.now() + TERM_GRACE_MS;
+  while (stillRunning(rows).length > 0 && Date.now() < deadline) await delay(100);
+  signalAll(rows, "SIGKILL");
+}
+
+/** Stops what runs from `home` while it exists, then ends `rows` wherever they run. */
+async function cleanUp(home: string | undefined, rows: readonly Identity[]): Promise<void> {
+  try {
+    if (home !== undefined && existsSync(home)) {
+      stopProcessesUnder(home);
+      rmSync(home, { recursive: true, force: true });
+    }
+  } finally {
+    await endAll(rows);
   }
 }
 
@@ -85,13 +115,13 @@ test("C-E2E-03 removing a Codex sandbox stops the app-server daemon Codex starte
     assert.deepEqual(stillRunning(daemon), [], "the daemon outlived its sandbox");
     assert.equal(existsSync(sandbox.home), false, "the sandbox is gone");
   } finally {
-    endAll(daemon);
+    await cleanUp(sandbox.home, daemon);
   }
 });
 
 test("C-E2E-03 the suite's default Codex home stops its app-server daemon when the run exits", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
-}, () => {
+}, async () => {
   // The home is reported before the daemon starts, so this test can clean up after a run
   // that never reached its exit hook.
   const script = `
@@ -124,37 +154,33 @@ test("C-E2E-03 the suite's default Codex home stops its app-server daemon when t
     assert.deepEqual(stillRunning(daemon), [], "the daemon outlived the run's Codex home");
     assert.equal(home !== undefined && existsSync(home), false, "the run's Codex home is gone");
   } finally {
-    endAll(daemon);
-    if (home !== undefined && existsSync(home)) {
-      stopProcessesUnder(home);
-      rmSync(home, { recursive: true, force: true });
-    }
+    await cleanUp(home, daemon);
   }
 });
 
 test("C-E2E-03 stopping reaches a descendant that ignores SIGTERM after its parent exits", async () => {
   const dir = mkdtempSync(join(tmpdir(), "elwood_e2e_scratch_processes-"));
-  // Names only the child, whose command line names nothing in `dir`, for cleanup.
-  const marker = `elwood-scratch-child-${randomUUID()}`;
+  // Names both fixture processes, for cleanup: the child's command line names nothing in `dir`.
+  const marker = `elwood-scratch-fixture-${randomUUID()}`;
   let parent: ChildProcess | undefined;
-  let childPid: number | undefined;
   try {
     // The parent exits on SIGTERM; its detached child ignores SIGTERM and is reparented to
     // PID 1 once the parent is gone.
-    const childScript = `process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); // ${marker}`;
+    const exit = `setTimeout(() => process.exit(), ${FIXTURE_LIFETIME_MS})`;
+    const childScript = `process.on('SIGTERM', () => {}); ${exit}; // ${marker}`;
     writeFileSync(
       join(dir, "parent.mjs"),
       `import { spawn } from "node:child_process";
        const child = spawn(process.execPath, ["-e", ${JSON.stringify(childScript)}], { detached: true, stdio: "ignore" });
        console.log(child.pid);
-       setInterval(() => {}, 1000);`,
+       ${exit};`,
     );
-    parent = spawn(process.execPath, [join(dir, "parent.mjs")], {
+    parent = spawn(process.execPath, [join(dir, "parent.mjs"), marker], {
       detached: true,
       stdio: ["ignore", "pipe", "ignore"],
     });
     const [line] = (await once(parent.stdout as NodeJS.ReadableStream, "data")) as [Buffer];
-    childPid = Number(line.toString().trim());
+    const childPid = Number(line.toString().trim());
     const found = processesUnder(dir);
     assert.deepEqual(found.map((row) => row.pid).sort(), [parent.pid, childPid].sort());
     const started = Date.now();
@@ -162,9 +188,10 @@ test("C-E2E-03 stopping reaches a descendant that ignores SIGTERM after its pare
     assert.ok(Date.now() - started >= TERM_GRACE_MS, "the child needed SIGKILL after the grace");
     assert.deepEqual(stillRunning(found), [], "a process from the directory is still running");
   } finally {
-    // Independent of discovery, which is what this test checks.
+    // Independent of discovery, which is what this test checks, and of the child's pid,
+    // which a failure can leave unread.
     parent?.kill("SIGKILL");
-    if (childPid !== undefined) killIfCommandHas(childPid, marker);
+    killGroupsWhoseCommandHas(marker);
     rmSync(dir, { recursive: true, force: true });
   }
 });
