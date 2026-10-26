@@ -9,7 +9,11 @@ import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
+import {
+  type AutoupdateOutcome,
+  cachedAutoupdate,
+  cachedVersionRead,
+} from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
@@ -30,16 +34,16 @@ export async function preflightClaude(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let updateError: unknown;
+  let failedUpdate: Extract<AutoupdateOutcome, { readonly ok: false }> | undefined;
   if (autoupdate) {
     // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
     // we re-read the installed version and fall through to the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11).
-    const outcome = await cachedAutoupdate("claude", async () => {
+    const outcome = await cachedAutoupdate("claude", cwd, async () => {
       await readClaudeVersion(cwd); // verify existence only after owning the cross-process lease
       await runClaudeUpdate(cwd);
     });
-    if (!outcome.ok) updateError = outcome.error;
+    if (!outcome.ok) failedUpdate = outcome;
   }
   const result = await readClaudeVersion(cwd);
   const version = parseVersion(result.stdout);
@@ -61,7 +65,10 @@ export async function preflightClaude(
   }
   // Installed CLI is compatible: a failed best-effort update is a warning (naming the installed
   // version that will be used), not a start failure.
-  return updateError === undefined ? undefined : buildUpdateWarning("claude", version, updateError);
+  return (
+    failedUpdate &&
+    buildUpdateWarning("claude", version, failedUpdate.error, failedUpdate.updateCwd)
+  );
 }
 
 async function runClaudeUpdate(cwd: string): Promise<void> {

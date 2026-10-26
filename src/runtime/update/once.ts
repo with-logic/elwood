@@ -10,10 +10,14 @@ import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 
 let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
 
-/** The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. */
+/**
+ * The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. A failure
+ * names `updateCwd`, the directory this process's update command ran in, which may be another
+ * launch's; it is absent when no update command ran here (a peer's update was awaited).
+ */
 export type AutoupdateOutcome =
   | { readonly ok: true }
-  | { readonly ok: false; readonly error: unknown };
+  | { readonly ok: false; readonly error: unknown; readonly updateCwd?: string };
 
 // The settled autoupdate outcome per adapter. Every `autoupdate: true` caller awaits the SAME
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
@@ -22,22 +26,30 @@ export type AutoupdateOutcome =
 const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
 
 /**
- * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt, so it runs in the launch directory of the start or resume that triggers it.
- * NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
- * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
- * version cache whether this process owned the update or waited for a peer.
+ * Runs the adapter's update at most once per process, in `cwd`, the launch directory of the
+ * launch (start or resume) that triggers it; concurrent callers share the single in-flight
+ * attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the caller
+ * can contain it (warn + continue). The cross-process coordinator invalidates the local version
+ * cache whether this process owned the update or waited for a peer.
  */
 export function cachedAutoupdate(
   adapter: UpdateAdapter,
+  cwd: string,
   runUpdate: () => Promise<void>,
   afterAttempt?: () => void,
 ): Promise<AutoupdateOutcome> {
   const existing = autoupdates.get(adapter);
   if (existing) return existing;
-  const pending = coordinateUpdate(adapter, runUpdate).then(
-    () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
-    (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
+  let ran = false;
+  const failed = (error: unknown): AutoupdateOutcome =>
+    ran ? { ok: false, error, updateCwd: cwd } : { ok: false, error };
+  const update = () => {
+    ran = true;
+    return runUpdate();
+  };
+  const pending = coordinateUpdate(adapter, update).then(
+    () => finalizeAutoupdate(adapter, { ok: true }, failed, afterAttempt),
+    (error) => finalizeAutoupdate(adapter, failed(error), failed, afterAttempt),
   );
   autoupdates.set(adapter, pending);
   return pending;
@@ -46,6 +58,7 @@ export function cachedAutoupdate(
 function finalizeAutoupdate(
   adapter: UpdateAdapter,
   outcome: AutoupdateOutcome,
+  failed: (error: unknown) => AutoupdateOutcome,
   afterAttempt?: () => void,
 ): AutoupdateOutcome {
   try {
@@ -55,7 +68,7 @@ function finalizeAutoupdate(
     afterAttempt?.();
     return outcome;
   } catch (error) {
-    return { ok: false, error };
+    return failed(error);
   }
 }
 

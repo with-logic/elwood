@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `agent_update_failed` now names `updateCwd`, the directory the failed update
+  command ran in, when it ran in this process. Every launch in a process shares
+  one update attempt, which runs in the launch directory of whichever start or
+  resume triggered it, so a session's warning can name another session's
+  directory.
 - `claude_not_found` and `codex_not_found` now carry the version probe's own
   `cause`, `errno` and `stderr` in `details`. A start or resume whose launch
   directory goes while its CLI is probed reports that probe failure as its cause,

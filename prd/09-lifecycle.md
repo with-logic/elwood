@@ -63,7 +63,12 @@ The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
 allowlisted error code (e.g. a timeout/`errno`), and the update command's own
 stderr, bounded — never the login shell's startup or exit output (§9.2 below),
-terminal transcripts, prompts, tokens, or environment secrets. Like all
+terminal transcripts, prompts, tokens, or environment secrets. When this process
+ran the update command, the warning also names `updateCwd`, the directory it ran
+in: the launch directory of the start or resume that triggered the one attempt the
+process shares, which may be another session's. A warning for an attempt whose
+command did not run here (a peer's update was awaited, or skipped while another
+process held the update) has no `updateCwd`. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
 `ready`.
