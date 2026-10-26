@@ -12,6 +12,16 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- The CLI now refuses a workspace that another user could swap out before the
+  agent starts in it. It checked that the workspace was yours, then launched in
+  its path, so anyone able to write to a directory on that path, or to a
+  directory holding a symlink on it, could replace it with their own in between.
+  Every directory the path is looked up through must now be owned by you or root
+  and not writable by group or others unless it is sticky (your own private group
+  is fine, but not root's group 0), or the run fails with status 2 naming the
+  directory to fix. Workspaces under `/tmp` or the macOS temporary directories,
+  and home paths, are unaffected. Owners and mode bits only: ACLs are not
+  checked.
 - Elwood now runs at most 8 login-shell probes (`--version`, `--help`, `update`,
   and PATH lookups) at once in a process; more wait their turn, and a probe's time
   bounds start when it runs. Each probe starts an interactive login shell, and with
