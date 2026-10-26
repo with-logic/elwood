@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Claude session whose permission dialog is declined with Escape now returns to
+  `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
+  `blocked` while the prompt that led to the dialog was still on screen: Claude
+  echoes each submitted prompt as `❯ <prompt>` in its transcript, and Elwood read
+  that caret as a dialog still in the way of the idle composer.
 - A Claude session started with `highTrust` or `permissionMode: "bypassPermissions"`
   now answers Claude 2.1.310's bypass-permissions acceptance dialog under
   `autotrust`, as C-CLAUDE-21 requires. Claude 2.1.310 added a sandbox warning and a

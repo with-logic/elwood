@@ -19,6 +19,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { attachClaudeImages } from "../attach-images.ts";
+import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { createClaudeRecoveryComposer } from "../composer/staged-input.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
@@ -38,7 +39,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     isClear: liveClaudeClearance(() => this.terminal, claudeModelComposerClearance),
   };
   protected override composerIsEmpty(text: string): boolean {
-    return liveClaudeClearance(() => this.terminal)(text) || super.composerIsEmpty(text);
+    return liveClaudeIdleComposer(() => this.terminal)(text);
   }
   private readonly runtimeParts: ClaudeRuntimeParts;
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
