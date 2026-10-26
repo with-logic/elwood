@@ -18,8 +18,10 @@
  * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
 
+import { type BackgroundReap, reapInBackground } from "./detached-sweep/background.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import { sweepDetachedGroups } from "./detached-sweep/index.ts";
+import { DETACHED_SWEEP_BUDGET_MS, sweepDetachedGroups } from "./detached-sweep/index.ts";
+import { DescendantRecord } from "./detached-sweep/record.ts";
 import { type SurvivorWatch, watchSurvivors } from "./detached-sweep/survivors.ts";
 import {
   activeProcessTreeOps,
@@ -86,6 +88,8 @@ export class SessionReaper {
   private done = false;
   /** The first sweep or survivor reap that failed; with the leader gone it can't be retried. */
   private unresolvedSweep: SweepFailure | undefined;
+  /** Each failure's recorded processes, reaped in the background (`background.ts`). */
+  private readonly reapsInBackground: BackgroundReap[] = [];
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
@@ -106,11 +110,13 @@ export class SessionReaper {
   /**
    * The group reap for an explicit shutdown's retry: it keeps failing while an earlier
    * sweep or survivor reap is unresolved, so no later call reports success for a hook
-   * that may still run. The caller sweeps first, before any SIGKILL to a live leader.
+   * that may still run, until a read has shown every process each failure recorded gone.
+   * The caller sweeps first, before any SIGKILL to a live leader.
    */
   reapAndThrowOnDetachedSweepFailure(): void {
     this.reap();
-    if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+    const resolved = this.reapsInBackground.every((reap) => reap.resolved());
+    if (this.unresolvedSweep !== undefined && !resolved) throw this.unresolvedSweep;
   }
 
   /**
@@ -124,18 +130,30 @@ export class SessionReaper {
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
     if (!isReapableGroupId(this.leaderPid)) return;
-    this.keep(await sweepDetachedGroups(this.leaderPid, this.ops, leaderExited));
+    const record = new DescendantRecord();
+    const budget = DETACHED_SWEEP_BUDGET_MS;
+    this.keep(
+      await sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, budget, record),
+      record,
+    );
   }
 
   /** A graceful stop's watch for survivors (`survivors.ts`); a failure is kept as a sweep's. */
   watchSurvivors(leaderExited: () => boolean): SurvivorWatch {
     const leaderPid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
-    return watchSurvivors(leaderPid, this.ops, leaderExited, (failure) => this.keep(failure));
+    const keep = (failure: SweepFailure | undefined, record: DescendantRecord) =>
+      this.keep(failure, record);
+    return watchSurvivors(leaderPid, this.ops, leaderExited, keep);
   }
 
-  private keep(failure: SweepFailure | undefined): void {
+  /** Keeps `failure`, and reaps the processes `record` holds in the background. */
+  private keep(failure: SweepFailure | undefined, record: DescendantRecord): void {
     if (failure === undefined) return;
     this.unresolvedSweep ??= failure;
+    const unreferenced = this.ops.listProcessesUnreferenced ?? this.ops.listProcesses;
+    this.reapsInBackground.push(
+      reapInBackground(record, { ...this.ops, listProcesses: unreferenced }),
+    );
     throw failure;
   }
 }

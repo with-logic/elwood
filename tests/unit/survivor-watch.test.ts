@@ -45,7 +45,8 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     await watch.firstRead;
     await watch.finish();
     expect(calls.join(", ")).toBe("list, list, stop 5002, list, list, kill 5002");
-    expect(keep).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(keep).toHaveBeenCalledOnce();
+    expect(keep.mock.calls[0]?.[0]).toBeUndefined(); // No failure, handed with its record.
   });
 
   test("a reap that fails hands its failure to keep, once", async () => {

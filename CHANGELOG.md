@@ -45,6 +45,14 @@ back each entry are listed in `prd/14-conformance.md`.
   whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
   SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
   idle host they take as long as before, because the walk ends as soon as it is done.
+- When `kill()`, `teardown()`, or `stop()` cannot confirm a session's detached hook
+  processes reaped, Elwood now keeps reaping the ones it saw, in the background, for
+  up to a minute. Before, a walk that missed its deadline left them running for good
+  under PID 1: the call rejected with `termination_failed`, and nothing reaped them
+  after. Elwood knows each one by pid and start time, so it never signals a process
+  that later reused one of those pids, and its background work never keeps your
+  process alive. Once a read shows them all gone, a later `stop()`, `kill()`, or
+  `teardown()` of the session resolves instead of rejecting again.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,

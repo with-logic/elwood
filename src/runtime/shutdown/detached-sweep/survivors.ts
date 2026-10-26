@@ -37,7 +37,8 @@ export type SurvivorWatch = {
   readonly firstRead: Promise<void>;
   /**
    * Stops recording, then, if `leaderExited` reports the exit, reaps the recorded
-   * processes still alive and hands the outcome, a failure or `undefined`, to `keep`.
+   * processes still alive and hands the outcome, a failure or `undefined`, to `keep`
+   * with the record.
    */
   readonly finish: () => Promise<void>;
 };
@@ -50,7 +51,7 @@ export function watchSurvivors(
   leaderPid: number | undefined,
   ops: SweepOps,
   leaderExited: () => boolean,
-  keep: (failure: SweepFailure | undefined) => void,
+  keep: (failure: SweepFailure | undefined, record: DescendantRecord) => void,
 ): SurvivorWatch {
   if (leaderPid === undefined)
     return { firstRead: Promise.resolve(), finish: () => Promise.resolve() };
@@ -59,7 +60,7 @@ export function watchSurvivors(
     firstRead: watch.firstRead,
     finish: async () => {
       const record = await watch.finish();
-      if (leaderExited()) keep(await reapRecordedSurvivors(record, ops));
+      if (leaderExited()) keep(await reapRecordedSurvivors(record, ops), record);
     },
   };
 }
