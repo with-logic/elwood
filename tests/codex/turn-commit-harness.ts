@@ -6,6 +6,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { vi } from "vitest";
+import { turnCommitWaitMs } from "../../src/codex/session/turn-commit.ts";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/index.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { PtyExitLatch } from "../../src/pty/exit-latch.ts";
@@ -119,13 +120,29 @@ export async function shutdownAtReady(
   return { shutdown };
 }
 
-/** Lifts the 2-second bound past any test's timeout, so only the turn's record or the
- * CLI's exit can end the wait. */
-export function unboundedCommitWait(): void {
+/**
+ * Replaces the turn-commit wait's 2-second bound with `commitWaitMs`; the other exit
+ * waits on the same latch, such as termination's, keep their own bounds.
+ */
+function boundCommitWait(commitWaitMs: number): void {
   const within = PtyExitLatch.prototype.within;
-  vi.spyOn(PtyExitLatch.prototype, "within").mockImplementation(function (this: PtyExitLatch) {
-    return within.call(this, 3_600_000);
+  vi.spyOn(PtyExitLatch.prototype, "within").mockImplementation(function (
+    this: PtyExitLatch,
+    timeoutMs,
+    options,
+  ) {
+    return within.call(this, timeoutMs === turnCommitWaitMs ? commitWaitMs : timeoutMs, options);
   });
+}
+
+/** Lifts the commit wait past any test's timeout: only the turn's record or the CLI's exit ends it. */
+export function unboundedCommitWait(): void {
+  boundCommitWait(3_600_000);
+}
+
+/** Makes every commit wait run out at once. */
+export function expiringCommitWait(): void {
+  boundCommitWait(0);
 }
 
 /**
