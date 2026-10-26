@@ -23,7 +23,7 @@ import {
   type ProcessEntry,
 } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
-import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
+import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import type { SweepOps } from "./rounds.ts";
 
 /**

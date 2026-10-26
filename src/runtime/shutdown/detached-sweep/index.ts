@@ -28,6 +28,7 @@
 import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
+import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import {
   confirmedGone,
@@ -48,13 +49,8 @@ import {
   unreachedGroups,
 } from "./rounds.ts";
 
+export { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 export type { SweepOps } from "./rounds.ts";
-
-/**
- * The whole sweep's deadline. A hook that started a setsid child of its own takes six
- * reads, and on a loaded host one read can take over half a second (docs/cli-behavior.md).
- */
-export const DETACHED_SWEEP_BUDGET_MS = 10_000;
 
 /**
  * Sweeps `leaderPid`'s detached descendant groups and resolves to the unresolved

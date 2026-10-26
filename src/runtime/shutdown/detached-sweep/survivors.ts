@@ -14,8 +14,8 @@
 
 import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
+import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
-import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
 import { killOrResumeSignaledGroups } from "./kill.ts";
 import { type DescendantRecord, watchDescendants } from "./record.ts";
 import {
