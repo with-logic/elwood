@@ -1,7 +1,8 @@
 /**
  * A ready read-only Codex session for the real-Codex e2e tests, and its teardown, shared by
- * the model-picker, configured-default, config-lock, and resume tests. Supports PRD §12 and
- * C-E2E-03.
+ * the model-picker, configured-default, config-lock, and resume tests, plus the launch
+ * tracking and end-of-test cleanup that keep a sandbox a Codex process may still use.
+ * Supports PRD §12 and C-E2E-03.
  */
 
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
@@ -18,8 +19,11 @@ export type StartReadyCodexOptions = {
   readonly onStarted?: (session: CodexSessionApi) => void;
 };
 
+/** What cleanup needs from a session: tests may pass a double. */
+export type CodexTestSession = Pick<CodexSessionApi, "teardown" | "kill">;
+
 /** Tears a session down, falling back to kill; returns what failed rather than hiding it. */
-export async function teardownOrKillCodex(session: CodexSessionApi): Promise<readonly unknown[]> {
+export async function teardownOrKillCodex(session: CodexTestSession): Promise<readonly unknown[]> {
   try {
     await session.teardown();
     return [];
@@ -77,13 +81,38 @@ export async function startReadyCodex(
   }
 }
 
+/**
+ * Records whether a Codex start or resume rejected. A rejected launch may leave a Codex
+ * process running that the test holds no handle to, so its scratch must stay.
+ */
+export type CodexLaunches = {
+  /** A launch passed to `track` rejected. */
+  readonly rejected: boolean;
+  /** Settles as `launch` does, recording a rejection. Route every start and resume here. */
+  track<T>(launch: Promise<T>): Promise<T>;
+};
+
+export function codexLaunches(): CodexLaunches {
+  let rejected = false;
+  return {
+    get rejected() {
+      return rejected;
+    },
+    track: (launch) =>
+      launch.catch((error: unknown) => {
+        rejected = true;
+        throw error;
+      }),
+  };
+}
+
 export type CodexTestEnd = {
   /** Every session the test still holds, torn down here. */
-  readonly sessions: readonly (CodexSessionApi | undefined)[];
+  readonly sessions: readonly (CodexTestSession | undefined)[];
   readonly project: E2eProject;
   readonly sandbox: CodexSandbox;
-  /** A start or resume rejected, so a Codex process may be running with no handle to it. */
-  readonly launchRejected: boolean;
+  /** The test's launches: one that rejected keeps the scratch. */
+  readonly launches: Pick<CodexLaunches, "rejected">;
   /** What failed the test before cleanup, if anything. */
   readonly failure: unknown;
 };
@@ -99,7 +128,7 @@ export async function endCodexTest(end: CodexTestEnd): Promise<void> {
   for (const session of end.sessions) {
     if (session) cleanupFailures.push(...(await teardownOrKillCodex(session)));
   }
-  const confirmed = cleanupFailures.length === 0 && !end.launchRejected;
+  const confirmed = cleanupFailures.length === 0 && !end.launches.rejected;
   if (confirmed) {
     try {
       end.sandbox.dispose();

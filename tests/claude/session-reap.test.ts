@@ -6,10 +6,20 @@
  * the failure.
  */
 
+import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
-import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
+import { bridgeAccepts } from "../helpers/fake-pty.ts";
+import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
+import {
+  installFakes,
+  ptys,
+  readBridgeScript,
+  reapedGroups,
+  resetFakes,
+  tempDir,
+} from "./helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -81,6 +91,22 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     await rejected;
   });
 
+  test("C-LIFE-10 a teardown whose reap fails keeps that typed failure's errno", async () => {
+    installFakes();
+    throwingKiller();
+    const session = await startClaude({ cwd: tempDir() });
+    const rejected: unknown = await session.teardown().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toMatchObject({ code: "teardown_failed" });
+    const { failures } = (rejected as { details: { failures: unknown[] } }).details;
+    expect(failures[0]).toMatchObject({
+      code: "termination_failed",
+      details: { errno: "EPERM" },
+    });
+  });
+
   test("C-ERR-01 stop() and kill() reject with termination_failed when signaling the PTY throws", async () => {
     // The group reap succeeds, so only the PTY signal failed. The public verbs must
     // still reject with the documented code, keeping the underlying cause and errno.
@@ -98,8 +124,28 @@ describe("C-LIFE-10 session reap-failure handling", () => {
         });
         expect(reapedGroups).toContain(pty.pid);
       } finally {
-        // The rejected verb never reached runtime cleanup; teardown stops the hook bridge
-        // without signaling the PTY again.
+        // Teardown removes the session's files without signaling the PTY again.
+        await session.teardown();
+        resetFakes();
+      }
+    }
+  });
+
+  test("C-LIFE-10 stop() and kill() whose PTY signal throws still stop the hook bridge", async () => {
+    for (const verb of ["stop", "kill"] as const) {
+      installFakes();
+      const cwd = tempDir();
+      const session = await startClaude({ cwd });
+      try {
+        const sessionDir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
+        const { socketPath } = readBridgeScript(onlyLaunchArtifact(sessionDir, "hook-bridge"));
+        expect(await bridgeAccepts(socketPath)).toBe(true);
+        vi.spyOn(ptys.at(-1)!, "kill").mockImplementation(() => {
+          throw new Error("kill failed");
+        });
+        await expect(session[verb]()).rejects.toMatchObject({ code: "termination_failed" });
+        expect(await bridgeAccepts(socketPath)).toBe(false); // runtime cleanup still ran
+      } finally {
         await session.teardown();
         resetFakes();
       }

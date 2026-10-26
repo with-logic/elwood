@@ -5,6 +5,7 @@
 
 import type { TurnEvent } from "../../core/simple/events.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
+import { textErrorLines } from "../output/cleanup-error.ts";
 import { writeJson } from "../output/json.ts";
 import { JsonlRenderer } from "../output/jsonl.ts";
 import { progressFromTurn, progressFromWarning } from "../output/records.ts";
@@ -108,7 +109,7 @@ export class RunOutput {
     else if (this.request.stream) await this.observeWrite(this.streamed.finish());
     else await this.observeWrite(writeFinalText(this.stdout, record.response));
     if (this.request.output === "text" && record.type === "error" && !this.stderr.closed) {
-      await this.observeDiagnostic(`elwood: ${this.diagnosticValue(record.error.message)}\n`);
+      await this.observeDiagnostic(textErrorLines(record, "elwood: ", this.diagnosticValue));
     }
     if (
       this.request.output === "text" &&

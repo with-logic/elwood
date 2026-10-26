@@ -5,6 +5,7 @@
 
 import { ElwoodError } from "../core/errors.ts";
 import { isOneOf } from "../core/predicates.ts";
+import { textErrorLines } from "./output/cleanup-error.ts";
 import { writeJson } from "./output/json.ts";
 import { JsonlRenderer } from "./output/jsonl.ts";
 import { createCliSanitizer, formatDiagnosticValue } from "./output/sanitize.ts";
@@ -62,10 +63,12 @@ export async function renderErrorRecord(
   if (output === "json") await writeJson(stdout, record);
   else if (output === "jsonl")
     await new JsonlRenderer(stdout, () => record.durationMs).finish(record);
-  else
+  else {
+    const clean = createCliSanitizer();
     await stderr.write(
-      `elwood: ${formatDiagnosticValue(record.error.message, createCliSanitizer())}\n`,
+      textErrorLines(record, "elwood: ", (text) => formatDiagnosticValue(text, clean)),
     );
+  }
 }
 
 export function explicitStructuredOutput(args: readonly string[]): CliOutputMode | undefined {

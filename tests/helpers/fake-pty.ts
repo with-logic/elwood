@@ -108,6 +108,18 @@ export function readBridgeScript(scriptPath: string): { socketPath: string; toke
   };
 }
 
+/** Whether a hook bridge still accepts a connection on `socketPath`. */
+export function bridgeAccepts(socketPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const client = createConnection({ path: socketPath });
+    client.once("connect", () => {
+      client.destroy();
+      resolve(true);
+    });
+    client.once("error", () => resolve(false));
+  });
+}
+
 /** Sends one framed bridge request and resolves with the server's JSON reply. */
 export function dispatchRaw(socketPath: string, payload: string): Promise<BridgeReply> {
   return new Promise<BridgeReply>((resolve) => {

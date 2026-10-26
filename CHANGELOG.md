@@ -12,6 +12,32 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `teardown_failed` now keeps what each failed step reported. Alongside
+  `details.causes` (the messages), `details.failures` lists each failed step,
+  with its `code` and `details` when it was a typed Elwood error, so a failed
+  reap's `termination_failed` errno is no longer lost. The CLI's cleanup
+  diagnostic names those typed causes by code, plus their valid errno and reap
+  errno tokens when present, for example `Cleanup failed (termination_failed
+  EPERM).`, instead of only `Cleanup failed.`; it still never prints their
+  messages or paths. In text mode, a cleanup failure behind a timeout,
+  interruption, or other primary failure now gets its own stderr line after the
+  primary error, in `run`, `models`, and combined `models`; before, text mode
+  printed only the primary error.
+
+- A `stop()` or `kill()` whose termination fails now still cleans up the
+  session's runtime (its hook bridge and terminal renderer, and Codex's transcript
+  watcher). Before, a PTY that could not be signaled, did not exit, or could not be
+  reaped skipped that cleanup, and so did every retry while the reap kept failing,
+  until a `teardown()`. The call still rejects with the same `termination_failed`;
+  if cleanup fails as well, its message is in `details.cleanupError`. `close()`
+  keeps those messages too, as `cleanupError` and `killCleanupError`.
+
+- Raw input a host sends from inside one of Elwood's own writes, such as from an
+  `xterm.onData` listener reacting to Elwood's keys, now revokes Elwood's
+  automation like any other raw input. Before, it counted as part of Elwood's
+  write, so a model-picker operation, composer cleanup, question answer, or
+  startup-prompt answer kept writing after the caller's keys.
+
 - A Claude session's runtime cleanup now finishes its transcript watcher, as
   Codex's already did. Before, only the Claude process's exit finished it, so
   after a `teardown()` that could not terminate the PTY, the session kept
