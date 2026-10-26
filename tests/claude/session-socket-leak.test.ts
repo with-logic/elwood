@@ -5,9 +5,9 @@
  * PRD §9.1/§8.1: sessionRuntime ensures the session's stable home and reserves a fresh
  * per-launch socket PATH inside it; the socket is bound later by bridge.start() (after
  * the state/runtime files are written). ANY failure before the session takes ownership
- * removes THIS launch's own socket file — never the shared home, which a concurrent
- * launch may own — via withSocketHomeCleanup; on success ownership transfers and teardown
- * sweeps the whole home.
+ * removes THIS launch's own socket file, and the home only once it is empty — never one a
+ * concurrent launch's socket is in — via withSocketHomeCleanup; on success ownership
+ * transfers, stop releases the launch's socket, and teardown sweeps the whole home.
  *
  * The socket home lands under `os.tmpdir()`, which honors `TMPDIR`. Each test points
  * `TMPDIR` at a FRESH private dir so the leak checks see ONLY this launch's homes/sockets
@@ -80,6 +80,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
       code: "hook_bridge_failed", // NOT "stop failed too" — the secondary error is contained
     });
     expect(socketFilesIn(priv)).toEqual([]); // the launch's own socket file is gone
+    expect(socketHomesIn(priv)).toEqual([]); // and so is the home it emptied (§8.1)
     expect(stops).toBe(1); // the partially-started bridge's listener is not leaked
   });
 
@@ -94,6 +95,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
       code: "pty_start_failed",
     });
     expect(socketFilesIn(priv)).toEqual([]);
+    expect(socketHomesIn(priv)).toEqual([]);
   });
 
   test("a failing overlapping launch never removes a LIVE launch's socket", async () => {
@@ -137,8 +139,8 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
   test("§8.1 start→stop→resume→teardown is restart-safe: ONE stable home, fully collected", async () => {
     // A session's socket home is STABLE (fingerprint of the id), so a resume — even in a
     // fresh process that remembers no prior path — targets the SAME home rather than
-    // leaking a new anonymous one per launch. stop() keeps it (for resume); teardown
-    // sweeps every launch's socket by removing the one home.
+    // leaking a new anonymous one per launch. stop() releases its emptied home and resume
+    // recreates it; teardown sweeps every launch's socket by removing the one home.
     const cwd = tempDir();
     installFakes();
     const priv = isolateTmp();
@@ -149,10 +151,10 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
       cwd,
       source: "startup",
     });
-    await first.stop(); // stop keeps state (and the home) for resume
-    expect(socketHomesIn(priv)).toHaveLength(1);
+    await first.stop(); // stop keeps state for resume, but not the emptied home (§8.1)
+    expect(socketHomesIn(priv)).toEqual([]);
     const resumed = await resumeClaude({ elwoodSessionId: first.elwoodSessionId, cwd });
-    // Resume reused the SAME stable home — still exactly one, not two leaked dirs.
+    // Resume recreated the SAME stable home — exactly one, not a second leaked dir.
     expect(socketHomesIn(priv)).toHaveLength(1);
     await resumed.teardown();
     expect(socketHomesIn(priv)).toEqual([]); // the single home (all launches) is gone

@@ -12,15 +12,16 @@
  * a FRESH socket FILE inside that home (a per-launch nonce), so a stale socket is never
  * reused; TEARDOWN removes ALL of a session's socket files by removing the one stable
  * home, so no anonymous per-launch directory can leak undiscoverably across
- * restart/resume cycles. (`stop` keeps the home for a later resume — the bridge unlinks
- * its own socket file on stop; a failed START removes only its own socket file, so an
- * overlapping failed launch never disturbs a live one.) Because teardown removes the
- * WHOLE home, same-process successor ownership gates shared cleanup (§8.1). Separate
- * processes must not run concurrent live launches of one identity.
+ * restart/resume cycles. A launch that ends without teardown — `stop`, `kill`, the agent
+ * exiting, or a failed START — releases only its own socket file and then the home if
+ * that left it empty, so an overlapping launch's socket is never disturbed and a stopped
+ * session leaves nothing in the OS temp dir; its next launch recreates the home. Because
+ * teardown removes the WHOLE home, same-process successor ownership gates shared cleanup
+ * (§8.1). Separate processes must not run concurrent live launches of one identity.
  */
 
 import { createHash } from "node:crypto";
-import { chmodSync, lstatSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError } from "../core/errors.ts";
@@ -114,16 +115,26 @@ function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | undefined 
 }
 
 /**
- * Removes only THIS launch's own socket file, leaving the shared stable home in place.
- * Used on failed startup: the home is shared by every concurrent launch of the same
- * `(stateDir, adapter, session id)`, so a failing launch must NOT remove the whole home
- * — that would delete a live overlapping launch's bound socket. Leaving an empty home
- * is safe: it is deterministic, so the session's next start/resume/teardown collects
- * it. Only removes files under a home this naming scheme owns.
+ * Releases THIS launch's socket: removes its own socket file, then the session's home if
+ * that left it empty (§8.1). Runs on a failed startup and whenever the launch's bridge
+ * stops (`stop`, `kill`, the agent exiting), so a session that is never torn down leaves
+ * no directory behind in the OS temp dir. The home is shared by every concurrent launch
+ * of the same `(stateDir, adapter, session id)`, so this never removes it whole: `rmdir`
+ * refuses a home that still holds another launch's socket, and that home stays for its
+ * owner. An emptied home cannot vanish under a launch that is about to bind: a launch
+ * ensures its home (`sessionRuntime`) in the same synchronous run in which its bridge
+ * binds, and recreates it on every start and resume. Only touches homes this naming
+ * scheme owns.
  */
-export function removeOwnSocketFile(socketPath: string): void {
-  if (!ownsSocketHome(dirname(socketPath))) return;
+export function releaseLaunchSocket(socketPath: string): void {
+  const home = dirname(socketPath);
+  if (!ownsSocketHome(home)) return;
   rmSync(socketPath, { force: true });
+  try {
+    rmdirSync(home);
+  } catch {
+    // Another launch's socket is still inside (ENOTEMPTY), or the home is already gone.
+  }
 }
 
 /**

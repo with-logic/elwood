@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A session that ends without `teardown()` no longer leaves an empty
+  `elwood-<fingerprint>` directory in the OS temp dir. `stop()`, `kill()`, the
+  agent exiting on its own, and a failed start now remove the session's socket
+  home once the launch's own socket file is gone, unless another live launch of
+  the same session still has its socket there. The next start or resume
+  recreates the home. Previously every stopped or failed session kept its empty
+  home until it was torn down.
 - A start or resume whose launch fails while its `cwd` is deleted and made again
   now fails with the adapter's `*_start_failed` for that `cwd`, as it does when
   `cwd` is simply gone. It used to find the new directory in its place and report
