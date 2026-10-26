@@ -10,25 +10,10 @@ import {
   detachedDescendantGroups,
   listProcessTable,
   listProcessTableShared,
-  type ProcessEntry,
   runFile,
 } from "../../src/runtime/shutdown/process-table.ts";
-import { delay, POLL_INTERVAL_MS } from "../helpers/process-liveness.ts";
 import { type SetsidPair, startSetsidPair, stopPair } from "../helpers/setsid-pair.ts";
-
-/**
- * Reads the table until `pid` reads stopped, for up to five seconds of wall time, so a
- * failure still leaves the test's cleanup well inside its timeout.
- */
-async function stoppedRead(pid: number): Promise<readonly ProcessEntry[]> {
-  const deadline = performance.now() + 5_000;
-  for (;;) {
-    const table = await listProcessTable(5_000);
-    if (table.find((row) => row.pid === pid)?.stopped) return table;
-    if (performance.now() >= deadline) throw new Error(`${pid} never read as stopped`);
-    await delay(POLL_INTERVAL_MS);
-  }
-}
+import { readUntil } from "../helpers/table-reads.ts";
 
 describe("C-LIFE-10 real process table", () => {
   test("lists the real host table, including this process under its parent", async () => {
@@ -69,7 +54,7 @@ describe("C-LIFE-10 real process table", () => {
       const leaderPid = pair.leader.pid as number;
       pair.leader.kill("SIGSTOP");
       // kill() returning means the signal was sent; it shows in a read once delivered.
-      const table = await stoppedRead(leaderPid);
+      const table = await readUntil(leaderPid, (row) => row?.stopped === true);
       const leaderRow = table.find((row) => row.pid === leaderPid);
       expect(leaderRow).toMatchObject({ stopped: true, zombie: false });
       const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
