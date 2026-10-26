@@ -89,11 +89,11 @@ test("C-STATE-01 rejects a directory whose owner differs from the caller", () =>
 });
 test("C-STATE-01 CLI rejects a file in place of its root and never creates through an ancestor link", () => {
   const f = fixture();
-  expect(() => ensurePrivateStateRoot(f.secret)).toThrowError(
+  expect(() => ensurePrivateStateRoot(f.secret, f.root)).toThrowError(
     expect.objectContaining({ code: "state_corrupt" }),
   );
   symlinkSync(f.privateDir, f.state);
-  expect(() => ensurePrivateStateRoot(join(f.state, "nested"))).toThrowError(
+  expect(() => ensurePrivateStateRoot(join(f.state, "nested"), f.root)).toThrowError(
     expect.objectContaining({ code: "state_corrupt" }),
   );
   expect(() => statSync(join(f.privateDir, "nested"))).toThrow();

@@ -73,6 +73,7 @@ export async function startCodexWithId(
     prepareStateDir(stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
+      elwoodSessionId,
     });
     const createdRecord = createSessionRecord({
       cwd: options.cwd,
