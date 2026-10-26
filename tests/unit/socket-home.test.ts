@@ -5,7 +5,7 @@
  * live socket.
  */
 
-import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -129,6 +129,16 @@ describe("releaseLaunchSocket", () => {
     } finally {
       chmodSync(parent, 0o700); // so the test's temp dir can be removed
     }
+  });
+
+  test("an empty or missing socket path removes nothing", () => {
+    const sibling = tempDir(`${SOCKET_HOME_PREFIX}sibling-`);
+    writeFileSync(join(sibling, "keep.sock"), "");
+    const cwdBefore = readdirSync(".");
+    expect(() => releaseLaunchSocket("")).not.toThrow(); // dirname("") is ".", never a home
+    expect(readdirSync(".")).toEqual(cwdBefore);
+    releaseLaunchSocket(join(sibling, "absent.sock")); // a home another socket still holds
+    expect(readdirSync(sibling)).toEqual(["keep.sock"]);
   });
 
   test("no-ops on a path outside a home this scheme owns", () => {
