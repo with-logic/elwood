@@ -6,9 +6,9 @@
  * preflight tests.
  */
 
-import { chmodSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
 import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
 import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import {
@@ -68,14 +68,45 @@ export function project(cli: ElwoodAgentKind, version: string): string {
   return cwd;
 }
 
-/** Removes `cwd` as the first probe is about to spawn, after the launch's own check passed. */
-export function removeWhenProbed(cwd: string): void {
+/**
+ * Removes `cwd` as the first probe is about to spawn, after the launch's own check of it passed,
+ * then runs that probe for real. Given a `replacement`, made while `cwd` still existed so it is
+ * a different directory, moves it into `cwd`'s place once that probe has failed.
+ */
+export function removeWhenProbed(cwd: string, replacement?: string): void {
   const probe = currentCommandRunner();
-  setCommandRunnerForTests((command, args, options) => {
+  setCommandRunnerForTests(async (command, args, options) => {
     setCommandRunnerForTests(probe);
     rmSync(cwd, { recursive: true, force: true });
-    return probe(command, args, options);
+    const result = await probe(command, args, options);
+    if (replacement !== undefined) renameSync(replacement, cwd);
+    return result;
   });
+}
+
+/**
+ * How a launch whose directory was removed as its CLI was probed fails (C-API-61, C-PTY-08):
+ * as that directory, with the probe's own failure as the cause, never "not found on PATH".
+ */
+export const directoryLossCases = [
+  {
+    how: "removed",
+    remade: false,
+    message: "The working directory (`cwd`) is not an existing directory.",
+    errno: { errno: "ENOENT" },
+  },
+  {
+    how: "removed and made again",
+    remade: true,
+    message: "The working directory (`cwd`) was replaced by another directory.",
+    errno: {},
+  },
+] as const;
+
+/** The details a launch that lost `cwd` while it was probed fails with. */
+export function lostDirectory(cwd: string, errno: Readonly<Record<string, string>>) {
+  // The probe could not start its shell there.
+  return { cwd, cause: expect.stringMatching(/^spawn .* ENOENT$/), ...errno };
 }
 
 /** Persists a resumable record for a session that launched in `cwd`; returns its state dir. */

@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `claude_not_found` and `codex_not_found` now carry the version probe's own
+  `cause`, `errno` and `stderr` in `details`. A start or resume whose launch
+  directory goes while its CLI is probed reports that probe failure as its cause,
+  where it used to report "not found on PATH".
 - Preflight now checks the CLI the session will actually run. The `--version`
   and `update` probes start their login shell in the session's launch directory
   (the PTY's directory, on start and on resume), not Elwood's own, so a
