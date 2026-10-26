@@ -14,6 +14,7 @@
 
 import { setTimeout as delay } from "node:timers/promises";
 import { daemonScope } from "../shared-daemon.ts";
+import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import type { DescendantRecord } from "./record.ts";
 import type { SweepOps } from "./rounds.ts";
 import { reapRecordedSurvivors } from "./survivors.ts";
@@ -22,8 +23,6 @@ import { reapRecordedSurvivors } from "./survivors.ts";
 export const BACKGROUND_REAP_LIFETIME_MS = 60_000;
 /** The pause between one attempt and the next. */
 export const BACKGROUND_REAP_RETRY_MS = 1_000;
-/** The bound on each attempt's first read, which checks whether anything is left. */
-const CHECK_READ_MS = 1_000;
 
 /** A failure's recorded processes being reaped in the background. */
 export type BackgroundReap = {
@@ -50,11 +49,16 @@ export function reapInBackground(record: DescendantRecord, ops: SweepOps): Backg
   return { resolved: () => resolved };
 }
 
-/** Whether a read shows none of `record`'s processes alive; a failed read shows nothing. */
+/**
+ * Whether a read shows none of `record`'s processes alive; a failed read shows nothing.
+ * The read has the walk's deadline: on a loaded host one read can take over a second, and
+ * a shorter bound would fail every check, so the reap could never resolve.
+ */
 async function noneAlive(record: DescendantRecord, ops: SweepOps): Promise<boolean> {
   try {
     // Codex's daemon, which a recorded process may have become, is not left to the reap.
-    const table = await ops.listProcesses(CHECK_READ_MS, daemonScope(new Set(record.pids)));
+    const scope = daemonScope(new Set(record.pids));
+    const table = await ops.listProcesses(DETACHED_SWEEP_BUDGET_MS, scope);
     return record.survivors(table).length === 0;
   } catch {
     return false;

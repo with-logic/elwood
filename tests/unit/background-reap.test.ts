@@ -30,40 +30,66 @@ const tree = [leaderRow, hook(5002), hook(5003, { ppid: 5002, pgid: 5002 })];
 /** The same two once the leader's SIGKILL left the hook under PID 1. */
 const orphaned = [hook(5002, { ppid: 1 }), hook(5003, { ppid: 5002, pgid: 5002 })];
 
+/** Whether read number `read`, bounded by `timeoutMs`, fails. */
+type ReadFails = (read: number, timeoutMs: number) => boolean;
+
 /**
  * A reaper whose walk reads `first`, then fails its next read, as a read past a loaded
- * host's deadline does; every read after that serves `later`, given the calls so far.
+ * host's deadline does; every read after that serves `later`, given the calls so far,
+ * unless `fails` says it fails too.
  */
 function failingWalk(
   first: readonly ProcessEntry[],
   later: (calls: readonly string[]) => readonly ProcessEntry[],
+  fails: ReadFails = (read) => read === 2,
 ) {
   const { ops, calls, asRead } = scripted([]);
   let reads = 0;
-  const listProcesses = () => {
+  const listProcesses = (timeoutMs: number) => {
     reads += 1;
     calls.push("list");
-    if (reads === 2) return Promise.reject(errno("ETIMEDOUT"));
+    if (fails(reads, timeoutMs)) return Promise.reject(errno("ETIMEDOUT"));
     return Promise.resolve(asRead(reads === 1 ? first : later(calls)));
   };
   return { reaper: new SessionReaper(LEADER, { ...ops, listProcesses }), calls };
 }
+
+/** Serves `orphaned` until the hook's group is killed, and nothing after. */
+const goneOnceKilled = (sent: readonly string[]) => (sent.includes("kill 5002") ? [] : orphaned);
 
 const retry = (reaper: SessionReaper) => () => reaper.reapAndThrowOnDetachedSweepFailure();
 /** The signals sent to anything but the leader's group, which the walk and group reap own. */
 const beyondLeader = (calls: readonly string[]) =>
   calls.filter((call) => call !== "list" && !call.endsWith(` ${LEADER}`));
 const UNREADABLE = /process table unreadable/;
+/** How long a read on a loaded host can take: longer than one second. */
+const SLOW_READ_MS = 1_200;
 
 describe("C-LIFE-14 a failed walk's recorded processes", () => {
   test("are reaped in the background, and a later call resolves once a read shows them gone", async () => {
-    const { reaper, calls } = failingWalk(tree, (sent) =>
-      sent.includes("kill 5002") ? [] : orphaned,
-    );
+    const { reaper, calls } = failingWalk(tree, goneOnceKilled);
     await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow(UNREADABLE);
     expect(retry(reaper)).toThrow(UNREADABLE);
     await vi.waitFor(() => expect(retry(reaper)).not.toThrow(), { timeout: 5_000 });
     // Stopped as a recorded process's group, held over two reads, then killed.
+    expect(beyondLeader(calls)).toEqual(["stop 5002", "kill 5002"]);
+  });
+
+  test("keep reaping after an attempt's read fails, which shows nothing gone", async () => {
+    // Read 3 is the first attempt's: a failure there must not resolve, nor end the reap.
+    const fails: ReadFails = (read) => read === 2 || read === 3;
+    const { reaper, calls } = failingWalk(tree, goneOnceKilled, fails);
+    await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow(UNREADABLE);
+    await vi.waitFor(() => expect(retry(reaper)).not.toThrow(), { timeout: 5_000 });
+    expect(beyondLeader(calls)).toEqual(["stop 5002", "kill 5002"]);
+  });
+
+  test("give each attempt's read the walk's deadline, so reads over a second still resolve", async () => {
+    // Every read takes 1.2 s, as on a loaded host: one bounded below that times out.
+    const fails: ReadFails = (read, timeoutMs) => read === 2 || timeoutMs < SLOW_READ_MS;
+    const { reaper, calls } = failingWalk(tree, goneOnceKilled, fails);
+    await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow(UNREADABLE);
+    await vi.waitFor(() => expect(retry(reaper)).not.toThrow(), { timeout: 5_000 });
     expect(beyondLeader(calls)).toEqual(["stop 5002", "kill 5002"]);
   });
 
