@@ -16,6 +16,7 @@ function io(overrides: {
 }) {
   const restored: (string | undefined)[] = [];
   const spec = {
+    path: "/elwood-test/codex-home/config.toml",
     snapshot: overrides.snapshot ?? (() => "SNAP"),
     apply: overrides.apply,
     restore:
