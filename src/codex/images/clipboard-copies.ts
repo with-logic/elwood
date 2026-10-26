@@ -54,11 +54,11 @@ export function clipboardCopiesIn(item: unknown, tempDir: string): readonly stri
 export class CodexClipboardCopies {
   // Elwood's temp dir. Codex starts through the user's login shell, which could point it
   // at another; copies there are not this session's to remove (PRD §5.3).
-  private readonly tempDir = resolve(tmpdir());
+  private readonly elwoodTempDir = resolve(tmpdir());
   private readonly paths = new Set<string>();
 
   observe(item: unknown): void {
-    for (const path of clipboardCopiesIn(item, this.tempDir)) this.paths.add(path);
+    for (const path of clipboardCopiesIn(item, this.elwoodTempDir)) this.paths.add(path);
   }
 
   /**

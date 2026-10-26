@@ -2103,8 +2103,9 @@ the rollout records the path twice: as `{"type":"local_image","path":...}` in th
 content of an `event_msg` `item_completed` `UserMessage`, and as
 `<image name=[Image #1] path="...">` text beside the inline `input_image` data in the
 `response_item` message. The image itself travels inline, so nothing reads the file
-after submission. Elwood removes the copies the session's transcript names once the CLI
-exits (C-API-46).
+after submission. Once the CLI exits, Elwood removes the copies the session's transcript
+names directly in Elwood's own temp directory (C-API-46). A Codex whose login shell sets
+another `TMPDIR` keeps its copies there, and Elwood does not remove them.
 
 ## Cached image recovery frames (2026-10-01)
 

@@ -83,15 +83,17 @@ test("C-API-46 a copy the final flush reads first is removed before the exit fin
   const rollout = join(cwd, "rollout.jsonl");
   const pasted = copyIn(tmpdir());
   const { session, seen } = await sessionReading(cwd, rollout);
-  const exits: number[] = [];
-  session.on("terminal:exit", (event) => exits.push(event.exitCode));
+  const exits: { readonly exitCode: number; readonly copyLeft: boolean }[] = [];
+  session.on("terminal:exit", (event) =>
+    exits.push({ exitCode: event.exitCode, copyLeft: existsSync(pasted) }),
+  );
   // The CLI exits in the same tick its last record lands, before any poll can read it.
   appendFileSync(rollout, userMessage([pasted]));
   ptys[0]!.emitExit({ exitCode: 0 });
   expect(seen).toHaveLength(1);
   expect(exits).toEqual([]); // the exit waits for the removal
-  await expect.poll(() => exits).toEqual([0]);
-  expect(existsSync(pasted)).toBe(false);
+  // The copy was already gone when `terminal:exit` reached its listeners.
+  await expect.poll(() => exits).toEqual([{ exitCode: 0, copyLeft: false }]);
   expect(session.status).toBe("exited");
   await session.teardown();
 });

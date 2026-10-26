@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -79,6 +79,7 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
   let session: CodexSessionApi | undefined;
   const namedImagePaths: string[] = [];
   let copy: string | undefined;
+  let removedBySession = false;
   try {
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
     session.on("codex:transcript", ({ item }) => namedImagePaths.push(...localImagePathsIn(item)));
@@ -95,21 +96,25 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
     assert.equal(execFileSync("/usr/bin/pbpaste").toString(), sentinel);
     // Codex saved the pasted image to a temp file its transcript names.
     const named = await waitFor(() => namedImagePaths[0], "the submitted image in the transcript");
-    const tempDir = resolve(tmpdir());
-    if (resolve(dirname(named)) !== tempDir) {
+    const elwoodTempDir = resolve(tmpdir());
+    if (resolve(dirname(named)) !== elwoodTempDir) {
       // Codex's login shell gave it another TMPDIR: the copy is not the session's (§5.3).
       skipNow(t, `Codex saved the pasted image outside Elwood's temp dir: ${named}`);
       return;
     }
-    copy = clipboardCopyAt(named, tempDir);
+    copy = clipboardCopyAt(named, elwoodTempDir);
     assert.ok(copy, `the session owns Codex's copy ${named}`);
     assert.equal(existsSync(copy), true, "Codex saved the pasted image");
   } finally {
     await cleanup(session);
     execFileSync("/usr/bin/pbcopy", { input: priorClipboard }); // restore dev's real clipboard
+    removedBySession = copy !== undefined && !existsSync(copy);
+    // The test's own artifact goes either way: a copy the session left, or one Codex kept
+    // in another temp dir. Only a copy name the transcript gave, directly in its dir.
+    for (const path of namedImagePaths) {
+      const own = clipboardCopyAt(path, resolve(dirname(path)));
+      if (own !== undefined) rmSync(own, { force: true });
+    }
   }
-  assert.ok(
-    copy !== undefined && !existsSync(copy),
-    "the session removed Codex's copy when it ended",
-  );
+  assert.ok(removedBySession, "the session removed Codex's copy when it ended");
 });

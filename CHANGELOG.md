@@ -16,7 +16,8 @@ back each entry are listed in `prd/14-conformance.md`.
   temp directory for each image Elwood pastes into it, once the session's CLI has
   exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image
   attach left one such file behind for good. Only files the session's own transcript
-  names are removed.
+  names directly in Elwood's temp directory are removed; a Codex whose login shell sets
+  another `TMPDIR` keeps its copies there.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
