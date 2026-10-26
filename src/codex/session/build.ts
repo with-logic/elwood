@@ -82,7 +82,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       socketPath: runtime.socketPath,
     });
   }
-  const { pty, configPath } = await spawnCodexPty(record, runtime.bridgeScriptPath, options).catch(
+  const { pty, resolveConfigPath } = await spawnCodexPty(record, runtime, options).catch(
     async (error: unknown) => {
       await cleanupStartupResources({ bridge });
       throw error;
@@ -161,7 +161,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     terminalReplay,
     transcriptWatcher,
     loopDefinitions,
-    configPath,
+    resolveConfigPath,
   );
   const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);

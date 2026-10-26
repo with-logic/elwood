@@ -3,7 +3,8 @@
  * writes, resizes, and kill signals; replays data/exit into the session; and can
  * dispatch a hook request straight at the session's bridge socket the way the real
  * `hook-bridge.mjs` child would. Also owns the scratch-directory registry both suites
- * use for per-test cwd/stateDir roots, so an `afterEach` can remove them.
+ * use for per-test cwd/stateDir roots, so an `afterEach` can remove them. A Codex launch's
+ * `CODEX_HOME` report is written as the launch shell would write it.
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -11,6 +12,7 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import type { TerminalSize } from "../../src/index.ts";
 import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
+import { answerCodexHomeReport } from "./codex-home.ts";
 import { launchArtifactPaths } from "./launch-artifacts.ts";
 import { realTmpRoot } from "./real-tmp.ts";
 
@@ -33,6 +35,7 @@ export class FakePty implements PtyProcess {
 
   /** Adapter helpers pass `1000 + registry.length`; ad-hoc factories get a fresh pid. */
   constructor(options: PtySpawnOptions, pid: number = anonymousPid++) {
+    answerCodexHomeReport(options);
     this.options = options;
     this.size = options.size;
     this.pid = pid;

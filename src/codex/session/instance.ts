@@ -40,11 +40,11 @@ import { clipboardRestoreFailedWarning } from "./warnings.ts";
 const cliExitWaitMs = 5_000;
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  // The default and the setModel restore use the config fixed at THIS session's launch (§5.3).
+  // The default and the setModel restore use the config of THIS session's Codex (C-CODEX-24).
   protected readonly picker: ModelPickerSpec = {
     ...codexModelPicker,
     isClear: liveCodexClearance(() => this.terminal),
-    withDefaults: (options, signal) => withCodexDefault(options, signal, this.configPath),
+    withDefaults: (options, signal) => withCodexDefault(options, signal, this.resolveConfigPath),
   };
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
@@ -54,7 +54,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // The PTY's own exit. Session status cannot stand in for it: shutdown records stopped,
   // killed, and torn_down even when its signal did not take.
   private readonly cliExit = new PtyExitLatch(this.pty);
-  private readonly configPath: string;
+  private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
   readonly turnCommit: CodexTurnCommit;
   constructor(
@@ -68,7 +68,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     terminalReplay: TerminalReplayBuffer,
     transcriptWatcher: CodexTranscriptWatcher | undefined,
     loopDefinitions: readonly PersistedLoopDefinition[],
-    configPath: string,
+    resolveConfigPath: (signal: AbortSignal) => Promise<string>,
   ) {
     super(
       "codex",
@@ -89,7 +89,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
-    this.configPath = configPath;
+    this.resolveConfigPath = resolveConfigPath;
     // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
@@ -109,7 +109,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     // model — a FIFO violation the slot exists to prevent.
     const session = {
       elwoodSessionId: this.elwoodSessionId,
-      configPath: this.configPath,
+      resolveConfigPath: this.resolveConfigPath,
       waitForCliExit: () => this.waitForCliExit(),
       emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => this.emitWarnings(warnings),
     };
