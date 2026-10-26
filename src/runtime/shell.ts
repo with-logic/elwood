@@ -9,18 +9,13 @@ import type { ElwoodAgentKind } from "../core/activity/index.ts";
 import { isStringArray } from "../core/predicates.ts";
 import { homeGuardExitCode, homeGuardHomesKey, homeGuardStopMarker } from "./home-guard/index.ts";
 import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
+import { shellQuote } from "./shell-quote.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
 }
 
-/**
- * Quote one argument for the POSIX login shells used by both adapters: wrap in
- * single quotes, escaping embedded single quotes as '\''.
- */
-export function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
+export { shellQuote };
 
 /** The login shell's arguments; the script to run is always the fourth. */
 export type LoginShellArgs = readonly ["-l", "-i", "-c", string];
