@@ -1,5 +1,6 @@
 /**
- * Reaps the process tree of a PTY leader on session teardown.
+ * Reaps the process tree of a PTY leader on session teardown, but Codex's shared
+ * app-server daemon, its updater, and what they started (`shared-daemon.ts`).
  * Implements PRD §5.3 and §9.4 (C-LIFE-10): a CLI-spawned helper such as the
  * Claude hook bridge is a descendant of the PTY leader. Because POSIX reparents
  * a surviving descendant to PID 1 the instant its parent exits, a parent-pid
@@ -11,7 +12,8 @@
  *
  * A descendant that started its own group is outside it: Claude and Codex start every
  * hook with `setsid()` (docs/cli-behavior.md, "Hook and MCP process groups").
- * `sweepDetached` finds those groups by parent pid and kills them, so it has to run
+ * `sweepDetached` finds those groups by parent pid and kills them, all but the daemon's
+ * and its updater's, which other Codex sessions share, so it has to run
  * while that link still exists: before the live leader is SIGKILLed (see
  * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
@@ -19,12 +21,12 @@
 import { errnoCode } from "../../core/errors.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { type SweepOps, sweepDetachedGroups } from "./detached-sweep/index.ts";
-import { listProcessTableShared } from "./process-table.ts";
+import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
- * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, and
- * table read.
+ * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, the
+ * SIGCONT that resumes a group holding Codex's daemon, and table read.
  */
 export type ProcessTreeOps = SweepOps;
 
@@ -78,7 +80,10 @@ export const osProcessTreeOps: ProcessTreeOps = {
   stopGroup(pgid: number): void {
     process.kill(-pgid, "SIGSTOP");
   },
-  listProcesses: listProcessTableShared,
+  continueGroup(pgid: number): void {
+    process.kill(-pgid, "SIGCONT");
+  },
+  listProcesses: (timeoutMs, scope) => listProcessTableMarkingDaemon(timeoutMs, scope),
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle
@@ -99,10 +104,11 @@ export function setProcessTreeOpsForTests(ops: GroupReapOps & Partial<ProcessTre
  * to stop, each read as stopped with nothing under it. A sweep driven by them signals
  * no real process, finds no descendant, and converges on its second read.
  */
-export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProcesses"> {
+export function quietProcessTree(): Omit<ProcessTreeOps, "killGroup"> {
   const stopped = new Set<number>();
   return {
     stopGroup: (pgid) => void stopped.add(pgid),
+    continueGroup: (pgid) => void stopped.delete(pgid),
     listProcesses: () =>
       Promise.resolve([...stopped].map((pgid) => ({ ...QUIET_ROW, pid: pgid, pgid }))),
   };
