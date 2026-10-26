@@ -9,13 +9,18 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
-import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import {
+  osProcessTreeOps,
+  type ProcessTreeOps,
+  SessionReaper,
+} from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
+  type DetachedTree,
   detachedDescendantPids,
   detachedShape,
   holdDir,
@@ -48,6 +53,19 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     await terminatePty(tree.pty, "SIGKILL", new SessionReaper(tree.pty.pid));
     expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
     expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
+  });
+
+  test("a graceful stop reaps what the leader leaves running, a process it starts after", async () => {
+    // The leader answers SIGTERM by starting another detached process, and exits once a
+    // read has shown it: one that exits sooner leaves no read to link it (PRD §5.3).
+    const tree = startDetachedTree("late-on-term");
+    const [child, grandchild] = await detachedDescendantPids(tree);
+    const ops = { ...osProcessTreeOps, listProcesses: markingLateSeen(tree) };
+    await terminatePty(tree.pty, "SIGTERM", new SessionReaper(tree.pty.pid, ops));
+    const late = await waitForTreeProcessPid(tree, "late");
+    for (const pid of [child, grandchild, late]) {
+      expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
+    }
   });
 
   test("an ignored SIGTERM escalates and still reaps the detached descendants", async () => {
@@ -163,3 +181,14 @@ describe("C-LIFE-10 a failed real-process test leaves no detached tree behind", 
     expect(existsSync(dir)).toBe(false);
   });
 });
+
+/** Real reads that, once one shows the tree's `late` process, let its leader exit. */
+function markingLateSeen(tree: DetachedTree): ProcessTreeOps["listProcesses"] {
+  return async (timeoutMs, scope) => {
+    const table = await osProcessTreeOps.listProcesses(timeoutMs, scope);
+    const pidFile = join(tree.dir, "late.pid");
+    const late = existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : undefined;
+    if (table.some((row) => row.pid === late)) writeFileSync(join(tree.dir, "seen"), "");
+    return table;
+  };
+}

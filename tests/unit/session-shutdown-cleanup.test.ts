@@ -29,6 +29,7 @@ const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
   reap: () => undefined,
   reapAndThrowOnDetachedSweepFailure: () => undefined,
   sweepDetached: async () => {},
+  watchSurvivors: () => ({ firstRead: Promise.resolve(), finish: async () => {} }),
 };
 
 // A host whose runtime cleanup rejects with a raw aggregate Error (as runCleanupSteps

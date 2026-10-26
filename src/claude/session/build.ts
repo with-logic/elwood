@@ -50,7 +50,6 @@ export async function buildClaudeSession(
   const warnGate = createClaudeStartupWarningGate(
     () => session,
     () => promptResponder.closing,
-    (deliver) => wired.duringDelivery(deliver),
   );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;

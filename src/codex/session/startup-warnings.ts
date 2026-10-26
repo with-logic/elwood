@@ -7,13 +7,11 @@ import type { CodexPreflightWarning } from "../preflight.ts";
 export function createCodexStartupWarningGate(
   session: () => FrameWarningSink | undefined,
   closing: () => boolean,
-  duringDelivery: (deliver: () => void) => void,
 ): ReturnType<typeof createSessionStartupWarningGate> {
   return createSessionStartupWarningGate(
     session,
     (warning) =>
       warning.code === "startup_prompt_write_failed" && warning.label === "update" && closing(),
-    duringDelivery,
   );
 }
 
