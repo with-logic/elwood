@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A start or resume whose launch fails while its `cwd` is deleted and made again
+  now fails with the adapter's `*_start_failed` for that `cwd`, as it does when
+  `cwd` is simply gone. It used to find the new directory in its place and report
+  the launch's own failure instead.
+
 - A resume that fails partway through launching, such as when its PTY can't be
   spawned, no longer leaves its session's expired loops pruned from `loops.json`.
   Resume removes expired loops before it starts the agent and again as it commits,
