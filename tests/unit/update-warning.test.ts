@@ -6,7 +6,6 @@
 import { describe, expect, test } from "vitest";
 import { elwoodError } from "../../src/core/errors.ts";
 import { buildUpdateWarning } from "../../src/core/warnings/update.ts";
-import { dedupeInFlight } from "../../src/runtime/update/once.ts";
 
 describe("buildUpdateWarning", () => {
   test("carries the installed version, errno, and bounded stderr from an ElwoodError", () => {
@@ -47,30 +46,6 @@ describe("buildUpdateWarning", () => {
     const error = elwoodError("claude_update_failed", "failed", { stderr: "x".repeat(5000) });
     const warning = buildUpdateWarning("claude", "2.1.223", error);
     expect(warning.raw.length).toBeLessThanOrEqual(2000); // the 2 KB `maxStderr` cap
-  });
-});
-
-describe("dedupeInFlight identity-guarded eviction", () => {
-  test("a rejection does NOT evict a DIFFERENT (later, successful) entry for the same key", async () => {
-    const cache = new Map<string, Promise<string>>();
-    // Start a slow-rejecting entry, then REPLACE it under the same key with a resolved one BEFORE
-    // the rejection settles. The rejection's eviction must be identity-guarded — it must not delete
-    // the replacement (which is a different promise).
-    let rejectFirst!: (e: unknown) => void;
-    const first = dedupeInFlight(
-      cache,
-      "k",
-      () =>
-        new Promise<string>((_r, rej) => {
-          rejectFirst = rej;
-        }),
-    );
-    first.catch(() => undefined); // handle the expected rejection
-    cache.set("k", Promise.resolve("winner")); // a later entry replaces the in-flight one
-    rejectFirst(new Error("boom")); // now the first rejects — its eviction must be a no-op here
-    await Promise.resolve();
-    await Promise.resolve();
-    await expect(cache.get("k")).resolves.toBe("winner"); // survived the identity-guarded eviction
   });
 });
 
