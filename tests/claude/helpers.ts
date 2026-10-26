@@ -34,9 +34,9 @@ export const reapedGroups: number[] = [];
 const versionOk = () => ({ status: 0, stdout: "2.1.144\n", stderr: "" });
 const scratch = createScratchRegistry("elwood_test_claude-");
 
-afterEach(() => {
+afterEach(async () => {
+  await removeFakeSocketHomes();
   scratch.removeAll();
-  removeFakeSocketHomes();
 });
 
 export function installFakes(): void {

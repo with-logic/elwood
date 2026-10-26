@@ -1,14 +1,11 @@
 /** Failed per-launch runtime writes preserve socket ownership boundaries (PRD §8.1/§9.1). */
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
-import {
-  resetSocketHomeRootForTests,
-  setSocketHomeRootForTests,
-} from "../../src/state/socket-home.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
+import { isolateFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
 import { socketFilesIn } from "../helpers/socket-leak.ts";
 
 const fault = vi.hoisted(() => ({ enabled: false, hit: false }));
@@ -29,7 +26,6 @@ vi.mock("node:fs", async (importOriginal) => {
 afterEach(() => {
   fault.enabled = false;
   fault.hit = false;
-  resetSocketHomeRootForTests();
   claude.resetFakes();
   codex.resetFakes();
 });
@@ -41,8 +37,7 @@ for (const adapter of [
   test(`C-API-20 ${adapter.name} runtime rename failure removes only the failed launch socket`, async () => {
     adapter.helpers.installFakes();
     const cwd = adapter.helpers.tempDir();
-    const root = mkdtempSync("/tmp/elwood-write-failure-");
-    setSocketHomeRootForTests(root);
+    const root = isolateFakeSocketHomes(); // the root installFakes already minted
     const prior = await adapter.start({ cwd });
     try {
       await adapter.helpers.ptys[0]!.dispatchHook(prior.elwoodSessionId, {
@@ -62,7 +57,6 @@ for (const adapter of [
     } finally {
       fault.enabled = false;
       await prior.teardown();
-      rmSync(root, { recursive: true, force: true });
     }
   });
 }

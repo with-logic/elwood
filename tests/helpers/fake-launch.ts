@@ -47,8 +47,8 @@ export function resetPreflightCaches(): void {
 }
 
 /** Restores the real seams, forgets cached probe results, and removes the socket homes. */
-export function resetFakeLaunch(): void {
+export async function resetFakeLaunch(): Promise<void> {
   resetRuntimeSeamsForTests();
   resetPreflightCaches();
-  removeFakeSocketHomes();
+  await removeFakeSocketHomes();
 }

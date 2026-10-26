@@ -43,9 +43,9 @@ const versionOk =
       : { status: 0, stdout: "codex-cli 0.132.0\n", stderr: "" };
 const scratch = createScratchRegistry("elwood_test_codex-");
 
-afterEach(() => {
+afterEach(async () => {
+  await removeFakeSocketHomes();
   scratch.removeAll();
-  removeFakeSocketHomes();
 });
 
 export function installFakes(options: { readonly supportsHookTrustBypass?: boolean } = {}): void {
