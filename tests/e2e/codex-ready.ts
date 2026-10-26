@@ -1,13 +1,11 @@
 /**
- * A ready read-only Codex session for the real-Codex e2e tests, and its teardown, shared by
- * the model-picker, configured-default, config-lock, and resume tests, plus the launch
- * tracking and end-of-test cleanup that keep a sandbox a Codex process may still use.
- * Supports PRD §12 and C-E2E-03.
+ * A ready read-only Codex session for the real-Codex e2e tests, shared by the model-picker,
+ * configured-default, config-lock, and stop-commit tests. Supports PRD §12 and C-E2E-03.
  */
 
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import type { CodexSandbox, E2eProject } from "./helpers.ts";
-import { keepScratch } from "./scratch.ts";
+import { type CodexLaunches, teardownOrKillCodex } from "./codex-test-end.ts";
+import type { E2eProject } from "./helpers.ts";
 
 // Codex fires SessionStart within seconds of launch; a minute without it is a failure.
 const defaultReadyTimeoutMs = 60_000;
@@ -15,27 +13,14 @@ const defaultReadyTimeoutMs = 60_000;
 export type StartReadyCodexOptions = {
   /** The readiness deadline; the wait rejects sooner if the session ends first. */
   readonly readyTimeoutMs?: number;
-  /** Receives the session as soon as it starts, so the caller can always tear it down. */
-  readonly onStarted?: (session: CodexSessionApi) => void;
+  /** Records a start that rejected, which leaves no session to tear down. */
+  readonly launches: CodexLaunches;
+  /**
+   * Receives the session as soon as it starts, so the caller can always tear it down: a
+   * session that never got ready is torn down here, but its cleanup can fail.
+   */
+  readonly onStarted: (session: CodexSessionApi) => void;
 };
-
-/** What cleanup needs from a session: tests may pass a double. */
-export type CodexTestSession = Pick<CodexSessionApi, "teardown" | "kill">;
-
-/** Tears a session down, falling back to kill; returns what failed rather than hiding it. */
-export async function teardownOrKillCodex(session: CodexTestSession): Promise<readonly unknown[]> {
-  try {
-    await session.teardown();
-    return [];
-  } catch (teardownError) {
-    try {
-      await session.kill();
-      return [];
-    } catch (killError) {
-      return [teardownError, killError];
-    }
-  }
-}
 
 /**
  * Starts a read-only Codex session in `project` and waits for it to become ready. A session
@@ -45,17 +30,19 @@ export async function teardownOrKillCodex(session: CodexTestSession): Promise<re
  */
 export async function startReadyCodex(
   project: E2eProject,
-  { readyTimeoutMs = defaultReadyTimeoutMs, onStarted }: StartReadyCodexOptions = {},
+  { readyTimeoutMs = defaultReadyTimeoutMs, launches, onStarted }: StartReadyCodexOptions,
 ): Promise<CodexSessionApi> {
-  const session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    autotrust: true,
-    hooks: {},
-  });
-  onStarted?.(session);
+  const session = await launches.track(
+    startCodex({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      autotrust: true,
+      hooks: {},
+    }),
+  );
+  onStarted(session);
   // `terminal:data` fires once each chunk has rendered, so this copy is always the latest
   // screen, taken while the terminal is still live.
   let screen = "";
@@ -79,67 +66,4 @@ export async function startReadyCodex(
   } finally {
     offScreen();
   }
-}
-
-/**
- * Records whether a Codex start or resume rejected. A rejected launch may leave a Codex
- * process running that the test holds no handle to, so its scratch must stay.
- */
-export type CodexLaunches = {
-  /** A launch passed to `track` rejected. */
-  readonly rejected: boolean;
-  /** Settles as `launch` does, recording a rejection. Route every start and resume here. */
-  track<T>(launch: Promise<T>): Promise<T>;
-};
-
-export function codexLaunches(): CodexLaunches {
-  let rejected = false;
-  return {
-    get rejected() {
-      return rejected;
-    },
-    track: (launch) =>
-      launch.catch((error: unknown) => {
-        rejected = true;
-        throw error;
-      }),
-  };
-}
-
-export type CodexTestEnd = {
-  /** Every session the test still holds, torn down here. */
-  readonly sessions: readonly (CodexTestSession | undefined)[];
-  readonly project: E2eProject;
-  readonly sandbox: CodexSandbox;
-  /** The test's launches: one that rejected keeps the scratch. */
-  readonly launches: Pick<CodexLaunches, "rejected">;
-  /** What failed the test before cleanup, if anything. */
-  readonly failure: unknown;
-};
-
-/**
- * Ends a real-Codex test: tears its sessions down, then removes the sandbox only once every
- * Codex process that could use it is confirmed gone. Otherwise the project and sandbox stay
- * past the file's sweep, and this throws with their paths. Cleanup failures, including a
- * failed removal, are thrown alongside the test's own failure rather than in place of it.
- */
-export async function endCodexTest(end: CodexTestEnd): Promise<void> {
-  const cleanupFailures: unknown[] = [];
-  for (const session of end.sessions) {
-    if (session) cleanupFailures.push(...(await teardownOrKillCodex(session)));
-  }
-  const confirmed = cleanupFailures.length === 0 && !end.launches.rejected;
-  if (confirmed) {
-    try {
-      end.sandbox.dispose();
-    } catch (error) {
-      cleanupFailures.push(error);
-    }
-  } else keepScratch(end.project.cwd, end.sandbox.home);
-  if (confirmed && cleanupFailures.length === 0) return;
-  const kept = confirmed
-    ? ""
-    : `; kept ${end.project.cwd} and ${end.sandbox.home}, which a Codex process may still use`;
-  const failures = end.failure === undefined ? cleanupFailures : [end.failure, ...cleanupFailures];
-  throw new AggregateError(failures, `Codex test cleanup failed${kept}`);
 }

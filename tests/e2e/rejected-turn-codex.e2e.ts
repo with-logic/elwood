@@ -7,9 +7,10 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CliError } from "../../src/cli/output/types.ts";
+import type { CliError, CliTerminalRecord } from "../../src/cli/output/types.ts";
 import { CodexSession, ElwoodError } from "../../src/index.ts";
-import { invoke, parse } from "./cli-commands-helpers.ts";
+import { type Invocation, invoke, parse } from "./cli-commands-helpers.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   bogusCodexModel,
   codexAuthMissing,
@@ -24,14 +25,32 @@ import {
 
 const config = "check_for_update_on_startup = false\n";
 
+/**
+ * `result`, once the CLI reports that its own cleanup succeeded. A CLI that crashed or failed
+ * its cleanup may have left its Codex running, so this throws, and the tracked launch keeps
+ * the test's scratch.
+ */
+function cleanedUp(result: Invocation): Invocation {
+  let cleanup: CliTerminalRecord["cleanup"] | undefined;
+  try {
+    cleanup = (JSON.parse(result.stdout) as CliTerminalRecord).cleanup;
+  } catch {
+    cleanup = undefined;
+  }
+  if (cleanup?.status === "succeeded") return result;
+  const streams = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
+  throw new Error(`the CLI did not confirm its cleanup: ${JSON.stringify(cleanup)}\n${streams}`);
+}
+
 test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with status 1", {
   skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, config);
-  try {
-    const result = await invoke(
+  const launches = codexLaunches();
+  await runCodexTest({ sessions: () => [], sandbox, launches }, async () => {
+    const cli = invoke(
       [
         "--agent=codex",
         `--model=${bogusCodexModel}`,
@@ -43,6 +62,8 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
       ],
       project.cwd,
     );
+    // A CLI that timed out was killed, and the Codex it launched may still be running.
+    const result = await launches.track(cli.then(cleanedUp));
     // Report both streams on any mismatch so an unrelated startup failure is diagnosable.
     const output = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
     assert.equal(result.status, 1, output);
@@ -51,9 +72,7 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
     assert.equal(document.agent, "codex");
     assert.equal(document.error.code, "turn_failed", output);
     assert.match(document.error.message, /model_not_found/u);
-  } finally {
-    sandbox.dispose();
-  }
+  });
 });
 
 test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed", {
@@ -77,7 +96,10 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
       (reply) => ({ reply }),
       (error: unknown) => ({ error }),
     );
-  try {
+  const launches = codexLaunches();
+  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
+    // Started explicitly so a start that rejects is told apart from the turns' rejections.
+    await launches.track(session.start());
     for (const prompt of ["Reply with exactly OK.", "Reply with exactly AGAIN."]) {
       // The second turn proves the first released the session at its real boundary.
       const outcome = await settle(prompt);
@@ -93,8 +115,5 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
     // Codex accepted both submissions and fired no `Stop` for either.
     assert.equal(hooks.filter((name) => name === "UserPromptSubmit").length, 2, hooks.join(","));
     assert.ok(!hooks.includes("Stop"), hooks.join(","));
-  } finally {
-    await session.teardown().catch(() => session.kill());
-    sandbox.dispose();
-  }
+  });
 });

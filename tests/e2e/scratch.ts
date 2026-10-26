@@ -22,10 +22,14 @@ export type E2eProject = {
 };
 
 export type CodexSandbox = {
+  /** The project the sandbox was made for, whose scratch it is named after. */
+  readonly project: E2eProject;
   readonly home: string;
   readonly configPath: string;
   /** Restores `CODEX_HOME` and removes the sandbox (including the auth.json copy). */
   dispose(): void;
+  /** Restores `CODEX_HOME` and leaves the sandbox, which a Codex process may still use. */
+  restoreHome(): void;
 };
 
 const scratchRoots: string[] = [];
@@ -95,13 +99,18 @@ export function sandboxedCodexHome(project: E2eProject, config: string): CodexSa
   const configPath = seedCodexHome(home, config);
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = home;
+  const restoreHome = () => {
+    if (previousHome === undefined) delete process.env["CODEX_HOME"];
+    else process.env["CODEX_HOME"] = previousHome;
+  };
   return {
+    project,
     home,
     configPath,
     dispose: () => {
-      if (previousHome === undefined) delete process.env["CODEX_HOME"];
-      else process.env["CODEX_HOME"] = previousHome;
+      restoreHome();
       rmSync(home, { recursive: true, force: true });
     },
+    restoreHome,
   };
 }

@@ -6,8 +6,8 @@
  *
  * Safety: this runs entirely inside a SANDBOXED CODEX_HOME seeded with only the
  * user's real auth.json (`sandboxedCodexHome`) — it never reads or writes the real
- * ~/.codex/config.toml, and the sandbox is removed only AFTER both sessions are torn
- * down, so an in-flight session can never rewrite a restored file. The happy-path
+ * ~/.codex/config.toml, and the sandbox is removed only once both sessions are confirmed
+ * torn down, so an in-flight session can never rewrite a restored file. The happy-path
  * single-session restore is covered by model-picker.e2e.ts; this pins the lock.
  */
 
@@ -15,7 +15,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import type { CodexSessionApi } from "../../src/index.ts";
-import { startReadyCodex, teardownOrKillCodex } from "./codex-ready.ts";
+import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -38,19 +39,24 @@ test("C-CODEX-14 concurrent Codex model switches restore the user default (real 
   timeout: 240_000,
 }, async () => {
   const sandbox = sandboxedCodexHome(makeProject("codex"), BASELINE_CONFIG);
+  const otherProjects = [makeProject("codex"), makeProject("codex")] as const;
   const defaultsBefore = rootModelKeys(sandbox.configPath);
+  const launches = codexLaunches();
   const started: CodexSessionApi[] = [];
-  const failures: unknown[] = [];
-  try {
+  // Every started session is torn down before the sandbox goes, and the sandbox goes only
+  // once each is confirmed gone, so an in-flight session can never rewrite the config after
+  // we stop watching it. A session whose start failed was torn down already; this retries
+  // it if that failed. The real ~/.codex is untouched.
+  await runCodexTest({ sessions: () => started, otherProjects, sandbox, launches }, async () => {
     // Start the sessions one after the other; the concurrency under test is the model
     // switch below. Codex 0.164.0 does not serialize its SQLite migrations across
     // processes, so two cold starts in this fresh sandbox race them and one exits with
     // "local database appears to be damaged" (docs/cli-behavior.md).
-    // Each started session is tracked at once, so the teardown below covers a failed start
+    // Each started session is tracked at once, so the test's end covers a failed start
     // whose own cleanup also failed.
-    const track = { onStarted: (session: CodexSessionApi) => started.push(session) };
-    const a = await startReadyCodex(makeProject("codex"), track);
-    const b = await startReadyCodex(makeProject("codex"), track);
+    const track = { launches, onStarted: (session: CodexSessionApi) => started.push(session) };
+    const a = await startReadyCodex(otherProjects[0], track);
+    const b = await startReadyCodex(otherProjects[1], track);
     const models = await a.listModels();
     const target = models.find((model) => !model.isCurrent);
     assert.ok(target, "another model is available to switch to");
@@ -66,14 +72,5 @@ test("C-CODEX-14 concurrent Codex model switches restore the user default (real 
       defaultsBefore,
       "the config.toml model default is restored despite concurrent switches",
     );
-  } catch (error) {
-    failures.push(error);
-  }
-  // Tear every started session down BEFORE removing the sandbox, so an in-flight session
-  // can never rewrite the config after we stop watching it. A session whose start failed
-  // was torn down already; this retries it if that failed. The real ~/.codex is untouched.
-  for (const session of started) failures.push(...(await teardownOrKillCodex(session)));
-  sandbox.dispose();
-  if (failures.length > 1) throw new AggregateError(failures, "C-CODEX-14 and its cleanup failed");
-  if (failures.length === 1) throw failures[0];
+  });
 });

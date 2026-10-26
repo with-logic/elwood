@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node-pty";
 import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
+import { type CodexTestSession, codexLaunches, endCodexTest } from "./codex-test-end.ts";
 import { makeProject, sandboxedCodexHome, waitFor } from "./helpers.ts";
 
 /** Local authentication failure creates Codex's own MCP warning without an external service. */
@@ -70,26 +71,36 @@ startup_timeout_sec = 2
   child.onExit(() => {
     exited = true;
   });
+  const exit = () => waitFor(() => (exited ? true : undefined), "native Codex exit", 5_000);
+  const native: CodexTestSession = {
+    teardown: async () => {
+      if (exited) return;
+      child.write("\u0003");
+      await delay(100);
+      if (!exited) child.write("\u0003");
+      await delay(500);
+      if (!exited) child.kill("SIGKILL");
+      await exit();
+    },
+    kill: async () => {
+      if (!exited) child.kill("SIGKILL");
+      await exit();
+    },
+  };
   return {
     terminal,
     frame: () => terminal.snapshot().text,
+    // The sandbox goes only once Codex is confirmed gone; otherwise it stays, with its project.
     close: async () => {
       try {
-        if (!exited) {
-          child.write("\u0003");
-          await delay(100);
-          if (!exited) child.write("\u0003");
-          await delay(500);
-          if (!exited) child.kill("SIGKILL");
-          await waitFor(() => (exited ? true : undefined), "native Codex exit", 5_000);
-        }
+        const launches = codexLaunches();
+        await endCodexTest({ sessions: [native], sandbox, launches, failure: undefined });
       } finally {
         data.dispose();
         try {
           await terminal.settled();
         } finally {
           terminal.dispose();
-          sandbox.dispose();
         }
       }
     },
