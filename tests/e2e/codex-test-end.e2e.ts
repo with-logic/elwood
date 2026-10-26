@@ -111,3 +111,24 @@ test("C-E2E-03 confirmed teardown removes the sandbox and restores the suite's C
   assert.equal(existsSync(sandbox.home), false, "the sandbox is gone");
   assert.equal(process.env["CODEX_HOME"], suiteCodexHome);
 });
+
+test("C-E2E-03 a sandbox whose removal fails stays past the sweep, with its project", {
+  skip: skipIf(codexAuthMissing()),
+}, async () => {
+  const { project, sandbox } = scratch();
+  // As when something running from the sandbox will not stop (`stopProcessesUnder`).
+  const stubborn = {
+    ...sandbox,
+    dispose: () => {
+      sandbox.restoreHome();
+      throw new Error("still running");
+    },
+  };
+  const end = { sessions: [tornDown], sandbox: stubborn, launches: codexLaunches() };
+  await assert.rejects(endCodexTest({ ...end, failure: undefined }), {
+    message: `Codex test cleanup failed; kept ${project.cwd}, ${sandbox.home}, which a Codex process may still use`,
+  });
+  kept.push(project.cwd, sandbox.home);
+  assert.equal(process.env["CODEX_HOME"], suiteCodexHome);
+  assert.ok(existsSync(project.cwd) && existsSync(sandbox.home), "the scratch stays");
+});

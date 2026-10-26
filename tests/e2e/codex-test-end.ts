@@ -69,34 +69,36 @@ export type CodexTestEnd = {
 
 /**
  * Ends a real-Codex test: tears its sessions down, then removes the sandbox only once every
- * Codex process that could use it is confirmed gone. Otherwise the projects and sandbox stay
- * past the file's sweep, `CODEX_HOME` is restored so later tests in the file do not use the
- * kept sandbox, and this throws with their paths. Cleanup failures, including a failed
- * removal, are thrown alongside the test's own failure rather than in place of it.
+ * Codex process that could use it is confirmed gone, its `dispose()` stopping any still running
+ * from it detached. Otherwise, or when that removal fails, the projects and sandbox stay past
+ * the file's sweep, `CODEX_HOME` is restored so later tests in the file do not use the kept
+ * sandbox, and this throws with their paths. Cleanup failures are thrown alongside the test's
+ * own failure rather than in place of it.
  */
 export async function endCodexTest(end: CodexTestEnd): Promise<void> {
   const cleanupFailures: unknown[] = [];
   for (const session of end.sessions) {
     if (session) cleanupFailures.push(...(await teardownOrKillCodex(session)));
   }
-  const confirmed = cleanupFailures.length === 0 && !end.launches.anyRejected;
+  let confirmed = cleanupFailures.length === 0 && !end.launches.anyRejected;
   if (confirmed) {
     try {
       end.sandbox.dispose();
     } catch (error) {
+      // Something still running from the sandbox, such as Codex's app-server daemon, would
+      // not stop, or the removal failed partway: what is left stays, for diagnosis.
       cleanupFailures.push(error);
+      confirmed = false;
     }
   }
+  if (confirmed) return;
   const projects = [end.sandbox.project, ...(end.otherProjects ?? [])];
   const roots = [...projects.map((project) => project.cwd), end.sandbox.home];
-  if (!confirmed) {
-    end.sandbox.restoreHome();
-    keepScratch(...roots);
-  }
-  if (confirmed && cleanupFailures.length === 0) return;
-  const kept = confirmed ? "" : `; kept ${roots.join(", ")}, which a Codex process may still use`;
+  end.sandbox.restoreHome();
+  keepScratch(...roots);
+  const kept = `kept ${roots.join(", ")}, which a Codex process may still use`;
   const failures = end.failure ? [end.failure.error, ...cleanupFailures] : cleanupFailures;
-  throw new AggregateError(failures, `Codex test cleanup failed${kept}`);
+  throw new AggregateError(failures, `Codex test cleanup failed; ${kept}`);
 }
 
 /** A Codex test's scratch and launches, with the sessions it holds read once its body ends. */

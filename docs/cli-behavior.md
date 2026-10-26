@@ -1291,6 +1291,49 @@ for Claude's hooks but not for this Codex shell: a `stop()` during the snapshot
 leaves it running. `tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open
 this way and checks that `teardown()` reaps it.
 
+## Codex 0.164 starts an app-server daemon per `CODEX_HOME` (2026-10-25)
+
+Codex 0.158.0 and later list the feature `daemon_auto_start` as stable and on (0.156.1
+lists it as experimental and off; 0.155.1 does not have it). With it, the Codex 0.164.0
+TUI can start a managed app-server daemon for its `CODEX_HOME`. Measured on macOS
+(Darwin 25.5) with fresh homes: 11 of 14 launches without the hook-trust bypass started
+one, the earliest beginning its install 1 s after launch, and none of 5 launches with
+the bypass did, one of them an Elwood session watched for 17 s. What decides it was not
+determined. The e2e suite's removed homes had left 29 of these daemons running by that
+evening.
+
+- It installs a copy of the CLI, about 260 MB, at
+  `$CODEX_HOME/packages/app-server-daemon/releases/<version>/bin/codex`. One such home
+  measured 453 MB.
+- It runs `codex app-server --listen unix:// --analytics-default-enabled --managed-daemon`
+  and `codex app-server daemon pid-update-loop`. Each is a session leader of its own and
+  a child of the TUI, reparented to PID 1 when the TUI exits. The control socket is
+  `$CODEX_HOME/app-server-control/app-server-control.sock`, pid files are under
+  `$CODEX_HOME/app-server-daemon/`, and a socket directory and lock are under
+  `/tmp/codex-daemon-<uid>/`. Plugin MCP servers (`node ./scripts/start-mcp.mjs`) run as
+  its children.
+- The TUI then reads through it as client `codex-tui`. The daemon's rows in
+  `logs_2.sqlite` show `account/read`, `config/read` (the project trust read),
+  `hooks/list`, and `model/list`.
+- It outlives the TUI. Those 29 daemons had started 14 minutes to 1 h 49 min earlier,
+  their homes removed seconds after, and were all still running, each holding its
+  deleted binary. They refreshed `models_cache.json` and recreated `logs_2.sqlite`,
+  `.sqlite-maintenance.lock`, and the plugin cache in the removed home. A removal that
+  raced those writes failed with `ENOTEMPTY` (C-E2E-09, 1 run of 3).
+- `codex app-server daemon stop`, run with that `CODEX_HOME`, stopped the daemon and its
+  MCP servers but left the updater loop running. SIGTERM ended both within 2 s, and the
+  daemon stopped its MCP servers and removed its `/tmp/codex-daemon-<uid>/` entries.
+  `codex app-server daemon start` started both on every run, in about 2.5 s.
+
+Elwood's sessions use the user's own `CODEX_HOME` and always bypass hook trust, so a
+daemon there is the one the user's own Codex shares, as for a human at the terminal. The
+e2e suite stops whatever still runs from a sandbox or from its default home before
+removing it (`tests/e2e/scratch-processes.ts`). That is every process whose command line
+names a path inside the home, plus its descendants: SIGTERM first, then SIGKILL 3 s
+later. A sandbox where something will not stop is kept.
+`tests/e2e/scratch-processes.e2e.ts` starts a daemon with `daemon start` and checks that
+removing the sandbox, and exiting the run, stop it.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
