@@ -151,19 +151,19 @@ const realShellTestTimeoutMs = probeLaunchTimeoutMs + probeCommandTimeoutMs;
 
 test.each(loginShells.filter(([path]) => existsSync(path)))(
   "C-CLI-25 %s hands the agent its login shell's own PATH, whatever its startup file defines",
-  async (path, startupFile, startup) => {
+  async (path, startupFile, startupScript) => {
     const home = mkdtempSync(join(tmpdir(), "interactive-path-"));
     roots.push(home);
     const bin = join(home, "agent bin");
     mkdirSync(bin);
     const seen = join(home, "path");
-    const agent = `#!/bin/sh\nprintf '%s' "$PATH" > ${shell.shellQuote(seen)}\n`;
-    writeFileSync(join(bin, "elwood-test-agent"), agent, { mode: 0o700 });
+    const agentScript = `#!/bin/sh\nprintf '%s' "$PATH" > ${shell.shellQuote(seen)}\n`;
+    writeFileSync(join(bin, "elwood-test-agent"), agentScript, { mode: 0o700 });
     // Set last, after the system startup files, so it is the login shell's whole PATH.
     const loginPath = `${bin}:/usr/bin:/bin`;
     writeFileSync(
       join(home, startupFile),
-      `export PATH=${shell.shellQuote(loginPath)}\n${startup}\n`,
+      `export PATH=${shell.shellQuote(loginPath)}\n${startupScript}\n`,
     );
     vi.stubEnv("HOME", home);
     vi.stubEnv("ZDOTDIR", home);
