@@ -66,7 +66,8 @@ export function reapProcessGroup(leaderPid: number, ops: GroupReapOps = activeOp
 
 // Production uses `process.kill` and `/bin/ps`. One seam covers the group reap AND the
 // detached sweep, so a test that fakes the kill can never leave a real sweep live.
-const defaultOps: ProcessTreeOps = {
+// Exported for a real-process test that wraps one of them.
+export const osProcessTreeOps: ProcessTreeOps = {
   killGroup(pgid: number): void {
     try {
       process.kill(-pgid, "SIGKILL");
@@ -83,7 +84,7 @@ const defaultOps: ProcessTreeOps = {
 // The ops used when a caller does not inject them. A test seam so session lifecycle
 // tests can observe (and neutralize) the group SIGKILL without a real signal, and
 // without every session/terminate call site taking an ops param.
-let activeOps: ProcessTreeOps = defaultOps;
+let activeOps: ProcessTreeOps = osProcessTreeOps;
 
 /**
  * Replaces the process-tree ops. Ops a test leaves out become inert, never the real
@@ -110,7 +111,7 @@ export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProc
 }
 
 export function resetProcessTreeOpsForTests(): void {
-  activeOps = defaultOps;
+  activeOps = osProcessTreeOps;
 }
 
 /**
