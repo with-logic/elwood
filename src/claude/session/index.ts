@@ -7,6 +7,11 @@ import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
+import {
+  assertLaunchDirectory,
+  recheckLaunchDirectoryOnFailure,
+  resolveLaunchDirectory,
+} from "../../runtime/session/launch-directory.ts";
 import { withSocketHomeCleanup } from "../../runtime/startup/cleanup.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { safeSessionDir } from "../../state/files.ts";
@@ -50,18 +55,27 @@ export async function startClaudeWithId(
   // PTY spawn all agree. `highTrust` expands to its concrete posture (or rejects a
   // conflicting explicit one) HERE, before preflight, so the persisted record and the
   // launch command both carry the expanded posture (C-API-54).
-  const options = applyClaudeHighTrust({ ...rawOptions, cwd: resolve(rawOptions.cwd) });
+  const options = applyClaudeHighTrust({
+    ...rawOptions,
+    cwd: resolveLaunchDirectory("claude", rawOptions.cwd),
+  });
   checkedInputBytes(options.persona ?? "");
-  const stateDir = canonicalStatePath(options.stateDir ?? defaultStateDir(options.cwd));
+  const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
+  // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
+  await assertLaunchDirectory("claude", options.cwd);
+  const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
-  prepareStateDir(stateDir, {
-    cwd: options.cwd,
-    isImplicitDefaultStateDir: options.stateDir === undefined,
+  await assertLaunchDirectory("claude", options.cwd); // it may have gone during preflight
+  const session = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () => {
+    prepareStateDir(stateDir, {
+      cwd: options.cwd,
+      isImplicitDefaultStateDir: options.stateDir === undefined,
+    });
+    const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
+    const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
+    return startClaudeFromRecord(record, stateDir, options, false, warning);
   });
-  const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
-  const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
-  const session = await startClaudeFromRecord(record, stateDir, options, false, warning);
   return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
 
