@@ -1380,6 +1380,17 @@ real CLIs: Claude `teardown()` with a hook in its own group, a `stop()` whose
 `SessionEnd` hook outlasts the graceful window, and Codex `teardown()` with a hook.
 With the walk disabled all three fail with the hook still running.
 
+On a loaded host the walk outgrew its first three-second deadline (measured
+2026-10-26, macOS Darwin 25.5, about 3,700 processes on the host). A `kill()` of a
+setsid hook with a setsid child of its own takes six reads. That is two to hold the
+leader's group, and two more for each level of nesting. At a 1-minute load of 70 to
+92, those reads took 78–644 ms each, and the walk took 1.1–2.6 s. Under the
+repository's own parallel test run on that host, reads passed half a second, and so
+six of them passed three seconds. `kill()` then rejected with `termination_failed`,
+though each read was making progress. The deadline is now ten seconds.
+`tests/unit/sweep-deadline-real.test.ts` slows each real read by 600 ms and checks
+that `kill()` still reaps such a tree.
+
 Codex also starts a shell of its own, not a hook, that the walk has to reach
 (measured 2026-10-25, Codex 0.164, macOS Darwin 25.5). A few seconds after launch
 (2.1–2.6 s after `startCodex` was called, in these runs) it snapshots the user's
@@ -1910,6 +1921,13 @@ Enter and observes no `UserPromptSubmit` hook, so no model turn runs. Disabling
 only the production clear write made both tests retain the image and text and fail.
 This verifies an automation-owned idle composer, not cleanup across caller edits
 or blocking dialogs. Codex clipboard text is restored after attachment.
+
+codex-cli 0.164 (2026-10-26) saves the pasted image as `codex-clipboard-<suffix>.png`
+in its temp dir when the `[Image #1]` chip appears, and clearing the draft leaves that
+file in place. The draft is never submitted, so no transcript names the copy, and a
+session removes only the copies its transcript names. So a cancelled Codex image draft
+leaves its copy in the temp dir. `composer-cleanup.e2e.ts` gives its Codex a `TMPDIR`
+inside the sandbox home, asserts the copy lands there, and removes it with the sandbox.
 
 
 Native startup protocol replies also emit xterm `onData`. The actual-session

@@ -18,12 +18,25 @@ back each entry are listed in `prd/14-conformance.md`.
   attach left one such file behind for good. Only files the session's own transcript
   names directly in Elwood's temp directory are removed; a Codex whose login shell sets
   another `TMPDIR` keeps its copies there.
+- `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
+  detached hook processes ten seconds, up from three, before they reject with
+  `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
+  process-table read can take over half a second, and a hook that started a detached
+  child of its own takes six reads. So these calls rejected, and kept rejecting,
+  while the walk was still making progress. The ten seconds bound the walk, not the
+  whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
+  SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
+  idle host they take as long as before, because the walk ends as soon as it is done.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- `elwood interactive` hands the agent the login shell's own PATH even when the
+  user's startup files define a `printf` function or alias. The PATH lookup ran
+  the login shell's `printf`, which such a function or alias replaced, so the
+  agent could get another PATH, or Elwood's own when nothing framed was printed.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
