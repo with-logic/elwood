@@ -18,6 +18,11 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- A Claude session whose permission dialog is declined with Escape now returns to
+  `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
+  `blocked` while the prompt that led to the dialog was still on screen: Claude
+  echoes each submitted prompt as `❯ <prompt>` in its transcript, and Elwood read
+  that caret as a dialog still in the way of the idle composer.
 - Codex sessions now use the `CODEX_HOME` their login shell exports, not
   Elwood's own. The launch script writes the exported `CODEX_HOME` and `HOME`, and
   the directory it starts Codex in, to a private report just before `exec codex`,
