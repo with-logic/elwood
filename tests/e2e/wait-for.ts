@@ -3,7 +3,7 @@
  * apart from `helpers.ts` so the bounded steps built on it load without the e2e harness.
  */
 
-import { e2eTimeoutMs } from "./availability.ts";
+import { e2eTimeoutMs } from "./timeout.ts";
 
 export async function waitFor<T>(
   read: () => T | undefined | Promise<T | undefined>,
