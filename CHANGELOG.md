@@ -13,11 +13,12 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - A session's final transcript flush, and a Claude subagent's retirement, now read
-  the first chunk (up to 256 KiB) of each transcript they drain before their 50 ms
-  time limit can stop them. Before, a host too loaded to begin the flush within that
-  limit read nothing: the session's last records never arrived as activity, and a
-  `transcript_records_dropped` warning with cause `unread_backlog` reported them
-  instead.
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a

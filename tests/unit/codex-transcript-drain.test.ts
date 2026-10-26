@@ -8,17 +8,23 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { drainToBudget, newTerminalBudget } from "../../src/codex/transcript/drain.ts";
 import { CodexLineEmitter } from "../../src/codex/transcript/emit.ts";
 import { CodexTranscriptFsGuard } from "../../src/codex/transcript/fs-guard.ts";
 import type { CodexTranscriptEvent } from "../../src/codex/transcript/types.ts";
 import { BoundedTranscriptCursor } from "../../src/core/transcript/cursor.ts";
+import { drainToBudget, newTerminalBudget } from "../../src/core/transcript/drain.ts";
 import {
   DropReporter,
   ReadErrorReporter,
   type TranscriptDropNotice,
 } from "../../src/core/transcript/drops.ts";
 import { tempDirForUnit } from "./helpers.ts";
+
+/** A clock already past any deadline at each read after the first. */
+function jumpingClock(): () => number {
+  let t = 0;
+  return () => (t += 1000);
+}
 
 function harness() {
   const events: CodexTranscriptEvent[] = [];
@@ -36,7 +42,7 @@ describe("Codex bounded terminal drain", () => {
     const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, `${JSON.stringify({ type: "message" })}\ntrailing-partial`);
     const { events, lines, drops, guard } = harness();
-    drainToBudget({ readFs: guard.read.bind(guard), lines, drops }, cursor, newTerminalBudget());
+    drainToBudget({ readFs: guard.read.bind(guard), lines, drops }, [cursor], newTerminalBudget());
     expect(events).toHaveLength(1); // the complete record; the partial is a drop
   });
 
@@ -51,7 +57,7 @@ describe("Codex bounded terminal drain", () => {
     let t = 0;
     drainToBudget(
       { readFs: guard.read.bind(guard), lines, drops, sliceMs: 0, now: () => (t += 1000) },
-      cursor,
+      [cursor],
       newTerminalBudget(),
     );
     expect(notices.filter((n: TranscriptDropNotice) => n.cause === "unread_backlog")).toHaveLength(
@@ -68,25 +74,27 @@ describe("Codex bounded terminal drain", () => {
     let t = 0;
     drainToBudget(
       { readFs: guard.read.bind(guard), lines, drops, sliceMs: 0, now: () => (t += 1000) },
-      cursor,
+      [cursor],
       newTerminalBudget(),
     );
-    expect(events).toHaveLength(1);
+    expect(events.map((event) => event.item)).toEqual([{ type: "message" }]);
     expect(notices).toEqual([]);
   });
 
-  test("C-CODEX-20 a budget exhausted mid-file surfaces a backlog and a partial drop", () => {
+  test.each([
+    ["a budget exhausted", { chunks: 1 }, {}],
+    ["a slice spent", newTerminalBudget(), { sliceMs: 0, now: jumpingClock() }],
+  ])("C-CODEX-20 %s mid-record drops the record with the backlog, never as unparseable", (_case, budget, clock) => {
     const path = join(tempDirForUnit(), "budget.jsonl");
     writeFileSync(path, "");
     const cursor = new BoundedTranscriptCursor(path);
-    // A > 256 KiB record: a 1-chunk budget reads only the first 256 KiB (buffered,
-    // no newline), so the remainder is one unread_backlog drop and the flushed
-    // partial is a second (unparseable) drop — each its own live warning.
-    appendFileSync(path, `${"b".repeat(600 * 1024)}\n`);
-    const { notices, lines, drops, guard } = harness();
-    drainToBudget({ readFs: guard.read.bind(guard), lines, drops }, cursor, { chunks: 1 });
-    expect(notices.some((n: TranscriptDropNotice) => n.cause === "unread_backlog")).toBe(true);
-    expect(notices.some((n: TranscriptDropNotice) => n.cause === "unparseable")).toBe(true);
+    // A valid > 256 KiB record: one chunk reads only its first 256 KiB, buffered without
+    // its newline. Its rest is the unread backlog, so the record is part of that one drop.
+    appendFileSync(path, `${JSON.stringify({ type: "message", text: "b".repeat(600 * 1024) })}\n`);
+    const { events, notices, lines, drops, guard } = harness();
+    drainToBudget({ readFs: guard.read.bind(guard), lines, drops, ...clock }, [cursor], budget);
+    expect(events).toEqual([]);
+    expect(notices.map((n: TranscriptDropNotice) => n.cause)).toEqual(["unread_backlog"]);
   });
 
   test("C-CODEX-20 a failed remainingBytes probe at the budget edge accounts 0 backlog", () => {
@@ -104,7 +112,7 @@ describe("Codex bounded terminal drain", () => {
         return call === 1 ? run() : undefined;
       },
     };
-    drainToBudget({ readFs: seam.read.bind(seam), lines, drops }, cursor, { chunks: 1 });
+    drainToBudget({ readFs: seam.read.bind(seam), lines, drops }, [cursor], { chunks: 1 });
     expect(notices.every((n: TranscriptDropNotice) => n.cause !== "unread_backlog")).toBe(true);
   });
 
@@ -119,7 +127,7 @@ describe("Codex bounded terminal drain", () => {
     };
     drainToBudget(
       { readFs: failing.read.bind(failing), lines, drops },
-      cursor,
+      [cursor],
       newTerminalBudget(),
     );
     expect(notices).toHaveLength(0);
