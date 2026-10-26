@@ -1,6 +1,6 @@
 /**
  * Adapter launch mapping for the headless CLI session facade.
- * Implements PRD §12A.2/§12A.5 and C-CLI-05/C-CLI-06/C-CLI-08/C-CLI-15.
+ * Implements PRD §12A.2/§12A.5 and C-CLI-05/C-CLI-06/C-CLI-08/C-CLI-15/C-API-61.
  */
 
 import { startClaudeWithId } from "../../claude/session/index.ts";
@@ -10,12 +10,13 @@ import { startCodexWithId } from "../../codex/session/index.ts";
 import { resumeCodex } from "../../codex/session/resume.ts";
 import type { CodexSessionApi } from "../../codex/session/types.ts";
 import type { ElwoodAgentSession } from "../../core/agent-session.ts";
+import { recheckLaunchDirectoryOnFailure } from "../../runtime/session/launch-directory.ts";
 import { ensurePrivateStateRoot } from "../../state/private-session.ts";
 import { optional } from "../request/values.ts";
 import type { EffectiveRunRequest } from "../types.ts";
 
 export type CliLaunchDependencies = {
-  readonly prepareStateRoot: (stateDir: string) => void;
+  readonly prepareStateRoot: (stateDir: string, cwd: string) => void;
   readonly startClaude: (
     options: Parameters<typeof startClaudeWithId>[0],
     id: string,
@@ -62,7 +63,7 @@ function claudeLaunch(
   if (request.resume !== undefined)
     return () => dependencies.resumeClaude({ ...common, elwoodSessionId: id });
   return async () => {
-    dependencies.prepareStateRoot(request.stateDir);
+    await prepareStateRoot(request, dependencies);
     return await dependencies.startClaude(
       { ...common, ...(request.model === undefined ? {} : { model: request.model }) },
       id,
@@ -87,10 +88,24 @@ function codexLaunch(
   if (request.resume !== undefined)
     return () => dependencies.resumeCodex({ ...common, elwoodSessionId: id });
   return async () => {
-    dependencies.prepareStateRoot(request.stateDir);
+    await prepareStateRoot(request, dependencies);
     return await dependencies.startCodex(
       { ...common, ...(request.model === undefined ? {} : { model: request.model }) },
       id,
     );
   };
+}
+
+/**
+ * Prepares a new session's state root, which is made only while its workspace exists. A
+ * workspace removed since it was validated fails the launch as the adapter's start failure
+ * (C-API-61), not as a state error.
+ */
+function prepareStateRoot(
+  request: EffectiveRunRequest,
+  dependencies: CliLaunchDependencies,
+): Promise<void> {
+  return recheckLaunchDirectoryOnFailure(request.agent, request.cwd, async () =>
+    dependencies.prepareStateRoot(request.stateDir, request.cwd),
+  );
 }

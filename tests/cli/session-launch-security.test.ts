@@ -3,11 +3,21 @@
  * Implements PRD §12A.5 and C-CLI-15.
  */
 
-import { chmodSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session/launch.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
+import { resetRuntimeSeamsForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import { ensurePrivateStateRoot } from "../../src/state/private-session.ts";
 import { tempDir } from "../helpers/tmp.ts";
 import { effectiveRequest } from "./main-fakes.ts";
@@ -26,7 +36,10 @@ function dependencies(starts: string[]): CliLaunchDependencies {
   const unavailable = (): Promise<never> => Promise.reject(new Error("unexpected adapter"));
   return {
     prepareStateRoot: ensurePrivateStateRoot,
-    startClaude: unavailable,
+    startClaude: (_options, id) => {
+      starts.push(id);
+      return Promise.reject(new Error("startClaude"));
+    },
     resumeClaude: unavailable,
     startCodex: (_options, id) => {
       starts.push(id);
@@ -103,5 +116,30 @@ describe("CLI new-session state root", () => {
 
     expect(starts).toEqual([]);
     expect(lstatSync(stateDir).mode & 0o777).toBe(0o755);
+  });
+
+  test.each([
+    "claude",
+    "codex",
+  ] as const)("C-CLI-15 C-API-61 a %s workspace removed once its effective request is built fails the launch, not recreated", async (agent) => {
+    setPlatformForTests("darwin"); // where the launch directory is checked
+    const cwd = join(tempDir("elwood-cli-state-workspace-"), "worktree");
+    mkdirSync(cwd);
+    const starts: string[] = [];
+    const removed = effectiveRequest({ agent, trust: false, stateDir: join(cwd, "state"), cwd });
+    const launch = createCliLaunch(removed, "gone", dependencies(starts));
+    // Removed once the effective request (a fixture here, not validated) and the launch are
+    // built, before the launch runs.
+    rmSync(cwd, { recursive: true });
+    try {
+      await expect(launch()).rejects.toMatchObject({
+        code: `${agent}_start_failed`,
+        details: { cwd, errno: "ENOENT" },
+      });
+    } finally {
+      resetRuntimeSeamsForTests();
+    }
+    expect(existsSync(cwd), "the workspace must not be recreated").toBe(false);
+    expect(starts).toEqual([]);
   });
 });
