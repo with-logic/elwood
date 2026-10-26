@@ -140,6 +140,12 @@ describe("runtime probe runner", () => {
     expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(1_000_000);
   });
 
+  test("C-PERF-03 output of exactly the cap on each stream is kept whole", async () => {
+    const atCap = "process.stdout.write('x'.repeat(1e6)); process.stderr.write('y'.repeat(1e6));";
+    const result = await runProbe(node, ["-e", atCap]);
+    expect(result).toEqual({ status: 0, stdout: "x".repeat(1e6), stderr: "y".repeat(1e6) });
+  });
+
   test("C-PERF-03 a normal probe exit is not signaled", async () => {
     const result = await runProbe(node, ["-e", "process.exit(0)"]);
     expect(result.status).toBe(0);
