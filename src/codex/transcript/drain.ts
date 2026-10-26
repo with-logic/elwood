@@ -1,11 +1,11 @@
 /**
  * Bounded, self-yielding terminal drain for the Codex transcript watcher (flush).
  * Implements PRD §7A/§5.4/§9.2: flushing at teardown drains the cursor to EOF within
- * a chunk budget AND a small wall-clock slice, so no single call runs a
- * hundreds-of-MiB synchronous loop that would stall the event loop. Any backlog
- * still unread when the budget OR the slice is spent is accounted as a content-free
- * `unread_backlog` drop, never read in an unbounded loop, so termination always
- * completes in bounded work. A drained transcript removed after it existed warns like a
+ * a chunk budget AND a small wall-clock slice, which can end it only after its first
+ * chunk, so no single call runs a hundreds-of-MiB synchronous loop that would stall
+ * the event loop. Any backlog still unread when the budget OR the slice is spent is
+ * accounted as a content-free `unread_backlog` drop, never read in an unbounded loop,
+ * so termination always completes in bounded work. A drained transcript removed after it existed warns like a
  * live read (§5.7, C-CODEX-23).
  */
 
@@ -65,7 +65,11 @@ function drainCursor(
   deadline: number,
   now: () => number,
 ): boolean {
-  while (budget.chunks > 0 && now() < deadline) {
+  // The first chunk is read whatever the clock says: a host too loaded to begin the drain
+  // within its slice still delivers the transcript's final tail instead of dropping it whole.
+  let first = true;
+  while (budget.chunks > 0 && (first || now() < deadline)) {
+    first = false;
     budget.chunks -= 1;
     const chunk = context.readFs(cursor.path, () => cursor.readLiveChunk());
     if (chunk === undefined) return false; // contained FS failure; nothing to account

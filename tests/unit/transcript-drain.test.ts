@@ -111,13 +111,32 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     const records = Array.from({ length: 4 }, () => JSON.stringify(assistant(filler)));
     writeFileSync(path, `${records.join("\n")}\n`);
     let calls = 0;
-    // First deadline check (loop entry) is under the slice; after one chunk the clock
-    // jumps past it, so the loop yields with a large budget (100) still unspent.
+    // The first chunk is read whatever the clock says; after it the clock is past the
+    // slice, so the loop yields with a large budget (100) still unspent.
     const clock = () => (calls++ === 0 ? 0 : 1_000);
     const { context, events, drops } = harness(clock);
     drainToBudget(context, [cursor], { chunks: 100 }); // budget ample; the SLICE bounds it
     expect(drops.some((d) => d.cause === "unread_backlog")).toBe(true); // backlog dropped
     expect(events.length).toBeLessThan(4); // slice cut the drain short: not read to EOF
+  });
+
+  test("a slice spent before the first read still delivers each cursor's first chunk", () => {
+    // A host too loaded to begin the drain within its slice: every clock read after the
+    // deadline is taken is past it. Each cursor's small final tail still arrives whole.
+    const paths = [tmpFile(), tmpFile()];
+    const cursors = paths.map((path) => {
+      writeFileSync(path, "");
+      return new TranscriptCursor(path);
+    });
+    for (const [i, path] of paths.entries())
+      writeFileSync(path, `${JSON.stringify(assistant(`tail ${i}`))}\n`);
+    let calls = 0;
+    const { context, events, drops } = harness(() => (calls++ === 0 ? 0 : 1_000));
+    drainToBudget(context, cursors, { chunks: 100 });
+    expect(
+      events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : "")),
+    ).toEqual(["tail 0", "tail 1"]);
+    expect(drops).toEqual([]);
   });
 
   test("retire and finish draw from ONE shared watcher-wide budget", () => {

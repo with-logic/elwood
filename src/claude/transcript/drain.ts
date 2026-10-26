@@ -4,11 +4,12 @@
  * the whole watcher at teardown (finish) shares ONE watcher-wide chunk budget
  * across every cursor AND every call, so aggregate terminal work is watcher-
  * bounded — a retire never gets a fresh full budget. Each call is bounded further
- * by a small wall-clock slice, so no single call runs a hundreds-of-MiB synchronous
- * loop that would stall the event loop. Any backlog still unread when the shared
- * budget OR the per-call slice is spent is accounted as a content-free drop, never
- * read in an unbounded synchronous loop, so the caller returns to the event loop
- * promptly and termination/retirement always completes in bounded work. A drained
+ * by a small wall-clock slice, which can end it only after one chunk of each cursor,
+ * so no single call runs a hundreds-of-MiB synchronous loop that would stall the
+ * event loop. Any backlog still unread when the shared budget OR the per-call slice
+ * is spent is accounted as a content-free drop, never read in an unbounded synchronous
+ * loop, so the caller returns to the event loop promptly and termination/retirement
+ * always completes in bounded work. A drained
  * transcript removed after it existed warns like a live read (§5.7, C-CLAUDE-24).
  */
 
@@ -73,7 +74,11 @@ function drainCursor(
   deadline: number,
   now: () => number,
 ): boolean {
-  while (budget.chunks > 0 && now() < deadline) {
+  // The first chunk is read whatever the clock says: a host too loaded to begin the drain
+  // within its slice still delivers the transcript's final tail instead of dropping it whole.
+  let first = true;
+  while (budget.chunks > 0 && (first || now() < deadline)) {
+    first = false;
     budget.chunks -= 1;
     const chunk = context.readFs(cursor.path, () => cursor.readLiveChunk());
     if (chunk === undefined) return false; // contained FS failure; nothing to account

@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first chunk (up to 256 KiB) of each transcript they drain before their 50 ms
+  time limit can stop them. Before, a host too loaded to begin the flush within that
+  limit read nothing: the session's last records never arrived as activity, and a
+  `transcript_records_dropped` warning with cause `unread_backlog` reported them
+  instead.
 - A Codex session now removes the `codex-clipboard-*.png` file Codex saves in the
   temp directory for each image Elwood pastes into it, once the session's CLI has
   exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image

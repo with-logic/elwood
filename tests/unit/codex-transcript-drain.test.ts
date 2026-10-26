@@ -46,8 +46,8 @@ describe("Codex bounded terminal drain", () => {
     const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, `${"a".repeat(600 * 1024)}\n`);
     const { notices, lines, drops, guard } = harness();
-    // A clock already past the deadline on the FIRST check: no chunk read, the whole
-    // delta surfaces as one unread_backlog drop.
+    // A clock already past the deadline on the first check: only the first chunk is
+    // read, and the rest of the delta surfaces as one unread_backlog drop.
     let t = 0;
     drainToBudget(
       { readFs: guard.read.bind(guard), lines, drops, sliceMs: 0, now: () => (t += 1000) },
@@ -57,6 +57,22 @@ describe("Codex bounded terminal drain", () => {
     expect(notices.filter((n: TranscriptDropNotice) => n.cause === "unread_backlog")).toHaveLength(
       1,
     );
+  });
+
+  test("C-CODEX-20 a slice spent before the first read still delivers the final tail", () => {
+    const path = join(tempDirForUnit(), "tail.jsonl");
+    writeFileSync(path, "");
+    const cursor = new BoundedTranscriptCursor(path);
+    appendFileSync(path, `${JSON.stringify({ type: "message" })}\n`);
+    const { events, notices, lines, drops, guard } = harness();
+    let t = 0;
+    drainToBudget(
+      { readFs: guard.read.bind(guard), lines, drops, sliceMs: 0, now: () => (t += 1000) },
+      cursor,
+      newTerminalBudget(),
+    );
+    expect(events).toHaveLength(1);
+    expect(notices).toEqual([]);
   });
 
   test("C-CODEX-20 a budget exhausted mid-file surfaces a backlog and a partial drop", () => {
