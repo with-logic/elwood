@@ -5,7 +5,10 @@
 import { describe, expect, test } from "vitest";
 import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session/launch.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { type EffectiveRequestOverrides, effectiveRequest } from "./main-fakes.ts";
+
+const workspacePrefix = "elwood-cli-launch-workspace-";
 
 function request(
   agent: "claude" | "codex",
@@ -14,7 +17,8 @@ function request(
   return effectiveRequest({
     agent,
     trust: false,
-    cwd: "/workspace",
+    // A new launch checks its workspace exists before making state there (C-API-61).
+    cwd: tempDir(workspacePrefix),
     ...(agent === "claude"
       ? { permissionMode: "plan" }
       : { sandbox: "read-only", approvalPolicy: "on-request" }),
@@ -59,7 +63,7 @@ describe("CLI adapter launch mapping", () => {
         name: "startClaude",
         id: "new-claude",
         options: {
-          cwd: "/workspace",
+          cwd: expect.stringContaining(workspacePrefix),
           stateDir: "/state",
           autotrust: false,
           permissionMode: "plan",
@@ -80,7 +84,7 @@ describe("CLI adapter launch mapping", () => {
       {
         name: "resumeClaude",
         options: {
-          cwd: "/workspace",
+          cwd: expect.stringContaining(workspacePrefix),
           stateDir: "/state",
           autotrust: false,
           permissionMode: "plan",
@@ -103,7 +107,7 @@ describe("CLI adapter launch mapping", () => {
       name: "startCodex",
       id: "new-codex",
       options: {
-        cwd: "/workspace",
+        cwd: expect.stringContaining(workspacePrefix),
         stateDir: "/state",
         autotrust: false,
         sandbox: "read-only",
@@ -126,7 +130,7 @@ describe("CLI adapter launch mapping", () => {
     expect(h.calls[0]).toEqual({
       name: "resumeCodex",
       options: {
-        cwd: "/workspace",
+        cwd: expect.stringContaining(workspacePrefix),
         stateDir: "/state",
         autotrust: false,
         sandbox: "read-only",

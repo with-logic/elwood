@@ -70,6 +70,7 @@ export async function startClaudeWithId(
     prepareStateDir(stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
+      elwoodSessionId,
     });
     const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
     const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
