@@ -44,6 +44,7 @@ export async function pollGone({
  * process that no handle they hold can reach. Throws when `ps` itself fails.
  */
 export function killIfCommandHas(pid: number, marker: string, send: Send = sendSignal): void {
+  assertNarrowMarker(marker);
   if (!commandOf(pid)?.includes(marker)) return;
   try {
     send(pid, "SIGKILL");
@@ -88,6 +89,7 @@ export function processRows(timeoutMs?: number): readonly ProcessRow[] {
  * temp directory they run from. Throws when `ps` itself fails.
  */
 export function killGroupsWhoseCommandHas(marker: string, send: Send = sendSignal): number {
+  assertNarrowMarker(marker);
   let signaled = 0;
   for (const { pid, pgid, stat, command } of processRows()) {
     if (stat.startsWith("Z") || !command.includes(marker)) continue;
@@ -105,6 +107,20 @@ export function killGroupsWhoseCommandHas(marker: string, send: Send = sendSigna
 export type Send = (pid: number, signal: NodeJS.Signals) => void;
 
 const sendSignal: Send = (pid, signal) => void process.kill(pid, signal);
+
+/** The fewest non-blank characters a kill marker may have. */
+const MIN_MARKER_LENGTH = 12;
+
+/**
+ * Throws for a marker too short to name only the caller's processes: an empty one is in
+ * every command line, so a variable that came out empty would kill every process on the
+ * host. Real markers are temp directories and random-suffixed commands.
+ */
+function assertNarrowMarker(marker: string): void {
+  if (marker.trim().length < MIN_MARKER_LENGTH) {
+    throw new Error(`Refusing to kill by the marker ${JSON.stringify(marker)}: too broad`);
+  }
+}
 
 /** `pid`'s command line, or `undefined` when no such process exists. */
 function commandOf(pid: number): string | undefined {

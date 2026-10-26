@@ -14,7 +14,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, relative } from "node:path";
 import { type ProcessRow, processRows, type Send } from "../helpers/process-liveness.ts";
 
 /** How long a process from the directory gets after SIGTERM before SIGKILL. */
@@ -22,9 +24,21 @@ export const TERM_GRACE_MS = 3_000;
 const STOP_TIMEOUT_MS = 10_000;
 const POLL_MS = 250;
 
-/** `dir` as `ps` may show it, tmpdir's spelling and the resolved one, as path prefixes. */
+/**
+ * `dir` as `ps` may show it, tmpdir's spelling and the resolved one, as path prefixes.
+ * Throws unless `dir` is an existing directory strictly inside the OS temp directory,
+ * where every scratch directory is made: a prefix such as `/`, or the cwd an empty path
+ * resolves to, would name every process on the host.
+ */
 function prefixesOf(dir: string): readonly string[] {
-  return [...new Set([`${dir}/`, `${realpathSync(dir)}/`])];
+  const resolved = isAbsolute(dir) && statSync(dir).isDirectory() ? realpathSync(dir) : "";
+  const offset = relative(realpathSync(tmpdir()), resolved);
+  if (resolved === "" || offset === "" || offset.startsWith("..") || isAbsolute(offset)) {
+    throw new Error(
+      `Refusing to stop processes under ${JSON.stringify(dir)}: not a scratch directory`,
+    );
+  }
+  return [...new Set([`${dir}/`, `${resolved}/`])];
 }
 
 /** The live rows naming a path under one of `prefixes`, with their descendants. */
