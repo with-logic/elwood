@@ -1,8 +1,9 @@
 /**
  * Claude's runtime cleanup finishes its transcript watcher (PRD §9.4, C-LIFE-12), so a
- * `teardown()` whose PTY could not be terminated leaves no transcript polling behind.
- * Before, only the PTY's exit finished the watcher, and a PTY that outlived teardown kept
- * the session emitting transcript activity.
+ * shutdown whose PTY could not be terminated leaves no transcript polling behind.
+ * Before, only the PTY's exit finished the watcher, and a PTY that outlived the shutdown
+ * kept the session emitting transcript activity. Only intervals are faked, so the
+ * watcher polls only when a test advances them and no poll can stand in for the flush.
  */
 
 import { appendFileSync, writeFileSync } from "node:fs";
@@ -12,6 +13,7 @@ import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   resetFakes();
 });
@@ -34,6 +36,7 @@ async function watchingSessionWithStuckPty() {
   session.on("activity", (event) => {
     if (event.source === "transcript") transcript.push(event.raw);
   });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   await pty.dispatchHook(session.elwoodSessionId, {
     hook_event_name: "Stop",
     session_id: "claude-1",
@@ -47,12 +50,26 @@ async function watchingSessionWithStuckPty() {
   return { session, path, transcript };
 }
 
-test("C-LIFE-12 a teardown whose PTY outlives it still stops transcript activity", async () => {
+test("C-LIFE-12 the watcher polls the transcript while the session runs", async () => {
   const { session, path, transcript } = await watchingSessionWithStuckPty();
-  await expect(session.teardown()).rejects.toMatchObject({ code: "teardown_failed" });
-  appendFileSync(path, assistant("written after teardown"));
-  await new Promise((resolve) => setTimeout(resolve, TWO_POLLS_MS));
+  appendFileSync(path, assistant("written while running"));
+  await vi.advanceTimersByTimeAsync(TWO_POLLS_MS);
+  await expect.poll(() => transcript.length).toBe(1);
+  await session.teardown().catch(() => undefined);
+});
+
+test.each([
+  ["stop", "termination_failed"],
+  ["kill", "termination_failed"],
+  ["teardown", "teardown_failed"],
+] as const)("C-LIFE-12 a %s whose PTY outlives it stops transcript polling", async (verb, code) => {
+  const { session, path, transcript } = await watchingSessionWithStuckPty();
+  await expect(session[verb]()).rejects.toMatchObject({ code });
+  expect(vi.getTimerCount()).toBe(0); // The watcher's poll interval is gone.
+  appendFileSync(path, assistant("written after the shutdown"));
+  await vi.advanceTimersByTimeAsync(TWO_POLLS_MS);
   expect(transcript).toEqual([]);
+  await session.teardown().catch(() => undefined);
 });
 
 test("C-LIFE-12 runtime cleanup still flushes what the transcript already holds", async () => {
@@ -62,4 +79,20 @@ test("C-LIFE-12 runtime cleanup still flushes what the transcript already holds"
   expect(transcript).toMatchObject([
     { type: "assistant", message: { content: [{ text: "written before teardown" }] } },
   ]);
+});
+
+test("C-LIFE-12 a failed final flush at runtime cleanup does not claim the PTY exited", async () => {
+  const { session, path } = await watchingSessionWithStuckPty();
+  session.on("activity", (event) => {
+    if (event.source === "transcript") throw new Error("consumer transcript failure");
+  });
+  const warnings: { readonly phase?: unknown; readonly message: string }[] = [];
+  session.on("warning", (warning) => {
+    if (warning.code === "transcript_poll_stopped") warnings.push(warning);
+  });
+  appendFileSync(path, assistant("written before teardown"));
+  await expect(session.teardown()).rejects.toMatchObject({ code: "teardown_failed" });
+  await expect.poll(() => warnings.length).toBe(1);
+  expect(warnings[0]).toMatchObject({ phase: "final_flush" });
+  expect(warnings[0]!.message).not.toMatch(/exit/);
 });

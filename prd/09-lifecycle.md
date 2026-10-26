@@ -307,7 +307,9 @@ when the budget expires. Explicit direct `terminal.dispose()` does not wait for
 pending output. Runtime cleanup also stops the hook bridge and finishes the
 transcript watcher: one bounded final flush of what the transcript already holds,
 then no more polling. So a PTY that outlives a failed shutdown produces no later
-hook or transcript activity.
+transcript activity, and its hook commands reach no handler: the stopped bridge
+accepts no new request. A host hook handler already running when cleanup starts may
+still finish and report its result.
 
 Reaping the leader's process group is unconditional on every exit path
 (C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,
