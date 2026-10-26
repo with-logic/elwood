@@ -83,7 +83,13 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
     Promise.resolve(currentCommandRunner()(userShell(), command, { cwd })),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
+    // The probe's own failure is the cause, so a launch directory that went while it was
+    // probed reports why the probe failed, not a missing CLI (C-PTY-08).
+    throw elwoodError(
+      "codex_not_found",
+      "Could not find `codex` on PATH.",
+      probeFailureDetails(result),
+    );
   }
   if (result.status !== 0) {
     throw elwoodError(
