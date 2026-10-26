@@ -26,7 +26,7 @@ test("C-CODEX-14 closing a setModel waiter rejects before the config owner relea
   const acquired = new Promise<void>((resolve) => {
     entered = resolve;
   });
-  const holder = withCodexConfigLock(async () => {
+  const holder = withCodexConfigLock(configPath, async () => {
     entered();
     await held;
   });
@@ -36,7 +36,7 @@ test("C-CODEX-14 closing a setModel waiter rejects before the config owner relea
     await acquired;
     const before = [...ptys[0]!.writes];
     const setting = session.setModel("gpt-5.4").catch((error: unknown) => error);
-    // Let the session's exclusive queue reach the held process-wide mutex.
+    // Let the session's exclusive queue reach the lock held on its config file, `configPath`.
     await new Promise<void>((resolve) => setImmediate(resolve));
     await session.kill();
     expect(await setting).toMatchObject({ code: "session_not_running" });
@@ -60,7 +60,7 @@ test("C-API-55 a setModel deadline cancels a config-lock waiter and releases its
   const configPath = sandboxCodexHome(cwd);
   const session = await startCodex({ cwd });
   const held = Promise.withResolvers<void>();
-  const holder = withCodexConfigLock(() => held.promise);
+  const holder = withCodexConfigLock(configPath, () => held.promise);
   try {
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
@@ -94,7 +94,7 @@ test("C-API-55 a config-lock timeout never cancels a picker opened by someone el
   const configPath = sandboxCodexHome(cwd);
   const session = await startCodex({ cwd });
   const held = Promise.withResolvers<void>();
-  const holder = withCodexConfigLock(() => held.promise);
+  const holder = withCodexConfigLock(configPath, () => held.promise);
   try {
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");

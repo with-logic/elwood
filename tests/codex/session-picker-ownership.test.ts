@@ -15,10 +15,10 @@ afterEach(() => {
 test("C-API-55 a foreign picker appearing during the config wait gets no command or cleanup", async () => {
   installFakes();
   const cwd = tempDir();
-  sandboxCodexHome(cwd);
+  const configPath = sandboxCodexHome(cwd);
   const session = await startCodex({ cwd });
   const held = Promise.withResolvers<void>();
-  const holder = withCodexConfigLock(() => held.promise);
+  const holder = withCodexConfigLock(configPath, () => held.promise);
   try {
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
