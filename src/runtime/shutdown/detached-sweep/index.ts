@@ -67,7 +67,8 @@ export const DETACHED_SWEEP_BUDGET_MS = 10_000;
  * that hold Codex's daemon). These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;
  * an unreadable table; the deadline passing, or the leader exiting, before a read
- * converged; and a live group that could not be stopped or killed.
+ * converged; a live group that could not be stopped or killed; and a group spared for
+ * Codex's daemon that could not be resumed (a SIGCONT refused but for its being gone).
  */
 export async function sweepDetachedGroups(
   leaderPid: number,

@@ -13,7 +13,8 @@ test("C-LIFE-10 the real ops stop a detached process's group, then resume it", a
   const detached = startBystander();
   try {
     // Detached means `setsid()`: the process leads its own group.
-    const pid = detached.pid as number;
+    const pid = detached.pid;
+    if (pid === undefined) throw new Error("the detached process did not spawn");
     osProcessTreeOps.stopGroup(pid);
     const stopped = await readUntil(pid, (row) => row?.stopped === true);
     expect(stopped.find((row) => row.pid === pid)).toMatchObject({ stopped: true });

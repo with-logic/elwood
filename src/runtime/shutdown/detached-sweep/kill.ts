@@ -55,7 +55,9 @@ function resume(group: number, ops: SweepOps, state: SweepState): void {
     ops.continueGroup(group);
   } catch (error) {
     if (errnoCode(error) === "ESRCH") return;
-    state.failures.record("could not resume a group spared as Codex's daemon", error, [group]);
+    state.failures.record("could not resume a group spared for Codex's shared daemon", error, [
+      group,
+    ]);
   }
 }
 

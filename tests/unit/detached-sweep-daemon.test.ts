@@ -58,19 +58,33 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
   });
 
   test("a resumed group already gone needs nothing; any other refusal fails the sweep", async () => {
-    const refusing = (code: string) => ({
-      ...scripted(tables).ops,
-      continueGroup: () => {
+    // A hook (5002) stopped before the daemon's group, so the kill pass reaches it after
+    // the resume: a refused resume is seen not to end the pass.
+    const withHook = tables.map(([leader = leaderRow, daemon = forked]) => [
+      leader,
+      hook(5002),
+      daemon,
+    ]);
+    const refusing = (code: string) => {
+      const { ops, calls } = scripted(withHook);
+      const continueGroup = (pgid: number) => {
+        ops.continueGroup(pgid);
         throw errno(code);
-      },
-    });
-    const gone = sweepDetachedGroups(LEADER, refusing("ESRCH"), leaderNeverExits);
-    await expect(gone).resolves.toBeUndefined();
-    expect(await sweepDetachedGroups(LEADER, refusing("EPERM"), leaderNeverExits)).toMatchObject({
+      };
+      return { ops: { ...ops, continueGroup }, calls };
+    };
+    const gone = refusing("ESRCH");
+    await expect(sweepDetachedGroups(LEADER, gone.ops, leaderNeverExits)).resolves.toBeUndefined();
+    expect(gone.calls.slice(-2)).toEqual(["cont 5010", "kill 5002"]);
+    expect(gone.calls).not.toContain("kill 5010"); // Gone is not a reason to kill its id.
+    const refused = refusing("EPERM");
+    expect(await sweepDetachedGroups(LEADER, refused.ops, leaderNeverExits)).toMatchObject({
       message:
-        "Could not reap detached descendants: could not resume a group spared as Codex's daemon (EPERM)",
+        "Could not reap detached descendants: could not resume a group spared for Codex's shared daemon (EPERM)",
       processGroupIds: [5010],
       code: "EPERM",
     });
+    expect(refused.calls.slice(-2)).toEqual(["cont 5010", "kill 5002"]);
+    expect(refused.calls).not.toContain("kill 5010");
   });
 });
