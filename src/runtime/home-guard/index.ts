@@ -1,9 +1,9 @@
 /**
  * What the e2e home guard (PRD §12, C-E2E-24) and the code that reads its stops share: the
- * variable listing the suite's private homes, the guard's exit status, and the stop line it
- * writes with its reason. The line ends in a token drawn once per parent process, so neither a
- * startup file nor the agent or probe command can print it, and only a shell that exited
- * `homeGuardExitCode` after writing it counts as stopped by the guard. Owned here, apart from
+ * variable listing the suite's private homes, the guard's exit status, and the marker that
+ * starts the line it writes, followed by its reason. The marker ends in a token drawn once per
+ * parent process, so neither a startup file nor the agent or probe command can print it, and
+ * only a shell that exited `homeGuardExitCode` after writing it counts as stopped by the guard. Owned here, apart from
  * the guard script in `shell.ts`, so the probe runner and the startup check that read it never
  * load the shell helpers.
  */
@@ -19,8 +19,8 @@ export const homeGuardHomesKey = "ELWOOD_E2E_PRIVATE_HOMES";
 /** The exit status of a login shell the e2e home guard stopped. */
 export const homeGuardExitCode = 97;
 
-/** The start of the line the guard writes with its reason before it exits. */
-export const homeGuardStopLine = `elwood-home-guard-stopped-${randomBytes(8).toString("hex")}`;
+/** The marker that starts the line the guard writes, before its reason, as it exits. */
+export const homeGuardStopMarker = `elwood-home-guard-stopped-${randomBytes(8).toString("hex")}`;
 
 /** Why a launch the e2e home guard stopped failed, for its start or probe error. */
 export const homeGuardStoppedReason =
@@ -33,5 +33,5 @@ export const homeGuardStoppedReason =
  * stopped by the e2e home guard: the status alone could be the command's own.
  */
 export function homeGuardStopped(status: number | null, output: string): boolean {
-  return status === homeGuardExitCode && output.includes(homeGuardStopLine);
+  return status === homeGuardExitCode && output.includes(homeGuardStopMarker);
 }

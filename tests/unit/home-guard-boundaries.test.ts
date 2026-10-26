@@ -15,7 +15,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { probeFailureDetails } from "../../src/core/errors.ts";
 import {
   homeGuardHomesKey,
-  homeGuardStopLine,
+  homeGuardStopMarker,
   homeGuardStoppedReason,
 } from "../../src/runtime/home-guard/index.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
@@ -100,7 +100,7 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
 describe("C-E2E-24 a session whose login shell exits during startup", () => {
   const started = (exitCode: number, output: string) =>
     assertStartupUsable({ adapter: "codex", exit: { exitCode }, output, waitMs: 0 });
-  const stopLine = `${homeGuardStopLine}: the login shell left CODEX_HOME unexported\r\n`;
+  const stopLine = `${homeGuardStopMarker}: the login shell left CODEX_HOME unexported\r\n`;
 
   test("with the guard's status and stop line, fails naming the guard", async () => {
     await expect(started(97, `profile output\r\n${stopLine}`)).rejects.toMatchObject({

@@ -11,7 +11,7 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { nodePtyFactory } from "../../src/pty/node.ts";
-import { homeGuardHomesKey, homeGuardStopLine } from "../../src/runtime/home-guard/index.ts";
+import { homeGuardHomesKey, homeGuardStopMarker } from "../../src/runtime/home-guard/index.ts";
 import { homeGuardScript, loginShellCommand, shellQuote } from "../../src/runtime/shell.ts";
 import { loginShells } from "../helpers/login-shells.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -35,7 +35,7 @@ describe("C-E2E-24 the guarded homes", () => {
     expect(script).toContain("'/r/codex'|'/real/r/codex')");
     expect(script.endsWith("; codex")).toBe(true);
     vi.stubEnv("CLAUDE_CONFIG_DIR", undefined); // unset: nothing of it to guard
-    expect(homeGuardScript()).not.toContain("CLAUDE_CONFIG_DIR");
+    expect(homeGuardScript("session")).not.toContain("CLAUDE_CONFIG_DIR");
   });
 
   test.each([
@@ -44,7 +44,7 @@ describe("C-E2E-24 the guarded homes", () => {
     ["a relative path", '["r/codex"]'],
   ])("a list that is %s stops every launch", (_case, list) => {
     vi.stubEnv(homeGuardHomesKey, list);
-    expect(homeGuardScript()).toContain("exit 97");
+    expect(homeGuardScript("session")).toContain("exit 97");
   });
 });
 
@@ -135,23 +135,23 @@ describe.each(loginShells)("C-E2E-24 a guarded login shell (%s)", (shell) => {
       "moves a guarded home only in a terminal",
       () => both('[ -t 0 ] && export CODEX_HOME="$HOME/.codex"'),
     ],
-    // The stop line goes to the terminal itself, which no redirection of the shell's own
-    // output can hide.
+    // The stop marker goes to the terminal itself, which no redirection of the shell's own
+    // input or output can hide.
     [
-      "hides the shell's stdout and stderr, then moves a guarded home",
-      () => both('exec >/dev/null 2>&1; export CODEX_HOME="$HOME/.codex"'),
+      "redirects the shell's stdin, stdout, and stderr, then moves a guarded home",
+      () => both('exec </dev/null >/dev/null 2>&1; export CODEX_HOME="$HOME/.codex"'),
     ],
   ])("stops before its command when a startup file %s", async (_case, tail) => {
     const { exitCode, output } = await launchWith(shell, tail);
     expect(output).not.toContain("command ran");
-    expect(output).toContain(`${homeGuardStopLine}: the login shell left`);
+    expect(output).toContain(`${homeGuardStopMarker}: the login shell left`);
     expect(exitCode).toBe(97);
   });
 
   test("stops before its command when the list of homes cannot be read", async () => {
     const { exitCode, output } = await launchWith(shell, () => both(":"), "/r/codex:/r/claude");
     expect(output).not.toContain("command ran");
-    expect(output).toContain(`${homeGuardStopLine}: ${homeGuardHomesKey} is not a JSON array`);
+    expect(output).toContain(`${homeGuardStopMarker}: ${homeGuardHomesKey} is not a JSON array`);
     expect(exitCode).toBe(97);
   });
 });
