@@ -23,7 +23,8 @@ const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
 
 /**
  * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
+ * in-flight attempt, so it runs in the launch directory of the start or resume that triggers it.
+ * NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
  * version cache whether this process owned the update or waited for a peer.
  */
@@ -62,25 +63,28 @@ function finalizeAutoupdate(
 const readSucceeded = (result: CommandResult): boolean =>
   result.status === 0 && result.error === undefined;
 
-// The `--version` read per adapter. Concurrent first spawns share the in-flight PROMISE, so N of
-// them start ONE subprocess; once it settles, only a successful read is kept, as a value.
+// The `--version` read per adapter, keyed by the launch directory its probe shell starts in: a
+// per-directory tool manager can resolve a different binary there (C-PTY-08). Concurrent first
+// spawns share the in-flight PROMISE, so N of them start ONE subprocess; once it settles, only a
+// successful read is kept, as a value, for the most recent directory.
 const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
   claude: createProbeCache(1, readSucceeded),
   codex: createProbeCache(1, readSucceeded),
 };
 
 /**
- * Reads the adapter's `--version` once per process for as long as a read succeeds. Concurrent
- * callers share the single in-flight read and its outcome; later callers reuse a successful
- * result. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
- * error), is not retained, so the next caller after it settles reads again (C-LIFE-11).
- * Invalidated after an autoupdate so the post-update version is re-read.
+ * Reads the adapter's `--version` in `cwd`, and reuses a successful read there while it is the
+ * most recently read directory. Concurrent callers for one directory share the single in-flight
+ * read and its outcome. A read that rejects, or resolves with a failed probe (nonzero exit,
+ * timeout, spawn error), is not retained, so the next caller after it settles reads again
+ * (C-LIFE-11). Invalidated after an autoupdate so the post-update version is re-read.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
+  cwd: string,
   read: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
-  return versionReads[adapter].get(adapter, read);
+  return versionReads[adapter].get(cwd, read);
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {

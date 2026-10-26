@@ -87,7 +87,7 @@ describe.skipIf(!existsSync(zsh))("real zsh login shell", () => {
       // The update outlasts the background writer's delay, so that writes while it runs.
       const update = "sleep 1; echo 'update failed: network' >&2; exit 1";
       zshProfile(profile, { claude: `[ "$1" = update ] && { ${update}; }; echo 2.1.310` });
-      const warning = await preflightClaude(false, true);
+      const warning = await preflightClaude(process.cwd(), false, true);
       expect(warning).toMatchObject({
         code: "agent_update_failed",
         raw: "update failed: network\n",
@@ -100,18 +100,18 @@ describe.skipIf(!existsSync(zsh))("real zsh login shell", () => {
   test("C-PERF-05 a profile that closes stdout still captures the command's own output", async () => {
     // The command writes into its own file, not the shell's closed stdout.
     zshProfile({ rc: "exec >&-\nsetopt errexit", logout: "" }, { claude: "echo 2.1.310" });
-    await expect(preflightClaude(true)).resolves.toBeUndefined();
+    await expect(preflightClaude(process.cwd(), true)).resolves.toBeUndefined();
   }, 60_000);
 
   test("C-ERR-07 an unparseable version's warning carries only the CLI's own stdout", async () => {
     zshProfile(leaky, { claude: "printf 'not a version'" }); // no trailing newline
-    const warning = await preflightClaude(false);
+    const warning = await preflightClaude(process.cwd(), false);
     expect(warning).toMatchObject({ code: "version_unparseable", raw: "not a version" });
   }, 60_000);
 
   test("C-ERR-08 a failed version probe's details carry only the CLI's own stderr", async () => {
     zshProfile(leaky, { claude: "echo 'broken install' >&2; exit 3" });
-    const failure = await preflightClaude(false).catch((error: unknown) => error);
+    const failure = await preflightClaude(process.cwd(), false).catch((error: unknown) => error);
     expect(failure).toMatchObject({ code: "claude_start_failed" });
     expect(failure).toHaveProperty("details.stderr", "broken install\n");
     expect(JSON.stringify(failure)).not.toContain("FAKE-SECRET");
@@ -145,7 +145,7 @@ describe.skipIf(!existsSync(zsh))("real zsh login shell", () => {
   test("C-PERF-05 every Codex probe still parses through a silent profile", async () => {
     const help = "echo '  --dangerously-bypass-hook-trust  Skip hook trust'";
     zshProfile(silent, { codex: `[ "$1" = --help ] && ${help} || echo 'codex-cli 0.164.0'` });
-    await expect(preflightCodex(true, true)).resolves.toBeUndefined();
+    await expect(preflightCodex(process.cwd(), true, true)).resolves.toBeUndefined();
     await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
   }, 60_000);
 });

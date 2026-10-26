@@ -5,10 +5,7 @@
 
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
-import {
-  assertLaunchDirectory,
-  recheckLaunchDirectoryOnFailure,
-} from "../../runtime/session/launch-directory.ts";
+import { recheckLaunchDirectoryOnFailure } from "../../runtime/session/launch-directory.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { reserveLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
@@ -40,10 +37,13 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
     // Codex relaunches where the session started (`--cd`); `cwd` only locates the state.
-    await assertLaunchDirectory("codex", record.cwd);
-    const warning = await preflight.preflightCodex(
-      options.strictVersionCheck ?? false,
-      options.autoupdate ?? false,
+    // It is checked before any probe; a probe that fails because it went or was replaced fails as that.
+    const warning = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
+      preflight.preflightCodex(
+        record.cwd,
+        options.strictVersionCheck ?? false,
+        options.autoupdate ?? false,
+      ),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,

@@ -3,13 +3,14 @@
  * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05,
  * C-PERF-07): a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
  * `update`, or `--help` probe, a slow login-shell profile is bounded separately from the CLI
- * it launches, and only a few probes run at once.
+ * it launches, and only a few probes run at once. A probe runs in `options.cwd` when given
+ * (§4.2, C-PTY-08).
  */
 
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import type { Readable } from "node:stream";
-import type { CommandResult } from "../seams.ts";
+import type { CommandOptions, CommandResult } from "../seams.ts";
 import { maxProbeOutputBytes, type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
@@ -40,11 +41,19 @@ export function resetProbeTimeoutsForTests(): void {
 }
 
 /** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
-export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
-  return withProbeSlot(() => spawnProbe(command, args));
+export function runProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions = {},
+): Promise<CommandResult> {
+  return withProbeSlot(() => spawnProbe(command, args, options));
 }
 
-function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
+function spawnProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions,
+): Promise<CommandResult> {
   return new Promise((resolve) => {
     const start = new ProbeStart(args);
     let capture: ProbeCapture;
@@ -62,6 +71,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     const child = releasedOnThrow(capture, () =>
       spawn(command, [...args], {
         detached: true,
+        cwd: options.cwd,
         stdio: ["pipe", "pipe", "pipe", "pipe"],
         env: capture.env,
       }),
