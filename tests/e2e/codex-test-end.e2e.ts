@@ -10,7 +10,13 @@
 import assert from "node:assert/strict";
 import { existsSync, rmSync } from "node:fs";
 import test, { after } from "node:test";
-import { type CodexTestSession, codexLaunches, endCodexTest, runCodexTest } from "./codex-ready.ts";
+import {
+  type CodexTestSession,
+  codexLaunches,
+  endCodexTest,
+  endCodexTestAfter,
+  runCodexTest,
+} from "./codex-test-end.ts";
 import { codexAuthMissing, makeProject, sandboxedCodexHome, skipIf } from "./helpers.ts";
 
 const suiteCodexHome = process.env["CODEX_HOME"];
@@ -42,8 +48,9 @@ test("C-E2E-03 a rejected Codex launch keeps its projects and sandbox past the s
   const other = makeProject("codex"); // a second session's workspace
   const launches = codexLaunches();
   await assert.rejects(launches.track(Promise.reject(new Error("spawn failed"))), /spawn failed/);
-  assert.equal(launches.rejected, true);
-  const end = { sessions: [undefined], projects: [project, other], sandbox, launches };
+  await launches.track(Promise.resolve());
+  assert.equal(launches.anyRejected, true, "a later launch does not clear the rejection");
+  const end = { sessions: [undefined], otherProjects: [other], sandbox, launches };
   await assert.rejects(endCodexTest({ ...end, failure: undefined }), {
     message: `Codex test cleanup failed; kept ${project.cwd}, ${other.cwd}, ${sandbox.home}, which a Codex process may still use`,
   });
@@ -52,41 +59,55 @@ test("C-E2E-03 a rejected Codex launch keeps its projects and sandbox past the s
   assert.ok([project.cwd, other.cwd, sandbox.home].every(existsSync), "the scratch stays");
 });
 
-test("C-E2E-03 a Codex session that cannot be torn down keeps the scratch and reports why", {
+for (const [name, thrown] of [
+  ["an error", new Error("the test failed")],
+  ["undefined", undefined],
+] as const) {
+  test(`C-E2E-03 a Codex session that cannot be torn down keeps the scratch and reports why: a body rejecting with ${name}`, {
+    skip: skipIf(codexAuthMissing()),
+  }, async () => {
+    const { project, sandbox } = scratch();
+    let held: CodexTestSession | undefined;
+    const scope = { sessions: () => [held], sandbox, launches: codexLaunches() };
+    // The session is read once the body ends, so one the body started is torn down too.
+    const ended = await runCodexTest(scope, () => {
+      held = stuck;
+      return Promise.reject(thrown);
+    }).catch((error: unknown) => error);
+    kept.push(project.cwd, sandbox.home);
+    assert.equal(process.env["CODEX_HOME"], suiteCodexHome, "the suite's Codex home is back");
+    assert.ok(ended instanceof AggregateError, "cleanup fails the test");
+    assert.deepEqual(
+      ended.errors.map((error: unknown) => (error instanceof Error ? error.message : error)),
+      [thrown?.message, "teardown failed", "kill failed"],
+    );
+    assert.ok(existsSync(project.cwd) && existsSync(sandbox.home), "the scratch stays");
+  });
+}
+
+test("C-E2E-03 an after-hook cleanup failure is also a diagnostic, which node:test keeps", {
   skip: skipIf(codexAuthMissing()),
 }, async () => {
   const { project, sandbox } = scratch();
-  let held: CodexTestSession | undefined;
-  const scope = { sessions: () => [held], projects: [project], sandbox, launches: codexLaunches() };
-  // The session is read once the body ends, so one the body started is torn down too.
-  const ended = await runCodexTest(scope, () => {
-    held = stuck;
-    return Promise.reject(new Error("the test failed"));
-  }).catch((error: unknown) => error);
-  kept.push(project.cwd, sandbox.home);
-  assert.equal(process.env["CODEX_HOME"], suiteCodexHome, "the suite's Codex home is back");
-  assert.ok(ended instanceof AggregateError, "cleanup fails the test");
-  assert.deepEqual(
-    ended.errors.map((error: unknown) => (error instanceof Error ? error.message : error)),
-    ["the test failed", "teardown failed", "kill failed"],
+  const diagnostics: string[] = [];
+  const t = { diagnostic: (message: string) => diagnostics.push(message) };
+  await assert.rejects(
+    endCodexTestAfter(t, { sessions: [stuck], sandbox, launches: codexLaunches() }),
   );
-  assert.ok(existsSync(project.cwd) && existsSync(sandbox.home), "the scratch stays");
+  kept.push(project.cwd, sandbox.home);
+  assert.equal(diagnostics.length, 1);
+  for (const part of [sandbox.home, "teardown failed", "kill failed"])
+    assert.ok(diagnostics[0]?.includes(part), `the diagnostic names ${part}`);
 });
 
 test("C-E2E-03 confirmed teardown removes the sandbox and restores the suite's Codex home", {
   skip: skipIf(codexAuthMissing()),
 }, async () => {
-  const { project, sandbox } = scratch();
+  const { sandbox } = scratch();
   const launches = codexLaunches();
   await launches.track(Promise.resolve());
-  await endCodexTest({
-    sessions: [tornDown],
-    projects: [project],
-    sandbox,
-    launches,
-    failure: undefined,
-  });
-  assert.equal(launches.rejected, false);
+  await endCodexTest({ sessions: [tornDown], sandbox, launches, failure: undefined });
+  assert.equal(launches.anyRejected, false);
   assert.equal(existsSync(sandbox.home), false, "the sandbox is gone");
   assert.equal(process.env["CODEX_HOME"], suiteCodexHome);
 });

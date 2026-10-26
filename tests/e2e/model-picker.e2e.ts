@@ -25,7 +25,8 @@ import {
   savedClaudeModel,
 } from "./claude-picker-oracle.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
-import { codexLaunches, runCodexTest, startReadyCodex } from "./codex-ready.ts";
+import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -117,8 +118,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
   const sandbox = sandboxedCodexHome(project, BASELINE_CONFIG);
   const launches = codexLaunches();
   const started: CodexSessionApi[] = [];
-  const scope = { sessions: () => started, projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => started, sandbox, launches }, async () => {
     const session = await startReadyCodex(project, {
       launches,
       onStarted: (launched) => started.push(launched),
@@ -183,7 +183,7 @@ test("C-API-41 real listCodexModels returns models and leaves config.toml untouc
   const sandbox = sandboxedCodexHome(project, BASELINE_CONFIG);
   const defaultsBefore = rootModelKeys(sandbox.configPath);
   const launches = codexLaunches();
-  await runCodexTest({ sessions: () => [], projects: [project], sandbox, launches }, async () => {
+  await runCodexTest({ sessions: () => [], sandbox, launches }, async () => {
     const models = await launches.track(listCodexModels(project));
     assert.ok(models.length >= 2, "session-less probe lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);

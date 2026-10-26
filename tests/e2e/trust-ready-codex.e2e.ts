@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { codexLaunches, endCodexTest } from "./codex-ready.ts";
+import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import {
   bogusCodexModel,
   codexAuthMissing,
@@ -79,13 +79,7 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   t.after(async () => {
     try {
       // The sandbox goes only once every Codex process that could use it is confirmed gone.
-      await endCodexTest({
-        sessions: [session],
-        projects: [project],
-        sandbox,
-        launches,
-        failure: undefined,
-      });
+      await endCodexTestAfter(t, { sessions: [session], sandbox, launches });
     } finally {
       resetRuntimeSeamsForTests();
     }

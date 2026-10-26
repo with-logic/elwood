@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import type { TestContext } from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { codexLaunches, endCodexTest } from "./codex-ready.ts";
+import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import { bogusCodexModel, makeProject, sandboxedCodexHome } from "./helpers.ts";
 import { type HeldOutput, holdCliOutput, outputMatcher } from "./output-hold.ts";
 
@@ -57,13 +57,7 @@ export async function startLaggedCodex(
   const launches = codexLaunches();
   t.after(async () => {
     try {
-      await endCodexTest({
-        sessions: [session],
-        projects: [project],
-        sandbox,
-        launches,
-        failure: undefined,
-      });
+      await endCodexTestAfter(t, { sessions: [session], sandbox, launches });
     } finally {
       resetRuntimeSeamsForTests();
     }

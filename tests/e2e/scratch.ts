@@ -22,6 +22,8 @@ export type E2eProject = {
 };
 
 export type CodexSandbox = {
+  /** The project the sandbox was made for, whose scratch it is named after. */
+  readonly project: E2eProject;
   readonly home: string;
   readonly configPath: string;
   /** Restores `CODEX_HOME` and removes the sandbox (including the auth.json copy). */
@@ -102,6 +104,7 @@ export function sandboxedCodexHome(project: E2eProject, config: string): CodexSa
     else process.env["CODEX_HOME"] = previousHome;
   };
   return {
+    project,
     home,
     configPath,
     dispose: () => {

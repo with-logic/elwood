@@ -12,7 +12,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CodexSessionApi } from "../../src/index.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
-import { codexLaunches, runCodexTest, startReadyCodex } from "./codex-ready.ts";
+import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -32,8 +33,7 @@ test("C-API-23 real Codex marks the configured default model, independent of the
   const sandbox = sandboxedCodexHome(project, 'model_reasoning_effort = "medium"\n');
   const launches = codexLaunches();
   const started: CodexSessionApi[] = [];
-  const scope = { sessions: () => started, projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => started, sandbox, launches }, async () => {
     const session = await startReadyCodex(project, {
       launches,
       onStarted: (launched) => started.push(launched),

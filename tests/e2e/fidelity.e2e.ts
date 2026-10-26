@@ -13,7 +13,7 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { codexLaunches, runCodexTest } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -107,8 +107,7 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
   const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
   let stops = 0;
-  const scope = { sessions: () => [session], projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
     session = await launches.track(
       startCodex({
         cwd: project.cwd,

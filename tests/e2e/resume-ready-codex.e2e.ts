@@ -10,7 +10,7 @@ import test from "node:test";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
-import { codexLaunches, runCodexTest } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -74,8 +74,7 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
   let first: CodexSessionApi | undefined;
   let resumed: CodexSessionApi | undefined;
   const launches = codexLaunches();
-  const scope = { sessions: () => [resumed, first], projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => [resumed, first], sandbox, launches }, async () => {
     const session = await launches.track(startCodex(opts));
     first = session;
     // Codex fires `SessionStart` lazily, at the first prompt, and it alone carries the

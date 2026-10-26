@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { CodexSessionApi, ElwoodWarningEvent } from "../../src/index.ts";
-import { codexLaunches, runCodexTest, startReadyCodex } from "./codex-ready.ts";
+import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -50,8 +51,7 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
   const launches = codexLaunches();
   const started: CodexSessionApi[] = [];
   // The test's end covers a start that rejected and left no session to tear down.
-  const scope = { sessions: () => started, projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => started, sandbox, launches }, async () => {
     const session = await startReadyCodex(project, {
       readyTimeoutMs: READY_MS,
       launches,

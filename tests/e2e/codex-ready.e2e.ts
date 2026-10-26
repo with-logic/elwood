@@ -1,14 +1,16 @@
 /**
  * The shared `startReadyCodex` e2e helper tears down a real Codex session that never becomes
- * ready, since its caller does not get that session back, and rejects with the readiness
- * failure as the cause. Implements C-E2E-03's teardown of Elwood-owned state for the helper's
- * failure path.
+ * ready, so its rejection carries Codex's final screen, and rejects with the readiness failure
+ * as the cause. The session also reaches the test through `onStarted`, so the test's end
+ * retries the teardown if the helper's failed. Implements C-E2E-03's teardown of Elwood-owned
+ * state for the helper's failure path.
  */
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CodexSessionApi } from "../../src/index.ts";
-import { codexLaunches, runCodexTest, startReadyCodex } from "./codex-ready.ts";
+import { startReadyCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -26,8 +28,7 @@ test("C-E2E-03 startReadyCodex tears down a Codex session that never becomes rea
   const sandbox = sandboxedCodexHome(project, 'model_reasoning_effort = "medium"\n');
   const launches = codexLaunches();
   let started: CodexSessionApi | undefined;
-  const scope = { sessions: () => [started], projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => [started], sandbox, launches }, async () => {
     // A zero readiness budget gives up before Codex's SessionStart can arrive.
     const failure = await startReadyCodex(project, {
       readyTimeoutMs: 0,

@@ -9,7 +9,7 @@ import { existsSync, realpathSync, unlinkSync } from "node:fs";
 import { isAbsolute, relative, sep } from "node:path";
 import test from "node:test";
 import { CodexSession, type ElwoodWarningEvent } from "../../src/index.ts";
-import { codexLaunches, runCodexTest } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   bogusCodexModel,
   codexAuthMissing,
@@ -49,8 +49,7 @@ test("C-CODEX-23 a real Codex transcript removed after it existed emits transcri
   });
   const readErrors = () => warnings.filter((warning) => warning.code === "transcript_read_error");
   const launches = codexLaunches();
-  const scope = { sessions: () => [session], projects: [project], sandbox, launches };
-  await runCodexTest(scope, async () => {
+  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
     const live = await launches.track(session.start());
     await live.waitForStatus((status) => status === "ready", e2eTimeoutMs);
     // Codex fires `SessionStart` lazily, with the first submission. The turn commits
