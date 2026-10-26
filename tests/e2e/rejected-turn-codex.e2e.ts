@@ -11,6 +11,7 @@ import type { CliError } from "../../src/cli/output/types.ts";
 import { CodexSession, ElwoodError } from "../../src/index.ts";
 import { invoke, parse } from "./cli-commands-helpers.ts";
 import {
+  bogusCodexModel,
   codexAuthMissing,
   e2eTimeoutMs,
   type HookEvent,
@@ -21,7 +22,6 @@ import {
   skipTurns,
 } from "./helpers.ts";
 
-const bogusModel = "gpt-elwood-nonexistent-model";
 const config = "check_for_update_on_startup = false\n";
 
 test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with status 1", {
@@ -34,7 +34,7 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
     const result = await invoke(
       [
         "--agent=codex",
-        `--model=${bogusModel}`,
+        `--model=${bogusCodexModel}`,
         `--state-dir=${project.stateDir}`,
         "--ephemeral",
         "--output=json",
@@ -65,7 +65,7 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
   const session = new CodexSession({
     cwd: project.cwd,
     stateDir: project.stateDir,
-    model: bogusModel,
+    model: bogusCodexModel,
     sandbox: "read-only",
     approvalPolicy: "never",
     autotrust: true,

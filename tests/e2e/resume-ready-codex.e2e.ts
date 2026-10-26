@@ -10,7 +10,7 @@ import test from "node:test";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
-import { endCodexTest } from "./codex-ready.ts";
+import { codexLaunches, endCodexTest } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -74,15 +74,9 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
   let first: CodexSessionApi | undefined;
   let resumed: CodexSessionApi | undefined;
   let failure: unknown;
-  // A start or resume that rejects may leave a Codex process the test holds no handle to.
-  let launchRejected = false;
-  const launch = (attempt: Promise<CodexSessionApi>) =>
-    attempt.catch((error: unknown) => {
-      launchRejected = true;
-      throw error;
-    });
+  const launches = codexLaunches();
   try {
-    const session = await launch(startCodex(opts));
+    const session = await launches.track(startCodex(opts));
     first = session;
     // Codex fires `SessionStart` lazily, at the first prompt, and it alone carries the
     // conversation id a resume needs.
@@ -101,7 +95,7 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     await session.stop();
 
     const startedAt = Date.now();
-    const resumedSession = await launch(resumeCodex({ ...opts, elwoodSessionId }));
+    const resumedSession = await launches.track(resumeCodex({ ...opts, elwoodSessionId }));
     resumed = resumedSession;
     // Capture status transitions from resume start: the transcript replay must NOT
     // fabricate a phantom running->ready cycle after readiness (a host application
@@ -158,7 +152,7 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     // the turn-state watcher tracks real turns without relying on a Stop hook.
     let stops = 0;
     const prompts: string[] = [];
-    const draining = await launch(
+    const draining = await launches.track(
       resumeCodex({
         ...opts,
         elwoodSessionId,
@@ -187,6 +181,6 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     throw error;
   } finally {
     // The sandbox goes only once every Codex process that could use it is confirmed gone.
-    await endCodexTest({ sessions: [resumed, first], project, sandbox, launchRejected, failure });
+    await endCodexTest({ sessions: [resumed, first], project, sandbox, launches, failure });
   }
 });

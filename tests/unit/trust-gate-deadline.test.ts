@@ -76,7 +76,9 @@ test.each(
 
 test("C-TRUST-01 the budget spends only on-screen time and resumes when the gate returns", async () => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, {
+    onStateChange: changed,
+  });
   const write = vi.fn();
   responder.handle(unsupported, write);
   await vi.advanceTimersByTimeAsync(3_000);

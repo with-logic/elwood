@@ -49,6 +49,21 @@ export type InitialReadyObserverFailedWarning = {
   readonly raw: string;
 };
 
+/**
+ * Codex's initial-readiness backstop released readiness while the latest frame showed no
+ * configured composer (its model footer), for example after a footer layout change.
+ * Content-free (§5.3, C-API-28).
+ */
+export type InitialReadyBackstopWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "initial_ready_backstop";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: string;
+};
+
 export type ObserverFailureWarning = HookObserverFailedWarning | InitialReadyObserverFailedWarning;
 
 /**

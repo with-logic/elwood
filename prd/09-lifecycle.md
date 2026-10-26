@@ -204,6 +204,12 @@ surface as a start-blocking error; it is contained and surfaces as the live
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.
 
+At most 8 non-PTY probes run at once in a parent process, because each starts an
+interactive login shell and a heavy profile slows every shell that runs beside it.
+Further probes wait their turn in arrival order. A waiting probe has not started:
+its launch bound begins when it runs, and a probe that fails frees its turn like
+one that succeeds.
+
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
 running. The default wait must be long enough to catch typical local CLI startup
@@ -316,7 +322,11 @@ a live `reap_failed` warning rather than aborting the exit callback. An explicit
 survivor reap (it does not re-signal the dead PTY — node-pty does not replay the
 exit event, and the pid may already be recycled) and rejects with a typed
 `termination_failed` error if that reap fails, leaving the reap retryable by a
-later `teardown()`.
+later `teardown()`. Every `stop()`/`kill()` attempt runs runtime cleanup after its
+termination or survivor reap, even when that failed: the PTY could not be signaled,
+did not exit, or its group could not be reaped. The call still rejects with that
+failure, and a cleanup failure alongside it is kept as its message in
+`details.cleanupError`.
 
 Overlapping `stop()`, `kill()`, and `teardown()` calls on one session are
 serialized so the PTY is signaled at most once. The first caller owns the in-flight

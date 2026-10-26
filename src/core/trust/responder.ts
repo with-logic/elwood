@@ -1,11 +1,10 @@
 /** Owns trust episodes, on-screen budgets, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { optionInput } from "../terminal-options.ts";
 import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
-import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
-import { leaveFrame, newEpisode } from "./types.ts";
+import type { Episode, TrustHooks, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import { attempted, leaveFrame, newEpisode } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
@@ -20,14 +19,14 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private disposed = false;
   private readonly agent: A;
   private readonly autotrust: boolean;
-  private readonly onStateChange: (() => void) | undefined;
+  private readonly hooks: TrustHooks;
   /** The ADAPTER's clearance grammar; the coordinator never encodes a CLI's layout. */
   private readonly clearance: TrustClearance;
-  constructor(agent: A, clearance: TrustClearance, autotrust = false, onStateChange?: () => void) {
+  constructor(agent: A, clearance: TrustClearance, autotrust = false, hooks: TrustHooks = {}) {
     this.agent = agent;
     this.clearance = clearance;
     this.autotrust = autotrust;
-    this.onStateChange = onStateChange;
+    this.hooks = hooks;
   }
   get inputBlocking(): boolean {
     return this.humanPrompt !== undefined || this.episode !== undefined;
@@ -47,6 +46,8 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const priorIdentity = this.episode?.lastIdentity;
     const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
+    // A rendered frame is evidence for the gate's next attempt as well as its current one.
+    if (this.episode !== undefined) this.episode.phase.renderedSinceWrite = true;
     this.episode?.attempt?.wake();
     const episode = this.episode;
     if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
@@ -72,18 +73,17 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.reportedPending = true;
       return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
     }
-    if (
-      episode.expired ||
-      episode.attempt ||
+    // Running now, answered without a reader, or this choice was already attempted.
+    const attemptAlreadyHandled =
+      episode.attempt !== undefined ||
       episode.legacyAnswered ||
-      episode.attemptedIdentity === identity
-    )
-      return undefined;
+      episode.attemptedIdentity === identity;
+    if (episode.expired || episode.callerOwned || attemptAlreadyHandled) return undefined;
     const read =
       readFrame === undefined
         ? undefined
         : () => readTrustView(readFrame, this.agent, this.clearance);
-    const attempt = new TrustAttempt(view, identity);
+    const attempt = new TrustAttempt(view, identity, episode.phase, this.hooks.numberedRetry);
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);
@@ -119,14 +119,16 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         throw error;
       },
     );
-    return {
-      kind: "attempted",
-      automation: {
-        prompt: view.spec.id as TrustPromptIdFor<A>,
-        input: optionInput(view.option!),
-      },
-      settled,
-    };
+    return attempted(view.spec.id as TrustPromptIdFor<A>, view.option!, settled);
+  }
+  /**
+   * Raw caller input owns the gate on screen: its attempt is cancelled before the caller's
+   * keys are written, and automation writes nothing more to that gate (C-TRUST-01).
+   */
+  callerInput(): void {
+    if (this.episode === undefined) return;
+    this.episode.callerOwned = true;
+    this.episode.attempt?.cancel();
   }
   /** Session closing owns all cancellation, including writes whose promises settle late. */
   dispose(): void {
@@ -190,7 +192,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   }
   private notify(): void {
     try {
-      this.onStateChange?.();
+      this.hooks.onStateChange?.();
     } catch {
       /* An observer cannot retain owned timers or writes. */
     }

@@ -1,13 +1,22 @@
 /** Attempt descriptors distinguish trust input from confirmed clearance (PRD §5.4). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupWriteCompletion } from "../startup/write.ts";
+import { optionInput, type SelectableOption } from "../terminal-options.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
+import { freshPhase, type NumberedRetry, type TrustPhase } from "./step.ts";
 import { choiceIdentity, type TrustCandidate } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
 
 export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
   readonly prompt: TrustPromptIdFor<A>;
   readonly input: string;
+};
+/** What an adapter supplies beside its clearance grammar (C-TRUST-01). */
+export type TrustHooks = {
+  /** Told when blocking state changes without a frame (expiry, settlement). */
+  readonly onStateChange?: (() => void) | undefined;
+  /** What a numbered retry writes; the default retypes only after a rendered frame. */
+  readonly numberedRetry?: NumberedRetry;
 };
 /** Raw PTY result; the coordinator separately owns cancellation and clearance. */
 export type TrustWriteResult = void | Promise<void>;
@@ -30,6 +39,10 @@ export type Episode = {
   attemptedIdentity: string | undefined;
   reportedPending: boolean;
   legacyAnswered: boolean;
+  /** Raw caller input reached this gate; automation writes nothing more to it. */
+  callerOwned: boolean;
+  /** Every attempt at this gate shares it, so its writes and frames outlive each attempt. */
+  readonly phase: TrustPhase;
   attempt: TrustAttempt | undefined;
 };
 
@@ -44,8 +57,19 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
     attemptedIdentity: undefined,
     reportedPending: false,
     legacyAnswered: false,
+    callerOwned: false,
+    phase: freshPhase(),
     attempt: undefined,
   };
+}
+
+/** The result announcing an attempt at `prompt`'s affirmative `option`. */
+export function attempted<A extends ElwoodAgentKind>(
+  prompt: TrustPromptIdFor<A>,
+  option: SelectableOption,
+  settled: Promise<StartupWriteCompletion>,
+): TrustPromptResult<A> {
+  return { kind: "attempted", automation: { prompt, input: optionInput(option) }, settled };
 }
 
 /**
@@ -55,8 +79,11 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
  */
 export function leaveFrame(episode: Episode, offAllowlistGate: boolean): void {
   episode.lastIdentity = undefined;
-  if (episode.attempt?.confirmationWriteFulfilled && !offAllowlistGate) return;
+  const confirmed = episode.phase.confirmationWriteFulfilled;
+  if (episode.attempt !== undefined && confirmed && !offAllowlistGate) return;
   episode.attempt?.cancel();
   episode.attempt = undefined;
   episode.attemptedIdentity = undefined;
+  // Another complete dialog replaced the gate, so the CLI drew its return afresh.
+  if (offAllowlistGate) Object.assign(episode.phase, freshPhase());
 }

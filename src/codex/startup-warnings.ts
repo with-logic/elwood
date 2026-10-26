@@ -78,3 +78,10 @@ function mcpStartupWarning(elwoodSessionId: string, failed: string): CodexBanner
     raw: `MCP startup incomplete (failed: ${failedServers.join(", ")})`,
   };
 }
+
+/** A stable identity for a startup banner: its code plus the server(s) it names. */
+export function codexBannerKey(warning: CodexBannerWarning): string {
+  return warning.code === "mcp_server_not_logged_in"
+    ? `login:${warning.mcpServerName}`
+    : `startup:${warning.failedServers.join(",")}`;
+}
