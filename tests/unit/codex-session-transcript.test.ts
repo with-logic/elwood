@@ -8,7 +8,7 @@
 
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { createCodexTranscriptWatcher } from "../../src/codex/session/transcript.ts";
 import type { CodexEventMap } from "../../src/codex/session/types.ts";
 import {
@@ -34,10 +34,14 @@ function failNextRead(path: string): void {
   });
 }
 
-/** A wired watcher already observing an empty temp transcript at `path`. */
+/**
+ * A wired watcher already observing an empty temp transcript at `path`. Its poller is
+ * stopped when the test ends, so it never outlives the temp dir it observes.
+ */
 function wired(getSink: () => Sink | undefined) {
   const emitter = new TypedEmitter<CodexEventMap>();
   const built = createCodexTranscriptWatcher("s1", emitter, getSink);
+  onTestFinished(() => built.watcher.stop());
   const path = join(tempDirForUnit(), "rollout.jsonl");
   writeFileSync(path, "");
   built.watcher.observe(path);
