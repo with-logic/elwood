@@ -75,24 +75,24 @@ test("C-CODEX-14 a CLI that already exited restores without waiting out the boun
 }, 30_000);
 
 /**
- * The session queue slot must be claimed BEFORE the process-wide `config.toml` lock. With
+ * The session queue slot must be claimed BEFORE the `config.toml` lock. With
  * the lock first, a `sendMessage` issued right after `setModel` dispatched while the switch
  * was still waiting on another session's transaction — sending under the OLD model, which
  * is the FIFO violation the exclusive slot exists to prevent (C-API-55, C-CODEX-14).
  */
 test("C-API-55 a message cannot overtake a setModel waiting for the config lock", async () => {
   const cwd = tempDir();
-  sandboxCodexHome(cwd);
+  const configPath = sandboxCodexHome(cwd);
   installFakes();
   const session = await startCodex({ cwd });
   await becomeReady(session.elwoodSessionId, cwd);
   await expect.poll(() => session.status).toBe("ready");
-  // Another session in this process holds the config lock.
+  // A competing holder in this process, standing in for another session, holds the lock.
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
-  void withCodexConfigLock(() => held);
+  void withCodexConfigLock(configPath, () => held);
   const setting = session.setModel("gpt-5.4", { timeoutMs: 8_000 }).catch(() => undefined);
   const message = session.sendMessage("hello").catch(() => undefined);
   await new Promise((resolve) => setTimeout(resolve, 400));
