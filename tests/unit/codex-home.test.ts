@@ -14,6 +14,7 @@ import {
   reportedCodexConfigPath,
   reportFailedStatus,
 } from "../../src/codex/config/home.ts";
+import { elwoodError } from "../../src/core/errors.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 /**
@@ -97,9 +98,29 @@ describe("the launch shell's CODEX_HOME report", () => {
     expect(await configPath(report)).toBe("/Users/with  two spaces/.codex/config.toml");
   });
 
+  test("a relative HOME, with CODEX_HOME unset, is found from the directory Codex starts in", async () => {
+    const cwd = realpathSync(tempDir());
+    const { report } = launch("unset CODEX_HOME", { HOME: "relative  home" }, cwd);
+    expect(await configPath(report)).toBe(`${cwd}/relative  home/.codex/config.toml`);
+  });
+
   test("an empty CODEX_HOME falls back to $HOME/.codex, and an empty HOME to the account's", async () => {
     const { report } = launch("export CODEX_HOME=", { HOME: "" });
     expect(await configPath(report)).toBe(join(userInfo().homedir, ".codex", "config.toml"));
+  });
+
+  test("a wait for a report that never comes names it only in a typed reason", async () => {
+    const report = join(tempDir("elwood-codex-report-"), "codex-home");
+    const closed = new Error("closed");
+    await expect(reportedCodexConfigPath(report, AbortSignal.abort(closed))).rejects.toBe(closed);
+    const deadline = elwoodError("model_automation_failed", "Timed out.", { timeoutMs: 1 });
+    await expect(
+      reportedCodexConfigPath(report, AbortSignal.abort(deadline)),
+    ).rejects.toMatchObject({
+      code: "model_automation_failed",
+      message: "Timed out.",
+      details: { timeoutMs: 1, path: report },
+    });
   });
 
   test("Codex does not start when the report cannot be written, and the shell says why", () => {

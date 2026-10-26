@@ -531,6 +531,45 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
   native binary and field-captured model/effort dialogs.
 
+## Login-shell `CODEX_HOME` (2026-10-25)
+
+Codex runs as `$SHELL -l -i -c 'exec codex …'` (§4.2). The login shell inherits
+Elwood's environment and the user's startup files can change it, so what decides
+which `config.toml` Codex reads and the picker writes is the environment after
+those files run, not Elwood's own.
+Codex takes a non-empty `CODEX_HOME`, canonicalized (a relative one from the
+directory it runs in), else `$HOME/.codex`. Startup files can make that answer
+depend on the launch itself:
+
+- **`$PWD`.** The login shell starts in the session `cwd`, so
+  `export CODEX_HOME="$PWD/codex-home"` gives every project its own home. Real Codex
+  0.164.0 in two projects under that profile kept each project's default and restore
+  in that project's home.
+- **The terminal and the session's environment.** Only the PTY launch has a TTY on
+  stdin and `ELWOOD_SESSION_ID`. A second shell started to ask (the first version of
+  this fix ran `printf` in a separate login shell) has neither, so a profile that
+  branches on `[[ -t 0 ]]` or on a session variable answers for a different home. The
+  real e2e's profile exports the session home only when both are present.
+- **Exported values only.** Codex sees only exported variables. A profile that
+  assigns `CODEX_HOME=…` without `export` changes what Codex sees only if the
+  variable was already exported, for example inherited from Elwood's environment.
+  Otherwise Codex keeps the inherited value, or none. The report is written by a
+  child `/bin/sh`, which sees exactly what `codex` inherits.
+- **A symlinked `cwd`.** The kernel follows a symlink before a later `..`, and so
+  does Codex. From `feature-link -> worktrees/feature`, real Codex 0.164.0 with
+  `CODEX_HOME=../codex-home` ran with `worktrees/codex-home`: its picker wrote that
+  file, not the `codex-home` beside the link. Resolving the value by name against
+  the session `cwd` read and restored the wrong file.
+
+Elwood therefore has the launch script write the answer just before `exec codex`:
+`/bin/sh -c 'printf "%s\0%s\0%s\0" "$CODEX_HOME" "$HOME" "$PWD"' > <report> || exit 73; exec codex …`,
+with the report in the session's socket home, named after the launch's socket. The
+session canonicalizes a non-empty home with `realpath` on the unnormalized
+`$PWD/$CODEX_HOME`, which follows links the way the kernel does. Profile output
+(banners, `nvm` notices) goes to the terminal, never to the report, so nothing has to
+be parsed out of shell noise. If the report cannot be written, the launch shell exits
+with 73 and never starts Codex. C-CODEX-24.
+
 ## Trust prompts
 
 The real Claude folder-trust prompt renders as **one dialog** spanning header →

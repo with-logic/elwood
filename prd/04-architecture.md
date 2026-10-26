@@ -51,6 +51,36 @@ profile is not reported as a failing CLI.
 Elwood MUST provide diagnostics or tests proving that environment variables from
 the user's shell startup are visible to the launched agent process.
 
+Shell startup files can also export `CODEX_HOME`, which moves Codex's
+`config.toml`, and can derive it from anything the launch has: the directory the
+shell starts in (`$PWD`), whether it has a terminal, or the session's environment
+(`ELWOOD_SESSION_ID`). Elwood therefore never reads Codex's home from its own
+process environment, and does not ask a second shell, which would have neither
+the terminal nor the session's environment. The Codex launch script itself, after
+the startup files load and immediately before `exec codex`, writes the
+`CODEX_HOME` and `HOME` that a child process receives (only exported values,
+exactly what Codex inherits), and the directory it starts Codex in (`$PWD`), to a
+per-launch report in the session's private socket home (§8.1). If that write
+fails, the script exits with status 73 and never starts Codex, and a start that
+fails this way rejects with `codex_start_failed` whose `details.phase` is
+`"codex_home_report"` and whose `details.path` names the report. The session reads
+the report when a model operation first needs it. An operation can start before
+Codex does, so a report the launch shell has not finished is waited for within
+that operation's deadline, and a deadline that ends the wait rejects with
+`details.path` naming the report. The session applies Codex's own rule: a non-empty
+`CODEX_HOME`, canonicalized as Codex canonicalizes it (a relative value from the
+reported directory, following each symlink before a later `..`, as the kernel
+does), else `$HOME/.codex` (an empty `HOME` falls back to the account's home
+directory, and a relative one names a path from the reported directory, as Codex
+uses `HOME` as given). The session keeps the resulting `config.toml` path, and its configured
+default (§5.3 `isDefault`) and `setModel` snapshot and restore (C-CODEX-14) use
+only that file. A report that cannot be read, or a `CODEX_HOME` that does not
+exist, fails `listModels` and `setModel` with `model_automation_failed`, whose
+`details.path` names the report; `setModel` fails before it opens the picker, so
+Codex never persists a selection that Elwood could not restore. Elwood does not
+fall back to its own environment: guessing would read and restore a file that
+Codex might not use. C-CODEX-24.
+
 ### 4.3 Claude settings behavior
 
 Elwood MUST NOT mutate `.claude/settings.local.json` by default.

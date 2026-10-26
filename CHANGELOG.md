@@ -12,6 +12,22 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex sessions now use the `CODEX_HOME` their login shell exports, not
+  Elwood's own. The launch script writes the exported `CODEX_HOME` and `HOME`, and
+  the directory it starts Codex in, to a private report just before `exec codex`,
+  and starts Codex only if that write succeeds. `listModels()` reads `isDefault`
+  from that home's `config.toml`, and `setModel` snapshots and restores that file.
+  Elwood used to read and restore `$CODEX_HOME` or `~/.codex` from its own
+  environment, which, when a profile moved the home, reported the wrong default and
+  restored a file Codex never touched while leaving the picker's change in the real
+  one. A relative `CODEX_HOME` or `HOME` resolves as Codex resolves it, from a
+  symlinked `cwd` too. A model operation that starts before the report is written
+  waits for it within its deadline, and a deadline that ends the wait names the
+  report in `details.path`. A report that cannot be read rejects with
+  `model_automation_failed`, and `setModel` rejects before it opens the picker. A
+  start whose report could not be written rejects with `codex_start_failed` and
+  `details.phase: "codex_home_report"`. `listCodexModels()` and `elwood models`
+  follow the same rule.
 - A Claude session started with `highTrust` or `permissionMode: "bypassPermissions"`
   now answers Claude 2.1.310's bypass-permissions acceptance dialog under
   `autotrust`, as C-CLAUDE-21 requires. Claude 2.1.310 added a sandbox warning and a

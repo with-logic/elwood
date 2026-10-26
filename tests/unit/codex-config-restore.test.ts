@@ -15,7 +15,6 @@ import {
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
-  codexConfigPath,
   restoreCodexConfig,
   restoreFailureRaw,
   snapshotCodexConfig,
@@ -113,11 +112,6 @@ describe("codex config restore", () => {
     expect(lstatSync(join(home, "config.toml")).isSymbolicLink()).toBe(true);
     expect(readFileSync(target, "utf8")).toBe(baseConfig);
     expect(readdirSync(home).sort()).toEqual(["config.toml", "real-config.toml"]);
-  });
-
-  test("codexConfigPath falls back to the home directory", () => {
-    delete process.env["CODEX_HOME"];
-    expect(codexConfigPath().endsWith("/.codex/config.toml")).toBe(true);
   });
 
   test("C-CODEX-14 restoreFailureRaw is content-free: path + bounded errno code only", () => {

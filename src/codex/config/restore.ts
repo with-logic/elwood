@@ -1,9 +1,9 @@
 /**
  * Compensates the Codex CLI persisting picker selections into config.toml.
  * Implements PRD §5.3 setModel restore and C-CODEX-14: a compare-and-swap restore
- * of the user's global config that never clobbers concurrent edits, written
- * atomically (sibling temp file + rename) so a crash mid-restore can never leave
- * the user's config truncated. Each session passes the path it fixed at launch.
+ * of the config.toml a session's Codex runs with (C-CODEX-24) that never clobbers
+ * concurrent edits, written atomically (sibling temp file + rename) so a crash
+ * mid-restore can never leave that config truncated.
  */
 
 import {
@@ -15,7 +15,6 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
 import { readCodexConfigFile } from "./read.ts";
@@ -27,14 +26,6 @@ import { readCodexConfigFile } from "./read.ts";
  * the picker created one — Elwood has nothing to restore and leaves the new file.
  */
 type ConfigRestoreOutcome = "restored" | "skipped" | "unchanged" | "no_snapshot";
-
-/**
- * Resolves the `config.toml` path once per session at launch (`spawnCodexPty`). Only the path
- * is fixed; the file's contents are read for each listing and model switch.
- */
-export function codexConfigPath(): string {
-  return join(process.env["CODEX_HOME"] ?? join(homedir(), ".codex"), "config.toml");
-}
 
 /**
  * Builds the CONTENT-FREE `raw` for a swallowed restore-failure warning: the config
