@@ -4,6 +4,7 @@
  */
 
 import { HookBridgeServer } from "../../bridge/server.ts";
+import { releasingSocketOnStop } from "../../bridge/socket-release.ts";
 import { isClaudeHookInput } from "../validate/input.ts";
 import type { HookBridge } from "./cleanup.ts";
 
@@ -20,8 +21,9 @@ const realFactory: ClaudeHookBridgeFactory = (socketPath, token, id, dispatch, o
 
 let factory = realFactory;
 
+/** The configured factory; each bridge it builds releases its socket when it stops. */
 export function currentClaudeHookBridgeFactory(): ClaudeHookBridgeFactory {
-  return factory;
+  return releasingSocketOnStop(factory);
 }
 
 export function setHookBridgeFactoryForTests(next: ClaudeHookBridgeFactory): void {
