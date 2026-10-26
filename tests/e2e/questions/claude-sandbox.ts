@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
@@ -47,6 +47,13 @@ function parentConfiguration(path: string): Readonly<Record<string, unknown>> {
   return parsed;
 }
 
+/** The `projects` keys of the parent global config at `path` that name the private `root`. */
+function parentProjectsNaming(path: string, root: string): readonly string[] {
+  const projects = parentConfiguration(path)["projects"];
+  const name = basename(root);
+  return isRecord(projects) ? Object.keys(projects).filter((key) => key.includes(name)) : [];
+}
+
 function credentials(): string {
   const result = spawnSync(
     "/usr/bin/security",
@@ -62,15 +69,20 @@ function credentials(): string {
   return result.stdout.trim();
 }
 
+/**
+ * The parent's settings, hooks, and login. The global config is left out: Claude sessions
+ * outside the proof rewrite it all the time, so `parentProjectsNaming` checks it instead.
+ */
 function parentFingerprint(credential: string): Readonly<Record<string, string>> {
-  const paths = [".claude.json", ".claude/settings.json", ".claude/hooks.json"];
+  const paths = [".claude/settings.json", ".claude/hooks.json"];
   return Object.fromEntries([
     ["keychain", createHash("sha256").update(credential).digest("hex")],
     ...paths.map((name) => [name, parentFileFingerprint(join(homedir(), name))]),
   ]);
 }
 
-/** Owns private credentials and process seams; dispose removes/resets them and checks parent drift.
+/** Owns private credentials and process seams; dispose removes/resets them and checks parent drift:
+ * the parent settings, hooks, and login are unchanged, and its global config names no private path.
  * Setup failures attempt private-root cleanup and preserve the original error; disposal may report drift.
  */
 export async function nativeClaudeQuestionSandbox() {
@@ -78,7 +90,7 @@ export async function nativeClaudeQuestionSandbox() {
   const credential = credentials();
   const fingerprint = parentFingerprint(credential);
   const globalPath = join(homedir(), ".claude.json");
-  const globalBefore = parentConfiguration(globalPath);
+  parentConfiguration(globalPath); // refuse a parent config the post-run check cannot read
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_claude_questions-")));
   const home = join(root, "home");
   const cwd = join(root, "project");
@@ -164,15 +176,13 @@ export async function nativeClaudeQuestionSandbox() {
         const changed = Object.keys(fingerprint).filter(
           (name) => fingerprint[name] !== after[name],
         );
-        if (changed.length) {
-          const globalAfter = parentConfiguration(globalPath);
-          const keys = Object.keys({ ...globalBefore, ...globalAfter }).filter(
-            (key) => JSON.stringify(globalBefore[key]) !== JSON.stringify(globalAfter[key]),
-          );
+        if (changed.length)
+          throw new Error(`Parent Claude configuration changed: ${changed.join(", ")}`);
+        const named = parentProjectsNaming(globalPath, root);
+        if (named.length)
           throw new Error(
-            `Parent Claude configuration changed: ${changed.join(", ")} (fields: ${keys.join(", ")})`,
+            `Parent Claude global config names the private root: ${named.join(", ")}`,
           );
-        }
       },
     };
   } catch (error) {
