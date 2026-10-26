@@ -49,7 +49,7 @@ describe("C-LIFE-10 a graceful stop's descendant record", () => {
   test("records each detached group's live members, never the leader's own group", () => {
     const record = new DescendantRecord();
     record.observe([...tree, hook(5004, { zombie: true })], LEADER);
-    expect(record.observed).toBe(true);
+    expect(record.known).toBe(true);
     expect(pids(record.survivors([...tree, hook(5004)]))).toEqual([5002, 5003]);
   });
 
@@ -69,11 +69,23 @@ describe("C-LIFE-10 a graceful stop's descendant record", () => {
     expect(pids(record.survivors(after))).toEqual([5003]);
   });
 
-  test("a read that does not show the leader live records nothing, but counts as a read", () => {
+  test("a read after the signal that does not show the leader live leaves its tree unknown", () => {
     const record = new DescendantRecord();
     record.observe([{ ...leaderRow, zombie: true }, hook(5002)], LEADER);
     record.observe([hook(5002)], LEADER);
-    expect(record.observed).toBe(true);
+    expect(record.known).toBe(false);
+    expect(record.survivors(tree)).toEqual([]);
+    record.observe(tree, LEADER);
+    expect(record.known).toBe(true);
+    record.observe([hook(5002)], LEADER); // A later read without it adds nothing, loses nothing.
+    expect(record.known).toBe(true);
+  });
+
+  test("a leader gone by the read before the signal left nothing linked, nor does its pid", () => {
+    const record = new DescendantRecord();
+    record.observe([{ ...leaderRow, zombie: true }, hook(5002)], LEADER, true);
+    expect(record.known).toBe(true);
+    record.observe(tree, LEADER); // Its pid, read again, is not the leader the stop was for.
     expect(record.survivors(tree)).toEqual([]);
   });
 
@@ -86,8 +98,8 @@ describe("C-LIFE-10 a graceful stop's descendant record", () => {
     expect(pids(record.survivors(tree))).toEqual([5002, 5003]);
   });
 
-  test("a new record has seen nothing", () => {
-    expect(new DescendantRecord().observed).toBe(false);
+  test("a new record knows nothing", () => {
+    expect(new DescendantRecord().known).toBe(false);
   });
 });
 
@@ -120,12 +132,37 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     expect(pids(record.survivors(tree))).toEqual([5002, 5003]);
   });
 
-  test("a watch whose every read failed has observed nothing", async () => {
+  test("a watch whose every read failed knows nothing", async () => {
     const ops = reads([new Error("ps failed")]);
     const watch = watchDescendants(LEADER, ops, () => false);
     await watch.firstRead;
     const record = await watch.finish();
-    expect(record.observed).toBe(false);
+    expect(record.known).toBe(false);
+  });
+
+  test("a failed first read, then reads without the leader, leave its tree unknown", async () => {
+    // The SIGTERM follows the failed read, and the leader exits on it before another shows it.
+    const ops = reads([new Error("ps failed"), [hook(5002, { ppid: 1 })]]);
+    const watch = watchDescendants(LEADER, ops, () => ops.timeouts.length >= 2);
+    await watch.firstRead;
+    while (ops.timeouts.length < 2) await new Promise((resolve) => setImmediate(resolve));
+    expect((await watch.finish()).known).toBe(false);
+  });
+
+  test("an exit seen while waiting between reads ends the watch without another read", async () => {
+    let exited = false;
+    const ops = reads([tree]);
+    const exitDuringRead = (timeoutMs: number, scope?: DaemonScope) => {
+      setImmediate(() => {
+        exited = true; // Before the watch's own wait between reads ends.
+      });
+      return ops.listProcesses(timeoutMs, scope);
+    };
+    const watch = watchDescendants(LEADER, { listProcesses: exitDuringRead }, () => exited);
+    await watch.firstRead;
+    for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    expect(ops.timeouts).toEqual([RECORD_READ_MS]);
+    expect((await watch.finish()).known).toBe(true);
   });
 
   test("finish ends the wait between reads at once, without another read", async () => {
@@ -133,7 +170,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     const ops = reads([tree]);
     const watch = watchDescendants(LEADER, ops, () => false);
     await watch.firstRead;
-    expect((await watch.finish()).observed).toBe(true);
+    expect((await watch.finish()).known).toBe(true);
     expect(ops.timeouts).toEqual([RECORD_READ_MS]);
   });
 
@@ -141,6 +178,6 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     const ops = reads([tree]);
     const record = await watchDescendants(LEADER, ops, () => true).finish();
     expect(ops.timeouts).toEqual([RECORD_READ_MS]);
-    expect(record.observed).toBe(true);
+    expect(record.known).toBe(true);
   });
 });

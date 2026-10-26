@@ -17,10 +17,9 @@ import {
 const LEADER = 5000;
 const HOST = 4000;
 const STARTED = "Sun Oct 25 22:00:00 2026";
-
 type Row = { readonly pid: number; readonly ppid: number; readonly pgid: number };
-
-function row({ pid, ppid, pgid }: Row, state = "S", name = "sh", startedAt = STARTED) {
+type State = "Z" | "T" | "S";
+function row({ pid, ppid, pgid }: Row, state: State = "S", name = "sh", startedAt = STARTED) {
   const flags = { zombie: state === "Z", stopped: state === "T" };
   return { pid, ppid, pgid, ...flags, startedAt, name, shared: false };
 }
@@ -58,16 +57,15 @@ describe("C-LIFE-10 process table", () => {
 
   test("rejects a read with any line that is not one whole row, or a pid twice", () => {
     const line = (fields: string, rest: string) => `${fields} ${STARTED} ${rest}`;
+    const good = line("6000 1 6000 S", "sh 6000"); // Then a blank line, which is skipped.
     for (const bad of [
       line("5000 4000 5000 S", "sh"),
       line("5000 4000 5000 S", "sh 5001"),
       `${line("69992 69991 69988 S", "a")}\n${line("1 5000 1 S", " 69992")}`, // a name, raw
     ]) {
-      const stdout = `${line("6000 1 6000 S", "sh 6000")}\n\n${bad}`; // a blank line is skipped
-      expect(() => parseProcessTable(stdout)).toThrow("one whole row");
+      expect(() => parseProcessTable(`${good}\n\n${bad}`)).toThrow("one whole row");
     }
-    const twice = `${line("6000 1 6000 S", "sh 6000")}\n${line("6000 1 6000 S", "sh 6000")}`;
-    expect(() => parseProcessTable(twice)).toThrow("process table read lists pid 6000 twice");
+    expect(() => parseProcessTable(`${good}\n${good}`)).toThrow("lists pid 6000 twice");
   });
 });
 

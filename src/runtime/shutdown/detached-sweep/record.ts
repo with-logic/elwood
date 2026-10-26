@@ -10,16 +10,26 @@
  * process (see `ProcessEntry.startedAt`), so a pid reused after the exit is never taken
  * for it. The leader is held to the same identity: a read that does not show the
  * leader the first such read showed records nothing, because its pid may already belong
- * to another process, and a leader no read shows had exited before the stop, leaving
- * nothing linked. A process that starts and loses its link between two reads is not
- * recorded.
+ * to another process. A leader the read before the SIGTERM does not show had exited
+ * before the stop, leaving nothing linked; one that no read showed after a failed first
+ * read leaves its tree unknown. A process that starts and loses its link between two
+ * reads is not recorded, and a failed read records nothing, so that gap runs to the next
+ * read that succeeds (PRD §5.3).
  */
 
-import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
+import {
+  detachedDescendantGroups,
+  processIdentity as identity,
+  type ProcessEntry,
+} from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import type { SweepOps } from "./rounds.ts";
 
-/** Each read's bound, the one before the SIGTERM included. */
+/**
+ * Each read's bound, the one before the SIGTERM included. One read on a loaded host took
+ * up to 644 ms (docs/cli-behavior.md), so this rarely cuts a read short, while a stuck
+ * `ps` holds the SIGTERM back by no more than a second.
+ */
 export const RECORD_READ_MS = 1_000;
 
 /** The detached descendants seen so far, by pid and start time. */
@@ -27,19 +37,31 @@ export class DescendantRecord {
   private readonly identities = new Set<string>();
   /** The leader's identity, from the first read that showed it. */
   private leader: string | undefined;
-  /** Whether a read succeeded: without one, nothing is known about the leader's tree. */
-  observed = false;
+  /**
+   * Whether the leader's tree is known: a read showed the leader live, or the read before
+   * the SIGTERM showed it already gone, with nothing left linked to it. A later read that
+   * does not show the leader says nothing of what it left.
+   */
+  known = false;
 
   /**
    * Records every live member of each group, other than the leader's, that holds a
-   * descendant, if `table` shows the leader live as the first such read did.
+   * descendant, if `table` shows the leader live as the first such read did. `beforeSignal`
+   * marks the read before the SIGTERM, whose not showing the leader is knowledge too.
    */
-  observe(table: readonly ProcessEntry[], leaderPid: number): void {
-    this.observed = true;
+  observe(table: readonly ProcessEntry[], leaderPid: number, beforeSignal = false): void {
     const leaderRow = table.find((row) => row.pid === leaderPid && !row.zombie);
-    if (leaderRow === undefined) return;
+    if (leaderRow === undefined) {
+      // Gone before the SIGTERM: nothing is linked to it, and its pid is no one's to follow.
+      if (beforeSignal) {
+        this.known = true;
+        this.leader = "";
+      }
+      return;
+    }
     this.leader ??= identity(leaderRow);
     if (identity(leaderRow) !== this.leader) return;
+    this.known = true;
     const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
     for (const row of table) {
       if (!row.zombie && groups.has(row.pgid)) this.identities.add(identity(row));
@@ -55,8 +77,6 @@ export class DescendantRecord {
     return table.filter((row) => !row.zombie && recorded(row) && !row.shared);
   }
 }
-
-const identity = (row: ProcessEntry): string => `${row.pid} ${row.startedAt}`;
 
 /** A recording in progress. */
 export type DescendantWatch = {
@@ -79,19 +99,19 @@ export function watchDescendants(
   const record = new DescendantRecord();
   let watching = true;
   const scope = daemonScope(new Set([leaderPid]));
-  const readOnce = () =>
+  const readOnce = (beforeSignal = false) =>
     ops.listProcesses(RECORD_READ_MS, scope).then(
-      (table) => record.observe(table, leaderPid),
+      (table) => record.observe(table, leaderPid, beforeSignal),
       () => undefined,
     );
-  const firstRead = readOnce();
+  const firstRead = readOnce(true);
   const finishing = Promise.withResolvers<void>();
   const reading = (async () => {
     await firstRead;
     while (!leaderExited()) {
       // Lets the exit be observed between reads; a `finish` ends the wait at once.
       await Promise.race([new Promise((resolve) => setImmediate(resolve)), finishing.promise]);
-      if (!watching) return;
+      if (!watching || leaderExited()) return;
       await readOnce();
     }
   })();
