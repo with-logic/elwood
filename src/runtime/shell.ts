@@ -7,6 +7,7 @@
 import { userInfo } from "node:os";
 import type { ElwoodAgentKind } from "../core/activity/index.ts";
 import { isStringArray } from "../core/predicates.ts";
+import { homeGuardExitCode, homeGuardHomesKey, homeGuardStopMarker } from "./home-guard/index.ts";
 import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
 
 export function userShell(): string {
@@ -31,7 +32,7 @@ function loginShellArgs(script: string): LoginShellArgs {
 
 /** Interactive login shell for the agent PTY — matches Terminal.app (§4.2). */
 export function loginShellCommand(command: string): LoginShellArgs {
-  return loginShellArgs(`${homeGuardScript()}${command}`);
+  return loginShellArgs(`${homeGuardScript("session")}${command}`);
 }
 
 /**
@@ -48,7 +49,7 @@ export function loginShellCommand(command: string): LoginShellArgs {
 export function probeShellCommand(command: string): LoginShellArgs {
   // The start line comes first, so the runner still tells a shell that never started the
   // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
-  const script = `${probeStartScript}${homeGuardScript()}${probeNotFoundHandlerReset}${command}`;
+  const script = `${probeStartScript}${homeGuardScript("probe")}${probeNotFoundHandlerReset}${command}`;
   return loginShellArgs(script);
 }
 
@@ -59,26 +60,6 @@ export function probeShellCommand(command: string): LoginShellArgs {
 export function probeShellStatus(command: string): LoginShellArgs {
   return probeShellCommand(`${command} >/dev/null 2>&1`);
 }
-
-/** The exit status of a login shell the e2e home guard stopped. */
-export const homeGuardExitCode = 97;
-
-/**
- * The variable listing the e2e suite's private CLI homes as a JSON array of absolute paths,
- * each home in its given and its real spelling.
- */
-export const homeGuardHomesKey = "ELWOOD_E2E_PRIVATE_HOMES";
-
-/** Whether a login shell that exited with `status` was stopped by the e2e home guard. */
-export function homeGuardStopped(status: number): boolean {
-  return status === homeGuardExitCode && (process.env[homeGuardHomesKey] ?? "") !== "";
-}
-
-/** Why a launch the e2e home guard stopped failed, for its start or probe error. */
-export const homeGuardStoppedReason =
-  "the e2e home guard stopped its login shell: a startup file left CODEX_HOME or " +
-  "CLAUDE_CONFIG_DIR unexported or not one of the suite's private homes, or " +
-  `${homeGuardHomesKey} is not a JSON array of absolute paths`;
 
 /** The variable naming each adapter's CLI home. */
 const homeVariables = {
@@ -105,10 +86,22 @@ function refusalReason(refusal: Refusal): string {
   }
 }
 
-/** Shell code that prints why the guard stopped the launch and exits `homeGuardExitCode`. */
-function refuse(refusal: Refusal): string {
-  const line = shellQuote(`Elwood e2e: ${refusalReason(refusal)}`);
-  return `{ printf '%s\\n' ${line} >&2; exit ${homeGuardExitCode}; }; `;
+/** The launch a guard script stops: a session, in its PTY, or a probe, which has no terminal. */
+type GuardedLaunch = "session" | "probe";
+
+/**
+ * Shell code that writes the stop marker with why the guard stopped the launch, and exits
+ * `homeGuardExitCode`. Not on stderr, which a startup file can redirect. A session's shell
+ * writes to its terminal, `/dev/tty`, which its PTY captures however the startup files
+ * redirected stdin, stdout, or stderr, and falls back to stdout only if it cannot open it. A
+ * probe runs in a session of its own, with no terminal (`runProbe`), so it writes to the stdout
+ * the probe runner captures.
+ */
+function refuse(refusal: Refusal, launch: GuardedLaunch): string {
+  const line = shellQuote(`${homeGuardStopMarker}: ${refusalReason(refusal)}`);
+  const write = `printf '%s\\n' ${line}`;
+  const report = launch === "session" ? `{ ${write} >/dev/tty; } 2>/dev/null || ${write}` : write;
+  return `{ ${report}; exit ${homeGuardExitCode}; }; `;
 }
 
 /** The registered homes, or `undefined` when `raw` is not a JSON array of absolute paths. */
@@ -138,13 +131,14 @@ const realHome =
  * Elwood's own environment sets to a listed home is guarded: the login shell, after its
  * startup files, exits `homeGuardExitCode` before the agent or probe command unless the
  * variable is still exported and its real path is a listed home. A list that cannot be read
- * stops every launch. With no list, as outside the suite, the script is empty.
+ * stops every launch. With no list, as outside the suite, the script is empty. `launch` picks
+ * where the guard reports a stop (`refuse`).
  */
-export function homeGuardScript(): string {
+export function homeGuardScript(launch: GuardedLaunch): string {
   const raw = process.env[homeGuardHomesKey] ?? "";
   if (raw === "") return "";
   const homes = privateHomes(raw);
-  if (homes === undefined) return refuse({ kind: "unreadable_list" });
+  if (homes === undefined) return refuse({ kind: "unreadable_list" }, launch);
   const listed = homes.map(shellQuote).join("|");
   return Object.values(homeVariables)
     .filter((name) => homes.includes(process.env[name] ?? ""))
@@ -153,7 +147,7 @@ export function homeGuardScript(): string {
       (name) =>
         `elwood_home=$(command printenv ${name}) && ${realHome} && ` +
         `case "$elwood_home" in ${listed}) true;; *) false;; esac || ` +
-        refuse({ kind: "invalid_home", variable: name }),
+        refuse({ kind: "invalid_home", variable: name }, launch),
     )
     .join("");
 }

@@ -1,24 +1,26 @@
 /**
  * Where the e2e CLI home guard's stop surfaces (PRD §12, C-E2E-24). A probe runs the guard
  * after its start line, and a probe the guard stops, by either probe command form, is a
- * login-shell failure that carries only the guard's fixed reason, never the shell's stderr.
- * A login shell that fails before the start line is still the login shell's own failure
- * (C-PERF-05). A session whose login shell the guard stops during startup fails with a start
- * error that names the guard. The suite's registry never trusts a list its process inherited.
+ * login-shell failure that carries only the guard's fixed reason, never the shell's stderr,
+ * even when a startup file redirected that stderr. Only the guard's stop line with its status
+ * counts: a command that exits with the same status is still the command's failure. A login
+ * shell that fails before the start line is still the login shell's own failure (C-PERF-05). A
+ * session whose login shell the guard stops during startup fails with a start error that names
+ * the guard. The suite's registry never trusts a list its process inherited.
  */
 
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { probeFailureDetails } from "../../src/core/errors.ts";
-import { runProbe } from "../../src/runtime/probe/index.ts";
-import { announcesStart } from "../../src/runtime/probe/start.ts";
 import {
   homeGuardHomesKey,
+  homeGuardStopMarker,
   homeGuardStoppedReason,
-  probeShellCommand,
-  probeShellStatus,
-} from "../../src/runtime/shell.ts";
+} from "../../src/runtime/home-guard/index.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
+import { announcesStart } from "../../src/runtime/probe/start.ts";
+import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
 import { assertStartupUsable } from "../../src/runtime/startup/index.ts";
 import { loginShells } from "../helpers/login-shells.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -43,10 +45,15 @@ function guardWith(tail: string, list = (codex: string) => JSON.stringify([codex
 const command = "printf 'command ran\\n'";
 const stopped = { message: homeGuardStoppedReason, phase: "login_shell", shellStatus: 97 };
 
-test("C-E2E-24 a guarded probe still announces its start", () => {
+test("C-E2E-24 a guarded probe still announces its start, and never writes to a terminal", () => {
   guardWith(":");
   expect(announcesStart(probeShellCommand("codex --version"))).toBe(true);
   expect(announcesStart(probeShellStatus("command -v codex"))).toBe(true);
+  // A probe runs in a session of its own, with no terminal to write to.
+  vi.stubEnv(homeGuardHomesKey, "not a list");
+  expect(loginShellCommand("codex")[3]).toContain("/dev/tty");
+  expect(probeShellCommand("codex --version")[3]).not.toContain("/dev/tty");
+  expect(probeShellStatus("command -v codex")[3]).not.toContain("/dev/tty");
 });
 
 describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
@@ -54,7 +61,7 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
     ["with output", probeShellCommand],
     ["by status only", probeShellStatus],
   ])("the guard stops, %s, is a login-shell failure with only the guard's reason", async (_case, probe) => {
-    guardWith('echo "secret=$HOME" >&2; export CODEX_HOME="$HOME"');
+    guardWith('echo "secret=$HOME" >&2; exec 2>/dev/null; export CODEX_HOME="$HOME"');
     const result = await runProbe(shell, probe(command));
     expect(result).toMatchObject({ status: null, error: stopped });
     expect(result.stdout).not.toContain("command ran");
@@ -72,8 +79,12 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
     expect(result.error).toMatchObject({ phase: "login_shell", shellStatus: 3 });
   });
 
-  test("whose own command exits 97 while the guard is off is the command's failure", async () => {
-    guardWith(":", () => "");
+  test.each([
+    ["while the guard is off", () => ""],
+    ["under a guard that passes", undefined],
+    ["under a list that guards no home", () => JSON.stringify(["/elsewhere"])],
+  ])("whose own command exits 97 %s is the command's failure", async (_case, list) => {
+    guardWith(":", list);
     const result = await runProbe(shell, probeShellCommand("exit 97"));
     expect(result).toMatchObject({ status: 97 });
     expect(result.error).toBeUndefined();
@@ -92,12 +103,12 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
 });
 
 describe("C-E2E-24 a session whose login shell exits during startup", () => {
-  const started = (exitCode: number) =>
-    assertStartupUsable({ adapter: "codex", exit: { exitCode }, output: "", waitMs: 0 });
+  const started = (exitCode: number, output: string) =>
+    assertStartupUsable({ adapter: "codex", exit: { exitCode }, output, waitMs: 0 });
+  const stopLine = `${homeGuardStopMarker}: the login shell left CODEX_HOME unexported\r\n`;
 
-  test("with the guard's status, while the guard is on, fails naming the guard", async () => {
-    vi.stubEnv(homeGuardHomesKey, "[]");
-    await expect(started(97)).rejects.toMatchObject({
+  test("with the guard's status and stop line, fails naming the guard", async () => {
+    await expect(started(97, `profile output\r\n${stopLine}`)).rejects.toMatchObject({
       code: "codex_start_failed",
       message: `codex exited during startup: ${homeGuardStoppedReason}.`,
       details: { exitCode: 97 },
@@ -105,11 +116,10 @@ describe("C-E2E-24 a session whose login shell exits during startup", () => {
   });
 
   test.each([
-    ["any other status, while the guard is on", "[]", 1],
-    ["the guard's status, while the guard is off", undefined, 97],
-  ])("with %s, fails as before", async (_case, list, exitCode) => {
-    vi.stubEnv(homeGuardHomesKey, list);
-    await expect(started(exitCode)).rejects.toMatchObject({
+    ["the guard's status without its stop line", 97, "profile output\r\n"],
+    ["another status after the stop line", 1, stopLine],
+  ])("with %s, fails as before", async (_case, exitCode, output) => {
+    await expect(started(exitCode, output)).rejects.toMatchObject({
       code: "codex_start_failed",
       message: "codex exited during startup.",
       details: { exitCode },
