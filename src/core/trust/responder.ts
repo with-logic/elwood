@@ -1,11 +1,10 @@
 /** Owns trust episodes, on-screen budgets, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { optionInput } from "../terminal-options.ts";
 import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
 import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
-import { leaveFrame, newEpisode } from "./types.ts";
+import { attempted, leaveFrame, newEpisode } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
@@ -72,13 +71,13 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.reportedPending = true;
       return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
     }
-    if (
-      episode.expired ||
-      episode.attempt ||
+    const handedToCaller = episode.callerOwned; // raw caller input reached this gate
+    // Running now, answered without a reader, or this choice was already attempted.
+    const attemptAlreadyHandled =
+      episode.attempt !== undefined ||
       episode.legacyAnswered ||
-      episode.attemptedIdentity === identity
-    )
-      return undefined;
+      episode.attemptedIdentity === identity;
+    if (episode.expired || handedToCaller || attemptAlreadyHandled) return undefined;
     const read =
       readFrame === undefined
         ? undefined
@@ -119,14 +118,16 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         throw error;
       },
     );
-    return {
-      kind: "attempted",
-      automation: {
-        prompt: view.spec.id as TrustPromptIdFor<A>,
-        input: optionInput(view.option!),
-      },
-      settled,
-    };
+    return attempted(view.spec.id as TrustPromptIdFor<A>, view.option!, settled);
+  }
+  /**
+   * Raw caller input owns the gate on screen: its attempt is cancelled before the caller's
+   * keys are written, and automation writes nothing more to that gate (C-TRUST-01).
+   */
+  callerInput(): void {
+    if (this.episode === undefined) return;
+    this.episode.callerOwned = true;
+    this.episode.attempt?.cancel();
   }
   /** Session closing owns all cancellation, including writes whose promises settle late. */
   dispose(): void {

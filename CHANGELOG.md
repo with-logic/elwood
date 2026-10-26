@@ -75,6 +75,17 @@ back each entry are listed in `prd/14-conformance.md`.
   footer is never recognized; a prompt painted after that would still follow
   `ready`.
 
+- With `autotrust`, keys a caller sends with `sendKeys` (or `terminal.sendInput`,
+  `xterm.input`) while a trust prompt is on screen now hand that prompt to the
+  caller: Elwood stops answering it. Before, its retry could follow the caller's
+  keys. When the CLI had already left the prompt but Elwood's screen had not caught
+  up, that retry landed in the composer and submitted the caller's text along with
+  the answer. A prompt the caller owns that stays up past five seconds is reported
+  `blocked`, as before; a later trust prompt is answered as usual. The same keys
+  also stop Elwood retrying its skip choice on a Codex update prompt, which could
+  otherwise follow them onto whatever Codex drew next. Elwood then leaves that
+  update prompt to the caller until Codex shows its composer.
+
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has
   been the bottom of the screen across five readings at least 40 ms apart. Before,

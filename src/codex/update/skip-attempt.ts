@@ -24,6 +24,8 @@ type UpdateSkipRequest = {
 type UpdateSkipAttempt = {
   readonly settled: Promise<StartupWriteCompletion>;
   readonly observeClearance: (frame: string) => void;
+  /** Raw caller input owns this appearance: no retry or pending write follows it. */
+  readonly cancel: () => void;
 };
 
 export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAttempt {
@@ -81,6 +83,9 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
   );
   return {
     settled: completion.promise,
+    cancel: () => {
+      if (!retries.signal.aborted) finish("cancelled");
+    },
     observeClearance(frame: string): void {
       if (retries.signal.aborted || readFrame === undefined || !ownsAttempt()) return;
       if (invalidated(frame) || !request.clearance(frame)) return;
