@@ -5,9 +5,10 @@
  * PRD §9.1/§8.1 (mirrors Claude): sessionRuntime ensures the session's stable home and
  * reserves a fresh per-launch socket PATH inside it; the socket is bound later by
  * bridge.start() (after the state/runtime files are written). ANY pre-session failure
- * removes THIS launch's own file — never the shared home a concurrent launch may own
- * (withSocketHomeCleanup) — and teardown sweeps the whole home. Each test isolates
- * `TMPDIR` so the leak checks see only this launch's homes/sockets.
+ * removes THIS launch's own file, and the home only once it is empty — never one a
+ * concurrent launch's socket is in (withSocketHomeCleanup) — stop releases the launch's
+ * socket, and teardown sweeps the whole home. Each test isolates the socket-home root so
+ * the leak checks see only this launch's homes/sockets.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -49,7 +50,7 @@ describe("§9.1 a failed Codex start does not leak its socket file", () => {
     expect(boundSocketPathLength(priv)).toBeLessThan(104);
   });
 
-  test("a bridge-start failure removes its own socket file AND shuts down the partial bridge", async () => {
+  test("C-STATE-12 a bridge-start failure removes its own socket file and the empty socket home, AND shuts down the partial bridge", async () => {
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
     let stops = 0;
@@ -67,10 +68,11 @@ describe("§9.1 a failed Codex start does not leak its socket file", () => {
       code: "hook_bridge_failed", // NOT "stop failed too" — the secondary error is contained
     });
     expect(socketFilesIn(priv)).toEqual([]); // the launch's own socket file is gone
+    expect(socketHomesIn(priv)).toEqual([]); // and so is the home it emptied (§8.1)
     expect(stops).toBe(1); // the partially-started bridge's listener is not leaked
   });
 
-  test("a PTY-start failure removes its own socket file", async () => {
+  test("C-STATE-12 a PTY-start failure removes its own socket file and the empty socket home", async () => {
     const cwd = tempDir();
     installFakes();
     setPtyFactoryForTests(() => {
@@ -81,6 +83,7 @@ describe("§9.1 a failed Codex start does not leak its socket file", () => {
       code: "pty_start_failed",
     });
     expect(socketFilesIn(priv)).toEqual([]);
+    expect(socketHomesIn(priv)).toEqual([]);
   });
 
   test("a failing overlapping launch never removes a LIVE launch's socket", async () => {
@@ -116,19 +119,19 @@ describe("§9.1 a failed Codex start does not leak its socket file", () => {
     expect(socketHomesIn(priv)).toEqual([]);
   });
 
-  test("§8.1 start→stop→resume→teardown is restart-safe: ONE stable home, fully collected", async () => {
+  test("C-STATE-12 start→stop→resume→teardown is restart-safe: stop removes the empty home, teardown the rest", async () => {
     // The Codex mirror of the Claude restart-safe regression: a session's home is STABLE
     // (fingerprint of the id), so a resume — even in a fresh process remembering no prior
-    // path — reuses the SAME home, not a leaked new one. Teardown sweeps every launch.
+    // path — recreates the SAME home stop released, not a new one. Teardown sweeps it.
     const cwd = tempDir();
     installFakes();
     const priv = isolateTmp();
     const first = await startCodex({ cwd });
     await becomeReady(first.elwoodSessionId, cwd);
-    await first.stop(); // stop keeps state (and the home) for resume
-    expect(socketHomesIn(priv)).toHaveLength(1);
+    await first.stop(); // stop keeps state for resume, but not the emptied home (§8.1)
+    expect(socketHomesIn(priv)).toEqual([]);
     const resumed = await resumeCodex({ elwoodSessionId: first.elwoodSessionId, cwd });
-    expect(socketHomesIn(priv)).toHaveLength(1); // reused the SAME stable home, not two
+    expect(socketHomesIn(priv)).toHaveLength(1); // recreated the SAME stable home, not two
     await resumed.teardown();
     expect(socketHomesIn(priv)).toEqual([]); // the single home (all launches) collected
   });

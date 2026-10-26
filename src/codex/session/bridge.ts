@@ -4,6 +4,7 @@
  */
 
 import { HookBridgeServer } from "../../bridge/server.ts";
+import { releasingSocketOnStop } from "../../bridge/socket-release.ts";
 import { isCodexHookEvent } from "../hooks/validate.ts";
 import { resetCodexPreflightCacheForTests } from "../preflight.ts";
 
@@ -25,8 +26,9 @@ const realFactory: CodexHookBridgeFactory = (socketPath, token, id, dispatch, on
 
 let factory = realFactory;
 
+/** The configured factory; each bridge it builds releases its socket when it stops. */
 export function currentCodexHookBridgeFactory(): CodexHookBridgeFactory {
-  return factory;
+  return releasingSocketOnStop(factory);
 }
 
 export function setCodexHookBridgeFactoryForTests(next: CodexHookBridgeFactory): void {

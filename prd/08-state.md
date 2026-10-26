@@ -62,12 +62,18 @@ reused; the socket path is a per-launch runtime value, embedded only in the gene
 private bridge script and never in the session record, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
-socket can leak undiscoverably across restart/resume cycles. Across separate Elwood
+socket can leak undiscoverably across restart/resume cycles. A launch that ends
+without teardown — `stop`, `kill`, the agent exiting, or a failed start — removes
+its own socket file and then the socket home if that left it empty, so a session
+that is never torn down leaves nothing in the OS temp dir; a home that still holds
+another launch's socket is kept, and the session's next start or resume
+recreates the home. Across separate Elwood
 processes, running two live sessions with the same full identity (`stateDir`,
 adapter, and session id) is unsupported: the processes share files and socket
 homes without a cross-process ownership protocol. Within one process, overlapping
 resume and cleanup follow the successor protocol below. A failed start removes
-only its own socket file, preserving any overlapping launch. `stateDir`
+only its own socket file (and the home only once it is empty), preserving any
+overlapping launch. `stateDir`
 length MUST NOT constrain whether a session can start.
 
 Within one Elwood process, a validated resume attempt revokes the prior launch's
@@ -177,7 +183,8 @@ core state must not become a transcript store.
 
 ### 8.4 Cleanup
 
-Runtime files needed for resume/debugging are kept by default after `stop`.
+Runtime files needed for resume/debugging are kept by default after `stop`. The
+socket home is not among them: `stop` removes it once it is empty (§8.1).
 Loop definitions are likewise kept after `stop`, unexpected exit, or process
 failure. `kill` permanently removes all loop definitions while preserving the
 ordinary session record; a later resume has no loops.
