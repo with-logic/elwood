@@ -9,7 +9,6 @@
 import {
   chmodSync,
   existsSync,
-  readFileSync,
   realpathSync,
   renameSync,
   statSync,
@@ -18,7 +17,8 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { errnoCode } from "../../core/errors.ts";
+import { ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
+import { readCodexConfigFile } from "./read.ts";
 
 /**
  * `restored`: the snapshot was written back. `unchanged`: the picker wrote nothing.
@@ -39,14 +39,34 @@ export function codexConfigPath(): string {
 /**
  * Builds the CONTENT-FREE `raw` for a swallowed restore-failure warning: the config
  * path plus a bounded errno code only — never the error message, which could carry
- * credentials or conversation data if the failure came from a public listener.
+ * credentials or conversation data if the failure came from a public listener. A config
+ * read that failed carries its errno as `details.code` (C-CODEX-25).
  */
 export function restoreFailureRaw(path: string, error: unknown): string {
-  return `${path} (${errnoCode(error) ?? "UNKNOWN"})`;
+  const code = error instanceof ElwoodError ? error.details["code"] : errnoCode(error);
+  return `${path} (${typeof code === "string" ? code : "UNKNOWN"})`;
 }
 
+/**
+ * The config's contents before the picker opens, or `undefined` when it does not exist. One
+ * that cannot be read (C-CODEX-25) fails the switch here: Codex would persist its selection
+ * into a file Elwood could not restore.
+ */
 export function snapshotCodexConfig(path: string): string | undefined {
-  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
+  return readForSwitch(path, "Could not read the Codex config before switching models.");
+}
+
+/** The config's contents at the restore, read as `snapshotCodexConfig` reads them. */
+export function currentCodexConfig(path: string): string | undefined {
+  return readForSwitch(path, "Could not read the Codex config to restore its default model.");
+}
+
+function readForSwitch(path: string, message: string): string | undefined {
+  try {
+    return readCodexConfigFile(path);
+  } catch (error) {
+    throw elwoodError("model_automation_failed", message, { path, code: errnoCode(error) });
+  }
 }
 
 /**
@@ -64,10 +84,9 @@ export function restoreCodexConfig({
   readonly path: string;
   readonly snapshot: string | undefined;
 }): ConfigRestoreOutcome {
-  const exists = existsSync(path);
-  if (snapshot === undefined) return exists ? "no_snapshot" : "unchanged";
-  if (!exists) return "skipped";
-  const current = readFileSync(path, "utf8");
+  if (snapshot === undefined) return existsSync(path) ? "no_snapshot" : "unchanged";
+  const current = currentCodexConfig(path);
+  if (current === undefined) return "skipped";
   if (current === snapshot) return "unchanged";
   if (withoutRootModelKeys(current) !== withoutRootModelKeys(snapshot)) return "skipped";
   writeAtomically(path, snapshot);

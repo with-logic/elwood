@@ -4,10 +4,10 @@
  * Implements PRD §5.3 `isDefault` and C-API-23.
  */
 
-import { readFileSync } from "node:fs";
 import { elwoodError, errnoCode } from "../../core/errors.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { withCodexConfigLock } from "./lock.ts";
+import { readCodexConfigFile } from "./read.ts";
 
 const tableHeader = /^\s*\[/;
 const profileTable = /^\s*\[\s*profiles\.(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*\]/;
@@ -70,14 +70,12 @@ export function configuredCodexModel(path: string): string | undefined {
 /** Only a missing file means "no config"; any other failure must not pass as one. */
 function readConfig(path: string): string | undefined {
   try {
-    return readFileSync(path, "utf8");
+    return readCodexConfigFile(path);
   } catch (error) {
-    const code = errnoCode(error);
-    if (code === "ENOENT") return undefined;
     throw elwoodError(
       "model_automation_failed",
       "Could not read the Codex config to find its default model.",
-      { path, code },
+      { path, code: errnoCode(error) },
     );
   }
 }
