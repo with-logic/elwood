@@ -4,6 +4,7 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
+import { type DirectoryRead, readInDirectory } from "../probe/directory-key.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
 import type { CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
@@ -72,32 +73,68 @@ function finalizeAutoupdate(
   }
 }
 
-/** A `--version` read that ran and exited 0; a killed, unspawnable, or failing one is not kept. */
-const readSucceeded = (result: CommandResult): boolean =>
-  result.status === 0 && result.error === undefined;
+/**
+ * The most launch directories whose successful `--version` reads each adapter's cache keeps
+ * (§9.2). A host runs sessions in a handful of worktrees at once; 32 covers a large fleet's
+ * directories, while a full cache, at `maxRetainedVersionTailCodeUnits` per stream, holds at most
+ * 8 MiB per adapter.
+ */
+export const maxSettledPreflightDirectoryResults = 32;
 
-// The `--version` read per adapter, keyed by the launch directory its probe shell starts in: a
+/**
+ * The most UTF-16 code units of each output stream a kept `--version` read holds: the stream's
+ * tail, where a long output ends with what the CLI said last (C-PERF-02). Bounds the cache above.
+ */
+export const maxRetainedVersionTailCodeUnits = 64 * 1024;
+
+/**
+ * The stream's last `maxRetainedVersionTailCodeUnits` code units, less a low surrogate whose pair
+ * was cut off, copied so the kept string does not hold the whole output (V8 slices share their
+ * source).
+ */
+function retainedTail(text: string): string {
+  if (text.length <= maxRetainedVersionTailCodeUnits) return text;
+  const tail = text.slice(-maxRetainedVersionTailCodeUnits);
+  const first = tail.charCodeAt(0);
+  const whole = first >= 0xdc00 && first <= 0xdfff ? tail.slice(1) : tail;
+  return Buffer.from(whole, "utf16le").toString("utf16le");
+}
+
+/**
+ * A read worth keeping: it ran and exited 0 (a killed, unspawnable, or failing one is not kept),
+ * in the directory it is keyed by.
+ */
+const keepRead = ({ value, sameDirectory }: DirectoryRead<CommandResult>): boolean =>
+  sameDirectory && value.status === 0 && value.error === undefined;
+
+// The `--version` reads per adapter, keyed by the launch directory their probe shell starts in: a
 // per-directory tool manager can resolve a different binary there (C-PTY-08). Concurrent first
 // spawns share the in-flight PROMISE, so N of them start ONE subprocess; once it settles, only a
-// successful read is kept, as a value, for the most recent directory.
-const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
-  claude: createProbeCache(1, readSucceeded),
-  codex: createProbeCache(1, readSucceeded),
+// read worth keeping is kept, as a value.
+const versionReads: Record<UpdateAdapter, ProbeCache<DirectoryRead<CommandResult>>> = {
+  claude: createProbeCache(maxSettledPreflightDirectoryResults, keepRead),
+  codex: createProbeCache(maxSettledPreflightDirectoryResults, keepRead),
 };
 
 /**
- * Reads the adapter's `--version` in `cwd`, and reuses a successful read there while it is the
- * most recently read directory. Concurrent callers for one directory share the single in-flight
- * read and its outcome. A read that rejects, or resolves with a failed probe (nonzero exit,
- * timeout, spawn error), is not retained, so the next caller after it settles reads again
- * (C-LIFE-11). Invalidated after an autoupdate so the post-update version is re-read.
+ * Reads the adapter's `--version` in `cwd`, and reuses a successful read while the cache keeps
+ * it. The key is the directory `cwd` names as well as the path, so a directory deleted and made
+ * again at the same path is read afresh. Concurrent callers share the single in-flight read and
+ * its outcome. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
+ * error), is not kept, so the next caller after it settles reads again (C-LIFE-11); nor is one
+ * whose directory was replaced while it ran, since it may have read the replacement's CLI. A
+ * directory evicted from the cache is read again, and so is every directory after an autoupdate
+ * invalidates it. Every caller gets the read with each stream cut to its tail (`retainedTail`).
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
   cwd: string,
   read: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
-  return versionReads[adapter].get(cwd, read);
+  return readInDirectory(versionReads[adapter], cwd, async () => {
+    const { stdout, stderr, ...rest } = await read();
+    return { ...rest, stdout: retainedTail(stdout), stderr: retainedTail(stderr) };
+  });
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {

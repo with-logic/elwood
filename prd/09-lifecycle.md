@@ -83,10 +83,13 @@ These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
 preflights on a single thread. Each `--version` and `update` probe runs in the
 session's launch directory (§4.2). Elwood reads each adapter's `--version` there
-and reuses a successful read while that directory is the last one it read in —
+and keeps the successful reads of the 32 most recently used launch directories —
 concurrent reads in one directory share a single subprocess — mirroring the
-once-per-process autoupdate dedupe (C-LIFE-09); a read in another directory reads
-again. All cached version reads and adapter-capability reads are invalidated after
+once-per-process autoupdate dedupe (C-LIFE-09). A read is kept under the directory
+it ran in (its device and inode) as well as its path: a directory deleted and made
+again at the same path is read again, a symlink to a read directory is read as its
+own path, and a read whose directory was replaced while it ran is not kept. A kept
+read holds at most the last 65,536 UTF-16 code units of each stream. All cached version reads and adapter-capability reads are invalidated after
 every coordinated update attempt, including a failed or peer-owned attempt, because
 a failed installer may still have partially changed the binary. When `autoupdate`
 is set, concurrent callers share one update, which runs in the launch directory of
