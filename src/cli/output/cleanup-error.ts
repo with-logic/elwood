@@ -1,19 +1,15 @@
 /**
  * The CLI's diagnostic for a failed session cleanup (PRD §12A.2, C-CLI-09): it names the
- * typed Elwood failures behind it, each always by its error code and by its errno tokens
- * when it has valid ones. It never carries their messages, paths, or other free text.
+ * typed Elwood failures behind it, each always by its error code, then by its errno tokens
+ * and unconfirmed process-group ids when it has them. It never carries their messages,
+ * paths, or other free text.
  * Text mode's error lines (§12A.3) carry it beside a different primary failure.
  */
 
-import { ElwoodError } from "../../core/errors.ts";
+import { ElwoodError, isErrnoToken } from "../../core/errors.ts";
+import { MAX_REPORTED_GROUPS } from "../../runtime/shutdown/detached-sweep/failures.ts";
 import type { TeardownFailure } from "../../runtime/shutdown/teardown.ts";
 import type { CliError } from "./types.ts";
-
-// Every system errno name fits easily (the longest, such as EPROTONOSUPPORT, are 15
-// characters). The cap only bounds what a malformed value can add to a one-line diagnostic.
-const MAX_ERRNO_SUFFIX_LENGTH = 40;
-// An errno-shaped token (`EPERM`, `ETIMEDOUT`): fixed by the platform, never user content.
-const ERRNO_TOKEN = new RegExp(`^E[A-Z0-9_]{1,${MAX_ERRNO_SUFFIX_LENGTH}}$`);
 
 type TypedCause = Pick<ElwoodError, "code" | "details">;
 
@@ -52,15 +48,31 @@ function typedCauses(error: unknown): readonly TypedCause[] {
   return (failures as readonly TeardownFailure[]).filter((failure) => "code" in failure);
 }
 
-/** `termination_failed EIO reap EPERM`: the code, its errno, then its reap's (§10). */
+/**
+ * `termination_failed EIO reap EPERM process groups 4242 4243`: the code, its errno, its
+ * reap's, then the process groups a detached sweep could not confirm reaped (§10).
+ */
 function describeCause({ code, details }: TypedCause): string {
   const errno = errnoToken(details["errno"]);
   const reapErrno = errnoToken(details["reapErrno"]);
-  return [code, errno, reapErrno === undefined ? undefined : `reap ${reapErrno}`]
+  const groups = processGroupIds(details["unconfirmedProcessGroupIds"]);
+  return [
+    code,
+    errno,
+    reapErrno === undefined ? undefined : `reap ${reapErrno}`,
+    groups.length === 0 ? undefined : `process groups ${groups.join(" ")}`,
+  ]
     .filter((part) => part !== undefined)
     .join(" ");
 }
 
 function errnoToken(value: unknown): string | undefined {
-  return typeof value === "string" && ERRNO_TOKEN.test(value) ? value : undefined;
+  return isErrnoToken(value) ? value : undefined;
+}
+
+/** Positive integer ids only, as many as a sweep failure can name. */
+function processGroupIds(value: unknown): readonly number[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value.filter((id): id is number => Number.isSafeInteger(id) && id > 0);
+  return ids.slice(0, MAX_REPORTED_GROUPS);
 }

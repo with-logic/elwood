@@ -4,7 +4,11 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import type { CodexSessionApi } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import {
+  quietProcessTree,
+  setProcessTreeOpsForTests,
+} from "../../src/runtime/shutdown/reap-tree.ts";
+import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
   endStarted,
@@ -74,7 +78,23 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
   expect(ptys[0]!.killSignals).toEqual(["SIGTERM"]);
 });
 
-// Without a wait, the signal goes out in the same tick as the call.
+/** Records the process-group SIGSTOPs the detached sweep sends, on a quiet fake tree. */
+function groupStops(): string[] {
+  const quiet = quietProcessTree();
+  const stops: string[] = [];
+  setProcessTreeOpsForTests({
+    ...quiet,
+    stopGroup: (pgid) => {
+      stops.push(`SIGSTOP -${pgid}`);
+      quiet.stopGroup(pgid);
+    },
+    killGroup: (pgid) => void reapedGroups.push(pgid),
+  });
+  return stops;
+}
+
+// Without a wait, the first signal goes out in the same tick as the call: SIGTERM for a
+// stop, and for a kill the SIGSTOP of the CLI's group that starts the detached sweep.
 test.each([
   ["kill forces termination", "kill", true, {}],
   ["a Stop without a transcript path leaves nothing to read", "stop", false, {}],
@@ -86,10 +106,14 @@ test.each([
   ],
 ] as const)("C-LIFE-13 no commit wait: %s", async (_name, verb, withPath, hooks) => {
   installFakes();
+  const stops = groupStops();
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd, hooks);
   await stopHook(session, cwd, withPath ? path : null);
   const shutdown = tracked(session[verb]());
-  expect(ptys[0]!.killSignals).toHaveLength(1);
+  expect([...ptys[0]!.killSignals, ...stops]).toEqual(
+    verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`] : ["SIGTERM"],
+  );
   await shutdown;
+  expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
 });

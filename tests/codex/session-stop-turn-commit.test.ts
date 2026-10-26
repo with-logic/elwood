@@ -6,11 +6,11 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/index.ts";
 import type { CodexSessionApi, ElwoodWarningEvent } from "../../src/index.ts";
-import { PtyExitLatch } from "../../src/pty/exit-latch.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
   endStarted,
+  expiringCommitWait,
   runningTurn,
   shutdownAtReady,
   stopHook,
@@ -133,8 +133,8 @@ test("C-LIFE-13 overlapping stop and teardown share one wait and report its expi
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd);
   const warnings = warningCodes(session);
-  // Every wait runs out at once, so a second wait of its own would also expire and warn.
-  vi.spyOn(PtyExitLatch.prototype, "within").mockResolvedValue(false);
+  // Every commit wait runs out at once, so a second wait of its own would also expire and warn.
+  expiringCommitWait();
   // A real CLI takes a while to exit once signaled.
   const pty = ptys[0]!;
   vi.spyOn(pty, "kill").mockImplementation((signal = "SIGTERM") => pty.killSignals.push(signal));

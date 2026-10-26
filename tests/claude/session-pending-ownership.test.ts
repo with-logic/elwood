@@ -1,7 +1,7 @@
 /** Pending launch transactions preserve live predecessor guarantees (C-API-20/C-LOOP-17). */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   currentClaudeHookBridgeFactory,
   setHookBridgeFactoryForTests,
@@ -93,7 +93,9 @@ test.each([
     );
     await held.reached;
     const stopped = prior[verb]();
-    expect(ptys[0]!.killSignals).not.toEqual([]);
+    // The SIGKILL follows the detached-descendant sweep's process-table read
+    // (C-LIFE-10), so it lands a tick later; the successor stays held until it does.
+    await vi.waitFor(() => expect(ptys[0]!.killSignals).not.toEqual([]));
     held.release();
     expect(await starting).toMatchObject({ code: "hook_bridge_failed" });
     await stopped;

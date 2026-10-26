@@ -88,6 +88,20 @@ export function errnoCode(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+// System errno names fit easily (the longest, such as EPROTONOSUPPORT, are 15 characters),
+// as do Node's own `ERR_*` codes; the cap bounds what a malformed value can add to a line.
+const MAX_ERRNO_SUFFIX_LENGTH = 40;
+const ERRNO_TOKEN = new RegExp(`^E[A-Z0-9_]{1,${MAX_ERRNO_SUFFIX_LENGTH}}$`);
+
+/**
+ * True for an errno-shaped token (`EPERM`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`): fixed by
+ * the platform or Node, never process or user content, so it can travel in a public
+ * message or a CLI diagnostic.
+ */
+export function isErrnoToken(value: unknown): value is string {
+  return typeof value === "string" && ERRNO_TOKEN.test(value);
+}
+
 /**
  * The errno behind a failure: a typed error's `details.errno` (as `causeDetails` records
  * it), else the thrown value's own errno; `undefined` when neither exists. Never throws.
