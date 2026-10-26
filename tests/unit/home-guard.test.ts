@@ -11,12 +11,8 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { nodePtyFactory } from "../../src/pty/node.ts";
-import {
-  homeGuardHomesKey,
-  homeGuardScript,
-  loginShellCommand,
-  shellQuote,
-} from "../../src/runtime/shell.ts";
+import { homeGuardHomesKey, homeGuardStopLine } from "../../src/runtime/home-guard/index.ts";
+import { homeGuardScript, loginShellCommand, shellQuote } from "../../src/runtime/shell.ts";
 import { loginShells } from "../helpers/login-shells.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -139,17 +135,23 @@ describe.each(loginShells)("C-E2E-24 a guarded login shell (%s)", (shell) => {
       "moves a guarded home only in a terminal",
       () => both('[ -t 0 ] && export CODEX_HOME="$HOME/.codex"'),
     ],
+    // The stop line goes to the terminal itself, which no redirection of the shell's own
+    // output can hide.
+    [
+      "hides the shell's stdout and stderr, then moves a guarded home",
+      () => both('exec >/dev/null 2>&1; export CODEX_HOME="$HOME/.codex"'),
+    ],
   ])("stops before its command when a startup file %s", async (_case, tail) => {
     const { exitCode, output } = await launchWith(shell, tail);
     expect(output).not.toContain("command ran");
-    expect(output).toContain("Elwood e2e: the login shell left");
+    expect(output).toContain(`${homeGuardStopLine}: the login shell left`);
     expect(exitCode).toBe(97);
   });
 
   test("stops before its command when the list of homes cannot be read", async () => {
     const { exitCode, output } = await launchWith(shell, () => both(":"), "/r/codex:/r/claude");
     expect(output).not.toContain("command ran");
-    expect(output).toContain(`Elwood e2e: ${homeGuardHomesKey} is not a JSON array`);
+    expect(output).toContain(`${homeGuardStopLine}: ${homeGuardHomesKey} is not a JSON array`);
     expect(exitCode).toBe(97);
   });
 });

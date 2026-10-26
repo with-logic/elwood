@@ -17,8 +17,8 @@ vi.mock("node:os", async (importOriginal) => {
 
 describe("user shell", () => {
   test("falls back to /bin/zsh when the platform reports no shell", async () => {
-    // The setup file's runtime seams load shell.ts before this file's mock applies, so take a
-    // fresh copy that reads the mocked `userInfo`.
+    // A module the setup file loads may import shell.ts before this file's mock applies, as the
+    // probe runner once did, so take a fresh copy that reads the mocked `userInfo`.
     vi.resetModules();
     const shell = await import("../../src/runtime/shell.ts");
     expect(shell.userShell()).toBe("/bin/zsh");

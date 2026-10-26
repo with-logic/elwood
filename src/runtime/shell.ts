@@ -7,6 +7,7 @@
 import { userInfo } from "node:os";
 import type { ElwoodAgentKind } from "../core/activity/index.ts";
 import { isStringArray } from "../core/predicates.ts";
+import { homeGuardExitCode, homeGuardHomesKey, homeGuardStopLine } from "./home-guard/index.ts";
 import { probeStartScript } from "./probe/start.ts";
 
 export function userShell(): string {
@@ -56,26 +57,6 @@ export function probeShellStatus(command: string): LoginShellArgs {
   return probeShellCommand(`${command} >/dev/null 2>&1`);
 }
 
-/** The exit status of a login shell the e2e home guard stopped. */
-export const homeGuardExitCode = 97;
-
-/**
- * The variable listing the e2e suite's private CLI homes as a JSON array of absolute paths,
- * each home in its given and its real spelling.
- */
-export const homeGuardHomesKey = "ELWOOD_E2E_PRIVATE_HOMES";
-
-/** Whether a login shell that exited with `status` was stopped by the e2e home guard. */
-export function homeGuardStopped(status: number): boolean {
-  return status === homeGuardExitCode && (process.env[homeGuardHomesKey] ?? "") !== "";
-}
-
-/** Why a launch the e2e home guard stopped failed, for its start or probe error. */
-export const homeGuardStoppedReason =
-  "the e2e home guard stopped its login shell: a startup file left CODEX_HOME or " +
-  "CLAUDE_CONFIG_DIR unexported or not one of the suite's private homes, or " +
-  `${homeGuardHomesKey} is not a JSON array of absolute paths`;
-
 /** The variable naming each adapter's CLI home. */
 const homeVariables = {
   claude: "CLAUDE_CONFIG_DIR",
@@ -101,10 +82,17 @@ function refusalReason(refusal: Refusal): string {
   }
 }
 
-/** Shell code that prints why the guard stopped the launch and exits `homeGuardExitCode`. */
+/**
+ * Shell code that writes the stop line with why the guard stopped the launch, and exits
+ * `homeGuardExitCode`. Not on stderr, which a startup file can redirect: on a session's
+ * terminal, which its PTY captures, or, in a probe, which has none, on the stdout the probe
+ * runner captures. A startup file that hid stdout would hide the probe command's own output and
+ * fail the probe anyway.
+ */
 function refuse(refusal: Refusal): string {
-  const line = shellQuote(`Elwood e2e: ${refusalReason(refusal)}`);
-  return `{ printf '%s\\n' ${line} >&2; exit ${homeGuardExitCode}; }; `;
+  const line = shellQuote(`${homeGuardStopLine}: ${refusalReason(refusal)}`);
+  const write = `printf '%s\\n' ${line}`;
+  return `{ if [ -t 0 ] && { ${write} >/dev/tty; } 2>/dev/null; then :; else ${write}; fi; exit ${homeGuardExitCode}; }; `;
 }
 
 /** The registered homes, or `undefined` when `raw` is not a JSON array of absolute paths. */
