@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import type { TestContext } from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { endCodexTest } from "./codex-ready.ts";
+import { codexLaunches, endCodexTest } from "./codex-ready.ts";
 import { bogusCodexModel, makeProject, sandboxedCodexHome } from "./helpers.ts";
 import { type HeldOutput, holdCliOutput, outputMatcher } from "./output-hold.ts";
 
@@ -54,28 +54,21 @@ export async function startLaggedCodex(
     },
   });
   let session: CodexSessionApi | undefined;
-  let launchRejected = false;
+  const launches = codexLaunches();
   t.after(async () => {
     try {
-      await endCodexTest({
-        sessions: [session],
-        project,
-        sandbox,
-        launchRejected,
-        failure: undefined,
-      });
+      await endCodexTest({ sessions: [session], project, sandbox, launches, failure: undefined });
     } finally {
       resetRuntimeSeamsForTests();
     }
   });
-  session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    model: bogusCodexModel,
-    autotrust: true,
-  }).catch((error: unknown) => {
-    launchRejected = true;
-    throw error;
-  });
+  session = await launches.track(
+    startCodex({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      model: bogusCodexModel,
+      autotrust: true,
+    }),
+  );
   return { session, launch };
 }
