@@ -22,7 +22,8 @@ export type FailureReason =
   | "the leader exited before every group was confirmed stopped"
   | "could not stop the leader's group"
   | "could not stop a live descendant group"
-  | "could not kill a signaled descendant group";
+  | "could not kill a signaled descendant group"
+  | "could not resume a group spared as Codex's daemon";
 
 /** Collects one sweep's failures: each reason once, the first errno token, the group ids. */
 export class SweepFailures {

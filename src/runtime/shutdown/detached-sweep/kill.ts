@@ -7,9 +7,16 @@
  * when a fresh read, inside the sweep's deadline, succeeds and shows no live member of
  * that group; a read that cannot be had in time, or fails, leaves it a failure, and a
  * failed read is reported too, after the refusal (`confirmLiveGroups`).
+ *
+ * A path read can see a process the TUI forked before it `exec`s Codex's daemon, and the
+ * walk can stop its group after the `exec`. A stopped process cannot `exec`, so a group the
+ * latest read shows holding the daemon, or a process that could still become it because
+ * that read did not show it stopped, is resumed (SIGCONT) instead (`daemonGroups`).
  */
 
 import { errnoCode } from "../../../core/errors.ts";
+import type { ProcessEntry } from "../process-table.ts";
+import { couldBeDaemon, processNames } from "../shared-daemon.ts";
 import type { SweepOps, SweepState } from "./rounds.ts";
 
 export async function killSignaledGroups(
@@ -17,8 +24,13 @@ export async function killSignaledGroups(
   state: SweepState,
   deadline: number,
 ): Promise<void> {
+  const spared = daemonGroups(state.latest);
   const refused = new Map<number, unknown>();
   for (const group of [...state.signaledDescendantGroupIds].reverse()) {
+    if (spared.has(group)) {
+      resume(group, ops, state);
+      continue;
+    }
     try {
       ops.killGroup(group);
     } catch (error) {
@@ -34,6 +46,25 @@ export async function killSignaledGroups(
     }
   }
   recordFailedRead(confirmation, state, [...refused.keys()]);
+}
+
+/** The groups `table` shows holding Codex's daemon, or a process not stopped that could be it. */
+function daemonGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
+  const names = processNames(table);
+  const daemons = table.filter(
+    (row) => row.sharedDaemon || (!row.stopped && couldBeDaemon(row, names)),
+  );
+  return new Set(daemons.map((row) => row.pgid));
+}
+
+/** SIGCONTs a spared group; one already gone (`ESRCH`) needs nothing. */
+function resume(group: number, ops: SweepOps, state: SweepState): void {
+  try {
+    ops.continueGroup(group);
+  } catch (error) {
+    if (errnoCode(error) === "ESRCH") return;
+    state.failures.record("could not resume a group spared as Codex's daemon", error, [group]);
+  }
 }
 
 /** A fresh read's groups with a live member, or why there is none: no time, or its error. */

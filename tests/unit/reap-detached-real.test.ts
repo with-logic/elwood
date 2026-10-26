@@ -24,7 +24,7 @@ import {
   observedProcessShape,
   startDetachedTree,
 } from "../helpers/detached-tree.ts";
-import { killGroupsWhoseCommandHas, pollGone } from "../helpers/process-liveness.ts";
+import { killGroupsWhoseCommandHas, pollGone, processRows } from "../helpers/process-liveness.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
 
 describe("C-LIFE-10 detached descendants (real processes)", () => {
@@ -87,12 +87,12 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
         await terminatePty(tree.pty, "SIGKILL", new SessionReaper(tree.pty.pid));
         expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
         expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
-        const table = await listProcessTable(10_000);
+        const rows = processRows(10_000);
         for (const pid of [daemon, updater, mcp]) {
-          expect(table.find((row) => row.pid === pid)).toMatchObject({
-            zombie: false,
-            stopped: false,
-          });
+          // Running, and still this tree's process, not a reuse of its pid.
+          const row = rows.find((entry) => entry.pid === pid);
+          expect(row?.command).toContain(tree.dir);
+          expect(row?.stat).toMatch(/^[^TZ]/);
         }
       },
     );
@@ -147,6 +147,7 @@ describe("C-LIFE-10 a failed real-process test leaves no detached tree behind", 
     const reaper = new SessionReaper(tree.pty.pid, {
       stopGroup: () => undefined,
       killGroup: () => undefined,
+      continueGroup: () => undefined,
       listProcesses: () => Promise.reject(unreadable),
     });
     await expect(reaper.sweepDetached(() => false)).rejects.toThrow("process table unreadable");

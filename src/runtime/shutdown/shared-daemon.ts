@@ -67,14 +67,9 @@ async function markSharedDaemons(
   run: PsRunner,
   options: PsRunOptions,
 ): Promise<readonly ProcessEntry[]> {
-  const names = new Map(table.map((row) => [row.pid, row.name]));
-  const candidates = reachable(table, roots).filter(
-    (row) =>
-      !row.zombie &&
-      row.name === CODEX &&
-      row.pgid === row.pid &&
-      (row.ppid === 1 || names.get(row.ppid) === CODEX),
-  );
+  // A root a read missed is taken for the TUI it was: only a path read confirms a daemon.
+  const names = new Map([...roots.map((root) => [root, CODEX] as const), ...processNames(table)]);
+  const candidates = reachable(table, roots).filter((row) => couldBeDaemon(row, names));
   const key = (row: ProcessEntry) => `${row.pid} ${row.ppid} ${row.pgid}`;
   const unknown = candidates.filter((row) => !known.has(key(row)));
   const probe = async (row: ProcessEntry) => ({ row, path: await pathOf(row.pid, run, options) });
@@ -86,11 +81,28 @@ async function markSharedDaemons(
   return table.map((row) => (daemons.has(row.pid) ? { ...row, sharedDaemon: true } : row));
 }
 
-/** The rows of `roots` and of every process descending from one, by parent pid. */
+/** Each process's short name, by pid, as `couldBeDaemon` takes them. */
+export function processNames(table: readonly ProcessEntry[]): ReadonlyMap<number, string> {
+  return new Map(table.map((row) => [row.pid, row.name]));
+}
+
+/** Whether `row` has the daemon's shape in a table read; only its path can confirm it. */
+export function couldBeDaemon(row: ProcessEntry, names: ReadonlyMap<number, string>): boolean {
+  const live = !row.zombie;
+  const runsCodex = row.name === CODEX;
+  const leadsOwnGroup = row.pgid === row.pid;
+  const parentIsCodexOrInit = row.ppid === 1 || names.get(row.ppid) === CODEX;
+  return live && runsCodex && leadsOwnGroup && parentIsCodexOrInit;
+}
+
+/**
+ * The rows of `roots` and of every process descending from one, by parent pid. A root
+ * missing from the read still parents its children, as in `detachedDescendantGroups`.
+ */
 function reachable(table: readonly ProcessEntry[], roots: readonly number[]): ProcessEntry[] {
   const children = childrenByParent(table);
   const found = new Map<number, ProcessEntry>();
-  const pending = table.filter((row) => roots.includes(row.pid));
+  const pending = table.filter((row) => roots.includes(row.pid) || roots.includes(row.ppid));
   for (let row = pending.pop(); row !== undefined; row = pending.pop()) {
     if (found.has(row.pid)) continue;
     found.set(row.pid, row);

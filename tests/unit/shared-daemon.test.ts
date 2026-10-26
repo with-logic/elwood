@@ -115,6 +115,13 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
     expect(pids()).toEqual([5010, 5012, 5014, 6000]);
   });
 
+  test("a root missing from the read still has its children read and marked", async () => {
+    // `ps` can read a leader's children in the same pass the leader's own row left.
+    const { run } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE });
+    const unread = () => list().then((rows) => rows.filter((row) => row.pid !== LEADER));
+    expect(await mark(daemonScope([LEADER]), run, unread)).toEqual([5010, 5012]);
+  });
+
   test("ends on a read that shows two processes each other's parent", async () => {
     // A read taken while pids are reused can link two processes both ways.
     const looped = () =>

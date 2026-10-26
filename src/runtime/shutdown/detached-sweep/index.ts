@@ -16,8 +16,10 @@
  * signaled group, the leader's included. A read that shows a signaled group's member
  * running stops that group again. With no hook in flight that takes two reads; each
  * level of nesting adds two more. Then the signaled groups are SIGKILLed deepest first
- * (`kill.ts`). (A parent that ignores SIGCHLD would have its exited children reaped
- * while stopped; the CLIs and hook shells don't.)
+ * (`kill.ts`). Codex's shared daemon, and what it started, is the session's no more than
+ * the user's: the walk never follows it (`shared-daemon.ts`), and a group it stopped as
+ * its process became the daemon is resumed, not killed. (A parent that ignores SIGCHLD
+ * would have its exited children reaped while stopped; the CLIs and hook shells don't.)
  */
 
 import { errnoCode } from "../../../core/errors.ts";
@@ -49,7 +51,8 @@ export const DETACHED_SWEEP_BUDGET_MS = 3_000;
  * fails. Otherwise `leaderExited` is read after each table read that does not converge;
  * a read that converges ends the walk before that check. Once the leader has exited its
  * pid may be reused, so the sweep stops no further group and never signals the leader's
- * group again, though it still SIGKILLs the groups it already signaled. These are
+ * group again, though it still SIGKILLs the groups it already signaled (resuming any
+ * the kill pass spares as Codex's daemon). These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;
  * an unreadable table; the deadline passing, or the leader exiting, before a read
  * converged; and a live group that could not be stopped or killed.
@@ -102,6 +105,7 @@ async function stopDescendantGroups(
       if (remainingMs <= 0)
         return unconfirmed(state, "process groups not confirmed stopped by the deadline");
       const table = await ops.listProcesses(remainingMs, scope);
+      state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;

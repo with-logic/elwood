@@ -24,6 +24,7 @@ import { readUntil } from "../helpers/table-reads.ts";
 const realOps: SweepOps = {
   stopGroup: (pgid) => process.kill(-pgid, "SIGSTOP"),
   killGroup: (pgid) => process.kill(-pgid, "SIGKILL"),
+  continueGroup: (pgid) => process.kill(-pgid, "SIGCONT"),
   listProcesses: (timeoutMs) => listProcessTable(timeoutMs),
 };
 

@@ -1494,6 +1494,14 @@ with its pid again (`-o pid=,ppid=,pgid=,stat=,ucomm=,pid=`), and a read with an
 that is not one whole row, or one pid twice, is unreadable: the walk fails rather than
 act on it.
 
+The TUI forks the daemon as a `codex` group leader of its own and then `exec`s it, so a
+path read can come between the two, and the walk can then stop the group after the
+`exec`. A stopped process cannot `exec`, so the kill pass goes by the latest read: a group
+it shows holding the daemon, or a process not stopped that could still become it, gets
+SIGCONT, not SIGKILL. `tests/unit/shared-daemon-real.test.ts` reproduces the race with a
+real process: Node cannot `exec`, but setting `process.title` changes what macOS `ps`
+reads as `comm` (`ucomm` stays the executable's name).
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
