@@ -53,7 +53,9 @@ test.each([
   "reject",
 ])("C-TRUST-01 a reappeared generation starts before the old write can %s", async (completion) => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, {
+    onStateChange: changed,
+  });
   const pending = Promise.withResolvers<void>();
   const oldWrite = vi.fn(() => pending.promise);
   const first = settled(responder.handle(numbered, oldWrite, () => numbered));

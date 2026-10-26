@@ -21,10 +21,13 @@ afterEach(() => {
   resetFakes();
 });
 
+// The number is typed once per appearance. The directory gate's caret sits on its
+// affirmative, so it retries with Enter alone; the hook gate's does not, and with no
+// output after the answer nothing shows it was ignored, so it is not typed again.
 test.each([
-  [true, codexDirectoryTrustFrame, "1\r"],
-  [false, codexHooksTrustFrame, "2\r"],
-] as const)("C-TRUST-01 Codex native trust replacing an update holds readiness after ignored numbered writes (%s)", async (autotrust, frame, answer) => {
+  [true, codexDirectoryTrustFrame, "1\r", "\r"],
+  [false, codexHooksTrustFrame, "2\r", undefined],
+] as const)("C-TRUST-01 Codex native trust replacing an update holds readiness after ignored numbered writes (%s)", async (autotrust, frame, answer, retry) => {
   installFakes({ supportsHookTrustBypass: false });
   const session = await startCodex({ cwd: tempDir(), autotrust });
   try {
@@ -59,10 +62,10 @@ test.each([
     await vi.advanceTimersByTimeAsync(50);
     expect(attention).toEqual(["codex-unknown_gate-prompt"]);
     ptys[0]!.emitData(asScreen(frame));
-    expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
     await vi.advanceTimersByTimeAsync(10_500);
-    expect(ptys[0]!.writes.length).toBeGreaterThan(1);
-    expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
+    // Both appearances of the gate get the number once; only Enter ever repeats it.
+    expect(ptys[0]!.writes.filter((input) => input !== retry)).toEqual([answer, answer]);
+    expect(ptys[0]!.writes.includes("\r")).toBe(retry !== undefined);
     expect(answered).toEqual([]);
     expect(warnings).toEqual([]);
     expect(session.status).not.toBe("ready");

@@ -10,6 +10,7 @@ import { isAbsolute, relative, sep } from "node:path";
 import test from "node:test";
 import { CodexSession, type ElwoodWarningEvent } from "../../src/index.ts";
 import {
+  bogusCodexModel,
   codexAuthMissing,
   e2eTimeoutMs,
   type HookEvent,
@@ -31,7 +32,7 @@ test("C-CODEX-23 a real Codex transcript removed after it existed emits transcri
   const session = new CodexSession({
     cwd: project.cwd,
     stateDir: project.stateDir,
-    model: "gpt-elwood-nonexistent-model",
+    model: bogusCodexModel,
     sandbox: "read-only",
     approvalPolicy: "never",
     autotrust: true,

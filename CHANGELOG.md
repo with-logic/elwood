@@ -75,6 +75,15 @@ back each entry are listed in `prd/14-conformance.md`.
   footer is never recognized; a prompt painted after that would still follow
   `ready`.
 
+- `autotrust` no longer sends "1" to Codex as a user message. On a loaded
+  machine Codex 0.164 can take the directory-trust answer (`1` + Enter) but
+  paint its composer more than 250 ms later, and Elwood's retry typed the answer
+  again into that composer, which submitted "1" as a turn to the model. The
+  number is now typed once. Codex retries are Enter alone while the gate's
+  caret is on the affirmative, which confirms the gate and does nothing on an
+  empty composer. Other numbered gates are answered again only after new output
+  still shows the gate.
+
 - With `autotrust`, keys a caller sends with `sendKeys` (or `terminal.sendInput`,
   `xterm.input`) while a trust prompt is on screen now hand that prompt to the
   caller: Elwood stops answering it. Before, its retry could follow the caller's

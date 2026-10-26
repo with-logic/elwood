@@ -3,7 +3,7 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
-import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import type { Episode, TrustHooks, TrustPromptResult, TrustWriteResult } from "./types.ts";
 import { attempted, leaveFrame, newEpisode } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
@@ -19,14 +19,14 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private disposed = false;
   private readonly agent: A;
   private readonly autotrust: boolean;
-  private readonly onStateChange: (() => void) | undefined;
+  private readonly hooks: TrustHooks;
   /** The ADAPTER's clearance grammar; the coordinator never encodes a CLI's layout. */
   private readonly clearance: TrustClearance;
-  constructor(agent: A, clearance: TrustClearance, autotrust = false, onStateChange?: () => void) {
+  constructor(agent: A, clearance: TrustClearance, autotrust = false, hooks: TrustHooks = {}) {
     this.agent = agent;
     this.clearance = clearance;
     this.autotrust = autotrust;
-    this.onStateChange = onStateChange;
+    this.hooks = hooks;
   }
   get inputBlocking(): boolean {
     return this.humanPrompt !== undefined || this.episode !== undefined;
@@ -46,6 +46,8 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const priorIdentity = this.episode?.lastIdentity;
     const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
+    // A rendered frame is evidence for the gate's next attempt as well as its current one.
+    if (this.episode !== undefined) this.episode.phase.renderedSinceWrite = true;
     this.episode?.attempt?.wake();
     const episode = this.episode;
     if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
@@ -71,18 +73,17 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.reportedPending = true;
       return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
     }
-    const handedToCaller = episode.callerOwned; // raw caller input reached this gate
     // Running now, answered without a reader, or this choice was already attempted.
     const attemptAlreadyHandled =
       episode.attempt !== undefined ||
       episode.legacyAnswered ||
       episode.attemptedIdentity === identity;
-    if (episode.expired || handedToCaller || attemptAlreadyHandled) return undefined;
+    if (episode.expired || episode.callerOwned || attemptAlreadyHandled) return undefined;
     const read =
       readFrame === undefined
         ? undefined
         : () => readTrustView(readFrame, this.agent, this.clearance);
-    const attempt = new TrustAttempt(view, identity);
+    const attempt = new TrustAttempt(view, identity, episode.phase, this.hooks.numberedRetry);
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);
@@ -191,7 +192,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   }
   private notify(): void {
     try {
-      this.onStateChange?.();
+      this.hooks.onStateChange?.();
     } catch {
       /* An observer cannot retain owned timers or writes. */
     }
