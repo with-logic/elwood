@@ -6,6 +6,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import { spawnInteractiveAgent } from "../../src/cli/interactive/spawn.ts";
 import { loginShellResolves } from "../../src/cli/request/agent-detect.ts";
 import {
+  probeCommandTimeoutMs,
+  probeLaunchTimeoutMs,
   resetProbeTimeoutsForTests,
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
@@ -140,6 +142,13 @@ const loginShells = [
   ],
 ] as const;
 
+/**
+ * A real login shell gets the lookup's full launch and command bounds, as in production: on a
+ * loaded host its startup alone can take most of the launch bound. The agent itself exits at
+ * once, so the test needs no more than the lookup can take.
+ */
+const realShellTestTimeoutMs = probeLaunchTimeoutMs + probeCommandTimeoutMs;
+
 test.each(loginShells.filter(([path]) => existsSync(path)))(
   "C-CLI-25 %s hands the agent its login shell's own PATH, whatever its startup file defines",
   async (path, startupFile, startup) => {
@@ -166,5 +175,5 @@ test.each(loginShells.filter(([path]) => existsSync(path)))(
     expect(await spawnInteractiveAgent(launch)).toBe(0);
     expect(readFileSync(seen, "utf8")).toBe(loginPath);
   },
-  60_000,
+  realShellTestTimeoutMs,
 );
