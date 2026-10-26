@@ -55,7 +55,10 @@ export async function startClaudeWithId(
   const stateDir = canonicalStatePath(options.stateDir ?? defaultStateDir(options.cwd));
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
-  prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
+  prepareStateDir(stateDir, {
+    cwd: options.cwd,
+    isImplicitDefaultStateDir: options.stateDir === undefined,
+  });
   const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
   const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
   const session = await startClaudeFromRecord(record, stateDir, options, false, warning);

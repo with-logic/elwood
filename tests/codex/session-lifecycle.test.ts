@@ -46,7 +46,7 @@ describe("CodexSessionApi lifecycle", () => {
   test("C-STATE-10 rejects Claude records during Codex resume", async () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id: "claude-record" });
     writeSessionRecord(record, safeSessionDir(stateDir, record.elwoodSessionId));
     await expect(

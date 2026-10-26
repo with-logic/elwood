@@ -42,9 +42,9 @@ test.each([
   const link = where === "sessions" ? join(f.state, "sessions") : f.state;
   symlinkSync(f.privateDir, link);
   const state = where === "ancestor" ? join(link, "nested") : f.state;
-  expect(() => prepareStateDir(state, { gitignore: true })).toThrowError(
-    expect.objectContaining({ code: "state_corrupt" }),
-  );
+  expect(() =>
+    prepareStateDir(state, { cwd: f.root, isImplicitDefaultStateDir: true }),
+  ).toThrowError(expect.objectContaining({ code: "state_corrupt" }));
   expect(statSync(f.privateDir).mode & 0o777).toBe(0o700);
   expect(readFileSync(f.secret, "utf8")).toBe("keep");
   if (where === "sessions") expect(statSync(f.state).mode & 0o777).toBe(0o700);
@@ -52,7 +52,7 @@ test.each([
 test("C-STATE-01 rejects dangling links and invalid ancestry", () => {
   const f = fixture();
   symlinkSync(join(f.root, "missing"), f.state);
-  expect(() => prepareStateDir(f.state)).toThrowError(
+  expect(() => prepareStateDir(f.state, { cwd: f.root })).toThrowError(
     expect.objectContaining({ code: "state_corrupt" }),
   );
   expect(() => assertStatePath(join(f.secret, "child"))).toThrow();

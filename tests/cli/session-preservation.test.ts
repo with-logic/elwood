@@ -47,7 +47,7 @@ describe("headless CLI preserved identity", () => {
     const { root, stateDir, session } = fixture(agent);
     expect(session.preservedSessionId()).toBeNull();
 
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd: root });
     const provisional = createSessionRecord({ cwd: root, id: "s1", adapter: agent });
     writeSessionRecord(provisional, sessionDir(stateDir, "s1"));
     expect(session.preservedSessionId()).toBeNull();
@@ -59,7 +59,7 @@ describe("headless CLI preserved identity", () => {
 
   test("C-CLI-08 rejects a persisted identity owned by the other adapter", () => {
     const { root, stateDir, session } = fixture("codex");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd: root });
     const record = {
       ...createSessionRecord({ cwd: root, id: "s1", adapter: "claude" }),
       claude: { resumeId: "claude-native" },

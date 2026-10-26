@@ -5,16 +5,23 @@ import { errnoCode } from "../core/errors.ts";
 import { assertStatePath } from "./directories.ts";
 
 export function canonicalStatePath(path: string): string {
-  let current = resolve(path);
-  assertStatePath(current);
+  const absolute = resolve(path);
+  assertStatePath(absolute);
+  return withRealAncestor(absolute, realpathSync);
+}
+
+/**
+ * The absolute `path` with its deepest existing ancestor replaced by that ancestor's real path,
+ * as `realpath` gives it, followed by the names that do not exist yet.
+ */
+export function withRealAncestor(path: string, realpath: (path: string) => string): string {
   const missing: string[] = [];
-  for (;;) {
+  for (let current = path; ; current = dirname(current)) {
     try {
-      return join(realpathSync(current), ...missing.reverse());
+      return join(realpath(current), ...missing.reverse());
     } catch (error) {
       if (errnoCode(error) !== "ENOENT") throw error;
       missing.push(basename(current));
-      current = dirname(current);
     }
   }
 }

@@ -7,6 +7,7 @@ import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import type { ElwoodLoopEvent } from "../../src/core/loops/types.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import { type PersistedLoopDefinition, readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { stateDirWithSession } from "../helpers/session-state.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => vi.useRealTimers());
@@ -75,7 +76,7 @@ describe("SessionLoops", () => {
       () => new Error("closed"),
       () => undefined,
     );
-    const stateDir = tempDir();
+    const stateDir = stateDirWithSession("session-loops");
     let mayPersistLoops = true;
     const old = createLoops(queue, [], stateDir, () => mayPersistLoops);
     old.ready();
@@ -112,7 +113,7 @@ describe("SessionLoops", () => {
 function createLoops(
   queue: ControlQueue,
   definitions: readonly PersistedLoopDefinition[] = [],
-  stateDir = tempDir(),
+  stateDir = stateDirWithSession("session-loops"),
   mayPersistLoops = () => true,
 ): SessionLoops {
   return new SessionLoops({

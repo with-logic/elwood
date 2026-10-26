@@ -5,15 +5,15 @@ import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { readLoopDefinitions } from "../../src/state/loop-store.ts";
-import { tempDir } from "../helpers/tmp.ts";
+import { stateDirWithSession } from "../helpers/session-state.ts";
 
 afterEach(() => vi.useRealTimers());
 
 test("C-LOOP-17 readiness before commit schedules only the activated successor", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(1_800_000_000_000);
-  const stateDir = tempDir();
   const id = "loop-activation";
+  const stateDir = stateDirWithSession(id);
   const priorOwner = reserveLaunchOwnership(join(stateDir, "sessions", id));
   const priorWrites: string[] = [];
   const successorWrites: string[] = [];

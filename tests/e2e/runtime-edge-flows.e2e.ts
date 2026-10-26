@@ -14,7 +14,7 @@ import { makeProject, waitFor } from "./helpers.ts";
 
 test("C-E2E-04 rejects cross-adapter resume from persisted state", async () => {
   const project = makeProject("claude");
-  prepareStateDir(project.stateDir);
+  prepareStateDir(project.stateDir, { cwd: project.cwd });
   const codexRecord = createSessionRecord({
     cwd: project.cwd,
     id: "codex-record",
