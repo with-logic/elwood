@@ -9,8 +9,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node-pty";
 import { describe, expect, test } from "vitest";
+import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { reapProcessGroup } from "../../src/runtime/shutdown/reap-tree.ts";
-import { delay, POLL_INTERVAL_MS, pidExists, pollGone } from "../helpers/process-liveness.ts";
+import {
+  delay,
+  killIfCommandHas,
+  POLL_INTERVAL_MS,
+  pollGone,
+} from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const zsh = "/bin/zsh";
@@ -45,12 +51,15 @@ describe("C-LIFE-10 process-group reaping (real seams)", () => {
         // depends on).
         expect(await pollGone({ pid: intermediatePid, timeoutMs: 2_000 })).toBe(true);
         expect(parentPidOf(grandchildPid)).not.toBe(intermediatePid); // reparented
-        expect(pidExists(grandchildPid)).toBe(true); // but still alive in the group
+        // ...but still running in the group: present, and not an unreaped zombie.
+        const table = await listProcessTable(10_000);
+        expect(table.find((row) => row.pid === grandchildPid)).toMatchObject({ zombie: false });
         reapProcessGroup(pty.pid);
         expect(await pollGone({ pid: grandchildPid, timeoutMs: 2_000 })).toBe(true);
       } finally {
-        // Clean up survivors even if an assertion above failed.
-        if (pidExists(grandchildPid)) tryKill(grandchildPid);
+        // Clean up survivors even if an assertion above failed, but only while the pid
+        // is still the grandchild: its command line carries this test's unique marker.
+        killIfCommandHas(grandchildPid, marker);
         pty.kill();
       }
     },
@@ -84,13 +93,5 @@ function parentPidOf(pid: number): number {
     );
   } catch {
     return -1;
-  }
-}
-
-function tryKill(pid: number): void {
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // Already gone: nothing to clean up.
   }
 }
