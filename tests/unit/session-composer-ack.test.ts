@@ -1,6 +1,6 @@
 /** Actual session queues wait for native empty-composer acknowledgement (C-API-56). */
 import { afterEach, expect, test, vi } from "vitest";
-import { claudeModelComposerClearance } from "../../src/claude/model-composer.ts";
+import { claudeLastComposerClearance } from "../../src/claude/composer/last.ts";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
@@ -73,12 +73,12 @@ for (const agent of ["claude", "codex"] as const) {
       if (mode === "native-chrome") {
         const screen = session.terminal.snapshot().text;
         expect(claudeTrustClearance(screen)).toBe(true);
-        expect(claudeModelComposerClearance(screen)).toBe(false);
+        expect(claudeLastComposerClearance(screen)).toBe(false);
       }
       if (mode === "history") {
         const screen = session.terminal.snapshot().text;
         expect(claudeTrustClearance(screen)).toBe(false);
-        expect(claudeModelComposerClearance(screen)).toBe(true);
+        expect(claudeLastComposerClearance(screen)).toBe(true);
       }
       vi.useFakeTimers();
       const first = session.sendPrompt("old").catch((error: unknown) => error);

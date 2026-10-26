@@ -67,11 +67,15 @@ export function hasCompletePickerOrder(models: readonly AgentModelOption[]): boo
 }
 
 /**
- * The default model saved in the user's Claude settings, which Enter or a number key in the
- * picker would overwrite and a listing must not (§4.5).
+ * The default model saved in the Claude settings the session uses (the suite's private
+ * config dir, `claude-home.ts`), which Enter or a number key in the picker would overwrite
+ * and a listing must not (§4.5).
  */
 export function savedClaudeModel(): unknown {
-  const path = join(homedir(), ".claude", "settings.json");
+  const path = join(
+    process.env["CLAUDE_CONFIG_DIR"] || join(homedir(), ".claude"),
+    "settings.json",
+  );
   if (!existsSync(path)) return undefined;
   const settings: unknown = JSON.parse(readFileSync(path, "utf8"));
   if (!isRecord(settings)) throw new Error(`${path} does not hold a JSON object.`);
