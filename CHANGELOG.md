@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Claude session's runtime cleanup now finishes its transcript watcher, as
+  Codex's already did. Before, only the Claude process's exit finished it, so
+  after a `teardown()` that could not terminate the PTY, the session kept
+  polling the transcript and emitting its activity.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for
