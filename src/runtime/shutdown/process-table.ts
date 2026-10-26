@@ -21,16 +21,20 @@ export type ProcessEntry = {
   readonly zombie: boolean;
   /** Stopped (state `T`) when its row was read, as a delivered SIGSTOP leaves it. */
   readonly stopped: boolean;
+  /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
+  readonly name: string;
 };
 
 // An absolute path, so a caller's PATH can never substitute another `ps`. macOS is
 // the only supported platform (PRD §2); `-A -o` is POSIX, so Linux CI parses the same.
 const PS_PATH = "/bin/ps";
-const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat="] as const;
-// About 25 bytes per row, so 16 MiB holds over 600,000 processes: far beyond any real
+const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm=,pid="] as const;
+// About 50 bytes per row, so 16 MiB holds over 300,000 processes: far beyond any real
 // host, while still bounding what a runaway `ps` can make this process buffer.
 const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
-const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)/;
+// The short name may hold spaces or be empty, and `ps` prints it raw, so a newline in it
+// starts what reads as another row: each row ends with its pid again (docs/cli-behavior.md).
+const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s(.*)\s(\d+)\s*$/;
 
 /** The bounds a `ps` run gets: its timeout, its output cap, and the signal that ends it. */
 export type PsRunOptions = {
@@ -106,18 +110,24 @@ function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> 
 /** The production listing: concurrent shutdowns share one `ps` per event-loop turn. */
 export const listProcessTableShared = coalesceUnstarted(listProcessTable);
 
-/** Parses `ps -o pid=,ppid=,pgid=,stat=` output, skipping any line that is not a row. */
+/** Parses `ps -o pid=,ppid=,pgid=,stat=,ucomm=,pid=`; throws on a partial row or a pid twice. */
 export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
   const entries: ProcessEntry[] = [];
+  const pids = new Set<number>();
   for (const line of stdout.split("\n")) {
+    if (line.trim() === "") continue;
     const match = ROW.exec(line);
-    if (!match) continue;
+    if (!match || match[1] !== match[6] || pids.has(Number(match[1]))) {
+      throw new Error("process table read has a line that is not one whole row");
+    }
+    pids.add(Number(match[1]));
     entries.push({
       pid: Number(match[1]),
       ppid: Number(match[2]),
       pgid: Number(match[3]),
       zombie: (match[4] as string).startsWith("Z"),
       stopped: (match[4] as string).startsWith("T"),
+      name: (match[5] as string).trim(),
     });
   }
   return entries;
@@ -148,6 +158,7 @@ export function detachedDescendantGroups(
     pgid: leaderPid,
     zombie: false,
     stopped: false,
+    name: "",
   };
   const excluded = new Set([leaderPid, hostPid, leader.pgid]);
   for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);

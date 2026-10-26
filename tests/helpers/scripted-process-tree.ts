@@ -19,11 +19,13 @@ export const leaderRow: ProcessEntry = {
   pgid: LEADER,
   zombie: false,
   stopped: false,
+  name: "codex",
 };
 
 /**
  * A descendant row: by default a setsid hook heading its own group under the leader,
- * running. `pgid`, `ppid`, and the state can each be set to model a multi-process group.
+ * running. `pgid`, `ppid`, and the state can each be set to model a multi-process group,
+ * and the short name to model what it runs.
  */
 export const hook = (
   pid: number,
@@ -32,13 +34,15 @@ export const hook = (
     ppid = LEADER,
     pgid = pid,
     stopped = false,
+    name = "sh",
   }: {
     readonly zombie?: boolean;
     readonly ppid?: number;
     readonly pgid?: number;
     readonly stopped?: boolean;
+    readonly name?: string;
   } = {},
-): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped });
+): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped, name });
 
 /**
  * `ops` under a fake clock that each listing advances 100 ms, so a sweep that never
