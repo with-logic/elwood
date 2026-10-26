@@ -115,12 +115,15 @@ test("C-API-55 caller input sent from inside an automated write still revokes", 
     if (data === "/model") owner.caller.xterm.input("human");
   });
   try {
-    await owner.automated.sendInput("/model");
-    expect(signal.reason).toMatchObject({ code: "model_automation_failed" });
-    // Elwood's own writes in the same scope stay automated.
-    const next = owner.signal();
-    await owner.automated.sendInput("x");
-    expect(next.aborted).toBe(false);
+    let next: AbortSignal | undefined;
+    await withAutomatedInput(inner, async () => {
+      const typed = inner.sendInput("/model");
+      expect(signal.reason).toMatchObject({ code: "model_automation_failed" });
+      // Elwood's next write in this same scope, after the caller's keys, stays automated.
+      next = owner.signal();
+      await Promise.all([typed, inner.sendInput("x")]);
+    });
+    expect(next?.aborted).toBe(false);
     expect(writes).toEqual(["/model", "human", "x"]);
   } finally {
     listener.dispose();
