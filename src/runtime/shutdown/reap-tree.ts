@@ -7,21 +7,29 @@
  * as its own session/process-group leader, and group membership is inherited
  * and survives reparenting. So we reap by SIGKILLing the leader's process group,
  * which reaches every descendant still IN that group in one in-process syscall: no
- * subprocess, no PATH lookup, no post-exit reparenting blind spot. A descendant that
- * started its own group is outside it: Claude and Codex start every hook with
- * `setsid()` (docs/cli-behavior.md, "Hook and MCP process groups").
+ * subprocess, no PATH lookup, no post-exit reparenting blind spot.
+ *
+ * A descendant that started its own group is outside it: Claude and Codex start every
+ * hook with `setsid()` (docs/cli-behavior.md, "Hook and MCP process groups").
+ * `sweepDetached` finds those groups by parent pid and kills them, so it has to run
+ * while that link still exists: before the live leader is SIGKILLed (see
+ * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
 
 import { errnoCode } from "../../core/errors.ts";
+import type { SweepFailure } from "./detached-sweep/failures.ts";
+import { type SweepOps, sweepDetachedGroups } from "./detached-sweep/index.ts";
+import { listProcessTableShared } from "./process-table.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
- * processes. Production SIGKILLs with `process.kill`.
+ * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, and
+ * table read.
  */
-export type ProcessTreeOps = {
-  /** SIGKILLs the process group `pgid` (via `kill(-pgid)`); tolerates an empty/dead group. */
-  readonly killGroup: (pgid: number) => void;
-};
+export type ProcessTreeOps = SweepOps;
+
+/** The part of the process-tree ops the group reap uses. */
+type GroupReapOps = Pick<ProcessTreeOps, "killGroup">;
 
 /**
  * A pgid is reapable when it identifies the KNOWN-OWNED node-pty leader's group
@@ -51,11 +59,13 @@ function isReapableGroupId(pgid: number): boolean {
  * (leader and children exited together) is the normal case and its `ESRCH` is
  * swallowed; a real kill failure such as `EPERM` propagates.
  */
-export function reapProcessGroup(leaderPid: number, ops: ProcessTreeOps = activeOps): void {
+export function reapProcessGroup(leaderPid: number, ops: GroupReapOps = activeOps): void {
   if (!isReapableGroupId(leaderPid)) return;
   ops.killGroup(leaderPid);
 }
 
+// Production uses `process.kill` and `/bin/ps`. One seam covers the group reap AND the
+// detached sweep, so a test that fakes the kill can never leave a real sweep live.
 const defaultOps: ProcessTreeOps = {
   killGroup(pgid: number): void {
     try {
@@ -64,6 +74,10 @@ const defaultOps: ProcessTreeOps = {
       rethrowUnlessGroupGone(error);
     }
   },
+  stopGroup(pgid: number): void {
+    process.kill(-pgid, "SIGSTOP");
+  },
+  listProcesses: listProcessTableShared,
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle
@@ -71,8 +85,28 @@ const defaultOps: ProcessTreeOps = {
 // without every session/terminate call site taking an ops param.
 let activeOps: ProcessTreeOps = defaultOps;
 
-export function setProcessTreeOpsForTests(ops: ProcessTreeOps): void {
-  activeOps = ops;
+/**
+ * Replaces the process-tree ops. Ops a test leaves out become inert, never the real
+ * ones, so faking only the kill cannot leave a real sweep live (see `quietProcessTree`).
+ */
+export function setProcessTreeOpsForTests(ops: GroupReapOps & Partial<ProcessTreeOps>): void {
+  activeOps = { ...quietProcessTree(), ...ops };
+}
+
+/**
+ * Inert sweep ops for tests: a process tree holding only the group leaders it was asked
+ * to stop, each read as stopped with nothing under it. A sweep driven by them signals
+ * no real process, finds no descendant, and converges on its second read.
+ */
+export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProcesses"> {
+  const stopped = new Set<number>();
+  return {
+    stopGroup: (pgid) => void stopped.add(pgid),
+    listProcesses: () =>
+      Promise.resolve(
+        [...stopped].map((pgid) => ({ pid: pgid, ppid: 1, pgid, zombie: false, stopped: true })),
+      ),
+  };
 }
 
 export function resetProcessTreeOpsForTests(): void {
@@ -106,6 +140,8 @@ export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
+  /** A detached sweep that failed; once the leader is gone it can never be confirmed. */
+  private unresolvedSweep: SweepFailure | undefined;
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeOps) {
     this.leaderPid = leaderPid;
@@ -121,5 +157,34 @@ export class SessionReaper {
     if (this.done) return;
     reapProcessGroup(this.leaderPid, this.ops);
     this.done = true;
+  }
+
+  /**
+   * The group reap for an explicit shutdown's retry: it also keeps failing while an
+   * earlier detached sweep is unresolved, so a later `stop()`/`kill()`/`teardown()`
+   * never reports success for a hook that may still be running. It says nothing about
+   * a sweep that never ran: the caller sweeps first, before any SIGKILL it sends to a
+   * live leader.
+   */
+  reapAndThrowOnDetachedSweepFailure(): void {
+    this.reap();
+    if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+  }
+
+  /**
+   * Kill the process groups the leader's descendants moved into. Valid only while
+   * the leader is alive — afterwards its detached descendants are reparented to
+   * PID 1 and cannot be found — so it runs just before the leader is SIGKILLed, with
+   * `leaderExited` reporting whether the caller has seen the leader exit. A failure,
+   * including a leader exit that left a found group unreached, is kept for
+   * `reapAndThrowOnDetachedSweepFailure`, then thrown. Refuses the same misrouted ids
+   * as the group reap.
+   */
+  async sweepDetached(leaderExited: () => boolean): Promise<void> {
+    if (!isReapableGroupId(this.leaderPid)) return;
+    const failure = await sweepDetachedGroups(this.leaderPid, this.ops, leaderExited);
+    if (failure === undefined) return;
+    this.unresolvedSweep = failure;
+    throw failure;
   }
 }

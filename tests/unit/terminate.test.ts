@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
-import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 
 const LEADER = 1000;
@@ -28,6 +28,7 @@ const exitingPty = {
 };
 const throwingReaper = (code?: string) =>
   new SessionReaper(LEADER, {
+    ...quietProcessTree(),
     killGroup: () => {
       throw Object.assign(new Error("reap failure"), code === undefined ? {} : { code });
     },
@@ -36,7 +37,10 @@ const throwingReaper = (code?: string) =>
 describe("C-LIFE-10 terminatePty", () => {
   test("reaps the leader's group after exit", async () => {
     const killed: number[] = [];
-    const reaper = new SessionReaper(LEADER, { killGroup: (p) => killed.push(p) });
+    const reaper = new SessionReaper(LEADER, {
+      ...quietProcessTree(),
+      killGroup: (p) => killed.push(p),
+    });
     await terminatePty(exitingPty, "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
     expect(killed).toEqual([LEADER]);
   });
@@ -82,7 +86,10 @@ describe("C-LIFE-10 terminatePty", () => {
         throw Object.assign(new Error("onExit EBADF"), { code: "EBADF", syscall: "ioctl" });
       },
     };
-    const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
+    const reaper = new SessionReaper(LEADER, {
+      ...quietProcessTree(),
+      killGroup: (pgid) => killed.push(pgid),
+    });
     await expect(
       terminatePty(throwingOnExitPty, "SIGTERM", reaper, { gracefulMs: 0, forceMs: 0 }),
     ).rejects.toMatchObject({
@@ -97,6 +104,7 @@ describe("C-LIFE-10 terminatePty", () => {
     // The reap killer throws a bare string (not an Error): its String() form is
     // still carried, never dropped, when termination also fails.
     const stringThrowReaper = new SessionReaper(LEADER, {
+      ...quietProcessTree(),
       killGroup: () => {
         // biome-ignore lint/style/useThrowOnlyError: intentional non-Error throw for coverage of the String() path.
         throw "raw-string-failure";
@@ -119,10 +127,15 @@ describe("C-LIFE-10 terminatePty", () => {
       },
     };
     await expect(
-      terminatePty(neverExits, "SIGTERM", new SessionReaper(LEADER, { killGroup: () => {} }), {
-        gracefulMs: 0,
-        forceMs: 0,
-      }),
+      terminatePty(
+        neverExits,
+        "SIGTERM",
+        new SessionReaper(LEADER, { ...quietProcessTree(), killGroup: () => {} }),
+        {
+          gracefulMs: 0,
+          forceMs: 0,
+        },
+      ),
     ).rejects.toThrow("PTY did not exit after SIGKILL.");
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
@@ -132,6 +145,7 @@ describe("C-LIFE-10 terminatePty", () => {
     // must NOT escape unwrapped; stop()/kill() reject with a typed `termination_failed`
     // (PRD §10, C-ERR-01) whose normalized cause preserves errno.
     const epermReaper = new SessionReaper(LEADER, {
+      ...quietProcessTree(),
       killGroup: () => {
         throw Object.assign(new Error("reap failure"), { code: "EPERM" });
       },

@@ -2,9 +2,9 @@
  * Pid probes and last-resort cleanup for real-process tests (PRD §5.3 and §9.4,
  * C-LIFE-10). A pid is just a number the OS can reuse once its process is reaped, so a
  * test signals what it owns through a handle it holds wherever it can, and treats a
- * bare pid as a probe target only. `killIfCommandHas` is the fallback for a process no
- * handle reaches any more: it narrows, but cannot close, the window between reading a
- * pid's command line and signaling it.
+ * bare pid as a probe target only. `killIfCommandHas` and `killGroupsWhoseCommandHas`
+ * are the fallbacks for processes no handle reaches any more: they narrow, but cannot
+ * close, the window between reading a command line and signaling it.
  */
 
 import { execFileSync } from "node:child_process";
@@ -50,6 +50,31 @@ export function killIfCommandHas(pid: number, marker: string): void {
   } catch {
     // It exited between the read and the kill.
   }
+}
+
+/**
+ * SIGKILLs every live process whose command line contains `marker` when read, its whole
+ * group when it heads one (as a `setsid` process does), and returns how many it
+ * signaled. `marker` must name only processes the caller started, such as the fresh
+ * temp directory they run from. Throws when `ps` itself fails.
+ */
+export function killGroupsWhoseCommandHas(marker: string): number {
+  const table = execFileSync("/bin/ps", ["-A", "-o", "pid=,pgid=,stat=,command="], {
+    stdio: ["ignore", "pipe", "ignore"],
+    maxBuffer: 64 * 1024 * 1024,
+  }).toString();
+  let signaled = 0;
+  for (const line of table.split("\n")) {
+    const [, pid, pgid, stat, command] = /^\s*(\d+)\s+(\d+)\s+(\S+)\s(.*)$/.exec(line) ?? [];
+    if (stat === undefined || stat.startsWith("Z") || !command?.includes(marker)) continue;
+    try {
+      process.kill(pid === pgid ? -Number(pgid) : Number(pid), "SIGKILL");
+    } catch {
+      // It exited between the read and the kill.
+    }
+    signaled += 1;
+  }
+  return signaled;
 }
 
 /** `pid`'s command line, or `undefined` when no such process exists. */
