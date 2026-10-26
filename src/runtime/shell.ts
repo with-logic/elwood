@@ -43,5 +43,5 @@ export function probeShellCommand(command: string): LoginShellArgs {
  * command's output goes to `/dev/null`, so the probe captures none of it.
  */
 export function probeShellStatus(command: string): LoginShellArgs {
-  return loginShellCommand(`${probeStartScript}${command} >/dev/null 2>&1`);
+  return probeShellCommand(`${command} >/dev/null 2>&1`);
 }

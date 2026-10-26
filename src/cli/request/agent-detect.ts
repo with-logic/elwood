@@ -30,8 +30,8 @@ export const noAgentFoundMessage =
 /**
  * True when the login shell resolves `agent` as a command. Uses the same
  * interactive login shell as the agent PTY so PATH resolution is identical, but
- * asks only `command -v`, so the agent itself never starts (C-CLI-14), and by its exit status
- * alone: its output is discarded. A probe
+ * asks only `command -v`, so the agent itself never starts (C-CLI-14). Detection uses only
+ * `command -v`'s exit status; its output is discarded. A probe
  * that could not run at all (missing or broken shell, probe timeout) is a
  * distinct failure: it says nothing about which agents are installed.
  */
