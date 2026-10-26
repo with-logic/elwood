@@ -228,7 +228,11 @@ symlinks, non-regular files, wrong ownership, and non-private permissions.
 CLI-owned state defaults to `$XDG_STATE_HOME/elwood` when that base is absolute,
 otherwise `~/.local/state/elwood`. It never defaults to the invocation
 workspace. CLI state directories and records MUST be private, owner-matched,
-regular where applicable, symlink-safe, and atomically written. One session
+regular where applicable, symlink-safe, and atomically written. A new session's
+state root is made only while its workspace exists, and one at or under the
+workspace only below it (§8.1, C-STATE-14). A workspace removed after it was
+validated fails the launch with the adapter's `*_start_failed` (C-API-61)
+instead of being recreated. One session
 identity supports at most one live owner; concurrent exact resumes may fail on
 the adapter's underlying startup conflict in v1.
 
