@@ -57,7 +57,7 @@ export function freshPhase(): TrustPhase {
   };
 }
 
-type NumberedOption = Extract<SelectableOption, { style: "numbered" }>;
+type SelectableNumberedOption = Extract<SelectableOption, { style: "numbered" }>;
 
 /**
  * What a numbered answer's retry writes after its first write typed the number
@@ -68,7 +68,7 @@ type NumberedOption = Extract<SelectableOption, { style: "numbered" }>;
  * (C-TRUST-01).
  */
 export type NumberedRetry = (
-  option: NumberedOption,
+  option: SelectableNumberedOption,
   renderedSinceWrite: boolean,
 ) => TrustStep | undefined;
 

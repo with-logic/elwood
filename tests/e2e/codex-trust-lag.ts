@@ -11,11 +11,9 @@ import type { TestContext } from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { endCodexTest } from "./codex-ready.ts";
-import { makeProject, sandboxedCodexHome } from "./helpers.ts";
+import { bogusCodexModel, makeProject, sandboxedCodexHome } from "./helpers.ts";
 import { type HeldOutput, holdCliOutput, outputMatcher } from "./output-hold.ts";
 
-/** Codex refuses a turn on an unknown model before any quota is used. */
-export const bogusModel = "gpt-elwood-nonexistent-model";
 const directoryTrustOutput = /trustthisfolder\?|trustthecontentsofthisdirectory/i;
 
 export type LaggedLaunch = {
@@ -73,7 +71,7 @@ export async function startLaggedCodex(
   session = await startCodex({
     cwd: project.cwd,
     stateDir: project.stateDir,
-    model: bogusModel,
+    model: bogusCodexModel,
     autotrust: true,
   }).catch((error: unknown) => {
     launchRejected = true;

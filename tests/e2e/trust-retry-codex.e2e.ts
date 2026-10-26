@@ -57,6 +57,7 @@ test("C-TRUST-01 a Codex whose screen trails its trust answer never receives the
   t.diagnostic(`trust writes: ${JSON.stringify(answers)}`);
   assert.equal(live.status, "ready", `the launch stayed ready:\n${screen}`);
   assert.equal(answers.filter((input) => input === "1\r").length, 1, "the number was typed once");
+  assert.ok(answers.includes("\r"), "the stale gate was retried with Enter alone");
   assert.deepEqual(submitted, [], "no user message was submitted");
   assert.doesNotMatch(screen, /^› 1\s*$/m, `"1" never reached the composer:\n${screen}`);
   assert.equal(reports.length, 1, `one report: ${JSON.stringify(reports)}`);

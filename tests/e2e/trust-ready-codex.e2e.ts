@@ -18,6 +18,7 @@ import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { teardownOrKillCodex } from "./codex-ready.ts";
 import {
+  bogusCodexModel,
   codexAuthMissing,
   makeProject,
   sandboxedCodexHome,
@@ -29,8 +30,6 @@ import {
 import { holdCliOutput, outputMatcher } from "./output-hold.ts";
 import { trustPromptVisible } from "./trust-screens.ts";
 
-/** Codex refuses a turn on an unknown model before any quota is used. */
-const bogusModel = "gpt-elwood-nonexistent-model";
 /** Longer than the 10-second deadline, which starts at Elwood's first rendered frame. */
 const holdMs = 12_000;
 const bootComposerOutput = /forshortcuts/i;
@@ -89,7 +88,7 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   session = await startCodex({
     cwd: project.cwd,
     stateDir: project.stateDir,
-    model: bogusModel,
+    model: bogusCodexModel,
     autotrust: true,
   });
   const live = session;

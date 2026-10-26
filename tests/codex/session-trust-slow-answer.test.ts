@@ -11,8 +11,11 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 const sessions: CodexSessionApi[] = [];
 afterEach(async () => {
   vi.useRealTimers();
-  await Promise.all(sessions.splice(0).map((session) => session.teardown()));
-  resetFakes();
+  try {
+    await Promise.all(sessions.splice(0).map((session) => session.teardown()));
+  } finally {
+    resetFakes();
+  }
 });
 
 const screen = (path: string) =>

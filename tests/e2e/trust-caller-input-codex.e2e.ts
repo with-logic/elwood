@@ -12,8 +12,15 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bogusModel, type LaggedLaunch, startLaggedCodex } from "./codex-trust-lag.ts";
-import { codexAuthMissing, skipIf, skipNow, skipReason, waitFor } from "./helpers.ts";
+import { type LaggedLaunch, startLaggedCodex } from "./codex-trust-lag.ts";
+import {
+  bogusCodexModel,
+  codexAuthMissing,
+  skipIf,
+  skipNow,
+  skipReason,
+  waitFor,
+} from "./helpers.ts";
 import { type HeldOutput, outputMatcher } from "./output-hold.ts";
 import { trustPromptVisible } from "./trust-screens.ts";
 
@@ -22,7 +29,7 @@ const lagMs = 4_000;
 /** How long after the lag a stray submission has to show itself. */
 const settleMs = 5_000;
 /** Codex's configured composer: its footer names the session's model. */
-const composerOutput = new RegExp(bogusModel);
+const composerOutput = new RegExp(bogusCodexModel);
 
 /**
  * Settles when Codex's raw output draws its configured composer: `held` while that output
