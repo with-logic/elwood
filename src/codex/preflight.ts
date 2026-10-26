@@ -7,6 +7,7 @@ import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
+import { type DirectoryRead, readInDirectory } from "../runtime/probe/directory-key.ts";
 import { createProbeCache } from "../runtime/probe-cache.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
@@ -14,6 +15,7 @@ import {
   type AutoupdateOutcome,
   cachedAutoupdate,
   cachedVersionRead,
+  maxSettledPreflightDirectoryResults,
 } from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
@@ -24,10 +26,14 @@ export type CodexPreflightWarning = DistributiveOmit<
   Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" | "agent_update_failed" }>,
   "elwoodSessionId"
 >;
-// Single-entry cache for the capability probe. It shares one in-flight `codex --help` across
-// concurrent first spawns AND never keeps a rejection, so a transient `--help` failure does not
-// poison every later Codex start in the process (C-LIFE-11) — a later start re-probes.
-const capabilityProbe = createProbeCache<CodexCliCapabilities>(1);
+// The capability probe per launch directory, bounded like the version reads. It shares one
+// in-flight `codex --help` across concurrent first spawns AND never keeps a rejection, so a
+// transient `--help` failure does not poison every later Codex start (C-LIFE-11). An answer
+// read while its directory was replaced may be the replacement's, so it is not kept either.
+const capabilityProbe = createProbeCache<DirectoryRead<CodexCliCapabilities>>(
+  maxSettledPreflightDirectoryResults,
+  (read) => read.sameDirectory,
+);
 
 /** Checks the `codex` that a session launched in `cwd` would run (C-PTY-08). */
 export async function preflightCodex(
@@ -110,14 +116,18 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
   return result;
 }
 
-export function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
-  // Shared once across concurrent first spawns; a rejected probe is not kept, so a later start
-  // re-probes rather than inheriting the failure.
-  return capabilityProbe.get("codex", detectCapabilities);
+/**
+ * What the `codex` that a session launched in `cwd` would run supports, from its `codex --help`
+ * run in `cwd` (C-PTY-08). On resume that is the record's directory, where Codex relaunches: a
+ * per-directory tool manager can resolve a different build in each directory (§9.2).
+ */
+export function detectCodexCliCapabilities(cwd: string): Promise<CodexCliCapabilities> {
+  return readInDirectory(capabilityProbe, cwd, () => detectCapabilities(cwd));
 }
 
-async function detectCapabilities(): Promise<CodexCliCapabilities> {
-  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex --help"));
+async function detectCapabilities(cwd: string): Promise<CodexCliCapabilities> {
+  const command = probeShellCommand("codex --help");
+  const result = await currentCommandRunner()(userShell(), command, { cwd });
   // A bounded probe (timeout/overflow) or nonzero exit is a diagnosable
   // startup failure, not "capability unsupported" — surface it with cause.
   if (result.error !== undefined || result.status !== 0) {

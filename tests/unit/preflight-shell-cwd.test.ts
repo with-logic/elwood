@@ -14,8 +14,10 @@ import { preflightCodex } from "../../src/codex/preflight.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as shell from "../../src/runtime/shell.ts";
 import {
+  bypassByDirectory,
   dir,
   directoryLossCases,
+  hookTrustBypass,
   lostDirectory,
   oldClaude,
   oldCodex,
@@ -38,6 +40,19 @@ test.each([
   await start({ cwd: project(agent, current) }).catch(() => undefined); // no PTY here
   const cwd = project(agent, outdated);
   await expect(start({ cwd, strictVersionCheck: true })).rejects.toMatchObject(old);
+});
+
+test("C-PTY-08 startCodex launches with the capabilities of the codex in its directory", async () => {
+  const projects = [hookTrustBypass, "no such flag"].map((help) =>
+    project("codex", "codex-cli 0.150.0", help),
+  );
+  for (const cwd of projects) {
+    await expect(startCodex({ cwd })).rejects.toMatchObject({ code: "pty_start_failed" });
+  }
+  expect(bypassByDirectory(launches)).toEqual([
+    [projects[0], true],
+    [projects[1], false],
+  ]);
 });
 
 describe.each(directoryLossCases)("a directory $how", ({ remade, message, errno }) => {

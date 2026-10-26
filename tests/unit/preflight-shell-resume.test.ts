@@ -9,9 +9,11 @@
 import { describe, expect, test } from "vitest";
 import { resumeClaude, resumeCodex } from "../../src/index.ts";
 import {
+  bypassByDirectory,
   createResumableSessionStateDir,
   dir,
   directoryLossCases,
+  hookTrustBypass,
   lostDirectory,
   oldClaude,
   oldCodex,
@@ -35,12 +37,29 @@ test("C-PTY-08 resumeCodex checks the codex of its saved directory, where it rel
   expect(launches).toEqual([]);
 });
 
+test("C-PTY-08 resumeCodex launches with the capabilities of the codex in its saved directory", async () => {
+  const saved = [hookTrustBypass, "no such flag"].map((help) =>
+    project("codex", "codex-cli 0.150.0", help),
+  );
+  for (const cwd of saved) {
+    const stateDir = createResumableSessionStateDir("codex", cwd);
+    // `cwd` only locates the state; Codex relaunches in the saved directory.
+    const elsewhere = project("codex", "codex-cli 0.150.0", "no such flag");
+    const resumed = resumeCodex({ cwd: elsewhere, stateDir, elwoodSessionId: "codex-probe-cwd" });
+    await expect(resumed).rejects.toMatchObject(ptyFailure);
+  }
+  expect(bypassByDirectory(launches)).toEqual([
+    [saved[0], true],
+    [saved[1], false],
+  ]);
+});
+
 test("C-PTY-08 resumeClaude checks, and launches in, the directory it is given", async () => {
   const stateDir = createResumableSessionStateDir("claude", project("claude", "2.1.100"));
   const cwd = project("claude", "2.1.144 (Claude Code)");
   const resumed = resumeClaude({ cwd, stateDir, elwoodSessionId: "claude-probe-cwd" });
   await expect(resumed).rejects.toMatchObject(ptyFailure);
-  expect(launches).toEqual([cwd]);
+  expect(launches.map((launch) => launch.cwd)).toEqual([cwd]);
 });
 
 test("C-PTY-08 resumeClaude without a cwd checks, and launches in, its saved directory", async () => {
@@ -49,7 +68,7 @@ test("C-PTY-08 resumeClaude without a cwd checks, and launches in, its saved dir
   const stateDir = createResumableSessionStateDir("claude", saved);
   const resumed = resumeClaude({ stateDir, elwoodSessionId: "claude-probe-cwd" });
   await expect(resumed).rejects.toMatchObject(ptyFailure);
-  expect(launches).toEqual([saved]);
+  expect(launches.map((launch) => launch.cwd)).toEqual([saved]);
 });
 
 test("C-PTY-08 resumeClaude without a cwd refuses its saved directory's old claude", async () => {

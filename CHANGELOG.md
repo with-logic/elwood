@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex's capability check (`codex --help`, which decides whether Elwood passes
+  `--dangerously-bypass-hook-trust`) now runs in the session's launch directory
+  and is kept per directory, like the version check. It ran in the host's
+  working directory, and one answer served every session in the process, so
+  under a per-directory tool manager a session could launch with a flag its own
+  `codex` rejects, or without one it supports.
 - The `--version` cache keeps the 32 most recently used launch directories, not
   just the last one, and is keyed by the directory itself as well as its path. A
   directory made again at the same path, or replaced while its CLI was probed, is
