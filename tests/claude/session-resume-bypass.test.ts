@@ -52,10 +52,16 @@ test("C-CLAUDE-21 a highTrust resume answers the bypass dialog and is ready abov
   });
   try {
     const pty = ptys[1]!;
+    // While a frame stays on screen the responder retypes its keys every 250 ms, so a
+    // loaded runner can see a retry before a poll does: each step is checked by its kinds.
     pty.emitData(nativeFrameOutput(dialog));
-    await expect.poll(() => pty.writes).toEqual([selectAccept]);
+    await expect.poll(() => pty.writes.length).toBeGreaterThan(0);
+    expect(new Set(pty.writes)).toEqual(new Set([selectAccept])); // No Enter on `No, exit`.
+    const beforeSelected = pty.writes.length;
     pty.emitData(nativeFrameOutput(selected));
-    await expect.poll(() => pty.writes).toEqual([selectAccept, `${selectAccept}\r`]);
+    await expect.poll(() => pty.writes.includes(`${selectAccept}\r`)).toBe(true);
+    expect(pty.writes.indexOf(`${selectAccept}\r`)).toBeGreaterThanOrEqual(beforeSelected);
+    expect(new Set(pty.writes)).toEqual(new Set([selectAccept, `${selectAccept}\r`]));
     pty.emitData(nativeFrameOutput(accepted));
     await session.terminal.settled();
     await expect.poll(() => session.status).toBe("ready");
