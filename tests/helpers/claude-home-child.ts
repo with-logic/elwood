@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isRecord, isString, isStringArray } from "../../src/core/predicates.ts";
+import { fakeKeychain } from "./fake-keychain.ts";
 
 const claudeHomeModule = resolve(import.meta.dirname, "../e2e/claude-home.ts");
 
@@ -21,6 +22,8 @@ export type Seen = {
   readonly credentialsMode: number | null;
   readonly config: string | null;
   readonly catalog: string | null;
+  /** `CLAUDE_SECURESTORAGE_CONFIG_DIR` as the child's Claudes would inherit it. */
+  readonly storage: string | null;
 };
 
 const script = `
@@ -37,14 +40,21 @@ const script = `
     credentialsMode: existsSync(login) ? statSync(login).mode & 0o777 : null,
     config: read(".claude.json"),
     catalog: read("cache/model-catalog/catalog.json"),
+    storage: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? null,
   }));`;
 
-/** A child process that loads the module with `env` over a clean Claude environment. */
+/**
+ * A child process that loads the module with `env` over a clean Claude environment. Its
+ * keychain is an empty fake one unless `env` names another (`fake-keychain.ts`).
+ */
 export function runChild(env: Readonly<Record<string, string>>) {
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   delete childEnv["ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR"];
   delete childEnv["CLAUDE_CONFIG_DIR"];
-  Object.assign(childEnv, env);
+  delete childEnv["ELWOOD_E2E_USER_CLAUDE_STORAGE_SETTING"];
+  delete childEnv["CLAUDE_SECURESTORAGE_CONFIG_DIR"];
+  const securityBin = env["ELWOOD_E2E_SECURITY_BIN"] ?? fakeKeychain().bin;
+  Object.assign(childEnv, env, { ELWOOD_E2E_SECURITY_BIN: securityBin });
   return spawnSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], {
     env: childEnv,
     encoding: "utf8",
@@ -82,6 +92,7 @@ export function parseSeen(text: string): Seen {
     ),
     config: field("config", isStringOrNull),
     catalog: field("catalog", isStringOrNull),
+    storage: field("storage", isStringOrNull),
   };
 }
 
@@ -95,7 +106,7 @@ export function tree(dir: string): Readonly<Record<string, string>> {
   );
 }
 
-const login = {
+export const login = {
   claudeAiOauth: {
     accessToken: "access",
     expiresAt: 1,
