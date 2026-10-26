@@ -35,21 +35,20 @@ function observe(result: TrustPromptResult<"claude">) {
   return { emit, emitWarnings, settled: result.settled };
 }
 
-test("C-TRUST-01 swallowed first numbered write retries and reports success only after clearance", async () => {
+test("C-TRUST-01 a swallowed numbered answer repeats only behind fresh output and reports once cleared", async () => {
   let frame = trust;
   const write = vi.fn(() => {
     if (write.mock.calls.length === 2) frame = claudeComposer;
   });
-  const observed = observe(
-    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
-      trust,
-      write,
-      () => frame,
-    ),
-  );
-  await vi.advanceTimersByTimeAsync(249);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
+  const observed = observe(responder.handle(trust, write, () => frame));
+  // A still-visible gate without output since the answer may be one the CLI is still
+  // processing: typing the answer again could reach its composer.
+  await vi.advanceTimersByTimeAsync(1_000);
   expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
   expect(observed.emit).not.toHaveBeenCalled();
+  // Output after the answer still shows the gate: the CLI read past the answer.
+  expect(responder.handle(trust, write, () => frame)).toBeUndefined();
   await vi.runAllTimersAsync();
   await expect(observed.settled).resolves.toBe("answered");
   expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
@@ -115,14 +114,15 @@ test("C-TRUST-01 numbered expiry is bounded, quiet, and retryable", async () => 
   const observed = observe(responder.handle(trust, write, () => trust));
   await vi.runAllTimersAsync();
   await expect(observed.settled).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledTimes(20);
+  // No output followed the answer, so it was never typed again.
+  expect(write).toHaveBeenCalledTimes(1);
   expect(observed.emit).not.toHaveBeenCalled();
   expect(observed.emitWarnings).not.toHaveBeenCalled();
   expect(responder.handle(trust, write)).toBeUndefined();
   expect(responder.blockedPrompt).toBe("workspace_trust");
   responder.handle("Do you trust this folder?\nUnknown explanation", write);
   await expect(settled(responder.handle(trust, write))).resolves.toBe("answered");
-  expect(write).toHaveBeenCalledTimes(21);
+  expect(write).toHaveBeenCalledTimes(2);
 });
 
 test("C-CODEX-17 a native directory-to-hook successor confirms clearance without an old retry", async () => {

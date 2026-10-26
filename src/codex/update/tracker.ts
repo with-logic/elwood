@@ -35,6 +35,11 @@ export class CodexUpdatePromptTracker {
     return this.generation;
   }
 
+  /** An appearance is on screen, or left it without a positive native clearance since. */
+  get unresolved(): boolean {
+    return this.active || this.requiresBanner;
+  }
+
   /** Ordinary frames need no clearance parsing without a pending or revoked update. */
   get needsClearance(): boolean {
     return this.pendingClearance || this.requiresBanner;

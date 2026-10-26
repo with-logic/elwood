@@ -50,8 +50,8 @@ test("C-TRUST-01 a trust gate appearing after readiness holds the entire queued 
   await vi.advanceTimersByTimeAsync(10);
   const queued = session.sendMessage("held");
   await vi.advanceTimersByTimeAsync(5_500);
-  expect(ptys[0]!.writes.length).toBeGreaterThan(1);
-  expect(ptys[0]!.writes.every((input) => input === "1\r")).toBe(true);
+  // Without output after it, the ignored answer is never typed again (C-TRUST-01).
+  expect(ptys[0]!.writes).toEqual(["1\r"]);
   expect(warnings).toEqual([]);
   expect(activity).not.toContain("startup_prompt:workspace_trust");
   expect(activity).toContain("attention:claude-workspace_trust-prompt");

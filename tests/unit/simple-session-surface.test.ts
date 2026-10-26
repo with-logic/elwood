@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { elwoodError } from "../../src/core/errors.ts";
 import { TestSimple } from "./simple-fakes.ts";
 
 describe("SessionBase control surface (C-API-47/51)", () => {
@@ -81,9 +82,38 @@ describe("SessionBase control surface (C-API-47/51)", () => {
     await s.start();
     s.underlying.stop = () => Promise.reject(new Error("stop boom"));
     s.underlying.kill = () => Promise.reject(new Error("kill boom"));
-    await expect(s.close()).rejects.toMatchObject({
+    const rejected: unknown = await s.close().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toMatchObject({
       code: "termination_failed",
       details: { cause: "stop boom", killCause: "kill boom" },
+    });
+    // Untyped failures carry no cleanup message, so none is invented.
+    expect(rejected).not.toHaveProperty("details.cleanupError");
+    expect(rejected).not.toHaveProperty("details.killCleanupError");
+  });
+
+  test("C-API-51 close() keeps each failed verb's runtime-cleanup message", async () => {
+    const s = new TestSimple();
+    await s.start();
+    const failed = (cause: string, cleanupError: string) =>
+      Promise.reject(elwoodError("termination_failed", cause, { cleanupError }));
+    s.underlying.stop = () => failed("stop boom", "bridge stop failed");
+    s.underlying.kill = () => failed("kill boom", "terminal dispose failed");
+    const rejected: unknown = await s.close().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toMatchObject({
+      code: "termination_failed",
+      details: {
+        cause: "stop boom",
+        killCause: "kill boom",
+        cleanupError: "bridge stop failed",
+        killCleanupError: "terminal dispose failed",
+      },
     });
   });
 

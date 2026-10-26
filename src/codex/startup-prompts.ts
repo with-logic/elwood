@@ -9,7 +9,8 @@ import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
-import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
+import { codexBannerKey, codexWarningsFromText } from "./startup-warnings.ts";
+import { codexNumberedRetry } from "./trust-retry.ts";
 import { safeUpdateOption } from "./update/selection.ts";
 import { startCodexUpdateSkip } from "./update/skip-attempt.ts";
 import { CodexUpdatePromptTracker } from "./update/tracker.ts";
@@ -36,6 +37,8 @@ export class CodexStartupPromptResponder {
   // generation's own completion may release it; a stale completion is a no-op.
   private skipGeneration = 0;
   private updateAttempt: ReturnType<typeof startCodexUpdateSkip> | undefined;
+  // Raw caller input owns an unresolved update until a native composer clears it.
+  private updateCallerOwned = false;
   // Emit only newly appearing warning banners; clearing re-arms a later occurrence.
   private warnedBanners = new Set<string>();
   private conversationStarted = false;
@@ -51,13 +54,15 @@ export class CodexStartupPromptResponder {
     this.clearance = clearance;
     this.sessionInputHeld = sessionInputHeld ?? (() => false);
     this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
-    this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
+      onStateChange,
+      numberedRetry: codexNumberedRetry,
+    });
   }
 
   observeClearance(frame: string): void {
-    if (this.updatePrompt.needsClearance) {
+    if (this.updatePrompt.needsClearance)
       this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
-    }
     this.updateAttempt?.observeClearance(frame);
   }
 
@@ -72,6 +77,13 @@ export class CodexStartupPromptResponder {
   dispose(): void {
     this.lifetime.abort();
     this.trust.dispose();
+  }
+
+  /** Raw caller input owns the startup prompt on screen (C-TRUST-01, C-CODEX-12). */
+  callerInput(): void {
+    this.trust.callerInput();
+    this.updateAttempt?.cancel();
+    this.updateCallerOwned ||= this.updatePrompt.unresolved;
   }
 
   get inputBlocking(): boolean {
@@ -110,6 +122,7 @@ export class CodexStartupPromptResponder {
     // reauthorization immediately; a fresh banner with a valid current safe-option
     // block or authoritative native clearance can rearm it. The live observer confirms
     // clearance after this frame's retained hold is classified, before queued input can repaint it.
+    this.updateCallerOwned &&= this.updatePrompt.unresolved; // a later appearance is new
     const renewUpdateAttention = this.updatePrompt.renewsAttention(screenText);
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
@@ -118,7 +131,8 @@ export class CodexStartupPromptResponder {
     // gates the WRITE only: `updatePrompt.observe` above still tracks such a frame as an
     // update appearance, so generation latching and re-arming are unaffected.
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
-    if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
+    const automatable = onUpdateScreen && !this.updateCallerOwned;
+    if (automatable && this.skipGeneration !== generation && noTrustGate(screenText)) {
       const parsed = this.updatePrompt.classify(screenText);
       const option = safeUpdateOption(screenText, parsed.options ?? [])?.number ?? null;
       if (option && this.updatePrompt.currentFramePredicate()(screenText)) {
@@ -173,17 +187,10 @@ export class CodexStartupPromptResponder {
     this.conversationStarted ||= /^\s*[●•]/m.test(screenText);
     if (this.conversationStarted) return [];
     const matched = codexWarningsFromText(screenText, this.elwoodSessionId);
-    const fresh = matched.filter((warning) => !this.warnedBanners.has(bannerKey(warning)));
-    this.warnedBanners = new Set(matched.map(bannerKey));
+    const fresh = matched.filter((warning) => !this.warnedBanners.has(codexBannerKey(warning)));
+    this.warnedBanners = new Set(matched.map(codexBannerKey));
     return fresh;
   }
-}
-
-/** A stable identity for a startup banner: its code plus the server(s) it names. */
-function bannerKey(warning: CodexBannerWarning): string {
-  return warning.code === "mcp_server_not_logged_in"
-    ? `login:${warning.mcpServerName}`
-    : `startup:${warning.failedServers.join(",")}`;
 }
 
 export function findNumberedOption(text: string, pattern: RegExp): string | null {

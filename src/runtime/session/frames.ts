@@ -10,6 +10,7 @@ import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
+import { onCallerInput } from "./session-input.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
@@ -99,16 +100,24 @@ export function createSessionFrameObserver(
   };
 }
 
-/** Cancel automation synchronously before signaling or disposing its PTY. */
+/**
+ * Cancel automation synchronously before signaling or disposing its PTY, and hand the
+ * startup prompt on screen to the caller as soon as raw caller input reaches the
+ * session's terminal.
+ */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold">,
-  trust: TrustState,
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold"> & {
+    readonly terminal: { readonly xterm: object };
+  },
+  trust: TrustState & { callerInput(): void },
   readiness: ReadinessGate,
 ): void {
   session.bindInitialReadinessHold(readiness.isHeld);
+  const stopCallerInput = onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
     "abort",
     () => {
+      stopCallerInput();
       trust.dispose();
       readiness.ready.cancel();
     },
