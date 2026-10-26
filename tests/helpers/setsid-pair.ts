@@ -1,6 +1,7 @@
 /**
- * A real setsid process pair for the process-table tests (PRD §5.3 and §9.4,
- * C-LIFE-10): a detached node leader that starts one detached child. The test owns the
+ * A real setsid process pair for the process-table and sweep tests (PRD §5.3 and §9.4,
+ * C-LIFE-10): a detached node leader that starts one detached child, and an unrelated
+ * detached bystander. The test owns the
  * leader's handle and the leader owns the child's, so cleanup goes through handles: a
  * SIGTERM asks the leader to SIGKILL its child, wait for the child's exit, and exit. Only
  * a child whose leader is already gone falls back to `killIfCommandHas`.
@@ -53,6 +54,27 @@ export async function startSetsidPair(): Promise<SetsidPair> {
   }
 }
 
+/** A detached process that descends from this test process, not from any leader. */
+export function startBystander(): ChildProcess {
+  return spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    detached: true,
+    stdio: "ignore",
+  });
+}
+
+/** SIGKILLs a bystander and waits until node has seen it exit, so it never outlives its test. */
+export async function stopBystander(bystander: ChildProcess): Promise<void> {
+  if (hasExited(bystander)) return;
+  const exited = once(bystander, "exit");
+  bystander.kill("SIGKILL");
+  await exited;
+}
+
+/** Whether node has seen this handle's process exit (after which its pid may be reused). */
+export function hasExited(handle: ChildProcess): boolean {
+  return handle.exitCode !== null || handle.signalCode !== null;
+}
+
 /** Ends the pair and waits until both processes are gone; throws if either outlives it. */
 export async function stopPair(pair: SetsidPair | undefined): Promise<void> {
   if (pair === undefined) return;
@@ -67,7 +89,7 @@ export async function stopPair(pair: SetsidPair | undefined): Promise<void> {
 
 /** Resumes the leader if stopped, asks it to end its child and exit, then SIGKILLs it. */
 async function stopLeader(leader: ChildProcess): Promise<void> {
-  if (leader.exitCode !== null || leader.signalCode !== null) return;
+  if (hasExited(leader)) return;
   const exited = once(leader, "exit");
   leader.kill("SIGCONT");
   leader.kill("SIGTERM");
