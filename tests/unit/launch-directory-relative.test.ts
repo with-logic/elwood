@@ -4,7 +4,8 @@
  * (PRD §5.1, §5.2, §5.5, C-API-61).
  */
 
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { resumeClaude, startClaude, startCodex } from "../../src/index.ts";
 import { fakeLaunch, resetFakeLaunch } from "../helpers/fake-launch.ts";
@@ -32,7 +33,10 @@ test.each(
   let probes = 0;
   const launchedIn = fakeLaunch(() => probes++);
   const previous = process.cwd();
-  const deleted = tempDir("elwood-relative-process-cwd-");
+  // In an empty parent: macOS's getcwd() of a deleted directory scans its parent's entries,
+  // which takes seconds per call in a temporary directory holding many others.
+  const deleted = join(tempDir("elwood-relative-process-cwd-"), "deleted");
+  mkdirSync(deleted);
   process.chdir(deleted);
   rmSync(deleted, { recursive: true });
   try {
