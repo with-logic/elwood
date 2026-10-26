@@ -10,6 +10,7 @@ import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/respo
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
 import { codexBannerKey, codexWarningsFromText } from "./startup-warnings.ts";
+import { codexNumberedRetry } from "./trust-retry.ts";
 import { safeUpdateOption } from "./update/selection.ts";
 import { startCodexUpdateSkip } from "./update/skip-attempt.ts";
 import { CodexUpdatePromptTracker } from "./update/tracker.ts";
@@ -53,13 +54,15 @@ export class CodexStartupPromptResponder {
     this.clearance = clearance;
     this.sessionInputHeld = sessionInputHeld ?? (() => false);
     this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
-    this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
+      onStateChange,
+      numberedRetry: codexNumberedRetry,
+    });
   }
 
   observeClearance(frame: string): void {
-    if (this.updatePrompt.needsClearance) {
+    if (this.updatePrompt.needsClearance)
       this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
-    }
     this.updateAttempt?.observeClearance(frame);
   }
 

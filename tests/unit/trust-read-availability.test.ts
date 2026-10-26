@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
+import { freshPhase } from "../../src/core/trust/step.ts";
 import { choiceIdentity, type TrustView, trustView } from "../../src/core/trust/view.ts";
 import { TrustAttempt } from "../../src/core/trust/write.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
@@ -13,7 +14,7 @@ function attempt() {
   if (candidate.kind !== "candidate") throw new Error("expected candidate");
   const identity = choiceIdentity(candidate);
   if (identity === undefined) throw new Error("expected safe choice");
-  return { candidate, owned: new TrustAttempt(candidate, identity) };
+  return { candidate, owned: new TrustAttempt(candidate, identity, freshPhase()) };
 }
 
 test("C-TRUST-01 unavailable frames withhold first and retry writes until current evidence returns", async () => {

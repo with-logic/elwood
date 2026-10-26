@@ -24,6 +24,14 @@ back each entry are listed in `prd/14-conformance.md`.
   primary error, in `run`, `models`, and combined `models`; before, text mode
   printed only the primary error.
 
+- A `stop()` or `kill()` whose termination fails now still cleans up the
+  session's runtime (its hook bridge and terminal renderer, and Codex's transcript
+  watcher). Before, a PTY that could not be signaled, did not exit, or could not be
+  reaped skipped that cleanup, and so did every retry while the reap kept failing,
+  until a `teardown()`. The call still rejects with the same `termination_failed`;
+  if cleanup fails as well, its message is in `details.cleanupError`. `close()`
+  keeps those messages too, as `cleanupError` and `killCleanupError`.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for
@@ -78,6 +86,15 @@ back each entry are listed in `prd/14-conformance.md`.
   A backstop still releases readiness 60 seconds after the first frame if that
   footer is never recognized; a prompt painted after that would still follow
   `ready`.
+
+- `autotrust` no longer sends "1" to Codex as a user message. On a loaded
+  machine Codex 0.164 can take the directory-trust answer (`1` + Enter) but
+  paint its composer more than 250 ms later, and Elwood's retry typed the answer
+  again into that composer, which submitted "1" as a turn to the model. The
+  number is now typed once. Codex retries are Enter alone while the gate's
+  caret is on the affirmative, which confirms the gate and does nothing on an
+  empty composer. Other numbered gates are answered again only after new output
+  still shows the gate.
 
 - With `autotrust`, keys a caller sends with `sendKeys` (or `terminal.sendInput`,
   `xterm.input`) while a trust prompt is on screen now hand that prompt to the
