@@ -5,14 +5,14 @@
  * live socket.
  */
 
-import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   ensureSocketHome,
   ownsSocketHome,
-  removeOwnSocketFile,
+  releaseLaunchSocket,
   removeSocketHome,
   SOCKET_HOME_PREFIX,
   sessionSocketHome,
@@ -90,20 +90,61 @@ describe("ensureSocketHome", () => {
   });
 });
 
-describe("removeOwnSocketFile", () => {
-  test("removes only the launch's own socket file, leaving the shared home", () => {
+describe("releaseLaunchSocket", () => {
+  test("§8.1 removes the launch's own socket file, then the home it emptied", () => {
     const home = tempDir(`${SOCKET_HOME_PREFIX}own-`);
     const sock = join(home, "abcd1234.sock");
     writeFileSync(sock, "");
-    removeOwnSocketFile(sock);
+    releaseLaunchSocket(sock);
     expect(existsSync(sock)).toBe(false);
-    expect(existsSync(home)).toBe(true); // the shared home survives
+    expect(existsSync(home)).toBe(false);
+  });
+
+  test("§8.1 keeps a home that still holds another launch's socket", () => {
+    const home = tempDir(`${SOCKET_HOME_PREFIX}shared-`);
+    const sock = join(home, "abcd1234.sock");
+    const other = join(home, "efgh5678.sock");
+    writeFileSync(sock, "");
+    writeFileSync(other, "");
+    releaseLaunchSocket(sock);
+    expect(existsSync(sock)).toBe(false);
+    expect(existsSync(other)).toBe(true); // the overlapping launch's socket survives
+  });
+
+  test("tolerates a home that is already gone", () => {
+    const sock = join(tempDir("gone-"), `${SOCKET_HOME_PREFIX}missing`, "abcd1234.sock");
+    expect(() => releaseLaunchSocket(sock)).not.toThrow();
+  });
+
+  test("§8.1 an unexpected rmdir failure reaches the caller's cleanup path", () => {
+    const parent = tempDir("locked-");
+    const home = join(parent, `${SOCKET_HOME_PREFIX}locked`);
+    mkdirSync(home);
+    const sock = join(home, "abcd1234.sock");
+    writeFileSync(sock, "");
+    chmodSync(parent, 0o500); // the emptied home's own entry cannot be removed: EACCES
+    try {
+      expect(() => releaseLaunchSocket(sock)).toThrow(expect.objectContaining({ code: "EACCES" }));
+      expect(existsSync(sock)).toBe(false); // its own socket file still went first
+    } finally {
+      chmodSync(parent, 0o700); // so the test's temp dir can be removed
+    }
+  });
+
+  test("an empty or missing socket path removes nothing", () => {
+    const sibling = tempDir(`${SOCKET_HOME_PREFIX}sibling-`);
+    writeFileSync(join(sibling, "keep.sock"), "");
+    const cwdBefore = readdirSync(".");
+    expect(() => releaseLaunchSocket("")).not.toThrow(); // dirname("") is ".", never a home
+    expect(readdirSync(".")).toEqual(cwdBefore);
+    releaseLaunchSocket(join(sibling, "absent.sock")); // a home another socket still holds
+    expect(readdirSync(sibling)).toEqual(["keep.sock"]);
   });
 
   test("no-ops on a path outside a home this scheme owns", () => {
     const sock = join(tempDir("not-owned-"), "abcd1234.sock");
     writeFileSync(sock, "");
-    removeOwnSocketFile(sock); // parent dir lacks the elwood- prefix: untouched
+    releaseLaunchSocket(sock); // parent dir lacks the elwood- prefix: untouched
     expect(existsSync(sock)).toBe(true);
   });
 });
