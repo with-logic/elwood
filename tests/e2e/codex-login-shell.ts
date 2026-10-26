@@ -18,6 +18,12 @@ import { stopProcessesUnder } from "./scratch-processes.ts";
 export const loginShellTestTimeoutMs = 240_000;
 export const baseConfig = 'model_reasoning_effort = "medium"\n';
 
+/**
+ * A zsh test true only in a session's launch shell: in a terminal, with the session id Elwood
+ * sets for it. A probe shell has neither.
+ */
+export const inSession = '[[ -t 0 && -n "$ELWOOD_SESSION_ID" ]]';
+
 export const loginShellSkip = skipIf(
   skipReason("codex"),
   codexAuthMissing(),
