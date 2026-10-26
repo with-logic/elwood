@@ -7,7 +7,7 @@ import {
   setHookBridgeFactoryForTests,
 } from "../../src/claude/session/bridge.ts";
 import { type ClaudeSessionApi, resumeClaude, startClaude } from "../../src/index.ts";
-import { readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);

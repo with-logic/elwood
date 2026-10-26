@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
-import { readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { stateDirWithSession } from "../helpers/session-state.ts";
 
 afterEach(() => vi.useRealTimers());

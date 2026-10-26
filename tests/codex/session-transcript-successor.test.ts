@@ -8,8 +8,8 @@ import {
   setCodexHookBridgeFactoryForTests,
 } from "../../src/codex/session/bridge.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
-import { readLoopDefinitions } from "../../src/state/loop-store.ts";
 import { launchArtifactPaths } from "../helpers/launch-artifacts.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import {
   becomeReady,
   installFakes,

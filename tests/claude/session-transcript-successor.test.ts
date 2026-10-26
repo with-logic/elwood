@@ -8,8 +8,8 @@ import {
   setHookBridgeFactoryForTests,
 } from "../../src/claude/session/bridge.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
-import { readLoopDefinitions } from "../../src/state/loop-store.ts";
 import { launchArtifactPaths } from "../helpers/launch-artifacts.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { installFakes, ptys, readBridgeScript, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
