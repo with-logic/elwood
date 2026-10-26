@@ -43,10 +43,10 @@ export async function pollGone({
  * still change hands between that read and the signal, so callers use this only for a
  * process that no handle they hold can reach. Throws when `ps` itself fails.
  */
-export function killIfCommandHas(pid: number, marker: string): void {
+export function killIfCommandHas(pid: number, marker: string, send: Send = sendSignal): void {
   if (!commandOf(pid)?.includes(marker)) return;
   try {
-    process.kill(pid, "SIGKILL");
+    send(pid, "SIGKILL");
   } catch {
     // It exited between the read and the kill.
   }
@@ -87,12 +87,12 @@ export function processRows(timeoutMs?: number): readonly ProcessRow[] {
  * signaled. `marker` must name only processes the caller started, such as the fresh
  * temp directory they run from. Throws when `ps` itself fails.
  */
-export function killGroupsWhoseCommandHas(marker: string): number {
+export function killGroupsWhoseCommandHas(marker: string, send: Send = sendSignal): number {
   let signaled = 0;
   for (const { pid, pgid, stat, command } of processRows()) {
     if (stat.startsWith("Z") || !command.includes(marker)) continue;
     try {
-      process.kill(pid === pgid ? -pgid : pid, "SIGKILL");
+      send(pid === pgid ? -pgid : pid, "SIGKILL");
     } catch {
       // It exited between the read and the kill.
     }
@@ -100,6 +100,11 @@ export function killGroupsWhoseCommandHas(marker: string): number {
   }
   return signaled;
 }
+
+/** Sends `signal` to `pid` (a negative pid names a group); a test can record instead. */
+export type Send = (pid: number, signal: NodeJS.Signals) => void;
+
+const sendSignal: Send = (pid, signal) => void process.kill(pid, signal);
 
 /** `pid`'s command line, or `undefined` when no such process exists. */
 function commandOf(pid: number): string | undefined {

@@ -15,7 +15,7 @@
 
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { type ProcessRow, processRows } from "../helpers/process-liveness.ts";
+import { type ProcessRow, processRows, type Send } from "../helpers/process-liveness.ts";
 
 /** How long a process from the directory gets after SIGTERM before SIGKILL. */
 export const TERM_GRACE_MS = 3_000;
@@ -84,11 +84,11 @@ function signal(pid: number, name: NodeJS.Signals): void {
 }
 
 /**
- * Stops every process running from `dir` (`processesUnder`), or throws, in which case the
- * caller must keep the directory: when one is still running 10 s on, or when reading the
+ * Stops every process running from `dir` (`processesUnder`) through `send` (a test can
+ * record instead), or throws, in which case the caller must keep the directory: when one is still running 10 s on, or when reading the
  * process table fails or would run past that deadline.
  */
-export function stopProcessesUnder(dir: string): void {
+export function stopProcessesUnder(dir: string, send: Send = signal): void {
   const prefixes = prefixesOf(dir);
   const deadline = Date.now() + STOP_TIMEOUT_MS;
   if (!anyNaming(prefixes, STOP_TIMEOUT_MS)) return;
@@ -108,9 +108,9 @@ export function stopProcessesUnder(dir: string): void {
     for (const row of running.values()) {
       const sent = signalled.get(row.pid);
       if (sent === undefined) {
-        signal(row.pid, "SIGTERM");
+        send(row.pid, "SIGTERM");
         signalled.set(row.pid, { ...row, at: Date.now() });
-      } else if (Date.now() - sent.at >= TERM_GRACE_MS) signal(row.pid, "SIGKILL");
+      } else if (Date.now() - sent.at >= TERM_GRACE_MS) send(row.pid, "SIGKILL");
     }
     pause(POLL_MS);
   }
