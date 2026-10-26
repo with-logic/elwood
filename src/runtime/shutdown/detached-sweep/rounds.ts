@@ -13,7 +13,7 @@
 import { errnoCode } from "../../../core/errors.ts";
 import type { ProcessEntry } from "../process-table.ts";
 import type { DaemonScope } from "../shared-daemon.ts";
-import type { SweepFailures } from "./failures.ts";
+import type { FailureReason, SweepFailure, SweepFailures } from "./failures.ts";
 
 /**
  * The process operations the sweep drives. Scripted tests inject fakes that signal
@@ -74,18 +74,34 @@ export function unreachedGroups(state: SweepState): number[] {
   );
 }
 
+/** Records `reason` against every group not yet confirmed stopped: unreached or unheld. */
+export function recordUnconfirmed(state: SweepState, reason: FailureReason, error?: unknown): void {
+  state.failures.record(reason, error, [...unreachedGroups(state), ...state.unheld]);
+}
+
+/** The sweep's outcome, once each group a read showed live but no SIGSTOP reached fails. */
+export function sweepOutcome(state: SweepState): SweepFailure | undefined {
+  for (const [group, error] of state.unstoppable) {
+    if (state.live.has(group))
+      state.failures.record("could not stop a live descendant group", error, [group]);
+  }
+  return state.failures.result();
+}
+
 /**
  * The signaled groups this read does not hold: each with a live member that this read
- * and the one before did not both show stopped, and the leader's own group while this
+ * and the one before did not both show stopped, and any leader's own group while this
  * read does not show the leader live, since its exit leaves descendants out of reach.
  */
 export function unheldGroups(
   table: readonly ProcessEntry[],
   state: SweepState,
-  leaderPid: number,
+  leaderPid?: number,
 ): number[] {
   const unheld = new Set<number>();
-  if (!table.some((row) => row.pid === leaderPid && !row.zombie)) unheld.add(leaderPid);
+  if (leaderPid !== undefined && !table.some((row) => row.pid === leaderPid && !row.zombie)) {
+    unheld.add(leaderPid);
+  }
   for (const row of table) {
     if (row.zombie || !state.signaledGroupIds.has(row.pgid)) continue;
     if (!(row.stopped && state.stoppedPidsLastRead.has(row.pid))) unheld.add(row.pgid);
@@ -154,7 +170,7 @@ function isAnchor(parent: ProcessEntry, state: SweepState): boolean {
 }
 
 /** A group that vanished (`ESRCH`) needs nothing; any other refusal is judged at the end. */
-function stopGroup(group: number, ops: SweepOps, state: SweepState): void {
+export function stopGroup(group: number, ops: SweepOps, state: SweepState): void {
   try {
     ops.stopGroup(group);
     state.signaledDescendantGroupIds.push(group);
