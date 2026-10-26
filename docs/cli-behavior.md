@@ -1712,6 +1712,33 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
 
+### Claude under a private `CLAUDE_CONFIG_DIR` (2.1.310, 2026-10-26)
+
+With `CLAUDE_CONFIG_DIR` set, Claude keeps everything there: its global config is
+`$CLAUDE_CONFIG_DIR/.claude.json` instead of `~/.claude.json`, and settings,
+`projects/` transcripts, history and backups sit beside it. `claude auth status`
+reports both paths (`configDirectory`, `projectsDirectory`). Without the variable,
+every directory Claude runs in gets an entry in `~/.claude.json` and a transcript
+folder under `~/.claude/projects/`, so each real-Claude e2e scratch project used
+to leave both behind.
+
+An empty config dir is logged out (`loggedIn: false`): Claude does not read the
+default `Claude Code-credentials` keychain item for it. It does read a
+`$CLAUDE_CONFIG_DIR/.credentials.json` holding the keychain item's JSON. A copy with
+`refreshToken` and `refreshTokenExpiresAt` removed logs in (`authMethod:
+"claude.ai"`), creates no new keychain item, and cannot refresh, so it can never
+rotate the user's own refresh token. It works until the access token's `expiresAt`,
+which is why `tests/e2e/claude-home.ts` copies it afresh in each process.
+
+An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
+(`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
+key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.
+
+The private dir carries none of the user's `settings.json`, so it shows what a fresh
+install does: the bypass-permissions dialog appears unless
+`skipDangerousModePermissionPrompt` is set (see above), and the footer shows Claude's
+default permission mode. C-E2E-23.
+
 ### A rate-limited Codex turn stays running for minutes (2026-10-25)
 
 Codex 0.164.0 retries a `429 Too Many Requests` after the server's retry delay. In
