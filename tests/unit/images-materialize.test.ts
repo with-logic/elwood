@@ -22,6 +22,7 @@ describe("materializeImages (C-API-44)", () => {
 
   test("C-API-44 materializes bytes to temp files and cleans them up", async () => {
     const { paths, cleanup } = await materializeImages([{ data: PNG, format: "png" }]);
+    onTestFinished(cleanup); // removes the temp dir even if an assertion fails first
     const file = paths[0] as string;
     expect(file.endsWith(".png")).toBe(true);
     expect(readFileSync(file)).toEqual(Buffer.from(PNG));
@@ -38,6 +39,7 @@ describe("materializeImages (C-API-44)", () => {
       { path: file },
       { data: PNG, format: "gif" },
     ]);
+    onTestFinished(cleanup);
     expect(paths[0]).toBe(file);
     expect((paths[1] as string).endsWith(".gif")).toBe(true);
     await cleanup();
@@ -60,6 +62,7 @@ describe("materializeImages (C-API-44)", () => {
       { data: PNG, format: "jpeg" },
       { data: PNG, format: "webp" },
     ]);
+    onTestFinished(cleanup);
     expect((paths[0] as string).endsWith(".jpg")).toBe(true);
     expect((paths[1] as string).endsWith(".webp")).toBe(true);
     await cleanup();
