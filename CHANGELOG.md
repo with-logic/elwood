@@ -18,6 +18,11 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- `agent_update_failed` now names `updateCwd`, the directory the failed update
+  command ran in, when it ran in this process. Every launch in a process shares
+  one update attempt, which runs in the launch directory of whichever start or
+  resume triggered it, so a session's warning can name another session's
+  directory.
 - `claude_not_found` and `codex_not_found` now say why in `details.cause`: the
   login shell could not be started (with its `errno`, and a message naming the
   shell rather than PATH), or it found no CLI (status 127). They carry none of the

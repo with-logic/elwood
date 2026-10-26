@@ -115,12 +115,14 @@ test.each([
     const primingReads = commands.length;
     expect(primingReads).toBeGreaterThan(0);
     versionReply = versionOutput;
-    expect(await preflight(process.cwd(), false, true)).toMatchObject({
+    const warning = await preflight(process.cwd(), false, true);
+    expect(warning).toMatchObject({
       code: "agent_update_failed",
       errorCode: "update_active",
       installedVersion,
       raw: "",
     });
+    expect(warning, "no update command ran here").not.toHaveProperty("updateCwd");
     // A fresh read happened after the peer-owned attempt, and no local updater ran.
     expect(commands.length).toBeGreaterThan(primingReads);
     expect(commands.some((command) => command.includes(updateCommand))).toBe(false);

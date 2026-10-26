@@ -54,16 +54,22 @@ const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
  * yields `errorCode: "update_active"` and a message saying the update was skipped, with empty
  * diagnostics — there is no errno or updater stderr to report, and retrying is the caller's
  * next startup, not something to drive off this warning.
+ *
+ * `updateCwd` is the directory this process's update command ran in, given only when one ran: a
+ * launch in another directory shares that attempt's outcome (§9.2). A login shell that failed
+ * before running the command ran none, so its warning names no directory.
  */
 export function buildUpdateWarning(
   agent: ElwoodAgentKind,
   installedVersion: string,
   error: unknown,
+  updateCwd?: string,
 ): UpdateFailedWarning {
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
   const skipped = skippedUpdates.get(details["updateReason"]);
+  const ran = updateCwd !== undefined && details["phase"] !== "login_shell";
   return {
     agent,
     source: "lifecycle",
@@ -76,6 +82,7 @@ export function buildUpdateWarning(
     installedVersion,
     errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),
+    ...(ran ? { updateCwd } : {}),
   };
 }
 
