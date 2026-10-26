@@ -62,9 +62,7 @@ export function createTranscriptWatcher(
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router). `sink` is optional here; when
   // omitted the router simply buffers with no sink to flush to.
-  const warnings = createTranscriptWarningRouter(() => sink?.());
-  const route = (warning: Parameters<typeof warnings.route>[0]) => warnings.route(warning);
-  const flushPendingWarnings = () => warnings.flushPendingWarnings();
+  const { route, flushPendingWarnings } = createTranscriptWarningRouter(() => sink?.());
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
     (event) => emitter.emit("activity", activity.activityFromClaudeTranscript(event)),

@@ -39,7 +39,8 @@ const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
 // the CLIs do for hooks, which run as `sh` and `node`), and stays alive. `ignore-term`
 // makes the PTY leader ignore SIGTERM, like a CLI whose graceful shutdown is stuck.
 // `late-on-term` makes it answer SIGTERM by starting a detached `late` process and
-// exiting half a second later, as Codex can start its snapshot shell during a stop.
+// exiting once a table read has shown it (`<dir>/seen`), as Codex can start its
+// snapshot shell during a stop.
 // `with-daemon` runs the leader from a copy of
 // Node named `codex` and has it start, detached and with their real arguments, the
 // Codex 0.164 TUI's app-server `daemon` (which starts an `mcp` server from plain Node)
@@ -55,7 +56,8 @@ const start = (binary, args) => spawn(binary, [__filename, dir, ...args], { deta
 if (mode === "ignore-term") process.on("SIGTERM", () => {});
 if (mode === "late-on-term") process.on("SIGTERM", () => {
   start(process.execPath, ["late"]);
-  setTimeout(() => process.exit(0), 500);
+  const exitOnceSeen = () => (existsSync(dir + "/seen") ? process.exit(0) : setTimeout(exitOnceSeen, 2));
+  exitOnceSeen();
 });
 if (next) start(${JSON.stringify(NODE)}, [next, next === "child" ? "grandchild" : ""]);
 if (mode === "with-daemon") {

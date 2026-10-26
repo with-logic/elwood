@@ -39,8 +39,8 @@ const POST_EXIT_REAP_RETRY_MS = 25;
  * graceful exit can leave them running. One exit latch spans every phase, and once it
  * has seen the exit, nothing more is sent to the leader's pid, which may already belong
  * to another process: an exit during the sweep's table reads cancels the SIGKILL. A
- * sweep or survivor failure is reported like a reap failure, after the leader is still
- * killed and reaped.
+ * sweep or survivor failure is reported like a reap failure, after the leader's group
+ * is still reaped; a leader whose exit was seen is not signaled again.
  */
 export async function terminatePty(
   pty: PtyProcess,

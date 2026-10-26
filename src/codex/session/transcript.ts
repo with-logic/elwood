@@ -47,9 +47,7 @@ export function createCodexTranscriptWatcher(
   // The shared router buffers diagnostics observed BEFORE the sink exists (the watcher
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router).
-  const warnings = createTranscriptWarningRouter(getSink);
-  const route = (warning: Parameters<typeof warnings.route>[0]) => warnings.route(warning);
-  const flushPendingWarnings = () => warnings.flushPendingWarnings();
+  const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
   const reported = new Set<"codex:transcript" | "activity">();
   // TypedEmitter fans out to all listeners before rethrowing. Contain each channel
   // separately so one consumer cannot suppress the projection or stop later polls.
