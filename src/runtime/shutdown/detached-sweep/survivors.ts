@@ -14,17 +14,19 @@
 
 import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
-import { type FailureReason, type SweepFailure, SweepFailures } from "./failures.ts";
+import { type SweepFailure, SweepFailures } from "./failures.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
-import { killSignaledGroups } from "./kill.ts";
+import { killOrResumeSignaledGroups } from "./kill.ts";
 import { type DescendantRecord, watchDescendants } from "./record.ts";
 import {
   newSweepState,
+  recordUnconfirmed,
   restopEscapedGroups,
   type SweepOps,
   type SweepState,
   stopAnchoredGroups,
   stopGroup,
+  sweepOutcome,
   unheldGroups,
   unreachedGroups,
 } from "./rounds.ts";
@@ -34,10 +36,10 @@ export type SurvivorWatch = {
   /** Settles once the read before the SIGTERM has finished, whether or not it succeeded. */
   readonly firstRead: Promise<void>;
   /**
-   * Stops recording, then, once the leader is gone, reaps the recorded processes still
-   * alive and hands the outcome, a failure or `undefined`, to `keep`.
+   * Stops recording, then, if `leaderExited` reports the exit, reaps the recorded
+   * processes still alive and hands the outcome, a failure or `undefined`, to `keep`.
    */
-  readonly finish: (leaderGone: boolean) => Promise<void>;
+  readonly finish: () => Promise<void>;
 };
 
 /**
@@ -55,9 +57,9 @@ export function watchSurvivors(
   const watch = watchDescendants(leaderPid, ops, leaderExited);
   return {
     firstRead: watch.firstRead,
-    finish: async (leaderGone) => {
+    finish: async () => {
       const record = await watch.finish();
-      if (leaderGone) keep(await reapRecordedSurvivors(record, ops));
+      if (leaderExited()) keep(await reapRecordedSurvivors(record, ops));
     },
   };
 }
@@ -66,7 +68,8 @@ export function watchSurvivors(
  * Stops and SIGKILLs the groups holding `record`'s processes that are still alive, and
  * any group they anchor, within the sweep's budget. Resolves to the unresolved failure,
  * or `undefined` once a read converged and every signaled group was killed, or resumed as
- * holding Codex's daemon. A record no read filled (every read failed) fails.
+ * holding Codex's daemon. A record that does not know the leader's tree fails, and one
+ * that knows it empty reads nothing.
  */
 export async function reapRecordedSurvivors(
   record: DescendantRecord,
@@ -74,18 +77,15 @@ export async function reapRecordedSurvivors(
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
 ): Promise<SweepFailure | undefined> {
   const state = newSweepState(new SweepFailures());
-  if (!record.observed) {
-    state.failures.record("process table unreadable", undefined, []);
+  if (!record.known) {
+    state.failures.record("no read showed the leader's tree", undefined, []);
     return state.failures.result();
   }
+  if (record.pids.length === 0) return undefined;
   const deadline = performance.now() + budgetMs;
   await stopSurvivorGroups(record, ops, deadline, state);
-  await killSignaledGroups(ops, state, deadline);
-  for (const [group, error] of state.unstoppable) {
-    if (state.live.has(group))
-      state.failures.record("could not stop a live descendant group", error, [group]);
-  }
-  return state.failures.result();
+  await killOrResumeSignaledGroups(ops, state, deadline);
+  return sweepOutcome(state);
 }
 
 /** Reads round by round until a read converges, as `stopDescendantGroups` does. */
@@ -95,8 +95,9 @@ async function stopSurvivorGroups(
   deadline: number,
   state: SweepState,
 ): Promise<void> {
-  // Marks Codex's daemon among them, as a recorded process may have `exec`'d it since, and
-  // in each group stopped, which its parent's exit could leave under PID 1.
+  // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
+  // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
+  // can leave the daemon in it under PID 1, under no recorded pid.
   const scopeRoots = new Set(record.pids);
   const scope = daemonScope(scopeRoots);
   try {
@@ -104,7 +105,7 @@ async function stopSurvivorGroups(
       for (const group of state.signaledGroupIds) scopeRoots.add(group);
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
-        return unconfirmed(state, "process groups not confirmed stopped by the deadline");
+        return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
       const roots = survivorGroups(record.survivors(table), table);
@@ -118,7 +119,7 @@ async function stopSurvivorGroups(
       }
     }
   } catch (error) {
-    unconfirmed(state, "process table unreadable", error);
+    recordUnconfirmed(state, "process table unreadable", error);
   }
 }
 
@@ -147,8 +148,4 @@ function liveGroups(
     }
   }
   return live;
-}
-
-function unconfirmed(state: SweepState, reason: FailureReason, error?: unknown): void {
-  state.failures.record(reason, error, [...unreachedGroups(state), ...state.unheld]);
 }

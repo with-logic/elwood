@@ -13,7 +13,7 @@
 import { errnoCode } from "../../../core/errors.ts";
 import type { ProcessEntry } from "../process-table.ts";
 import type { DaemonScope } from "../shared-daemon.ts";
-import type { SweepFailures } from "./failures.ts";
+import type { FailureReason, SweepFailure, SweepFailures } from "./failures.ts";
 
 /**
  * The process operations the sweep drives. Scripted tests inject fakes that signal
@@ -74,6 +74,20 @@ export function unreachedGroups(state: SweepState): number[] {
   );
 }
 
+/** Records `reason` against every group not yet confirmed stopped: unreached or unheld. */
+export function recordUnconfirmed(state: SweepState, reason: FailureReason, error?: unknown): void {
+  state.failures.record(reason, error, [...unreachedGroups(state), ...state.unheld]);
+}
+
+/** The sweep's outcome, once each group a read showed live but no SIGSTOP reached fails. */
+export function sweepOutcome(state: SweepState): SweepFailure | undefined {
+  for (const [group, error] of state.unstoppable) {
+    if (state.live.has(group))
+      state.failures.record("could not stop a live descendant group", error, [group]);
+  }
+  return state.failures.result();
+}
+
 /**
  * The signaled groups this read does not hold: each with a live member that this read
  * and the one before did not both show stopped, and any leader's own group while this
@@ -85,8 +99,9 @@ export function unheldGroups(
   leaderPid?: number,
 ): number[] {
   const unheld = new Set<number>();
-  const leaderGone = !table.some((row) => row.pid === leaderPid && !row.zombie);
-  if (leaderPid !== undefined && leaderGone) unheld.add(leaderPid);
+  if (leaderPid !== undefined && !table.some((row) => row.pid === leaderPid && !row.zombie)) {
+    unheld.add(leaderPid);
+  }
   for (const row of table) {
     if (row.zombie || !state.signaledGroupIds.has(row.pgid)) continue;
     if (!(row.stopped && state.stoppedPidsLastRead.has(row.pid))) unheld.add(row.pgid);

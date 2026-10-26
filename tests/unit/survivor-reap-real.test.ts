@@ -12,10 +12,10 @@ import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   type DetachedTree,
   detachedDescendantPids,
-  waitForTreeProcessPid,
   startDetachedTree,
+  waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
-import { pollGone } from "../helpers/process-liveness.ts";
+import { pollGone, processRows } from "../helpers/process-liveness.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
 
 const realOps = osProcessTreeOps;
@@ -43,7 +43,7 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
   tree.pty.kill("SIGTERM");
   await exit;
   await afterExit();
-  await watch.finish(true);
+  await watch.finish();
   return outcomes;
 }
 
@@ -83,9 +83,12 @@ describe("C-LIFE-10 survivor reap on real processes", () => {
       for (const pid of [child, grandchild]) {
         expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
       }
-      const table = await listProcessTable(10_000);
+      const rows = processRows(10_000);
       for (const pid of spared) {
-        expect(table.find((row) => row.pid === pid)).toMatchObject(RUNNING);
+        // Running, and still this tree's process, not a reuse of its pid.
+        const row = rows.find((entry) => entry.pid === pid);
+        expect(row?.command).toContain(tree.dir);
+        expect(row?.stat).toMatch(/^[^TZ]/);
       }
     },
     60_000,

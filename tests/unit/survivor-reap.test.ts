@@ -7,10 +7,7 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
-import {
-  reapRecordedSurvivors,
-  watchSurvivors,
-} from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import { reapRecordedSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
 import {
@@ -101,20 +98,22 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     expect(calls).toEqual(["list"]);
   });
 
-  test("an empty record signals nothing, whatever else the table holds", async () => {
+  test("an empty record reads and signals nothing, whatever else the table holds", async () => {
     // A leader whose reads showed no descendant: every detached process on the host,
     // orphans under PID 1 included, belongs to something else.
     const record = new DescendantRecord();
     record.observe([leaderRow], LEADER);
     const { ops, calls } = scripted([[...orphaned, hook(6000, { ppid: 1 }), hook(1, { ppid: 0 })]]);
     await expect(reapRecordedSurvivors(record, ops)).resolves.toBeUndefined();
-    expect(calls).toEqual(["list"]);
+    expect(calls).toEqual([]);
   });
 
-  test("a record no read filled fails, naming no group", async () => {
+  test("a record that does not know the leader's tree fails, naming no group", async () => {
     const { ops, calls } = scripted([orphaned]);
     const failure = await reapRecordedSurvivors(new DescendantRecord(), ops);
-    expect(failure?.message).toBe("Could not reap detached descendants: process table unreadable");
+    expect(failure?.message).toBe(
+      "Could not reap detached descendants: no read showed the leader's tree",
+    );
     expect(failure?.processGroupIds).toEqual([]);
     expect(calls).toEqual([]);
   });
@@ -136,8 +135,14 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
   });
 
   test("a group never held by the deadline fails, and is still killed", async () => {
-    const run = scripted([], { listProcesses: () => Promise.resolve([hook(5002, { ppid: 1 })]) });
+    const timeouts: number[] = [];
+    const listProcesses = (timeoutMs: number) => {
+      timeouts.push(timeoutMs);
+      return Promise.resolve([hook(5002, { ppid: 1 })]);
+    };
+    const run = scripted([], { listProcesses });
     const failure = await reapRecordedSurvivors(recorded(), ticking(run.ops), 250);
+    expect(timeouts).toEqual([250, 150, 50]); // Each read gets what is left of the deadline.
     expect(failure?.message).toBe(
       "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
     );
@@ -158,40 +163,5 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
   test("a group that refused its stop and then exited is not a failure", async () => {
     const { ops } = scripted([orphaned, []], refusingStop);
     await expect(reapRecordedSurvivors(recorded(), ops)).resolves.toBeUndefined();
-  });
-});
-
-describe("C-LIFE-10 a graceful stop's survivor watch", () => {
-  test("a leader with no reapable group id is not watched", async () => {
-    const { ops, calls } = scripted([orphaned]);
-    const keep = vi.fn();
-    const watch = watchSurvivors(undefined, ops, () => true, keep);
-    await watch.firstRead;
-    await watch.finish(true);
-    expect(calls).toEqual([]);
-    expect(keep).not.toHaveBeenCalled();
-  });
-
-  test("a leader not seen to exit is not reaped after", async () => {
-    const { ops, calls } = scripted([[leaderRow, ...orphaned]]);
-    const keep = vi.fn();
-    const watch = watchSurvivors(LEADER, ops, () => true, keep);
-    await watch.firstRead;
-    await watch.finish(false);
-    expect(calls).toEqual(["list"]);
-    expect(keep).not.toHaveBeenCalled();
-  });
-
-  test("once the leader is gone, the recorded survivors are reaped and the outcome kept", async () => {
-    const { ops, calls } = scripted([
-      [leaderRow, hook(5002), hook(5003, { ppid: 5002, pgid: 5002 })],
-      orphaned,
-    ]);
-    const keep = vi.fn();
-    const watch = watchSurvivors(LEADER, ops, () => true, keep);
-    await watch.firstRead;
-    await watch.finish(true);
-    expect(calls.join(", ")).toBe("list, list, stop 5002, list, list, kill 5002");
-    expect(keep).toHaveBeenCalledExactlyOnceWith(undefined);
   });
 });
