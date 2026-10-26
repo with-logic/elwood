@@ -14,7 +14,10 @@ import { errnoCode } from "../../../core/errors.ts";
 import type { ProcessEntry } from "../process-table.ts";
 import type { SweepFailures } from "./failures.ts";
 
-/** The process operations the sweep drives; injected so tests never touch real processes. */
+/**
+ * The process operations the sweep drives. Scripted tests inject fakes that signal
+ * nothing; the real-process tests pass OS-backed operations that do.
+ */
 export type SweepOps = {
   /** SIGSTOPs the process group `pgid`. */
   readonly stopGroup: (pgid: number) => void;
@@ -26,11 +29,11 @@ export type SweepOps = {
 
 export type SweepState = {
   /** Groups a SIGSTOP returned for, the leader's included: signaled, not yet held. */
-  readonly signaled: Set<number>;
+  readonly signaledGroupIds: Set<number>;
   /** The descendant groups among them, in the order signaled: SIGKILLed in reverse. */
-  readonly signaledDescendants: number[];
+  readonly signaledDescendantGroupIds: number[];
   /** Pids the previous read showed stopped inside a signaled group. */
-  stoppedLastRead: ReadonlySet<number>;
+  stoppedPidsLastRead: ReadonlySet<number>;
   /** Groups whose SIGSTOP failed for a reason other than the group being gone. */
   readonly unstoppable: Map<number, unknown>;
   /** The live descendant groups in the latest read, each with its parents' rows. */
@@ -42,9 +45,9 @@ export type SweepState = {
 
 export function newSweepState(failures: SweepFailures): SweepState {
   return {
-    signaled: new Set(),
-    signaledDescendants: [],
-    stoppedLastRead: new Set(),
+    signaledGroupIds: new Set(),
+    signaledDescendantGroupIds: [],
+    stoppedPidsLastRead: new Set(),
     unstoppable: new Map(),
     live: new Map(),
     unheld: [],
@@ -55,7 +58,7 @@ export function newSweepState(failures: SweepFailures): SweepState {
 /** The live groups in the latest read that the sweep has not tried to stop. */
 export function unreachedGroups(state: SweepState): number[] {
   return [...state.live.keys()].filter(
-    (group) => !(state.signaled.has(group) || state.unstoppable.has(group)),
+    (group) => !(state.signaledGroupIds.has(group) || state.unstoppable.has(group)),
   );
 }
 
@@ -72,8 +75,8 @@ export function unheldGroups(
   const unheld = new Set<number>();
   if (!table.some((row) => row.pid === leaderPid && !row.zombie)) unheld.add(leaderPid);
   for (const row of table) {
-    if (row.zombie || !state.signaled.has(row.pgid)) continue;
-    if (!(row.stopped && state.stoppedLastRead.has(row.pid))) unheld.add(row.pgid);
+    if (row.zombie || !state.signaledGroupIds.has(row.pgid)) continue;
+    if (!(row.stopped && state.stoppedPidsLastRead.has(row.pid))) unheld.add(row.pgid);
   }
   return [...unheld];
 }
@@ -91,8 +94,10 @@ export function stopAnchoredGroups(
   const anchored = [...state.live].filter(
     ([group, parents]) => unreached.has(group) && [...parents].some((p) => isAnchor(p, state)),
   );
-  state.stoppedLastRead = new Set(
-    table.filter((row) => row.stopped && state.signaled.has(row.pgid)).map((row) => row.pid),
+  state.stoppedPidsLastRead = new Set(
+    table
+      .filter((row) => row.stopped && state.signaledGroupIds.has(row.pgid))
+      .map((row) => row.pid),
   );
   for (const [group] of anchored) stopGroup(group, ops, state);
 }
@@ -111,14 +116,14 @@ export function restopEscapedGroups(
   state: SweepState,
 ): void {
   const escaped = table.filter(
-    (row) => !(row.zombie || row.stopped) && state.signaled.has(row.pgid),
+    (row) => !(row.zombie || row.stopped) && state.signaledGroupIds.has(row.pgid),
   );
   for (const group of new Set(escaped.map((row) => row.pgid))) {
     try {
       ops.stopGroup(group);
     } catch (error) {
       if (errnoCode(error) === "ESRCH") continue;
-      const descendant = state.signaledDescendants.includes(group);
+      const descendant = state.signaledDescendantGroupIds.includes(group);
       const reason = descendant
         ? "could not stop a live descendant group"
         : "could not stop the leader's group";
@@ -129,15 +134,19 @@ export function restopEscapedGroups(
 
 /** A parent this read and the one before both showed stopped inside a signaled group. */
 function isAnchor(parent: ProcessEntry, state: SweepState): boolean {
-  return parent.stopped && state.signaled.has(parent.pgid) && state.stoppedLastRead.has(parent.pid);
+  return (
+    parent.stopped &&
+    state.signaledGroupIds.has(parent.pgid) &&
+    state.stoppedPidsLastRead.has(parent.pid)
+  );
 }
 
 /** A group that vanished (`ESRCH`) needs nothing; any other refusal is judged at the end. */
 function stopGroup(group: number, ops: SweepOps, state: SweepState): void {
   try {
     ops.stopGroup(group);
-    state.signaledDescendants.push(group);
-    state.signaled.add(group);
+    state.signaledDescendantGroupIds.push(group);
+    state.signaledGroupIds.add(group);
     state.unheld = [...state.unheld, group];
   } catch (error) {
     if (errnoCode(error) !== "ESRCH") state.unstoppable.set(group, error);

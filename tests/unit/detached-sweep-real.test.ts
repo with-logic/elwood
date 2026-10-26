@@ -16,6 +16,7 @@ import {
   type SetsidPair,
   startBystander,
   startSetsidPair,
+  stopBystander,
   stopPair,
 } from "../helpers/setsid-pair.ts";
 import { readUntil } from "../helpers/table-reads.ts";
@@ -51,7 +52,7 @@ describe("C-LIFE-10 detached sweep on real processes", () => {
         stopped: false,
       });
     } finally {
-      bystander.kill("SIGKILL");
+      await stopBystander(bystander);
       await stopPair(pair);
     }
   }, 60_000);

@@ -62,6 +62,14 @@ export function startBystander(): ChildProcess {
   });
 }
 
+/** SIGKILLs a bystander and waits until node has seen it exit, so it never outlives its test. */
+export async function stopBystander(bystander: ChildProcess): Promise<void> {
+  if (hasExited(bystander)) return;
+  const exited = once(bystander, "exit");
+  bystander.kill("SIGKILL");
+  await exited;
+}
+
 /** Whether node has seen this handle's process exit (after which its pid may be reused). */
 export function hasExited(handle: ChildProcess): boolean {
   return handle.exitCode !== null || handle.signalCode !== null;

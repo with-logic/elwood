@@ -7,7 +7,11 @@
 import { errnoCode } from "../../../core/errors.ts";
 
 /** A sweep that could not confirm every group reaped, naming (some of) those groups. */
-export type SweepFailure = Error & { readonly processGroupIds: readonly number[] };
+export type SweepFailure = Error & {
+  readonly processGroupIds: readonly number[];
+  /** The first errno token among the failures, when one applies. */
+  readonly code?: string;
+};
 
 /** At most this many process-group ids travel with a failure: enough to inspect, bounded. */
 export const MAX_REPORTED_GROUPS = 16;

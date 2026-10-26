@@ -82,7 +82,7 @@ describe("C-LIFE-10 detached sweep convergence", () => {
     expect(run.calls.join(", ")).toBe("stop 5000, list, list, list");
   });
 
-  test("an exit seen after a read that converged is a clean sweep", async () => {
+  test("a read that converges returns before the exit check, so an exit during it is clean", async () => {
     const run = scripted([[leaderRow]]);
     const { ops, exited } = exitDuring(run.ops, 2);
     await expect(sweepDetachedGroups(LEADER, ops, exited)).resolves.toBeUndefined();

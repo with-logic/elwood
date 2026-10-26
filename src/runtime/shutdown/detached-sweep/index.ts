@@ -45,12 +45,12 @@ export const DETACHED_SWEEP_BUDGET_MS = 3_000;
  * The leader's own group is left to the group reap. A leader whose exit was observed
  * before the sweep, or whose group refuses its SIGSTOP because it already exited (see
  * `leaderStopFailure`), exited before Elwood signaled it: nothing more is sent and nothing
- * fails. Otherwise
- * `leaderExited` is read after each table read: once the leader has exited its pid may
- * be reused, so the sweep stops no further group and never signals the leader's group
- * again, though it still SIGKILLs the groups it already signaled. These are failures:
- * a leader's group that refuses its stop, so no descendant group is signaled; an
- * unreadable table; the deadline passing, or the leader exiting, before a read
+ * fails. Otherwise `leaderExited` is read after each table read that does not converge;
+ * a read that converges ends the walk before that check. Once the leader has exited its
+ * pid may be reused, so the sweep stops no further group and never signals the leader's
+ * group again, though it still SIGKILLs the groups it already signaled. These are
+ * failures: a leader's group that refuses its stop, so no descendant group is signaled;
+ * an unreadable table; the deadline passing, or the leader exiting, before a read
  * converged; and a live group that could not be stopped or killed.
  */
 export async function sweepDetachedGroups(
@@ -67,7 +67,7 @@ export async function sweepDetachedGroups(
   } catch (error) {
     return leaderStopFailure(error, leaderPid, ops, deadline, state);
   }
-  state.signaled.add(leaderPid);
+  state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
   await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
   await killSignaledGroups(ops, state, deadline);

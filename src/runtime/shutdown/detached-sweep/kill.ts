@@ -18,7 +18,7 @@ export async function killSignaledGroups(
   deadline: number,
 ): Promise<void> {
   const refused = new Map<number, unknown>();
-  for (const group of [...state.signaledDescendants].reverse()) {
+  for (const group of [...state.signaledDescendantGroupIds].reverse()) {
     try {
       ops.killGroup(group);
     } catch (error) {
@@ -37,7 +37,7 @@ export async function killSignaledGroups(
 }
 
 /** A fresh read's groups with a live member, or why there is none: no time, or its error. */
-export type Confirmation =
+type Confirmation =
   | { readonly kind: "read"; readonly live: ReadonlySet<number> }
   | { readonly kind: "failed"; readonly error: unknown }
   | { readonly kind: "no time" };
