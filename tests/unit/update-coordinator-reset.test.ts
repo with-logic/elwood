@@ -38,8 +38,13 @@ async function loadWithUserHome(home: string) {
   // Before any update can run: the update module must be a new one, whose lease module's default
   // root is the fake home's, not the real one.
   const root = join(home, "Library", "Caches", "elwood", `${userInfo().uid}-updates`);
-  if (once === preloadOnce || lock.updateLockPath("claude") !== join(root, "claude.lock")) {
-    throw new Error(`the update module's default lease root is not under ${home}`);
+  if (once === preloadOnce) {
+    throw new Error(
+      "the update module is the preload's, bound to the real node:os: nothing was run",
+    );
+  }
+  if (lock.updateLockPath("claude") !== join(root, "claude.lock")) {
+    throw new Error(`the default lease root is not under ${home}: nothing was run`);
   }
   return {
     preflight: { claude: claude.preflightClaude, codex: codex.preflightCodex },

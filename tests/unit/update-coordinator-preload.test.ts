@@ -1,12 +1,14 @@
 /**
  * Every test starts with autoupdates refused until it sets an update coordinator of its own
- * (PRD §9.2, §12): the preload resets the update module as it loads, a re-import after
- * `vi.resetModules()` included, and after every test. Each test first checks that the refusing
- * coordinator is the active one, and only then runs a preflight with autoupdate on, so a broken
- * preload fails that check before any update could reach the developer's real lease root.
+ * (PRD §9.2, §12): the preload resets the update module as it loads, keeps that one module for a
+ * re-import after `vi.resetModules()`, and resets it again after every test.
  *
- * The tests run in order: the first sees the state the update module loaded with, and the third
- * the state the second leaves behind.
+ * The tests run in order. The first sees the state the update module loaded with. The second
+ * sets a coordinator, and checks only that it replaces the refusal. The third sees what the
+ * preload's reset after the second leaves, and the fourth re-imports the preflight. Each of the
+ * first, third and fourth checks that the refusing coordinator is the active one, and only then
+ * runs a preflight with autoupdate on, so a broken preload fails that check before any update
+ * could reach the developer's real lease root.
  */
 
 import { afterEach, expect, test, vi } from "vitest";
@@ -67,13 +69,13 @@ test("the next test starts with updates refused again", async () => {
 test("a re-import after vi.resetModules() starts with updates refused", async () => {
   vi.resetModules();
   // The update module first, so the preflight loaded after it is bound to this one instance.
-  const freshOnce = await import("../../src/runtime/update/once.ts");
+  const preloadOnce = await import("../../src/runtime/update/once.ts");
   const freshSeams = await import("../../src/runtime/seams.ts");
   const fresh = await import("../../src/claude/preflight.ts");
   // The preflight is loaded anew. The update module it is bound to is the preload's, which a
   // module reset does not replace, so it is still refusing.
   expect(fresh === claude).toBe(false);
-  expect(await preflightIfRefused({ claude: fresh, once: freshOnce, seams: freshSeams })).toEqual(
+  expect(await preflightIfRefused({ claude: fresh, once: preloadOnce, seams: freshSeams })).toEqual(
     refused,
   );
 });
