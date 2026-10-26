@@ -10,7 +10,7 @@
  * once, for the auth copy, and never written.
  */
 
-import { chmodSync, copyFileSync, existsSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, rmSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { privateTempDir } from "../helpers/private-temp.ts";
@@ -41,9 +41,18 @@ export function copyCodexAuth(home: string): void {
  */
 export const defaultCodexHome = privateTempDir("elwood_e2e_codex_home-", userCodexHome);
 // Codex may have started an app-server daemon for this home, which outlives the test run.
+// A home that something may still run from is kept, and the run fails. The hook reports
+// that instead of throwing: a throwing `exit` listener skips every listener after it, and
+// those remove the run's other private directories.
 process.on("exit", () => {
-  stopProcessesUnder(defaultCodexHome);
-  rmSync(defaultCodexHome, { recursive: true, force: true });
+  try {
+    stopProcessesUnder(defaultCodexHome);
+    rmSync(defaultCodexHome, { recursive: true, force: true });
+  } catch (error) {
+    process.exitCode = 1;
+    const reason = error instanceof Error ? error.message : String(error);
+    writeSync(2, `Kept the e2e Codex home ${defaultCodexHome}: ${reason}\n`);
+  }
 });
 if (existsSync(userCodexAuthPath)) copyCodexAuth(defaultCodexHome);
 process.env["CODEX_HOME"] = defaultCodexHome;
