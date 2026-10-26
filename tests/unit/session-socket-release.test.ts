@@ -4,46 +4,31 @@
  * the launch's socket file and then the home it emptied, so a session that is never torn
  * down leaves nothing in the OS temp dir. A launch that ends while an overlapping launch
  * of the same session is live keeps the home that launch's socket is in. Both adapters
- * run their real hook bridges, with socket homes under a short private root (see the
- * socket-leak suites for why the root is short and scoped to the socket-home module).
+ * run their real hook bridges, with socket homes under the fake helpers' short private
+ * root (`fake-socket-homes.ts`).
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
-import {
-  resetSocketHomeRootForTests,
-  setSocketHomeRootForTests,
-} from "../../src/state/socket-home.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
+import { isolateFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
 import { socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 
-let privateRoot: string | undefined;
 const started: { teardown(): Promise<void> }[] = [];
 
 afterEach(async () => {
-  // Even a test that failed before its own stop closes every bridge it started, before the
-  // seams are reset and the root holding their sockets is removed.
+  // Even a test that failed before its own stop closes every session it started, before the
+  // seams are reset and the helpers remove the root holding their sockets.
   await Promise.allSettled(started.splice(0).map((session) => session.teardown()));
   claude.resetFakes();
   codex.resetFakes();
-  resetSocketHomeRootForTests();
-  if (privateRoot) rmSync(privateRoot, { recursive: true, force: true });
-  privateRoot = undefined;
 });
 
 /** `session`, torn down after the test however it ends. */
 function tracked<T extends { teardown(): Promise<void> }>(session: T): T {
   started.push(session);
   return session;
-}
-
-/** Mints socket homes under a short private root, so the bound path clears macOS's cap. */
-function isolateSocketHomes(): string {
-  privateRoot = mkdtempSync("/tmp/elwood-sockhome-");
-  setSocketHomeRootForTests(privateRoot);
-  return privateRoot;
 }
 
 const adapters = [
@@ -82,7 +67,7 @@ for (const { agent, helpers, start, resume, recordAgentSessionId } of adapters) 
     ] as const)(`C-STATE-12 ${agent} %s removes the socket home it emptied`, async (verb) => {
       helpers.installFakes();
       const cwd = helpers.tempDir();
-      const root = isolateSocketHomes();
+      const root = isolateFakeSocketHomes();
       const session = await start(cwd);
       expect(socketFilesIn(root)).toHaveLength(1);
       await session[verb]();
@@ -92,7 +77,7 @@ for (const { agent, helpers, start, resume, recordAgentSessionId } of adapters) 
     test(`C-STATE-12 ${agent} exiting on its own removes the socket home it emptied`, async () => {
       helpers.installFakes();
       const cwd = helpers.tempDir();
-      const root = isolateSocketHomes();
+      const root = isolateFakeSocketHomes();
       await start(cwd);
       expect(socketFilesIn(root)).toHaveLength(1);
       helpers.ptys[0]!.emitExit({ exitCode: 0 });
@@ -102,7 +87,7 @@ for (const { agent, helpers, start, resume, recordAgentSessionId } of adapters) 
     test(`C-STATE-12 ${agent} stop keeps the home a live overlapping launch's socket is in`, async () => {
       helpers.installFakes();
       const cwd = helpers.tempDir();
-      const root = isolateSocketHomes();
+      const root = isolateFakeSocketHomes();
       const first = await start(cwd);
       await recordAgentSessionId(first.elwoodSessionId, cwd);
       const second = await resume(first.elwoodSessionId, cwd); // overlaps the live first

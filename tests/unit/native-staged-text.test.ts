@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { claudeInputStaged } from "../../src/claude/composer/staged-input.ts";
 import { codexInputStaged } from "../../src/codex/screen/staged-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
-import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 import {
   claudeComposer,
   claudeTty,
@@ -26,9 +26,7 @@ for (const agent of ["claude", "codex"] as const) {
       );
       try {
         await terminal.writeOutput(`\u001b[${frame.rows};1H${frame.baseY === 1 ? "\r\n" : ""}`);
-        await terminal.writeOutput(
-          `\u001b[2J\u001b[H${frame.text.replaceAll("\n", "\r\n")}\u001b[${frame.cursorY + 1};${frame.cursorX + 1}H\u001b[?25${frame.visible ? "h" : "l"}\u001b]0;${frame.title}\u0007`,
-        );
+        await terminal.writeOutput(nativeFrameOutput(frame));
         terminal.xterm.scrollToLine(frame.viewportY);
         expect(terminal.xterm.buffer.active.baseY).toBe(frame.baseY);
         expect(terminal.xterm.buffer.active.viewportY).toBe(frame.viewportY);
