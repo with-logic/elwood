@@ -18,11 +18,11 @@ import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
   detachedDescendantPids,
   detachedShape,
-  extraPid,
   holdDir,
   killTreeIn,
   observedProcessShape,
   startDetachedTree,
+  waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
 import { killGroupsWhoseCommandHas, pollGone, processRows } from "../helpers/process-liveness.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
@@ -66,16 +66,16 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
 
   // Linux `ps` shows the executable's name as the command name, not argv[0]. The install
   // removed is the e2e suite's case: it removed homes whose daemons kept running.
-  for (const install of ["in place", "removed"]) {
+  for (const install of ["in place", "removed"] as const) {
     test.skipIf(process.platform !== "darwin")(
       `kill never signals Codex's app-server daemon or its updater loop, its install ${install}`,
       async () => {
         const tree = startDetachedTree("with-daemon");
         const [child, grandchild] = await detachedDescendantPids(tree);
         const [daemon, updater, mcp] = await Promise.all([
-          extraPid(tree, "daemon"),
-          extraPid(tree, "updater"),
-          extraPid(tree, "mcp"),
+          waitForTreeProcessPid(tree, "daemon"),
+          waitForTreeProcessPid(tree, "updater"),
+          waitForTreeProcessPid(tree, "mcp"),
         ]);
         // As the Codex 0.164 TUI starts them: setsid children of its own, from its install.
         expect(await observedProcessShape([daemon, updater, mcp])).toEqual({

@@ -93,13 +93,16 @@ export function startDetachedTree(
   return { pty, dir };
 }
 
-/** Waits for the pid file of `name`, a process a `with-daemon` or `becomes-daemon` leader starts. */
-export async function extraPid(
+/**
+ * Waits, up to `PID_FILE_WAIT_TIMEOUT_MS`, for the pid file of `processName`, a process a
+ * `with-daemon` or `becomes-daemon` leader starts, and resolves to its pid.
+ */
+export async function waitForTreeProcessPid(
   tree: DetachedTree,
-  name: "daemon" | "mcp" | "updater" | "becoming",
+  processName: "daemon" | "mcp" | "updater" | "becoming",
 ): Promise<number> {
-  const pid = await waitForPid(tree.dir, name, PID_FILE_WAIT_TIMEOUT_MS);
-  if (pid === undefined) throw new Error(`the ${name} process never started`);
+  const pid = await waitForPid(tree.dir, processName, PID_FILE_WAIT_TIMEOUT_MS);
+  if (pid === undefined) throw new Error(`the ${processName} process never wrote its pid file`);
   return pid;
 }
 

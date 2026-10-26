@@ -17,8 +17,8 @@ import { osProcessTreeOps, SessionReaper } from "../../src/runtime/shutdown/reap
 import {
   type DetachedTree,
   detachedDescendantPids,
-  extraPid,
   startDetachedTree,
+  waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
 import { pollGone, processRows } from "../helpers/process-liveness.ts";
 
@@ -50,7 +50,7 @@ describe("C-LIFE-10 Codex's daemon, stopped as it starts (real processes)", () =
     async () => {
       const tree = startDetachedTree("becomes-daemon");
       const [child, grandchild] = await detachedDescendantPids(tree);
-      const becoming = await extraPid(tree, "becoming");
+      const becoming = await waitForTreeProcessPid(tree, "becoming");
       const command = () => processRows(10_000).find((row) => row.pid === becoming)?.command;
       expect(command()).not.toContain(DAEMON_DIR);
       // It becomes the daemon after the walk read its path, before the walk's SIGSTOP.
@@ -76,7 +76,7 @@ describe("C-LIFE-10 Codex's daemon, stopped as it starts (real processes)", () =
     async () => {
       const tree = startDetachedTree("becomes-daemon");
       const [child] = await detachedDescendantPids(tree);
-      const becoming = await extraPid(tree, "becoming");
+      const becoming = await waitForTreeProcessPid(tree, "becoming");
       let leaderKilled = false;
       // The sequence: the walk stops the group of the process about to become the daemon,
       // which then takes the daemon's path. Before the walk's next read, something else

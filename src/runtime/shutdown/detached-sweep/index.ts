@@ -1,7 +1,7 @@
 /**
  * Stops and SIGKILLs every process group a LIVE PTY leader's linked descendants have
- * moved into, before Elwood kills the leader, sparing those of Codex's shared daemon
- * (below). Implements PRD §5.3 and §9.4 (C-LIFE-10).
+ * moved into, before Elwood kills the leader, but Codex's shared daemon, its updater,
+ * and what they started (below). Implements PRD §5.3 and §9.4 (C-LIFE-10).
  * Claude and Codex start each hook command with `setsid()`, so a hook in flight at
  * teardown sits in its own session and process group: the leader-group SIGKILL misses
  * it, and once the leader dies the hook is reparented to PID 1 and nothing links it to
@@ -17,11 +17,12 @@
  * signaled group, the leader's included. A read that shows a signaled group's member
  * running stops that group again. With no hook in flight that takes two reads; each
  * level of nesting adds two more. Then the signaled groups are SIGKILLed deepest first
- * (`kill.ts`). Codex's shared daemon and its updater, and what they started, are the
- * session's no more than the user's: the walk never follows them (`shared-daemon.ts`),
- * and resumes with SIGCONT, never SIGKILLs, a group it stopped as its process became one,
- * even once the leader's exit left it under PID 1. (A parent that ignores SIGCHLD
- * would have its exited children reaped while stopped; the CLIs and hook shells don't.)
+ * (`kill.ts`). Codex's app-server daemon and its updater loop are shared by every Codex
+ * on the same `CODEX_HOME`, the user's own included, so the walk never descends into
+ * either: neither one nor anything it started is killed (`shared-daemon.ts`). A group it
+ * stopped as its process became one is resumed with SIGCONT, never SIGKILLed, even once
+ * the leader's exit left it under PID 1. (A parent that ignores SIGCHLD would have its
+ * exited children reaped while stopped; the CLIs and hook shells don't.)
  */
 
 import { errnoCode } from "../../../core/errors.ts";
