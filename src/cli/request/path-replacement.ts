@@ -12,6 +12,7 @@
  * safely fails with a `PathInspectionError` that names the link.
  */
 
+import { isUtf8 } from "node:buffer";
 import type { Stats } from "node:fs";
 import { lstat, readlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
@@ -31,8 +32,9 @@ const GROUP_WRITE = 0o020;
 const OTHER_WRITE = 0o002;
 
 /**
- * The reason another user could redirect `path`, naming the directory or link that lets them,
- * or `undefined` when the owner and mode-bit checks find none. The workspace itself is the
+ * The first reason another user could redirect `path`, naming the directory or link that lets
+ * them, or `undefined` when the owner and mode-bit checks find none. A link the walk cannot
+ * follow throws a `PathInspectionError`, even past such a reason. The workspace itself is the
  * caller's to check.
  */
 export async function pathReplacementReason(
@@ -43,7 +45,9 @@ export async function pathReplacementReason(
   let fault = lookupFault(await lstat(current), user, current);
   const pending = namesOf(path);
   let links = 0;
-  for (let name = pending.pop(); fault === undefined && name !== undefined; name = pending.pop()) {
+  // The walk goes on past the first fault, which it keeps, so a link it cannot follow is still
+  // named rather than left for `stat` to fail on.
+  for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
     if (name === "..") {
       current = dirname(current);
       continue;
@@ -51,7 +55,7 @@ export async function pathReplacementReason(
     const next = join(current, name);
     const info = await lstat(next);
     if (info.isSymbolicLink()) {
-      fault = ownerFault(info, user, next, "link");
+      fault ??= ownerFault(info, user, next, "link");
       if (++links > MAX_LINKS)
         throw new PathInspectionError(
           `symbolic link '${next}' is past the ${MAX_LINKS} links a path may follow, as in a loop; fix the links, or choose a workspace reached without them`,
@@ -62,7 +66,7 @@ export async function pathReplacementReason(
       continue;
     }
     // The last name is the workspace; every other one is a directory the next name is looked in.
-    if (pending.length > 0) fault = lookupFault(info, user, next);
+    if (pending.length > 0) fault ??= lookupFault(info, user, next);
     current = next;
   }
   return fault;
@@ -105,12 +109,11 @@ function ownerFault(
  */
 async function linkTarget(path: string): Promise<string> {
   const bytes = await readlink(path, { encoding: "buffer" });
-  const target = bytes.toString("utf8");
-  if (!Buffer.from(target, "utf8").equals(bytes))
+  if (!isUtf8(bytes))
     throw new PathInspectionError(
       `symbolic link '${path}' does not point to a UTF-8 path; point it at one, or choose a workspace reached without it`,
     );
-  return target;
+  return bytes.toString("utf8");
 }
 
 /** The names of `path`, last first, so the next one to resolve is popped. */

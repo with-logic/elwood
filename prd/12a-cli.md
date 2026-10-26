@@ -263,7 +263,7 @@ stored as given. A link whose target is not UTF-8, or a path that follows more
 than 40 links, fails as uninspectable, naming the link.
 Workspaces under `/tmp` and the macOS temporary directories pass, those being
 sticky or the user's own; `/tmp` itself, owned by root, fails the ownership
-rule.
+rule for every user but root.
 
 ### 12A.6 Same-terminal head mode
 
