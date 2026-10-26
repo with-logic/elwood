@@ -4,14 +4,14 @@
  * in-progress oversized discard, so stale bytes never prefix the new file's first record.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { BoundedTranscriptCursor } from "../../src/core/transcript/cursor.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 function transcript(initial: string): string {
-  const path = join(mkdtempSync(join(tmpdir(), "elwood-cursor-")), "t.jsonl");
+  const path = join(tempDir("elwood-cursor-"), "t.jsonl");
   writeFileSync(path, initial);
   return path;
 }
