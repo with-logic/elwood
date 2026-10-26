@@ -108,7 +108,7 @@ export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProc
   };
 }
 
-const QUIET_ROW = { ppid: 1, zombie: false, stopped: true, name: "" };
+const QUIET_ROW = { ppid: 1, zombie: false, stopped: true, name: "", shared: false };
 
 export function resetProcessTreeOpsForTests(): void {
   activeOps = osProcessTreeOps;
