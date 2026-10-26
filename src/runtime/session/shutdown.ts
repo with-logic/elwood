@@ -14,7 +14,7 @@ import { runTeardownSteps } from "../shutdown/teardown.ts";
 import { terminatePty } from "../shutdown/terminate.ts";
 import type { StatusEvidenceKind } from "../status-evidence.ts";
 import type { SessionReapPolicy } from "./reap.ts";
-import { terminateThenCleanUp } from "./shutdown-cleanup.ts";
+import { shutdownAttemptThenCleanUp } from "./shutdown-cleanup.ts";
 
 /** Evidence kinds an explicit shutdown submits once it drives the PTY to exit. */
 export type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
@@ -101,7 +101,7 @@ function mustNotSignal(host: ShutdownHost, ctx: ShutdownContext): boolean {
  * a typed error on failure and leaves the reap retryable; a first, live shutdown marks
  * signal ownership, terminates the PTY (which reaps on every path), and records
  * shutdown evidence (C-LIFE-10). Either way runtime cleanup follows, even after a
- * failed termination or reap (see `terminateThenCleanUp`).
+ * failed termination or reap (see `shutdownAttemptThenCleanUp`).
  */
 export async function runShutdown(
   host: ShutdownHost,
@@ -113,11 +113,11 @@ export async function runShutdown(
   const cleanupRuntime = () => host.cleanupRuntime();
   if (mustNotSignal(host, ctx)) {
     // Already signaled / terminal: no new signal, no evidence to submit.
-    return terminateThenCleanUp(() => host.reapPolicy.orThrow(), cleanupRuntime);
+    return shutdownAttemptThenCleanUp(() => host.reapPolicy.orThrow(), cleanupRuntime);
   }
   ctx.markSignaled();
   const terminate = () => terminatePty(host.pty, signal, host.reapPolicy.reaper);
-  await terminateThenCleanUp(terminate, cleanupRuntime);
+  await shutdownAttemptThenCleanUp(terminate, cleanupRuntime);
   host.submitEvidence(evidence);
 }
 

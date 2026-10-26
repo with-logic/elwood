@@ -6,11 +6,11 @@
  * the failure.
  */
 
-import { createConnection } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { bridgeAccepts } from "../helpers/fake-pty.ts";
 import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import {
   installFakes,
@@ -25,18 +25,6 @@ afterEach(() => {
   vi.useRealTimers();
   resetFakes();
 });
-
-/** Whether the session's hook bridge still accepts a connection on its socket. */
-function bridgeAccepts(socketPath: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const client = createConnection({ path: socketPath });
-    client.once("connect", () => {
-      client.destroy();
-      resolve(true);
-    });
-    client.once("error", () => resolve(false));
-  });
-}
 
 /** A group killer that always throws EPERM — never a real system kill (injected fake). */
 function throwingKiller(): void {
