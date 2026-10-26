@@ -25,7 +25,7 @@ afterEach(() => {
 // 5010 has the daemon's shape: a `codex` group leader the TUI started. Its path is read
 // as the TUI's until it `exec`s the daemon, after the walk stopped its group.
 const forked = hook(5010, { name: "codex" });
-const execd = hook(5010, { name: "codex", sharedDaemon: true });
+const execd = hook(5010, { name: "codex", shared: true });
 const tables = [
   [leaderRow, forked],
   [leaderRow, forked],

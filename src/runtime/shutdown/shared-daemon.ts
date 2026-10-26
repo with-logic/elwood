@@ -1,11 +1,13 @@
 /**
- * Finds Codex's managed app-server daemon in a process-table read, the one descendant
- * the detached walk never follows (PRD §5.3 and §9.4, C-LIFE-10). Codex 0.158 and later
- * can start, for its `CODEX_HOME`, an app-server daemon and its updater loop from the
- * copy of the CLI it installs under `$CODEX_HOME/packages/app-server-daemon/`, each in a
- * session of its own and a child of the TUI that started it until that TUI exits: the
- * shape of a hook. But every Codex on that home talks to it, the user's own included,
- * so neither it nor anything it started is the session's to end (docs/cli-behavior.md).
+ * Finds the processes of Codex's managed app-server daemon install in a process-table
+ * read: the one thing under a session the detached walk never follows or kills (PRD §5.3
+ * and §9.4, C-LIFE-10). Codex 0.158 and later can start, for its `CODEX_HOME`, an
+ * app-server daemon and its updater loop from the copy of the CLI it installs under
+ * `$CODEX_HOME/packages/app-server-daemon/`, each in a session of its own and a child of
+ * the TUI that started it until that TUI exits: the shape of a hook. But every Codex on
+ * that home talks to the daemon, the user's own included, so neither process nor anything
+ * it started is the session's to end (docs/cli-behavior.md). The walk sees only the
+ * `shared` mark set here, and the groups `groupIdsToResume` names.
  *
  * Codex starts both by their full paths, which macOS `ps` shows as `comm` (`argv[0]`).
  * Each `ps` the host spawns while a session ends costs about as much as its table read,
@@ -30,64 +32,87 @@ import {
 const DAEMON_INSTALL_DIR = "/packages/app-server-daemon/";
 /** The short name of the Codex binary, the TUI's and the daemon's alike. */
 const CODEX = "codex";
+/** The shortest path-read timeout: Node's `execFile` takes a timeout of 0 as none at all. */
+const MIN_PATH_READ_TIMEOUT_MS = 1;
 
 /**
- * Where a walk's reads mark Codex's daemon: among `roots` and their descendants. `known`
- * holds each process a read found to be one, by pid, parent, and group, so no later read
- * of the walk probes it again. Only a daemon is remembered, so a stale entry can only
- * spare a process, never expose one, and a process that `exec`s the daemon is found.
+ * Where a walk's reads mark the daemon install: among `roots` and their descendants. The
+ * walk passes the set it adds each group it stops to, so a process it stopped is read
+ * itself even after its parent's exit leaves it under PID 1. `known` holds each process a
+ * read found to be one, by pid, parent, and group, so no later read of the walk probes it
+ * again. Only those are remembered, so a stale entry can only spare a process, never
+ * expose one, and a process that `exec`s the daemon is found: until a read finds it, a
+ * candidate is read again on every read.
  */
-export type DaemonScope = { readonly roots: readonly number[]; readonly known: Set<string> };
+export type DaemonScope = { readonly roots: ReadonlySet<number>; readonly known: Set<string> };
 
-/** A fresh scope for one walk from `roots`. */
-export function daemonScope(roots: readonly number[]): DaemonScope {
+/** A fresh scope for one walk from `roots`, which it reads as they stand at each read. */
+export function daemonScope(roots: ReadonlySet<number>): DaemonScope {
   return { roots, known: new Set() };
 }
 
 /**
- * The shared table read, with each of Codex's daemons in `scope` marked `sharedDaemon`,
- * all within `timeoutMs`. Without a scope, nothing is marked.
+ * The shared table read, with each process of Codex's daemon install in `scope` marked
+ * `shared`, all within `timeoutMs`. Without a scope, nothing is marked.
  */
-export async function listMarkingSharedDaemons(
+export async function listMarkingShared(
   timeoutMs: number,
-  scope: DaemonScope = daemonScope([]),
+  scope: DaemonScope = daemonScope(new Set()),
   list: (timeoutMs: number) => Promise<readonly ProcessEntry[]> = listProcessTableShared,
   run: PsRunner = runFile,
 ): Promise<readonly ProcessEntry[]> {
   const deadline = performance.now() + timeoutMs;
   const table = await list(timeoutMs);
-  const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()));
-  return markSharedDaemons(table, scope, run, psRunOptions(remainingMs));
+  if (scope.roots.size === 0) return table;
+  const remainingMs = Math.ceil(deadline - performance.now());
+  const options = psRunOptions(Math.max(MIN_PATH_READ_TIMEOUT_MS, remainingMs));
+  return markShared(table, scope, run, options);
 }
 
-/** `table`, each daemon in `scope` marked; one exited by its read (`ps` exits 1) is none. */
-async function markSharedDaemons(
+/** `table`, each install process in `scope` marked; one exited by its read is none. */
+async function markShared(
   table: readonly ProcessEntry[],
   { roots, known }: DaemonScope,
   run: PsRunner,
   options: PsRunOptions,
 ): Promise<readonly ProcessEntry[]> {
-  // A root a read missed is taken for the TUI it was: only a path read confirms a daemon.
-  const names = new Map([...roots.map((root) => [root, CODEX] as const), ...processNames(table)]);
-  const candidates = reachable(table, roots).filter((row) => couldBeDaemon(row, names));
+  // A root a read missed is taken for a `codex`, as the TUI was: only a path read confirms.
+  const names = new Map([...[...roots].map((root) => [root, CODEX] as const), ...nameMap(table)]);
+  const candidates = reachable(table, roots).filter((row) => couldBeFromInstall(row, names));
   const key = (row: ProcessEntry) => `${row.pid} ${row.ppid} ${row.pgid}`;
   const unknown = candidates.filter((row) => !known.has(key(row)));
   const probe = async (row: ProcessEntry) => ({ row, path: await pathOf(row.pid, run, options) });
   for (const { row, path } of await Promise.all(unknown.map(probe))) {
     if (path.includes(DAEMON_INSTALL_DIR)) known.add(key(row));
   }
-  const daemons = new Set(candidates.filter((row) => known.has(key(row))).map((row) => row.pid));
-  if (daemons.size === 0) return table;
-  return table.map((row) => (daemons.has(row.pid) ? { ...row, sharedDaemon: true } : row));
+  const found = new Set(candidates.filter((row) => known.has(key(row))).map((row) => row.pid));
+  if (found.size === 0) return table;
+  return table.map((row) => (found.has(row.pid) ? { ...row, shared: true } : row));
 }
 
-/** Each process's short name, by pid, as `couldBeDaemon` takes them. */
-export function processNames(table: readonly ProcessEntry[]): ReadonlyMap<number, string> {
+/**
+ * The groups `table` shows holding a process marked `shared`, or a process that read did
+ * not show stopped with the shape of one: it could still `exec` the daemon, as a stopped
+ * process cannot. A walk resumes, rather than kills, any of these it stopped.
+ */
+export function groupIdsToResume(table: readonly ProcessEntry[]): ReadonlySet<number> {
+  const names = nameMap(table);
+  const rows = table.filter(
+    (row) => row.shared || (!row.stopped && couldBeFromInstall(row, names)),
+  );
+  return new Set(rows.map((row) => row.pgid));
+}
+
+/** Each process's short name, by pid, as `couldBeFromInstall` takes them. */
+function nameMap(table: readonly ProcessEntry[]): ReadonlyMap<number, string> {
   return new Map(table.map((row) => [row.pid, row.name]));
 }
 
-/** Whether `row` has the daemon's shape in a table read; only its path can confirm it. */
-export function couldBeDaemon(row: ProcessEntry, names: ReadonlyMap<number, string>): boolean {
+/**
+ * Whether `row` has the shape of the daemon or its updater in a table read; only its path
+ * can confirm it.
+ */
+function couldBeFromInstall(row: ProcessEntry, names: ReadonlyMap<number, string>): boolean {
   const live = !row.zombie;
   const runsCodex = row.name === CODEX;
   const leadsOwnGroup = row.pgid === row.pid;
@@ -99,10 +124,10 @@ export function couldBeDaemon(row: ProcessEntry, names: ReadonlyMap<number, stri
  * The rows of `roots` and of every process descending from one, by parent pid. A root
  * missing from the read still parents its children, as in `detachedDescendantGroups`.
  */
-function reachable(table: readonly ProcessEntry[], roots: readonly number[]): ProcessEntry[] {
+function reachable(table: readonly ProcessEntry[], roots: ReadonlySet<number>): ProcessEntry[] {
   const children = childrenByParent(table);
   const found = new Map<number, ProcessEntry>();
-  const pending = table.filter((row) => roots.includes(row.pid) || roots.includes(row.ppid));
+  const pending = table.filter((row) => roots.has(row.pid) || roots.has(row.ppid));
   for (let row = pending.pop(); row !== undefined; row = pending.pop()) {
     if (found.has(row.pid)) continue;
     found.set(row.pid, row);

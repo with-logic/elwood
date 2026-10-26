@@ -36,8 +36,9 @@ const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
 
 // `hold.cjs <dir> <name> [next] [mode] [...]`: records its pid as <dir>/<name>.pid,
 // optionally starts `next` DETACHED from plain Node (Node's `detached` is `setsid()`, as
-// the CLIs do for hooks, which run as `sh` and `node`), and stays alive. `ignore-term` makes the PTY leader ignore SIGTERM, like
-// a CLI whose graceful shutdown is stuck. `with-daemon` runs the leader from a copy of
+// the CLIs do for hooks, which run as `sh` and `node`), and stays alive. `ignore-term`
+// makes the PTY leader ignore SIGTERM, like a CLI whose graceful shutdown is stuck.
+// `with-daemon` runs the leader from a copy of
 // Node named `codex` and has it start, detached and with their real arguments, the
 // Codex 0.164 TUI's app-server `daemon` (which starts an `mcp` server from plain Node)
 // and its `updater` loop, from a copy at the daemon's install (docs/cli-behavior.md).

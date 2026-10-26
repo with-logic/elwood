@@ -1,6 +1,7 @@
 /**
  * Stops and SIGKILLs every process group a LIVE PTY leader's linked descendants have
- * moved into, before Elwood kills the leader. Implements PRD §5.3 and §9.4 (C-LIFE-10).
+ * moved into, before Elwood kills the leader, sparing those of Codex's shared daemon
+ * (below). Implements PRD §5.3 and §9.4 (C-LIFE-10).
  * Claude and Codex start each hook command with `setsid()`, so a hook in flight at
  * teardown sits in its own session and process group: the leader-group SIGKILL misses
  * it, and once the leader dies the hook is reparented to PID 1 and nothing links it to
@@ -16,9 +17,10 @@
  * signaled group, the leader's included. A read that shows a signaled group's member
  * running stops that group again. With no hook in flight that takes two reads; each
  * level of nesting adds two more. Then the signaled groups are SIGKILLed deepest first
- * (`kill.ts`). Codex's shared daemon, and what it started, is the session's no more than
- * the user's: the walk never follows it (`shared-daemon.ts`), and a group it stopped as
- * its process became the daemon is resumed, not killed. (A parent that ignores SIGCHLD
+ * (`kill.ts`). Codex's shared daemon and its updater, and what they started, are the
+ * session's no more than the user's: the walk never follows them (`shared-daemon.ts`),
+ * and resumes with SIGCONT, never SIGKILLs, a group it stopped as its process became one,
+ * even once the leader's exit left it under PID 1. (A parent that ignores SIGCHLD
  * would have its exited children reaped while stopped; the CLIs and hook shells don't.)
  */
 
@@ -44,7 +46,8 @@ export const DETACHED_SWEEP_BUDGET_MS = 3_000;
 
 /**
  * Sweeps `leaderPid`'s detached descendant groups and resolves to the unresolved
- * failure, or `undefined` once a read converged and every group it signaled was killed.
+ * failure, or `undefined` once a read converged and every group it signaled was killed,
+ * or resumed as holding Codex's daemon.
  * The leader's own group is left to the group reap. A leader whose exit was observed
  * before the sweep, or whose group refuses its SIGSTOP because it already exited (see
  * `leaderStopFailure`), exited before Elwood signaled it: nothing more is sent and nothing
@@ -52,7 +55,7 @@ export const DETACHED_SWEEP_BUDGET_MS = 3_000;
  * a read that converges ends the walk before that check. Once the leader has exited its
  * pid may be reused, so the sweep stops no further group and never signals the leader's
  * group again, though it still SIGKILLs the groups it already signaled (resuming any
- * the kill pass spares as Codex's daemon). These are
+ * that hold Codex's daemon). These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;
  * an unreadable table; the deadline passing, or the leader exiting, before a read
  * converged; and a live group that could not be stopped or killed.
@@ -98,7 +101,8 @@ async function stopDescendantGroups(
   deadline: number,
   state: SweepState,
 ): Promise<void> {
-  const scope = daemonScope([leaderPid]);
+  // Each group the walk stops is a root too: its exit can leave one under PID 1.
+  const scope = daemonScope(state.signaledGroupIds);
   try {
     while (true) {
       const remainingMs = Math.ceil(deadline - performance.now());

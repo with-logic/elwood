@@ -23,8 +23,11 @@ export type ProcessEntry = {
   readonly stopped: boolean;
   /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
   readonly name: string;
-  /** Started from Codex's shared app-server daemon install (`shared-daemon.ts`). */
-  readonly sharedDaemon: boolean;
+  /**
+   * Serves more than the session, so never followed or killed: Codex's shared app-server
+   * daemon or its updater, run from the daemon's install (`shared-daemon.ts`).
+   */
+  readonly shared: boolean;
 };
 
 // An absolute path, so a caller's PATH can never substitute another `ps`. macOS is
@@ -130,7 +133,7 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
       zombie: (match[4] as string).startsWith("Z"),
       stopped: (match[4] as string).startsWith("T"),
       name: (match[5] as string).trim(),
-      sharedDaemon: false,
+      shared: false,
     });
   }
   return entries;
@@ -148,9 +151,9 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
  * is known to be stopped: a stopped parent cannot reap its exited child, so that child
  * keeps its pid and the group keeps its id. A leader missing from the table is given
  * as a row that is not stopped. The host's group (`hostPid`'s) and the ids
- * `kill(-pgid)` would misroute (`<= 1`) are never returned. Nor is Codex's shared
- * app-server daemon (`sharedDaemon`): the walk does not descend into it, so neither it
- * nor anything it started is found.
+ * `kill(-pgid)` would misroute (`<= 1`) are never returned. Nor is a process marked
+ * `shared` (Codex's daemon or its updater): the walk does not descend into it, so
+ * neither it nor anything it started is found.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
@@ -164,7 +167,7 @@ export function detachedDescendantGroups(
     zombie: false,
     stopped: false,
     name: "",
-    sharedDaemon: false,
+    shared: false,
   };
   const excluded = new Set([leaderPid, hostPid, leader.pgid]);
   for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);
@@ -173,7 +176,7 @@ export function detachedDescendantGroups(
   const visited = new Set([leaderPid]);
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     for (const child of children.get(parent.pid) ?? []) {
-      if (visited.has(child.pid) || child.sharedDaemon) continue;
+      if (visited.has(child.pid) || child.shared) continue;
       visited.add(child.pid);
       pending.push(child);
       if (child.zombie || child.pgid <= 1 || excluded.has(child.pgid)) continue;

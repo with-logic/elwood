@@ -20,7 +20,7 @@ export const leaderRow: ProcessEntry = {
   zombie: false,
   stopped: false,
   name: "codex",
-  sharedDaemon: false,
+  shared: false,
 };
 
 /**
@@ -36,16 +36,16 @@ export const hook = (
     pgid = pid,
     stopped = false,
     name = "sh",
-    sharedDaemon = false,
+    shared = false,
   }: {
     readonly zombie?: boolean;
     readonly ppid?: number;
     readonly pgid?: number;
     readonly stopped?: boolean;
     readonly name?: string;
-    readonly sharedDaemon?: boolean;
+    readonly shared?: boolean;
   } = {},
-): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped, name, sharedDaemon });
+): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped, name, shared });
 
 /**
  * `ops` under a fake clock that each listing advances 100 ms, so a sweep that never

@@ -1476,8 +1476,10 @@ extra read costs a walk whose three-second deadline must hold on a loaded host:
   2 of 5 runs, none of 5 on `origin/main`.
 
 A walk remembers each daemon it found, by pid, parent, and group, so when the session's
-TUI started one, only the walk's first read pays its path reads. A walk with no daemon
-under its TUI runs the same single `ps` per read as before. In 3
+TUI started one, the walk's first read pays its path reads, and no later read does unless
+its parent changed. A candidate no read has confirmed, such as the TUI's fork before its
+`exec`, is read again on every read until one does or it is gone. A walk with no
+candidate under its TUI runs the same single `ps` per read as before. In 3
 real Codex `teardown()`s, alternated with 3 on `origin/main`, it ran no path read. One run
 on each side failed at the deadline, when the host's 3,700 processes made a single table
 read take 1.6 to 2.1 s; the other reads took 350 to 540 ms.
@@ -1498,9 +1500,11 @@ The TUI forks the daemon as a `codex` group leader of its own and then `exec`s i
 path read can come between the two, and the walk can then stop the group after the
 `exec`. A stopped process cannot `exec`, so the kill pass goes by the latest read: a group
 it shows holding the daemon, or a process not stopped that could still become it, gets
-SIGCONT, not SIGKILL. `tests/unit/shared-daemon-real.test.ts` reproduces the race with a
-real process: Node cannot `exec`, but setting `process.title` changes what macOS `ps`
-reads as `comm` (`ucomm` stays the executable's name).
+SIGCONT, not SIGKILL. A leader killed by something else while the walk holds it leaves
+that stopped daemon under PID 1, out of the leader's reach, so each group the walk stopped
+is a root of its own for the path reads. `tests/unit/shared-daemon-real.test.ts`
+reproduces both with a real process: Node cannot `exec`, but setting `process.title`
+changes what macOS `ps` reads as `comm` (`ucomm` stays the executable's name).
 
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 

@@ -15,7 +15,7 @@ import {
 import {
   type DaemonScope,
   daemonScope,
-  listMarkingSharedDaemons,
+  listMarkingShared,
 } from "../../src/runtime/shutdown/shared-daemon.ts";
 import {
   hook,
@@ -56,28 +56,37 @@ const table: readonly ProcessEntry[] = [
 ];
 const list = () => Promise.resolve(table);
 
-/** A runner serving each `-p` read its pid's path or rejection, logging every read. */
-function runner(paths: Readonly<Record<number, string | Error>>, failure?: unknown) {
+/**
+ * A runner serving each `-p` read its pid's path or rejection, logging every read; given
+ * `every`, each read rejects with `every.rejectWith`. A pid with neither fails the test.
+ */
+function runner(
+  paths: Readonly<Record<number, string | Error>>,
+  every?: { readonly rejectWith: unknown },
+) {
   const runs: { pid: number; timeout: number; args: readonly string[] }[] = [];
   const run: PsRunner = (_file, args, options) => {
     const pid = Number(args.at(-1));
     runs.push({ pid, timeout: options.timeout, args });
+    if (every !== undefined) return Promise.reject(every.rejectWith);
     const path = paths[pid];
-    if (failure !== undefined || path instanceof Error) return Promise.reject(failure ?? path);
+    if (path === undefined) throw new Error(`no path scripted for ${pid}`);
+    if (path instanceof Error) return Promise.reject(path);
     return Promise.resolve({ stdout: `${path}\n` });
   };
   return { run, runs, pids: () => runs.map((entry) => entry.pid).sort() };
 }
 
 const daemons = (rows: readonly ProcessEntry[]) =>
-  rows.filter((row) => row.sharedDaemon).map((row) => row.pid);
+  rows.filter((row) => row.shared).map((row) => row.pid);
 const mark = (scope: DaemonScope, run: PsRunner, rows = list) =>
-  listMarkingSharedDaemons(3_000, scope, rows, run).then(daemons);
+  listMarkingShared(3_000, scope, rows, run).then(daemons);
+const scopeOf = (...roots: number[]) => daemonScope(new Set(roots));
 
 describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
   test("reads the path of each process in scope that could be a daemon, once if it is one", async () => {
     const { run, runs, pids } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE });
-    const scope = daemonScope([LEADER]);
+    const scope = scopeOf(LEADER);
     expect(await mark(scope, run)).toEqual([5010, 5012]);
     // One pid each: given several, `ps` reads every process on the host.
     expect(runs.map((entry) => entry.args)).toEqual(
@@ -85,7 +94,7 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
     );
     expect(await mark(scope, run)).toEqual([5010, 5012]);
     expect(pids()).toEqual([5010, 5012, 5014, 5014]);
-    await mark(daemonScope([LEADER]), run);
+    await mark(scopeOf(LEADER), run);
     expect(pids()).toEqual([5010, 5010, 5012, 5012, 5014, 5014, 5014]);
   });
 
@@ -97,12 +106,12 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
       return list();
     };
     const pending = Promise.withResolvers<{ stdout: string }>();
-    const { run, runs } = runner({});
+    const { run, runs } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: DAEMON });
     const held: PsRunner = (...args) => {
       void run(...args);
       return pending.promise;
     };
-    const marking = mark(daemonScope([LEADER]), held, slowList);
+    const marking = mark(scopeOf(LEADER), held, slowList);
     await vi.waitFor(() => expect(runs).toHaveLength(3));
     expect(runs.map((entry) => entry.timeout)).toEqual([2_000, 2_000, 2_000]);
     pending.resolve({ stdout: `${DAEMON}\n` });
@@ -111,7 +120,7 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
 
   test("each root is read itself, once even under another, so a daemon under PID 1 is found", async () => {
     const { run, pids } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE, 6000: DAEMON });
-    expect(await mark(daemonScope([LEADER, 5010, 6000]), run)).toEqual([5010, 5012, 6000]);
+    expect(await mark(scopeOf(LEADER, 5010, 6000), run)).toEqual([5010, 5012, 6000]);
     expect(pids()).toEqual([5010, 5012, 5014, 6000]);
   });
 
@@ -119,7 +128,7 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
     // `ps` can read a leader's children in the same pass the leader's own row left.
     const { run } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE });
     const unread = () => list().then((rows) => rows.filter((row) => row.pid !== LEADER));
-    expect(await mark(daemonScope([LEADER]), run, unread)).toEqual([5010, 5012]);
+    expect(await mark(scopeOf(LEADER), run, unread)).toEqual([5010, 5012]);
   });
 
   test("ends on a read that shows two processes each other's parent", async () => {
@@ -127,20 +136,20 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
     const looped = () =>
       Promise.resolve([codex(8000, { ppid: 8001 }), codex(8001, { ppid: 8000 })]);
     const { run, pids } = runner({ 8000: STANDALONE, 8001: DAEMON });
-    expect(await mark(daemonScope([8000]), run, looped)).toEqual([8001]);
+    expect(await mark(scopeOf(8000), run, looped)).toEqual([8001]);
     expect(pids()).toEqual([8000, 8001]);
   });
 
   test("no scope, or none with a process that could be a daemon in it, takes no path read", async () => {
     const { run, runs } = runner({});
-    expect(daemons(await listMarkingSharedDaemons(3_000, undefined, list, run))).toEqual([]);
-    expect(await mark(daemonScope([5002, 9999]), run)).toEqual([]);
+    expect(daemons(await listMarkingShared(3_000, undefined, list, run))).toEqual([]);
+    expect(await mark(scopeOf(5002, 9999), run)).toEqual([]);
     expect(runs).toEqual([]);
   });
 
   test("one gone by its path read is no daemon, while another is still marked", async () => {
     const { run } = runner({ 5010: DAEMON, 5012: GONE, 5014: STANDALONE });
-    expect(await mark(daemonScope([LEADER]), run)).toEqual([5010]);
+    expect(await mark(scopeOf(LEADER), run)).toEqual([5010]);
   });
 
   test("any other failed path read fails the listing", async () => {
@@ -149,11 +158,12 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
       Object.assign(new Error("ps exited 1 with output"), { code: 1, stdout: DAEMON }),
       "not an error",
     ]) {
-      await expect(mark(daemonScope([LEADER]), runner({}, failure).run)).rejects.toBe(failure);
+      const { run } = runner({}, { rejectWith: failure });
+      await expect(mark(scopeOf(LEADER), run)).rejects.toBe(failure);
     }
   });
 
-  test("every sweep read passes one scope rooted at the leader", async () => {
+  test("every sweep read passes one scope, rooted at the leader and each group stopped", async () => {
     const { ops } = scripted([[leaderRow, hook(5002)]]);
     const scopes: unknown[] = [];
     const listProcesses = (timeoutMs: number, scope?: DaemonScope) => {
@@ -164,18 +174,18 @@ describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
     expect(await sweep).toBeUndefined();
     expect(scopes.length).toBeGreaterThan(1);
     expect(new Set(scopes)).toEqual(new Set([scopes[0]]));
-    expect(scopes[0]).toEqual({ roots: [LEADER], known: new Set() });
+    expect(scopes[0]).toEqual({ roots: new Set([LEADER, 5002]), known: new Set() });
   });
 
   test("the walk never follows a daemon, nor anything it started", () => {
     const rows = [
       leaderRow,
       hook(5002),
-      hook(5010, { name: "codex", sharedDaemon: true }),
-      hook(5011, { ppid: 5010, name: "codex-code-mode-", sharedDaemon: true }),
+      hook(5010, { name: "codex", shared: true }),
+      hook(5011, { ppid: 5010, name: "codex-code-mode-", shared: true }),
       hook(5012, { ppid: 5010, pgid: 5010, name: "node" }),
       hook(5013, { ppid: 5012 }),
-      hook(5014, { ppid: 5002, name: "codex", sharedDaemon: true }), // one a hook started
+      hook(5014, { ppid: 5002, name: "codex", shared: true }), // one a hook started
       hook(5015, { ppid: 5014 }),
     ];
     expect(detachedDescendantGroups(rows, { leaderPid: LEADER, hostPid: process.pid })).toEqual(

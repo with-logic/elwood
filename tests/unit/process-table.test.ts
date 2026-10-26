@@ -21,7 +21,7 @@ type Row = { readonly pid: number; readonly ppid: number; readonly pgid: number 
 
 function row({ pid, ppid, pgid }: Row, state: "Z" | "T" | "S" = "S", name = "sh") {
   const flags = { zombie: state === "Z", stopped: state === "T" };
-  return { pid, ppid, pgid, ...flags, name, sharedDaemon: false };
+  return { pid, ppid, pgid, ...flags, name, shared: false };
 }
 
 const leaderRow = row({ pid: LEADER, ppid: HOST, pgid: LEADER });

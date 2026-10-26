@@ -3,26 +3,45 @@
  * when the walk stops the process just as it becomes the daemon (PRD §5.3 and §9.4,
  * C-LIFE-10). The TUI forks the daemon as a `codex` group leader of its own and then
  * `exec`s the daemon, so a path read between the two finds no daemon, and the walk can
- * stop its group after the `exec`. Node cannot `exec`, so the fixture's process stands in
- * by taking the daemon's path as its title, which macOS `ps` reads as its `comm`.
+ * stop its group after the `exec`, then the leader can exit, leaving the daemon under PID 1.
+ * Node cannot `exec`, so the fixture's process stands in by taking the daemon's path as
+ * its title, which macOS `ps` reads as its `comm`.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import { osProcessTreeOps, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
-import { detachedDescendantPids, extraPid, startDetachedTree } from "../helpers/detached-tree.ts";
+import {
+  type DetachedTree,
+  detachedDescendantPids,
+  extraPid,
+  startDetachedTree,
+} from "../helpers/detached-tree.ts";
 import { pollGone, processRows } from "../helpers/process-liveness.ts";
 
 const DAEMON_DIR = "/packages/app-server-daemon/";
 
 /** Blocks this thread until `done`, as a SIGSTOP the walk sends must wait on the `exec`. */
-function waitSync(done: () => boolean): void {
+function waitSync(done: () => boolean, failure: string): void {
   const deadline = performance.now() + 5_000;
   while (!done()) {
-    if (performance.now() > deadline) throw new Error("the process never became the daemon");
+    if (performance.now() > deadline) throw new Error(failure);
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
   }
+}
+
+/** Has the tree's `becoming` process take the daemon's path, and waits until it has. */
+function becomeDaemon(tree: DetachedTree): void {
+  writeFileSync(join(tree.dir, "exec"), "");
+  waitSync(() => existsSync(join(tree.dir, "became")), "the process never became the daemon");
+}
+
+/** The parent pid `ps` reads for `pid`. */
+function parentOf(pid: number): number {
+  return Number(execFileSync("/bin/ps", ["-o", "ppid=", "-p", String(pid)]).toString());
 }
 
 describe("C-LIFE-10 Codex's daemon, stopped as it starts (real processes)", () => {
@@ -36,10 +55,7 @@ describe("C-LIFE-10 Codex's daemon, stopped as it starts (real processes)", () =
       expect(command()).not.toContain(DAEMON_DIR);
       // It becomes the daemon after the walk read its path, before the walk's SIGSTOP.
       const stopGroup = (pgid: number) => {
-        if (pgid === becoming) {
-          writeFileSync(join(tree.dir, "exec"), "");
-          waitSync(() => existsSync(join(tree.dir, "became")));
-        }
+        if (pgid === becoming) becomeDaemon(tree);
         osProcessTreeOps.stopGroup(pgid);
       };
       const reaper = new SessionReaper(tree.pty.pid, { ...osProcessTreeOps, stopGroup });
@@ -48,9 +64,40 @@ describe("C-LIFE-10 Codex's daemon, stopped as it starts (real processes)", () =
       expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
       expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
       // Running again, and still this tree's process, not a reuse of its pid.
-      const row = processRows(10_000).find((entry) => entry.pid === becoming);
-      expect(row?.command).toContain(`${tree.dir}${DAEMON_DIR}`);
-      expect(row?.stat).toMatch(/^[^TZ]/);
+      expect(processRows(10_000).find((entry) => entry.pid === becoming)).toMatchObject({
+        command: expect.stringContaining(`${tree.dir}${DAEMON_DIR}`),
+        stat: expect.stringMatching(/^[^TZ]/),
+      });
+    },
+  );
+
+  test.skipIf(process.platform !== "darwin")(
+    "one stopped as it became the daemon is resumed after the leader's exit left it under PID 1",
+    async () => {
+      const tree = startDetachedTree("becomes-daemon");
+      const [child] = await detachedDescendantPids(tree);
+      const becoming = await extraPid(tree, "becoming");
+      let leaderKilled = false;
+      // Then the leader dies, as one something else kills can, before the walk's next read.
+      const stopGroup = (pgid: number) => {
+        if (pgid === becoming) becomeDaemon(tree);
+        osProcessTreeOps.stopGroup(pgid);
+        if (pgid !== becoming) return;
+        // This process's own child, held stopped by the walk: its pid is still the leader's.
+        process.kill(tree.pty.pid, "SIGKILL");
+        leaderKilled = true;
+        waitSync(() => parentOf(becoming) === 1, "the leader's exit never reparented it");
+      };
+      // A budget a loaded host cannot run out before the read after the leader's exit.
+      const ops = { ...osProcessTreeOps, stopGroup };
+      const failure = await sweepDetachedGroups(tree.pty.pid, ops, () => leaderKilled, 20_000);
+      expect(failure?.message).toMatch(/the leader exited before every group/);
+      expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
+      expect(processRows(10_000).find((entry) => entry.pid === becoming)).toMatchObject({
+        ppid: 1,
+        command: expect.stringContaining(`${tree.dir}${DAEMON_DIR}`),
+        stat: expect.stringMatching(/^[^TZ]/),
+      });
     },
   );
 });

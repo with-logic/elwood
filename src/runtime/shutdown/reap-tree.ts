@@ -19,12 +19,12 @@
 import { errnoCode } from "../../core/errors.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { type SweepOps, sweepDetachedGroups } from "./detached-sweep/index.ts";
-import { listMarkingSharedDaemons } from "./shared-daemon.ts";
+import { listMarkingShared } from "./shared-daemon.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
- * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, and
- * table read.
+ * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, the
+ * SIGCONT that resumes a group holding Codex's daemon, and table read.
  */
 export type ProcessTreeOps = SweepOps;
 
@@ -81,7 +81,7 @@ export const osProcessTreeOps: ProcessTreeOps = {
   continueGroup(pgid: number): void {
     process.kill(-pgid, "SIGCONT");
   },
-  listProcesses: (timeoutMs, scope) => listMarkingSharedDaemons(timeoutMs, scope),
+  listProcesses: (timeoutMs, scope) => listMarkingShared(timeoutMs, scope),
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle
@@ -112,7 +112,7 @@ export function quietProcessTree(): Omit<ProcessTreeOps, "killGroup"> {
   };
 }
 
-const QUIET_ROW = { ppid: 1, zombie: false, stopped: true, name: "", sharedDaemon: false };
+const QUIET_ROW = { ppid: 1, zombie: false, stopped: true, name: "", shared: false };
 
 export function resetProcessTreeOpsForTests(): void {
   activeOps = osProcessTreeOps;

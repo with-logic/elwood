@@ -26,7 +26,7 @@ export type SweepOps = {
   readonly killGroup: (pgid: number) => void;
   /** SIGCONTs the process group `pgid`: one the sweep stopped but must not kill. */
   readonly continueGroup: (pgid: number) => void;
-  /** Lists the host process table within `timeoutMs`, marking Codex's daemon in `scope`. */
+  /** Lists the host process table within `timeoutMs`, marking `shared` rows in `scope`. */
   readonly listProcesses: (
     timeoutMs: number,
     scope?: DaemonScope,
@@ -46,7 +46,7 @@ export type SweepState = {
   live: ReadonlyMap<number, ReadonlySet<ProcessEntry>>;
   /** Signaled groups not yet held: see `unheldGroups`, plus any signaled since that read. */
   unheld: readonly number[];
-  /** The latest table a read returned, which the kill pass spares Codex's daemon by. */
+  /** The latest table a read returned, by which the kill pass picks the groups to resume. */
   latest: readonly ProcessEntry[];
   readonly failures: SweepFailures;
 };
