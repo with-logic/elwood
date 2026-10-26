@@ -31,8 +31,7 @@ export type ProcessEntry = {
 // the only supported platform (PRD §2); `-A -o` is POSIX, so Linux CI parses the same.
 export const PS_PATH = "/bin/ps";
 const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm=,pid="] as const;
-// About 50 bytes per row, so 16 MiB holds over 300,000 processes: far beyond any real
-// host, while still bounding what a runaway `ps` can make this process buffer.
+// About 50 bytes a row: 16 MiB holds over 300,000 processes, yet bounds a runaway `ps`.
 const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 // The short name may hold spaces or be empty, and `ps` prints it raw, so a newline in it
 // starts what reads as another row: each row ends with its pid again (docs/cli-behavior.md).
@@ -152,8 +151,9 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
  * once the group is gone, so the parent rows let a caller signal it only once a parent
  * is known to be stopped: a stopped parent cannot reap its exited child, so that child
  * keeps its pid and the group keeps its id. A leader missing from the table is given
- * as a row that is not stopped. The host's group (`hostPid`'s) and the ids
- * `kill(-pgid)` would misroute (`<= 1`) are never returned.
+ * as a row that is not stopped. The host's group (`hostPid`'s) and the ids `kill(-pgid)`
+ * would misroute (`<= 1`) are never returned. Nor is a `shared` process (Codex's daemon
+ * or its updater) or anything it started: the walk never descends into one.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
@@ -176,7 +176,7 @@ export function detachedDescendantGroups(
   const visited = new Set([leaderPid]);
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     for (const child of children.get(parent.pid) ?? []) {
-      if (visited.has(child.pid)) continue;
+      if (visited.has(child.pid) || child.shared) continue;
       visited.add(child.pid);
       pending.push(child);
       if (child.zombie || child.pgid <= 1 || excluded.has(child.pgid)) continue;
