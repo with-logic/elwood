@@ -1,5 +1,5 @@
 /** Foreground launch resolves the detected shell PATH without changing argv/status (C-CLI-25). */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -122,3 +122,35 @@ test("C-CLI-25 a shell that fails after running the lookup maps to an adapter st
     details: { cause: "login shell exited with status 3" },
   });
 });
+
+/** Real login shells and their startup file, each with a DEBUG trap that prints on both streams. */
+const loginShells = [
+  ["/bin/zsh", ".zshrc", "TRAPDEBUG() { echo FAKE-SECRET; echo FAKE-SECRET >&2 }"],
+  ["/bin/bash", ".bash_profile", "trap 'echo FAKE-SECRET; echo FAKE-SECRET >&2' DEBUG"],
+] as const;
+
+test.each(loginShells.filter(([path]) => existsSync(path)))(
+  "C-CLI-25 %s hands the agent its login shell's own PATH",
+  async (path, startupFile, trap) => {
+    const home = mkdtempSync(join(tmpdir(), "interactive-path-"));
+    roots.push(home);
+    const bin = join(home, "agent bin");
+    mkdirSync(bin);
+    const seen = join(home, "path");
+    const agent = `#!/bin/sh\nprintf '%s' "$PATH" > ${shell.shellQuote(seen)}\n`;
+    writeFileSync(join(bin, "elwood-test-agent"), agent, { mode: 0o700 });
+    // Set last, after the system startup files, so it is the login shell's whole PATH.
+    const loginPath = `${bin}:/usr/bin:/bin`;
+    writeFileSync(join(home, startupFile), `export PATH=${shell.shellQuote(loginPath)}\n${trap}\n`);
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("ZDOTDIR", home);
+    vi.stubEnv("HISTFILE", join(home, ".history"));
+    vi.stubEnv("TERM_PROGRAM", ""); // no Apple Terminal session hooks
+    vi.stubEnv("PATH", "/usr/bin:/bin"); // only the login shell's PATH finds the agent
+    vi.spyOn(shell, "userShell").mockReturnValue(path);
+    const launch = { agent: "claude", command: "elwood-test-agent", args: [], cwd: home } as const;
+    expect(await spawnInteractiveAgent(launch)).toBe(0);
+    expect(readFileSync(seen, "utf8")).toBe(loginPath);
+  },
+  60_000,
+);

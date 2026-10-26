@@ -1734,18 +1734,32 @@ bash 3.2.57, using a private `ZDOTDIR` or `HOME`:
   run. A builtin last command (`printf`) always runs `.zlogout`.
 - bash 3.2 `-l -i -c` prints `bash: no job control in this shell` on stderr at startup.
   After the command it runs a profile's EXIT trap. It did not run `~/.bash_logout`.
+- While the command runs, zsh's `TRAPDEBUG` (or `trap … DEBUG`) prints before every
+  command and `TRAPZERR` after every failing one, including commands inside a
+  redirected `{ … }` group, whose output then lands in that group's redirection. A
+  background helper the profile started (`( … ) &!`) writes to the shell's streams
+  whenever it likes.
 
-A marker before the command therefore still leaves the exit output. The probe script
-now writes the start line on stdout and on stderr as well, after descriptor 3, so the
-stdout fallback of the previous section is now unconditional. It runs the command as
-`{ …\n}`, then `&& s=0 || s=$?`, so a profile's `errexit` cannot skip the next step:
-it writes an end line with the same token on both streams and runs `(exit $s)`. The
-runner keeps only what lies between the two lines, so the command's last line is kept
-even when it has no newline. Because the shell no longer `exec`s the command, a signal
-death now reads as status 128+n instead of a signal. The probe's process group also
-holds the shell, and a bound still kills the command itself.
-`tests/unit/probe-shell-output.test.ts` checks this against real zsh, including the
-command's exact pid after a timeout.
+So markers around the command cannot separate its output: they delimit a time window,
+not an author. The probe script now `exec`s the command with `>"$ELWOOD_PROBE_OUTPUT/stdout"
+2>"$ELWOOD_PROBE_OUTPUT/stderr"`, into a directory the runner makes for that probe alone.
+With the redirection on the `exec` itself, zsh and bash both print a DEBUG trap's output
+on the shell's own streams before the `exec`, and nothing runs after it: no trap, no
+EXIT trap, no `.zlogout`. A failed `exec` ends the probe with 127 (not found) or 126
+(not executable), and the file holds the shell's own message about it; bash 3.2 adds its
+`no job control` notice. Neither comes from a startup file.
+bash `exec`s only programs (`exec command -v x` fails on Linux, which has no
+`/usr/bin/command`), so `command -v` runs as a status-only probe with its output sent to
+`/dev/null`. `elwood interactive`'s PATH read runs `/bin/sh -c 'printf …' sh "$PATH"`:
+the login shell expands its own PATH into the argument, and `/bin/sh`'s builtin `printf`
+needs no PATH lookup, so an empty PATH still prints. zsh's `echo` to a closed stdout
+reports a write error but returns 0. bash's returns 1, which `set -e` turns into an exit,
+so the start line's stdout copy is written as `{ echo …; } 2>/dev/null || :`. A FIFO
+would have kept the live pipe cap, but Node never saw EOF on one in a macOS test, so
+the cap is a 25 ms size poll on the files. `ulimit -f` would bound them exactly, but it
+would also kill `claude update` and `codex update` while they download.
+`tests/unit/probe-shell-output.test.ts` checks each leak against real zsh, and
+`tests/cli/interactive-path.test.ts` checks the PATH read against real zsh and bash.
 
 ## Testing against the real CLIs
 

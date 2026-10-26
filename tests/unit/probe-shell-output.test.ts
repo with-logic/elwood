@@ -1,8 +1,9 @@
 /**
- * The real zsh login shell's startup and exit output never reaches a probe's captured output, so
- * it cannot leak into `agent_update_failed`, `version_unparseable`, or a `*_start_failed` error's
- * details (PRD §9.2, C-PERF-05, C-LIFE-11, C-ERR-07, C-ERR-08). A private ZDOTDIR holds the
- * startup files, so the developer's own are never read.
+ * Nothing a real zsh login shell's startup files print, before, during, or after the probe
+ * command, reaches a probe's captured output, so it cannot leak into `agent_update_failed`,
+ * `version_unparseable`, or a `*_start_failed` error's details (PRD §9.2, C-PERF-05, C-LIFE-11,
+ * C-ERR-07, C-ERR-08). A private ZDOTDIR holds the startup files, so the developer's own are
+ * never read.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,16 +30,22 @@ const zsh = "/bin/zsh";
 /** Private startup files: `.zshrc` runs before the probe's script, `.zlogout` after it. */
 type Profile = { readonly rc: string; readonly logout: string };
 const silent: Profile = { rc: "", logout: "" };
-/** Startup output on both streams before the command, and exit output after it. */
-const leaky: Profile = {
-  rc: [
-    "echo FAKE-SECRET-rc-out; echo FAKE-SECRET-rc-err >&2",
-    "trap 'echo FAKE-SECRET-trap-out; echo FAKE-SECRET-trap-err >&2' EXIT",
-    // Runs only if a bound's signal could be trapped: it would print before the end line.
-    "TRAPTERM() { echo FAKE-SECRET-term; echo FAKE-SECRET-term >&2 }",
-  ].join("\n"),
-  logout: "echo FAKE-SECRET-logout >&2",
+/** Each way a startup file writes to the login shell's own stdout and stderr. */
+const leaks: Readonly<Record<string, string>> = {
+  startup: "echo FAKE-SECRET-rc-out; echo FAKE-SECRET-rc-err >&2",
+  "EXIT trap": "trap 'echo FAKE-SECRET-trap-out; echo FAKE-SECRET-trap-err >&2' EXIT",
+  // Before every command the shell runs, including the probe's own.
+  TRAPDEBUG: "TRAPDEBUG() { echo FAKE-SECRET-debug; echo FAKE-SECRET-debug >&2 }",
+  // After every command that fails, as the update does.
+  TRAPZERR: "TRAPZERR() { echo FAKE-SECRET-zerr; echo FAKE-SECRET-zerr >&2 }",
+  // A helper the profile starts, writing while the command runs.
+  "background writer": "( sleep 0.5; echo FAKE-SECRET-bg; echo FAKE-SECRET-bg >&2 ) &!",
+  // Runs only if a bound's signal could be trapped.
+  TRAPTERM: "TRAPTERM() { echo FAKE-SECRET-term; echo FAKE-SECRET-term >&2 }",
 };
+const logout = "echo FAKE-SECRET-logout; echo FAKE-SECRET-logout >&2";
+/** Every leak at once, and `.zlogout` after the command. */
+const leaky: Profile = { rc: Object.values(leaks).join("\n"), logout };
 
 /** A real zsh login shell with private startup files and fake CLIs on its PATH. */
 function zshProfile(profile: Profile, clis: Readonly<Record<string, string>> = {}): string {
@@ -71,12 +78,14 @@ afterEach(() => {
 
 describe.skipIf(!existsSync(zsh))("real zsh login shell", () => {
   test.each([
-    ["", leaky],
-    [" under errexit", { ...leaky, rc: `${leaky.rc}\nsetopt errexit` }],
+    ...Object.entries(leaks).map(([name, rc]) => [name, { rc, logout: "" }] as const),
+    [".zlogout", { rc: "", logout }] as const,
+    ["every leak, under errexit", { ...leaky, rc: `${leaky.rc}\nsetopt errexit` }] as const,
   ])(
-    "C-LIFE-11 a failed update's warning carries only the updater's own stderr%s",
+    "C-LIFE-11 a failed update's warning carries only the updater's own stderr (%s)",
     async (_, profile) => {
-      const update = "echo 'update failed: network' >&2; exit 1";
+      // The update outlasts the background writer's delay, so that writes while it runs.
+      const update = "sleep 1; echo 'update failed: network' >&2; exit 1";
       zshProfile(profile, { claude: `[ "$1" = update ] && { ${update}; }; echo 2.1.310` });
       const warning = await preflightClaude(false, true);
       expect(warning).toMatchObject({
@@ -87,6 +96,12 @@ describe.skipIf(!existsSync(zsh))("real zsh login shell", () => {
     },
     60_000,
   );
+
+  test("C-PERF-05 a profile that closes stdout still captures the command's own output", async () => {
+    // The command writes into its own file, not the shell's closed stdout.
+    zshProfile({ rc: "exec >&-\nsetopt errexit", logout: "" }, { claude: "echo 2.1.310" });
+    await expect(preflightClaude(true)).resolves.toBeUndefined();
+  }, 60_000);
 
   test("C-ERR-07 an unparseable version's warning carries only the CLI's own stdout", async () => {
     zshProfile(leaky, { claude: "printf 'not a version'" }); // no trailing newline

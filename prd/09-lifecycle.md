@@ -151,32 +151,42 @@ bounded separately. After the startup files load, and immediately before the pro
 command runs, the probe shell writes a start line of Elwood's own, ending in a random
 token chosen once per parent process so that no startup file's output can pass for it,
 on a private channel that is neither stdout nor stderr, so a startup file that
-redirects either cannot hide the line, and then writes the same line on stdout and
-on stderr. A shell that closed that channel at startup (macOS's bash 3.2,
+redirects either cannot hide the line, and then writes the same line on stdout. A
+shell that closed that channel at startup (macOS's bash 3.2,
 started as an interactive login shell, closes every inherited descriptor above
 stderr) is started by the stdout copy instead. Not stderr, which a startup file may
 discard or merge into stdout: a startup file that hid stdout would also hide the
-command's own output. Once the command exits, the shell writes an end line with the
-same token on stdout and on stderr, then exits with the command's status (a command
-killed by a signal reports the shell's 128+n). Each captured stream keeps only what
-falls between its start and end lines, wherever on a line either falls, because the
-user's startup files print before the command and a login shell's exit work (zsh's
-EXIT traps and `.zlogout`) prints after it, and that output can hold expanded
-secrets. A stream that never carried the start line keeps nothing; one without the
-end line, because a bound or the byte cap cut the command off, keeps everything
-after the start line up to that moment. Neither line is kept.
+command's own output. Neither write can end the shell under a startup file's
+`errexit`. The shell then `exec`s the probe command with its stdout and stderr
+redirected into two files in a directory Elwood creates for that probe alone (mode
+0700, in the system temp directory, removed however the probe ends). The login
+shell's own stdout and stderr are never captured: they are shared with everything
+the user's startup files run, which prints before the command, while it runs (a
+DEBUG or ZERR trap, a background helper), and after it (an EXIT trap, `.zlogout`),
+and that output can hold expanded secrets. Nothing the shell started holds the
+files, and after `exec` no shell code runs, so the captured output is the command's
+own. The probe's exit status is the command's; a command killed by a signal reports
+128+n. A probe command is one program and its arguments. A lookup answered by a
+shell builtin's status alone (`command -v`) runs without `exec`, its output
+discarded, and captures nothing. A probe that cannot create its directory fails
+without running, and its cause says so.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
-(1,000,000 bytes), is killed, and its captured output is truncated to the cap.
+(1,000,000 bytes), is killed, and its captured output is truncated to the cap. A
+pipe is read only up to the cap, but a file does not stop its writer, so Elwood
+checks a probe's files against the cap every 25 ms: a command can write one
+interval's worth past the cap (about 50 MB at a local disk's 2 GB/s) before it is
+killed, into its private file, which is then removed. A command that exits over
+the cap before a check also reports the overflow.
 Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
-login shell, and its typed error details carry `phase: "login_shell"`. Its captured
-stderr is only the user's startup output, which can hold expanded secrets, so it is
-withheld: `details.stderr` is empty. A best-effort update probe that fails this way
+login shell, and its typed error details carry `phase: "login_shell"`. The command
+never ran and the shell's own output is never captured, so `details.stderr` is
+empty. A best-effort update probe that fails this way
 surfaces the `agent_update_failed` warning with `errorCode: "login_shell_failed"` and
 an empty `raw`. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,

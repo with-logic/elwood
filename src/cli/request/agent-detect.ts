@@ -8,7 +8,7 @@
  */
 
 import { currentCommandRunner } from "../../runtime/seams.ts";
-import { probeShellCommand, shellQuote, userShell } from "../../runtime/shell.ts";
+import { probeShellStatus, shellQuote, userShell } from "../../runtime/shell.ts";
 import { type CliAgent, CliValidationError } from "../types.ts";
 import { layered, type SourcedValue, sourced } from "./sources.ts";
 
@@ -38,7 +38,7 @@ export async function loginShellResolves(
   agent: CliAgent,
   shell: string = userShell(),
 ): Promise<boolean> {
-  const command = probeShellCommand(`command -v ${shellQuote(agent)}`);
+  const command = probeShellStatus(`command -v ${shellQuote(agent)}`);
   const result = await currentCommandRunner()(shell, command);
   if (result.error !== undefined) {
     throw new CliValidationError("no_agent_found", probeFailedMessage(shell, result.error));

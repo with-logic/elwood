@@ -8,11 +8,11 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
+import { probeOutputEnv } from "../../src/runtime/probe/capture.ts";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
-import { commandOutput } from "../../src/runtime/probe/start.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { e2eRunDir } from "./run-dir.ts";
 
@@ -77,8 +77,13 @@ export function resolvedAgentPath(agent: AgentName): string {
 
 function probe(agent: AgentName): Probed {
   const shell = userShell();
-  const result = spawnSync(shell, [...probeShellCommand(`command -v ${agent}`)], {
+  // The probe script `exec`s its command into private output files, as `runProbe`'s does.
+  // `/bin/sh` runs `command -v` so the answer is the program's path, not an alias.
+  const output = mkdtempSync(join(e2eRunDir, "probe-"));
+  const lookup = `/bin/sh -c 'command -v "$1"' sh ${agent}`;
+  const result = spawnSync(shell, [...probeShellCommand(lookup)], {
     encoding: "utf8",
+    env: { ...process.env, [probeOutputEnv]: output },
     // The fourth pipe receives the probe shell's start line, as `runProbe`'s does, unless the
     // shell closed it.
     stdio: ["ignore", "pipe", "pipe", "pipe"],
@@ -86,8 +91,9 @@ function probe(agent: AgentName): Probed {
     // interactive profile alone can exceed 15 s, which must not read as a missing CLI.
     timeout: probeLaunchTimeoutMs + probeCommandTimeoutMs,
   });
-  // Only `command -v`'s output, between the probe's start and end lines (§9.2).
-  const path = commandOutput(result.stdout).trim();
+  const stdout = join(output, "stdout");
+  const path = existsSync(stdout) ? readFileSync(stdout, "utf8").trim() : "";
+  rmSync(output, { recursive: true, force: true });
   if (result.status === 0 && path) return { path };
   const detail = result.error ? ` (${result.error.message})` : "";
   return { skip: `${agent} CLI does not resolve in the login shell ${shell}${detail}` };

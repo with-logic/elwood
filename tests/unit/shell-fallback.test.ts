@@ -4,8 +4,13 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { probeCommandEndLine, probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import { loginShellCommand, probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
+import {
+  loginShellCommand,
+  probeShellCommand,
+  probeShellStatus,
+  userShell,
+} from "../../src/runtime/shell.ts";
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
@@ -21,17 +26,22 @@ describe("user shell", () => {
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
     // Same shell and flags; the probe writes its start line on descriptor 3 if the shell kept
-    // it open, then on stdout and stderr, runs the command, and brackets it with the end line
-    // while keeping its exit status (C-PERF-05, §9.2).
-    const [line, end] = [probeCommandStartLine, probeCommandEndLine];
-    const status = "elwood_probe_status";
+    // it open, then on stdout, and `exec`s the command into its private output files
+    // (C-PERF-05, §9.2). A builtin's probe answers by status alone, its output discarded.
+    const start =
+      `if { echo ${probeCommandStartLine} >&3; } 2>/dev/null; then exec 3>&-; fi; ` +
+      `{ echo ${probeCommandStartLine}; } 2>/dev/null || :; `;
     expect(probeShellCommand("claude --version")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; fi; echo ${line}; echo ${line} >&2; ` +
-        `{ claude --version\n} && ${status}=0 || ${status}=$?; echo ${end}; echo ${end} >&2; ` +
-        `(exit $${status})`,
+      `${start}exec claude --version >"$ELWOOD_PROBE_OUTPUT/stdout" 2>"$ELWOOD_PROBE_OUTPUT/stderr"`,
+    ]);
+    expect(probeShellStatus("command -v claude")).toEqual([
+      "-l",
+      "-i",
+      "-c",
+      `${start}command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

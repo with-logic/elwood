@@ -57,7 +57,7 @@ test.each([
 test("C-PERF-05 a start line on stdout ends the launch phase while the command still runs", async () => {
   // The launch bound would kill the probe mid-`sleep`; only the line hands it the command bound.
   setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 1_500 });
-  const command = shell.probeShellCommand("sleep 2; echo 2.1.310");
+  const command = shell.probeShellCommand("/bin/sh -c 'sleep 2; echo 2.1.310'");
   const result = await runProbe(closingShell(), command);
   expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });

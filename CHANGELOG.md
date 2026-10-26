@@ -15,9 +15,12 @@ back each entry are listed in `prd/14-conformance.md`.
 - Probe diagnostics no longer carry the login shell's own output.
   `agent_update_failed`'s `raw`, `version_unparseable`'s `raw`, and a failed
   `--version` or `--help` probe's `details.stderr` now hold only the CLI's own
-  output. They used to include whatever the user's startup files printed before
-  the command and, under zsh, whatever an EXIT trap or `.zlogout` printed after it,
-  which can include expanded secrets.
+  output. They used to include anything the user's startup files printed, which
+  can include expanded secrets: output before the command, a DEBUG or ZERR trap or
+  a background helper while it ran, and under zsh an EXIT trap or `.zlogout` after
+  it. The probe shell now `exec`s the CLI with its output redirected into a private
+  temporary directory that is removed when the probe ends. A probe command that
+  dies of a signal now reports status 128+n instead of `null`.
 - A Claude session whose permission dialog is declined with Escape now returns to
   `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
   `blocked` while the prompt that led to the dialog was still on screen: Claude
