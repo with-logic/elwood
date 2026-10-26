@@ -104,8 +104,8 @@ export function createTranscriptWatcher(
       watcher.finish();
     } catch (error) {
       try {
-        // A failed FINAL flush at exit is phase-labelled so an operator can tell
-        // lost trailing shutdown activity from a live poll failure.
+        // A failed FINAL flush (runtime cleanup or exit) is phase-labelled so an
+        // operator can tell lost trailing shutdown activity from a live poll failure.
         route(transcriptFailureWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {

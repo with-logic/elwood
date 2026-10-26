@@ -14,8 +14,6 @@ import type {
 import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
-import { runCleanupSteps } from "../../runtime/shutdown/teardown.ts";
-import { drainAndDisposeTerminal } from "../../runtime/shutdown/terminal.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -30,13 +28,9 @@ import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
+import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
-
-export type HookBridge = {
-  readonly start: () => Promise<void>;
-  readonly stop: () => Promise<void>;
-};
 
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
   protected readonly picker = {
@@ -46,7 +40,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   protected override composerIsEmpty(text: string): boolean {
     return liveClaudeClearance(() => this.terminal)(text) || super.composerIsEmpty(text);
   }
-  private readonly bridge: HookBridge;
+  private readonly runtimeParts: ClaudeRuntimeParts;
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
   private requestedSize: TerminalSize;
   // Only a session requested BELOW the 100-column startup floor bootstraps wide and
@@ -61,7 +55,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     runtime: SessionRuntime,
     pty: PtyProcess,
     terminal: ElwoodTerminal,
-    bridge: HookBridge,
+    runtimeParts: ClaudeRuntimeParts,
     emitter: TypedEmitter<ClaudeEventMap>,
     terminalReplay: TerminalReplayBuffer,
     requestedSize: TerminalSize,
@@ -79,7 +73,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
       loopDefinitions,
     );
     this.configureClaudeQuestions();
-    this.bridge = bridge;
+    this.runtimeParts = runtimeParts;
     this.emitter = emitter;
     this.requestedSize = requestedSize;
     this.awaitingInitialReady = requestedSize.cols < CLAUDE_STARTUP_MIN_COLS;
@@ -190,10 +184,6 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     return this.inSession(() => runSessionLogin(deps, options));
   }
   protected stopRuntime(): Promise<void> {
-    // Dispose the terminal even if the bridge stop rejects — no first-failure leak (§9.4).
-    return runCleanupSteps([
-      () => this.bridge.stop(),
-      () => drainAndDisposeTerminal(this.terminal, this.pty),
-    ]);
+    return stopClaudeRuntime(this.runtimeParts, this.terminal, this.pty);
   }
 }

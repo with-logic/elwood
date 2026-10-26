@@ -1,11 +1,10 @@
 /**
- * Codex session runtime cleanup helpers.
- * Implements PRD §9.3.
+ * Codex session runtime cleanup (PRD §9.4, C-LIFE-12): the shared runtime cleanup over
+ * Codex's hook bridge and transcript watcher.
  */
 
 import type { PtyProcess } from "../../pty/types.ts";
-import { runCleanupSteps } from "../../runtime/shutdown/teardown.ts";
-import { drainAndDisposeTerminal } from "../../runtime/shutdown/terminal.ts";
+import { stopSessionRuntime } from "../../runtime/session/runtime-cleanup.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 
@@ -19,11 +18,9 @@ export function stopCodexRuntime(
   terminal: ElwoodTerminal,
   pty: Pick<PtyProcess, "onData">,
 ): Promise<void> {
-  // Every step runs even if an earlier one throws, so a failing bridge stop still
-  // finishes the transcript watcher and disposes the terminal (no leak; PRD §9.4).
-  return runCleanupSteps([
-    () => bridge.stop(),
-    () => transcriptWatcher?.finish(),
-    () => drainAndDisposeTerminal(terminal, pty),
-  ]);
+  const parts = {
+    stopBridge: () => bridge.stop(),
+    finishTranscriptWatcher: () => transcriptWatcher?.finish(),
+  };
+  return stopSessionRuntime(parts, terminal, pty);
 }

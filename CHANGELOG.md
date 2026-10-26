@@ -56,6 +56,14 @@ back each entry are listed in `prd/14-conformance.md`.
   write, so a model-picker operation, composer cleanup, question answer, or
   startup-prompt answer kept writing after the caller's keys.
 
+- A Claude session's runtime cleanup now finishes its transcript watcher, as
+  Codex's already did. Before, only the Claude process's exit finished it, so
+  after a `stop()`, `kill()`, or `teardown()` that could not terminate the PTY,
+  the session kept polling the transcript and emitting its activity. Claude's
+  `transcript_poll_stopped` warning for a failed final flush now reads
+  "Transcript final flush failed after an unexpected error.", without "at exit",
+  since runtime cleanup can now run that flush while the PTY lives.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for

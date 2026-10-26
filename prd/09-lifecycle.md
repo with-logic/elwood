@@ -311,7 +311,12 @@ not delay the native process-exit notification, terminal status, or unconditiona
 process-group reap; the final `terminal:data` tail may therefore arrive after
 `terminal:exit`. A stalled renderer, or a PTY that never goes quiet, is disposed
 when the budget expires. Explicit direct `terminal.dispose()` does not wait for
-pending output.
+pending output. Runtime cleanup also stops the hook bridge and finishes the
+transcript watcher: one bounded final flush of what the transcript already holds,
+then no more polling. So a PTY that outlives a failed shutdown produces no later
+transcript activity, and its hook commands reach no handler: the stopped bridge
+accepts no new request. A host hook handler already running when cleanup starts may
+still finish and report its result.
 
 Reaping the leader's process group is unconditional on every exit path
 (C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,

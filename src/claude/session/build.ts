@@ -154,7 +154,7 @@ export async function buildClaudeSession(
     runtime,
     pty,
     terminal,
-    bridge,
+    { bridge, finishTranscriptWatcher: () => finishSafely() },
     emitter,
     terminalReplay,
     requestedSize,
