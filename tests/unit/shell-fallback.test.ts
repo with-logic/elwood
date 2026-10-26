@@ -5,22 +5,25 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import {
-  loginShellCommand,
-  probeShellCommand,
-  probeShellStatus,
-  userShell,
-} from "../../src/runtime/shell.ts";
+import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
+
+const os = vi.hoisted(() => ({ userInfo: vi.fn() }));
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, userInfo: () => ({ ...actual.userInfo(), shell: null }) };
+  os.userInfo.mockImplementation(() => ({ ...actual.userInfo(), shell: null }));
+  return { ...actual, userInfo: os.userInfo };
 });
 
 describe("user shell", () => {
-  test("falls back to /bin/zsh when the platform reports no shell", () => {
-    expect(userShell()).toBe("/bin/zsh");
-    expect(loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
+  test("falls back to /bin/zsh when the platform reports no shell", async () => {
+    // The setup file's runtime seams load shell.ts before this file's mock applies, so take a
+    // fresh copy that reads the mocked `userInfo`.
+    vi.resetModules();
+    const shell = await import("../../src/runtime/shell.ts");
+    expect(shell.userShell()).toBe("/bin/zsh");
+    expect(os.userInfo).toHaveBeenCalled();
+    expect(shell.loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
   });
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {

@@ -16,6 +16,7 @@ import type { PtyExit } from "../../../src/pty/types.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import { attachPtyTerminal } from "../../../src/terminal/headless.ts";
 import { parentCodexConfigurationFingerprint } from "../codex-parent-state.ts";
+import { registerPrivateHome } from "../home-guard.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 
 export const questionCodexBinary = join(homedir(), ".local/bin/codex");
@@ -34,8 +35,10 @@ export async function nativeCodexQuestionFiles() {
   const home = join(root, "home");
   const cwd = join(root, "project");
   const binary = join(root, "bin", "codex");
+  let unregisterHome = () => {};
   try {
     for (const dir of [home, cwd, join(root, "bin")]) mkdirSync(dir, { mode: 0o700 });
+    unregisterHome = registerPrivateHome(home);
     const installed = realpathSync(questionCodexBinary);
     copyFileSync(installed, binary);
     chmodSync(binary, 0o700);
@@ -63,6 +66,7 @@ export async function nativeCodexQuestionFiles() {
       cwd,
       binary,
       dispose() {
+        unregisterHome();
         rmSync(root, { recursive: true, force: true });
         if (existsSync(root)) throw new Error("Private Codex question sandbox remains");
         assertParentEnvironmentUnchanged(environment, process.env);
@@ -71,6 +75,7 @@ export async function nativeCodexQuestionFiles() {
       },
     };
   } catch (error) {
+    unregisterHome();
     rmSync(root, { recursive: true, force: true });
     throw error;
   }
