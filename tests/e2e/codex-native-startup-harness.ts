@@ -69,7 +69,11 @@ startup_timeout_sec = 2
   const terminal = createHeadlessTerminal({ cols: 100, rows: 40 }, (input) =>
     child.write(typeof input === "string" ? input : Buffer.from(input)),
   );
-  const data = child.onData((output) => void terminal.writeOutput(output));
+  // Every frame Codex rendered, one per output chunk once the terminal has drawn it.
+  const frames: string[] = [];
+  const data = child.onData(
+    (output) => void terminal.writeOutput(output).then(() => frames.push(terminal.snapshot().text)),
+  );
   let exited = false;
   child.onExit(() => {
     exited = true;
@@ -93,6 +97,7 @@ startup_timeout_sec = 2
   return {
     terminal,
     frame: () => terminal.snapshot().text,
+    frames: (): readonly string[] => frames,
     // The sandbox goes only once Codex is confirmed gone; otherwise it stays, with its project.
     close: async () => {
       try {

@@ -8,7 +8,13 @@ import { nativeCodex, unauthenticatedMcp } from "./codex-native-startup-harness.
 import { codexAuthMissing, skipIf, skipReason, waitFor } from "./helpers.ts";
 import { codexFolderTrust } from "./trust-screens.ts";
 
-test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain recovery", {
+// Codex before 0.154 painted MCP diagnostics in its startup region. 0.154 collapses them to
+// `⚠ 1 MCP startup issue · ctrl + t for details`, and 0.164 to a composer-footer badge.
+const detailedWarnings = /MCP startup incomplete|MCP server is not logged in/;
+const collapsedWarnings = /MCP startup issue/;
+const warningBadge = /⚠ [1-9]\d* warnings? · f2 to view/;
+
+test("C-E2E-09 real Codex trust gates clear and native MCP warnings keep their documented surface", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
   timeout: 150_000,
 }, async (t) => {
@@ -44,24 +50,36 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
     );
     assert.doesNotMatch(hooks, codexFolderTrust.question);
     await answer(hooks, "hook_trust", "2\r");
-    await waitFor(
+    const startup = await waitFor(
       () => {
         const frame = active.frame();
         return /OpenAI Codex \(v/.test(frame) &&
           !/Hooks need review/.test(frame) &&
           !codexFolderTrust.question.test(frame) &&
-          /MCP startup issue|MCP startup incomplete|MCP server is not logged in/.test(frame)
-          ? true
+          [detailedWarnings, collapsedWarnings, warningBadge].some((shown) => shown.test(frame))
+          ? frame
           : undefined;
       },
       "cleared native trust gates and startup warning",
       25_000,
     );
-    const version = /OpenAI Codex \(v([^)]*)\)/.exec(active.frame())?.[1];
+    const version = /OpenAI Codex \(v([^)]*)\)/.exec(startup)?.[1];
     assert.ok(version, "native welcome identifies the CLI version");
     t.diagnostic(`Native Codex ${version}, 100 × 40 PTY, isolated config, no model turn`);
+    if (warningBadge.test(startup)) {
+      // Codex 0.164 shows only a count. Its detail is in the transcript overlay, which Elwood
+      // never opens and where conversation also renders, so a session sees the count alone:
+      // the frame reads as the composer, and no frame Codex rendered on the way there yields
+      // an MCP warning (PRD §5.7).
+      assert.ok(codexTrustClearance(startup), `the badge frame reads as the composer:\n${startup}`);
+      const rendered = active.frames();
+      t.diagnostic(`${rendered.length} rendered startup frames`);
+      for (const frame of rendered)
+        assert.deepEqual(codexWarningsFromText(frame, "native-startup"), [], frame);
+      return;
+    }
     // Codex 0.154 collapses diagnostics; Ctrl+T reveals the native transcript overlay.
-    if (/MCP startup issue/.test(active.frame())) await active.terminal.sendInput("\u0014");
+    if (collapsedWarnings.test(startup)) await active.terminal.sendInput("\u0014");
     const warningFrame = await waitFor(
       () => {
         const frame = active.frame();
