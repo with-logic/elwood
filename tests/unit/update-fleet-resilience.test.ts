@@ -125,18 +125,20 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
       }
       return { status: 0, stdout: "", stderr: "" };
     });
-    await expect(detectCodexCliCapabilities()).rejects.toMatchObject({
+    await expect(detectCodexCliCapabilities(process.cwd())).rejects.toMatchObject({
       code: "codex_start_failed",
     });
     // A later start re-probes (the rejected capability promise was evicted), and recovers.
-    await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
+    await expect(detectCodexCliCapabilities(process.cwd())).resolves.toEqual({
+      supportsHookTrustBypass: true,
+    });
   });
 
   test("autoupdate finalization failures are contained as outcomes", async () => {
     await expect(
       cachedAutoupdate(
         "codex",
-        () => Promise.resolve(),
+        { verify: () => Promise.resolve(), update: () => Promise.resolve() },
         () => {
           throw new Error("cache invalidation failed");
         },

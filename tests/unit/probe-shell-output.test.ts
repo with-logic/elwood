@@ -154,6 +154,8 @@ describe.skipIf(!existsSync(zsh))("real zsh login shell", () => {
     const help = "echo '  --dangerously-bypass-hook-trust  Skip hook trust'";
     zshProfile(silent, { codex: `[ "$1" = --help ] && ${help} || echo 'codex-cli 0.164.0'` });
     await expect(preflightCodex(process.cwd(), true, true)).resolves.toBeUndefined();
-    await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
+    await expect(detectCodexCliCapabilities(process.cwd())).resolves.toEqual({
+      supportsHookTrustBypass: true,
+    });
   }, 60_000);
 });

@@ -26,14 +26,17 @@ import { useStandInLoginShell } from "./login-shell.ts";
 import { resumableStateDir, type SessionAdapter } from "./session-state.ts";
 import { tempDir } from "./tmp.ts";
 
-/** Installs the stand-in shell and a PTY factory that records each launch's `cwd`. */
-export function useProbeProjects(): (string | undefined)[] {
-  const launches: (string | undefined)[] = [];
+/** A launch the PTY factory was asked for; it never starts one. */
+export type Launch = { readonly command: string; readonly cwd: string | undefined };
+
+/** Installs the stand-in shell and a PTY factory that records each launch. */
+export function useProbeProjects(): Launch[] {
+  const launches: Launch[] = [];
   beforeEach(() => {
     setPlatformForTests("darwin");
     setUpdateCoordinatorForTests((_adapter, update) => update()); // never the account's lease
     setPtyFactoryForTests((options) => {
-      launches.push(options.cwd);
+      launches.push({ command: options.args.join(" "), cwd: options.cwd });
       throw new Error("no PTY in this test");
     });
     const home = dir("elwood-preflight-home-");
@@ -58,12 +61,16 @@ export function dir(prefix: string): string {
   return realpathSync(tempDir(prefix));
 }
 
-/** A project directory whose `bin/<cli>` prints `version`. */
-export function project(cli: ElwoodAgentKind, version: string): string {
+/**
+ * A project directory whose `bin/<cli>` prints `version`, and `help` for `--help`; its `update`
+ * records the directory it ran in, in `updated-in`.
+ */
+export function project(cli: ElwoodAgentKind, version: string, help = ""): string {
   const cwd = dir("elwood-preflight-session-");
   const bin = join(cwd, "bin", cli);
   mkdirSync(join(cwd, "bin"));
-  writeFileSync(bin, `#!/bin/sh\ncase "$1" in --version) echo '${version}' ;; esac\n`);
+  const answers = `--version) echo '${version}' ;; --help) echo '${help}' ;; update) pwd >> updated-in ;;`;
+  writeFileSync(bin, `#!/bin/sh\ncase "$1" in ${answers} esac\n`);
   chmodSync(bin, 0o755);
   return cwd;
 }
@@ -85,3 +92,11 @@ export function createResumableSessionStateDir(adapter: SessionAdapter, cwd: str
 
 export const oldCodex = { code: "codex_version_unsupported", details: { version: "0.100.0" } };
 export const oldClaude = { code: "claude_version_unsupported", details: { found: "2.1.100" } };
+
+/** The flag Codex is launched with only when its `--help` lists it (§4.2). */
+export const hookTrustBypass = "--dangerously-bypass-hook-trust";
+
+/** Whether each launch passed the hook-trust bypass, and the directory it launched in. */
+export function bypassByDirectory(launches: readonly Launch[]) {
+  return launches.map(({ command, cwd }) => [cwd, command.includes(hookTrustBypass)]);
+}

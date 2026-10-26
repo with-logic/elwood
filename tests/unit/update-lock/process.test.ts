@@ -55,7 +55,7 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
         staleMs: 30_000,
       }),
     );
-    const outcome = await cachedAutoupdate("codex", async () => {
+    const outcome = await cachedAutoupdate("codex", { verify: async () => {}, update: async () => {
       await appendFile(process.env.ELWOOD_TEST_ATTEMPTS, process.pid + "\\n");
       await announce();
       const deadline = Date.now() + 60_000;
@@ -63,7 +63,7 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
         if (Date.now() > deadline) throw new Error("lease observation barrier timed out");
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
-    });
+    } });
     if (!outcome.ok) throw outcome.error;
   `;
   const exits = await Promise.all(

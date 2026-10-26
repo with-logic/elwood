@@ -53,7 +53,11 @@ starts the session normally from the installed binary; only if the installed
 version is below the minimum does startup fail (with the same typed
 compatibility error below). A failed update is attempted at most once per parent
 process and MUST NOT be retried per start, nor may one failed shared update
-reject or poison any other otherwise-compatible start in the roster. If the
+reject or poison any other otherwise-compatible start in the roster. When the
+existence check fails in the launch directory of the start or resume that
+triggers the update (§9.2 below), no update command runs. That is not an update
+attempt: it records no `agent_update_failed` warning, and each launch that
+shared it tries the update again, in its own launch directory. If the
 installed agent version is below the minimum after that optional update step,
 startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`
@@ -76,9 +80,9 @@ an inherited `SHELL` environment override from the parent process.
 
 These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
-preflights on a single thread. Each `--version` and `update` probe runs in the
-session's launch directory (§4.2). Elwood reads each adapter's `--version` there
-and reuses a successful read while that directory is the last one it read in —
+preflights on a single thread. Each probe runs in the session's launch directory
+(§4.2). Elwood reads each adapter's `--version`, and Codex's `--help`, there and
+reuses a successful read while that directory is the last one it read in —
 concurrent reads in one directory share a single subprocess — mirroring the
 once-per-process autoupdate dedupe (C-LIFE-09); a read in another directory reads
 again. All cached version reads and adapter-capability reads are invalidated after

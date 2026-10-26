@@ -35,9 +35,9 @@ export async function preflightClaude(
     // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
     // we re-read the installed version and fall through to the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11).
-    const outcome = await cachedAutoupdate("claude", async () => {
-      await readClaudeVersion(cwd); // verify existence only after owning the cross-process lease
-      await runClaudeUpdate(cwd);
+    const outcome = await cachedAutoupdate("claude", {
+      verify: () => readClaudeVersion(cwd),
+      update: () => runClaudeUpdate(cwd),
     });
     if (!outcome.ok) updateError = outcome.error;
   }
