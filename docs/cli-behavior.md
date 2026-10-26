@@ -1721,6 +1721,32 @@ was still loading. `tests/unit/probe-closed-descriptor.test.ts` covers this with
 where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main` at
 613b3ea5.
 
+## Login-shell output around a probe command (2026-10-26)
+
+A probe's captured output becomes `agent_update_failed.raw`, `version_unparseable.raw`,
+and a failed `--version` or `--help` probe's `details.stderr`. It used to hold everything
+the login shell printed, not only the CLI's output. We measured with zsh 5.9 and macOS
+bash 3.2.57, using a private `ZDOTDIR` or `HOME`:
+
+- After the `-c` command, zsh `-l -i -c` runs a startup file's EXIT trap and then
+  `.zlogout`, on the same stdout and stderr. With no trap set, zsh `exec`s a final
+  external command and runs neither. With a trap set, it does not `exec`, so both
+  run. A builtin last command (`printf`) always runs `.zlogout`.
+- bash 3.2 `-l -i -c` prints `bash: no job control in this shell` on stderr at startup.
+  After the command it runs a profile's EXIT trap. It did not run `~/.bash_logout`.
+
+A marker before the command therefore still leaves the exit output. The probe script
+now writes the start line on stdout and on stderr as well, after descriptor 3, so the
+stdout fallback of the previous section is now unconditional. It runs the command as
+`{ …\n}`, then `&& s=0 || s=$?`, so a profile's `errexit` cannot skip the next step:
+it writes an end line with the same token on both streams and runs `(exit $s)`. The
+runner keeps only what lies between the two lines, so the command's last line is kept
+even when it has no newline. Because the shell no longer `exec`s the command, a signal
+death now reads as status 128+n instead of a signal. The probe's process group also
+holds the shell, and a bound still kills the command itself.
+`tests/unit/probe-shell-output.test.ts` checks this against real zsh, including the
+command's exact pid after a timeout.
+
 ## Testing against the real CLIs
 
 - `test:e2e` runs **serially** (`--test-concurrency=1`): Codex config-file

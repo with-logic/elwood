@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
+import { probeCommandEndLine, probeCommandStartLine } from "../../src/runtime/probe/start.ts";
 import { loginShellCommand, probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 
 vi.mock("node:os", async (importOriginal) => {
@@ -20,15 +20,18 @@ describe("user shell", () => {
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    // Same shell and flags; the probe writes its start line on descriptor 3 and closes it, or
-    // writes it on stdout if the shell already closed descriptor 3, then runs the command
-    // (C-PERF-05).
-    const line = probeCommandStartLine;
+    // Same shell and flags; the probe writes its start line on descriptor 3 if the shell kept
+    // it open, then on stdout and stderr, runs the command, and brackets it with the end line
+    // while keeping its exit status (C-PERF-05, §9.2).
+    const [line, end] = [probeCommandStartLine, probeCommandEndLine];
+    const status = "elwood_probe_status";
     expect(probeShellCommand("claude --version")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; claude --version`,
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; fi; echo ${line}; echo ${line} >&2; ` +
+        `{ claude --version\n} && ${status}=0 || ${status}=$?; echo ${end}; echo ${end} >&2; ` +
+        `(exit $${status})`,
     ]);
   });
 });

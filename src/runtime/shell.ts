@@ -4,7 +4,7 @@
  */
 
 import { userInfo } from "node:os";
-import { probeStartScript } from "./probe/start.ts";
+import { probeScript } from "./probe/start.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
@@ -30,10 +30,10 @@ export function loginShellCommand(command: string): LoginShellArgs {
  * Interactive login shell for the non-PTY probes (`--version`, `update`, `--help`).
  * The same shell and flags as `loginShellCommand` (C-PTY-08): the probes and the agent
  * PTY must resolve the same CLI installation, so a probe loads the same user PATH the
- * PTY launch does. The one divergence is the start line written before the command, on the
- * runner's private control descriptor or, from a shell that closed it, on stdout, so the
- * probe runner can bound the user's profile and the CLI separately (C-PERF-05).
+ * PTY launch does. The one divergence is the start and end lines written around the command,
+ * so the probe runner can bound the user's profile and the CLI separately (C-PERF-05) and
+ * capture only the command's own output (§9.2).
  */
 export function probeShellCommand(command: string): LoginShellArgs {
-  return loginShellCommand(`${probeStartScript}${command}`);
+  return loginShellCommand(probeScript(command));
 }

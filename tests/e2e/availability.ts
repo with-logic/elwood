@@ -12,6 +12,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
+import { commandOutput } from "../../src/runtime/probe/start.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { e2eRunDir } from "./run-dir.ts";
 
@@ -79,14 +80,14 @@ function probe(agent: AgentName): Probed {
   const result = spawnSync(shell, [...probeShellCommand(`command -v ${agent}`)], {
     encoding: "utf8",
     // The fourth pipe receives the probe shell's start line, as `runProbe`'s does, unless the
-    // shell closed it; then the line precedes the command's output on stdout.
+    // shell closed it.
     stdio: ["ignore", "pipe", "pipe", "pipe"],
     // The production probe's launch plus command bounds (§9.2, C-PERF-05): a loaded host's
     // interactive profile alone can exceed 15 s, which must not read as a missing CLI.
     timeout: probeLaunchTimeoutMs + probeCommandTimeoutMs,
   });
-  // `command -v` prints the path last; an interactive profile may print its own lines first.
-  const path = result.stdout.trim().split("\n").at(-1);
+  // Only `command -v`'s output, between the probe's start and end lines (§9.2).
+  const path = commandOutput(result.stdout).trim();
   if (result.status === 0 && path) return { path };
   const detail = result.error ? ` (${result.error.message})` : "";
   return { skip: `${agent} CLI does not resolve in the login shell ${shell}${detail}` };

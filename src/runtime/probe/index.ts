@@ -12,7 +12,7 @@ import { completeUtf8Length } from "../../core/utf8.ts";
 import type { CommandResult } from "../seams.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
-import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
+import { ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
 /** The probe command's own default bound, from the shell's start line (C-PERF-03). */
 export const probeCommandTimeoutMs = 15_000;
@@ -118,7 +118,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
         }),
       );
     };
-    const captured = (): [string, string] => [start.stripFromStdout(out.text()), err.text()];
+    const captured = (): [string, string] => [start.kept(out.text()), start.kept(err.text())];
     // Each phase's bound aborts the probe with its own typed timeout when it expires.
     const boundBy = (ms: number, result: () => CommandResult) => {
       const bound = setTimeout(() => settle(result(), true), ms);
@@ -129,8 +129,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       buffer.append(chunk);
       if (out.overflowed || err.overflowed) settle(overflow(...captured()), true);
     };
-    const start = new ProbeStart();
-    const expectsStartLine = announcesStart(args);
+    const start = new ProbeStart(args);
     // A shell that closed the control descriptor writes the start line on stdout (start.ts).
     // Watched before capture, so a chunk that both starts the command and overflows the cap
     // has its bound cleared by the overflow's settle rather than armed after it.
@@ -157,7 +156,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       const [stdout, stderr] = captured();
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
-      if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
+      if (start.announced && !start.started) settle(shellExited(code, stdout, stderr));
       else settle({ status: code, stdout, stderr });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).

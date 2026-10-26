@@ -53,9 +53,9 @@ test("C-PERF-03 the command bound starts at the start line and still kills a hun
   expect(performance.now() - started).toBeLessThan(10_000);
 });
 
-test("C-PERF-05 the start line never reaches captured stderr", async () => {
-  const result = await probe("printf warn >&2", "echo err >&2; exit 2");
-  expect(result).toEqual({ status: 2, stdout: "", stderr: "warnerr\n" });
+test("C-PERF-05 neither the start line nor the profile's stderr reaches captured stderr", async () => {
+  const result = await probe("printf FAKE-SECRET >&2", "echo err >&2; exit 2");
+  expect(result).toEqual({ status: 2, stdout: "", stderr: "err\n" });
 });
 
 test("C-PERF-03 a command-bound timeout kills the command's whole process group", async () => {

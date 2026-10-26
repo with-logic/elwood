@@ -80,7 +80,9 @@ test.each([
 });
 test("C-CLI-25 a framed empty PATH remains authoritative", async () => {
   const f = fixture();
-  writeFileSync(f.startup, "#!/bin/sh\nprintf '\\0\\0'\n");
+  // The lookup itself runs, under an empty PATH: output the shell printed without running it
+  // is startup output, never the lookup's (§9.2).
+  writeFileSync(f.startup, '#!/bin/sh\nshift\nshift\nPATH= exec /bin/sh "$@"\n');
   writeFileSync(join(f.bin, "elwood-test-agent"), "#!/bin/sh\nexit 7\n", { mode: 0o700 });
   vi.stubEnv("PATH", f.bin);
   await expect(
