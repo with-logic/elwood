@@ -71,8 +71,9 @@ terminal transcripts, prompts, tokens, or environment secrets. When this process
 ran the update command, the warning also names `updateCwd`, the directory it ran
 in: the launch directory of the start or resume that triggered the one attempt the
 process shares, which may be another session's. A warning for an attempt whose
-command did not run here (a peer's update was awaited, or skipped while another
-process held the update) has no `updateCwd`. Like all
+command did not run here (a peer's update was awaited, it was skipped while another
+process held the update, or the login shell failed before running it) has no
+`updateCwd`. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
 `ready`.
