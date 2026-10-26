@@ -57,7 +57,13 @@ export async function startLaggedCodex(
   const launches = codexLaunches();
   t.after(async () => {
     try {
-      await endCodexTest({ sessions: [session], project, sandbox, launches, failure: undefined });
+      await endCodexTest({
+        sessions: [session],
+        projects: [project],
+        sandbox,
+        launches,
+        failure: undefined,
+      });
     } finally {
       resetRuntimeSeamsForTests();
     }

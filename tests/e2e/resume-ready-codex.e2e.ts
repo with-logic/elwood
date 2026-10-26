@@ -10,7 +10,7 @@ import test from "node:test";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
-import { codexLaunches, endCodexTest } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -73,9 +73,9 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
   };
   let first: CodexSessionApi | undefined;
   let resumed: CodexSessionApi | undefined;
-  let failure: unknown;
   const launches = codexLaunches();
-  try {
+  const scope = { sessions: () => [resumed, first], projects: [project], sandbox, launches };
+  await runCodexTest(scope, async () => {
     const session = await launches.track(startCodex(opts));
     first = session;
     // Codex fires `SessionStart` lazily, at the first prompt, and it alone carries the
@@ -176,11 +176,5 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     // Codex accepted each queued message once, in order, and answered each once.
     assert.deepEqual(prompts, [ONE, TWO]);
     assert.equal(stops, 2);
-  } catch (error) {
-    failure = error;
-    throw error;
-  } finally {
-    // The sandbox goes only once every Codex process that could use it is confirmed gone.
-    await endCodexTest({ sessions: [resumed, first], project, sandbox, launches, failure });
-  }
+  });
 });

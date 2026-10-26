@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
+import { codexLaunches, endCodexTest } from "./codex-ready.ts";
 import {
-  cleanup,
   codexAuthMissing,
   makeProject,
   sandboxedCodexHome,
@@ -19,29 +19,38 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
 }, async (t) => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
+  const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
-  t.after(async () => {
-    await cleanup(session);
-    sandbox.dispose();
-  });
+  // The sandbox goes only once every Codex process that could use it is confirmed gone.
+  t.after(() =>
+    endCodexTest({
+      sessions: [session],
+      projects: [project],
+      sandbox,
+      launches,
+      failure: undefined,
+    }),
+  );
   let submitted = 0;
   const order: string[] = [];
   let cursorVisible = false;
   let observedTrust = false;
-  session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    initialSize: { cols: 100, rows: 30 },
-    autotrust: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    hooks: {
-      UserPromptSubmit: () => {
-        submitted++;
-        order.push("submit");
+  session = await launches.track(
+    startCodex({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      initialSize: { cols: 100, rows: 30 },
+      autotrust: false,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      hooks: {
+        UserPromptSubmit: () => {
+          submitted++;
+          order.push("submit");
+        },
       },
-    },
-  });
+    }),
+  );
   const active = session;
   const inputs: string[] = [];
   const inputSubscription = active.terminal.xterm.onData((input) => {

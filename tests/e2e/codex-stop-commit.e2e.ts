@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { CodexSessionApi, ElwoodWarningEvent } from "../../src/index.ts";
-import { startReadyCodex, teardownOrKillCodex } from "./codex-ready.ts";
+import { codexLaunches, runCodexTest, startReadyCodex } from "./codex-ready.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -47,14 +47,15 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, CODEX_CONFIG);
-  let started: CodexSessionApi | undefined;
-  let failure: unknown;
-  try {
+  const launches = codexLaunches();
+  const started: CodexSessionApi[] = [];
+  // The test's end covers a start that rejected and left no session to tear down.
+  const scope = { sessions: () => started, projects: [project], sandbox, launches };
+  await runCodexTest(scope, async () => {
     const session = await startReadyCodex(project, {
       readyTimeoutMs: READY_MS,
-      onStarted: (launched) => {
-        started = launched;
-      },
+      launches,
+      onStarted: (launched) => started.push(launched),
     });
     let stopHook: { transcriptPath: string | null | undefined; turnId: string } | undefined;
     session.on("hook", (event) => {
@@ -91,16 +92,5 @@ test("C-LIFE-13 real Codex: stop() at the Stop-hook ready leaves the turn commit
     );
     // The record came within the bound, so the stop is not reported as a lost turn.
     assert.ok(!warnings.includes("turn_commit_wait_expired"), `warnings: ${warnings.join(",")}`);
-  } catch (error) {
-    failure = error;
-    throw error;
-  } finally {
-    const shutdownFailures = started ? await teardownOrKillCodex(started) : [];
-    if (shutdownFailures.length === 0) sandbox.dispose();
-    else {
-      const errors = failure === undefined ? shutdownFailures : [failure, ...shutdownFailures];
-      // biome-ignore lint/correctness/noUnsafeFinally: a process that outlives the test must fail it.
-      throw new AggregateError(errors, "Codex session did not shut down");
-    }
-  }
+  });
 });

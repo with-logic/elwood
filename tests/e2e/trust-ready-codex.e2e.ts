@@ -79,7 +79,13 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   t.after(async () => {
     try {
       // The sandbox goes only once every Codex process that could use it is confirmed gone.
-      await endCodexTest({ sessions: [session], project, sandbox, launches, failure: undefined });
+      await endCodexTest({
+        sessions: [session],
+        projects: [project],
+        sandbox,
+        launches,
+        failure: undefined,
+      });
     } finally {
       resetRuntimeSeamsForTests();
     }

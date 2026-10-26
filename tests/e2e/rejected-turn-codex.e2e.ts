@@ -10,6 +10,7 @@ import test from "node:test";
 import type { CliError } from "../../src/cli/output/types.ts";
 import { CodexSession, ElwoodError } from "../../src/index.ts";
 import { invoke, parse } from "./cli-commands-helpers.ts";
+import { codexLaunches, runCodexTest } from "./codex-ready.ts";
 import {
   bogusCodexModel,
   codexAuthMissing,
@@ -30,8 +31,9 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, config);
-  try {
-    const result = await invoke(
+  const launches = codexLaunches();
+  await runCodexTest({ sessions: () => [], projects: [project], sandbox, launches }, async () => {
+    const cli = invoke(
       [
         "--agent=codex",
         `--model=${bogusCodexModel}`,
@@ -43,6 +45,8 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
       ],
       project.cwd,
     );
+    // A CLI that timed out was killed, and the Codex it launched may still be running.
+    const result = await launches.track(cli);
     // Report both streams on any mismatch so an unrelated startup failure is diagnosable.
     const output = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
     assert.equal(result.status, 1, output);
@@ -51,9 +55,7 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
     assert.equal(document.agent, "codex");
     assert.equal(document.error.code, "turn_failed", output);
     assert.match(document.error.message, /model_not_found/u);
-  } finally {
-    sandbox.dispose();
-  }
+  });
 });
 
 test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed", {
@@ -77,7 +79,11 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
       (reply) => ({ reply }),
       (error: unknown) => ({ error }),
     );
-  try {
+  const launches = codexLaunches();
+  const scope = { sessions: () => [session], projects: [project], sandbox, launches };
+  await runCodexTest(scope, async () => {
+    // Started explicitly so a start that rejects is told apart from the turns' rejections.
+    await launches.track(session.start());
     for (const prompt of ["Reply with exactly OK.", "Reply with exactly AGAIN."]) {
       // The second turn proves the first released the session at its real boundary.
       const outcome = await settle(prompt);
@@ -93,8 +99,5 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
     // Codex accepted both submissions and fired no `Stop` for either.
     assert.equal(hooks.filter((name) => name === "UserPromptSubmit").length, 2, hooks.join(","));
     assert.ok(!hooks.includes("Stop"), hooks.join(","));
-  } finally {
-    await session.teardown().catch(() => session.kill());
-    sandbox.dispose();
-  }
+  });
 });

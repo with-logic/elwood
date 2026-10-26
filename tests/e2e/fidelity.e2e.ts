@@ -13,6 +13,7 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
+import { codexLaunches, runCodexTest } from "./codex-ready.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -103,21 +104,25 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
       "",
     ].join("\n"),
   );
+  const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
   let stops = 0;
-  try {
-    session = await startCodex({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      sandbox: "read-only",
-      approvalPolicy: "never",
-      autotrust: true,
-      hooks: {
-        Stop: () => {
-          stops += 1;
+  const scope = { sessions: () => [session], projects: [project], sandbox, launches };
+  await runCodexTest(scope, async () => {
+    session = await launches.track(
+      startCodex({
+        cwd: project.cwd,
+        stateDir: project.stateDir,
+        sandbox: "read-only",
+        approvalPolicy: "never",
+        autotrust: true,
+        hooks: {
+          Stop: () => {
+            stops += 1;
+          },
         },
-      },
-    });
+      }),
+    );
     const observed = observeSession(session);
     // Codex dispatches hooks with the first turn, so run one.
     await session.sendMessage("Reply exactly: ELWOOD_FIDELITY_OK. Do not use tools.");
@@ -129,8 +134,5 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
     assert.ok(configRaw.includes("user-hook-fired"));
     assert.ok(!configRaw.includes("hook-bridge-"), "bridge hooks stay out of user config");
     observed.dispose();
-  } finally {
-    await cleanup(session);
-    sandbox.dispose();
-  }
+  });
 });

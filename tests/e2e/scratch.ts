@@ -26,6 +26,8 @@ export type CodexSandbox = {
   readonly configPath: string;
   /** Restores `CODEX_HOME` and removes the sandbox (including the auth.json copy). */
   dispose(): void;
+  /** Restores `CODEX_HOME` and leaves the sandbox, which a Codex process may still use. */
+  restoreHome(): void;
 };
 
 const scratchRoots: string[] = [];
@@ -95,13 +97,17 @@ export function sandboxedCodexHome(project: E2eProject, config: string): CodexSa
   const configPath = seedCodexHome(home, config);
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = home;
+  const restoreHome = () => {
+    if (previousHome === undefined) delete process.env["CODEX_HOME"];
+    else process.env["CODEX_HOME"] = previousHome;
+  };
   return {
     home,
     configPath,
     dispose: () => {
-      if (previousHome === undefined) delete process.env["CODEX_HOME"];
-      else process.env["CODEX_HOME"] = previousHome;
+      restoreHome();
       rmSync(home, { recursive: true, force: true });
     },
+    restoreHome,
   };
 }

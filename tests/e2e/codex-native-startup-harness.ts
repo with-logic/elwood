@@ -5,6 +5,7 @@ import { spawn } from "node-pty";
 import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { makeProject, sandboxedCodexHome, waitFor } from "./helpers.ts";
+import { keepScratch } from "./scratch.ts";
 
 /** Local authentication failure creates Codex's own MCP warning without an external service. */
 export async function unauthenticatedMcp() {
@@ -74,6 +75,7 @@ startup_timeout_sec = 2
     terminal,
     frame: () => terminal.snapshot().text,
     close: async () => {
+      let kept = false;
       try {
         if (!exited) {
           child.write("\u0003");
@@ -83,13 +85,21 @@ startup_timeout_sec = 2
           if (!exited) child.kill("SIGKILL");
           await waitFor(() => (exited ? true : undefined), "native Codex exit", 5_000);
         }
+      } catch (error) {
+        // Codex may still be running in the sandbox, so it stays, with its project.
+        kept = true;
+        sandbox.restoreHome();
+        keepScratch(project.cwd, sandbox.home);
+        throw new Error(`native Codex did not exit; kept ${project.cwd}, ${sandbox.home}`, {
+          cause: error,
+        });
       } finally {
         data.dispose();
         try {
           await terminal.settled();
         } finally {
           terminal.dispose();
-          sandbox.dispose();
+          if (!kept) sandbox.dispose();
         }
       }
     },
