@@ -4,7 +4,7 @@
  */
 
 import { userInfo } from "node:os";
-import { probeStartScript } from "./probe/start.ts";
+import { probeScript, probeStartScript } from "./probe/start.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
@@ -30,18 +30,20 @@ export function loginShellCommand(command: string): LoginShellArgs {
  * Interactive login shell for the non-PTY probes (`--version`, `update`, `--help`).
  * The same shell and flags as `loginShellCommand` (C-PTY-08): the probes and the agent
  * PTY must resolve the same CLI installation, so a probe loads the same user PATH the
- * PTY launch does. The one divergence is the start line written before the command, on the
- * runner's private control descriptor or, from a shell that closed it, on stdout, so the
- * probe runner can bound the user's profile and the CLI separately (C-PERF-05).
+ * PTY launch does, and `exec`s its command as the PTY launch does. The one divergence is the
+ * probe script: a start line, so the probe runner can bound the user's profile and the CLI
+ * separately (C-PERF-05), and private named pipes, so only the command's own output is
+ * captured (§9.2). `command` must be one program the shell can `exec`, with its arguments.
  */
 export function probeShellCommand(command: string): LoginShellArgs {
-  return loginShellCommand(`${probeStartScript}${command}`);
+  return loginShellCommand(probeScript(command));
 }
 
 /**
  * The same login shell, for a lookup answered by its exit status alone (`command -v`). The
- * command's output goes to `/dev/null`, so the probe captures none of it.
+ * command's output goes to `/dev/null`, so the probe captures none of it. Not `exec`ed, as
+ * `probeShellCommand`'s command is: a builtin answers in the shell itself, with no pipes to read.
  */
 export function probeShellStatus(command: string): LoginShellArgs {
-  return probeShellCommand(`${command} >/dev/null 2>&1`);
+  return loginShellCommand(`${probeStartScript}${command} >/dev/null 2>&1`);
 }

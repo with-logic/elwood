@@ -46,10 +46,10 @@ test("C-PERF-05 a login shell that closed descriptor 3 still passes Claude's ver
 
 test.each([
   ["", "2.1.310\n"],
-  ["printf noise", "noise2.1.310\n"],
+  ["printf noise", "2.1.310\n"],
   ["exec 2>/dev/null", "2.1.310\n"],
   ["exec 2>&1", "2.1.310\n"],
-])("C-PERF-05 without descriptor 3 the start line goes to stdout and is removed (%s)", async (profile, stdout) => {
+])("C-PERF-05 without descriptor 3 the start line goes to stdout and only the command's output is kept (%s)", async (profile, stdout) => {
   const result = await runProbe(closingShell(profile), shell.probeShellCommand("echo 2.1.310"));
   expect(result).toEqual({ status: 0, stdout, stderr: "" });
 });
@@ -57,7 +57,7 @@ test.each([
 test("C-PERF-05 a start line on stdout ends the launch phase while the command still runs", async () => {
   // The launch bound would kill the probe mid-`sleep`; only the line hands it the command bound.
   setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 1_500 });
-  const command = shell.probeShellCommand("sleep 2; echo 2.1.310");
+  const command = shell.probeShellCommand("/bin/sh -c 'sleep 2; echo 2.1.310'");
   const result = await runProbe(closingShell(), command);
   expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });
@@ -73,11 +73,7 @@ test.each([
   const result = await (descriptor === "closed"
     ? runProbe(closingShell(profile), ["-l", "-i", "-c", script])
     : runProbe("/bin/sh", ["-c", `${profile}; ${script}`]));
-  expect(result).toEqual({
-    status: 0,
-    stdout: "elwood-probe-command-start\n2.1.310\n",
-    stderr: "",
-  });
+  expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });
 
 // Pinned to the bash 3.2 that macOS ships as /bin/bash. Linux's bash 5.2 keeps descriptor 3 as

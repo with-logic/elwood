@@ -1,6 +1,7 @@
 /**
  * Unit coverage for recognizing the probe shell's start line in a chunked stream, on either of
- * its channels (PRD §9.2, C-PERF-05). Pipes may split the line anywhere, so it is fed byte by byte.
+ * its channels (PRD §9.2, C-PERF-05). Pipes may split the line anywhere, so it is fed byte by
+ * byte.
  */
 
 import { expect, test } from "vitest";
@@ -9,8 +10,9 @@ import {
   ProbeStart,
   ProbeStartWatcher,
   probeCommandStartLine,
-  probeStartScript,
+  probeScript,
 } from "../../src/runtime/probe/start.ts";
+import { probeShellStatus } from "../../src/runtime/shell.ts";
 
 const line = `${probeCommandStartLine}\n`;
 
@@ -30,8 +32,10 @@ test("C-PERF-05 output without the full start line never ends the launch phase",
   expect(watcher.feed(Buffer.from("x".repeat(100)))).toBe(false);
 });
 
-test("C-PERF-05 only a script that writes the start line first announces its command", () => {
-  expect(announcesStart(["-l", "-i", "-c", `${probeStartScript}claude --version`])).toBe(true);
+test("C-PERF-05 only a script that writes the start line announces its command", () => {
+  expect(announcesStart(["-l", "-i", "-c", probeScript("claude --version")])).toBe(true);
+  expect(announcesStart(["-c", `profile; ${probeScript("claude --version")}`])).toBe(true);
+  expect(announcesStart(probeShellStatus("command -v claude"))).toBe(true);
   expect(announcesStart(["-e", "process.exit(0)"])).toBe(false);
   expect(announcesStart([])).toBe(false);
 });
@@ -46,23 +50,13 @@ test("C-PERF-03 the watcher keeps a copy of a split line's tail, not a view of t
 });
 
 test("C-PERF-05 the first channel to carry the start line starts the command, once", () => {
-  const viaControl = new ProbeStart();
+  const viaControl = new ProbeStart([]);
   expect(viaControl.feed("control", Buffer.from(line))).toBe(true);
   expect(viaControl.started).toBe(true);
-  expect(viaControl.feed("stdout", Buffer.from(line))).toBe(false); // the command's own output
-  expect(viaControl.stripFromStdout(`2.1.310\n${line}`)).toBe(`2.1.310\n${line}`);
-  const viaStdout = new ProbeStart();
+  expect(viaControl.feed("stdout", Buffer.from(line))).toBe(false); // the shell's stdout copy
+  const viaStdout = new ProbeStart([]);
   expect(viaStdout.started).toBe(false);
   expect(viaStdout.feed("stdout", Buffer.from(`noise ${line}`))).toBe(true);
   expect(viaStdout.started).toBe(true);
   expect(viaStdout.feed("control", Buffer.from(line))).toBe(false);
-});
-
-test("C-PERF-05 a start line that arrived on stdout is removed from captured stdout", () => {
-  const start = new ProbeStart();
-  const captured = `noise ${line}2.1.310\n`;
-  expect(start.stripFromStdout(captured)).toBe(captured); // not yet seen
-  start.feed("stdout", Buffer.from(`noise ${line}`));
-  expect(start.stripFromStdout(captured)).toBe("noise 2.1.310\n");
-  expect(start.stripFromStdout("")).toBe(""); // a settled probe's released capture
 });

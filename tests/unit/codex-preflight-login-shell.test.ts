@@ -10,7 +10,7 @@ import {
   preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
-import { probeStartScript } from "../../src/runtime/probe/start.ts";
+import { probeScript } from "../../src/runtime/probe/start.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   resetAutoupdateForTests,
@@ -36,16 +36,16 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
   await preflightCodex(false, true);
   await detectCodexCliCapabilities();
   expect(scripts).toEqual([
-    `${probeStartScript}codex --version`,
-    `${probeStartScript}codex update`,
-    `${probeStartScript}codex --version`,
-    `${probeStartScript}codex --help`,
+    probeScript("codex --version"),
+    probeScript("codex update"),
+    probeScript("codex --version"),
+    probeScript("codex --help"),
   ]);
 });
 
 test("C-PERF-05 a login shell that fails before `codex update` reports login_shell_failed", async () => {
   setCommandRunnerForTests((_command, args) =>
-    args.at(-1)?.endsWith("codex update")
+    args.at(-1) === probeScript("codex update")
       ? {
           status: null,
           stdout: "",

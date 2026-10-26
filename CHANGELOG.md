@@ -18,6 +18,16 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- Probe diagnostics no longer carry the login shell's own output.
+  `agent_update_failed`'s `raw`, `version_unparseable`'s `raw`, and a failed
+  `--version` or `--help` probe's `details.stderr` now hold only the CLI's own
+  output. They used to include anything the user's startup files printed, which
+  can include expanded secrets: output before the command, a DEBUG or ZERR trap or
+  a background helper while it ran, under zsh an EXIT trap or `.zlogout` after
+  it, and zsh's `command_not_found_handler` when the CLI was missing. The probe
+  shell now `exec`s the CLI with its output redirected into named pipes in a
+  private temporary directory that is removed when the probe ends. A probe
+  command that dies of a signal now reports status 128+n instead of `null`.
 - `elwood interactive` hands the agent the login shell's own PATH even when the
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
