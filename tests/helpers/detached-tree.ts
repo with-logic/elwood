@@ -42,9 +42,12 @@ const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
 // Node named `codex` and has it start, detached and with their real arguments, the
 // Codex 0.164 TUI's app-server `daemon` (which starts an `mcp` server from plain Node)
 // and its `updater` loop, from a copy at the daemon's install (docs/cli-behavior.md).
+// `becomes-daemon` runs the leader from that `codex` copy too, and has it start a setsid
+// `becoming` child from it, which, once `<dir>/exec` exists, sets its title to the
+// daemon's path, which macOS `ps` reads as its `comm`, as an `exec` of the daemon would.
 const HOLD = `
 const { spawn } = require("node:child_process");
-const { writeFileSync } = require("node:fs");
+const { existsSync, writeFileSync } = require("node:fs");
 const [dir, name, next, mode] = process.argv.slice(2);
 const start = (binary, args) => spawn(binary, [__filename, dir, ...args], { detached: true, stdio: "ignore" });
 if (mode === "ignore-term") process.on("SIGTERM", () => {});
@@ -53,6 +56,13 @@ if (mode === "with-daemon") {
   start(dir + "/${DAEMON_BINARY}", ["daemon", "mcp", "", "app-server", "--listen", "unix://", "--analytics-default-enabled", "--managed-daemon"]);
   start(dir + "/${DAEMON_BINARY}", ["updater", "", "", "app-server", "daemon", "pid-update-loop"]);
 }
+if (mode === "becomes-daemon") start(process.execPath, ["becoming", "", "becoming"]);
+const exec = () => {
+  if (!existsSync(dir + "/exec")) return setTimeout(exec, 2);
+  process.title = dir + "/${DAEMON_BINARY}";
+  writeFileSync(dir + "/became", "");
+};
+if (mode === "becoming") exec();
 writeFileSync(dir + "/" + name + ".pid", String(process.pid));
 setInterval(() => {}, 1e9);
 `;
@@ -60,9 +70,11 @@ setInterval(() => {}, 1e9);
 export type DetachedTree = { readonly pty: PtyProcess; readonly dir: string };
 
 /** Starts the leader under a real PTY; it starts the detached child, which starts the grandchild. */
-export function startDetachedTree(mode: "" | "ignore-term" | "with-daemon" = ""): DetachedTree {
+export function startDetachedTree(
+  mode: "" | "ignore-term" | "with-daemon" | "becomes-daemon" = "",
+): DetachedTree {
   const dir = holdDir("elwood-detached-");
-  const asCodex = mode === "with-daemon";
+  const asCodex = mode === "with-daemon" || mode === "becomes-daemon";
   const command = asCodex ? join(dir, TUI_BINARY) : process.execPath;
   if (asCodex) {
     for (const binary of [TUI_BINARY, DAEMON_BINARY].map((path) => join(dir, path))) {
@@ -81,10 +93,10 @@ export function startDetachedTree(mode: "" | "ignore-term" | "with-daemon" = "")
   return { pty, dir };
 }
 
-/** Waits for the pid file of `name`, a process a `with-daemon` leader starts. */
+/** Waits for the pid file of `name`, a process a `with-daemon` or `becomes-daemon` leader starts. */
 export async function extraPid(
   tree: DetachedTree,
-  name: "daemon" | "mcp" | "updater",
+  name: "daemon" | "mcp" | "updater" | "becoming",
 ): Promise<number> {
   const pid = await waitForPid(tree.dir, name, PID_FILE_WAIT_TIMEOUT_MS);
   if (pid === undefined) throw new Error(`the ${name} process never started`);

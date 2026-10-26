@@ -147,6 +147,7 @@ describe("C-LIFE-10 a failed real-process test leaves no detached tree behind", 
     const reaper = new SessionReaper(tree.pty.pid, {
       stopGroup: () => undefined,
       killGroup: () => undefined,
+      continueGroup: () => undefined,
       listProcesses: () => Promise.reject(unreadable),
     });
     await expect(reaper.sweepDetached(() => false)).rejects.toThrow("process table unreadable");

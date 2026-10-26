@@ -24,6 +24,8 @@ export type SweepOps = {
   readonly stopGroup: (pgid: number) => void;
   /** SIGKILLs the process group `pgid`; tolerates an already-empty group. */
   readonly killGroup: (pgid: number) => void;
+  /** SIGCONTs the process group `pgid`: one the sweep stopped but must not kill. */
+  readonly continueGroup: (pgid: number) => void;
   /** Lists the host process table within `timeoutMs`, marking `shared` rows in `scope`. */
   readonly listProcesses: (
     timeoutMs: number,
@@ -44,6 +46,8 @@ export type SweepState = {
   live: ReadonlyMap<number, ReadonlySet<ProcessEntry>>;
   /** Signaled groups not yet held: see `unheldGroups`, plus any signaled since that read. */
   unheld: readonly number[];
+  /** The latest table a read returned, by which the kill pass picks the groups to resume. */
+  latest: readonly ProcessEntry[];
   readonly failures: SweepFailures;
 };
 
@@ -55,6 +59,7 @@ export function newSweepState(failures: SweepFailures): SweepState {
     unstoppable: new Map(),
     live: new Map(),
     unheld: [],
+    latest: [],
     failures,
   };
 }

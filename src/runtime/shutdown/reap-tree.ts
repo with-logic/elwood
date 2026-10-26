@@ -23,8 +23,8 @@ import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
- * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, and
- * table read, which marks Codex's shared daemon.
+ * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, the
+ * SIGCONT that resumes a group holding Codex's daemon, and table read.
  */
 export type ProcessTreeOps = SweepOps;
 
@@ -78,6 +78,9 @@ export const osProcessTreeOps: ProcessTreeOps = {
   stopGroup(pgid: number): void {
     process.kill(-pgid, "SIGSTOP");
   },
+  continueGroup(pgid: number): void {
+    process.kill(-pgid, "SIGCONT");
+  },
   listProcesses: (timeoutMs, scope) => listProcessTableMarkingDaemon(timeoutMs, scope),
 };
 
@@ -99,10 +102,11 @@ export function setProcessTreeOpsForTests(ops: GroupReapOps & Partial<ProcessTre
  * to stop, each read as stopped with nothing under it. A sweep driven by them signals
  * no real process, finds no descendant, and converges on its second read.
  */
-export function quietProcessTree(): Pick<ProcessTreeOps, "stopGroup" | "listProcesses"> {
+export function quietProcessTree(): Omit<ProcessTreeOps, "killGroup"> {
   const stopped = new Set<number>();
   return {
     stopGroup: (pgid) => void stopped.add(pgid),
+    continueGroup: (pgid) => void stopped.delete(pgid),
     listProcesses: () =>
       Promise.resolve([...stopped].map((pgid) => ({ ...QUIET_ROW, pid: pgid, pgid }))),
   };

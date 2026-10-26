@@ -1348,8 +1348,8 @@ listing that shows the leader live, leaves no live group unreached, and holds ev
 live process in every stopped group that way, the leader's included, so none of them
 can have started a process the listing missed; a leader exit observed first fails it,
 because the leader's detached children are then out of reach. Then the stopped groups
-are SIGKILLed deepest first
-(`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
+are SIGKILLed deepest first, except one that holds Codex's daemon, which is resumed
+(below) (`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
 flight, and two more per level of nesting. A process whose own parent exited before
 the walk is already under PID 1 and out of reach. macOS refuses a stop or a kill of
 a group whose members are all unreaped zombies with `EPERM`, so either counts as a
@@ -1502,6 +1502,16 @@ No real-Codex e2e proves this: in 8 runs of Codex 0.164.0 under Elwood, from fre
 homes, with and without the hook-trust bypass and the update check, with holds of up to
 40 s, none started the daemon. `tests/unit/reap-detached-real.test.ts` builds the
 measured shape from real processes instead, with its install in place and removed.
+
+The TUI forks the daemon as a `codex` group leader of its own and then `exec`s it, so a
+path read can come between the two, and the walk can then stop the group after the
+`exec`. A stopped process cannot `exec`, so the kill pass goes by the latest read: a group
+it shows holding the daemon, or a process not stopped that could still become it, gets
+SIGCONT, not SIGKILL. A leader killed by something else while the walk holds it leaves
+that stopped daemon under PID 1, out of the leader's reach, so each group the walk stopped
+is a root of its own for the path reads. `tests/unit/shared-daemon-real.test.ts`
+reproduces both with a real process: Node cannot `exec`, but setting `process.title`
+changes what macOS `ps` reads as `comm` (`ucomm` stays the executable's name).
 
 A descendant can set its `comm` to the daemon's path (Node does by setting
 `process.title`), and a binary named `codex` that leads its own group is then spared as
