@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `stop()` or `kill()` whose termination fails now still cleans up the
+  session's runtime (its hook bridge and terminal renderer, and Codex's transcript
+  watcher). Before, a PTY that could not be signaled, did not exit, or could not be
+  reaped skipped that cleanup, and so did every retry while the reap kept failing,
+  until a `teardown()`. The call still rejects with the same `termination_failed`;
+  if cleanup fails as well, its message is in `details.cleanupError`. `close()`
+  keeps those messages too, as `cleanupError` and `killCleanupError`.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for
@@ -40,6 +48,13 @@ back each entry are listed in `prd/14-conformance.md`.
   next 100 ms poll. They return sooner and hold the session's
   input queue for less time. The poll remains as a fallback when no render
   notification arrives.
+
+- A Codex session whose readiness falls back to the 60-second backstop now emits
+  an `initial_ready_backstop` warning, so a host can tell it from ordinary
+  readiness. The backstop releases readiness when Elwood never recognizes Codex's
+  configured composer (the model footer), for example after a layout change in a
+  new Codex release. Before, that readiness looked like any other.
+
 - Removing a Codex transcript that Elwood was reading now emits
   `transcript_read_error` with `lastErrorCode: "ENOENT"` on each poll while the
   file is missing, and at the final flush if it is still gone, as a removed Claude
@@ -59,6 +74,26 @@ back each entry are listed in `prd/14-conformance.md`.
   A backstop still releases readiness 60 seconds after the first frame if that
   footer is never recognized; a prompt painted after that would still follow
   `ready`.
+
+- `autotrust` no longer sends "1" to Codex as a user message. On a loaded
+  machine Codex 0.164 can take the directory-trust answer (`1` + Enter) but
+  paint its composer more than 250 ms later, and Elwood's retry typed the answer
+  again into that composer, which submitted "1" as a turn to the model. The
+  number is now typed once. Codex retries are Enter alone while the gate's
+  caret is on the affirmative, which confirms the gate and does nothing on an
+  empty composer. Other numbered gates are answered again only after new output
+  still shows the gate.
+
+- With `autotrust`, keys a caller sends with `sendKeys` (or `terminal.sendInput`,
+  `xterm.input`) while a trust prompt is on screen now hand that prompt to the
+  caller: Elwood stops answering it. Before, its retry could follow the caller's
+  keys. When the CLI had already left the prompt but Elwood's screen had not caught
+  up, that retry landed in the composer and submitted the caller's text along with
+  the answer. A prompt the caller owns that stays up past five seconds is reported
+  `blocked`, as before; a later trust prompt is answered as usual. The same keys
+  also stop Elwood retrying its skip choice on a Codex update prompt, which could
+  otherwise follow them onto whatever Codex drew next. Elwood then leaves that
+  update prompt to the caller until Codex shows its composer.
 
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has
@@ -189,6 +224,19 @@ back each entry are listed in `prd/14-conformance.md`.
   `… +K models`) and every measured effort glyph, and follows the cursor across a
   scrolling window. `listModels` also returns the `↓`-marked last visible row, with the
   marker kept in its `raw`.
+- Claude `listModels()` and `listClaudeModels()` return every model the `/model`
+  picker lists, not just its ten-row window: an account with 13 models now gets 13
+  rows, in picker order. Elwood reveals the hidden rows with arrow keys and then
+  cancels, so the model and effort are unchanged. `setModel` can select any listed
+  row, including one outside the window, walking only until that row is on screen,
+  and an unknown id's error lists every row. The list's length is the highest
+  rendered row plus the `… +K models` count, and `K` falls as the window scrolls
+  while that sum stays the same. A frame that marks rows hidden without a count, or
+  implies a different length from the first one read, is never acted on: Elwood waits
+  for a repaint that matches, and fails with `model_automation_failed` at the timeout
+  rather than returning part of the list. A frame with no count line is read as the
+  whole list; Claude 2.1.310 paints that line before the dialog's footer, so a complete
+  dialog always carries it.
 - `listModels` and `listClaudeModels` no longer return a partial catalog read while
   the picker was still painting. Claude draws it over the slash-command menu, so a
   probe could return only `default`, or fail with "Could not parse any model picker

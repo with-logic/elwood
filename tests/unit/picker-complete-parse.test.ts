@@ -6,7 +6,7 @@
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { listPickerModels, setPickerModel } from "../../src/core/models/picker.ts";
-import { capturedFrame } from "../helpers/captured-frames.ts";
+import { capturedFrame, capturedWalk } from "../helpers/captured-frames.ts";
 import { scripted } from "./scripted-terminal.ts";
 
 /** A real Claude 2.1.310 frame (2026-10-24): header to viewport bottom, 13 models. */
@@ -26,7 +26,12 @@ function painting(partials: readonly [string, ...string[]], complete: string) {
   return { terminal, submit };
 }
 
-const fullWindow = claudeModelPicker.parse(frame("top-window")).options.map((option) => option.id);
+/** The real walk from `top-window`, which opens it, down to the last of its 13 rows. */
+const walk = capturedWalk("claude-2.1.310/model-picker/walk-down-from-top");
+const catalog = claudeModelPicker
+  .parse(frame("top-window"))
+  .options.map((option) => option.id)
+  .concat("opus 4.7", "opus 4.6", "sonnet 4.6");
 
 test.each([
   ["three rows above the slash-command menu", ["painting-three-rows"]],
@@ -34,12 +39,14 @@ test.each([
   ["each partial frame in turn", ["painting-three-rows", "painting-seven-rows"]],
 ] as const)("C-API-23 listPickerModels waits out a picker painting %s", async (_name, names) => {
   const { terminal, submit } = painting(names, frame("top-window"));
+  let step = 0;
   terminal.onInput = (input) => {
     if (input === "\u001b") terminal.text = "❯ ";
+    else if (input === walk.steps[step]?.key) terminal.text = walk.steps[step++]?.frame ?? "";
   };
   const options = await listPickerModels({ terminal, submit }, claudeModelPicker, 2_000);
-  expect(options.map((option) => option.id)).toEqual(fullWindow);
-  expect(terminal.inputs).toEqual(["\u001b"]);
+  expect(options.map((option) => option.id)).toEqual(catalog);
+  expect(terminal.inputs).toEqual([...new Array<string>(12).fill("\u001b[B"), "\u001b"]);
 });
 
 test("C-API-24 setPickerModel finds a row the partial frame had not painted yet", async () => {

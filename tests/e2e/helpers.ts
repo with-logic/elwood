@@ -43,6 +43,9 @@ export {
 } from "./scratch.ts";
 export { waitFor } from "./wait-for.ts";
 
+/** A model Codex does not serve: it refuses a turn on it before any quota is used. */
+export const bogusCodexModel = "gpt-elwood-nonexistent-model";
+
 export type E2eSession = ClaudeSessionApi | CodexSessionApi;
 export type HookEvent = ClaudeHookEvent | CodexHookEvent;
 

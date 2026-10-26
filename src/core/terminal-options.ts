@@ -13,7 +13,13 @@ export type NumberedOption = { readonly number: string; readonly label: string }
 
 /** One answerable option, with style-specific selection data. */
 export type SelectableOption =
-  | { readonly style: "numbered"; readonly label: string; readonly number: string }
+  | {
+      readonly style: "numbered";
+      readonly label: string;
+      readonly number: string;
+      /** The row carries the list's caret: Enter alone would confirm this option. */
+      readonly selected?: true;
+    }
   | {
       readonly style: "cursor";
       readonly label: string;
@@ -87,12 +93,14 @@ export function nonOptionText(frame: string): string {
 function positionedNumberedOptions(lines: readonly string[]): readonly PositionedNumberedOption[] {
   return lines.flatMap((line, row) => {
     const matches = line.matchAll(/(?:^|[\s›>])(\d+)[.)]\s*(.+?)(?=\s*\d+[.)]\s*|$)/g);
-    return [...matches].map((match) => {
+    const caret = /^\s*[❯›>]\s*\d+[.)]/.test(line);
+    return [...matches].map((match, index) => {
       return {
         row,
         style: "numbered" as const,
         label: (match[2] as string).trim(),
         number: match[1] as string,
+        ...(caret && index === 0 ? { selected: true as const } : {}),
       };
     });
   });

@@ -5,12 +5,11 @@
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
-import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { clearReadingGapMs, clearReadings } from "../../src/core/models/clearance.ts";
 import { listPickerModels } from "../../src/core/models/picker.ts";
-import { PickerTransactions } from "../../src/runtime/session/picker.ts";
 import { claudePicker } from "../helpers/model-pickers.ts";
 import { closedComposer, escapeKey } from "../helpers/picker-harness.ts";
+import { type RenderReports, renderedPicker } from "./picker-render-harness.ts";
 import { scripted } from "./scripted-terminal.ts";
 
 beforeEach(() => vi.useFakeTimers());
@@ -25,42 +24,16 @@ const paintMs = 5;
 
 /**
  * Lists models from a CLI that opens the picker (unless `opens` is false), and closes it on
- * Escape, `paintMs` later. `renders` is whether the terminal reports completed renders:
- * always, never (it cannot subscribe), or silently (it subscribes but never reports one).
+ * Escape, `paintMs` later.
  */
-async function listing(renders: "reported" | "unsupported" | "silent", opens = true) {
-  const listeners = new Set<() => void>();
+async function listing(renders: RenderReports, opens = true) {
   const terminal = scripted(closedComposer(claudeModelPicker));
-  const paint = (text: string) =>
-    setTimeout(() => {
-      terminal.text = text;
-      if (renders === "reported") for (const listener of listeners) listener();
-    }, paintMs);
+  const { picker, queue, show, subscribed } = renderedPicker(terminal, renders);
+  const paint = (text: string) => setTimeout(() => show(text), paintMs);
   terminal.onInput = (input) => {
     if (input === "/model" && opens) paint(claudePicker);
     else if (input === escapeKey) paint(closedComposer(claudeModelPicker));
   };
-  const queue = new ControlQueue(
-    () => Promise.resolve(),
-    () => new Error("closed"),
-    () => {},
-  );
-  const picker = new PickerTransactions({
-    terminal,
-    controlQueue: queue,
-    blocked: () => false,
-    picker: () => claudeModelPicker,
-    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
-    ...(renders === "unsupported"
-      ? {}
-      : {
-          subscribeRender: (listener: () => void) => {
-            listeners.add(listener);
-            return () => listeners.delete(listener);
-          },
-        }),
-  });
-  queue.markReady();
   const started = Date.now();
   let finishedAt = Number.POSITIVE_INFINITY;
   const listed = picker
@@ -75,7 +48,7 @@ async function listing(renders: "reported" | "unsupported" | "silent", opens = t
   const models = await listed;
   queue.close();
   // Every wait unsubscribes when it ends.
-  return { models, elapsedMs: finishedAt - started, subscribed: listeners.size };
+  return { models, elapsedMs: finishedAt - started, subscribed: subscribed() };
 }
 
 test("C-API-23 listModels reads the opening picker on the render that paints it", async () => {
