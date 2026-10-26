@@ -4,9 +4,9 @@
  * materialize failure removes the temp dir while preserving the original error.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { materializeImages } from "../../src/core/images/materialize.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -104,10 +104,20 @@ describe("materializeImages (C-API-44)", () => {
 
   test("C-API-44 a cleanup failure never masks the ORIGINAL materialize failure", async () => {
     vi.resetModules();
+    const made: string[] = [];
+    // The mocked `rm` cannot remove the temp dir, so the test removes it afterwards.
+    onTestFinished(() => {
+      for (const dir of made) rmSync(dir, { recursive: true, force: true });
+    });
     vi.doMock("node:fs/promises", async () => {
       const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
       return {
         ...actual,
+        mkdtemp: async (prefix: string) => {
+          const dir = await actual.mkdtemp(prefix);
+          made.push(dir);
+          return dir;
+        },
         writeFile: () => Promise.reject(new Error("ENOSPC")),
         rm: () => Promise.reject(new Error("rm failed")), // cleanup itself throws
       };
@@ -117,5 +127,6 @@ describe("materializeImages (C-API-44)", () => {
     await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
       code: "image_attach_failed",
     });
+    expect(made).toHaveLength(1);
   });
 });
