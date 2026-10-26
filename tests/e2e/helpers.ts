@@ -24,7 +24,6 @@ import { waitFor } from "./wait-for.ts";
 
 export {
   type AgentName,
-  e2eTimeoutMs,
   requireAll,
   skipIf,
   skipNow,
@@ -41,6 +40,7 @@ export {
   sandboxedCodexHome,
   seedCodexHome,
 } from "./scratch.ts";
+export { e2eTimeoutMs } from "./timeout.ts";
 export { waitFor } from "./wait-for.ts";
 
 /** A model Codex does not serve: it refuses a turn on it before any quota is used. */
