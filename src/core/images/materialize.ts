@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +19,12 @@ export type MaterializedImages = {
   readonly paths: readonly string[];
   /** Best-effort removal of temp files; retryable (only clears on success). */
   readonly cleanup: () => Promise<void>;
+  /**
+   * Removes the temp files synchronously, for an attach aborted by its session closing:
+   * they are gone before `stop`, `kill`, or `teardown` resolves (§8.4). Never throws; a
+   * failed removal stays for `cleanup` to retry.
+   */
+  readonly removeNow: () => void;
 };
 
 /**
@@ -35,6 +42,15 @@ export async function materializeImages(
     await rm(dir, { recursive: true, force: true });
     dir = undefined; // cleared only on success → a transient failure stays retryable
   };
+  const removeNow = () => {
+    if (!dir) return;
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      dir = undefined;
+    } catch {
+      // Best-effort: the attach's own `cleanup` retries once it unwinds.
+    }
+  };
   try {
     const paths: string[] = [];
     for (const image of images) {
@@ -47,7 +63,7 @@ export async function materializeImages(
       await writeFile(file, image.data);
       paths.push(file);
     }
-    return { paths, cleanup };
+    return { paths, cleanup, removeNow };
   } catch (error) {
     await cleanup().catch(() => undefined);
     throw elwoodError("image_attach_failed", "Could not materialize an image for attachment.", {

@@ -146,7 +146,11 @@ describe("enqueueSubmission (C-API-44)", () => {
       return {
         ...actual,
         materializeImages: () =>
-          Promise.resolve({ paths: ["/x.png"], cleanup: () => Promise.reject(new Error("rm")) }),
+          Promise.resolve({
+            paths: ["/x.png"],
+            cleanup: () => Promise.reject(new Error("rm")),
+            removeNow: () => undefined,
+          }),
       };
     });
     const { enqueueSubmission: mocked } = await import("../../src/runtime/session/image-attach.ts");

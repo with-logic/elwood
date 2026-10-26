@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `stop()`, `kill()`, and `teardown()` during an in-flight image attach no longer
+  resolve while the attach's temp image is still on disk. The abort now removes the
+  `elwood-image-*` temp directory at once. Before, the attach removed it only after
+  it unwound, which could come after shutdown resolved, so a host that exited right
+  away left the directory in the OS temp dir.
 - A start or resume whose launch fails while its `cwd` is deleted and made again
   now fails with the adapter's `*_start_failed` for that `cwd`, as it does when
   `cwd` is simply gone. It used to find the new directory in its place and report
