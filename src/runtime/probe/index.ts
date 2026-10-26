@@ -9,7 +9,7 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
-import { homeGuardStopped } from "../home-guard/index.ts";
+import { homeGuardStopMarker, homeGuardStopped } from "../home-guard/index.ts";
 import type { CommandResult } from "../seams.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
@@ -135,7 +135,10 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
       if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
       // The e2e home guard runs after the start line but stops the shell before the command.
-      else if (expectsStartLine && homeGuardStopped(code, stdout))
+      else if (
+        expectsStartLine &&
+        homeGuardStopped(code, () => stdout.includes(homeGuardStopMarker))
+      )
         settle(guardStopped(stdout, stderr));
       else settle({ status: code, stdout, stderr });
     });

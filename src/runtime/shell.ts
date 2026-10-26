@@ -5,9 +5,14 @@
  */
 
 import { userInfo } from "node:os";
-import type { ElwoodAgentKind } from "../core/activity/index.ts";
-import { isStringArray } from "../core/predicates.ts";
-import { homeGuardExitCode, homeGuardHomesKey, homeGuardStopMarker } from "./home-guard/index.ts";
+import {
+  guardedVariables,
+  type HomeVariable,
+  homeGuardExitCode,
+  homeGuardHomesKey,
+  homeGuardStopMarker,
+  privateHomes,
+} from "./home-guard/index.ts";
 import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
 import { shellQuote } from "./shell-quote.ts";
 
@@ -56,14 +61,6 @@ export function probeShellStatus(command: string): LoginShellArgs {
   return probeShellCommand(`${command} >/dev/null 2>&1`);
 }
 
-/** The variable naming each adapter's CLI home. */
-const homeVariables = {
-  claude: "CLAUDE_CONFIG_DIR",
-  codex: "CODEX_HOME",
-} as const satisfies Record<ElwoodAgentKind, string>;
-
-type HomeVariable = (typeof homeVariables)[ElwoodAgentKind];
-
 /**
  * Why the guard stops a launch: the list cannot be read, or a guarded variable is no longer an
  * exported, resolvable registered home (replaced, unset, unexported, or unresolvable).
@@ -99,17 +96,6 @@ function refuse(refusal: Refusal, launch: GuardedLaunch): string {
   return `{ ${report}; exit ${homeGuardExitCode}; }; `;
 }
 
-/** The registered homes, or `undefined` when `raw` is not a JSON array of absolute paths. */
-function privateHomes(raw: string): readonly string[] | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  return isStringArray(parsed) && parsed.every((home) => home.startsWith("/")) ? parsed : undefined;
-}
-
 // The real path of `$elwood_home`, resolved as the CLI will, against the shell's cwd. `builtin`
 // skips a user's `cd` function or alias, an empty `CDPATH` keeps a relative name relative,
 // zsh's `-q` skips `chpwd` hooks, and only `pwd` may print: a zsh `cd` can print the
@@ -135,8 +121,7 @@ export function homeGuardScript(launch: GuardedLaunch): string {
   const homes = privateHomes(raw);
   if (homes === undefined) return refuse({ kind: "unreadable_list" }, launch);
   const listed = homes.map(shellQuote).join("|");
-  return Object.values(homeVariables)
-    .filter((name) => homes.includes(process.env[name] ?? ""))
+  return guardedVariables(homes)
     .map(
       // `printenv` sees only what the shell exports, which is what the CLI inherits.
       (name) =>

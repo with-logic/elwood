@@ -5,6 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { StreamMarker } from "../stream-marker.ts";
 
 /**
  * The line a probe shell writes once the user's startup files have loaded, before the probe
@@ -53,46 +54,20 @@ export function announcesStart(args: readonly string[]): boolean {
 const startText = `${probeCommandStartLine}\n`;
 const startBytes = Buffer.from(startText);
 
-/** Finds the start line in a stream whose chunks may split it anywhere. */
-export class ProbeStartWatcher {
-  private tail = Buffer.alloc(0);
-  private seen = false;
-
-  /** Whether the start line has been seen: the probe command has begun. */
-  get started(): boolean {
-    return this.seen;
-  }
-
-  /** True exactly once: for the chunk that completes the start line. */
-  feed(chunk: Buffer): boolean {
-    if (this.seen) return false;
-    const window = Buffer.concat([this.tail, chunk]);
-    if (window.includes(startBytes)) {
-      this.seen = true;
-      this.tail = Buffer.alloc(0);
-      return true;
-    }
-    // Keep a copy of only what could still begin a split start line: a view would pin the
-    // whole chunk for as long as an unresolved probe's reaper retains this watcher.
-    this.tail = Buffer.from(window.subarray(Math.max(0, window.length - (startBytes.length - 1))));
-    return false;
-  }
-}
-
 /** The two streams a probe's start line can arrive on. */
 export type ProbeStartChannel = "control" | "stdout";
 
 /** Watches both channels; the first to carry the start line starts the command. */
 export class ProbeStart {
   // One watcher per channel: a channel added to `ProbeStartChannel` must be given its own.
-  private readonly watchers: Readonly<Record<ProbeStartChannel, ProbeStartWatcher>> = {
-    control: new ProbeStartWatcher(),
-    stdout: new ProbeStartWatcher(),
+  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarker>> = {
+    control: new StreamMarker(startBytes),
+    stdout: new StreamMarker(startBytes),
   };
 
   /** Whether any channel has carried the start line. */
   get started(): boolean {
-    return Object.values(this.watchers).some((watcher) => watcher.started);
+    return Object.values(this.watchers).some((watcher) => watcher.seen);
   }
 
   /** True exactly once across both channels: for the chunk that completes the start line. */
@@ -103,6 +78,6 @@ export class ProbeStart {
 
   /** Removes the start line from captured stdout if the shell wrote it there (C-PERF-05). */
   stripFromStdout(captured: string): string {
-    return this.watchers.stdout.started ? captured.replace(startText, "") : captured;
+    return this.watchers.stdout.seen ? captured.replace(startText, "") : captured;
   }
 }
