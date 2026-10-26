@@ -22,12 +22,11 @@ import {
   setPtyFactoryForTests,
 } from "../../../src/runtime/seams.ts";
 import { shellQuote } from "../../../src/runtime/shell.ts";
+import { accessOnlyLogin, keychainTimeoutMs } from "../claude-login.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 import { parentFileFingerprint } from "../parent-file-fingerprint.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { claudeQuestionLabel, claudeQuestionVersion } from "./claude-cases.ts";
-
-const keychainTimeoutMs = 5_000;
 
 /** The skip gate and sandbox select from the same pinned and installed binary locations. */
 export function claudeQuestionBinary(): string | undefined {
@@ -92,7 +91,9 @@ export async function nativeClaudeQuestionSandbox() {
     if (!installed) throw new Error(`${claudeQuestionLabel} binary unavailable`);
     copyFileSync(realpathSync(installed), binary);
     chmodSync(binary, 0o700);
-    writeFileSync(join(home, ".credentials.json"), credential, { mode: 0o600 });
+    const login = accessOnlyLogin(credential, "Private Claude authentication");
+    if (login === undefined) throw new Error("Private Claude authentication holds no Claude login");
+    writeFileSync(join(home, ".credentials.json"), login, { mode: 0o600 });
     writeFileSync(
       join(home, ".claude.json"),
       JSON.stringify({

@@ -35,6 +35,20 @@ test("malformed Keychain output never appears in parse errors", async () => {
   expect("cause" in failure).toBe(false);
 });
 
+test("a Keychain item without a Claude login stops setup before any private file", async () => {
+  mocks.keychain.mockReturnValueOnce({
+    pid: 1,
+    status: 0,
+    signal: null,
+    output: [],
+    stdout: '{"mcpOAuth":{}}',
+    stderr: "",
+  });
+  await expect(nativeClaudeQuestionSandbox()).rejects.toThrow(
+    "Private Claude authentication holds no Claude login",
+  );
+});
+
 test.each([
   { status: 1, stdout: `${claudeQuestionVersion} (Claude Code)` },
   { status: null, stdout: `${claudeQuestionVersion} (Claude Code)` },
@@ -92,6 +106,11 @@ test("pinned-only setup reuses one credential and writes minimal config", async 
     const config: unknown = JSON.parse(readFileSync(join(sandbox.home, ".claude.json"), "utf8"));
     expect(config).toMatchObject({ lastOnboardingVersion: claudeQuestionVersion });
     expect(config).not.toHaveProperty("parentOnly");
+    // The copy cannot refresh, so it never rotates the parent's login (C-E2E-23).
+    const login: unknown = JSON.parse(
+      readFileSync(join(sandbox.home, ".credentials.json"), "utf8"),
+    );
+    expect(login).toEqual({ claudeAiOauth: { accessToken: "synthetic" } });
   } finally {
     sandbox.dispose();
   }

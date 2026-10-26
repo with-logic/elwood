@@ -60,7 +60,14 @@ beforeEach(() => {
     output: [],
     status: 0,
     signal: null,
-    stdout: '{"syntheticCredential":true}',
+    stdout: JSON.stringify({
+      claudeAiOauth: {
+        accessToken: "synthetic",
+        refreshToken: "rotating",
+        refreshTokenExpiresAt: 1,
+      },
+      mcpOAuth: { server: { accessToken: "mcp" } },
+    }),
     stderr: "",
   };
   mocks.keychain.mockReset().mockReturnValue(credential);
