@@ -32,6 +32,13 @@ export function resetStartupWaitMsForTests(): void {
   startupWaitMs = 500;
 }
 
+/**
+ * Fails a session's start when its CLI exited or asked for a login during startup. It waits
+ * `waitMs` (500 ms by default) first, then reads the exit and the output once. A status-97
+ * exit of a launch the e2e home guard checks (`sawStopMarker` set) may wait up to
+ * `stopMarkerGraceMs` more for the guard's line (PRD §12, C-E2E-24); any other check adds no
+ * wait.
+ */
 export async function assertStartupUsable(input: {
   readonly adapter: StartupAdapter;
   readonly exit: StartupValue<PtyExit | undefined>;

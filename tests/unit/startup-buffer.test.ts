@@ -21,6 +21,21 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
     expect(buffer.read()).toBe("hello world");
   });
 
+  test("reads its source PTY directly until release, then lets go of it", () => {
+    const handlers: ((data: string) => void)[] = [];
+    const source = {
+      onData(handler: (data: string) => void) {
+        handlers.push(handler);
+        return () => handlers.splice(handlers.indexOf(handler), 1);
+      },
+    };
+    const buffer = createStartupBuffer({ source });
+    for (const handler of handlers) handler("banner");
+    expect(buffer.read()).toBe("banner");
+    buffer.release();
+    expect(handlers).toEqual([]);
+  });
+
   test("release stops collecting and clears the retained buffer", () => {
     const buffer = createStartupBuffer();
     buffer.push("startup banner");

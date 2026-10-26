@@ -48,7 +48,6 @@ export function attachPtyTerminal(
   size: TerminalSize,
   pty: PtyProcess,
   onRendered: (data: string, terminal: ElwoodTerminal) => void,
-  onReceived?: (data: string) => void,
 ): ElwoodTerminal {
   const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
   const output = new PtyOutput(
@@ -60,8 +59,6 @@ export function attachPtyTerminal(
   const off = [
     pty.onData((data) => {
       if (data.length > 0) terminal.cursor.received();
-      // Startup health checks need raw bytes before asynchronous batching/rendering.
-      onReceived?.(data);
       output.push(data);
     }),
     pty.onExit(() => output.releaseFlowControl()),

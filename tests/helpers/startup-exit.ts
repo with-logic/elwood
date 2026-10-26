@@ -65,3 +65,37 @@ export async function rejection(
   if (outcome instanceof ElwoodError) return outcome;
   throw outcome; // An untyped rejection or a started launch fails the test with itself.
 }
+
+/**
+ * A fake CLI that exits with `exitCode` during startup and writes `late` only once the
+ * session's terminal has stopped reading it: a PTY's last output can arrive after its exit
+ * (PRD §9.4). Its `onData` unsubscribes for real, so the late write reaches only the
+ * listeners still attached.
+ */
+export function exitingBeforeLateOutput(ptys: FakePty[], exitCode: number, late: string): Factory {
+  return (options) => {
+    const pty = new FakePty(options, 1000 + ptys.length);
+    ptys.push(pty);
+    pty.onData = (handler) => {
+      pty.dataHandlers.push(handler);
+      return () => {
+        const at = pty.dataHandlers.indexOf(handler);
+        if (at >= 0) pty.dataHandlers.splice(at, 1);
+      };
+    };
+    let listening = 0;
+    const deadline = Date.now() + EXIT_LISTENER_WAIT_MS;
+    const timer = setInterval(() => {
+      if (listening === 0 && pty.exitHandlers.length > 0) {
+        listening = pty.dataHandlers.length;
+        pty.emitExit({ exitCode });
+        return;
+      } else if (listening > 0 && pty.dataHandlers.length < listening) {
+        pty.emitData(late); // the terminal has let go of the PTY
+      } else if (Date.now() < deadline) return;
+      clearInterval(timer);
+    }, 0);
+    timer.unref();
+    return pty;
+  };
+}

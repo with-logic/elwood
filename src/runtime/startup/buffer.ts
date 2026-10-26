@@ -16,7 +16,7 @@
  * transcript lingers. Implements PRD §9.1 startup usability and §9.4 resource cleanup.
  */
 
-import type { PtyExit } from "../../pty/types.ts";
+import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { homeGuardChecksLaunch, watchForStopMarker } from "../home-guard/index.ts";
 import { assertStartupUsable, type StartupAdapter } from "./index.ts";
 
@@ -42,10 +42,16 @@ export type StartupBuffer = {
 
 /**
  * `watchStopMarker` defaults to whether the e2e home guard checks a launch started now
- * (`homeGuardChecksLaunch`), as it does the session's.
+ * (`homeGuardChecksLaunch`), as it does the session's. Given a `source` PTY, the buffer reads
+ * it directly, raw and before any rendering, until release: the session's terminal stops
+ * reading a PTY that has exited, while the check may still be waiting for the guard's line.
  */
 export function createStartupBuffer(
-  options: { readonly capBytes?: number; readonly watchStopMarker?: boolean } = {},
+  options: {
+    readonly capBytes?: number;
+    readonly watchStopMarker?: boolean;
+    readonly source?: Pick<PtyProcess, "onData">;
+  } = {},
 ): StartupBuffer {
   const cap = options.capBytes ?? STARTUP_BUFFER_CAP_BYTES;
   let buffer = Buffer.alloc(cap);
@@ -53,22 +59,25 @@ export function createStartupBuffer(
   let open = true;
   const watched = options.watchStopMarker ?? homeGuardChecksLaunch();
   let stop = watched ? watchForStopMarker() : undefined;
+  const push = (data: string): void => {
+    stop?.feed(Buffer.from(data));
+    if (!open || length >= cap) return;
+    const remaining = cap - length;
+    // UTF-8 needs at least as many bytes as UTF-16 units. Only measure chunks
+    // already bounded by the remaining capacity; never scan a huge receipt.
+    open = data.length <= remaining && Buffer.byteLength(data, "utf8") <= remaining;
+    // The bounded write stops before an incomplete code point and copies the
+    // prefix into owned storage, without retaining the original chunk string.
+    length += buffer.write(data.slice(0, remaining), length, remaining, "utf8");
+  };
+  const unsubscribe = options.source?.onData(push);
   return {
-    push(data: string): void {
-      stop?.feed(Buffer.from(data));
-      if (!open || length >= cap) return;
-      const remaining = cap - length;
-      // UTF-8 needs at least as many bytes as UTF-16 units. Only measure chunks
-      // already bounded by the remaining capacity; never scan a huge receipt.
-      open = data.length <= remaining && Buffer.byteLength(data, "utf8") <= remaining;
-      // The bounded write stops before an incomplete code point and copies the
-      // prefix into owned storage, without retaining the original chunk string.
-      length += buffer.write(data.slice(0, remaining), length, remaining, "utf8");
-    },
+    push,
     read(): string {
       return buffer.toString("utf8", 0, length);
     },
     release(): void {
+      unsubscribe?.();
       open = false;
       buffer = Buffer.alloc(0);
       length = 0;

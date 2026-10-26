@@ -5,7 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { StreamMarker } from "../stream-marker.ts";
+import { StreamMarkerWatcher } from "../stream-marker.ts";
 
 /**
  * The line a probe shell writes once the user's startup files have loaded, before the probe
@@ -60,9 +60,9 @@ export type ProbeStartChannel = "control" | "stdout";
 /** Watches both channels; the first to carry the start line starts the command. */
 export class ProbeStart {
   // One watcher per channel: a channel added to `ProbeStartChannel` must be given its own.
-  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarker>> = {
-    control: new StreamMarker(startBytes),
-    stdout: new StreamMarker(startBytes),
+  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarkerWatcher>> = {
+    control: new StreamMarkerWatcher(startBytes),
+    stdout: new StreamMarkerWatcher(startBytes),
   };
 
   /** Whether any channel has carried the start line. */

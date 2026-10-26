@@ -12,7 +12,7 @@
 import { randomBytes } from "node:crypto";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { isStringArray } from "../../core/predicates.ts";
-import { StreamMarker } from "../stream-marker.ts";
+import { StreamMarkerWatcher } from "../stream-marker.ts";
 
 /**
  * The variable listing the e2e suite's private CLI homes as a JSON array of absolute paths,
@@ -80,6 +80,6 @@ export function homeGuardStopped(status: number | null, sawMarker: () => boolean
 const stopMarkerBytes = Buffer.from(homeGuardStopMarker);
 
 /** A watcher for the stop marker in one stream. */
-export function watchForStopMarker(): StreamMarker {
-  return new StreamMarker(stopMarkerBytes);
+export function watchForStopMarker(): StreamMarkerWatcher {
+  return new StreamMarkerWatcher(stopMarkerBytes);
 }

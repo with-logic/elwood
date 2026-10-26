@@ -10,11 +10,11 @@ import {
   probeCommandStartLine,
   probeStartScript,
 } from "../../src/runtime/probe/start.ts";
-import { StreamMarker } from "../../src/runtime/stream-marker.ts";
+import { StreamMarkerWatcher } from "../../src/runtime/stream-marker.ts";
 
 const line = `${probeCommandStartLine}\n`;
 /** A watcher for the start line, as the probe runner keeps one per channel. */
-const startWatcher = () => new StreamMarker(Buffer.from(line));
+const startWatcher = () => new StreamMarkerWatcher(Buffer.from(line));
 
 test("C-PERF-05 the start line is recognized once, even split into single bytes", () => {
   const watcher = startWatcher();
