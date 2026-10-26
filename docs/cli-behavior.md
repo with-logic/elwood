@@ -1178,6 +1178,18 @@ machine: their own `PermissionRequest` hook allowed the command, so the dialog n
 rendered there. This capture is a manual reproduction in a private config dir with no
 user hooks. C-ATTN-02.
 
+A resumed session repaints those carets too. In the same private config, a `default`-mode
+session ran one turn and was stopped, then resumed with `highTrust`. Bypass mode had
+never been accepted there, so the resume opened on the bypass-permissions dialog, and
+autotrust answered it. Claude then painted the resumed transcript, with
+`❯ Reply with exactly: hello. …`, above the idle bypass-mode composer, its footer, and a
+visible cursor at column 2. Startup trust clearance used the same whole-frame check,
+so the answer never settled. The session sat at `running` for the 60 s observed and
+never reached `ready`. Startup trust clearance now uses the same predicate as attention
+clearance (`tests/fixtures/claude-2.1.310/resume-bypass/`). A folder-trust gate on
+resume goes through the same clearance, but that case was not captured. C-TRUST-01,
+C-CLAUDE-21.
+
 ## Codex in-TUI update prompt (and the restart loop)
 
 Independent of the `autoupdate` preflight (`codex update` run before spawn), the
