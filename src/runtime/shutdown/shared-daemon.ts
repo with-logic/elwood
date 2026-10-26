@@ -1,13 +1,13 @@
 /**
  * Finds the processes of Codex's managed app-server daemon install in a process-table
- * read: the one thing under a session the detached walk must never follow or kill (PRD §5.3
+ * read: the one thing under a session the detached walk never follows or kills (PRD §5.3
  * and §9.4, C-LIFE-10). Codex 0.158 and later can start, for its `CODEX_HOME`, an
  * app-server daemon and its updater loop from the copy of the CLI it installs under
  * `$CODEX_HOME/packages/app-server-daemon/`, each in a session of its own and a child of
  * the TUI that started it until that TUI exits: the shape of a hook. But every Codex on
  * that home talks to the daemon, the user's own included, so neither process nor anything
- * it started is the session's to end (docs/cli-behavior.md). A read here marks each
- * of them `shared`.
+ * it started is the session's to end (docs/cli-behavior.md). The walk sees only the
+ * `shared` mark set here, and the groups `groupIdsToResume` names.
  *
  * Codex starts both by their full paths, which macOS `ps` shows as `comm` (`argv[0]`).
  * Each `ps` the host spawns while a session ends costs about as much as its table read,
@@ -98,6 +98,19 @@ async function markShared(
   const found = new Set(candidates.filter((row) => known.has(key(row))).map((row) => row.pid));
   if (found.size === 0) return table;
   return table.map((row) => (found.has(row.pid) ? { ...row, shared: true } : row));
+}
+
+/**
+ * The groups `table` shows holding a process marked `shared`, or a process that read did
+ * not show stopped with the shape of one: it could still `exec` the daemon, as a stopped
+ * process cannot. A walk resumes, rather than kills, any of these it stopped.
+ */
+export function groupIdsToResume(table: readonly ProcessEntry[]): ReadonlySet<number> {
+  const names = nameMap(table);
+  const rows = table.filter(
+    (row) => row.shared || (!row.stopped && couldBeFromInstall(row, names)),
+  );
+  return new Set(rows.map((row) => row.pgid));
 }
 
 /** Each process's short name, by pid, as `couldBeFromInstall` takes them. */

@@ -100,6 +100,7 @@ export function scripted(
   let listing = 0;
   const ops: SweepOps = {
     killGroup: (pgid) => void calls.push(`kill ${pgid}`),
+    continueGroup: (pgid) => void calls.push(`cont ${pgid}`),
     listProcesses: (timeoutMs) => {
       timeouts.push(timeoutMs);
       calls.push("list");
