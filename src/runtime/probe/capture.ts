@@ -25,7 +25,11 @@ export type ProbeChild = {
 export type CaptureEvents = {
   /** A stream passed the cap. */
   readonly overflowed: () => void;
-  /** Every stream has ended: nothing holds its write end. */
+  /**
+   * Every named pipe has ended after the probe exited: nothing holds its write end. Only named
+   * pipes send it. A process's own pipes end before its `close`, so a capture of them is
+   * complete by then.
+   */
   readonly ended: () => void;
 };
 
@@ -35,11 +39,19 @@ export type ProbeCapture = {
   args(args: readonly string[]): readonly string[];
   /** Captures `child`'s output. */
   watch(child: ProbeChild, events: CaptureEvents): void;
-  /** Whether every stream has ended, so the capture is complete. */
+  /**
+   * Whether the capture is complete, once the probe's process has closed. A capture of the
+   * process's own pipes always is. Named pipes are complete once nothing holds their write ends,
+   * which a process the command started can delay past the `close`.
+   */
   ended(): boolean;
   /** Each stream's capture, stdout then stderr, at most the cap. */
   text(): [string, string];
-  /** Drops the capture and closes and removes anything it opened. Safe to call twice. */
+  /**
+   * Drops the capture, closes what it opened, and removes it. Named pipes' directory is removed
+   * at once, unless the command changed it: then the removal runs off the event loop and can
+   * finish after this returns. Safe to call twice.
+   */
   release(): void;
 };
 

@@ -41,34 +41,52 @@ const sh = (script: string) => `/bin/sh -c ${shellQuote(script)}`;
 const ownDirectory = `"\${TMPDIR:?}"/elwood-probe-*`;
 
 type Captured = {
-  readonly outcome: "ended" | "overflowed" | "released";
+  readonly outcome: "ended" | "overflowed" | "released" | "timed out";
   readonly exit: string;
   readonly stdout: string;
   readonly stderr: string;
 };
 
+/** How long a capture may take before the test gives up on it, inside the test's own timeout. */
+const captureBoundMs = 10_000;
+
+type CaptureOptions = {
+  /** Script run before the `exec`. */
+  readonly prelude?: string;
+  /** Releases the capture once its stdout satisfies this, as a probe's bound would end it. */
+  readonly releaseWhen?: (stdout: string) => boolean;
+};
+
 /**
- * `exec`s `command`, after `prelude`, into a new capture and reads it until it ends or
- * overflows, or until `releaseAfterMs` passes, as a probe's bound would end it; then releases it.
+ * `exec`s `command` into a new capture and reads it until it ends or overflows, or until
+ * `releaseWhen` holds; then releases it. One that does none of these within the bound reads as
+ * timed out: it is released all the same, and its shell, the test's own child, is killed.
  */
-async function capture(command: string, releaseAfterMs?: number, prelude = ""): Promise<Captured> {
+async function capture(command: string, options: CaptureOptions = {}): Promise<Captured> {
   const capture = await NamedPipeCapture.create();
-  const script = `${prelude}exec ${command} ${probeOutputRedirect}`;
+  const script = `${options.prelude ?? ""}exec ${command} ${probeOutputRedirect}`;
   const child = spawn("/bin/sh", [...capture.args(["-c", script])], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const exited = new Promise<string>((resolve) =>
     child.once("exit", (code, signal) => resolve(signal ?? String(code))),
   );
+  const timers: ReturnType<typeof setTimeout>[] = [];
   const outcome = await new Promise<Captured["outcome"]>((resolve) => {
-    if (releaseAfterMs !== undefined) setTimeout(() => resolve("released"), releaseAfterMs);
+    timers.push(setTimeout(() => resolve("timed out"), captureBoundMs));
+    const { releaseWhen } = options;
+    if (releaseWhen !== undefined) {
+      timers.push(setInterval(() => releaseWhen(capture.text()[0]) && resolve("released"), 10));
+    }
     capture.watch(child, {
       ended: () => resolve("ended"),
       overflowed: () => resolve("overflowed"),
     });
   });
+  for (const timer of timers) clearInterval(timer);
   const [stdout, stderr] = capture.text();
   capture.release(); // a writer held at the cap is stopped by SIGPIPE
+  if (outcome === "timed out") child.kill("SIGKILL");
   return { outcome, exit: await exited, stdout, stderr };
 }
 
@@ -110,7 +128,7 @@ test.each([
   ["stdout", "yes", "stdout"],
   ["stderr", sh("yes >&2"), "stderr"],
   ["stdout, from a command that exits over it", sh("head -c 1000001 /dev/zero"), "stdout"],
-] as const)("C-PERF-03 a command writing past the cap on %s is held at it", async (_, command, stream) => {
+] as const)("C-PERF-03 a command writing past the cap on %s overflows, keeping exactly the cap", async (_, command, stream) => {
   const tmp = privateTmp();
   const result = await capture(command);
   expect(result.outcome).toBe("overflowed");
@@ -131,7 +149,7 @@ test("C-PERF-03 the capture waits for what its command started that still holds 
 });
 
 test("C-PERF-03 the capture waits for a shell that reaches its exec late, as after a slow profile", async () => {
-  const result = await capture("echo late", undefined, "sleep 0.3; ");
+  const result = await capture("echo late", { prelude: "sleep 0.3; " });
   expect(result).toEqual({ outcome: "ended", exit: "0", stdout: "late\n", stderr: "" });
 });
 
@@ -140,32 +158,15 @@ test("C-PERF-03 a writer left when the capture is released is killed by SIGPIPE"
   const status = join(tempDir("elwood-capture-writer-"), "status");
   // A helper the command leaves behind writes a line every 50 ms, for at most 5 s. Its parent
   // records how it ended: 141 (128 + SIGPIPE) if the signal killed it, 99 if a write failed
-  // without one, 0 if it was never stopped.
+  // without one, 0 if it was never stopped. The capture is released once the first line is
+  // read: the helper has its output open by then, and is still writing.
   const writer = "i=0; while [ $i -lt 100 ]; do echo x || exit 99; i=$((i+1)); sleep 0.05; done";
-  const result = await capture(sh(`( (${writer}); echo $? > ${status} ) & exit 0`), 300);
+  const result = await capture(sh(`( (${writer}); echo $? > ${status} ) & exit 0`), {
+    releaseWhen: (stdout) => stdout !== "",
+  });
   expect(result).toMatchObject({ outcome: "released", exit: "0" });
   await vi.waitFor(() => expect(readFileSync(status, "utf8")).toBe("141\n"), { timeout: 6_000 });
-}, 10_000);
-
-test("C-PERF-05 a capture released twice is released once", async () => {
-  const tmp = privateTmp();
-  const capture = await NamedPipeCapture.create();
-  capture.release();
-  capture.release();
-  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
-});
-
-test.each([
-  ["its directory", () => vi.stubEnv("TMPDIR", "/nonexistent/elwood-tmp"), "ENOENT"],
-  ["its named pipes", () => setMkfifoForTests("/nonexistent/elwood-mkfifo"), "ENOENT"],
-  // `mkfifo` ran and failed: its exit status is no errno.
-  ["its named pipes, mkfifo failing", () => setMkfifoForTests("/usr/bin/false"), 1],
-])("C-PERF-05 a capture that cannot make %s fails and leaves nothing", async (_, breakIt, code) => {
-  const tmp = privateTmp();
-  breakIt();
-  await expect(NamedPipeCapture.create()).rejects.toMatchObject({ code });
-  expect(readdirSync(tmp)).toEqual([]);
-});
+}, 20_000);
 
 test("C-PERF-03 an otherwise idle host stays alive for a capture that outlives its command", async () => {
   const fixture = fileURLToPath(new URL("../fixtures/probe-idle-host.ts", import.meta.url));

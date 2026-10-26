@@ -16,12 +16,16 @@ import { probeOutputRedirect } from "./start.ts";
 /**
  * How often a named pipe is read: a nominal cadence, which a busy event loop can stretch.
  * macOS's kqueue reports a named pipe's data but never its end, when the last writer closes
- * it, so the reader polls instead. A full pipe blocks its writer, so the cap still stops a
- * command at exactly its bytes; the cadence only delays when Elwood sees output, and its end.
+ * it, so the reader polls instead. A full pipe blocks its writer between reads, so the cadence
+ * only delays when Elwood sees output, and its end.
  */
-export const capturePollMs = 25;
+const capturePollMs = 25;
 
-/** How much of a pipe one read takes. Unrelated to the output cap, which `CappedBuffer` keeps. */
+/**
+ * How much of a pipe one read takes. The cap bounds what Elwood keeps, not what it reads: the
+ * read that passes the cap takes up to this much, and the overflow then ends the probe. The
+ * writer is held only by what the pipe itself can buffer.
+ */
 const readChunkBytes = 64 * 1024;
 
 /** The pipes' mode: only Elwood's user can open them, inside a directory only it can enter. */
@@ -34,7 +38,7 @@ const pipeNames = ["stdout", "stderr"] as const;
 const systemMkfifo = "/usr/bin/mkfifo";
 let mkfifo = systemMkfifo;
 
-/** Points the capture at another `mkfifo`, so a test can make one fail; none resets it. */
+/** Points the capture at another `mkfifo`, so a test can make one fail; with none, the system's. */
 export function setMkfifoForTests(path: string = systemMkfifo): void {
   mkfifo = path;
 }

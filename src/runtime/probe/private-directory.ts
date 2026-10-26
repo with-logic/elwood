@@ -36,7 +36,8 @@ async function removeTree(dir: string): Promise<void> {
     await unlock(dir);
     await rm(dir, { recursive: true, force: true });
   } catch {
-    // The command removed the directory itself.
+    // Mostly, the command removed the directory itself. Any other failure leaves it behind,
+    // unreported: the probe has settled, and nothing reads a removal's outcome yet.
   }
 }
 
