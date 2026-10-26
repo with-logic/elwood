@@ -7,7 +7,7 @@ import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import {
-  assertLaunchDirectory,
+  checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -26,7 +26,7 @@ import {
   type SessionRecord,
 } from "../../state/store.ts";
 import * as preflight from "../preflight.ts";
-import { codexHomeReportPath, explainCodexStartFailure } from "../pty.ts";
+import { type CodexLaunchOptions, codexHomeReportPath, explainCodexStartFailure } from "../pty.ts";
 import { buildCodexSession } from "./build.ts";
 import type { CodexSessionApi, StartCodexOptions } from "./types.ts";
 
@@ -64,17 +64,17 @@ export async function startCodexWithId(
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
-  await assertLaunchDirectory("codex", options.cwd);
+  const directory = await checkLaunchDirectory("codex", options.cwd);
   const stateDir = canonicalStatePath(stateDirPath);
   // A probe that fails because `cwd` went or was replaced fails as that, not a missing CLI.
-  const warning = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () =>
+  const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflight.preflightCodex(
       options.cwd,
       options.strictVersionCheck ?? false,
       options.autoupdate ?? false,
     ),
   );
-  const session = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () => {
+  const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
@@ -86,7 +86,8 @@ export async function startCodexWithId(
       adapter: "codex",
     });
     const record = withCodexLaunch(createdRecord, codexLaunchPosture(options));
-    return startCodexFromRecord(record, stateDir, options, false, warning);
+    const launchOptions = { ...options, launchDirectory: directory };
+    return startCodexFromRecord(record, stateDir, launchOptions, false, warning);
   });
   return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
@@ -94,7 +95,7 @@ export async function startCodexWithId(
 export function startCodexFromRecord(
   record: SessionRecord,
   stateDir: string,
-  options: StartCodexOptions,
+  options: CodexLaunchOptions,
   resumed: boolean,
   preflightWarning: preflight.CodexPreflightWarning | undefined,
   ownership?: LaunchReservation,

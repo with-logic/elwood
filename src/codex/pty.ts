@@ -10,6 +10,10 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, ElwoodError, elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
+import {
+  assertLaunchDirectoryUnchanged,
+  type CheckedLaunchDirectory,
+} from "../runtime/session/launch-directory.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
 import type { SessionRuntime } from "../state/runtime-paths.ts";
 import type { SessionRecord } from "../state/store.ts";
@@ -22,6 +26,11 @@ import {
 } from "./config/home.ts";
 import * as preflight from "./preflight.ts";
 import type { StartCodexOptions } from "./session/types.ts";
+
+/** A launch's options, with the directory it checked first: its PTY is spawned only there. */
+export type CodexLaunchOptions = StartCodexOptions & {
+  readonly launchDirectory: CheckedLaunchDirectory;
+};
 
 export type CodexLaunch = {
   readonly pty: PtyProcess;
@@ -46,11 +55,13 @@ export function codexHomeReportPath(
 export async function spawnCodexPty(
   record: SessionRecord,
   runtime: Pick<SessionRuntime, "socketHome" | "socketPath" | "bridgeScriptPath">,
-  options: StartCodexOptions,
+  options: CodexLaunchOptions,
 ): Promise<CodexLaunch> {
   const capabilities = await preflight.detectCodexCliCapabilities(record.cwd);
   const reportPath = codexHomeReportPath(runtime);
   const launch = buildCodexShellCommand(record, runtime.bridgeScriptPath, options, capabilities);
+  // After the capability probe, the launch's last await: the agent runs in the directory checked.
+  assertLaunchDirectoryUnchanged(options.launchDirectory);
   let pty: PtyProcess;
   try {
     pty = currentPtyFactory()({

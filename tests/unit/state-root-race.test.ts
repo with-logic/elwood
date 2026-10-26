@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resetRuntimeSeamsForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
-import { recheckLaunchDirectoryOnFailure } from "../../src/runtime/session/launch-directory.ts";
+import * as launchDirectory from "../../src/runtime/session/launch-directory.ts";
 import { secureMkdir } from "../../src/state/files.ts";
 import { ensurePrivateStateRoot } from "../../src/state/private-session.ts";
 import { prepareStateDir } from "../../src/state/store.ts";
@@ -121,9 +121,7 @@ test.each(
     expect.objectContaining({ code: "ENOENT" }),
   );
   expect(race.now.resolutions).toBe(1);
-  expect(fs.existsSync(join(kept, "made")), "the state directory must not outlive the start").toBe(
-    false,
-  );
+  expect(fs.existsSync(join(kept, "made")), "no state directory outlives the start").toBe(false);
   expect(fs.readdirSync(kept), "what was there before stays").toEqual(["sentinel"]);
   expect(fs.existsSync(cwd), "the worktree must not be recreated").toBe(false);
 });
@@ -150,7 +148,8 @@ describe.skipIf(process.getuid?.() === 0)("as a user other than root", () => {
     Object.assign(race.now, { removing: cwd, early: true });
     race.now.meanwhile = () => fs.chmodSync(elsewhere, 0o500); // so `state` can't leave it
     setPlatformForTests("darwin");
-    const launch = recheckLaunchDirectoryOnFailure("codex", cwd, async () =>
+    const directory = await launchDirectory.checkLaunchDirectory("codex", cwd);
+    const launch = launchDirectory.recheckLaunchDirectoryOnFailure(directory, async () =>
       prepare(join(elsewhere, "state"), cwd),
     );
     await expect(launch).rejects.toMatchObject({

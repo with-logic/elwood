@@ -5,7 +5,10 @@
 
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
-import { recheckLaunchDirectoryOnFailure } from "../../runtime/session/launch-directory.ts";
+import {
+  checkLaunchDirectory,
+  recheckLaunchDirectoryOnFailure,
+} from "../../runtime/session/launch-directory.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { reserveLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
@@ -38,7 +41,8 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
   try {
     // Codex relaunches where the session started (`--cd`); `cwd` only locates the state.
     // It is checked before any probe; a probe that fails because it went or was replaced fails as that.
-    const warning = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
+    const directory = await checkLaunchDirectory("codex", record.cwd);
+    const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
       preflight.preflightCodex(
         record.cwd,
         options.strictVersionCheck ?? false,
@@ -50,12 +54,13 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.codex.launch, codexLaunchPosture(options));
     const resumedRecord = withCodexLaunch(record, launch);
-    const session = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
+    const session = await recheckLaunchDirectoryOnFailure(directory, () =>
       startCodexFromRecord(
         resumedRecord,
         stateDir,
         {
           cwd: record.cwd, // where Codex relaunches; `options.cwd` only located the state
+          launchDirectory: directory,
           stateDir,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
