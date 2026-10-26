@@ -1,8 +1,10 @@
 /**
  * Latches one PTY's exit from a single subscription. node-pty never replays an exit to a
  * later subscriber, so a waiter that subscribed only after the exit would sit out its
- * whole timeout. Codex's `setModel` restore (PRD §5.3, C-CODEX-14) waits on it for a
- * closing CLI to exit before restoring `config.toml`.
+ * whole timeout. Shared by termination (PRD §9.4, C-LIFE-10), which awaits a process-table
+ * sweep before any SIGKILL (after a SIGTERM only when the leader outlasts it), and by
+ * Codex's `setModel` restore (§5.3, C-CODEX-14), which waits for a closing CLI to exit
+ * before restoring `config.toml`.
  */
 
 import type { PtyProcess } from "./types.ts";
@@ -10,19 +12,26 @@ import type { PtyProcess } from "./types.ts";
 export class PtyExitLatch {
   private observed = false;
   private readonly waiters = new Set<() => void>();
+  private readonly unsubscribe: () => void;
 
   constructor(pty: Pick<PtyProcess, "onExit">) {
-    pty.onExit(() => {
+    this.unsubscribe = pty.onExit(() => {
       this.observed = true;
       for (const wake of this.waiters) wake();
     });
   }
 
+  /** Whether the exit has been observed. From then on the PTY's pid may be reused. */
+  get exited(): boolean {
+    return this.observed;
+  }
+
   /**
    * Resolves `true` once the exit is observed, or `false` after `timeoutMs`, so a stuck
-   * CLI cannot hold its waiter. The pending timer does not keep the host process alive.
+   * CLI cannot hold its waiter. With `unref`, the pending timer does not keep the host
+   * process alive.
    */
-  within(timeoutMs: number): Promise<boolean> {
+  within(timeoutMs: number, options: { readonly unref?: boolean } = {}): Promise<boolean> {
     if (this.observed) return Promise.resolve(true);
     return new Promise((resolve) => {
       const settle = (exited: boolean): void => {
@@ -32,8 +41,13 @@ export class PtyExitLatch {
       };
       const wake = (): void => settle(true);
       const timer = setTimeout(() => settle(false), timeoutMs);
-      timer.unref();
+      if (options.unref === true) timer.unref();
       this.waiters.add(wake);
     });
+  }
+
+  /** Drops the exit subscription; `exited` keeps what it last observed. */
+  dispose(): void {
+    this.unsubscribe();
   }
 }

@@ -115,10 +115,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     };
     return super.setModel(id, options, (flow, signal) => switchCodexModel(session, flow, signal));
   }
-  // A closing session rejects the picker at once, while the dying CLI can still persist
-  // the selection it had confirmed, so the restore waits on the PTY's own exit.
+  // A closing session's dying CLI can still persist a confirmed selection: await its exit.
   private waitForCliExit(): Promise<unknown> | undefined {
-    return this.closing.signal.aborted ? this.cliExit.within(cliExitWaitMs) : undefined;
+    if (!this.closing.signal.aborted) return undefined;
+    return this.cliExit.within(cliExitWaitMs, { unref: true }); // never holds the host open
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);

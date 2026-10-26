@@ -43,7 +43,11 @@ const untouchedPty: PtyProcess = {
 function recordingReap(calls: string[]): ShutdownReapPolicy {
   return {
     orThrow: () => void calls.push("reap"),
-    reaper: { reap: () => void calls.push("reap") },
+    reaper: {
+      reap: () => void calls.push("reap"),
+      reapAndThrowOnDetachedSweepFailure: () => void calls.push("reap"),
+      sweepDetached: async () => {},
+    },
   };
 }
 
@@ -57,7 +61,14 @@ function host(
   return {
     pty: untouchedPty,
     removeFiles: () => undefined,
-    reapPolicy: { orThrow: () => undefined, reaper: { reap: () => undefined } },
+    reapPolicy: {
+      orThrow: () => undefined,
+      reaper: {
+        reap: () => undefined,
+        reapAndThrowOnDetachedSweepFailure: () => undefined,
+        sweepDetached: async () => {},
+      },
+    },
     status: () => "exited",
     claimShutdown: () => undefined,
     pauseLoops: () => undefined,
