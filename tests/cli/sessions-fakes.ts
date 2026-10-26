@@ -27,7 +27,7 @@ export function stateRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "elwood-sessions-"));
   roots.push(root);
   const stateDir = join(root, "state");
-  ensurePrivateStateRoot(stateDir);
+  ensurePrivateStateRoot(stateDir, root);
   return stateDir;
 }
 

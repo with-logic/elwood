@@ -13,7 +13,7 @@ import { assertStatePath, PRIVATE_STATE_MODE, SHARED_STATE_MODE } from "./direct
 import { safeSessionDir, secureMkdir, writePrivateFileAtomic, writeSharedFile } from "./files.ts";
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
 import { currentFileOwner, type FileOwner, readPrivateFile } from "./private-read.ts";
-import { makeStateRoot } from "./root.ts";
+import { makeStateRoot, makeStateTree } from "./root.ts";
 import { removeSocketHome } from "./socket-home.ts";
 import { validateSessionRecord } from "./validate.ts";
 
@@ -58,24 +58,36 @@ export type StateDirSetup = {
   readonly isImplicitDefaultStateDir?: boolean;
   /** The session's working directory, which must exist and is never made (C-STATE-14). */
   readonly cwd: string;
+  /**
+   * The session whose directory is made with the rest, so that another start's undo, which
+   * removes only empty directories, leaves this start's tree (C-STATE-14).
+   */
+  readonly elwoodSessionId?: string;
 };
 
 /**
- * Makes the state directory and its `sessions` directory, only while the session's `cwd`
- * exists. A root at or under `cwd` is made only below it; a root elsewhere gets its missing
- * parents. Nothing below the root is ever made with parents.
+ * Makes the state directory, its `sessions` directory, and the session's own directory when
+ * one is named, only while the session's `cwd` exists. A root at or under `cwd` is made only
+ * below it; a root elsewhere gets its missing parents. Nothing below the root is ever made with
+ * parents.
  */
 export function prepareStateDir(stateDir: string, setup: StateDirSetup): void {
   const root = resolve(stateDir);
   assertStatePath(root);
   assertStatePath(join(root, "sessions"));
   const isDefault = setup.isImplicitDefaultStateDir === true;
-  makeStateRoot(root, isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE, setup.cwd);
-  const gitignorePath = join(root, ".gitignore");
-  if (isDefault && !existsSync(gitignorePath)) {
-    writeSharedFile(gitignorePath, "*\n");
-  }
-  secureMkdir(join(root, "sessions"));
+  const sessions = join(root, "sessions");
+  const id = setup.elwoodSessionId;
+  const session = id === undefined ? undefined : safeSessionDir(root, id);
+  makeStateTree(setup.cwd, session ?? sessions, () => {
+    makeStateRoot(root, isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE, setup.cwd);
+    const gitignorePath = join(root, ".gitignore");
+    if (isDefault && !existsSync(gitignorePath)) {
+      writeSharedFile(gitignorePath, "*\n");
+    }
+    secureMkdir(sessions);
+    if (session !== undefined) secureMkdir(session);
+  });
 }
 
 /** Persist the record into its derived session directory (not stored on the record). */
