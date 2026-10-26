@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
+import { coalesceUnstarted } from "../../src/runtime/shutdown/coalesce.ts";
 import {
-  coalesceUnstarted,
   detachedDescendantGroups,
   listProcessTable,
   type ProcessEntry,
@@ -16,55 +16,57 @@ import {
 
 const LEADER = 5000;
 const HOST = 4000;
+const STARTED = "Sun Oct 25 22:00:00 2026";
 
 type Row = { readonly pid: number; readonly ppid: number; readonly pgid: number };
 
-function row({ pid, ppid, pgid }: Row, state: "Z" | "T" | "S" = "S", name = "sh") {
+function row({ pid, ppid, pgid }: Row, state = "S", name = "sh", startedAt = STARTED) {
   const flags = { zombie: state === "Z", stopped: state === "T" };
-  return { pid, ppid, pgid, ...flags, name, shared: false };
+  return { pid, ppid, pgid, ...flags, startedAt, name, shared: false };
 }
 
 const leaderRow = row({ pid: LEADER, ppid: HOST, pgid: LEADER });
-
 const walk = (table: readonly ProcessEntry[]) =>
   detachedDescendantGroups(table, { leaderPid: LEADER, hostPid: HOST });
 
 describe("C-LIFE-10 process table", () => {
-  test("runs /bin/ps with its timeout, a 16 MiB output cap, and SIGKILL, and parses its rows", async () => {
+  test("runs /bin/ps in the C locale with its timeout, output cap, and SIGKILL, and parses rows", async () => {
     const stdout = [
-      " 5000  4000  5000 Ss+  sh                5000",
-      " 5001  5000  5001 Z                      5001",
-      " 5002  5000  5002 T+   Google Chrome He  5002",
-      "",
+      ` 5000  4000  5000 Ss+  ${STARTED} sh                5000`,
+      ` 5001  5000  5001 Z    Sun Oct  5 02:03:04 2026                  5001`,
+      ` 5002  5000  5002 T+   ${STARTED} Google Chrome He  5002`,
     ].join("\n");
     const runs: unknown[] = [];
+    const env = { LC_ALL: "C", TZ: "UTC" };
     const table = await listProcessTable(1_234, (file, args, options) => {
       runs.push({ file, args, options });
       return Promise.resolve({ stdout });
     });
     expect(table).toEqual([
       leaderRow,
-      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z", ""),
+      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z", "", "Sun Oct  5 02:03:04 2026"),
       row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "T", "Google Chrome He"),
     ]);
     expect(runs).toEqual([
       {
         file: "/bin/ps",
-        args: ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm=,pid="],
-        options: { timeout: 1_234, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL" },
+        args: ["-A", "-o", "pid=,ppid=,pgid=,stat=,lstart=,ucomm=,pid="],
+        options: { timeout: 1_234, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL", env },
       },
     ]);
   });
 
   test("rejects a read with any line that is not one whole row, or a pid twice", () => {
-    for (const line of [
-      " 5000  4000  5000 S    sh",
-      " 5000  4000  5000 S    sh  5001",
-      "69992 69991 69988 S    a\n1 5000 1 S    69992", // `ps` prints a name with a newline raw
+    const line = (fields: string, rest: string) => `${fields} ${STARTED} ${rest}`;
+    for (const bad of [
+      line("5000 4000 5000 S", "sh"),
+      line("5000 4000 5000 S", "sh 5001"),
+      `${line("69992 69991 69988 S", "a")}\n${line("1 5000 1 S", " 69992")}`, // a name, raw
     ]) {
-      expect(() => parseProcessTable(`6000 1 6000 S sh 6000\n${line}`)).toThrow("one whole row");
+      const stdout = `${line("6000 1 6000 S", "sh 6000")}\n\n${bad}`; // a blank line is skipped
+      expect(() => parseProcessTable(stdout)).toThrow("one whole row");
     }
-    const twice = "6000 1 6000 S sh 6000\n6000 1 6000 S sh 6000";
+    const twice = `${line("6000 1 6000 S", "sh 6000")}\n${line("6000 1 6000 S", "sh 6000")}`;
     expect(() => parseProcessTable(twice)).toThrow("process table read lists pid 6000 twice");
   });
 });
@@ -135,7 +137,7 @@ describe("C-LIFE-10 detached descendant groups", () => {
 
   test("a leader missing from the read still parents its children, as a row not stopped", () => {
     // `ps` can read a leader's children in the same pass the leader's own row left.
-    const unread = row({ pid: LEADER, ppid: 0, pgid: LEADER }, "S", "");
+    const unread = row({ pid: LEADER, ppid: 0, pgid: LEADER }, "S", "", "");
     expect(walk([row({ pid: 5002, ppid: LEADER, pgid: 5002 })])).toEqual(
       new Map([[5002, new Set([unread])]]),
     );
