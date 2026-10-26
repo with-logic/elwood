@@ -5,20 +5,20 @@
  * a content-free drop and termination completes rather than a 256 MiB sync loop.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 import { type DrainContext, drainToBudget } from "../../src/claude/transcript/drain.ts";
 import { DropReporter, type TranscriptDropNotice } from "../../src/claude/transcript/drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "../../src/claude/transcript/emit.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const assistant = (text: string) => ({
   type: "assistant",
   message: { content: [{ type: "text", text }] },
 });
-const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-drain-")), "t.jsonl");
+const tmpFile = () => join(tempDir("elwood-drain-"), "t.jsonl");
 
 /**
  * A real drain context: real cursor reads, real parse/emit, real drop accounting.
