@@ -19,6 +19,7 @@ import { shellQuote } from "../../src/runtime/shell.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import {
   baseConfig,
+  inSession,
   loginShellSkip,
   loginShellTestTimeoutMs,
   runLoginShellTest,
@@ -50,7 +51,7 @@ async function withLoginShellHome(body: (run: LoginShellHome) => Promise<void>):
   const sessionConfigPath = seedCodexHome(sessionHome, baseConfig);
   const detachedShellConfigPath = seedCodexHome(detachedHome, baseConfig);
   const exportLine =
-    `if [[ -t 0 && -n "$ELWOOD_SESSION_ID" ]]; then export CODEX_HOME=${shellQuote(sessionHome)}; ` +
+    `if ${inSession}; then export CODEX_HOME=${shellQuote(sessionHome)}; ` +
     `else export CODEX_HOME=${shellQuote(detachedHome)}; fi`;
   const launches = codexLaunches();
   const started: CodexSessionApi[] = [];

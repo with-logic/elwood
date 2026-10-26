@@ -3,12 +3,14 @@
  * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05,
  * C-PERF-07): a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
  * `update`, or `--help` probe, a slow login-shell profile is bounded separately from the CLI
- * it launches, and only a few probes run at once.
+ * it launches, and only a few probes run at once. A probe the e2e home guard stops (PRD §12,
+ * C-E2E-24) is a login-shell failure carrying only the guard's fixed reason.
  */
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type { CommandResult } from "../seams.ts";
+import { homeGuardExitCode, homeGuardStopped, homeGuardStoppedReason } from "../shell.ts";
 import { CappedBuffer, maxProbeStreamOutputBytes } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
@@ -123,6 +125,9 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
       if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
+      // The e2e home guard runs after the start line but stops the shell before the command.
+      else if (expectsStartLine && code !== null && homeGuardStopped(code))
+        settle(guardStopped(stdout, stderr));
       else settle({ status: code, stdout, stderr });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
@@ -151,6 +156,16 @@ function launchTimedOut(stdout: string, stderr: string): CommandResult {
 function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
   const message = `login shell exited with status ${status} before starting the probe command`;
   const error = { message, phase: "login_shell", shellStatus: status } as const;
+  return { status: null, stdout, stderr, error };
+}
+
+/** A probe the e2e home guard stopped: the login shell's failure, with only the fixed reason. */
+function guardStopped(stdout: string, stderr: string): CommandResult {
+  const error = {
+    message: homeGuardStoppedReason,
+    phase: "login_shell",
+    shellStatus: homeGuardExitCode,
+  } as const;
   return { status: null, stdout, stderr, error };
 }
 

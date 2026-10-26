@@ -2,7 +2,9 @@
  * Real Codex sessions in two directories, launched through a login shell whose startup files
  * pick `CODEX_HOME` from the directory the shell starts in (`$PWD`). Each session's configured
  * default must come from its own directory's home, never from Elwood's environment or the
- * other session's. Implements PRD §4.2 and C-CODEX-24 (with C-API-23).
+ * other session's. Only a session's shell picks one (`inSession`): a probe shell starts in
+ * Elwood's own directory and keeps Elwood's home, as the suite's home guard requires
+ * (C-E2E-24). Implements PRD §4.2 and C-CODEX-24 (with C-API-23).
  *
  * Every home lives under a scratch project and holds a copy of `auth.json`; the real
  * `~/.codex` and the user's startup files are only read.
@@ -15,6 +17,7 @@ import type { CodexSessionApi } from "../../src/index.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import {
   baseConfig,
+  inSession,
   loginShellSkip,
   loginShellTestTimeoutMs,
   runLoginShellTest,
@@ -54,7 +57,8 @@ test("C-CODEX-24 real Codex sessions in two directories each use the home their 
   const launches = codexLaunches();
   const held: CodexSessionApi[] = [];
   const scope = { sessions: () => held, sandbox, otherProjects: [projects[1]], launches };
-  await runLoginShellTest(scope, `export CODEX_HOME="$PWD/${homeName}"`, async () => {
+  const exportLine = `${inSession} && export CODEX_HOME="$PWD/${homeName}"`;
+  await runLoginShellTest(scope, exportLine, async () => {
     const [first, second] = await startAll(projects, launches, (session) => held.push(session));
     assert.ok(first && second, "both sessions started");
     const unconfigured = await first.listModels();
