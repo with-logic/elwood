@@ -20,6 +20,7 @@ import {
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { privateTempDir } from "../../helpers/private-temp.ts";
 import { accessOnlyLogin, anthropicCredentialVariables, keychainLogin } from "../claude-login.ts";
+import { isNestedClaudeVariable } from "../claude-temp.ts";
 import { registerPrivateHome } from "../home-guard.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
@@ -129,12 +130,7 @@ export async function nativeClaudeQuestionSandbox() {
       };
       // Claude's temp root stays: `claude-home.ts` set it to a private directory.
       for (const key of Object.keys(env)) {
-        if (
-          key === "CLAUDECODE" ||
-          (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_TMPDIR") ||
-          anthropicVariables.includes(key)
-        )
-          delete env[key];
+        if (isNestedClaudeVariable(key) || anthropicVariables.includes(key)) delete env[key];
       }
       const pty = nodePtyFactory({ ...options, args: pin(options.args), env });
       return {

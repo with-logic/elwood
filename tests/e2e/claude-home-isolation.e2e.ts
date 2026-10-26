@@ -29,6 +29,7 @@ import {
 } from "./claude-home.ts";
 import { anthropicCredentialVariables } from "./claude-login.ts";
 import { claudeProjectKeys, projectKeysWithin } from "./claude-projects.ts";
+import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
 import { notZsh, useExportingZdotdir } from "./exporting-zdotdir.ts";
 import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
@@ -114,19 +115,17 @@ function privateLoginTest(name: string, skip: string | false, startupLine?: stri
       [],
       "the user's transcript folders never include the scratch project",
     );
-    // Claude names a directory's temp folder for its real path, each character other than a
-    // letter or digit replaced by "-", under `claude-<uid>` in its temp root.
-    const tempFolder = cwd.replace(/[^A-Za-z0-9]/g, "-");
-    const tempFolders = (root: string) => {
-      const dir = join(root, `claude-${process.getuid?.() ?? 0}`);
-      return existsSync(dir) ? readdirSync(dir).filter((name) => name === tempFolder) : [];
-    };
+    const tempFolder = claudeTempFolder(cwd);
     assert.deepEqual(
-      tempFolders(defaultClaudeTempDir),
+      claudeTempFoldersNamed(defaultClaudeTempDir, tempFolder),
       [tempFolder],
       "Claude keeps the scratch project's temp folder under the private temp root",
     );
-    assert.deepEqual(tempFolders("/tmp"), [], "and never under the shared /tmp");
+    assert.deepEqual(
+      claudeTempFoldersNamed("/tmp", tempFolder),
+      [],
+      "and never under the shared /tmp",
+    );
   });
 }
 

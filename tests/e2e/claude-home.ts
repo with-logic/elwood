@@ -21,17 +21,18 @@
  *   racing its first fetch (`claude-compiled-fallback.ts`).
  */
 
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { isRecord } from "../../src/core/predicates.ts";
-import { privateTempDir } from "../helpers/private-temp.ts";
+import { privateTempDir, removeAtExit } from "../helpers/private-temp.ts";
 import {
   accessOnlyLogin,
   keychainLogin,
   keychainService,
   keychainStorageSetting,
 } from "./claude-login.ts";
+import { claudeTempKey } from "./claude-temp.ts";
 import { registerPrivateHome } from "./home-guard.ts";
 
 /**
@@ -115,7 +116,7 @@ export const defaultClaudeConfigDir = privateTempDir(
   userConfigDir,
   "Claude config dir",
 );
-process.on("exit", () => rmSync(defaultClaudeConfigDir, { recursive: true, force: true }));
+removeAtExit(defaultClaudeConfigDir, "Claude config dir");
 const login = userCredentials();
 const access = login === undefined ? undefined : accessOnlyLogin(login, "The user's Claude login");
 if (access !== undefined)
@@ -127,20 +128,18 @@ if (existsSync(catalog))
 registerPrivateHome(defaultClaudeConfigDir);
 process.env["CLAUDE_CONFIG_DIR"] = defaultClaudeConfigDir;
 
-/** The variable naming the directory Claude keeps its temp root in, `/tmp` when unset. */
-export const claudeTempKey = "CLAUDE_CODE_TMPDIR";
-
 /**
  * This process's `CLAUDE_CODE_TMPDIR`, removed when it exits. Claude keeps a directory per
  * working directory under its temp root, holding each session's scratchpad, and that
  * directory outlives the session; under the shared `/tmp`, each scratch project would leave
  * one behind. The prefix is short because Claude puts its messaging socket at
- * `<root>/cc-socks/<pid>.sock` only while that path fits a socket address.
+ * `<root>/cc-socks/<pid>.sock` only while that path fits a socket address
+ * (`docs/cli-behavior.md`, "Claude's temp root").
  */
 export const defaultClaudeTempDir = privateTempDir(
   "elwood_e2e_ctmp-",
   userConfigDir,
   "Claude config dir",
 );
-process.on("exit", () => rmSync(defaultClaudeTempDir, { recursive: true, force: true }));
+removeAtExit(defaultClaudeTempDir, "Claude temp root");
 process.env[claudeTempKey] = defaultClaudeTempDir;
