@@ -110,6 +110,8 @@ test("C-API-55 caller input sent from inside an automated write still revokes", 
   );
   const owner = new SessionInputOwnership(inner);
   const signal = owner.signal();
+  const startupPrompts = vi.fn(); // a session's startup prompts hear caller input this way
+  const stopStartupPrompts = onCallerInput(owner.caller, startupPrompts);
   // A host listener that types the moment it sees Elwood's key, inside that write.
   const listener = inner.xterm.onData((data) => {
     if (data === "/model") owner.caller.xterm.input("human");
@@ -119,13 +121,16 @@ test("C-API-55 caller input sent from inside an automated write still revokes", 
     await withAutomatedInput(inner, async () => {
       const typed = inner.sendInput("/model");
       expect(signal.reason).toMatchObject({ code: "model_automation_failed" });
+      expect(startupPrompts).toHaveBeenCalledTimes(1);
       // Elwood's next write in this same scope, after the caller's keys, stays automated.
       next = owner.signal();
       await Promise.all([typed, inner.sendInput("x")]);
     });
     expect(next?.aborted).toBe(false);
+    expect(startupPrompts).toHaveBeenCalledTimes(1);
     expect(writes).toEqual(["/model", "human", "x"]);
   } finally {
+    stopStartupPrompts();
     listener.dispose();
     inner.dispose();
   }
