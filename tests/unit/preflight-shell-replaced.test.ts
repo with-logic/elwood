@@ -9,10 +9,11 @@
 import { renameSync, rmSync } from "node:fs";
 import { beforeEach, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
-import { preflightCodex } from "../../src/codex/preflight.ts";
+import { detectCodexCliCapabilities, preflightCodex } from "../../src/codex/preflight.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import { setUpdateCoordinatorForTests } from "../../src/runtime/update/once.ts";
 import {
+  codexHookTrustBypassFlag,
   oldClaude,
   oldCodex,
   project,
@@ -52,4 +53,16 @@ test.each(
   rmSync(cwd, { recursive: true });
   renameSync(replacement, cwd);
   await expect(start({ cwd, strictVersionCheck: true })).rejects.toMatchObject(old);
+});
+
+test("C-PERF-02 a codex directory replaced after its capabilities were cached is probed again", async () => {
+  const cwd = project("codex", "codex-cli 0.150.0", codexHookTrustBypassFlag);
+  await detectCodexCliCapabilities(cwd); // keeps this directory's answer: the flag is supported
+  const replacement = project("codex", "codex-cli 0.150.0", "no such flag");
+  rmSync(cwd, { recursive: true });
+  renameSync(replacement, cwd);
+  await expect(startCodex({ cwd })).rejects.toMatchObject({ code: "pty_start_failed" });
+  expect(launches.map(({ command }) => command.includes(codexHookTrustBypassFlag))).toEqual([
+    false,
+  ]);
 });

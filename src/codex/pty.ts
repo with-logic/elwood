@@ -25,7 +25,7 @@ export async function spawnCodexPty(
   bridgeScriptPath: string,
   options: StartCodexOptions,
 ): Promise<CodexLaunch> {
-  const capabilities = await preflight.detectCodexCliCapabilities();
+  const capabilities = await preflight.detectCodexCliCapabilities(record.cwd);
   const configPath = codexConfigPath();
   try {
     const pty = currentPtyFactory()({

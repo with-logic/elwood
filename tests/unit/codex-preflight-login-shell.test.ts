@@ -34,7 +34,7 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
     return { status: 0, stdout: "codex-cli 0.164.0", stderr: "" };
   });
   await preflightCodex(process.cwd(), { autoupdate: true });
-  await detectCodexCliCapabilities();
+  await detectCodexCliCapabilities(process.cwd());
   expect(scripts).toEqual([
     `${probeStartScript}codex --version`,
     `${probeStartScript}codex update`,

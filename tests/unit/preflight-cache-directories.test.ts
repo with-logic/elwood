@@ -1,12 +1,16 @@
 /**
- * The version cache is per session directory: each directory's `--version` is probed once, in
- * that directory, only the most recently used directories' answers are kept, and an autoupdate
- * invalidates every directory's. Covers PRD §9.2 and C-PERF-02.
+ * The preflight caches are per session directory: each directory's `--version` and `--help`
+ * are probed once, in that directory, only the most recently used directories' answers are
+ * kept, and an autoupdate invalidates every directory's. Covers PRD §9.2 and C-PERF-02.
  */
 
 import { beforeEach, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
-import { preflightCodex, resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
+import {
+  detectCodexCliCapabilities,
+  preflightCodex,
+  resetCodexPreflightCacheForTests,
+} from "../../src/codex/preflight.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   cachedVersionRead,
@@ -43,12 +47,18 @@ test("C-PERF-02 the caches keep 32 directories and 65,536 code units of each str
   expect(maxRetainedVersionTail).toBe(65_536);
 });
 
-test("C-PERF-02 each directory's --version is probed once, in that directory", async () => {
+test("C-PERF-02 each directory's --version and --help are probed once, in that directory", async () => {
   const probes = recordProbes();
   await Promise.all([preflightClaude("/one"), preflightClaude("/one")]);
   await preflightClaude("/two");
   await preflightClaude("/one", { strictVersionCheck: true });
-  expect(probes).toEqual(["claude --version in /one", "claude --version in /two"]);
+  await detectCodexCliCapabilities("/one");
+  await detectCodexCliCapabilities("/one");
+  expect(probes).toEqual([
+    "claude --version in /one",
+    "claude --version in /two",
+    "codex --help in /one",
+  ]);
 });
 
 test("C-PERF-02 only the most recently used directories' versions are kept", async () => {
@@ -59,6 +69,16 @@ test("C-PERF-02 only the most recently used directories' versions are kept", asy
   await preflightClaude("/d0"); // the least recently used was dropped
   expect(probes).toHaveLength(dirs.length + 1);
   expect(probes.at(-1)).toBe("claude --version in /d0");
+});
+
+test("C-PERF-02 only the most recently used directories' Codex capabilities are kept", async () => {
+  const probes = recordProbes();
+  const dirs = Array.from({ length: maxSettledPreflightDirectoryResults + 1 }, (_, i) => `/d${i}`);
+  for (const cwd of dirs) await detectCodexCliCapabilities(cwd);
+  await detectCodexCliCapabilities("/d1"); // still kept
+  await detectCodexCliCapabilities("/d0"); // the least recently used was dropped
+  expect(probes).toHaveLength(dirs.length + 1);
+  expect(probes.at(-1)).toBe("codex --help in /d0");
 });
 
 test("C-PERF-02 a kept --version read holds only the end of a long output", async () => {
@@ -96,20 +116,23 @@ test.each(
   for (const cwd of ["/one", "/two"]) {
     await preflightClaude(cwd);
     await preflightCodex(cwd);
+    await detectCodexCliCapabilities(cwd);
   }
   probes.length = 0;
   await preflightClaude("/one", { autoupdate: true });
   await preflightCodex("/one", { autoupdate: true });
   await preflightClaude("/two");
   await preflightCodex("/two");
+  await detectCodexCliCapabilities("/two");
   expect(probes.filter((probe) => probe.includes("update"))).toEqual(
     updates.map((update) => `${update} in /one`),
   );
-  expect(probes.filter((probe) => probe.includes("--version"))).toEqual([
+  expect(probes.filter((probe) => !probe.includes("update"))).toEqual([
     "claude --version in /one",
     "codex --version in /one",
     "claude --version in /two",
     "codex --version in /two",
+    "codex --help in /two",
   ]);
 });
 

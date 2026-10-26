@@ -77,9 +77,9 @@ an inherited `SHELL` environment override from the parent process.
 
 These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
-preflights on a single thread. Each `--version` and `update` probe runs in the
-session's launch directory (§4.2). Elwood reads each adapter's `--version` in each such directory and
-reuses a successful read while it is kept — concurrent reads
+preflights on a single thread. Each probe runs in the session's launch directory
+(§4.2). Elwood reads each adapter's `--version`, and Codex's `--help`, in each
+such directory and reuses a successful read while it is kept — concurrent reads
 share a single subprocess, mirroring the once-per-process autoupdate dedupe
 (C-LIFE-09). A read is kept for the directory itself, its device and inode as well
 as its path, so a directory deleted and made again at the same path is read again.
@@ -88,8 +88,9 @@ Only the 32 most recently used directories' results are kept, enough for a host
 running sessions in many worktrees at once, and a kept `--version` read holds only
 the last 65,536 UTF-16 code units of each output stream (one fewer when that cut
 would start inside a surrogate pair), so a long-lived host that launches in many
-directories stays bounded; an evicted directory is read again. The cached version reads, in every directory, and adapter-capability
-reads are invalidated after every coordinated update attempt, including a failed or
+directories stays bounded; an evicted directory is read again. The cached version
+and adapter-capability reads are invalidated in every directory after every
+coordinated update attempt, including a failed or
 peer-owned attempt, because a failed installer may still have partially changed
 the binary. When
 `autoupdate` is set, concurrent callers share one update, which runs in the

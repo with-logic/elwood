@@ -8,6 +8,7 @@
 import { describe, expect, test } from "vitest";
 import { resumeClaude, resumeCodex } from "../../src/index.ts";
 import {
+  codexHookTrustBypassFlag,
   createResumableSessionStateDir,
   dir,
   directoryLossCases,
@@ -20,6 +21,24 @@ import {
 
 const launches = useProbeProjects();
 const ptyFailure = { code: "pty_start_failed" };
+
+test("C-PTY-08 resumeCodex launches with the capabilities of its saved directory, where it relaunches", async () => {
+  const saved = [codexHookTrustBypassFlag, "no such flag"].map((help) =>
+    project("codex", "codex-cli 0.150.0", help),
+  );
+  for (const cwd of saved) {
+    const stateDir = createResumableSessionStateDir("codex", cwd);
+    // `cwd` only locates the state; Codex relaunches in the saved directory (`--cd`).
+    const elsewhere = project("codex", "codex-cli 0.150.0", "no such flag");
+    const resumed = resumeCodex({ cwd: elsewhere, stateDir, elwoodSessionId: "codex-probe-cwd" });
+    await expect(resumed).rejects.toMatchObject(ptyFailure);
+  }
+  expect(launches.map(({ command }) => command.includes(codexHookTrustBypassFlag))).toEqual([
+    true,
+    false,
+  ]);
+  expect(launches.map(({ cwd }) => cwd)).toEqual(saved);
+});
 
 test("C-PTY-08 resumeCodex checks the codex of its saved directory, where it relaunches", async () => {
   const stateDir = createResumableSessionStateDir("codex", project("codex", "codex-cli 0.100.0"));

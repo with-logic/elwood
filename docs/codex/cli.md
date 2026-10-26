@@ -28,8 +28,10 @@ Useful CLI capabilities for Elwood:
 - Some Codex versions expose `--dangerously-bypass-hook-trust`, which lets
   generated Elwood hooks run for one invocation without requiring a persisted
   trust prompt. Elwood must detect support before passing it because other Codex
-  versions reject unknown flags. Detection is cached for the lifetime of the
-  Elwood process.
+  versions reject unknown flags. Detection runs in the directory the session
+  launches in and is cached per directory: the 32 most recently used directories'
+  answers are kept, a directory deleted and made again is probed again, and an
+  update attempt clears them all.
 - Codex can also render interactive trust and update prompts before the session
   is usable. Elwood should select `Trust all and continue` for hook prompts, and
   skip TUI update prompts because API-level `autoupdate` runs `codex update`

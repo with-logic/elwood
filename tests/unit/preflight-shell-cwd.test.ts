@@ -14,6 +14,7 @@ import { preflightCodex } from "../../src/codex/preflight.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as shell from "../../src/runtime/shell.ts";
 import {
+  codexHookTrustBypassFlag,
   dir,
   directoryLossCases,
   oldClaude,
@@ -23,7 +24,7 @@ import {
   useProbeProjects,
 } from "../helpers/preflight-projects.ts";
 
-useProbeProjects();
+const launches = useProbeProjects();
 
 test("C-PTY-08 startCodex checks the codex its session directory resolves", async () => {
   const cwd = project("codex", "codex-cli 0.100.0");
@@ -55,6 +56,20 @@ test("C-PTY-08 a login shell that cannot start, in a directory that exists, is a
   const cwd = dir("elwood-preflight-session-");
   await expect(preflightCodex(cwd)).rejects.toMatchObject({ code: "codex_not_found" });
   await expect(preflightClaude(cwd)).rejects.toMatchObject({ code: "claude_not_found" });
+});
+
+test("C-PTY-08 startCodex launches with the capabilities of its directory's codex", async () => {
+  const projects = [codexHookTrustBypassFlag, "no such flag"].map((help) =>
+    project("codex", "codex-cli 0.150.0", help),
+  );
+  for (const cwd of projects) {
+    await expect(startCodex({ cwd })).rejects.toMatchObject({ code: "pty_start_failed" });
+  }
+  expect(launches.map(({ command }) => command.includes(codexHookTrustBypassFlag))).toEqual([
+    true,
+    false,
+  ]);
+  expect(launches.map(({ cwd }) => cwd)).toEqual(projects);
 });
 
 test.each([

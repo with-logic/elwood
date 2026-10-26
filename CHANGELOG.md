@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex's capability check (`codex --help`, which decides whether Elwood passes
+  `--dangerously-bypass-hook-trust`) now runs in the session's directory, like
+  the version check, and its answer is kept per directory: the 32 most recently
+  used directories' answers, with a directory deleted and made again checked
+  again. It ran in the host's working directory, and one answer served every
+  session, so under a per-directory tool manager a session could launch with a
+  flag its own `codex` rejects, or without one it supports.
+
 - The version checks at start and resume now run in the session's directory,
   where its CLI launches, and with `autoupdate` the update command runs in the
   directory of the start or resume that triggers it. These checks ran in the

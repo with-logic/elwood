@@ -64,12 +64,15 @@ export function dir(prefix: string): string {
   return realpathSync(tempDir(prefix));
 }
 
-/** A project directory whose `bin/<cli>` prints `version`. */
-export function project(cli: ElwoodAgentKind, version: string): string {
+/** A project directory whose `bin/<cli>` prints `version` and `help`. */
+export function project(cli: ElwoodAgentKind, version: string, help = ""): string {
   const cwd = dir("elwood-preflight-session-");
   const bin = join(cwd, "bin", cli);
   mkdirSync(join(cwd, "bin"));
-  writeFileSync(bin, `#!/bin/sh\ncase "$1" in --version) echo '${version}' ;; esac\n`);
+  writeFileSync(
+    bin,
+    `#!/bin/sh\ncase "$1" in --version) echo '${version}' ;; --help) echo '${help}' ;; esac\n`,
+  );
   chmodSync(bin, 0o755);
   return cwd;
 }
@@ -115,3 +118,4 @@ export function createResumableSessionStateDir(adapter: SessionAdapter, cwd: str
 
 export const oldCodex = { code: "codex_version_unsupported", details: { version: "0.100.0" } };
 export const oldClaude = { code: "claude_version_unsupported", details: { found: "2.1.100" } };
+export const codexHookTrustBypassFlag = "--dangerously-bypass-hook-trust";
