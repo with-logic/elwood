@@ -6,10 +6,8 @@
  * `~/.codex` are only read, never written.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { userInfo } from "node:os";
-import { basename, join } from "node:path";
 import { type CodexTestScope, runCodexTest } from "./codex-test-end.ts";
+import { notZsh, useExportingZdotdir } from "./exporting-zdotdir.ts";
 import { codexAuthMissing, skipIf, skipReason } from "./helpers.ts";
 import { keepScratch } from "./scratch.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
@@ -24,11 +22,7 @@ export const baseConfig = 'model_reasoning_effort = "medium"\n';
  */
 export const inSession = '[[ -t 0 && -n "$ELWOOD_SESSION_ID" ]]';
 
-export const loginShellSkip = skipIf(
-  skipReason("codex"),
-  codexAuthMissing(),
-  basename(userInfo().shell ?? "") !== "zsh" && "the login shell is not zsh",
-);
+export const loginShellSkip = skipIf(skipReason("codex"), codexAuthMissing(), notZsh);
 
 /**
  * Runs a real-Codex test's body with `ZDOTDIR` pointing at startup files under the sandbox's
@@ -72,23 +66,4 @@ function stopUnderProjects(scope: CodexTestScope): unknown[] {
     }
   }
   return failures;
-}
-
-/**
- * Points `ZDOTDIR` at a directory under `root` whose files source the user's own zsh startup
- * files and finally run `exportLine`. Returns the function that restores `ZDOTDIR`.
- */
-function useExportingZdotdir(root: string, exportLine: string): () => void {
-  const dir = join(root, "zdotdir");
-  mkdirSync(dir, { recursive: true });
-  for (const file of [".zshenv", ".zprofile", ".zshrc", ".zlogin"]) {
-    const own = `[[ -f "$HOME/${file}" ]] && source "$HOME/${file}"\n`;
-    writeFileSync(join(dir, file), own + (file === ".zlogin" ? `${exportLine}\n` : ""));
-  }
-  const previous = process.env["ZDOTDIR"];
-  process.env["ZDOTDIR"] = dir;
-  return () => {
-    if (previous === undefined) delete process.env["ZDOTDIR"];
-    else process.env["ZDOTDIR"] = previous;
-  };
 }
