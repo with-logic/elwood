@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type { CommandResult } from "../seams.ts";
-import { CappedBuffer, maxProbeOutputBytes } from "./capped-buffer.ts";
+import { CappedBuffer, maxProbeStreamOutputBytes } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
 import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
@@ -155,6 +155,6 @@ function shellExited(status: number | null, stdout: string, stderr: string): Com
 }
 
 function overflow(stdout: string, stderr: string): CommandResult {
-  const message = `probe output exceeded ${maxProbeOutputBytes} bytes`;
+  const message = `a probe output stream exceeded ${maxProbeStreamOutputBytes} bytes`;
   return { status: null, stdout, stderr, error: { code: "E2BIG", message } };
 }

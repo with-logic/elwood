@@ -5,8 +5,8 @@
 
 import { completeUtf8Length } from "../../core/utf8.ts";
 
-/** Each captured stream's byte cap (C-PERF-03). */
-export const maxProbeOutputBytes = 1_000_000;
+/** Each captured stream's own byte cap, not the probe's total (C-PERF-03). */
+export const maxProbeStreamOutputBytes = 1_000_000;
 
 /** Accumulates stream chunks up to a hard byte cap, tracking overflow. */
 export class CappedBuffer {
@@ -17,10 +17,10 @@ export class CappedBuffer {
   append(chunk: Buffer): void {
     // Once the cap is hit the probe is aborted and its pipes destroyed, so no chunk
     // ever arrives after `overflowed` is set; the first over-cap chunk is the last.
-    const remaining = maxProbeOutputBytes - this.byteLength;
+    const remaining = maxProbeStreamOutputBytes - this.byteLength;
     if (chunk.length > remaining) {
       this.chunks.push(chunk.subarray(0, remaining));
-      this.byteLength = maxProbeOutputBytes;
+      this.byteLength = maxProbeStreamOutputBytes;
       this.overflowed = true;
       return;
     }
