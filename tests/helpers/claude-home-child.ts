@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isRecord, isString, isStringArray } from "../../src/core/predicates.ts";
+import { fakeKeychain } from "./fake-keychain.ts";
 
 const claudeHomeModule = resolve(import.meta.dirname, "../e2e/claude-home.ts");
 
@@ -39,12 +40,15 @@ const script = `
     catalog: read("cache/model-catalog/catalog.json"),
   }));`;
 
-/** A child process that loads the module with `env` over a clean Claude environment. */
+/**
+ * A child process that loads the module with `env` over a clean Claude environment. Its
+ * keychain is an empty fake one unless `env` names another (`fake-keychain.ts`).
+ */
 export function runChild(env: Readonly<Record<string, string>>) {
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   delete childEnv["ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR"];
   delete childEnv["CLAUDE_CONFIG_DIR"];
-  Object.assign(childEnv, env);
+  Object.assign(childEnv, { ELWOOD_E2E_SECURITY_BIN: fakeKeychain().bin }, env);
   return spawnSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], {
     env: childEnv,
     encoding: "utf8",
@@ -95,7 +99,7 @@ export function tree(dir: string): Readonly<Record<string, string>> {
   );
 }
 
-const login = {
+export const login = {
   claudeAiOauth: {
     accessToken: "access",
     expiresAt: 1,

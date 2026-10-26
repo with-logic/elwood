@@ -1771,6 +1771,18 @@ default `Claude Code-credentials` keychain item for it. It does read a
 rotate the user's own refresh token. It works until the access token's `expiresAt`,
 which is why `tests/e2e/claude-home.ts` copies it afresh in each process.
 
+A set config dir has a keychain item of its own (claude 2.1.310, 2026-10-26):
+`Claude Code-credentials-` followed by the first eight hex digits of the SHA-256 of
+the `CLAUDE_CONFIG_DIR` value as written, NFC-normalized, even when it names
+`~/.claude`. An empty value counts as unset. With `CLAUDE_CONFIG_DIR` set to a fresh
+dir, `claude auth status` reported `loggedIn: true` exactly while an item of that
+name existed. The item wins over a `.credentials.json` in the same dir: with both
+holding different logins, Claude reported the item's. So a user with the variable
+set may have their login only in that item, and `tests/e2e/claude-home.ts` reads it
+from there first. The 2.1.310 binary also lets `CLAUDE_SECURESTORAGE_CONFIG_DIR`,
+when set, replace the dir the item is named for; that was read from the code, not
+exercised.
+
 An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
 (`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
 key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.

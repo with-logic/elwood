@@ -5,7 +5,7 @@
  * that process exits: a login without its refresh token, the global config without its
  * project entries, MCP servers, or bypass acceptance, the model catalog, no user settings,
  * and afterwards nothing but the user's own files, unchanged. No case reads the real
- * keychain: each gives the child a `.credentials.json` or a custom config dir, which skip it.
+ * keychain: each child reads an empty fake one (`fake-keychain.ts`).
  */
 
 import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";

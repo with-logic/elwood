@@ -9,7 +9,8 @@
  *
  * The private dir starts with three copies:
  * - `.credentials.json` (0600): the user's Claude login, from their own `.credentials.json`
- *   or the macOS keychain, without its refresh token (`claude-login.ts`). It lasts as long
+ *   or, on macOS, the keychain item for their config dir, without its refresh token
+ *   (`claude-login.ts`). It lasts as long
  *   as the access token, so each process copies it afresh.
  * - `.claude.json`: the user's global config without `projects` (one entry per directory
  *   Claude ever ran in), `mcpServers`, or `bypassPermissionsModeAccepted`, so first-run
@@ -24,7 +25,7 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { isRecord } from "../../src/core/predicates.ts";
 import { privateTempDir } from "../helpers/private-temp.ts";
-import { accessOnlyLogin, keychainLogin } from "./claude-login.ts";
+import { accessOnlyLogin, keychainLogin, keychainService } from "./claude-login.ts";
 
 /**
  * Carries the user's own `CLAUDE_CONFIG_DIR` ("" when unset) into `node --test` workers,
@@ -50,14 +51,15 @@ export const userGlobalConfig = hasUserConfigDirSetting
   : join(homedir(), ".claude.json");
 
 /**
- * The user's login JSON: their plaintext credentials file, else, on macOS with no
- * `CLAUDE_CONFIG_DIR` set, the default keychain item. Nothing otherwise: a set config dir's
- * keychain item is not the default one, and is not read here.
+ * The user's login JSON, from where the user's own Claude reads it: on macOS the keychain
+ * item for their `CLAUDE_CONFIG_DIR` setting, set or not, else their credentials file.
+ * Claude prefers the item when both exist.
  */
 function userCredentials(): string | undefined {
+  const item = platform() === "darwin" ? keychainLogin(keychainService(userSetting)) : undefined;
+  if (item !== undefined) return item;
   const file = join(userConfigDir, ".credentials.json");
-  if (existsSync(file)) return readFileSync(file, "utf8");
-  return platform() !== "darwin" || hasUserConfigDirSetting ? undefined : keychainLogin();
+  return existsSync(file) ? readFileSync(file, "utf8") : undefined;
 }
 
 /** The user's global config without its per-project entries, MCP servers, or bypass acceptance. */
