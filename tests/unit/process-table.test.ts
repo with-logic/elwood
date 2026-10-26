@@ -19,8 +19,9 @@ const HOST = 4000;
 
 type Row = { readonly pid: number; readonly ppid: number; readonly pgid: number };
 
-function row({ pid, ppid, pgid }: Row, state: "Z" | "T" | "S" = "S"): ProcessEntry {
-  return { pid, ppid, pgid, zombie: state === "Z", stopped: state === "T" };
+function row({ pid, ppid, pgid }: Row, state: "Z" | "T" | "S" = "S", name = "sh") {
+  const flags = { zombie: state === "Z", stopped: state === "T" };
+  return { pid, ppid, pgid, ...flags, name, sharedDaemon: false };
 }
 
 const leaderRow = row({ pid: LEADER, ppid: HOST, pgid: LEADER });
@@ -31,18 +32,20 @@ const walk = (table: readonly ProcessEntry[]) =>
 describe("C-LIFE-10 process table", () => {
   test("parses ps rows, flags zombies and stopped rows, and skips non-rows", () => {
     const stdout = [
-      "    1     0     1 Ss",
-      " 5000  4000  5000 Ss+",
-      " 5001  5000  5001 Z",
-      " 5002  5000  5002 T+",
+      "    1     0     1 Ss   launchd",
+      " 5000  4000  5000 Ss+  sh",
+      " 5001  5000  5001 Z    <defunct>",
+      " 5002  5000  5002 T+   Google Chrome He  ",
+      " 5003  5000  5003 S",
       "garbage line",
       "",
     ].join("\n");
     expect(parseProcessTable(stdout)).toEqual([
-      row({ pid: 1, ppid: 0, pgid: 1 }),
+      row({ pid: 1, ppid: 0, pgid: 1 }, "S", "launchd"),
       leaderRow,
-      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z"),
-      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "T"),
+      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z", "<defunct>"),
+      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "T", "Google Chrome He"),
+      row({ pid: 5003, ppid: LEADER, pgid: 5003 }, "S", ""),
     ]);
   });
 
@@ -50,13 +53,13 @@ describe("C-LIFE-10 process table", () => {
     const runs: unknown[] = [];
     const table = await listProcessTable(1_234, (file, args, options) => {
       runs.push({ file, args, options });
-      return Promise.resolve({ stdout: " 5000  4000  5000 S\n" });
+      return Promise.resolve({ stdout: " 5000  4000  5000 S    sh\n" });
     });
     expect(table).toEqual([leaderRow]);
     expect(runs).toEqual([
       {
         file: "/bin/ps",
-        args: ["-A", "-o", "pid=,ppid=,pgid=,stat="],
+        args: ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm="],
         options: { timeout: 1_234, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL" },
       },
     ]);
@@ -129,13 +132,7 @@ describe("C-LIFE-10 detached descendant groups", () => {
 
   test("a leader missing from the read still parents its children, as a row not stopped", () => {
     // `ps` can read a leader's children in the same pass the leader's own row left.
-    const unread = {
-      pid: LEADER,
-      ppid: 0,
-      pgid: LEADER,
-      zombie: false,
-      stopped: false,
-    } satisfies ProcessEntry;
+    const unread = row({ pid: LEADER, ppid: 0, pgid: LEADER }, "S", "");
     expect(walk([row({ pid: 5002, ppid: LEADER, pgid: 5002 })])).toEqual(
       new Map([[5002, new Set([unread])]]),
     );

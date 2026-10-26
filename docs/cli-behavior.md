@@ -1449,6 +1449,42 @@ later. A sandbox where something will not stop is kept.
 `tests/e2e/scratch-processes.e2e.ts` starts a daemon with `daemon start` and checks that
 removing the sandbox, and exiting the run, stop it.
 
+## Elwood's teardown never signals that daemon (2026-10-26)
+
+While the TUI that started them runs, the daemon and its updater loop are setsid
+children of it, the shape of a hook in flight. So when a session's own TUI had started
+them, the detached walk that `kill()`, `teardown()`, and a `stop()` escalation run killed
+the daemon, its updater loop, and everything the daemon had started, though the daemon
+serves every Codex on the home, the user's own included. The walk now never descends into
+one (PRD §5.3, C-LIFE-10): a process whose `ucomm` (short name) is `codex`, that leads its
+own group, whose parent is named `codex` or is PID 1, and whose `comm` has
+`/packages/app-server-daemon/` in it. On macOS `comm` is `argv[0]`, which Codex sets to
+the full path; it reads that way even after the home is removed.
+
+`comm` is read, one `ps -o comm= -p <pid>` per process, only for the processes that pass
+the other tests and that the walk can reach: the session's TUI and its descendants. Every
+extra read costs a walk whose three-second deadline must hold on a loaded host:
+
+- `comm` in every table read doubled its cost (94 to 200 ms at a load of about 220): 4 of
+  9 real-process reap tests failed with `ETIMEDOUT`, none on `origin/main`.
+- Given several pids, macOS `ps` reads every process on the host (230 to 370 ms at a
+  load of about 25): with one `ps -p` for all candidates, a real Codex `teardown()`
+  failed in 5 of 7 runs, none of 2 on `origin/main`.
+- One `ps` per candidate anywhere on the host took 4 to 9 ms from a shell, but 120 to
+  870 ms when spawned by the process tearing the session down. The user's own daemon was
+  always a candidate, so every read paid that again: a real Codex `teardown()` failed in
+  2 of 5 runs, none of 5 on `origin/main`.
+
+A walk with no daemon under its TUI runs the same single `ps` per read as before. In 3
+real Codex `teardown()`s, alternated with 3 on `origin/main`, it ran no path read. One run
+on each side failed at the deadline, when the host's 3,700 processes made a single table
+read take 1.6 to 2.1 s; the other reads took 350 to 540 ms.
+
+No real-Codex e2e proves this: in 8 runs of Codex 0.164.0 under Elwood, from fresh
+homes, with and without the hook-trust bypass and the update check, with holds of up to
+40 s, none started the daemon. `tests/unit/reap-detached-real.test.ts` builds the
+measured shape from real processes instead, with its install in place and removed.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked

@@ -23,8 +23,11 @@ export type SweepOps = {
   readonly stopGroup: (pgid: number) => void;
   /** SIGKILLs the process group `pgid`; tolerates an already-empty group. */
   readonly killGroup: (pgid: number) => void;
-  /** Lists the host process table, rejecting after `timeoutMs`. */
-  readonly listProcesses: (timeoutMs: number) => Promise<readonly ProcessEntry[]>;
+  /** Lists the host process table within `timeoutMs`, marking Codex's daemon under `roots`. */
+  readonly listProcesses: (
+    timeoutMs: number,
+    roots?: readonly number[],
+  ) => Promise<readonly ProcessEntry[]>;
 };
 
 export type SweepState = {

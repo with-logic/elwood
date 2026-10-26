@@ -9,7 +9,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
@@ -18,6 +18,7 @@ import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
   detachedDescendantPids,
   detachedShape,
+  extraPid,
   holdDir,
   killTreeIn,
   observedProcessShape,
@@ -62,6 +63,40 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
     expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
   });
+
+  // Linux `ps` shows the executable's name as the command name, not argv[0]. The install
+  // removed is the e2e suite's case: it removed homes whose daemons kept running.
+  for (const install of ["in place", "removed"]) {
+    test.skipIf(process.platform !== "darwin")(
+      `kill never signals Codex's app-server daemon or its updater loop, its install ${install}`,
+      async () => {
+        const tree = startDetachedTree("with-daemon");
+        const [child, grandchild] = await detachedDescendantPids(tree);
+        const [daemon, updater, mcp] = await Promise.all([
+          extraPid(tree, "daemon"),
+          extraPid(tree, "updater"),
+          extraPid(tree, "mcp"),
+        ]);
+        // As the Codex 0.164 TUI starts them: setsid children of its own, from its install.
+        expect(await observedProcessShape([daemon, updater, mcp])).toEqual({
+          [daemon]: `ppid=${tree.pty.pid} pgid=${daemon}`,
+          [updater]: `ppid=${tree.pty.pid} pgid=${updater}`,
+          [mcp]: `ppid=${daemon} pgid=${mcp}`,
+        });
+        if (install === "removed") rmSync(join(tree.dir, "packages"), { recursive: true });
+        await terminatePty(tree.pty, "SIGKILL", new SessionReaper(tree.pty.pid));
+        expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
+        expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
+        const table = await listProcessTable(10_000);
+        for (const pid of [daemon, updater, mcp]) {
+          expect(table.find((row) => row.pid === pid)).toMatchObject({
+            zombie: false,
+            stopped: false,
+          });
+        }
+      },
+    );
+  }
 
   test("a detached process that is NOT a descendant of the leader is left alone", async () => {
     const tree = startDetachedTree();

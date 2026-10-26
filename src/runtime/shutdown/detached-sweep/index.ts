@@ -99,7 +99,7 @@ async function stopDescendantGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return unconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const table = await ops.listProcesses(remainingMs);
+      const table = await ops.listProcesses(remainingMs, [leaderPid]);
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;

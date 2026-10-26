@@ -21,16 +21,21 @@ export type ProcessEntry = {
   readonly zombie: boolean;
   /** Stopped (state `T`) when its row was read, as a delivered SIGSTOP leaves it. */
   readonly stopped: boolean;
+  /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
+  readonly name: string;
+  /** Started from Codex's shared app-server daemon install (`shared-daemon.ts`). */
+  readonly sharedDaemon: boolean;
 };
 
 // An absolute path, so a caller's PATH can never substitute another `ps`. macOS is
 // the only supported platform (PRD §2); `-A -o` is POSIX, so Linux CI parses the same.
 const PS_PATH = "/bin/ps";
-const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat="] as const;
-// About 25 bytes per row, so 16 MiB holds over 600,000 processes: far beyond any real
+const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm="] as const;
+// About 50 bytes per row, so 16 MiB holds over 300,000 processes: far beyond any real
 // host, while still bounding what a runaway `ps` can make this process buffer.
 const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
-const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)/;
+// The short name is last, so it may hold spaces; it may also be empty.
+const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s*(.*)$/;
 
 /** The bounds a `ps` run gets: its timeout, its output cap, and the signal that ends it. */
 export type PsRunOptions = {
@@ -48,17 +53,17 @@ export type PsRunner = (
 
 export const runFile: PsRunner = promisify(execFile);
 
+/** The bounds every `ps` run gets: `timeout`, the output cap, and SIGKILL to end it. */
+export function psRunOptions(timeout: number): PsRunOptions {
+  return { timeout, maxBuffer: PS_MAX_OUTPUT_BYTES, killSignal: "SIGKILL" };
+}
+
 /** Lists every process on the host, rejecting when `ps` fails or exceeds `timeoutMs`. */
 export async function listProcessTable(
   timeoutMs: number,
   run: PsRunner = runFile,
 ): Promise<readonly ProcessEntry[]> {
-  const options: PsRunOptions = {
-    timeout: timeoutMs,
-    maxBuffer: PS_MAX_OUTPUT_BYTES,
-    killSignal: "SIGKILL",
-  };
-  const { stdout } = await run(PS_PATH, PS_ARGS, options);
+  const { stdout } = await run(PS_PATH, PS_ARGS, psRunOptions(timeoutMs));
   return parseProcessTable(stdout);
 }
 
@@ -106,7 +111,7 @@ function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> 
 /** The production listing: concurrent shutdowns share one `ps` per event-loop turn. */
 export const listProcessTableShared = coalesceUnstarted(listProcessTable);
 
-/** Parses `ps -o pid=,ppid=,pgid=,stat=` output, skipping any line that is not a row. */
+/** Parses `ps -o pid=,ppid=,pgid=,stat=,ucomm=` output, none yet marked a shared daemon. */
 export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
   const entries: ProcessEntry[] = [];
   for (const line of stdout.split("\n")) {
@@ -118,6 +123,8 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
       pgid: Number(match[3]),
       zombie: (match[4] as string).startsWith("Z"),
       stopped: (match[4] as string).startsWith("T"),
+      name: (match[5] as string).trim(),
+      sharedDaemon: false,
     });
   }
   return entries;
@@ -135,7 +142,9 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
  * is known to be stopped: a stopped parent cannot reap its exited child, so that child
  * keeps its pid and the group keeps its id. A leader missing from the table is given
  * as a row that is not stopped. The host's group (`hostPid`'s) and the ids
- * `kill(-pgid)` would misroute (`<= 1`) are never returned.
+ * `kill(-pgid)` would misroute (`<= 1`) are never returned. Nor is Codex's shared
+ * app-server daemon (`sharedDaemon`): the walk does not descend into it, so neither it
+ * nor anything it started is found.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
@@ -148,6 +157,8 @@ export function detachedDescendantGroups(
     pgid: leaderPid,
     zombie: false,
     stopped: false,
+    name: "",
+    sharedDaemon: false,
   };
   const excluded = new Set([leaderPid, hostPid, leader.pgid]);
   for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);
@@ -156,7 +167,7 @@ export function detachedDescendantGroups(
   const visited = new Set([leaderPid]);
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     for (const child of children.get(parent.pid) ?? []) {
-      if (visited.has(child.pid)) continue;
+      if (visited.has(child.pid) || child.sharedDaemon) continue;
       visited.add(child.pid);
       pending.push(child);
       if (child.zombie || child.pgid <= 1 || excluded.has(child.pgid)) continue;
@@ -168,7 +179,8 @@ export function detachedDescendantGroups(
   return groups;
 }
 
-function childrenByParent(table: readonly ProcessEntry[]): Map<number, ProcessEntry[]> {
+/** The table's rows grouped by their parent's pid. */
+export function childrenByParent(table: readonly ProcessEntry[]): Map<number, ProcessEntry[]> {
   const children = new Map<number, ProcessEntry[]>();
   for (const entry of table) {
     const siblings = children.get(entry.ppid);

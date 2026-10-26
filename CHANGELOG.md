@@ -18,6 +18,11 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- `teardown()` and `kill()` of a Codex session no longer end Codex's shared
+  app-server daemon, its updater loop, or what the daemon started, such as plugin
+  MCP servers. Codex 0.158+ starts the daemon for its `CODEX_HOME`, for every Codex
+  on that home, yours included, as a detached child of the TUI: when the session's
+  own TUI had started it, the walk that reaps detached hooks SIGKILLed it.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
