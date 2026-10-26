@@ -361,5 +361,7 @@ the reap, runtime cleanup, and file removal — without re-signaling the PTY —
 than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
 exception is a detached-descendant walk, or a `stop()`'s reap of the detached
 descendants its leader's exit left, that could not complete (§5.3): with the leader
-gone it cannot be retried, so every later call keeps rejecting for it. Each
-caller still observes its own operation's success or typed failure.
+gone the walk cannot be retried, so every later call keeps rejecting for it until
+the background reap of the processes it recorded resolves it (C-LIFE-14); one that
+recorded no process is never resolved. Each caller still observes its own
+operation's success or typed failure.
