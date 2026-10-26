@@ -18,6 +18,11 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- The `--version` and Codex capability caches keep the 32 most recently used
+  launch directories, not just the last one, and are keyed by the directory
+  itself as well as its path. A directory made again at the same path, replaced
+  while its CLI was probed, or that can't be identified, is read again, and so is
+  a `--version` read with a stream longer than 65,536 UTF-16 code units.
 - `agent_update_failed` now names `updateCwd`, the directory the failed update
   command ran in, when it ran in this process. Every launch in a process shares
   one update attempt, which runs in the launch directory of whichever start or
