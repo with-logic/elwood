@@ -167,7 +167,12 @@ back each entry are listed in `prd/14-conformance.md`.
   rejects: `stop()` and `kill()` with `termination_failed` (with up to
   16 of the unconfirmed process-group ids in `details.unconfirmedProcessGroupIds`),
   `teardown()` with `teardown_failed`, and later shutdown calls on that session
-  keep rejecting.
+  keep rejecting. The CLI's cleanup diagnostic names those ids too, for example
+  `Cleanup failed (termination_failed EAGAIN process groups 4242).` The walk also
+  reaps the shell Codex starts a few seconds after launch to snapshot the user's
+  shell environment, which a slow shell profile keeps running. A `stop()` that
+  Codex exits on gracefully is not walked, so a snapshot shell still running then
+  is left running.
 
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was

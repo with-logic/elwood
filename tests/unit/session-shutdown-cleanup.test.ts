@@ -24,6 +24,13 @@ const untouchedPty: PtyProcess = {
   },
 };
 
+/** A reaper whose reap and detached sweep always succeed. */
+const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
+  reap: () => undefined,
+  reapAndThrowOnDetachedSweepFailure: () => undefined,
+  sweepDetached: async () => {},
+};
+
 // A host whose runtime cleanup rejects with a raw aggregate Error (as runCleanupSteps
 // does). The session is treated as already-signaled so runShutdown takes the
 // no-re-signal branch straight into cleanup, isolating the wrapping under test.
@@ -36,11 +43,7 @@ function host(
     removeFiles: () => undefined,
     reapPolicy: {
       orThrow: () => undefined,
-      reaper: {
-        reap: () => undefined,
-        reapAndThrowOnDetachedSweepFailure: () => undefined,
-        sweepDetached: async () => {},
-      },
+      reaper: quietReaper,
     },
     status: () => "exited",
     claimShutdown: () => undefined,
@@ -102,7 +105,7 @@ describe("C-LIFE-10 runtime cleanup after a failed termination", () => {
           orThrow: () => {
             throw reapFailed;
           },
-          reaper: { reap: () => undefined },
+          reaper: quietReaper,
         },
       },
     );
@@ -118,7 +121,7 @@ describe("C-LIFE-10 runtime cleanup after a failed termination", () => {
         orThrow: () => {
           throw reapFailed;
         },
-        reaper: { reap: () => undefined },
+        reaper: quietReaper,
       },
     });
     await expect(
@@ -165,7 +168,7 @@ describe("C-LIFE-10 runtime cleanup after a failed termination", () => {
         orThrow: () => {
           throw Object.assign(new Error("raw reap"), { code: "EIO" });
         },
-        reaper: { reap: () => undefined },
+        reaper: quietReaper,
       },
     });
     await expect(

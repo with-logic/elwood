@@ -1240,6 +1240,32 @@ real CLIs: Claude `teardown()` with a hook in its own group, a `stop()` whose
 `SessionEnd` hook outlasts the graceful window, and Codex `teardown()` with a hook.
 With the walk disabled all three fail with the hook still running.
 
+Codex also starts a shell of its own, not a hook, that the walk has to reach
+(measured 2026-10-25, Codex 0.164, macOS Darwin 25.5). A few seconds after launch
+(2.1–2.6 s after `startCodex` was called, in these runs) it snapshots the user's
+shell environment with `/bin/zsh -lc '<script>'`. The script sources
+`$ZDOTDIR/.zshrc`, else `$HOME/.zshrc`, then prints the environment. The shell is a
+session leader of its own (`stat` `Ss`, `pgid` equal to its pid) whose parent is the
+`codex` leader. With a normal profile it lived about 0.8 s. A `.zshrc` that sleeps
+only when non-interactive (`[[ -o interactive ]] || sleep 120`) holds it open without
+slowing the PTY's own interactive login shell, and with that profile:
+
+- `teardown()` with the group reap alone left the `zsh -lc` and its `sleep` running
+  under PID 1. With the walk, `teardown()` and `kill()` reaped both.
+- `stop()`'s SIGTERM: Codex exited in about 190 ms. The leader exited within the
+  graceful window, so there was no walk, and both the `zsh -lc` (now under PID 1)
+  and its `sleep` survived.
+- A human at the terminal, `/quit` then Enter, or Ctrl-C twice: Codex exited about
+  6 s after the keys. The `zsh -lc` was gone, but the profile's `sleep` survived
+  under PID 1.
+
+Claude 2.1.310 under the same profile started no shell that sources `.zshrc`
+non-interactively, and nothing survived. So the premise behind the graceful-stop
+exception, that the CLI's own SIGTERM shutdown ends its detached descendants, holds
+for Claude's hooks but not for this Codex shell: a `stop()` during the snapshot
+leaves it running. `tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open
+this way and checks that `teardown()` reaps it.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
