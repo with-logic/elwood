@@ -110,24 +110,29 @@ function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> 
 /** The production listing: concurrent shutdowns share one `ps` per event-loop turn. */
 export const listProcessTableShared = coalesceUnstarted(listProcessTable);
 
-/** Parses `ps -o pid=,ppid=,pgid=,stat=,ucomm=,pid=`; throws on a partial row or a pid twice. */
+/**
+ * Parses `ps -o pid=,ppid=,pgid=,stat=,ucomm=,pid=`. Throws on a line that is not one
+ * whole row: one cut short, or one whose trailing pid is not its first, as a line a
+ * newline in a name started is (`ROW`). Throws, too, on a pid listed twice.
+ */
 export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
   const entries: ProcessEntry[] = [];
   const pids = new Set<number>();
   for (const line of stdout.split("\n")) {
     if (line.trim() === "") continue;
-    const match = ROW.exec(line);
-    if (!match || match[1] !== match[6] || pids.has(Number(match[1]))) {
+    const [, pid = "", ppid, pgid, state = "", name = "", trailingPid] = ROW.exec(line) ?? [];
+    if (pid === "" || pid !== trailingPid) {
       throw new Error("process table read has a line that is not one whole row");
     }
-    pids.add(Number(match[1]));
+    if (pids.has(Number(pid))) throw new Error(`process table read lists pid ${pid} twice`);
+    pids.add(Number(pid));
     entries.push({
-      pid: Number(match[1]),
-      ppid: Number(match[2]),
-      pgid: Number(match[3]),
-      zombie: (match[4] as string).startsWith("Z"),
-      stopped: (match[4] as string).startsWith("T"),
-      name: (match[5] as string).trim(),
+      pid: Number(pid),
+      ppid: Number(ppid),
+      pgid: Number(pgid),
+      zombie: state.startsWith("Z"),
+      stopped: state.startsWith("T"),
+      name: name.trim(),
     });
   }
   return entries;

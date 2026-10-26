@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- The walk that reaps detached hook processes now reads each process's short name,
+  which `ps` prints raw, and refuses a table read it cannot trust instead of acting
+  on it: one with a line that is not one whole row, such as a line a newline in a
+  process's name starts, or with a pid listed twice. A refused read fails as an
+  unreadable table does, so while a process on the host has a newline in its name,
+  `kill()`, `teardown()`, and a `stop()` that escalates reject with
+  `termination_failed` (`teardown_failed` from `teardown()`).
 - `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
   detached hook processes ten seconds, up from three, before they reject with
   `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
