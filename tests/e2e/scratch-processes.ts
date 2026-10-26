@@ -5,52 +5,36 @@
  * runs it, with an updater loop, each in its own session, and both move under PID 1 when the
  * TUI exits, outliving it indefinitely while they keep writing into the home
  * (docs/cli-behavior.md, "Codex 0.164 starts an app-server daemon per `CODEX_HOME`"). A
- * process counts as running from the directory when its command line names a
- * path inside it; its descendants count too, being found by parent pid, and stay tracked by pid
- * and command line once signalled, so one reparented to PID 1 is not lost. Each gets SIGTERM,
- * which the daemon answers by stopping its MCP servers and removing its control socket, then
- * SIGKILL once it has outlived the grace period. Synchronous, so a sandbox's `dispose()` and a
- * process `exit` hook can call it.
+ * process counts as running from the directory when its command line names a path inside it;
+ * its descendants count too, being found by parent pid, and stay tracked by pid and command
+ * line once signalled, so one reparented to PID 1 is not lost. Each gets SIGTERM, which the
+ * daemon answers by stopping its MCP servers and removing its control socket, then SIGKILL
+ * once it has outlived the grace period. Synchronous, so a sandbox's `dispose()` and a process
+ * `exit` hook can call it.
  */
 
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
+import { type ProcessRow, processRows } from "../helpers/process-liveness.ts";
 
-/** One process, as `ps -o pid=,ppid=,command=` lists it. */
-export type ScratchProcess = {
-  readonly pid: number;
-  readonly ppid: number;
-  readonly command: string;
-};
-
-const ROW = /^\s*(\d+)\s+(\d+)\s+(.*)$/;
-const TERM_GRACE_MS = 3_000;
+/** How long a process from the directory gets after SIGTERM before SIGKILL. */
+export const TERM_GRACE_MS = 3_000;
 const STOP_TIMEOUT_MS = 10_000;
-const POLL_MS = 100;
+const POLL_MS = 250;
 
-function processTable(): readonly ScratchProcess[] {
-  const listing = execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid=,command="], {
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return listing.split("\n").flatMap((line) => {
-    const match = ROW.exec(line);
-    return match ? [{ pid: Number(match[1]), ppid: Number(match[2]), command: `${match[3]}` }] : [];
-  });
+/** `dir` as `ps` may show it, tmpdir's spelling and the resolved one, as path prefixes. */
+function prefixesOf(dir: string): readonly string[] {
+  return [...new Set([`${dir}/`, `${realpathSync(dir)}/`])];
 }
 
-/** The processes in `table` whose command line names a path inside `dir`, with their descendants. */
-export function processesUnder(
-  dir: string,
-  table: readonly ScratchProcess[] = processTable(),
-): readonly ScratchProcess[] {
-  // `ps` shows whichever spelling the process was started with: tmpdir's or the resolved one.
-  const prefixes = [`${dir}/`, `${realpathSync(dir)}/`];
-  const inside = (row: ScratchProcess) => prefixes.some((prefix) => row.command.includes(prefix));
-  const found = new Map(table.filter(inside).map((row) => [row.pid, row]));
+/** The live rows naming a path under one of `prefixes`, with their descendants. */
+function under(prefixes: readonly string[], table: readonly ProcessRow[]): readonly ProcessRow[] {
+  const live = table.filter((row) => !row.stat.startsWith("Z"));
+  const inside = (row: ProcessRow) => prefixes.some((prefix) => row.command.includes(prefix));
+  const found = new Map(live.filter(inside).map((row) => [row.pid, row]));
   for (let grew = found.size > 0; grew; ) {
     grew = false;
-    for (const row of table) {
+    for (const row of live) {
       if (found.has(row.pid) || !found.has(row.ppid)) continue;
       found.set(row.pid, row);
       grew = true;
@@ -59,8 +43,31 @@ export function processesUnder(
   return [...found.values()];
 }
 
+/** The live processes whose command line names a path inside `dir`, with their descendants. */
+export function processesUnder(
+  dir: string,
+  table: readonly ProcessRow[] = processRows(),
+): readonly ProcessRow[] {
+  return under(prefixesOf(dir), table);
+}
+
+/**
+ * Whether any process's command line names a path under one of `prefixes`: one `pgrep`, so
+ * a directory nothing runs from costs no full process table. A descendant counts only while
+ * the process it descends from runs, so a miss here is a miss for `under` too.
+ */
+function anyNaming(prefixes: readonly string[], timeoutMs: number): boolean {
+  const pattern = prefixes.map((prefix) => prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const found = spawnSync("/usr/bin/pgrep", ["-f", pattern.join("|")], {
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+  });
+  if (found.status === 0 || found.status === 1) return found.status === 0;
+  throw found.error ?? new Error(`pgrep exited ${found.status}: ${found.stderr}`);
+}
+
 /** The same process as one signalled earlier: same command, and the same parent or PID 1. */
-function stillSignalled(sent: ScratchProcess | undefined, row: ScratchProcess): boolean {
+function stillSignalled(sent: ProcessRow | undefined, row: ProcessRow): boolean {
   return sent?.command === row.command && (row.ppid === sent.ppid || row.ppid === 1);
 }
 
@@ -77,17 +84,22 @@ function signal(pid: number, name: NodeJS.Signals): void {
 }
 
 /**
- * Stops every process running from `dir` (`processesUnder`), or throws naming each one still
- * running after 10 s, in which case the caller must keep the directory.
+ * Stops every process running from `dir` (`processesUnder`), or throws, in which case the
+ * caller must keep the directory: when one is still running 10 s on, or when reading the
+ * process table fails or would run past that deadline.
  */
 export function stopProcessesUnder(dir: string): void {
-  const signalled = new Map<number, ScratchProcess & { readonly at: number }>();
+  const prefixes = prefixesOf(dir);
   const deadline = Date.now() + STOP_TIMEOUT_MS;
+  if (!anyNaming(prefixes, STOP_TIMEOUT_MS)) return;
+  const signalled = new Map<number, ProcessRow & { readonly at: number }>();
   for (;;) {
-    const table = processTable();
-    const running = new Map(processesUnder(dir, table).map((row) => [row.pid, row]));
-    for (const row of table)
-      if (stillSignalled(signalled.get(row.pid), row)) running.set(row.pid, row);
+    const table = processRows(Math.max(1, deadline - Date.now()));
+    const running = new Map(under(prefixes, table).map((row) => [row.pid, row]));
+    for (const row of table) {
+      if (!row.stat.startsWith("Z") && stillSignalled(signalled.get(row.pid), row))
+        running.set(row.pid, row);
+    }
     if (running.size === 0) return;
     if (Date.now() >= deadline) {
       const rows = [...running.values()].map((row) => `${row.pid} ${row.command}`);

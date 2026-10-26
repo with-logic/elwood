@@ -113,7 +113,11 @@ export async function nativeResponseSandbox() {
       },
     };
   } catch (error) {
-    dispose();
+    try {
+      dispose();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Native response sandbox setup failed");
+    }
     throw error;
   }
 }

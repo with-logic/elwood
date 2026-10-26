@@ -30,7 +30,8 @@ export type CodexSandbox = {
   /**
    * Restores `CODEX_HOME`, stops what still runs from the sandbox, such as the app-server
    * daemon Codex may start for it (`stopProcessesUnder`), and removes the sandbox (including
-   * the auth.json copy). Throws, leaving the sandbox, when something there will not stop.
+   * the auth.json copy). When something there will not stop, or the removal fails, it throws
+   * and keeps the sandbox and its project past the file's sweep.
    */
   dispose(): void;
   /** Restores `CODEX_HOME` and leaves the sandbox, which a Codex process may still use. */
@@ -114,8 +115,14 @@ export function sandboxedCodexHome(project: E2eProject, config: string): CodexSa
     configPath,
     dispose: () => {
       restoreHome();
-      stopProcessesUnder(home);
-      rmSync(home, { recursive: true, force: true });
+      try {
+        stopProcessesUnder(home);
+        rmSync(home, { recursive: true, force: true });
+      } catch (error) {
+        // Kept for diagnosis, and out of the file's sweep, which would race what still runs.
+        keepScratch(project.cwd, home);
+        throw error;
+      }
     },
     restoreHome,
   };

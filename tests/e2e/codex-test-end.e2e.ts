@@ -8,7 +8,8 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test, { after } from "node:test";
 import {
   type CodexTestSession,
@@ -128,6 +129,26 @@ test("C-E2E-03 a sandbox whose removal fails stays past the sweep, with its proj
   await assert.rejects(endCodexTest({ ...end, failure: undefined }), {
     message: `Codex test cleanup failed; kept ${project.cwd}, ${sandbox.home}, which a Codex process may still use`,
   });
+  kept.push(project.cwd, sandbox.home);
+  assert.equal(process.env["CODEX_HOME"], suiteCodexHome);
+  assert.ok(existsSync(project.cwd) && existsSync(sandbox.home), "the scratch stays");
+});
+
+test("C-E2E-03 a sandbox disposed directly stays past the sweep when its removal fails", {
+  skip: skipIf(codexAuthMissing()),
+}, () => {
+  const { project, sandbox } = scratch();
+  // A directory nothing may delete from makes the removal fail; it is unlocked again before
+  // the sweep, which would then remove the sandbox if `dispose()` had not kept it.
+  const locked = join(sandbox.home, "locked");
+  mkdirSync(locked);
+  writeFileSync(join(locked, "file"), "");
+  chmodSync(locked, 0o500);
+  try {
+    assert.throws(() => sandbox.dispose());
+  } finally {
+    chmodSync(locked, 0o700);
+  }
   kept.push(project.cwd, sandbox.home);
   assert.equal(process.env["CODEX_HOME"], suiteCodexHome);
   assert.ok(existsSync(project.cwd) && existsSync(sandbox.home), "the scratch stays");

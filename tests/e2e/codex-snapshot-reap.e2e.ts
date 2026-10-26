@@ -9,14 +9,13 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { childPids } from "../../dev/child-lookup.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { killGroupsWhoseCommandHas, pidExists } from "../helpers/process-liveness.ts";
+import { killGroupsWhoseCommandHas, pidExists, processRows } from "../helpers/process-liveness.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -39,27 +38,9 @@ function slowProfile(dir: string): string {
   return marker;
 }
 
-type Row = {
-  readonly pid: number;
-  readonly ppid: number;
-  readonly pgid: number;
-  readonly command: string;
-};
-
-/** Every process with its command line (the sweep's own table omits command lines). */
-function processTable(): readonly Row[] {
-  const out = execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid=,pgid=,command="], {
-    maxBuffer: 64 * 1024 * 1024,
-  }).toString();
-  return out.split("\n").flatMap((line) => {
-    const [, pid, ppid, pgid, command] = /^\s*(\d+)\s+(\d+)\s+(\d+)\s(.*)$/.exec(line) ?? [];
-    return command === undefined ? [] : [{ pid: +pid!, ppid: +ppid!, pgid: +pgid!, command }];
-  });
-}
-
 /** The snapshot shell holding `marker`, once it runs in a group of its own under a leader. */
 function snapshotShell(marker: string, leaders: readonly number[]) {
-  const table = processTable();
+  const table = processRows();
   const row = (pid: number) => table.find((entry) => entry.pid === pid);
   const sleeper = table.find((entry) => entry.command.includes(marker));
   const shell = sleeper === undefined ? undefined : row(sleeper.ppid);

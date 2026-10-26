@@ -52,6 +52,35 @@ export function killIfCommandHas(pid: number, marker: string): void {
   }
 }
 
+/** One process, as `ps -A -o pid=,ppid=,pgid=,stat=,command=` lists it. */
+export type ProcessRow = {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly pgid: number;
+  /** `ps`'s state column; an unreaped zombie's starts with `Z`. */
+  readonly stat: string;
+  readonly command: string;
+};
+
+/**
+ * Every process on the host with its command line. Throws when `ps` fails, or runs past
+ * `timeoutMs` (unbounded when omitted), in which case it is killed.
+ */
+export function processRows(timeoutMs?: number): readonly ProcessRow[] {
+  const table = execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid=,pgid=,stat=,command="], {
+    stdio: ["ignore", "pipe", "ignore"],
+    maxBuffer: 64 * 1024 * 1024,
+    killSignal: "SIGKILL",
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  }).toString();
+  return table.split("\n").flatMap((line) => {
+    const [, pid, ppid, pgid, stat, command] =
+      /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line) ?? [];
+    if (command === undefined) return [];
+    return [{ pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), stat: `${stat}`, command }];
+  });
+}
+
 /**
  * SIGKILLs every live process whose command line contains `marker` when read, its whole
  * group when it heads one (as a `setsid` process does), and returns how many it
@@ -59,16 +88,11 @@ export function killIfCommandHas(pid: number, marker: string): void {
  * temp directory they run from. Throws when `ps` itself fails.
  */
 export function killGroupsWhoseCommandHas(marker: string): number {
-  const table = execFileSync("/bin/ps", ["-A", "-o", "pid=,pgid=,stat=,command="], {
-    stdio: ["ignore", "pipe", "ignore"],
-    maxBuffer: 64 * 1024 * 1024,
-  }).toString();
   let signaled = 0;
-  for (const line of table.split("\n")) {
-    const [, pid, pgid, stat, command] = /^\s*(\d+)\s+(\d+)\s+(\S+)\s(.*)$/.exec(line) ?? [];
-    if (stat === undefined || stat.startsWith("Z") || !command?.includes(marker)) continue;
+  for (const { pid, pgid, stat, command } of processRows()) {
+    if (stat.startsWith("Z") || !command.includes(marker)) continue;
     try {
-      process.kill(pid === pgid ? -Number(pgid) : Number(pid), "SIGKILL");
+      process.kill(pid === pgid ? -pgid : pid, "SIGKILL");
     } catch {
       // It exited between the read and the kill.
     }

@@ -68,12 +68,13 @@ export type CodexTestEnd = {
 };
 
 /**
- * Ends a real-Codex test: tears its sessions down, then removes the sandbox only once every
- * Codex process that could use it is confirmed gone, its `dispose()` stopping any still running
- * from it detached. Otherwise, or when that removal fails, the projects and sandbox stay past
- * the file's sweep, `CODEX_HOME` is restored so later tests in the file do not use the kept
- * sandbox, and this throws with their paths. Cleanup failures are thrown alongside the test's
- * own failure rather than in place of it.
+ * Ends a real-Codex test: tears its sessions down and, once every session is confirmed gone
+ * and no launch rejected, calls `sandbox.dispose()`, which stops any process still running
+ * from the home, such as Codex's app-server daemon, and removes it. When teardown, a launch,
+ * or that disposal fails, the projects and sandbox stay past the file's sweep, `CODEX_HOME` is
+ * restored so later tests in the file do not use the kept sandbox, and this throws with their
+ * paths. Cleanup failures are thrown alongside the test's own failure rather than in place of
+ * it.
  */
 export async function endCodexTest(end: CodexTestEnd): Promise<void> {
   const cleanupFailures: unknown[] = [];

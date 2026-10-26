@@ -7,13 +7,15 @@
  */
 
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { killIfCommandHas, type ProcessRow, processRows } from "../helpers/process-liveness.ts";
 import { codexLaunches, endCodexTest } from "./codex-test-end.ts";
 import {
   codexAuthMissing,
@@ -22,17 +24,35 @@ import {
   skipIf,
   skipReason,
 } from "./helpers.ts";
-import { processesUnder, type ScratchProcess, stopProcessesUnder } from "./scratch-processes.ts";
+import { processesUnder, stopProcessesUnder, TERM_GRACE_MS } from "./scratch-processes.ts";
 
-/** Whether `rows` are still running: the same pid with the same command line. */
-function anyRunning(rows: readonly ScratchProcess[]): readonly string[] {
-  const listing = spawnSync("/bin/ps", ["-A", "-o", "pid=,command="], { encoding: "utf8" }).stdout;
-  const live = new Set(listing.split("\n").map((line) => line.trim()));
-  return rows.map((row) => `${row.pid} ${row.command}`).filter((row) => live.has(row));
+/** A daemon start first installs a copy of the CLI, about 260 MB, into the home. */
+const DAEMON_START_TIMEOUT_MS = 60_000;
+
+type Identity = Pick<ProcessRow, "pid" | "command">;
+const describe = (row: Identity) => `${row.pid} ${row.command}`;
+
+/** Descriptions (`pid command`) of those `rows` still running as the same process. */
+function stillRunning(rows: readonly Identity[]): readonly string[] {
+  const live = new Set(
+    processRows()
+      .filter((row) => !row.stat.startsWith("Z"))
+      .map(describe),
+  );
+  return rows.map(describe).filter((row) => live.has(row));
 }
 
-function endAll(rows: readonly ScratchProcess[]): void {
-  for (const { pid } of rows) spawnSync("/bin/kill", ["-KILL", String(pid)]);
+/** SIGKILLs each of `rows` still running as the same process: same pid, same command line. */
+function endAll(rows: readonly Identity[]): void {
+  const wanted = new Set(rows.map(describe));
+  for (const row of processRows()) {
+    if (!wanted.has(describe(row))) continue;
+    try {
+      process.kill(row.pid, "SIGKILL");
+    } catch {
+      // It exited between the read and the kill.
+    }
+  }
 }
 
 /** Starts the app-server daemon and its updater for `home`; returns what runs from the home. */
@@ -41,13 +61,13 @@ function startDaemon(home: string, cwd: string) {
     cwd,
     env: { ...process.env, CODEX_HOME: home },
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: DAEMON_START_TIMEOUT_MS,
   });
   return { output: `${started.stdout}\n${started.stderr}`, running: processesUnder(home) };
 }
 
 /** The daemon's two processes, `codex app-server --listen ...` and its updater loop. */
-const daemonOf = (rows: readonly ScratchProcess[]) =>
+const daemonOf = (rows: readonly ProcessRow[]) =>
   rows.filter((row) => row.command.includes(" app-server "));
 
 test("C-E2E-03 removing a Codex sandbox stops the app-server daemon Codex started for it", {
@@ -55,14 +75,14 @@ test("C-E2E-03 removing a Codex sandbox stops the app-server daemon Codex starte
 }, async () => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
-  let daemon: readonly ScratchProcess[] = [];
+  let daemon: readonly ProcessRow[] = [];
   try {
     const { output, running } = startDaemon(sandbox.home, project.cwd);
     daemon = daemonOf(running);
     assert.match(output, /"status":"started"/);
     assert.equal(daemon.length, 2, "the daemon and its updater loop run from the sandbox");
     await endCodexTest({ sessions: [], sandbox, launches: codexLaunches(), failure: undefined });
-    assert.deepEqual(anyRunning(daemon), [], "the daemon outlived its sandbox");
+    assert.deepEqual(stillRunning(daemon), [], "the daemon outlived its sandbox");
     assert.equal(existsSync(sandbox.home), false, "the sandbox is gone");
   } finally {
     endAll(daemon);
@@ -72,60 +92,79 @@ test("C-E2E-03 removing a Codex sandbox stops the app-server daemon Codex starte
 test("C-E2E-03 the suite's default Codex home stops its app-server daemon when the run exits", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
 }, () => {
+  // The home is reported before the daemon starts, so this test can clean up after a run
+  // that never reached its exit hook.
   const script = `
     import { spawnSync } from "node:child_process";
     import { processesUnder } from "./tests/e2e/scratch-processes.ts";
     import { loginShellCommand, userShell } from "./src/runtime/shell.ts";
     const home = process.env.CODEX_HOME;
-    spawnSync(userShell(), loginShellCommand("exec codex app-server daemon start"), { stdio: "ignore" });
-    console.log(JSON.stringify({ home, daemon: processesUnder(home) }));
+    console.log(JSON.stringify({ home }));
+    const start = loginShellCommand("exec codex app-server daemon start");
+    spawnSync(userShell(), start, { stdio: "ignore", timeout: ${DAEMON_START_TIMEOUT_MS} });
+    console.log(JSON.stringify({ daemon: processesUnder(home) }));
   `;
   const run = spawnSync(
     process.execPath,
     ["--no-warnings", "--import", "./tests/e2e/codex-home.ts", "--input-type=module", "-e", script],
-    { encoding: "utf8", timeout: 60_000 },
+    { encoding: "utf8", timeout: 2 * DAEMON_START_TIMEOUT_MS },
   );
-  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
-  const { home, daemon } = JSON.parse(run.stdout) as {
-    home: string;
-    daemon: readonly ScratchProcess[];
-  };
+  const reports = run.stdout.split("\n").flatMap((line) => {
+    try {
+      return [JSON.parse(line) as { home?: string; daemon?: readonly ProcessRow[] }];
+    } catch {
+      return [];
+    }
+  });
+  const home = reports.find((report) => report.home !== undefined)?.home;
+  const daemon = reports.find((report) => report.daemon !== undefined)?.daemon ?? [];
   try {
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
     assert.equal(daemonOf(daemon).length, 2, "the daemon and its updater loop ran from the home");
-    assert.deepEqual(anyRunning(daemon), [], "the daemon outlived the run's Codex home");
-    assert.equal(existsSync(home), false, "the run's Codex home is gone");
+    assert.deepEqual(stillRunning(daemon), [], "the daemon outlived the run's Codex home");
+    assert.equal(home !== undefined && existsSync(home), false, "the run's Codex home is gone");
   } finally {
     endAll(daemon);
+    if (home !== undefined && existsSync(home)) {
+      stopProcessesUnder(home);
+      rmSync(home, { recursive: true, force: true });
+    }
   }
 });
 
 test("C-E2E-03 stopping reaches a descendant that ignores SIGTERM after its parent exits", async () => {
   const dir = mkdtempSync(join(tmpdir(), "elwood_e2e_scratch_processes-"));
-  let found: readonly ScratchProcess[] = [];
+  // Names only the child, whose command line names nothing in `dir`, for cleanup.
+  const marker = `elwood-scratch-child-${randomUUID()}`;
+  let parent: ChildProcess | undefined;
+  let childPid: number | undefined;
   try {
-    // The parent exits on SIGTERM; its detached child, whose command line names nothing in
-    // `dir`, ignores SIGTERM and is reparented to PID 1 once the parent is gone.
+    // The parent exits on SIGTERM; its detached child ignores SIGTERM and is reparented to
+    // PID 1 once the parent is gone.
+    const childScript = `process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); // ${marker}`;
     writeFileSync(
       join(dir, "parent.mjs"),
       `import { spawn } from "node:child_process";
-       const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
+       const child = spawn(process.execPath, ["-e", ${JSON.stringify(childScript)}], { detached: true, stdio: "ignore" });
        console.log(child.pid);
        setInterval(() => {}, 1000);`,
     );
-    const parent = spawn(process.execPath, [join(dir, "parent.mjs")], {
+    parent = spawn(process.execPath, [join(dir, "parent.mjs")], {
       detached: true,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    const [line] = (await once(parent.stdout, "data")) as [Buffer];
-    const childPid = Number(line.toString().trim());
-    found = processesUnder(dir);
+    const [line] = (await once(parent.stdout as NodeJS.ReadableStream, "data")) as [Buffer];
+    childPid = Number(line.toString().trim());
+    const found = processesUnder(dir);
     assert.deepEqual(found.map((row) => row.pid).sort(), [parent.pid, childPid].sort());
     const started = Date.now();
     stopProcessesUnder(dir);
-    assert.ok(Date.now() - started >= 3_000, "the child needed SIGKILL after the grace period");
-    assert.deepEqual(anyRunning(found), [], "a process from the directory is still running");
+    assert.ok(Date.now() - started >= TERM_GRACE_MS, "the child needed SIGKILL after the grace");
+    assert.deepEqual(stillRunning(found), [], "a process from the directory is still running");
   } finally {
-    endAll(found);
+    // Independent of discovery, which is what this test checks.
+    parent?.kill("SIGKILL");
+    if (childPid !== undefined) killIfCommandHas(childPid, marker);
     rmSync(dir, { recursive: true, force: true });
   }
 });
