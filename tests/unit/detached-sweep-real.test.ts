@@ -11,6 +11,7 @@ import {
   sweepDetachedGroups,
 } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
+import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   hasExited,
   type SetsidPair,
@@ -24,7 +25,8 @@ import { readUntil } from "../helpers/table-reads.ts";
 const realOps: SweepOps = {
   stopGroup: (pgid) => process.kill(-pgid, "SIGSTOP"),
   killGroup: (pgid) => process.kill(-pgid, "SIGKILL"),
-  listProcesses: listProcessTable,
+  continueGroup: osProcessTreeOps.continueGroup,
+  listProcesses: (timeoutMs) => listProcessTable(timeoutMs),
 };
 
 describe("C-LIFE-10 detached sweep on real processes", () => {

@@ -62,6 +62,11 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
+- `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
+  app-server daemon, its updater loop, or what the daemon started, such as plugin
+  MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex
+  on that home, yours included, as a detached child of the TUI: when the session's
+  own TUI had started it, the walk that reaps detached hooks SIGKILLed it.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
