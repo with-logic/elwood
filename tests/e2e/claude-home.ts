@@ -35,34 +35,39 @@ const userSetting = process.env[userSettingKey] ?? process.env["CLAUDE_CONFIG_DI
 process.env[userSettingKey] = userSetting;
 
 /**
- * Whether the user's Claude takes its config from `CLAUDE_CONFIG_DIR`. Claude then keeps
- * the global config inside that dir and its login under a keychain item of its own, even
- * when the dir is `~/.claude`.
+ * Whether the user has `CLAUDE_CONFIG_DIR` set, to any dir. Claude then keeps the global
+ * config inside that dir and its login under a keychain item of its own, even when the dir
+ * is `~/.claude`.
  */
-const customUserConfigDir = userSetting !== "";
+const hasUserConfigDirSetting = userSetting !== "";
 
 /** The config dir the user's own Claude resolves: `CLAUDE_CONFIG_DIR`, else `~/.claude`. */
 export const userConfigDir = userSetting || join(homedir(), ".claude");
 
 /** The user's global config: in the config dir when one is set, else `~/.claude.json`. */
-export const userGlobalConfig = customUserConfigDir
+export const userGlobalConfig = hasUserConfigDirSetting
   ? join(userConfigDir, ".claude.json")
   : join(homedir(), ".claude.json");
 
-/** The user's login JSON: their plaintext credentials file, else the default keychain item. */
+/**
+ * The user's login JSON: their plaintext credentials file, else, on macOS with no
+ * `CLAUDE_CONFIG_DIR` set, the default keychain item. Nothing otherwise: a set config dir's
+ * keychain item is not the default one, and is not read here.
+ */
 function userCredentials(): string | undefined {
   const file = join(userConfigDir, ".credentials.json");
   if (existsSync(file)) return readFileSync(file, "utf8");
-  // A custom config dir's keychain item is not the default one: not read here.
-  return platform() !== "darwin" || customUserConfigDir ? undefined : keychainLogin();
+  return platform() !== "darwin" || hasUserConfigDirSetting ? undefined : keychainLogin();
 }
 
 /** The user's global config without its per-project entries, MCP servers, or bypass acceptance. */
 function seededGlobalConfig(): string {
   if (!existsSync(userGlobalConfig)) return JSON.stringify({ hasCompletedOnboarding: true });
+  // A read failure throws as itself; only a parse failure is the file not being JSON.
+  const text = readFileSync(userGlobalConfig, "utf8");
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(userGlobalConfig, "utf8"));
+    parsed = JSON.parse(text);
   } catch {
     throw new Error(`${userGlobalConfig} is not JSON`);
   }
