@@ -19,6 +19,12 @@ back each entry are listed in `prd/14-conformance.md`.
   unreadable table does, so while a process on the host has a newline in its name,
   `kill()`, `teardown()`, and a `stop()` that escalates reject with
   `termination_failed` (`teardown_failed` from `teardown()`).
+- A Codex session now removes the `codex-clipboard-*.png` file Codex saves in the
+  temp directory for each image Elwood pastes into it, once the session's CLI has
+  exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image
+  attach left one such file behind for good. Only files the session's own transcript
+  names directly in Elwood's temp directory are removed; a Codex whose login shell sets
+  another `TMPDIR` keeps its copies there.
 - `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
   detached hook processes ten seconds, up from three, before they reject with
   `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
