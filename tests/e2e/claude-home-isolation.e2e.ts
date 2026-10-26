@@ -21,7 +21,12 @@ import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { recordCredentialVariables, recordedVariables } from "./claude-credential-hook.ts";
-import { defaultClaudeConfigDir, userConfigDir, userGlobalConfig } from "./claude-home.ts";
+import {
+  defaultClaudeConfigDir,
+  defaultClaudeTempDir,
+  userConfigDir,
+  userGlobalConfig,
+} from "./claude-home.ts";
 import { anthropicCredentialVariables } from "./claude-login.ts";
 import { claudeProjectKeys, projectKeysWithin } from "./claude-projects.ts";
 import { notZsh, useExportingZdotdir } from "./exporting-zdotdir.ts";
@@ -109,6 +114,19 @@ function privateLoginTest(name: string, skip: string | false, startupLine?: stri
       [],
       "the user's transcript folders never include the scratch project",
     );
+    // Claude names a directory's temp folder for its real path, each character other than a
+    // letter or digit replaced by "-", under `claude-<uid>` in its temp root.
+    const tempFolder = cwd.replace(/[^A-Za-z0-9]/g, "-");
+    const tempFolders = (root: string) => {
+      const dir = join(root, `claude-${process.getuid?.() ?? 0}`);
+      return existsSync(dir) ? readdirSync(dir).filter((name) => name === tempFolder) : [];
+    };
+    assert.deepEqual(
+      tempFolders(defaultClaudeTempDir),
+      [tempFolder],
+      "Claude keeps the scratch project's temp folder under the private temp root",
+    );
+    assert.deepEqual(tempFolders("/tmp"), [], "and never under the shared /tmp");
   });
 }
 
