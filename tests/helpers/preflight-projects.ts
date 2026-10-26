@@ -94,6 +94,29 @@ export function removeWhenProbed(cwd: string, replacement?: string): void {
 }
 
 /**
+ * Removes `cwd` once the probe running `command` (`codex --help`, say) has run there. Given a
+ * `replacement`, a different directory that holds the same CLI, puts it in `cwd`'s place, so
+ * only which directory `cwd` names has changed.
+ */
+export function changeAfterProbe(cwd: string, command: string, replacement?: string): void {
+  const probe = currentCommandRunner();
+  setCommandRunnerForTests(async (shell, args, options) => {
+    const result = await probe(shell, args, options);
+    if (args.at(-1)?.includes(`exec ${command} `)) {
+      setCommandRunnerForTests(probe);
+      changeDirectory(cwd, replacement);
+    }
+    return result;
+  });
+}
+
+/** Removes `cwd`, and puts `replacement`, when given, in its place. */
+export function changeDirectory(cwd: string, replacement?: string): void {
+  rmSync(cwd, { recursive: true });
+  if (replacement !== undefined) renameSync(replacement, cwd);
+}
+
+/**
  * How a launch whose directory was removed as its CLI was probed fails (C-API-61, C-PTY-08):
  * as that directory, with the probe's own failure as the cause, never "not found on PATH". A
  * directory made again in its place has no `errno` of its own, and keeps none of the probe's.

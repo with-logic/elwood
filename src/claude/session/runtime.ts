@@ -21,6 +21,10 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { currentPtyFactory } from "../../runtime/seams.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
+import {
+  assertLaunchDirectoryUnchanged,
+  type CheckedLaunchDirectory,
+} from "../../runtime/session/launch-directory.ts";
 import { userShell } from "../../runtime/shell.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -29,11 +33,16 @@ import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
 
+/** A launch's options, with the directory it checked first: its PTY is spawned only there. */
+export type ClaudeLaunchOptions = StartClaudeOptions & {
+  readonly launchDirectory: CheckedLaunchDirectory;
+};
+
 export type BuildClaudeSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
-  readonly options: StartClaudeOptions;
+  readonly options: ClaudeLaunchOptions;
   readonly resumed: boolean;
   readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
@@ -88,12 +97,14 @@ export function cliHookTimeoutSeconds(hookTimeoutMs: number): number {
 export function spawnClaudePty(
   record: SessionRecord,
   settingsPath: string,
-  options: StartClaudeOptions & { readonly initialSize: TerminalSize },
+  options: ClaudeLaunchOptions & { readonly initialSize: TerminalSize },
 ): PtyProcess {
   const launch = shellLaunch(
     userShell(),
     buildClaudeShellCommand(settingsPath, options, record.claude.resumeId),
   );
+  // Last, after everything else the launch awaited: the agent runs in the directory checked.
+  assertLaunchDirectoryUnchanged(options.launchDirectory);
   try {
     return currentPtyFactory()({
       command: launch.command,

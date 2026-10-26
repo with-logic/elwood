@@ -18,6 +18,13 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- A session's agent now starts only in the directory its start or resume
+  checked first. A launch directory removed or replaced at any point after
+  preflight, up to the moment the PTY is spawned (including during Codex's
+  capability probe), fails the start or resume with `*_start_failed` and
+  `details.cwd`, and no PTY is spawned, where the agent used to start in the
+  replacement. The check after preflight compares the directory with the one
+  first checked, so no state is written into a replacement.
 - The `--version` and Codex capability caches keep the 32 most recently used
   launch directories, not just the last one, and are keyed by the directory
   itself as well as its path. A directory made again at the same path, replaced
