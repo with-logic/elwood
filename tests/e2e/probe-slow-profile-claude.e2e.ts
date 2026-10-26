@@ -16,7 +16,7 @@ import {
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
 import { shellQuote, userShell } from "../../src/runtime/shell.ts";
-import { pathSkipReason, resolvedAgentPath } from "./availability.ts";
+import { pathSkipReason, resolvedAgentProgramPath } from "./availability.ts";
 import { e2eTimeoutMs, makeProject, skipIf } from "./helpers.ts";
 
 // The profile sleeps twice the command bound. Real `claude --version` answered in at most
@@ -39,7 +39,7 @@ test("C-PERF-05 a real Claude session starts when its login profile outlasts the
   mkdirSync(zdotdir);
   writeFileSync(
     join(zdotdir, ".zshrc"),
-    `sleep ${profileSeconds}\nexport PATH=${shellQuote(dirname(resolvedAgentPath("claude")))}:"$PATH"\n`,
+    `sleep ${profileSeconds}\nexport PATH=${shellQuote(dirname(resolvedAgentProgramPath("claude")))}:"$PATH"\n`,
   );
   const previous = process.env["ZDOTDIR"];
   process.env["ZDOTDIR"] = zdotdir;

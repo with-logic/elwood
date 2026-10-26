@@ -12,7 +12,6 @@ import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSyn
 import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
-import { probeStartScript } from "../../src/runtime/probe/start.ts";
 import { loginShellCommand, shellQuote, userShell } from "../../src/runtime/shell.ts";
 import { e2eRunDir } from "./run-dir.ts";
 
@@ -70,35 +69,42 @@ export function skipReason(agent: AgentName): string | undefined {
 
 /**
  * Why a test that needs `agent`'s program path cannot run here, or `undefined` when it can:
- * every reason `skipReason` gives, and a CLI the login shell resolves only as a function.
+ * every reason `skipReason` gives, and a CLI the login shell resolves but not to a program on its
+ * `PATH`, as a function or an alias.
  */
 export function pathSkipReason(agent: AgentName): string | undefined {
   const reason = skipReason(agent);
   if (reason !== undefined) return reason;
   const result = probedAgent(agent);
   return "path" in result && result.path === null
-    ? `${agent} resolves only as a login-shell function, with no program path`
+    ? `${agent} resolves in the login shell, but not to a program on its PATH`
     : undefined;
 }
 
-/** The absolute path the user's login shell resolves `agent` to, from the same memoized probe. */
-export function resolvedAgentPath(agent: AgentName): string {
+/**
+ * The absolute path of the program `agent` names on the user's login-shell `PATH`, from the same
+ * memoized probe. It throws when the login shell resolves `agent` but `/bin/sh`, run with that
+ * `PATH`, finds no program for it: a function or an alias has no path.
+ */
+export function resolvedAgentProgramPath(agent: AgentName): string {
   const result = probedAgent(agent);
   if ("skip" in result) throw new Error(result.skip);
-  if (result.path === null) throw new Error(`${agent} resolves only as a login-shell function`);
+  if (result.path === null) {
+    throw new Error(`${agent} resolves in the login shell, but not to a program on its PATH`);
+  }
   return result.path;
 }
 
 function probe(agent: AgentName): Probed {
   const shell = userShell();
   // Found as detection finds it, by the login shell's own `command -v`, which also finds a
-  // function zsh can `exec`; then the program's path, from `/bin/sh`, if it is one. Its output
-  // goes to plain files in a directory of this run's, by the probe script's own redirection.
-  // Nothing else is read: the shell's own streams, and the start line's descriptor, are closed.
+  // function zsh can `exec`; then the program's path, from `/bin/sh` run with the login shell's
+  // `PATH`, if there is one. Only that lookup's output is read: the script redirects it to files
+  // in a directory of this probe's under `e2eRunDir`. The login shell's own streams are ignored.
   const output = mkdtempSync(join(e2eRunDir, "probe-"));
   const [stdout, stderr] = [join(output, "stdout"), join(output, "stderr")];
   const script =
-    `${probeStartScript}command -v ${agent} >/dev/null 2>&1 || exit 1; ` +
+    `command -v ${agent} >/dev/null 2>&1 || exit 1; ` +
     `exec /bin/sh -c 'command -v "$1" || :' sh ${agent} >${shellQuote(stdout)} 2>${shellQuote(stderr)}`;
   const result = spawnSync(shell, [...loginShellCommand(script)], {
     stdio: "ignore",
