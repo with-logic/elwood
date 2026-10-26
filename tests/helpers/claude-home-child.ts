@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { isRecord } from "../../src/core/predicates.ts";
+import { isRecord, isString, isStringArray } from "../../src/core/predicates.ts";
 
 const claudeHomeModule = resolve(import.meta.dirname, "../e2e/claude-home.ts");
 
@@ -67,25 +67,21 @@ export function parseSeen(text: string): Seen {
     if (!valid(value)) throw new Error(`claude-home child reported a malformed ${key}`);
     return value;
   };
-  const isString = (value: unknown): value is string => typeof value === "string";
-  const stringOrNull = (value: unknown): value is string | null =>
+  const isStringOrNull = (value: unknown): value is string | null =>
     value === null || isString(value);
   return {
     dir: field("dir", isString),
     env: field("env", isString),
     user: field("user", isString),
     global: field("global", isString),
-    entries: field(
-      "entries",
-      (value): value is string[] => Array.isArray(value) && value.every(isString),
-    ),
-    credentials: field("credentials", stringOrNull),
+    entries: field("entries", isStringArray),
+    credentials: field("credentials", isStringOrNull),
     credentialsMode: field(
       "credentialsMode",
       (value): value is number | null => value === null || typeof value === "number",
     ),
-    config: field("config", stringOrNull),
-    catalog: field("catalog", stringOrNull),
+    config: field("config", isStringOrNull),
+    catalog: field("catalog", isStringOrNull),
   };
 }
 
