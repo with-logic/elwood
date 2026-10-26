@@ -6,6 +6,11 @@
 import { elwoodError } from "../../core/errors.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
+import {
+  assertLaunchDirectory,
+  recheckLaunchDirectoryOnFailure,
+  resolveLaunchDirectory,
+} from "../../runtime/session/launch-directory.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { reserveLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
@@ -22,12 +27,14 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   // `highTrust` expands to its explicit posture override (or rejects a conflicting
   // explicit one) before anything else, exactly as on start (C-API-54).
   const options = applyClaudeHighTrust(rawOptions);
+  // The given `cwd`, resolved once, before any read or `await`, so the directory checked is the
+  // one launched in even if `process.cwd()` changes.
+  const given =
+    options.cwd === undefined ? undefined : resolveLaunchDirectory("claude", options.cwd);
   // Resolve stateDir to ABSOLUTE ONCE, before any read or `await`: a relative path
   // re-resolved after a `process.chdir()` between the record read and the runtime-file
   // writes would read one session and write another's files (PRD §8.1). (C-STATE)
-  const stateDir = canonicalStatePath(
-    options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd()),
-  );
+  const stateDir = canonicalStatePath(options.stateDir ?? defaultStateDir(given ?? process.cwd()));
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
   if (record.adapter !== "claude") {
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Claude session as Claude.");
@@ -35,39 +42,47 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   if (!record.claude.resumeId) {
     throw elwoodError("resume_unavailable", "Cannot resume Claude without a Claude session id.");
   }
+  // Claude relaunches in the given `cwd`, else where the session started.
+  const cwd = given ?? resolveLaunchDirectory("claude", record.cwd);
+  // Reserved before the first `await`: a teardown already running must see this successor
+  // before it decides which shared state to remove (C-API-20).
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
+    await assertLaunchDirectory("claude", cwd);
     const warning = await preflightClaude(
       options.strictVersionCheck ?? false,
       options.autoupdate ?? false,
     );
+    await assertLaunchDirectory("claude", cwd); // it may have gone during preflight
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.claude.launch, claudeLaunchPosture(options));
     const resumedRecord = withClaudeLaunch(record, launch);
-    const session = await startClaudeFromRecord(
-      resumedRecord,
-      stateDir,
-      {
-        cwd: options.cwd ?? record.cwd,
+    const session = await recheckLaunchDirectoryOnFailure("claude", cwd, () =>
+      startClaudeFromRecord(
+        resumedRecord,
         stateDir,
-        ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-        ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
-        ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-        ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-        // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CLAUDE-20).
-        ...(options.reasoningEffort === undefined
-          ? {}
-          : { reasoningEffort: options.reasoningEffort }),
-        ...launch,
-        ...(options.strictVersionCheck === undefined
-          ? {}
-          : { strictVersionCheck: options.strictVersionCheck }),
-      },
-      true, // resumed: mark ready on the first composer marker, symmetric with Codex
-      warning,
-      ownership,
+        {
+          cwd,
+          stateDir,
+          ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
+          ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
+          ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+          ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+          // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CLAUDE-20).
+          ...(options.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: options.reasoningEffort }),
+          ...launch,
+          ...(options.strictVersionCheck === undefined
+            ? {}
+            : { strictVersionCheck: options.strictVersionCheck }),
+        },
+        true, // resumed: mark ready on the first composer marker, symmetric with Codex
+        warning,
+        ownership,
+      ),
     );
     return session;
   } catch (error) {

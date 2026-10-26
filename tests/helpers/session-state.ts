@@ -5,7 +5,8 @@
  * a session's directory needs that directory made first.
  */
 
-import { dirname } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { safeSessionDir, secureMkdir } from "../../src/state/files.ts";
 import {
   createSessionRecord,
@@ -45,4 +46,10 @@ export function resumableStateDir(
   const resumable = updateSessionResumeId(created, adapter, `${adapter}-session-1`);
   writeSessionRecord(resumable, safeSessionDir(stateDir, elwoodSessionId));
   return stateDir;
+}
+
+/** A session's record and the names in its session directory, to show a rejection left both. */
+export function sessionState(stateDir: string, id: string) {
+  const dir = safeSessionDir(stateDir, id);
+  return { record: readFileSync(join(dir, "session.json"), "utf8"), entries: readdirSync(dir) };
 }
