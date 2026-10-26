@@ -4,32 +4,54 @@
  * runtime-cleanup primitive every exit path shares (its caller wraps the failure).
  */
 
-import { elwoodError } from "../../core/errors.ts";
+import { ElwoodError, type ElwoodErrorName, elwoodError, toError } from "../../core/errors.ts";
 
-/** Runs every step even if earlier ones reject, returning the collected failure messages. */
+/** One failed teardown step: its message, plus its code and details when it was typed. */
+export type TeardownFailure =
+  | { readonly message: string }
+  | {
+      readonly message: string;
+      readonly code: ElwoodErrorName;
+      readonly details: Readonly<Record<string, unknown>>;
+    };
+
+/** Runs every step even if earlier ones reject, returning what each failed step threw. */
 async function attemptAllSteps(
   steps: readonly (() => Promise<void> | void)[],
-): Promise<readonly string[]> {
-  const failures: string[] = [];
+): Promise<readonly unknown[]> {
+  const failures: unknown[] = [];
   for (const step of steps) {
     try {
       await step();
     } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
+      failures.push(error);
     }
   }
   return failures;
 }
 
+/**
+ * Runs every teardown step, then rejects with `teardown_failed` if any failed. Its
+ * `details.causes` lists each failure's message, and `details.failures` keeps each
+ * typed failure's code and details too, so a reap failure's errno or process group
+ * survives teardown (§10).
+ */
 export async function runTeardownSteps(
   steps: readonly (() => Promise<void> | void)[],
 ): Promise<void> {
-  const failures = await attemptAllSteps(steps);
+  const failures = (await attemptAllSteps(steps)).map(teardownFailure);
   if (failures.length > 0) {
     throw elwoodError("teardown_failed", "Could not fully tear down Elwood session.", {
-      causes: failures,
+      causes: failures.map((failure) => failure.message),
+      failures,
     });
   }
+}
+
+function teardownFailure(error: unknown): TeardownFailure {
+  const { message } = toError(error);
+  if (!(error instanceof ElwoodError)) return { message };
+  return { message, code: error.code, details: error.details };
 }
 
 /**
@@ -42,6 +64,6 @@ export async function runTeardownSteps(
 export async function runCleanupSteps(
   steps: readonly (() => Promise<void> | void)[],
 ): Promise<void> {
-  const failures = await attemptAllSteps(steps);
+  const failures = (await attemptAllSteps(steps)).map((error) => toError(error).message);
   if (failures.length > 0) throw new Error(`Runtime cleanup failed: ${failures.join("; ")}`);
 }

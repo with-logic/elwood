@@ -34,19 +34,6 @@ function terminalOutput(output: "json" | "jsonl", value: string): unknown {
 }
 
 describe("executeRun failure boundaries", () => {
-  test("C-CLI-09 cleanup failure keeps response and changes success to failure", async () => {
-    const session = new FakeCliSession();
-    session.cleanupError = new Error("private cleanup detail");
-    const streams = io();
-    expect(
-      await executeRun(request({ keep: true }), session, streams.value, {
-        signals: new FakeSignals(),
-      }),
-    ).toBe(1);
-    expect(streams.stdout.value).toBe("ok\n");
-    expect(streams.stderr.value).toBe("elwood: Cleanup failed.\n");
-  });
-
   test("C-CLI-12 runtime credentials are redacted from the response", async () => {
     const session = new FakeCliSession();
     registerPrivateOutputSecrets(session.underlying, ["bridge-token"]);

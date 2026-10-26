@@ -3,6 +3,7 @@
 import type { CliFailure } from "../lifecycle/outcome.ts";
 import type { CliMainContext, CliMainDependencies } from "../main.ts";
 import { cliFailure, errorRecord, type StaticFailure } from "../main-failure.ts";
+import { cleanupFailureMessage } from "../output/cleanup-error.ts";
 import type { CliCleanup } from "../output/types.ts";
 import type { CliSessionFacade } from "../session/index.ts";
 import type { CliAgent, CliOutputMode, ParsedRunCommand, ResolvedRunRequest } from "../types.ts";
@@ -19,8 +20,8 @@ async function teardownPreparedSession(session: CliSessionFacade): Promise<CliCl
   try {
     await session.teardown();
     return { action: "teardown", status: "succeeded" };
-  } catch {
-    return { action: "teardown", status: "failed", error: "Cleanup failed." };
+  } catch (error) {
+    return { action: "teardown", status: "failed", error: cleanupFailureMessage(error) };
   }
 }
 
