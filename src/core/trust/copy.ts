@@ -20,8 +20,15 @@ export const claudeWorkspaceDescription = new RegExp(
   `^(?:${likeYourOwn}\\s*(?:${ableTo}\\s*)?|${ableTo}\\s*)(?:Security guide)?$`,
 );
 
-export const claudeBypassDescription =
-  /^In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands\.\s*(?:By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode\.)?$/;
+// 2.1.268 shows the first sentence and the acceptance; 2.1.310 adds the sandbox sentence
+// between them and the security-guide link below. Only the first sentence is required.
+const bypassNoApproval = String.raw`In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands\.`;
+const bypassSandboxOnly = String.raw`This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged\.`;
+const bypassResponsibility = String.raw`By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode\.`;
+const securityGuide = String.raw`https://code\.claude\.com/docs/en/security`;
+export const claudeBypassDescription = new RegExp(
+  `^${bypassNoApproval}\\s*(?:${bypassSandboxOnly}\\s*)?(?:${bypassResponsibility}\\s*)?(?:${securityGuide})?$`,
+);
 
 export const codexWorkspaceDescription =
   /^Working with untrusted contents comes with higher risk of prompt injection\. Trusting the directory allows project-local config, hooks, and exec policies to load\.$/;
