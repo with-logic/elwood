@@ -16,8 +16,9 @@ back each entry are listed in `prd/14-conformance.md`.
   now answers Claude 2.1.310's bypass-permissions acceptance dialog under
   `autotrust`, as C-CLAUDE-21 requires. Claude 2.1.310 added a sandbox warning and a
   security-guide link to the dialog, and Elwood did not recognize the longer copy,
-  so the session stayed `blocked` on any machine where the dialog renders: any
-  user whose Claude settings do not set `skipDangerousModePermissionPrompt`.
+  so the session stayed `blocked` wherever the dialog renders: a Claude config that
+  has never accepted it and whose settings do not set
+  `skipDangerousModePermissionPrompt`.
 - A start or resume whose launch fails while its `cwd` is deleted and made again
   now fails with the adapter's `*_start_failed` for that `cwd`, as it does when
   `cwd` is simply gone. It used to find the new directory in its place and report

@@ -1059,9 +1059,10 @@ at all, through Elwood's `--permission-mode bypassPermissions` launch or a raw
 `--dangerously-skip-permissions` one, and no `bypassPermissionsModeAccepted` key
 existed anywhere under `~/.claude*`. The likely reason is a user setting, not the
 version or account: the developer's `~/.claude/settings.json` sets
-`"skipDangerousModePermissionPrompt": true`. On 2.1.310 that setting alone decides it.
-In an empty `CLAUDE_CONFIG_DIR` (no settings, never accepted) the dialog renders, and
-adding the setting there sends the session straight to the composer. The 2.1.310 copy
+`"skipDangerousModePermissionPrompt": true`. On 2.1.310, in a config that has never
+accepted the dialog, that setting alone decides whether it renders: in an empty
+`CLAUDE_CONFIG_DIR` (no settings, never accepted) the dialog renders, and adding the
+setting there sends the session straight to the composer. The 2.1.310 copy
 is longer and opens with the cursor on the decline
 (`tests/fixtures/claude-2.1.310/bypass-permissions-{100,200}.txt`):
 

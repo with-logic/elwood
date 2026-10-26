@@ -3,27 +3,38 @@
  * renders it in a config dir where it was never accepted
  * (`tests/fixtures/claude-2.1.310/bypass-permissions-*.txt`, see the README). 2.1.310 adds a
  * sandbox sentence and the security-guide link to the 2.1.268 copy, and opens with the
- * cursor on `No, exit`. Under autotrust the dialog is recognized at either width and
- * answered with its affirmative.
+ * cursor on `No, exit`. Under autotrust the dialog is recognized at either width, and
+ * without its optional sentences, and answered with its affirmative: the attempt settles
+ * `answered` only once the bypass-mode composer replaces it.
  */
 
-import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
+import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 
-const frame = (cols: number) =>
-  readFileSync(
-    new URL(`../fixtures/claude-2.1.310/bypass-permissions-${cols}.txt`, import.meta.url),
-    "utf8",
-  );
+const frame = (cols: number) => capturedFrame(`claude-2.1.310/bypass-permissions-${cols}`);
 
-// The same session once the dialog is accepted: its bypass-mode footer.
-const runningFooter = "❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents";
+/** The 200-column capture with only the dialog's required sentence (C-CLAUDE-21). */
+const requiredOnly = frame(200)
+  .split("\n")
+  .filter((line) => !/This mode should only|By proceeding|https:\/\//.test(line))
+  .join("\n");
 
-for (const cols of [100, 200]) {
-  test(`C-CLAUDE-21 answers 2.1.310's dialog at ${cols} columns with Yes, I accept`, async () => {
-    const dialog = frame(cols);
+// A 2.1.310 session running in bypass mode: the composer the accepted dialog gives way to.
+const running = readNativeInputFrame(
+  new URL("../fixtures/claude-2.1.310/mode-footers/plain-bypass-permissions.json", import.meta.url),
+).text;
+
+const dialogs = [
+  ["2.1.310's dialog at 100 columns", frame(100)],
+  ["2.1.310's dialog at 200 columns", frame(200)],
+  ["the dialog with only its required sentence", requiredOnly],
+] as const;
+
+for (const [name, dialog] of dialogs) {
+  test(`C-CLAUDE-21 answers ${name} with Yes, I accept`, async () => {
     expect(trustPromptVisible(dialog, "claude")).toBe(true);
     const writes: string[] = [];
     let rendered = dialog;
@@ -36,7 +47,7 @@ for (const cols of [100, 200]) {
           rendered = dialog
             .replace("  ❯ No, exit", "    No, exit")
             .replace("    Yes, I accept", "  ❯ Yes, I accept");
-        if (input.endsWith("\r")) rendered = runningFooter;
+        if (input.endsWith("\r")) rendered = running;
       },
       () => rendered,
     );
@@ -45,7 +56,7 @@ for (const cols of [100, 200]) {
       automation: { prompt: "bypass_permissions", input: "home+down+enter" },
     });
     if (result?.kind !== "attempted") throw new Error("expected an answered prompt");
-    await result.settled;
+    await expect(result.settled).resolves.toBe("answered");
     expect(writes).toEqual(["\u001b[H\u001b[B", "\u001b[H\u001b[B\r"]);
   });
 }
