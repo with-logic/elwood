@@ -28,9 +28,10 @@ describe("C-API-46 Codex clipboard copies named by a transcript item", () => {
     expect(clipboardCopiesIn(item, tmp)).toEqual([short, uuid]);
   });
 
-  test("a temp dir spelled with a trailing slash still matches", () => {
-    const copy = `${tmp}//codex-clipboard-abc123.png`;
-    expect(clipboardCopiesIn(userMessage([image(copy)]), tmp)).toEqual([copy]);
+  test("a path with a repeated separator names the copy, rebuilt from the temp dir", () => {
+    const copy = join(tmp, "codex-clipboard-abc123.png");
+    const named = `${tmp}//codex-clipboard-abc123.png`;
+    expect(clipboardCopiesIn(userMessage([image(named)]), tmp)).toEqual([copy]);
   });
 
   test.each([
@@ -39,6 +40,9 @@ describe("C-API-46 Codex clipboard copies named by a transcript item", () => {
     ["another file in the temp dir", join(tmp, "shot.png")],
     ["a name that only starts like a copy", join(tmp, "codex-clipboard-abc123.png.keep")],
     ["a relative path", "codex-clipboard-abc123.png"],
+    // A link at `link` could make this path's `..` resolve outside the temp dir.
+    ["a path that leaves through `..`", join(tmp, "link") + "/../codex-clipboard-abc123.png"],
+    ["a path that re-enters through `..`", `${tmp}/../T/codex-clipboard-abc123.png`],
     ["a path that is not a string", 7],
   ])("%s is never a copy", (_name, path) => {
     expect(clipboardCopiesIn(userMessage([image(path)]), tmp)).toEqual([]);

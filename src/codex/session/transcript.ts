@@ -120,9 +120,9 @@ export function createCodexTranscriptWatcher(
         route(codexPollStoppedWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
-      // The CLI has exited and the flush has read its last records (C-API-46).
-      clipboardCopies.removeAll();
-      afterFlush();
+      // The CLI has exited and the flush has read its last records: remove the image
+      // copies they named before finishing the exit (C-API-46).
+      clipboardCopies.removeAll(afterFlush);
     }
   };
   return { watcher, duringDelivery, flushPendingWarnings, finishSafely };

@@ -10,9 +10,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { isRecord } from "../../src/core/predicates.ts";
+import { clipboardCopyAt, localImagePathsIn } from "../../src/codex/images/clipboard-copies.ts";
 import {
   type ClaudeSessionApi,
   type CodexSessionApi,
@@ -25,6 +26,7 @@ import {
   observeSession,
   prepareInteractivePrompt,
   skipIf,
+  skipNow,
   skipReason,
   waitFor,
 } from "./helpers.ts";
@@ -66,7 +68,7 @@ const macOnly = process.platform === "darwin" ? false : "Codex image attach is m
 test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real CLI)", {
   skip: skipIf(macOnly, skipReason("codex")),
   timeout: 120_000,
-}, async () => {
+}, async (t) => {
   const project = makeProject("codex");
   const image = join(project.cwd, "shot.png");
   copyFileSync(fixture, image);
@@ -75,11 +77,11 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
   const sentinel = "elwood-e2e-clipboard-sentinel";
   execFileSync("/usr/bin/pbcopy", { input: sentinel });
   let session: CodexSessionApi | undefined;
-  const localImages: string[] = [];
-  let copy = "";
+  const namedImagePaths: string[] = [];
+  let copy: string | undefined;
   try {
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
-    session.on("codex:transcript", ({ item }) => localImages.push(...localImagePaths(item)));
+    session.on("codex:transcript", ({ item }) => namedImagePaths.push(...localImagePathsIn(item)));
     await prepareInteractivePrompt(session, observeSession(session), "codex");
     const submitted = session.sendMessage("here is an image", { images: [{ path: image }] });
     await waitFor(
@@ -92,25 +94,22 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
     // clipboard, proving snapshot-and-restore actually happened (C-API-46).
     assert.equal(execFileSync("/usr/bin/pbpaste").toString(), sentinel);
     // Codex saved the pasted image to a temp file its transcript names.
-    copy = await waitFor(() => localImages[0], "the submitted image in the transcript");
-    assert.match(basename(copy), /^codex-clipboard-/);
+    const named = await waitFor(() => namedImagePaths[0], "the submitted image in the transcript");
+    const tempDir = resolve(tmpdir());
+    if (resolve(dirname(named)) !== tempDir) {
+      // Codex's login shell gave it another TMPDIR: the copy is not the session's (§5.3).
+      skipNow(t, `Codex saved the pasted image outside Elwood's temp dir: ${named}`);
+      return;
+    }
+    copy = clipboardCopyAt(named, tempDir);
+    assert.ok(copy, `the session owns Codex's copy ${named}`);
     assert.equal(existsSync(copy), true, "Codex saved the pasted image");
   } finally {
     await cleanup(session);
     execFileSync("/usr/bin/pbcopy", { input: priorClipboard }); // restore dev's real clipboard
   }
-  assert.equal(existsSync(copy), false, "the session removed Codex's copy when it ended");
-});
-
-/** The `local_image` paths of a completed user message in a Codex transcript item. */
-function localImagePaths(item: unknown): string[] {
-  const payload = isRecord(item) ? item["payload"] : undefined;
-  const message = isRecord(payload) ? payload["item"] : undefined;
-  if (!(isRecord(message) && message["type"] === "UserMessage")) return [];
-  const content = Array.isArray(message["content"]) ? message["content"] : [];
-  return content.flatMap((part: unknown) =>
-    isRecord(part) && part["type"] === "local_image" && typeof part["path"] === "string"
-      ? [part["path"]]
-      : [],
+  assert.ok(
+    copy !== undefined && !existsSync(copy),
+    "the session removed Codex's copy when it ended",
   );
-}
+});
