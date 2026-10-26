@@ -13,6 +13,7 @@ import type { CommandOptions, CommandResult } from "../seams.ts";
 import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
 import { type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
+import { probedDirectoryReplaced } from "./directory-key.ts";
 import { withProbeSlot } from "./slots.ts";
 import { ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
@@ -56,6 +57,12 @@ function spawnCaptured(
   options: CommandOptions,
   capture: ProbeCapture,
 ): Promise<CommandResult> {
+  // Checked last, as it spawns: a probe keyed to one directory never reads another (C-PERF-02).
+  const replaced = probedDirectoryReplaced(options);
+  if (replaced !== undefined) {
+    capture.release();
+    return Promise.resolve(replaced);
+  }
   return new Promise((resolve) => {
     const start = new ProbeStart(args);
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
@@ -129,7 +136,7 @@ function spawnCaptured(
     // `error` always carries a `code`, which preflight maps to `*_not_found`.
     child.on("error", (e: NodeJS.ErrnoException) => {
       const [stdout, stderr] = captured();
-      settle({ status: null, stdout, stderr, error: mapError(e) });
+      settle({ status: null, stdout, stderr, error: { code: e.code, message: e.message } });
     });
     child.on("close", (code, signal) => {
       // A shell that exits without announcing its command never ran it (an rc file that
@@ -159,13 +166,6 @@ function releasedOnThrow<T>(capture: ProbeCapture, spawnIt: () => T): T {
     capture.release();
     throw error;
   }
-}
-
-function mapError(error: NodeJS.ErrnoException): {
-  readonly code?: string | undefined;
-  readonly message: string;
-} {
-  return { code: error.code, message: error.message };
 }
 
 function commandTimedOut(stdout: string, stderr: string): CommandResult {

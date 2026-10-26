@@ -60,7 +60,7 @@ test.each(
   const cwd = project(agent, version);
   writeFileSync(join(cwd, "gone-on-login"), "");
   const cause = `The login shell found no \`${agent}\` (status 127).`;
-  const lost = lostDirectoryFailure(agent, cwd, directoryLossCases[0], cause);
+  const lost = lostDirectoryFailure(agent, cwd, directoryLossCases[0], { cause });
   await expect(start({ cwd })).rejects.toEqual(lost);
 });
 

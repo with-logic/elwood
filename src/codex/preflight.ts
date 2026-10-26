@@ -9,7 +9,12 @@ import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { type DirectoryRead, readInDirectory } from "../runtime/probe/directory-key.ts";
 import { createProbeCache } from "../runtime/probe-cache.ts";
-import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
+import {
+  type CommandOptions,
+  type CommandResult,
+  currentCommandRunner,
+  currentPlatform,
+} from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
   type AutoupdateOutcome,
@@ -91,8 +96,8 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const command = probeShellCommand("codex --version");
-  const result = await cachedVersionRead("codex", cwd, () =>
-    Promise.resolve(currentCommandRunner()(userShell(), command, { cwd })),
+  const result = await cachedVersionRead("codex", cwd, (options) =>
+    Promise.resolve(currentCommandRunner()(userShell(), command, options)),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     // The probe's own failure is the cause, so a launch directory that went while it was
@@ -118,12 +123,12 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
  * per-directory tool manager can resolve a different build in each directory (§9.2).
  */
 export function detectCodexCliCapabilities(cwd: string): Promise<CodexCliCapabilities> {
-  return readInDirectory(capabilityProbe, cwd, () => detectCapabilities(cwd));
+  return readInDirectory(capabilityProbe, cwd, detectCapabilities);
 }
 
-async function detectCapabilities(cwd: string): Promise<CodexCliCapabilities> {
+async function detectCapabilities(options: CommandOptions): Promise<CodexCliCapabilities> {
   const command = probeShellCommand("codex --help");
-  const result = await currentCommandRunner()(userShell(), command, { cwd });
+  const result = await currentCommandRunner()(userShell(), command, options);
   // A bounded probe (timeout/overflow) or nonzero exit is a diagnosable
   // startup failure, not "capability unsupported" — surface it with cause.
   if (result.error !== undefined || result.status !== 0) {

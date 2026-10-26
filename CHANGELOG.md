@@ -18,6 +18,11 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- A `--version` or Codex `--help` probe now starts only while its launch
+  directory is still the one its answer is kept for. One that waited for a probe
+  slot while the directory was removed or replaced runs nothing, and the start or
+  resume fails with that as its `details.cause`, so a directory put back
+  afterwards is never answered with its replacement's version or capabilities.
 - A session's agent now starts only in the directory its start or resume
   checked first. A launch directory removed or replaced at any point after
   preflight, up to the moment the PTY is spawned (including during Codex's

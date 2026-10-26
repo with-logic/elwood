@@ -22,8 +22,17 @@ export type CommandResult = {
   } & ProbeCleanup;
 };
 
-/** Where a probe runs: `cwd` defaults to Elwood's own working directory. */
-export type CommandOptions = { readonly cwd?: string };
+/** Which directory a path named when it was checked: its device and inode. */
+export type DirectoryIdentity = { readonly dev: bigint; readonly ino: bigint };
+
+/**
+ * Where a probe runs: `cwd` defaults to Elwood's own working directory. Given the `identity`
+ * `cwd` had when the probe's answer was keyed, the probe spawns only while `cwd` is still that
+ * directory, and otherwise fails without running (C-PERF-02).
+ */
+export type CommandOptions =
+  | { readonly cwd?: string; readonly identity?: undefined }
+  | { readonly cwd: string; readonly identity: DirectoryIdentity };
 
 /**
  * Runs a subprocess and returns its result. Production is async (`spawn`) so a

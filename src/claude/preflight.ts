@@ -87,8 +87,8 @@ async function readClaudeVersion(cwd: string): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const command = probeShellCommand("claude --version");
-  const result = await cachedVersionRead("claude", cwd, () =>
-    Promise.resolve(currentCommandRunner()(userShell(), command, { cwd })),
+  const result = await cachedVersionRead("claude", cwd, (options) =>
+    Promise.resolve(currentCommandRunner()(userShell(), command, options)),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     // The probe's own failure is the cause, so a launch directory that went while it was

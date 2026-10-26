@@ -6,7 +6,7 @@
 
 import { type DirectoryRead, readInDirectory } from "../probe/directory-key.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
-import type { CommandResult } from "../seams.ts";
+import type { CommandOptions, CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 
 let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
@@ -148,7 +148,7 @@ const versionReads: Record<UpdateAdapter, ProbeCache<DirectoryRead<CommandResult
 export function cachedVersionRead(
   adapter: UpdateAdapter,
   cwd: string,
-  read: () => Promise<CommandResult>,
+  read: (options: CommandOptions) => Promise<CommandResult>,
 ): Promise<CommandResult> {
   return readInDirectory(versionReads[adapter], cwd, read);
 }
