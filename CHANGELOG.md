@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
+  detached hook processes ten seconds, up from three, before they reject with
+  `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
+  process-table read can take over half a second, and a hook that started a detached
+  child of its own takes six reads. So these calls rejected, and kept rejecting,
+  while the walk was still making progress. The ten seconds bound the walk, not the
+  whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
+  SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
+  idle host they take as long as before, because the walk ends as soon as it is done.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
