@@ -20,7 +20,7 @@ export type CodexConfigSwitchSession = {
 
 /**
  * Restores the user's config default after picker changes; the live CLI retains its
- * selection. The process-wide transaction lock prevents interleaved snapshots and restores
+ * selection. The config file's transaction lock prevents interleaved snapshots and restores
  * even when automation rejects after Codex writes (C-CODEX-14).
  */
 export async function switchCodexModel(
@@ -33,6 +33,7 @@ export async function switchCodexModel(
   const path = await session.resolveConfigPath(signal);
   const { elwoodSessionId } = session;
   await runCodexModelSwitch({
+    path,
     snapshot: () => snapshotCodexConfig(path),
     apply: flow,
     waitForCliExit: session.waitForCliExit,

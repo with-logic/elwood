@@ -1,9 +1,10 @@
 /**
- * Coverage for the two process-wide Codex mutexes, which share one contract: the
+ * Coverage for the two Codex mutexes, which share one contract: the process-wide
  * clipboard lock (PRD §5.3, C-API-46) serializes the whole snapshot/set/paste/restore
- * image-attach transaction, and the config lock (§5.3, C-CODEX-14) serializes the
- * whole snapshot/picker/compare-and-swap setModel transaction — so two concurrent
- * callers cannot interleave, and one caller's rejection does not wedge the next.
+ * image-attach transaction, and a config file's lock (§5.3, C-CODEX-14) serializes the
+ * whole snapshot/picker/compare-and-swap setModel transaction on that file — so two
+ * concurrent callers cannot interleave, and one caller's rejection does not wedge the
+ * next. codex-config-lock.test.ts covers which paths share a config lock.
  */
 
 import { describe, expect, test } from "vitest";
@@ -12,7 +13,12 @@ import { withClipboardLock } from "../../src/codex/images/clipboard-lock.ts";
 
 describe.each([
   { name: "withClipboardLock", criterion: "C-API-46", withLock: withClipboardLock },
-  { name: "withCodexConfigLock", criterion: "C-CODEX-14", withLock: withCodexConfigLock },
+  {
+    name: "withCodexConfigLock",
+    criterion: "C-CODEX-14",
+    withLock: <T>(task: () => Promise<T>) =>
+      withCodexConfigLock("/elwood-test/codex-home/config.toml", task),
+  },
 ])("$name ($criterion)", ({ criterion, withLock }) => {
   test(`${criterion} serializes overlapping transactions (no interleave)`, async () => {
     const events: string[] = [];

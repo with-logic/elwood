@@ -180,7 +180,16 @@ back each entry are listed in `prd/14-conformance.md`.
   (`phase: "login_shell"`), even though the command had run. A shell that
   closed descriptor 3 now writes the line on stdout, and Elwood removes it from
   the captured output.
-
+- Codex `setModel` and `listModels` calls on sessions that use different
+  `config.toml` files no longer wait on each other. The lock that keeps two switches
+  from interleaving their snapshot and restore was shared by every Codex session in
+  the process, so a slow switch in one home could use up another home's picker
+  deadline and fail it with `model_automation_failed`. Each config file, the one the
+  session's launch shell reported, now has its own lock, and paths that name the same
+  file through a symlink, another letter case, or another Unicode form share it, even
+  before Codex creates the file. On a case-sensitive volume, two configs whose paths
+  differ only in case share one lock too. A config path that cannot be resolved, such
+  as a symlink loop, rejects with `model_automation_failed`.
 - A Codex `stop()` or `teardown()` that gives up waiting for the ended turn's record
   now says so. When the 2-second wait runs out with Codex still running, the session
   emits one content-free `turn_commit_wait_expired` warning, with its `activity`, before
@@ -754,7 +763,7 @@ back each entry are listed in `prd/14-conformance.md`.
   records those even when its signal did not take. The wait now applies whether the
   switch succeeded or failed: the question is whether the dying CLI can still write
   `config.toml`, not whether Elwood's automation worked.
-- A Codex `setModel` still waiting for the process-wide `config.toml` lock rejects
+- A Codex `setModel` still waiting for its `config.toml` lock rejects
   with `session_not_running` as soon as its own session closes, instead of staying
   pending until the session ahead of it finishes its transaction and exit wait. A
   cancelled call never runs its switch when the lock frees.

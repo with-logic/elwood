@@ -130,9 +130,9 @@ describe("CodexSessionApi setModel", () => {
   });
 
   test("C-CODEX-14 two interleaving sessions cannot persist the wrong model", async () => {
-    // A single process-global config.toml with two concurrent setModel switches. The process-wide config lock serializes the whole
-    // snapshot/picker/restore transaction so session B cannot snapshot A's
-    // transiently-persisted model and restore it as the user's default.
+    // Two sessions on one config.toml with concurrent setModel switches. That file's lock
+    // serializes the whole snapshot/picker/restore transaction so session B cannot
+    // snapshot A's transiently-persisted model and restore it as the user's default.
     const cwd = tempDir();
     const configPath = sandboxCodexHome(cwd);
     installFakes();

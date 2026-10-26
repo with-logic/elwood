@@ -132,7 +132,7 @@ export class CommandSurface {
 
   /**
    * `around` lets an adapter wrap the picker flow in its own transaction (Codex's
-   * process-wide `config.toml` lock) INSIDE the queue slot. Acquiring that lock before
+   * lock on the session's `config.toml`) INSIDE the queue slot. Acquiring that lock before
    * the slot would let a following `sendMessage` dispatch first and send under the old
    * model — the slot is what preserves FIFO ordering, so it must be claimed first.
    * The wrapper receives the same deadline/termination signal as the picker flow.
