@@ -22,6 +22,7 @@
 
 import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
+import { daemonScope } from "../shared-daemon.ts";
 import { type FailureReason, type SweepFailure, SweepFailures } from "./failures.ts";
 import { confirmedGone, confirmLiveGroups, killSignaledGroups, recordFailedRead } from "./kill.ts";
 import {
@@ -94,12 +95,13 @@ async function stopDescendantGroups(
   deadline: number,
   state: SweepState,
 ): Promise<void> {
+  const scope = daemonScope([leaderPid]);
   try {
     while (true) {
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return unconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const table = await ops.listProcesses(remainingMs, [leaderPid]);
+      const table = await ops.listProcesses(remainingMs, scope);
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;

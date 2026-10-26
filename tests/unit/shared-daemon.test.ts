@@ -1,18 +1,22 @@
 /**
  * The detached walk's one exception (PRD §5.3 and §9.4, C-LIFE-10): Codex's shared
  * app-server daemon, which a Codex TUI starts as a setsid child of its own for its
- * `CODEX_HOME`, is marked in a table read when it is under the walk's roots, and never
+ * `CODEX_HOME`, is marked in a table read when it is in the walk's scope, and never
  * followed, nor is anything it started. Scripted tables and `ps` reads only.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import {
   detachedDescendantGroups,
+  type ProcessEntry,
   type PsRunner,
-  parseProcessTable,
 } from "../../src/runtime/shutdown/process-table.ts";
-import { listMarkingSharedDaemons } from "../../src/runtime/shutdown/shared-daemon.ts";
+import {
+  type DaemonScope,
+  daemonScope,
+  listMarkingSharedDaemons,
+} from "../../src/runtime/shutdown/shared-daemon.ts";
 import {
   hook,
   LEADER,
@@ -21,113 +25,142 @@ import {
   scripted,
 } from "../helpers/scripted-process-tree.ts";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 /** Where Codex installs its app-server daemon's copy of the CLI, for a home under `/tmp`. */
 const DAEMON = "/tmp/home/.codex/packages/app-server-daemon/releases/0.164.0/bin/codex";
 const STANDALONE = "/tmp/home/.codex/packages/standalone/releases/0.164.0/bin/codex";
+const GONE = Object.assign(new Error("ps exited 1"), { code: 1, stdout: "" });
 
+const codex = (pid: number, options: Parameters<typeof hook>[1] = {}) =>
+  hook(pid, { name: "codex", ...options });
 // Under the session's TUI (5000): read, the `codex` group leaders it started, the daemon
 // (5010), its updater (5012), and another (5014); not read, one exited (5015), a non-`codex`
 // (5011), one in the TUI's group (5016), and one under a hook (5017). Under no root: a
 // daemon whose TUI exited (6000), and the daemon (7010) of the user's own TUI (7000).
-const table = parseProcessTable(
-  [
-    " 5000  4000  5000 Ss+  codex",
-    " 5002  5000  5002 Ss   sh",
-    " 5010  5000  5010 Ss   codex",
-    " 5011  5010  5011 S    codex-code-mode-",
-    " 5012  5000  5012 Ss   codex",
-    " 5014  5000  5014 Ss   codex",
-    " 5015  5000  5015 Z    codex",
-    " 5016  5000  5000 S    codex",
-    " 5017  5002  5017 Ss   codex",
-    " 6000     1  6000 Ss   codex",
-    " 7000  4000  7000 Ss+  codex",
-    " 7010  7000  7010 Ss   codex",
-  ].join("\n"),
-);
+const table: readonly ProcessEntry[] = [
+  { ...leaderRow, ppid: 4000 },
+  hook(5002),
+  codex(5010),
+  hook(5011, { ppid: 5010, name: "codex-code-mode-" }),
+  codex(5012),
+  codex(5014),
+  codex(5015, { zombie: true }),
+  codex(5016, { pgid: LEADER }),
+  codex(5017, { ppid: 5002 }),
+  codex(6000, { ppid: 1 }),
+  codex(7000, { ppid: 4000 }),
+  codex(7010, { ppid: 7000 }),
+];
 const list = () => Promise.resolve(table);
 
-/** A runner serving each `-p` read its pid's path, or `failure`, logging every read. */
-function runner(paths: Readonly<Record<number, string>>, failure?: unknown) {
-  const runs: { args: readonly string[]; timeout: number }[] = [];
+/** A runner serving each `-p` read its pid's path or rejection, logging every read. */
+function runner(paths: Readonly<Record<number, string | Error>>, failure?: unknown) {
+  const runs: { pid: number; timeout: number; args: readonly string[] }[] = [];
   const run: PsRunner = (_file, args, options) => {
-    runs.push({ args, timeout: options.timeout });
-    if (failure !== undefined) return Promise.reject(failure);
-    return Promise.resolve({ stdout: `${paths[Number(args.at(-1))]}\n` });
+    const pid = Number(args.at(-1));
+    runs.push({ pid, timeout: options.timeout, args });
+    const path = paths[pid];
+    if (failure !== undefined || path instanceof Error) return Promise.reject(failure ?? path);
+    return Promise.resolve({ stdout: `${path}\n` });
   };
-  return { run, runs };
+  return { run, runs, pids: () => runs.map((entry) => entry.pid).sort() };
 }
 
-const daemons = (rows: readonly { pid: number; sharedDaemon: boolean }[]) =>
+const daemons = (rows: readonly ProcessEntry[]) =>
   rows.filter((row) => row.sharedDaemon).map((row) => row.pid);
-const readPids = (runs: readonly { args: readonly string[] }[]) =>
-  runs.map(({ args }) => Number(args.at(-1))).sort();
+const mark = (scope: DaemonScope, run: PsRunner, rows = list) =>
+  listMarkingSharedDaemons(3_000, scope, rows, run).then(daemons);
 
 describe("C-LIFE-10 Codex's shared app-server daemon in a table read", () => {
-  test("reads the path of each process under the roots that could be a daemon, one at a time, and marks the daemons", async () => {
-    const paths = { 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE, 6000: DAEMON, 7010: DAEMON };
-    const { run, runs } = runner(paths);
-    expect(daemons(await listMarkingSharedDaemons(3_000, [5000], list, run))).toEqual([5010, 5012]);
-    // Given several pids, `ps` reads every process on the host; given one, only that one.
-    for (const { args } of runs) expect(args.slice(0, 3)).toEqual(["-o", "comm=", "-p"]);
-    expect(readPids(runs)).toEqual([5010, 5012, 5014]);
-    for (const entry of runs) expect(entry.timeout).toBeLessThanOrEqual(3_000);
+  test("reads the path of each process in scope that could be a daemon, once if it is one", async () => {
+    const { run, runs, pids } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE });
+    const scope = daemonScope([LEADER]);
+    expect(await mark(scope, run)).toEqual([5010, 5012]);
+    // One pid each: given several, `ps` reads every process on the host.
+    expect(runs.map((entry) => entry.args)).toEqual(
+      runs.map((entry) => ["-o", "comm=", "-p", String(entry.pid)]),
+    );
+    expect(await mark(scope, run)).toEqual([5010, 5012]);
+    expect(pids()).toEqual([5010, 5012, 5014, 5014]);
+    await mark(daemonScope([LEADER]), run);
+    expect(pids()).toEqual([5010, 5010, 5012, 5012, 5014, 5014, 5014]);
+  });
+
+  test("reads every path at once, each within what the table read left of the deadline", async () => {
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const slowList = () => {
+      clock += 1_000;
+      return list();
+    };
+    const pending = Promise.withResolvers<{ stdout: string }>();
+    const { run, runs } = runner({});
+    const held: PsRunner = (...args) => {
+      void run(...args);
+      return pending.promise;
+    };
+    const marking = mark(daemonScope([LEADER]), held, slowList);
+    await vi.waitFor(() => expect(runs).toHaveLength(3));
+    expect(runs.map((entry) => entry.timeout)).toEqual([2_000, 2_000, 2_000]);
+    pending.resolve({ stdout: `${DAEMON}\n` });
+    expect(await marking).toEqual([5010, 5012, 5014]);
   });
 
   test("each root is read itself, once even under another, so a daemon under PID 1 is found", async () => {
-    const { run, runs } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE, 6000: DAEMON });
-    const rows = await listMarkingSharedDaemons(3_000, [5000, 5010, 6000], list, run);
-    expect(daemons(rows)).toEqual([5010, 5012, 6000]);
-    expect(readPids(runs)).toEqual([5010, 5012, 5014, 6000]);
+    const { run, pids } = runner({ 5010: DAEMON, 5012: DAEMON, 5014: STANDALONE, 6000: DAEMON });
+    expect(await mark(daemonScope([LEADER, 5010, 6000]), run)).toEqual([5010, 5012, 6000]);
+    expect(pids()).toEqual([5010, 5012, 5014, 6000]);
   });
 
   test("ends on a read that shows two processes each other's parent", async () => {
     // A read taken while pids are reused can link two processes both ways.
-    const looped = parseProcessTable(" 8000  8001  8000 Ss   codex\n 8001  8000  8001 Ss   codex");
-    const { run, runs } = runner({ 8000: STANDALONE, 8001: DAEMON });
-    const rows = await listMarkingSharedDaemons(3_000, [8000], () => Promise.resolve(looped), run);
-    expect(daemons(rows)).toEqual([8001]);
-    expect(readPids(runs)).toEqual([8000, 8001]);
+    const looped = () =>
+      Promise.resolve([codex(8000, { ppid: 8001 }), codex(8001, { ppid: 8000 })]);
+    const { run, pids } = runner({ 8000: STANDALONE, 8001: DAEMON });
+    expect(await mark(daemonScope([8000]), run, looped)).toEqual([8001]);
+    expect(pids()).toEqual([8000, 8001]);
   });
 
-  test("no roots, or none with a process that could be a daemon under it, takes no path read", async () => {
+  test("no scope, or none with a process that could be a daemon in it, takes no path read", async () => {
     const { run, runs } = runner({});
     expect(daemons(await listMarkingSharedDaemons(3_000, undefined, list, run))).toEqual([]);
-    expect(daemons(await listMarkingSharedDaemons(3_000, [5002, 9999], list, run))).toEqual([]);
+    expect(await mark(daemonScope([5002, 9999]), run)).toEqual([]);
     expect(runs).toEqual([]);
   });
 
-  test("one gone by its path read is no daemon; any other failed read fails the listing", async () => {
-    const gone = Object.assign(new Error("ps exited 1"), { code: 1, stdout: "" });
-    expect(
-      daemons(await listMarkingSharedDaemons(3_000, [5000], list, runner({}, gone).run)),
-    ).toEqual([]);
+  test("one gone by its path read is no daemon, while another is still marked", async () => {
+    const { run } = runner({ 5010: DAEMON, 5012: GONE, 5014: STANDALONE });
+    expect(await mark(daemonScope([LEADER]), run)).toEqual([5010]);
+  });
+
+  test("any other failed path read fails the listing", async () => {
     for (const failure of [
       Object.assign(new Error("ps killed"), { code: null, killed: true, stdout: "" }),
       Object.assign(new Error("ps exited 1 with output"), { code: 1, stdout: DAEMON }),
       "not an error",
     ]) {
-      const { run } = runner({}, failure);
-      await expect(listMarkingSharedDaemons(3_000, [5000], list, run)).rejects.toBe(failure);
+      await expect(mark(daemonScope([LEADER]), runner({}, failure).run)).rejects.toBe(failure);
     }
   });
 
-  test("the sweep marks daemons under its leader in every read it takes", async () => {
+  test("every sweep read passes one scope rooted at the leader", async () => {
     const { ops } = scripted([[leaderRow, hook(5002)]]);
-    const roots: unknown[] = [];
-    const listProcesses = (timeoutMs: number, given?: readonly number[]) => {
-      roots.push(given);
+    const scopes: unknown[] = [];
+    const listProcesses = (timeoutMs: number, scope?: DaemonScope) => {
+      scopes.push(scope);
       return ops.listProcesses(timeoutMs);
     };
     const sweep = sweepDetachedGroups(LEADER, { ...ops, listProcesses }, leaderNeverExits, 3_000);
     expect(await sweep).toBeUndefined();
-    expect(roots).toEqual(roots.map(() => [LEADER]));
-    expect(roots.length).toBeGreaterThan(0);
+    expect(scopes.length).toBeGreaterThan(1);
+    expect(new Set(scopes)).toEqual(new Set([scopes[0]]));
+    expect(scopes[0]).toEqual({ roots: [LEADER], known: new Set() });
   });
 
   test("the walk never follows a daemon, nor anything it started", () => {
-    // The daemon and its updater loop are setsid children of the TUI that started them
-    // until it exits; the daemon's own children run commands for every Codex on the home.
     const rows = [
       leaderRow,
       hook(5002),

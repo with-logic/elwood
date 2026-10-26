@@ -77,7 +77,7 @@ const defaultOps: ProcessTreeOps = {
   stopGroup(pgid: number): void {
     process.kill(-pgid, "SIGSTOP");
   },
-  listProcesses: (timeoutMs, roots) => listMarkingSharedDaemons(timeoutMs, roots),
+  listProcesses: (timeoutMs, scope) => listMarkingSharedDaemons(timeoutMs, scope),
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle

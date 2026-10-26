@@ -18,7 +18,7 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
-- `teardown()` and `kill()` of a Codex session no longer end Codex's shared
+- `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
   app-server daemon, its updater loop, or what the daemon started, such as plugin
   MCP servers. Codex 0.158+ starts the daemon for its `CODEX_HOME`, for every Codex
   on that home, yours included, as a detached child of the TUI: when the session's

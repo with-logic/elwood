@@ -1475,7 +1475,9 @@ extra read costs a walk whose three-second deadline must hold on a loaded host:
   always a candidate, so every read paid that again: a real Codex `teardown()` failed in
   2 of 5 runs, none of 5 on `origin/main`.
 
-A walk with no daemon under its TUI runs the same single `ps` per read as before. In 3
+A walk remembers each daemon it found, by pid, parent, and group, so when the session's
+TUI started one, only the walk's first read pays its path reads. A walk with no daemon
+under its TUI runs the same single `ps` per read as before. In 3
 real Codex `teardown()`s, alternated with 3 on `origin/main`, it ran no path read. One run
 on each side failed at the deadline, when the host's 3,700 processes made a single table
 read take 1.6 to 2.1 s; the other reads took 350 to 540 ms.
@@ -1484,6 +1486,13 @@ No real-Codex e2e proves this: in 8 runs of Codex 0.164.0 under Elwood, from fre
 homes, with and without the hook-trust bypass and the update check, with holds of up to
 40 s, none started the daemon. `tests/unit/reap-detached-real.test.ts` builds the
 measured shape from real processes instead, with its install in place and removed.
+
+`ps` prints `ucomm` raw. A process whose name is `a`, a newline, and `1 5000 1 S    `
+reads as two rows, the second a forged process 1 whose parent is 5000 (measured on macOS
+26). `comm` and `ps -c` escape it as `\012`, but cost what `comm` costs. So each row ends
+with its pid again (`-o pid=,ppid=,pgid=,stat=,ucomm=,pid=`), and a read with any line
+that is not one whole row, or one pid twice, is unreadable: the walk fails rather than
+act on it.
 
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 

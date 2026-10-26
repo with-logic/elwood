@@ -30,39 +30,41 @@ const walk = (table: readonly ProcessEntry[]) =>
   detachedDescendantGroups(table, { leaderPid: LEADER, hostPid: HOST });
 
 describe("C-LIFE-10 process table", () => {
-  test("parses ps rows, flags zombies and stopped rows, and skips non-rows", () => {
+  test("runs /bin/ps with its timeout, a 16 MiB output cap, and SIGKILL, and parses its rows", async () => {
     const stdout = [
-      "    1     0     1 Ss   launchd",
-      " 5000  4000  5000 Ss+  sh",
-      " 5001  5000  5001 Z    <defunct>",
-      " 5002  5000  5002 T+   Google Chrome He  ",
-      " 5003  5000  5003 S",
-      "garbage line",
+      " 5000  4000  5000 Ss+  sh                5000",
+      " 5001  5000  5001 Z                      5001",
+      " 5002  5000  5002 T+   Google Chrome He  5002",
       "",
     ].join("\n");
-    expect(parseProcessTable(stdout)).toEqual([
-      row({ pid: 1, ppid: 0, pgid: 1 }, "S", "launchd"),
-      leaderRow,
-      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z", "<defunct>"),
-      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "T", "Google Chrome He"),
-      row({ pid: 5003, ppid: LEADER, pgid: 5003 }, "S", ""),
-    ]);
-  });
-
-  test("runs /bin/ps with its timeout, a 16 MiB output cap, and SIGKILL", async () => {
     const runs: unknown[] = [];
     const table = await listProcessTable(1_234, (file, args, options) => {
       runs.push({ file, args, options });
-      return Promise.resolve({ stdout: " 5000  4000  5000 S    sh\n" });
+      return Promise.resolve({ stdout });
     });
-    expect(table).toEqual([leaderRow]);
+    expect(table).toEqual([
+      leaderRow,
+      row({ pid: 5001, ppid: LEADER, pgid: 5001 }, "Z", ""),
+      row({ pid: 5002, ppid: LEADER, pgid: 5002 }, "T", "Google Chrome He"),
+    ]);
     expect(runs).toEqual([
       {
         file: "/bin/ps",
-        args: ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm="],
+        args: ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm=,pid="],
         options: { timeout: 1_234, maxBuffer: 16 * 1024 * 1024, killSignal: "SIGKILL" },
       },
     ]);
+  });
+
+  test("rejects a read with any line that is not one whole row", () => {
+    for (const line of [
+      " 5000  4000  5000 S    sh",
+      " 5000  4000  5000 S    sh  5001",
+      "69992 69991 69988 S    a\n1 5000 1 S    69992", // `ps` prints a name with a newline raw
+      "6000 1 6000 S sh 6000", // a pid read twice
+    ]) {
+      expect(() => parseProcessTable(`6000 1 6000 S sh 6000\n${line}`)).toThrow("one whole row");
+    }
   });
 });
 

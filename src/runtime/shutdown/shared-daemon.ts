@@ -19,6 +19,7 @@ import {
   childrenByParent,
   listProcessTableShared,
   type ProcessEntry,
+  PS_PATH,
   type PsRunner,
   type PsRunOptions,
   psRunOptions,
@@ -29,28 +30,40 @@ import {
 const DAEMON_INSTALL_DIR = "/packages/app-server-daemon/";
 /** The short name of the Codex binary, the TUI's and the daemon's alike. */
 const CODEX = "codex";
-const PS_PATH = "/bin/ps";
 
 /**
- * The shared table read, with each of Codex's daemons among `roots` and their
- * descendants marked `sharedDaemon`, all within `timeoutMs`.
+ * Where a walk's reads mark Codex's daemon: among `roots` and their descendants. `known`
+ * holds each process a read found to be one, by pid, parent, and group, so no later read
+ * of the walk probes it again. Only a daemon is remembered, so a stale entry can only
+ * spare a process, never expose one, and a process that `exec`s the daemon is found.
+ */
+export type DaemonScope = { readonly roots: readonly number[]; readonly known: Set<string> };
+
+/** A fresh scope for one walk from `roots`. */
+export function daemonScope(roots: readonly number[]): DaemonScope {
+  return { roots, known: new Set() };
+}
+
+/**
+ * The shared table read, with each of Codex's daemons in `scope` marked `sharedDaemon`,
+ * all within `timeoutMs`. Without a scope, nothing is marked.
  */
 export async function listMarkingSharedDaemons(
   timeoutMs: number,
-  roots: readonly number[] = [],
+  scope: DaemonScope = daemonScope([]),
   list: (timeoutMs: number) => Promise<readonly ProcessEntry[]> = listProcessTableShared,
   run: PsRunner = runFile,
 ): Promise<readonly ProcessEntry[]> {
   const deadline = performance.now() + timeoutMs;
   const table = await list(timeoutMs);
   const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()));
-  return markSharedDaemons(table, roots, run, psRunOptions(remainingMs));
+  return markSharedDaemons(table, scope, run, psRunOptions(remainingMs));
 }
 
-/** `table`, each daemon under `roots` marked; one exited by its read (`ps` exits 1) is none. */
+/** `table`, each daemon in `scope` marked; one exited by its read (`ps` exits 1) is none. */
 async function markSharedDaemons(
   table: readonly ProcessEntry[],
-  roots: readonly number[],
+  { roots, known }: DaemonScope,
   run: PsRunner,
   options: PsRunOptions,
 ): Promise<readonly ProcessEntry[]> {
@@ -62,10 +75,14 @@ async function markSharedDaemons(
       row.pgid === row.pid &&
       (row.ppid === 1 || names.get(row.ppid) === CODEX),
   );
-  if (candidates.length === 0) return table;
-  const isDaemon = async ({ pid }: ProcessEntry) =>
-    (await pathOf(pid, run, options)).includes(DAEMON_INSTALL_DIR) ? [pid] : [];
-  const daemons = new Set((await Promise.all(candidates.map(isDaemon))).flat());
+  const key = (row: ProcessEntry) => `${row.pid} ${row.ppid} ${row.pgid}`;
+  const unknown = candidates.filter((row) => !known.has(key(row)));
+  const probe = async (row: ProcessEntry) => ({ row, path: await pathOf(row.pid, run, options) });
+  for (const { row, path } of await Promise.all(unknown.map(probe))) {
+    if (path.includes(DAEMON_INSTALL_DIR)) known.add(key(row));
+  }
+  const daemons = new Set(candidates.filter((row) => known.has(key(row))).map((row) => row.pid));
+  if (daemons.size === 0) return table;
   return table.map((row) => (daemons.has(row.pid) ? { ...row, sharedDaemon: true } : row));
 }
 
