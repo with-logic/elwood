@@ -30,8 +30,9 @@ Useful CLI capabilities for Elwood:
   trust prompt. Elwood must detect support before passing it because other Codex
   versions reject unknown flags. Detection runs `codex --help` in the directory
   the session launches in, since a per-directory tool manager can resolve a
-  different build there, and keeps the answer for the last directory it ran in,
-  like the version check (PRD §9.2); every update attempt drops it.
+  different build there, and keeps the answer per directory like the version
+  check (PRD §9.2): the 32 most recently used directories, a directory deleted
+  and made again probed again, and every answer dropped after an update attempt.
 - Codex can also render interactive trust and update prompts before the session
   is usable. Elwood should select `Trust all and continue` for hook prompts, and
   skip TUI update prompts because API-level `autoupdate` runs `codex update`
