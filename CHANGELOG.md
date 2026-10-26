@@ -32,6 +32,12 @@ back each entry are listed in `prd/14-conformance.md`.
   if cleanup fails as well, its message is in `details.cleanupError`. `close()`
   keeps those messages too, as `cleanupError` and `killCleanupError`.
 
+- Raw input a host sends from inside one of Elwood's own writes, such as from an
+  `xterm.onData` listener reacting to Elwood's keys, now revokes Elwood's
+  automation like any other raw input. Before, it counted as part of Elwood's
+  write, so a model-picker operation, composer cleanup, question answer, or
+  startup-prompt answer kept writing after the caller's keys.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for

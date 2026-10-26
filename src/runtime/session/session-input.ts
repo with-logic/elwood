@@ -61,8 +61,16 @@ export class SessionInputOwnership {
     // represent caller keys. Native startup queries must not revoke draft ownership.
     const input = inner.xterm.input.bind(inner.xterm);
     inner.xterm.input = (data, wasUserInput) => {
-      if (!automating) revoke();
-      input(data, wasUserInput);
+      // Each write consumes the automation marker while xterm runs it, so input that an
+      // `onData` listener sends from inside an automated write is the caller's and revokes.
+      const automated = automating;
+      automating = false;
+      try {
+        if (!automated) revoke();
+        input(data, wasUserInput);
+      } finally {
+        automating = automated;
+      }
     };
     const automate = (work: AutomatedWork) => {
       const prior = automating;
