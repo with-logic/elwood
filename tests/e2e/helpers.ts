@@ -24,7 +24,6 @@ import { waitFor } from "./wait-for.ts";
 
 export {
   type AgentName,
-  e2eTimeoutMs,
   requireAll,
   skipIf,
   skipNow,
@@ -33,6 +32,7 @@ export {
   turnsEnabled,
 } from "./availability.ts";
 export { invokeHookBridge, parseJsonOutput } from "./bridge-helpers.ts";
+export { e2eTimeoutMs } from "./timeout.ts";
 export {
   type CodexSandbox,
   codexAuthMissing,
