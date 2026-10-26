@@ -1,28 +1,47 @@
 /**
  * The CLI's diagnostic for a failed session cleanup (PRD §12A.2, C-CLI-09): it names the
- * typed Elwood failures behind it, each by its error code and errno token, and never
- * carries their messages, paths, or other free text.
+ * typed Elwood failures behind it, each always by its error code and by its errno tokens
+ * when it has valid ones. It never carries their messages, paths, or other free text.
+ * Text mode's error lines (§12A.3) carry it beside a different primary failure.
  */
 
 import { ElwoodError } from "../../core/errors.ts";
 import type { TeardownFailure } from "../../runtime/shutdown/teardown.ts";
+import type { CliError } from "./types.ts";
 
+// Every system errno name fits easily (the longest, such as EPROTONOSUPPORT, are 15
+// characters). The cap only bounds what a malformed value can add to a one-line diagnostic.
+const MAX_ERRNO_SUFFIX_LENGTH = 40;
 // An errno-shaped token (`EPERM`, `ETIMEDOUT`): fixed by the platform, never user content.
-const ERRNO_TOKEN = /^E[A-Z0-9_]{1,40}$/;
+const ERRNO_TOKEN = new RegExp(`^E[A-Z0-9_]{1,${MAX_ERRNO_SUFFIX_LENGTH}}$`);
 
 type TypedCause = Pick<ElwoodError, "code" | "details">;
 
 /**
  * `Cleanup failed.`, or `Cleanup failed (termination_failed EPERM).` when the failure is
  * typed. A `teardown_failed` from `teardown()` is summarized by the typed failures of its
- * steps (`details.failures`, §10); an untyped one adds nothing.
+ * steps (`details.failures`, §10), in order; an untyped one adds nothing.
  */
 export function cleanupFailureMessage(error: unknown): string {
-  const parts = typedCauses(error).map(({ code, details }) => {
-    const errno = details["errno"];
-    return typeof errno === "string" && ERRNO_TOKEN.test(errno) ? `${code} ${errno}` : code;
-  });
+  const parts = typedCauses(error).map(describeCause);
   return parts.length === 0 ? "Cleanup failed." : `Cleanup failed (${parts.join(", ")}).`;
+}
+
+/**
+ * Text mode's stderr lines for an error record (§12A.3), each `prefix` then a sanitized
+ * value: the error, then the cleanup diagnostic when a failed cleanup sits behind a
+ * different primary failure (§12A.2). A cleanup failure that is itself the primary
+ * failure is the error's own line.
+ */
+export function textErrorLines(
+  record: CliError,
+  prefix: string,
+  value: (text: string) => string,
+): string {
+  const { cleanup, error } = record;
+  const separate = cleanup.status === "failed" && error.code !== "cleanup_failed";
+  const lines = separate ? [error.message, cleanup.error] : [error.message];
+  return lines.map((line) => `${prefix}${value(line)}\n`).join("");
 }
 
 function typedCauses(error: unknown): readonly TypedCause[] {
@@ -31,4 +50,17 @@ function typedCauses(error: unknown): readonly TypedCause[] {
   if (!Array.isArray(failures)) return [error];
   // `runTeardownSteps` builds this list; an untyped step failure has only a message.
   return (failures as readonly TeardownFailure[]).filter((failure) => "code" in failure);
+}
+
+/** `termination_failed EIO reap EPERM`: the code, its errno, then its reap's (§10). */
+function describeCause({ code, details }: TypedCause): string {
+  const errno = errnoToken(details["errno"]);
+  const reapErrno = errnoToken(details["reapErrno"]);
+  return [code, errno, reapErrno === undefined ? undefined : `reap ${reapErrno}`]
+    .filter((part) => part !== undefined)
+    .join(" ");
+}
+
+function errnoToken(value: unknown): string | undefined {
+  return typeof value === "string" && ERRNO_TOKEN.test(value) ? value : undefined;
 }

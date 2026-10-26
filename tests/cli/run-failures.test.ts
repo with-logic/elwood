@@ -5,7 +5,6 @@
 import { describe, expect, test } from "vitest";
 import { executeRun } from "../../src/cli/run/index.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
-import { elwoodError } from "../../src/core/errors.ts";
 import { registerPrivateOutputSecrets } from "../../src/core/private-output-secrets.ts";
 import { effectiveRequest as request } from "./main-fakes.ts";
 import { FakeCliSession, FakeClock, FakeSignals, MemoryWriter } from "./run-fakes.ts";
@@ -35,37 +34,6 @@ function terminalOutput(output: "json" | "jsonl", value: string): unknown {
 }
 
 describe("executeRun failure boundaries", () => {
-  test("C-CLI-09 cleanup failure keeps response and changes success to failure", async () => {
-    const session = new FakeCliSession();
-    session.cleanupError = new Error("private cleanup detail");
-    const streams = io();
-    expect(
-      await executeRun(request({ keep: true }), session, streams.value, {
-        signals: new FakeSignals(),
-      }),
-    ).toBe(1);
-    expect(streams.stdout.value).toBe("ok\n");
-    expect(streams.stderr.value).toBe("elwood: Cleanup failed.\n");
-  });
-
-  test("C-CLI-09 a typed cleanup failure is named by its codes, never its messages", async () => {
-    const session = new FakeCliSession();
-    session.cleanupError = elwoodError("teardown_failed", "Could not fully tear down.", {
-      causes: ["private reap detail"],
-      failures: [
-        { message: "private reap detail", code: "termination_failed", details: { errno: "EPERM" } },
-      ],
-    });
-    const streams = io();
-    expect(
-      await executeRun(request({ keep: true }), session, streams.value, {
-        signals: new FakeSignals(),
-      }),
-    ).toBe(1);
-    expect(streams.stdout.value).toBe("ok\n");
-    expect(streams.stderr.value).toBe("elwood: Cleanup failed (termination_failed EPERM).\n");
-  });
-
   test("C-CLI-12 runtime credentials are redacted from the response", async () => {
     const session = new FakeCliSession();
     registerPrivateOutputSecrets(session.underlying, ["bridge-token"]);

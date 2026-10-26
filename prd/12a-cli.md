@@ -114,10 +114,15 @@ available on later failure.
 Cleanup runs exactly once. A cleanup failure never masks a primary usage,
 agent, timeout, or interruption outcome, and it changes an otherwise successful
 invocation to failure. Its diagnostic names only the typed Elwood failures behind
-it, each by error code and errno token, for example `Cleanup failed
-(termination_failed EPERM).` For a failed teardown those are its failed steps'
-(§10 `teardown_failed`). It never carries their messages, and a failure with no
-typed cause reads `Cleanup failed.`
+it. Each always appears as its error code, followed by its errno token and then
+`reap` and its reap's errno token (§10 `termination_failed`) when those are valid
+errno names: for example `Cleanup failed (termination_failed EPERM).` or `Cleanup
+failed (termination_failed reap EPERM).` For a failed teardown those are its failed
+steps', in order (§10 `teardown_failed`). The diagnostic never carries their
+messages or paths, and a failure with no typed cause reads `Cleanup failed.` In
+text mode, a cleanup failure behind a different primary failure is its own stderr
+line after the primary error's; a combined `models` listing (§12A.10) prefixes it
+with the agent, as it does that agent's error.
 
 ### 12A.3 Output protocols
 

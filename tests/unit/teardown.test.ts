@@ -26,14 +26,14 @@ describe("runTeardownSteps", () => {
   });
 
   test("C-LIFE-10 keeps each typed step failure's code and details", async () => {
-    const reap = elwoodError(
-      "termination_failed",
-      "PTY exited but its process group could not be reaped.",
-      {
-        cause: "EPERM",
-        errno: "EPERM",
-      },
-    );
+    // Every detail `terminatePty` can attach: the PTY signal's cause, then the reap's.
+    const reap = elwoodError("termination_failed", "Could not terminate the PTY: EIO", {
+      cause: "EIO",
+      errno: "EIO",
+      syscall: "kill",
+      reapError: "kill EPERM",
+      reapErrno: "EPERM",
+    });
     await expect(
       runTeardownSteps([
         () => {
