@@ -9,7 +9,10 @@
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, normalize, resolve, sep } from "node:path";
+import { isErrnoToken } from "../../core/errors.ts";
 import { isRecord } from "../../core/predicates.ts";
+import type { ImageCopyErrorCode } from "../../core/warnings/images.ts";
+import { boundedErrorToken } from "../../core/warnings/reasons.ts";
 import { payloadOf } from "../transcript/payload.ts";
 
 /** The name Codex gives a pasted image's copy (a random suffix, six characters or a UUID). */
@@ -62,23 +65,34 @@ export class CodexClipboardCopies {
   }
 
   /**
-   * Removes every copy named so far, then calls `done`: at once when there are none, else
-   * once the removals have finished. They run one at a time, so a session that pasted many
-   * images never blocks the event loop on them. Best-effort, as Elwood's own image temp
-   * files are (C-API-44): a copy that cannot be removed is left for the OS to reap.
+   * Removes every copy named so far, then calls `done` with the first failure's errno token,
+   * or `undefined` when every copy is gone: at once when there are none, else once the
+   * removals have finished. They run one at a time, so a session that pasted many images
+   * never blocks the event loop on them. Best-effort, as Elwood's own image temp files are
+   * (C-API-44): a copy that cannot be removed is left for the OS to reap. A copy already gone
+   * is not a failure.
    */
-  removeAll(done: () => void): void {
+  removeAll(done: (failure: ImageCopyErrorCode | undefined) => void): void {
     const paths = [...this.paths];
     this.paths.clear();
     if (paths.length === 0) {
-      done();
+      done(undefined);
       return;
     }
     // `done` runs outside the removal's promise, as a deferred exit already does.
-    void removeEach(paths).then(() => queueMicrotask(done));
+    void removeEach(paths).then((failure) => queueMicrotask(() => done(failure)));
   }
 }
 
-async function removeEach(paths: readonly string[]): Promise<void> {
-  for (const path of paths) await unlink(path).catch(() => undefined);
+async function removeEach(paths: readonly string[]): Promise<ImageCopyErrorCode | undefined> {
+  let failure: ImageCopyErrorCode | undefined;
+  for (const path of paths) {
+    const code = await unlink(path).then(
+      () => undefined,
+      // The errno token, else `UnknownError`: never a path or a raw message.
+      (error: unknown) => boundedErrorToken(error, isErrnoToken),
+    );
+    if (code !== undefined && code !== "ENOENT") failure ??= code;
+  }
+  return failure;
 }

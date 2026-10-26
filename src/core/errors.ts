@@ -93,12 +93,17 @@ export function errnoCode(error: unknown): string | undefined {
 const MAX_ERRNO_SUFFIX_LENGTH = 40;
 const ERRNO_TOKEN = new RegExp(`^E[A-Z0-9_]{1,${MAX_ERRNO_SUFFIX_LENGTH}}$`);
 
+declare const errnoTokenBrand: unique symbol;
+
+/** A string `isErrnoToken` accepted, so a producer cannot pass unchecked text where one goes. */
+export type ErrnoToken = string & { readonly [errnoTokenBrand]: true };
+
 /**
  * True for an errno-shaped token (`EPERM`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`): fixed by
  * the platform or Node, never process or user content, so it can travel in a public
  * message or a CLI diagnostic.
  */
-export function isErrnoToken(value: unknown): value is string {
+export function isErrnoToken(value: unknown): value is ErrnoToken {
   return typeof value === "string" && ERRNO_TOKEN.test(value);
 }
 
