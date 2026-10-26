@@ -4,6 +4,7 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
+import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
 import type { CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 
@@ -57,49 +58,33 @@ function finalizeAutoupdate(
   }
 }
 
-// The in-flight/settled `--version` read per adapter. Caching the PROMISE (not the value) means N
-// concurrent first spawns share ONE subprocess rather than each starting its own.
-const versionReads = new Map<UpdateAdapter, Promise<CommandResult>>();
+/** A `--version` read that ran and exited 0; a killed, unspawnable, or failing one is not kept. */
+const readSucceeded = (result: CommandResult): boolean =>
+  result.status === 0 && result.error === undefined;
+
+// The `--version` read per adapter. Concurrent first spawns share the in-flight PROMISE, so N of
+// them start ONE subprocess; once it settles, only a successful read is kept, as a value.
+const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
+  claude: createProbeCache(1, readSucceeded),
+  codex: createProbeCache(1, readSucceeded),
+};
 
 /**
- * Reads the adapter's `--version` at most once per process. Concurrent first callers share the
- * single in-flight read; later callers reuse the settled result. A REJECTED read is evicted (not
- * retained), so a transient failure does not poison later callers — they re-attempt. Invalidated
- * after an autoupdate so the post-update version is re-read.
+ * Reads the adapter's `--version` once per process for as long as a read succeeds. Concurrent
+ * callers share the single in-flight read and its outcome; later callers reuse a successful
+ * result. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
+ * error), is not retained, so the next caller after it settles reads again (C-LIFE-11).
+ * Invalidated after an autoupdate so the post-update version is re-read.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
   read: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
-  return dedupeInFlight(versionReads, adapter, read);
+  return versionReads[adapter].get(adapter, read);
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {
-  versionReads.delete(adapter);
-}
-
-/**
- * Share one in-flight promise per key, but EVICT the entry if it rejects, so a rejected result is
- * never retained/replayed to a later caller (which would poison the process). A successful result
- * stays cached for the process lifetime. This is the general guard against the "cached rejected
- * promise poisons every later caller" class of bug (C-LIFE-11).
- */
-export function dedupeInFlight<K, T>(
-  cache: Map<K, Promise<T>>,
-  key: K,
-  run: () => Promise<T>,
-): Promise<T> {
-  const existing = cache.get(key);
-  if (existing) return existing;
-  const pending = run();
-  cache.set(key, pending);
-  // Evict on rejection so the next caller retries rather than inheriting the failure. Identity-
-  // guarded (only evict if THIS promise is still cached), so a later successful entry is never
-  // clobbered. The `.catch` also keeps the eviction chain from becoming an unhandled rejection.
-  pending.catch(() => {
-    if (cache.get(key) === pending) cache.delete(key);
-  });
-  return pending;
+  versionReads[adapter].clear();
 }
 
 export function resetAutoupdateForTests(): void {
@@ -115,5 +100,5 @@ export function setUpdateCoordinatorForTests(coordinator: typeof coordinatedAuto
 }
 
 export function resetPreflightCacheForTests(): void {
-  versionReads.clear();
+  for (const cache of Object.values(versionReads)) cache.clear();
 }

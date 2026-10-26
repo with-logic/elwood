@@ -204,6 +204,12 @@ surface as a start-blocking error; it is contained and surfaces as the live
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.
 
+At most 8 non-PTY probes run at once in a parent process, because each starts an
+interactive login shell and a heavy profile slows every shell that runs beside it.
+Further probes wait their turn in arrival order. A waiting probe has not started:
+its launch bound begins when it runs, and a probe that fails frees its turn like
+one that succeeds.
+
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
 running. The default wait must be long enough to catch typical local CLI startup

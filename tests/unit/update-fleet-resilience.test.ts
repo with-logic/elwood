@@ -9,13 +9,13 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import {
   detectCodexCliCapabilities,
+  preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   cachedAutoupdate,
   cachedVersionRead,
-  dedupeInFlight,
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
   setUpdateCoordinatorForTests,
@@ -84,6 +84,32 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     resetPreflight();
   });
 
+  const failedReads = [
+    { status: 1, stdout: "", stderr: "boom" },
+    { status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT", message: "timed out" } },
+  ];
+  const adapters = [
+    { agent: "claude", preflight: preflightClaude, version: "2.1.144" },
+    { agent: "codex", preflight: preflightCodex, version: "codex-cli 0.132.0" },
+  ] as const;
+  test.each(
+    adapters.flatMap((adapter) => failedReads.map((failed) => ({ ...adapter, failed }))),
+  )("C-LIFE-11 a failed $agent --version read is not kept, so a later start re-reads it", async ({
+    agent,
+    preflight,
+    version,
+    failed,
+  }) => {
+    let reads = 0;
+    setCommandRunnerForTests((_command, args) => {
+      if (!args.join(" ").includes("--version")) return { status: 0, stdout: "", stderr: "" };
+      return ++reads === 1 ? failed : { status: 0, stdout: version, stderr: "" };
+    });
+    await expect(preflight(false)).rejects.toMatchObject({ code: `${agent}_start_failed` });
+    await expect(preflight(false)).resolves.toBeUndefined();
+    expect(reads).toBe(2);
+  });
+
   test("detectCodexCliCapabilities does not poison later starts after a failed `codex --help`", async () => {
     let helps = 0;
     setCommandRunnerForTests((_command, args) => {
@@ -100,17 +126,6 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     });
     // A later start re-probes (the rejected capability promise was evicted), and recovers.
     await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
-  });
-
-  test("dedupeInFlight: identity-guarded eviction never clobbers a later successful entry", async () => {
-    const cache = new Map<string, Promise<string>>();
-    // A rejecting call is cached then evicted on rejection.
-    const failing = dedupeInFlight(cache, "k", () => Promise.reject(new Error("boom")));
-    await expect(failing).rejects.toThrow(/boom/);
-    // A subsequent successful call caches its own entry; the earlier eviction must not delete it.
-    const ok = dedupeInFlight(cache, "k", () => Promise.resolve("value"));
-    await expect(ok).resolves.toBe("value");
-    expect(cache.get("k")).toBe(ok); // the successful entry survives (identity-guarded eviction)
   });
 
   test("autoupdate finalization failures are contained as outcomes", async () => {
