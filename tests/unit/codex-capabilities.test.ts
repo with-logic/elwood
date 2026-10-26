@@ -112,7 +112,7 @@ describe("Codex capability detection", () => {
     // not "capability unsupported".
     for (const error of [
       { code: "ETIMEDOUT", message: "probe timed out after 15000 ms" },
-      { code: "E2BIG", message: "probe output exceeded 1000000 bytes" },
+      { code: "E2BIG", message: "a probe output stream exceeded 1000000 bytes" },
     ]) {
       resetCodexPreflightCacheForTests();
       setCommandRunnerForTests(() => ({ status: null, stdout: "", stderr: "", error }));
