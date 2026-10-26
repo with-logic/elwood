@@ -4,15 +4,15 @@
  * request-framing tests (PRD §6).
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { useCodexHome } from "../helpers/codex-home.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 export { restoreCodexHome } from "../helpers/codex-home.ts";
 
+/** A fresh temp dir, removed (recursively) when the calling test finishes. */
 export function tempDirForUnit(): string {
-  return mkdtempSync(join(tmpdir(), "elwood-unit-"));
+  return tempDir("elwood-unit-");
 }
 
 /**
