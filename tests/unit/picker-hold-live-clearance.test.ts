@@ -1,7 +1,7 @@
 /** Foreign picker holds share native render evidence through input views (C-API-55). */
 import { readFileSync } from "node:fs";
 import { expect, onTestFinished, test, vi } from "vitest";
-import { claudeModelComposerClearance } from "../../src/claude/model-composer.ts";
+import { claudeLastComposerClearance } from "../../src/claude/composer/last.ts";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
@@ -34,7 +34,7 @@ test.each([
     ...original,
     isClear:
       agent === "claude"
-        ? liveClaudeClearance(() => terminal, claudeModelComposerClearance)
+        ? liveClaudeClearance(() => terminal, claudeLastComposerClearance)
         : liveCodexClearance(() => terminal),
   };
   const hold = new PickerHold();

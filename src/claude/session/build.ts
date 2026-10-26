@@ -17,6 +17,7 @@ import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
 import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
+import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
@@ -108,7 +109,7 @@ export async function buildClaudeSession(
     () => session,
     () => promptResponder,
     readiness,
-    liveClaudeClearance(() => terminal),
+    liveClaudeIdleComposer(() => terminal),
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,
