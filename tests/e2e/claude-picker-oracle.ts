@@ -1,7 +1,6 @@
 /**
  * An independent reading of Claude's own `/model` picker, its row count and the current
- * model's effort, for the real-CLI listing e2e (C-API-23, C-API-41), and a check that the
- * picker under test lists the served model catalog rather than Claude's compiled fallback.
+ * model's effort, for the real-CLI listing e2e (C-API-23, C-API-41).
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -77,26 +76,4 @@ export function savedClaudeModel(): unknown {
   const settings: unknown = JSON.parse(readFileSync(path, "utf8"));
   if (!isRecord(settings)) throw new Error(`${path} does not hold a JSON object.`);
   return settings["model"];
-}
-
-/** The rows Claude 2.1.310 compiles in, listed when it does not adopt the served catalog. */
-const compiledFallbackIds = "default,opus,fable,sonnet,haiku";
-
-/**
- * Returns `models` unless they are Claude's compiled fallback picker, which has no hidden rows
- * to walk. Claude settles on it once per process, so the run fails with the likely cause
- * instead of retrying: a degraded environment stays visible.
- */
-export function servedClaudeCatalog(
-  models: readonly AgentModelOption[],
-): readonly AgentModelOption[] {
-  if (models.map((model) => model.id).join() !== compiledFallbackIds) return models;
-  throw new Error(
-    "Claude listed its compiled fallback picker (Default, Opus, Fable, Sonnet, Haiku), not " +
-      "the served model catalog, so this run cannot test the catalog walk. Claude 2.1.310 " +
-      "settles on the fallback for the whole process when CLAUDE_CODE_MODEL_CATALOG is off, " +
-      "nonessential traffic is disabled, the provider is not first-party, its " +
-      "tengu_delegated_quail flag is off, or ~/.claude/cache/model-catalog/ holds no catalog " +
-      "and the first fetch takes longer than about 1.75 s (a loaded machine or slow network).",
-  );
 }

@@ -17,12 +17,12 @@ import {
   listCodexModels,
   startClaude,
 } from "../../src/index.ts";
+import { rejectCompiledClaudeFallback } from "./claude-compiled-fallback.ts";
 import {
   claudePickerRowCount,
   hasCompletePickerOrder,
   readClaudePicker,
   savedClaudeModel,
-  servedClaudeCatalog,
 } from "./claude-picker-oracle.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import { startReadyCodex } from "./codex-ready.ts";
@@ -60,7 +60,7 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       hooks: {},
     });
     await waitFor(() => (session?.status === "ready" ? true : undefined), "claude ready", 60_000);
-    const models = servedClaudeCatalog(await session.listModels());
+    const models = rejectCompiledClaudeFallback(await session.listModels());
     assert.ok(models.length >= 3, "picker lists several models");
     assert.ok(hasCompletePickerOrder(models), "every row, none missing, in picker order");
     // Claude paints the picker over its slash-command menu; a list read mid-paint is short.
@@ -156,7 +156,7 @@ test("C-API-41 real listClaudeModels returns models without a caller-held sessio
   timeout: 150_000,
 }, async () => {
   const project = makeProject("claude");
-  const models = servedClaudeCatalog(await listClaudeModels(project));
+  const models = rejectCompiledClaudeFallback(await listClaudeModels(project));
   assert.equal(models.length, await claudePickerRowCount(project), "every row the picker counts");
   assert.ok(hasCompletePickerOrder(models), "every row, none missing, in picker order");
   // A probe that read the picker mid-paint returned one row, or none, in 3 of 5 runs.
