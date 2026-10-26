@@ -65,6 +65,7 @@ test.each([
     "Private Claude authentication holds no Claude login",
   );
   expect(readdirSync(tmp)).toEqual([]);
+  expect(mocks.remove).not.toHaveBeenCalled(); // no private root was made to clean up
 });
 
 test("a Keychain without the Claude login item stops setup before any private file", async () => {
@@ -81,6 +82,7 @@ test("a Keychain without the Claude login item stops setup before any private fi
     "Private Claude authentication unavailable",
   );
   expect(readdirSync(tmp)).toEqual([]);
+  expect(mocks.remove).not.toHaveBeenCalled(); // no private root was made to clean up
 });
 
 test("a temp dir inside the parent's Claude config dir is refused", async () => {
