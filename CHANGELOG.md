@@ -18,6 +18,12 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
+  a startup trust gate, such as the bypass-permissions dialog when a resume adds
+  `highTrust` in a config that never accepted bypass mode. Before, it stayed
+  `running` after the gate cleared: the resumed transcript repaints the earlier
+  prompts as `❯ <prompt>`, and Elwood did not count the composer below them as
+  proof that the gate was gone.
 - A Claude session whose permission dialog is declined with Escape now returns to
   `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
   `blocked` while the prompt that led to the dialog was still on screen: Claude
