@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `teardown()`'s retry of a failed process-group reap now fails with the typed
+  `termination_failed`, as `stop()`'s and `kill()`'s retries already did. Before,
+  its raw system error made the retry an untyped step failure, so
+  `teardown_failed.details.failures` lost its errno and process-group id and the
+  CLI's cleanup diagnostic read only `Cleanup failed.` when no other step was
+  typed.
+
 - `teardown_failed` now keeps what each failed step reported. Alongside
   `details.causes` (the messages), `details.failures` lists each failed step,
   with its `code` and `details` when it was a typed Elwood error, so a failed
