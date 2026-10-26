@@ -11,7 +11,8 @@ import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { type ClaudeSessionApi, ElwoodError, startClaude } from "../../src/index.ts";
-import { homeGuardStoppedReason, shellQuote } from "../../src/runtime/shell.ts";
+import { homeGuardStoppedReason } from "../../src/runtime/home-guard/index.ts";
+import { shellQuote } from "../../src/runtime/shell.ts";
 import { notZsh, useExportingZdotdir } from "./exporting-zdotdir.ts";
 import { cleanup, makeProject, skipIf, skipReason } from "./helpers.ts";
 
