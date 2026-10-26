@@ -18,22 +18,23 @@
  * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
 
-import { errnoCode } from "../../core/errors.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import { type SweepOps, sweepDetachedGroups } from "./detached-sweep/index.ts";
+import { sweepDetachedGroups } from "./detached-sweep/index.ts";
 import { type SurvivorWatch, watchSurvivors } from "./detached-sweep/survivors.ts";
-import { UNREAD } from "./process-table.ts";
-import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
+import {
+  activeProcessTreeOps,
+  type GroupReapOps,
+  type ProcessTreeOps,
+} from "./process-tree-ops.ts";
 
-/**
- * The process-tree operations teardown performs, injectable so tests never signal real
- * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, the
- * SIGCONT that resumes a group holding Codex's daemon, and table read.
- */
-export type ProcessTreeOps = SweepOps;
-
-/** The part of the process-tree ops the group reap uses. */
-type GroupReapOps = Pick<ProcessTreeOps, "killGroup">;
+export {
+  osProcessTreeOps,
+  type ProcessTreeOps,
+  quietProcessTree,
+  resetProcessTreeOpsForTests,
+  rethrowUnlessGroupGone,
+  setProcessTreeOpsForTests,
+} from "./process-tree-ops.ts";
 
 /**
  * A pgid is reapable when it identifies the KNOWN-OWNED node-pty leader's group
@@ -63,72 +64,12 @@ function isReapableGroupId(pgid: number): boolean {
  * (leader and children exited together) is the normal case and its `ESRCH` is
  * swallowed; a real kill failure such as `EPERM` propagates.
  */
-export function reapProcessGroup(leaderPid: number, ops: GroupReapOps = activeOps): void {
+export function reapProcessGroup(
+  leaderPid: number,
+  ops: GroupReapOps = activeProcessTreeOps(),
+): void {
   if (!isReapableGroupId(leaderPid)) return;
   ops.killGroup(leaderPid);
-}
-
-// Production uses `process.kill` and `/bin/ps`. One seam covers the group reap AND the
-// detached sweep, so a test that fakes the kill can never leave a real sweep live.
-// Exported for a real-process test that wraps one of them.
-export const osProcessTreeOps: ProcessTreeOps = {
-  killGroup(pgid: number): void {
-    try {
-      process.kill(-pgid, "SIGKILL");
-    } catch (error) {
-      rethrowUnlessGroupGone(error);
-    }
-  },
-  stopGroup(pgid: number): void {
-    process.kill(-pgid, "SIGSTOP");
-  },
-  continueGroup(pgid: number): void {
-    process.kill(-pgid, "SIGCONT");
-  },
-  listProcesses: (timeoutMs, scope) => listProcessTableMarkingDaemon(timeoutMs, scope),
-};
-
-// The ops used when a caller does not inject them. A test seam so session lifecycle
-// tests can observe (and neutralize) the group SIGKILL without a real signal, and
-// without every session/terminate call site taking an ops param.
-let activeOps: ProcessTreeOps = osProcessTreeOps;
-
-/**
- * Replaces the process-tree ops. Ops a test leaves out become inert, never the real
- * ones, so faking only the kill cannot leave a real sweep live (see `quietProcessTree`).
- */
-export function setProcessTreeOpsForTests(ops: GroupReapOps & Partial<ProcessTreeOps>): void {
-  activeOps = { ...quietProcessTree(), ...ops };
-}
-
-/**
- * Inert sweep ops for tests: a process tree holding only the group leaders it was asked
- * to stop, each read as stopped with nothing under it. A sweep driven by them signals
- * no real process, finds no descendant, and converges on its second read.
- */
-export function quietProcessTree(): Omit<ProcessTreeOps, "killGroup"> {
-  const stopped = new Set<number>();
-  return {
-    stopGroup: (pgid) => void stopped.add(pgid),
-    continueGroup: (pgid) => void stopped.delete(pgid),
-    listProcesses: () =>
-      Promise.resolve([...stopped].map((pgid) => ({ ...QUIET_ROW, pid: pgid, pgid }))),
-  };
-}
-
-const QUIET_ROW = { ...UNREAD, ppid: 1, stopped: true };
-
-export function resetProcessTreeOpsForTests(): void {
-  activeOps = osProcessTreeOps;
-}
-
-/**
- * Swallows the ESRCH of an already-empty group (the leader and its children exited
- * together) and rethrows anything else, such as EPERM, a real failure. `errnoCode`
- * narrows first, so a thrown `null` is rethrown as is (C-ERR-01). Exported for coverage.
- */
-export function rethrowUnlessGroupGone(error: unknown): void {
-  if (errnoCode(error) !== "ESRCH") throw error;
 }
 
 /**
@@ -146,7 +87,7 @@ export class SessionReaper {
   /** The first sweep or survivor reap that failed; with the leader gone it can't be retried. */
   private unresolvedSweep: SweepFailure | undefined;
 
-  constructor(leaderPid: number, ops: ProcessTreeOps = activeOps) {
+  constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
     this.ops = ops;
   }
