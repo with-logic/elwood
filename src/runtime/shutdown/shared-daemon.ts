@@ -37,7 +37,12 @@ import {
 const DAEMON_INSTALL_DIR = "/packages/app-server-daemon/";
 /** The short name of the Codex binary, the TUI's and the daemon's alike. */
 const CODEX = "codex";
-/** The most path reads, each a `ps` of its own, that one table read runs at once. */
+/**
+ * The most path reads, each a `ps` of its own, that one table read runs at once. A real
+ * session shows at most two candidates, the daemon and its updater, so both are read in
+ * one round, with room to spare; past that, each further `ps` at once costs a loaded host
+ * about another table read just as a fleet's shutdown loads it most (docs/cli-behavior.md).
+ */
 export const PATH_READS_AT_ONCE = 4;
 
 /**
@@ -128,24 +133,31 @@ function reachable(table: readonly ProcessEntry[], roots: ReadonlySet<number>): 
   return [...found.values()];
 }
 
-/** The `comm` of `pid`, or `""` once it has exited; it fails past `deadline`. */
+/**
+ * The `comm` of `pid`, or `""` once it has exited. Past `deadline`, it fails as a table
+ * read that timed out does (`ETIMEDOUT`), whether it never started or ran out of time.
+ */
 function pathOf(pid: number, run: PsRunner, deadline: number): Promise<string> {
   const remainingMs = Math.ceil(deadline - performance.now());
-  if (remainingMs <= 0) {
-    const late = new Error("process table read timed out before its path reads");
-    return Promise.reject(Object.assign(late, { code: "ETIMEDOUT" }));
-  }
+  if (remainingMs <= 0) return Promise.reject(timedOut("before its path reads"));
   return run(PS_PATH, ["-o", "comm=", "-p", String(pid)], psRunOptions(remainingMs)).then(
     (result) => result.stdout.trim(),
     (error: unknown) => {
-      if (exited(error)) return "";
+      if (isTargetPidMissing(error)) return "";
+      if (performance.now() >= deadline) throw timedOut("in a path read");
       throw error;
     },
   );
 }
 
+function timedOut(where: string): Error {
+  return Object.assign(new Error(`process table read timed out ${where}`), {
+    code: "ETIMEDOUT",
+  });
+}
+
 /** `ps -p` found no such process: it exits 1 and prints nothing. */
-function exited(error: unknown): boolean {
+function isTargetPidMissing(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   return "code" in error && error.code === 1 && "stdout" in error && error.stdout === "";
 }
