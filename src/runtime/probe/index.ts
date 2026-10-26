@@ -8,8 +8,8 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
-import { completeUtf8Length } from "../../core/utf8.ts";
 import type { CommandResult } from "../seams.ts";
+import { CappedBuffer, maxProbeOutputBytes } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
 import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
@@ -21,7 +21,6 @@ export const probeCommandTimeoutMs = 15_000;
  * user's interactive profile took 7-19 s at 16 concurrent probes on a loaded host.
  */
 export const probeLaunchTimeoutMs = 60_000;
-const maxProbeOutputBytes = 1_000_000;
 let commandTimeoutMs = probeCommandTimeoutMs;
 let launchTimeoutMs = probeLaunchTimeoutMs;
 
@@ -37,40 +36,6 @@ export function setProbeTimeoutsForTests(bounds: {
 export function resetProbeTimeoutsForTests(): void {
   commandTimeoutMs = probeCommandTimeoutMs;
   launchTimeoutMs = probeLaunchTimeoutMs;
-}
-
-/** Accumulates stream chunks up to a hard byte cap, tracking overflow. */
-class CappedBuffer {
-  private chunks: Buffer[] = [];
-  private byteLength = 0;
-  overflowed = false;
-
-  append(chunk: Buffer): void {
-    // Once the cap is hit the probe is aborted and its pipes destroyed, so no chunk
-    // ever arrives after `overflowed` is set; the first over-cap chunk is the last.
-    const remaining = maxProbeOutputBytes - this.byteLength;
-    if (chunk.length > remaining) {
-      this.chunks.push(chunk.subarray(0, remaining));
-      this.byteLength = maxProbeOutputBytes;
-      this.overflowed = true;
-      return;
-    }
-    this.chunks.push(chunk);
-    this.byteLength += chunk.length;
-  }
-
-  text(): string {
-    // Byte capping can split a multibyte code point at the boundary. Drop any
-    // incomplete trailing UTF-8 sequence so the decoded string re-encodes to
-    // at most the byte cap (C-PERF-03) rather than growing via a replacement
-    // character.
-    const bytes = Buffer.concat(this.chunks);
-    return bytes.subarray(0, completeUtf8Length(bytes)).toString("utf8");
-  }
-
-  release(): void {
-    this.chunks = [];
-  }
 }
 
 /** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
