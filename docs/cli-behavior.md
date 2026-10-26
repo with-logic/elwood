@@ -400,6 +400,26 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   a complete `PreModelSwitch` hook confirmation, ends that hold early; the hook's prompt is
   left for the caller. The header only ever holds; it never authorizes a key. Fixtures: `tests/fixtures/claude-2.1.310/model-picker/painting-*`.
   C-API-23, C-API-24, C-API-55.
+- **Claude can list a compiled five-row picker instead of the served catalog (2.1.310,
+  2026-10-25).** Observed: launched with `CLAUDE_CODE_MODEL_CATALOG=0`, the picker lists
+  `1. Default (recommended)`, `2. Opus`, `3. Fable`, `4. Sonnet`, and `5. Haiku`. Those are
+  bare family names with no version, and there is no overflow line. Every listing in that
+  process returns the same five rows, and Elwood reads them correctly. A listing e2e on a
+  loaded machine got the same five rows for its whole session, with no catalog variable in
+  its environment (the e2e harness strips `CLAUDE_CODE_*`).
+
+  From the 2.1.310 bundle, not observed: the choice is made once per process. The catalog
+  is off when `CLAUDE_CODE_MODEL_CATALOG` is falsy, under `--bare`, with nonessential
+  traffic disabled, with `ANTHROPIC_UNIX_SOCKET` set, with a provider that is not
+  first-party, with auth that has no catalog scope, when policy disallows
+  `allow_model_catalog`, or when the `tengu_delegated_quail` flag is off. With no catalog
+  cached in `~/.claude/cache/model-catalog/`, a first fetch slower than 1,750 ms (1,500
+  headless) also falls back.
+
+  The fallback has no hidden rows, so the listing e2e can't test the window walk against
+  it. Instead of retrying, the e2e fails with these causes
+  (`tests/e2e/claude-compiled-fallback.ts`), so a degraded environment stays visible.
+  C-API-23.
 - **Codex 0.164.0 shortened its dialog hints.** The picker closes with `enter select ·
   esc back` and the reasoning screen with `enter default · s session · esc back` (one
   Escape still returns to the picker). Neither matched the old closing-hint phrases
