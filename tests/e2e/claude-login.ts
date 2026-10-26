@@ -47,8 +47,9 @@ export function accessOnlyLogin(credentials: string, source: string): string | u
     throw new Error(`${source} is not JSON`);
   }
   const oauth = isRecord(parsed) ? parsed["claudeAiOauth"] : undefined;
-  if (!(isRecord(oauth) && typeof oauth["accessToken"] === "string" && oauth["accessToken"]))
-    return undefined;
+  if (!isRecord(oauth)) return undefined;
+  const accessToken = oauth["accessToken"];
+  if (typeof accessToken !== "string" || accessToken === "") return undefined;
   const { refreshToken: _refresh, refreshTokenExpiresAt: _expires, ...access } = oauth;
   return JSON.stringify({ claudeAiOauth: access });
 }

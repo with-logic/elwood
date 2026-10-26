@@ -1,7 +1,7 @@
 /** Offline private-home, bounded subprocess and process-seam guards (PRD §12). */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { expect, onTestFinished, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   currentCommandRunner,
   currentPtyFactory,
@@ -39,10 +39,7 @@ test("malformed Keychain output never appears in parse errors", async () => {
 function privateTmp(...segments: readonly string[]): string {
   const dir = join(mocks.parent, ...segments);
   mkdirSync(dir, { recursive: true });
-  vi.stubEnv("TMPDIR", dir);
-  onTestFinished(() => {
-    vi.unstubAllEnvs();
-  });
+  vi.stubEnv("TMPDIR", dir); // the fixture's `afterEach` unstubs it
   return dir;
 }
 
@@ -86,11 +83,12 @@ test("a Keychain without the Claude login item stops setup before any private fi
 });
 
 test("a temp dir inside the parent's Claude config dir is refused", async () => {
-  privateTmp(".claude", "tmp");
+  const tmp = privateTmp(".claude", "tmp");
   await expect(nativeClaudeQuestionSandbox()).rejects.toThrow(
     "TMPDIR is inside the user's Claude config dir",
   );
   expect(mocks.probe).not.toHaveBeenCalled();
+  expect(readdirSync(tmp)).toEqual([]);
 });
 
 test.each([
