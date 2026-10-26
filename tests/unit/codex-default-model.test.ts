@@ -73,9 +73,11 @@ describe("Codex configured default under the config lock", () => {
       },
     });
     let settled = false;
-    const listing = withCodexDefault(rows, new AbortController().signal, path).finally(() => {
-      settled = true;
-    });
+    const listing = withCodexDefault(rows, new AbortController().signal, async () => path).finally(
+      () => {
+        settled = true;
+      },
+    );
     try {
       await setImmediate();
       expect(readFileSync(path, "utf8")).toBe('model = "gpt-6-luna"\n');
@@ -101,7 +103,7 @@ describe("Codex configured default under the config lock", () => {
     });
     try {
       const deadline = new AbortController();
-      const listing = withCodexDefault(rows, deadline.signal, path);
+      const listing = withCodexDefault(rows, deadline.signal, async () => path);
       deadline.abort(new Error("Timed out waiting for model picker operation."));
       await expect(listing).rejects.toThrow("Timed out waiting for model picker operation.");
     } finally {

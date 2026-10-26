@@ -11,7 +11,7 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { elwoodError, errnoCode } from "../../core/errors.ts";
+import { ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
 import { abortableDelay } from "../../core/trust/abortable.ts";
 import { shellQuote } from "../../runtime/shell.ts";
 
@@ -42,9 +42,10 @@ export function reportCodexHomeCommand(reportPath: string): string {
  * The config.toml of the `CODEX_HOME` in `reportPath`, by Codex's own rule
  * (`find_codex_home`): a non-empty `CODEX_HOME`, canonicalized the way Codex does, a relative
  * one from the directory Codex runs in; else `$HOME/.codex`, where an empty `HOME` falls back
- * to the account's home directory, as Codex's `home_dir` lookup does. A model operation can
+ * to the account's home directory, as Codex's `home_dir` lookup does, and a relative one is
+ * from the directory Codex runs in. A model operation can
  * start before the launch shell has reached the report, so an unfinished report is waited for
- * until `signal` aborts, which then rejects with its reason.
+ * until `signal` aborts, which then rejects with its reason, naming the report (`waitEnded`).
  */
 export async function reportedCodexConfigPath(
   reportPath: string,
@@ -53,7 +54,28 @@ export async function reportedCodexConfigPath(
   for (;;) {
     const values = readReport(reportPath);
     if (values !== undefined) return join(codexHomeDir(reportPath, values), "config.toml");
-    if (!(await abortableDelay(signal, reportPollMs))) throw signal.reason;
+    if (!(await abortableDelay(signal, reportPollMs))) throw waitEnded(reportPath, signal.reason);
+  }
+}
+
+/**
+ * Why the wait for a report ended. A typed reason, such as the operation's deadline, names the
+ * report it was waiting for, since the picker never opened; any other passes through as is.
+ */
+function waitEnded(reportPath: string, reason: unknown): unknown {
+  if (!(reason instanceof ElwoodError)) return reason;
+  return elwoodError(reason.code, reason.message, { ...reason.details, path: reportPath });
+}
+
+/**
+ * Whether the launch shell finished its report, which it does before it starts Codex. A report
+ * that cannot be read counts as unfinished.
+ */
+export function codexHomeReported(reportPath: string): boolean {
+  try {
+    return readReport(reportPath) !== undefined;
+  } catch {
+    return false;
   }
 }
 
@@ -91,7 +113,11 @@ function isComplete(parts: readonly string[]): parts is readonly [string, string
 
 function codexHomeDir(reportPath: string, values: ReportedValues): string {
   const [codexHome, shellHomeDir, codexWorkingDirectory] = values;
-  if (!codexHome) return join(shellHomeDir || userInfo().homedir, ".codex");
+  if (!codexHome) {
+    const home = shellHomeDir || userInfo().homedir;
+    // Codex uses `HOME` as given, so a relative one names a path from where Codex runs.
+    return isAbsolute(home) ? join(home, ".codex") : `${codexWorkingDirectory}/${home}/.codex`;
+  }
   // Joined as text, not with `resolve`, which would drop `dir/..` by name: the kernel, and so
   // Codex's canonicalization, follows `dir` first when it is a symlink, and so does realpath.
   const path = isAbsolute(codexHome) ? codexHome : `${codexWorkingDirectory}/${codexHome}`;
