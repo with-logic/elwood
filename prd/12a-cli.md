@@ -444,7 +444,10 @@ and MUST NOT prevent listing. Config files still undergo strict schema decoding.
 Interactive foreground launches MUST resolve the executable in the same
 interactive login-shell environment used by auto-detection, through the same
 bounded probe, so the user's startup files get the login shell's launch bound and
-the lookup the command bound (§9.2, C-PERF-05). If the shell exits
+the lookup the command bound (§9.2, C-PERF-05). The frame carries the login
+shell's own `$PATH`, printed by `/bin/sh`, which loads no startup file, so a
+`printf` function or alias in the user's startup files cannot print another
+PATH in its place. If the shell exits
 successfully without returning a complete PATH probe frame, the foreground
 launch MUST preserve the inherited PATH. A complete frame containing an empty
 PATH remains authoritative. C-CLI-24/25.

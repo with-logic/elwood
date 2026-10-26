@@ -1,11 +1,13 @@
 /** Foreground launch resolves the detected shell PATH without changing argv/status (C-CLI-25). */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { spawnInteractiveAgent } from "../../src/cli/interactive/spawn.ts";
 import { loginShellResolves } from "../../src/cli/request/agent-detect.ts";
 import {
+  probeCommandTimeoutMs,
+  probeLaunchTimeoutMs,
   resetProbeTimeoutsForTests,
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
@@ -80,7 +82,9 @@ test.each([
 });
 test("C-CLI-25 a framed empty PATH remains authoritative", async () => {
   const f = fixture();
-  writeFileSync(f.startup, "#!/bin/sh\nprintf '\\0\\0'\n");
+  // The lookup itself runs, under an empty PATH: output the shell printed without running it
+  // is startup output, never the lookup's (§9.2).
+  writeFileSync(f.startup, '#!/bin/sh\nshift\nshift\nPATH= exec /bin/sh "$@"\n');
   writeFileSync(join(f.bin, "elwood-test-agent"), "#!/bin/sh\nexit 7\n", { mode: 0o700 });
   vi.stubEnv("PATH", f.bin);
   await expect(
@@ -120,3 +124,56 @@ test("C-CLI-25 a shell that fails after running the lookup maps to an adapter st
     details: { cause: "login shell exited with status 3" },
   });
 });
+
+/**
+ * Real login shells and their startup file, each with a DEBUG trap that prints on both streams
+ * and a `printf` function that prints a NUL-framed PATH of its own.
+ */
+const loginShells = [
+  [
+    "/bin/zsh",
+    ".zshrc",
+    "TRAPDEBUG() { echo FAKE-SECRET; echo FAKE-SECRET >&2 }\nprintf() { builtin printf '\\0/elsewhere\\0' }",
+  ],
+  [
+    "/bin/bash",
+    ".bash_profile",
+    "trap 'echo FAKE-SECRET; echo FAKE-SECRET >&2' DEBUG\nprintf() { builtin printf '\\0/elsewhere\\0'; }",
+  ],
+] as const;
+
+/**
+ * A real login shell gets the lookup's full launch and command bounds, as in production: on a
+ * loaded host its startup alone can take most of the launch bound. The agent itself exits at
+ * once, so the test needs no more than the lookup can take.
+ */
+const realShellTestTimeoutMs = probeLaunchTimeoutMs + probeCommandTimeoutMs;
+
+test.each(loginShells.filter(([path]) => existsSync(path)))(
+  "C-CLI-25 %s hands the agent its login shell's own PATH, whatever its startup file defines",
+  async (path, startupFile, startupScript) => {
+    const home = mkdtempSync(join(tmpdir(), "interactive-path-"));
+    roots.push(home);
+    const bin = join(home, "agent bin");
+    mkdirSync(bin);
+    const seen = join(home, "path");
+    const agentScript = `#!/bin/sh\nprintf '%s' "$PATH" > ${shell.shellQuote(seen)}\n`;
+    writeFileSync(join(bin, "elwood-test-agent"), agentScript, { mode: 0o700 });
+    // Set last, after the system startup files, so it is the login shell's whole PATH.
+    const loginPath = `${bin}:/usr/bin:/bin`;
+    writeFileSync(
+      join(home, startupFile),
+      `export PATH=${shell.shellQuote(loginPath)}\n${startupScript}\n`,
+    );
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("ZDOTDIR", home);
+    vi.stubEnv("HISTFILE", join(home, ".history"));
+    vi.stubEnv("TERM_PROGRAM", ""); // no Apple Terminal session hooks
+    vi.stubEnv("PATH", "/usr/bin:/bin"); // only the login shell's PATH finds the agent
+    vi.spyOn(shell, "userShell").mockReturnValue(path);
+    const launch = { agent: "claude", command: "elwood-test-agent", args: [], cwd: home } as const;
+    expect(await spawnInteractiveAgent(launch)).toBe(0);
+    expect(readFileSync(seen, "utf8")).toBe(loginPath);
+  },
+  realShellTestTimeoutMs,
+);
