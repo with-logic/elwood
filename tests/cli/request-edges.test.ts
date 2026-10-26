@@ -1,13 +1,13 @@
 /** Effective request validation branches. Covers PRD C-CLI-03/C-CLI-06/C-CLI-14/C-CLI-21. */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
 import { autoDetectedSource } from "../../src/cli/request/agent-detect.ts";
 import { resolveRunRequest } from "../../src/cli/request/index.ts";
 import type { ParsedRunCommand, RequestContext } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectCodex } from "./agent-fakes.ts";
 
 async function* emptyStdin(...values: readonly string[]) {
@@ -15,7 +15,7 @@ async function* emptyStdin(...values: readonly string[]) {
   for (const value of values) yield value;
 }
 function sandbox(): string {
-  return mkdtempSync(join(tmpdir(), "elwood-request-edge-"));
+  return tempDir("elwood-request-edge-");
 }
 function context(
   root: string,

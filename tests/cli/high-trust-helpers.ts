@@ -1,13 +1,13 @@
 /** Shared fixtures for the `--high-trust` CLI tests (C-CLI-22). */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
 import type { ParsedRunCommand } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 export function root(): string {
-  return mkdtempSync(join(tmpdir(), "elwood-high-trust-"));
+  return tempDir("elwood-high-trust-");
 }
 
 export function run(argv: readonly string[]): ParsedRunCommand {
