@@ -12,11 +12,13 @@ let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
 
 /**
  * The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. It is `ok`
- * unless an update command ran and failed, or was skipped for another updater.
+ * unless an update command ran and failed, or was skipped for another updater. A failure names
+ * `updateCwd`, the directory this process's update command ran in, which may be another
+ * launch's; it is absent when no update command ran here (a peer's update was awaited).
  */
 export type AutoupdateOutcome =
   | { readonly ok: true }
-  | { readonly ok: false; readonly error: unknown };
+  | { readonly ok: false; readonly error: unknown; readonly updateCwd?: string };
 
 /** One launch's update: check that its launch directory resolves the CLI, then update it. */
 export type UpdateSteps = {
@@ -35,42 +37,45 @@ type Attempt = { readonly updated: boolean; readonly outcome: AutoupdateOutcome 
 const autoupdates = new Map<UpdateAdapter, Promise<Attempt>>();
 
 /**
- * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt, so it runs in the launch directory of the start or resume that triggers it.
- * NEVER rejects — a throwing update resolves to `{ok:false, error}` so the caller can contain it
- * (warn + continue). The cross-process coordinator invalidates the local version cache whether
- * this process owned the update or waited for a peer.
+ * Runs the adapter's update at most once per process, in `cwd`, the launch directory of the
+ * launch (start or resume) that triggers it; concurrent callers share the single in-flight
+ * attempt. NEVER rejects — a throwing update resolves to `{ok:false, error}` so the caller can
+ * contain it (warn + continue). The cross-process coordinator invalidates the local version
+ * cache whether this process owned the update or waited for a peer.
  *
  * A trigger whose CLI check fails runs no update command, so it is not an attempt: it reports
  * no failure, it is forgotten, and each launch that shared it tries again, in its own directory.
  */
 export function cachedAutoupdate(
   adapter: UpdateAdapter,
+  cwd: string,
   steps: UpdateSteps,
   afterAttempt?: () => void,
 ): Promise<AutoupdateOutcome> {
   const existing = autoupdates.get(adapter);
   if (existing) {
     return existing.then((attempt) =>
-      attempt.updated ? attempt.outcome : cachedAutoupdate(adapter, steps, afterAttempt),
+      attempt.updated ? attempt.outcome : cachedAutoupdate(adapter, cwd, steps, afterAttempt),
     );
   }
-  let verifying = false;
+  let stage: "waiting" | "verifying" | "updating" = "waiting";
   // The check runs only after this process owns the cross-process lease. Its error still reaches
   // the coordinator, which keeps the lease while a probe group it could not stop is alive.
   const run = async () => {
-    verifying = true;
+    stage = "verifying";
     await steps.verify();
-    verifying = false;
+    stage = "updating";
     await steps.update();
   };
+  const failed = (error: unknown): AutoupdateOutcome =>
+    stage === "updating" ? { ok: false, error, updateCwd: cwd } : { ok: false, error };
   const pending = coordinateUpdate(adapter, run)
     .then(
-      () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
-      (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
+      () => finalizeAutoupdate(adapter, { ok: true }, failed, afterAttempt),
+      (error) => finalizeAutoupdate(adapter, failed(error), failed, afterAttempt),
     )
     .then((outcome): Attempt => {
-      if (!verifying) return { updated: true, outcome };
+      if (stage !== "verifying") return { updated: true, outcome };
       autoupdates.delete(adapter); // before any sharer retries
       return { updated: false, outcome: { ok: true } };
     });
@@ -81,6 +86,7 @@ export function cachedAutoupdate(
 function finalizeAutoupdate(
   adapter: UpdateAdapter,
   outcome: AutoupdateOutcome,
+  failed: (error: unknown) => AutoupdateOutcome,
   afterAttempt?: () => void,
 ): AutoupdateOutcome {
   try {
@@ -90,7 +96,7 @@ function finalizeAutoupdate(
     afterAttempt?.();
     return outcome;
   } catch (error) {
-    return { ok: false, error };
+    return failed(error);
   }
 }
 
