@@ -25,7 +25,9 @@ const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
  * Runs the adapter's update at most once per process; concurrent callers share the single
  * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
- * version cache whether this process owned the update or waited for a peer.
+ * version cache whether this process owned the update or waited for a peer. The one exception
+ * is test-only: after `resetAutoupdateForTests()`, until a test sets a coordinator, it throws
+ * at once instead of returning.
  */
 export function cachedAutoupdate(
   adapter: UpdateAdapter,
