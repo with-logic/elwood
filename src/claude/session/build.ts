@@ -40,8 +40,9 @@ export async function buildClaudeSession(
 ): Promise<ClaudeSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
-  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
+  const publish = runtime.stateOwnership.publishFile;
+  writeSessionRecord(record, runtime.sessionDir, publish);
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, publish) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);

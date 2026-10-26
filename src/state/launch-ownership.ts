@@ -25,13 +25,16 @@ class Generation {
   }
 }
 
+/** Writes `text` to `path`; `readText` is the file's text when the caller has just read it. */
+export type StateFileWriter = (path: string, text: string, readText?: string) => void;
+
 export type LaunchOwnership = {
   /** Exclusive authority for startup publication and destructive cleanup. */
   readonly current: () => boolean;
   /** Ordinary loop and record writes may continue on a predecessor while resume is pending. */
   readonly canPersist: () => boolean;
-  readonly persistFile: (path: string, text: string) => void;
-  readonly publishFile: (path: string, text: string) => void;
+  readonly persistFile: StateFileWriter;
+  readonly publishFile: StateFileWriter;
   readonly release: () => void;
   readonly onCommit: (activate: () => void) => void;
   readonly onRevoked: (pause: () => void) => void;
@@ -52,27 +55,34 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   const current = () => generations.get(path) === token.entry;
   let retryOwner: Entry | undefined;
   let failedPublications: LaunchPublication[] = [];
-  const canPersist = () => {
-    if (token.phase === "failed") return false;
+  /** The later launches on this path, newest first; `undefined` when this one may not persist. */
+  const successors = (): Generation[] | undefined => {
+    if (token.phase === "failed") return undefined;
+    const later: Generation[] = [];
     let owner = generations.get(path)?.generation.deref();
     while (owner) {
-      if (owner === token) return true;
-      if (owner.phase === "active") return false;
+      if (owner === token) return later;
+      if (owner.phase === "active") return undefined;
+      later.push(owner);
       owner = owner.previous;
     }
-    return false;
+    return undefined;
   };
+  const canPersist = () => successors() !== undefined;
   return {
     current,
     canPersist,
-    persistFile: (file, text) => {
-      if (!canPersist()) throw elwoodError("session_not_running", "Launch was superseded.");
-      if (token.phase === "pending") publication.write(file, text);
+    persistFile: (file, text, readText) => {
+      const later = successors();
+      if (later === undefined) throw elwoodError("session_not_running", "Launch was superseded.");
+      if (token.phase === "pending") publication.write(file, text, readText);
       else writePrivateFileAtomic(file, text);
+      // A successor's rollback keeps this write, even one whose bytes match its own (§8.1).
+      for (const successor of later) successor.publication.forget(file);
     },
-    publishFile: (file, text) => {
+    publishFile: (file, text, readText) => {
       if (!current()) throw elwoodError("session_not_running", "Launch was superseded.");
-      if (token.phase === "pending") publication.write(file, text);
+      if (token.phase === "pending") publication.write(file, text, readText);
       else writePrivateFileAtomic(file, text);
     },
     onCommit: (activate) => {

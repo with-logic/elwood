@@ -6,7 +6,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import type { ElwoodLoopEvent } from "../../src/core/loops/types.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
-import { type PersistedLoopDefinition, readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { writePrivateFileAtomic } from "../../src/state/files.ts";
+import type { PersistedLoopDefinition } from "../../src/state/loop-store.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { stateDirWithSession } from "../helpers/session-state.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -119,6 +121,7 @@ function createLoops(
   return new SessionLoops({
     ownership: {
       canPersist: mayPersistLoops,
+      persistFile: writePrivateFileAtomic,
       onCommit: (activate) => activate(),
       onRevoked: () => undefined,
     },

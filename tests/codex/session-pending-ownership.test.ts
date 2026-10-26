@@ -7,7 +7,7 @@ import {
   setCodexHookBridgeFactoryForTests,
 } from "../../src/codex/session/bridge.ts";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
-import { readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);

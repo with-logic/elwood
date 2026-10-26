@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "vitest";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { type CommandResult, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
-import { readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { becomeReady, installFakes, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
