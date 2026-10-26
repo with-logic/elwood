@@ -143,7 +143,8 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
       },
       // No-op once latched; retries a failed reap, and keeps failing while a detached
       // sweep is unresolved, so a retry never reports a possibly running hook as reaped.
-      // Typed, so `teardown_failed` keeps its errno and process-group ids (§10).
+      // Typed, so `teardown_failed` keeps its errno, the leader's process-group id, and
+      // any unconfirmed process-group ids (§10).
       () => host.reapPolicy.orThrow(),
       () => host.cleanupRuntime(),
       () => host.submitEvidence("teardown_completed"),

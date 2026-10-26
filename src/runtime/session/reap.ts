@@ -4,12 +4,13 @@
  *   - `bestEffort()` for the native unsolicited-exit callback: a reap failure must
  *     never throw out of that callback, so it is contained and RETURNED as a
  *     live `reap_failed` warning (emitted once when observed), never silently dropped.
- *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session:
- *     it must NOT swallow — it throws a typed `termination_failed` so the caller
- *     rejects with an ElwoodError (C-ERR-01) and teardown can retry the
- *     still-unlatched reap.
- * `reaper` exposes the underlying one-shot for `teardown`'s retry step and the
- * `terminatePty` termination path, which own their own failure handling.
+ *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session
+ *     and for `teardown`'s retry step: it must NOT swallow — it throws a typed
+ *     `termination_failed` (with its errno and the leader's process-group id) so
+ *     the caller rejects with an ElwoodError (C-ERR-01), and the reap stays
+ *     unlatched for a later retry.
+ * `reaper` exposes the underlying one-shot for the `terminatePty` termination path,
+ * which owns its own failure handling.
  */
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
