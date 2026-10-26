@@ -167,3 +167,18 @@ export function probeFailureDetails(result: {
   }
   return details;
 }
+
+/**
+ * Why a version probe found no CLI (C-ERR-08): a login shell that could not be spawned gives its
+ * own `cause` and `errno`, and a command the shell could not find (status 127) a cause naming it.
+ * Neither keeps stderr, which the shell wrote, not a CLI (§9.2).
+ */
+export function notFoundDetails(
+  result: Parameters<typeof probeFailureDetails>[0],
+  command: string,
+): Readonly<Record<string, string | number>> {
+  const { stderr: _shellOutput, ...details } = probeFailureDetails(result);
+  return result.error
+    ? details
+    : { cause: `The login shell found no \`${command}\` (status 127).` };
+}

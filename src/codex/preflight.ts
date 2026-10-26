@@ -3,7 +3,7 @@
  * Implements PRD §9.2, §10, and C-PTY-08.
  */
 
-import { elwoodError, probeFailureDetails } from "../core/errors.ts";
+import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
@@ -83,7 +83,12 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
     Promise.resolve(currentCommandRunner()(userShell(), command, { cwd })),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
+    // The probe's own failure is the cause, so a launch directory that went while it was
+    // probed reports why the probe failed, not a missing CLI (C-PTY-08).
+    const missing = result.error
+      ? "The login shell could not be started to find `codex`."
+      : "Could not find `codex` on PATH.";
+    throw elwoodError("codex_not_found", missing, notFoundDetails(result, "codex"));
   }
   if (result.status !== 0) {
     throw elwoodError(

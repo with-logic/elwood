@@ -18,6 +18,12 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- `claude_not_found` and `codex_not_found` now say why in `details.cause`: the
+  login shell could not be started (with its `errno`, and a message naming the
+  shell rather than PATH), or it found no CLI (status 127). They carry none of the
+  shell's stderr, which no CLI wrote. A start or
+  resume whose launch directory goes while its CLI is probed reports that probe
+  failure as its cause, where it used to report "not found on PATH".
 - Preflight now checks the CLI the session will actually run. The `--version`,
   `update`, and Codex `--help` probes start their login shell in the session's
   launch directory (the PTY's directory, on start and on resume), not Elwood's
