@@ -87,21 +87,24 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
     // painted before it, are the evidence.
     const onDialog: PtyRecord["writes"][number][] = [];
     for (const write of pty.writes) {
-      if (bypassDialogVisible(await screenAfter(pty, write.after))) onDialog.push(write);
+      if (bypassDialogVisible(await screenAfter(pty, write.outputChunksBefore)))
+        onDialog.push(write);
     }
     assert.deepEqual(
       onDialog.map(({ data }) => data),
       [selectAccept, `${selectAccept}\r`],
       "Elwood moved to Yes, I accept and confirmed it, once",
     );
-    // The live `startup_prompt` activity fires with the answer's first write, so an
-    // observer subscribed after start sees it whenever that write came later.
-    const answeredAt = onDialog[0]?.at ?? 0;
+    // The live `startup_prompt` activity fires once the confirming write has settled, which
+    // can be after `startClaude` resolves even when that write came before. So an observer
+    // subscribed after start sees it at most once, and surely when the confirmation came later.
+    const confirmedAt = onDialog.at(-1)?.at ?? 0;
     const answered = observed.activities.filter((event) => {
       const activity = event as { readonly kind?: string; readonly label?: string };
       return activity.kind === "startup_prompt" && activity.label === "bypass_permissions";
     });
-    assert.equal(answered.length, answeredAt >= subscribedAt ? 1 : 0, "answer activity, live");
+    assert.ok(answered.length <= 1, "one answer activity at most");
+    if (confirmedAt >= subscribedAt) assert.equal(answered.length, 1, "answer activity, live");
     observed.dispose();
   } finally {
     resetRuntimeSeamsForTests();

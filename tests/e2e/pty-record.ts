@@ -15,9 +15,13 @@ export type PtyRecord = {
   /** Each chunk of output, in order. */
   readonly output: string[];
   /** Each size, from spawn on, with the number of output chunks received before it. */
-  readonly sizes: { readonly after: number; readonly size: TerminalSize }[];
+  readonly sizes: { readonly outputChunksBefore: number; readonly size: TerminalSize }[];
   /** Each write, with its time and the number of output chunks received before it. */
-  readonly writes: { readonly at: number; readonly data: string; readonly after: number }[];
+  readonly writes: {
+    readonly at: number;
+    readonly data: string;
+    readonly outputChunksBefore: number;
+  }[];
 };
 
 /**
@@ -29,17 +33,21 @@ export function recordPty(): PtyRecord {
   setPtyFactoryForTests((options) => {
     const pty = nodePtyFactory(options);
     if (record.sizes.length > 0) return pty;
-    record.sizes.push({ after: 0, size: options.size });
+    record.sizes.push({ outputChunksBefore: 0, size: options.size });
     pty.onData((data) => record.output.push(data));
     return {
       ...pty,
       write(data) {
         const text = Buffer.from(data).toString("utf8");
-        record.writes.push({ at: Date.now(), data: text, after: record.output.length });
+        record.writes.push({
+          at: Date.now(),
+          data: text,
+          outputChunksBefore: record.output.length,
+        });
         pty.write(data);
       },
       resize(size) {
-        record.sizes.push({ after: record.output.length, size });
+        record.sizes.push({ outputChunksBefore: record.output.length, size });
         return pty.resize(size);
       },
     };
@@ -47,14 +55,15 @@ export function recordPty(): PtyRecord {
   return record;
 }
 
-/** The screen the recorded PTY had painted once its first `chunks` chunks of output arrived. */
-export async function screenAfter(record: PtyRecord, chunks: number): Promise<string> {
+/** The screen the recorded PTY had painted once its first `outputChunkCount` chunks arrived. */
+export async function screenAfter(record: PtyRecord, outputChunkCount: number): Promise<string> {
   const [spawned, ...resized] = record.sizes;
   if (spawned === undefined) throw new Error("No PTY was spawned");
   const terminal = createHeadlessTerminal(spawned.size, () => {});
   try {
-    for (let index = 0; index < chunks; index += 1) {
-      for (const { size } of resized.filter(({ after }) => after === index)) terminal.resize(size);
+    for (let index = 0; index < outputChunkCount; index += 1) {
+      for (const { size } of resized.filter((sized) => sized.outputChunksBefore === index))
+        terminal.resize(size);
       await terminal.writeOutput(record.output[index] ?? "");
     }
     return terminal.snapshot().text;
