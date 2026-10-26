@@ -5,7 +5,12 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import { loginShellCommand, probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import {
+  loginShellCommand,
+  probeShellCommand,
+  probeShellStatus,
+  userShell,
+} from "../../src/runtime/shell.ts";
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
@@ -29,6 +34,13 @@ describe("user shell", () => {
       "-i",
       "-c",
       `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; claude --version`,
+    ]);
+    // A lookup answered by its status alone discards its output.
+    expect(probeShellStatus("command -v claude")).toEqual([
+      "-l",
+      "-i",
+      "-c",
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; command -v claude >/dev/null 2>&1`,
     ]);
   });
 });
