@@ -22,7 +22,7 @@ import {
   startDetachedTree,
 } from "../helpers/detached-tree.ts";
 import { killGroupsWhoseCommandHas, pollGone } from "../helpers/process-liveness.ts";
-import { startBystander } from "../helpers/setsid-pair.ts";
+import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
 
 describe("C-LIFE-10 detached descendants (real processes)", () => {
   test("the sweep, then the group reap, end a setsid child and its own setsid grandchild", async () => {
@@ -54,7 +54,7 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
         stopped: false,
       });
     } finally {
-      bystander.kill("SIGKILL");
+      await stopBystander(bystander);
     }
   });
 
