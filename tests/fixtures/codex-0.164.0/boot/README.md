@@ -15,3 +15,10 @@ spaces were removed.
 In all eight launches the boot composer came first and had no model footer. The four
 git-folder launches showed their gate 3.4 to 3.9 s after their first output, and the
 model footer appeared only after the gate cleared.
+
+`warning-badge.txt` and `warning-transcript-overlay.txt` come from C-E2E-09's native run
+on 2026-10-25: Codex 0.164.0 launched directly (no hook-trust bypass) in a `git init`
+folder with an MCP server that answers 401, after both trust gates were answered. The
+first is the composer with its `⚠ 1 warning · f2 to view` badge; the second is the
+screen after Ctrl+T. The project path was replaced with `/tmp/elwood-native-CAPTURE`
+(padded to keep the badge's column) and trailing spaces were removed.

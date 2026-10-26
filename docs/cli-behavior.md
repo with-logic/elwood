@@ -1012,6 +1012,22 @@ does not send Ctrl+T automatically. Captures and the local failing-server/401
 real-CLI test verify the detailed rows. The current welcome chrome and native
 warning prefixes distinguish these banners from conversational quotations.
 
+**Codex 0.164.0 shows only a badge (2026-10-25).** In C-E2E-09's native run (an MCP
+server answering 401, `startup_timeout_sec = 2`), the welcome is no longer boxed, and
+the only startup trace is `⚠ 1 warning · f2 to view` at the end of the composer's
+model footer, which the composer clearance already strips. Ctrl+T opened the
+`/ T R A N S C R I P T /` overlay. It holds both canonical rows, the `elwood_probe`
+not-logged-in row with its `codex mcp login elwood_probe` command and
+`⚠ MCP startup incomplete (failed: elwood_probe)`, under an unboxed
+`>_ OpenAI Codex (v0.164.0)` and above the overlay's own key hints. That overlay is
+Codex's transcript view, where the conversation also renders, so it is not a startup
+region; the parser finds no welcome box there and returns nothing. Elwood sends neither F2 nor Ctrl+T, so on 0.164 a
+session emits no MCP startup warning: the count names no server and no recovery
+command (PRD §5.7, C-CODEX-09). The captures are
+`tests/fixtures/codex-0.164.0/boot/warning-badge.txt` and
+`warning-transcript-overlay.txt`; C-E2E-09 asserts the badge, that its frame reads as
+the composer, and that no warning parses from it.
+
 Native 0.154.0 startup renders no `•`/`●` row at any point: recorded frame by frame
 (2026-09-17) through the directory gate, hooks gate, welcome, and composer with
 both an MCP endpoint that fails at once and one that accepts the connection and

@@ -1,0 +1,10 @@
+  >_ OpenAI Codex (v0.164.0)
+     /tmp/elwood-native-CAPTURE
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower
+  cost.
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol default · /tmp/elwood-native-CAPTURE                         ⚠ 1 warning · f2 to view
