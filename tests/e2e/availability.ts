@@ -9,11 +9,11 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { e2eRunDir } from "./run-dir.ts";
 
 export type AgentName = "claude" | "codex";
 
@@ -29,16 +29,14 @@ const probed = new Map<AgentName, Probed>();
 
 /**
  * Each e2e file runs in its own worker, so the in-process memo alone would re-probe once per
- * file, up to the full probe bound each time on a stalled profile. Under `node --test` the
- * workers share one runner, so they share its result through a file named for the runner.
+ * file, up to the full probe bound each time on a stalled profile. Under `npm run test:e2e`
+ * the workers share the runner's run dir (`run-dir.ts`), and through it each probe's result,
+ * which is removed with the run dir when the run ends.
  */
-const sharedResults =
-  process.env["NODE_TEST_CONTEXT"] === undefined
-    ? undefined
-    : join(tmpdir(), `elwood-e2e-availability-${process.ppid}.json`);
+const sharedResults = join(e2eRunDir, "availability.json");
 
 function readShared(): Partial<Record<AgentName, Probed>> {
-  if (sharedResults === undefined || !existsSync(sharedResults)) return {};
+  if (!existsSync(sharedResults)) return {};
   return JSON.parse(readFileSync(sharedResults, "utf8")) as Partial<Record<AgentName, Probed>>;
 }
 
@@ -50,11 +48,9 @@ function probedAgent(agent: AgentName): Probed {
   }
   const fresh = probe(agent);
   probed.set(agent, fresh);
-  if (sharedResults !== undefined) {
-    const staged = `${sharedResults}.${process.pid}`;
-    writeFileSync(staged, JSON.stringify({ ...readShared(), [agent]: fresh }));
-    renameSync(staged, sharedResults);
-  }
+  const staged = `${sharedResults}.${process.pid}`;
+  writeFileSync(staged, JSON.stringify({ ...readShared(), [agent]: fresh }));
+  renameSync(staged, sharedResults);
   return fresh;
 }
 
