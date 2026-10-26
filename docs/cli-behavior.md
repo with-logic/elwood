@@ -1875,6 +1875,14 @@ An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
 (`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
 key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.
 
+`ready` does not show that Claude got neither credential variable (Claude 2.1.310,
+2026-10-26). With the copied login, an invalid `ANTHROPIC_API_KEY` from the launch
+shell's startup files keeps the TUI from `ready`, but an invalid `ANTHROPIC_AUTH_TOKEN`
+does not: Claude reaches `ready` with it set. Both variables can also come from the
+developer's own startup files, after Elwood's environment is handed over. So C-E2E-23
+unsets both in the launch shell, and a `SessionStart` project hook records which of the
+two Claude's own environment holds (`tests/e2e/claude-credential-hook.ts`).
+
 The private dir carries none of the user's `settings.json`, so it shows what a fresh
 install does: the bypass-permissions dialog appears unless
 `skipDangerousModePermissionPrompt` is set (see above), and the footer shows Claude's
