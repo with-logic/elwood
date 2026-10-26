@@ -48,9 +48,9 @@ test.each([
 });
 
 test.each([
-  null,
-  [],
-  "text",
+  [null],
+  [[]],
+  ["text"],
 ])("C-E2E-18 a parent projects value %j that cannot be checked fails the proof", async (projects) => {
   const sandbox = await nativeClaudeQuestionSandbox();
   parentProjects(projects);
