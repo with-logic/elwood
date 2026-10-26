@@ -31,7 +31,7 @@ Initial required error names:
 | `input_queue_full` | A live session control queue would exceed 1,024 outstanding operations or 8 MiB aggregate UTF-8 input text; no input or attachment is performed for the rejected operation. |
 | `session_not_running` | Operation requires a running process but the session is stopped. |
 | `termination_failed` | A stop/kill request could not signal the PTY, did not observe process exit after escalation, or the PTY exited but its process group could not be confirmed reaped. A PTY signaling failure keeps the underlying message as `cause` and any `errno`/`syscall`/`path` in `details`. When the PTY was not confirmed terminated and its group reap failed too, `details.reapError` keeps the reap's message and `details.reapErrno` its errno when it has one. |
-| `teardown_failed` | Elwood could not remove all owned session files. |
+| `teardown_failed` | A `teardown()` step failed: the PTY could not be terminated or its process group confirmed reaped, runtime cleanup failed, or Elwood could not remove all owned session files. Every step still runs. `details.causes` lists each failed step's message, and `details.failures` lists each failed step as `{ message }`, adding `code` and `details` when the step failed with a typed Elwood error, so a `termination_failed`'s errno or process-group id survives teardown. |
 | `compact_failed` | A requested conversation compaction did not report completion in time. |
 | `interrupt_failed` | A requested turn interrupt did not return the session to ready in time. |
 | `model_automation_failed` | The adapter's model picker could not be recognized or driven to completion. |

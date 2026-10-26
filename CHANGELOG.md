@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `teardown_failed` now keeps what each failed step reported. Alongside
+  `details.causes` (the messages), `details.failures` lists each failed step,
+  with its `code` and `details` when it was a typed Elwood error, so a failed
+  reap's `termination_failed` errno and process-group id are no longer lost.
+  The CLI's cleanup diagnostic names those typed causes by code and errno, for
+  example `Cleanup failed (termination_failed EPERM).`, instead of only
+  `Cleanup failed.`; it still never prints their messages.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for

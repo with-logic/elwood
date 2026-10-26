@@ -5,6 +5,7 @@
 
 import { type DeadlineClock, scheduleDeadline } from "../../core/timers.ts";
 import type { Unsubscribe } from "../../core/types.ts";
+import { cleanupFailureMessage } from "../output/cleanup-error.ts";
 import type { CliCleanup } from "../output/types.ts";
 import type { CliSessionFacade } from "../session/index.ts";
 import type { EffectiveRunRequest } from "../types.ts";
@@ -170,9 +171,10 @@ export class CliLifecycle {
     try {
       await (action === "teardown" ? this.session.teardown() : this.session.close());
       return { action, status: "succeeded" };
-    } catch {
-      this.record({ code: "cleanup_failed", message: "Cleanup failed.", exitCode: 1 });
-      return { action, status: "failed", error: "Cleanup failed." };
+    } catch (error) {
+      const message = cleanupFailureMessage(error);
+      this.record({ code: "cleanup_failed", message, exitCode: 1 });
+      return { action, status: "failed", error: message };
     }
   }
 }

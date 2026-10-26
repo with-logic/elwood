@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { elwoodError } from "../../src/core/errors.ts";
 import { runCleanupSteps, runTeardownSteps } from "../../src/runtime/shutdown/teardown.ts";
 
 describe("runTeardownSteps", () => {
@@ -22,6 +23,34 @@ describe("runTeardownSteps", () => {
       ]),
     ).rejects.toMatchObject({ code: "teardown_failed", details: { causes: ["first failed"] } });
     expect(calls).toEqual(["first", "second"]);
+  });
+
+  test("C-LIFE-10 keeps each typed step failure's code and details", async () => {
+    const reap = elwoodError(
+      "termination_failed",
+      "PTY exited but its process group could not be reaped.",
+      {
+        cause: "EPERM",
+        errno: "EPERM",
+      },
+    );
+    await expect(
+      runTeardownSteps([
+        () => {
+          throw reap;
+        },
+        () => Promise.reject(new Error("bridge stop failed")),
+      ]),
+    ).rejects.toMatchObject({
+      code: "teardown_failed",
+      details: {
+        causes: [reap.message, "bridge stop failed"],
+        failures: [
+          { message: reap.message, code: "termination_failed", details: reap.details },
+          { message: "bridge stop failed" },
+        ],
+      },
+    });
   });
 
   test("C-ERR-01 stringifies non-Error step failures", async () => {
