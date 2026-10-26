@@ -2,7 +2,7 @@
  * Codex adapter test harness: installs the PTY/command/reaper seams (PRD §13) with the
  * shared `FakePty`, tracks the ptys and reaped process groups a test can inspect, drives
  * readiness through the `SessionStart` hook (C-API-28), and hands out scratch dirs that
- * are removed after each test.
+ * are removed after each test, as are the socket homes of the sessions it starts.
  */
 
 import { afterEach } from "vitest";
@@ -24,6 +24,7 @@ import {
 } from "../../src/runtime/startup/index.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { createScratchRegistry, FakePty } from "../helpers/fake-pty.ts";
+import { isolateFakeSocketHomes, removeFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
 
 export { type BridgeReply, dispatchRaw, FakePty, readBridgeScript } from "../helpers/fake-pty.ts";
 
@@ -42,10 +43,14 @@ const versionOk =
       : { status: 0, stdout: "codex-cli 0.132.0\n", stderr: "" };
 const scratch = createScratchRegistry("elwood_test_codex-");
 
-afterEach(() => scratch.removeAll());
+afterEach(() => {
+  scratch.removeAll();
+  removeFakeSocketHomes();
+});
 
 export function installFakes(options: { readonly supportsHookTrustBypass?: boolean } = {}): void {
   setPlatformForTests("darwin");
+  isolateFakeSocketHomes();
   setCommandRunnerForTests(versionOk(options.supportsHookTrustBypass ?? true));
   setStartupWaitMsForTests(25);
   setProcessTreeOpsForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
