@@ -7,7 +7,7 @@
 import { userInfo } from "node:os";
 import type { ElwoodAgentKind } from "../core/activity/index.ts";
 import { isStringArray } from "../core/predicates.ts";
-import { probeStartScript } from "./probe/start.ts";
+import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
 
 export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
@@ -38,14 +38,18 @@ export function loginShellCommand(command: string): LoginShellArgs {
  * Interactive login shell for the non-PTY probes (`--version`, `update`, `--help`).
  * The same shell and flags as `loginShellCommand` (C-PTY-08): the probes and the agent
  * PTY must resolve the same CLI installation, so a probe loads the same user PATH the
- * PTY launch does. The one divergence is the start line written before the command, on the
+ * PTY launch does. Before the command run, in order: the start line, written on the
  * runner's private control descriptor or, from a shell that closed it, on stdout, so the
- * probe runner can bound the user's profile and the CLI separately (C-PERF-05).
+ * probe runner can bound the user's profile and the CLI separately; in the e2e suite, the
+ * home guard; and the removal of the user's not-found handlers, so a missing CLI reads as
+ * missing (C-PERF-05). The command's bound starts at the start line, so it covers what runs
+ * between the line and the CLI too: a few builtins.
  */
 export function probeShellCommand(command: string): LoginShellArgs {
   // The start line comes first, so the runner still tells a shell that never started the
   // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
-  return loginShellArgs(`${probeStartScript}${homeGuardScript()}${command}`);
+  const script = `${probeStartScript}${homeGuardScript()}${probeNotFoundHandlerReset}${command}`;
+  return loginShellArgs(script);
 }
 
 /**
