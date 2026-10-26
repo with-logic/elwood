@@ -15,18 +15,18 @@ import test from "node:test";
 import { isRecord } from "../../src/core/predicates.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { defaultClaudeConfigDir, userConfigDir, userGlobalConfig } from "./claude-home.ts";
+import { claudeProjectKeys, projectKeysWithin } from "./claude-projects.ts";
 import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 
 const credentials = join(defaultClaudeConfigDir, ".credentials.json");
 const apiKeyVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] as const;
 
-/** The `projects` keys of the Claude global config at `path`. */
+/** The `projects` keys of the Claude global config at `path`, none when it is missing. */
 function projectKeys(path: string): readonly string[] {
   if (!existsSync(path)) return [];
   const config: unknown = JSON.parse(readFileSync(path, "utf8"));
   if (!isRecord(config)) throw new Error(`${path} does not hold a JSON object`);
-  const projects = config["projects"];
-  return isRecord(projects) ? Object.keys(projects) : [];
+  return claudeProjectKeys(config, path);
 }
 
 test("C-E2E-23 a Claude e2e logs in from its private copy and never names its scratch project in the user's config or transcripts", {
@@ -60,7 +60,7 @@ test("C-E2E-23 a Claude e2e logs in from its private copy and never names its sc
   const recorded = projectKeys(join(defaultClaudeConfigDir, ".claude.json"));
   assert.ok(recorded.includes(cwd), `Claude recorded ${cwd} in the private config`);
   assert.deepEqual(
-    projectKeys(userGlobalConfig).filter((key) => key.includes(name)),
+    projectKeysWithin(projectKeys(userGlobalConfig), [cwd, project.cwd]),
     [],
     "the user's global config never names the scratch project",
   );
