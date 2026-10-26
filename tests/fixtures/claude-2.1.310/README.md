@@ -56,3 +56,14 @@ a 189-column session started by Elwood, while the OSC title read
 `✳`. The spinner row is `✢ Nebulizing… (2s)` with no `esc to interrupt`, which no frame in
 the turn showed, so the title is the only working signal. The project path is normalized to
 `/tmp/ELWOOD_CAPTURE/project`.
+
+## Bypass-permissions acceptance dialog (`bypass-permissions-*.txt`)
+
+The one-time `WARNING: Claude Code running in Bypass Permissions mode` dialog,
+captured on 2026-10-26 from a session Elwood started with `--permission-mode
+bypassPermissions` and autotrust, in an empty temporary project and a private
+`CLAUDE_CONFIG_DIR` with no `settings.json` (the developer's own settings set
+`skipDangerousModePermissionPrompt`, which hides the dialog). Autotrust had already
+answered the folder-trust gate. `bypass-permissions-100.txt` is a 100x40 terminal,
+where the sentences wrap, and `bypass-permissions-200.txt` a 200x40 one, where they
+do not. The cursor starts on `No, exit`.
