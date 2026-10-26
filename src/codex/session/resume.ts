@@ -45,7 +45,6 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
       options.strictVersionCheck ?? false,
       options.autoupdate ?? false,
     );
-    await assertLaunchDirectory("codex", record.cwd); // it may have gone during preflight
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.

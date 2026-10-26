@@ -69,7 +69,6 @@ export async function startCodexWithId(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );
-  await assertLaunchDirectory("codex", options.cwd); // it may have gone during preflight
   const session = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,
