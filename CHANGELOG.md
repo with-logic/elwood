@@ -17,6 +17,22 @@ back each entry are listed in `prd/14-conformance.md`.
   so a session for a deleted worktree started in a new, empty directory. A state
   directory is now made only while `cwd` exists, and one at or under `cwd`, the
   default `.elwood/` or your own `stateDir`, only below it, so such a start
+  rejects before spawning and the worktree stays gone, as does a `stateDir`
+  elsewhere. State writes no longer make missing parent directories either, so a
+  running session whose state directory was in its removed worktree fails its
+  later writes (a new loop rejects with `loop_persistence_failed`), and a resume
+  whose state directory is removed fails, instead of recreating either.
+- Starting or resuming a session whose `cwd` does not exist now rejects with
+  `claude_start_failed` or `codex_start_failed`, with `details.cwd` and
+  `details.errno`, before any probe, state write, or spawn (resume reads and
+  validates its record first), instead of failing on a state write. A `cwd` that
+  is a file is rejected the same way, and so is one removed while the start's
+  version probes run, and a relative `cwd` that can't be resolved because the
+  process's own working directory was deleted. A launch that fails while `cwd`
+  is gone, no longer a directory, or can't be checked reports the same error and
+  keeps the launch failure's `cause` and cleanup details. A resumed Claude
+  session with a relative `cwd` now launches in the directory it checked, even
+  if the process working directory changes during the probes.
   rejects before spawning (for now with `ENOENT`) and the worktree stays gone,
   as does a `stateDir` elsewhere. State writes no longer make missing parent
   directories either, so a running session whose state directory was in its
