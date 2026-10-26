@@ -79,3 +79,16 @@ asked to create `elwood.txt` with its shell tool. `dialog.json` is the
 with its rules and footer, and a visible cursor at column 2. The submitted prompt
 is still echoed as `❯ Create a file named …` above both. The project path is
 normalized to `/tmp/ELWOOD_CAPTURE/project`.
+
+## Bypass dialog on a resumed session (`resume-bypass/`)
+
+Captured on 2026-10-26 from Claude Code 2.1.310 with Opus 5.5 through Elwood, in a
+189x48 terminal and a private `CLAUDE_CONFIG_DIR` with no `settings.json` that had
+never accepted bypass mode. A `default`-mode session in an empty temporary project ran
+one turn (`Reply with exactly: hello. Do not use tools.`) and was stopped. It was then
+resumed with `highTrust`. `dialog.json` is the bypass-permissions dialog the resume
+opened on, with its cursor hidden and the terminal title not yet set. `accepted.json` is
+the frame after Elwood accepted it: the resumed transcript, with the earlier prompt
+echoed as `❯ Reply with exactly: hello. …`, above the idle bypass-mode composer, its
+rules, and its footer, with a visible cursor at column 2. The project path is
+normalized to `/tmp/ELWOOD_CAPTURE/project`.
