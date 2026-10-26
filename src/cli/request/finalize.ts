@@ -1,11 +1,9 @@
 /**
  * Finalizes adapter-dependent resume options, workspace, and images.
- * Implements PRD §12A.1/§12A.2 and C-CLI-03/C-CLI-04/C-CLI-06/C-CLI-08.
+ * Implements PRD §12A.1/§12A.2/§12A.5 and C-CLI-03/C-CLI-04/C-CLI-06/C-CLI-08/C-CLI-15.
  */
 
-import { stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
-import { errnoCode } from "../../core/errors.ts";
+import { resolve } from "node:path";
 import { validateImages } from "../../core/images/resolve.ts";
 import { claudeReasoningEfforts, codexReasoningEfforts } from "../../core/reasoning-effort.ts";
 import {
@@ -17,6 +15,7 @@ import {
 } from "../types.ts";
 import { settingConflict } from "./validation.ts";
 import { choice, nonBlank, optional, usage } from "./values.ts";
+import { validateWorkspace } from "./workspace.ts";
 
 export async function finalizeRunRequest(
   draft: ResolvedRunRequest,
@@ -25,27 +24,11 @@ export async function finalizeRunRequest(
   validateStored(draft, stored);
   const agent = stored?.agent ?? draft.agent;
   validateEffectiveAgent(draft, agent);
-  const cwd = stored?.cwd ?? draft.cwd;
-  if (cwd === undefined) throw usage("The effective workspace could not be resolved.");
-  if (!isAbsolute(cwd)) throw usage(`Workspace '${cwd}' must be an absolute path.`);
-  const info = await workspaceStat(cwd);
-  if (!info.isDirectory()) throw usage(`Workspace '${cwd}' is not a directory.`);
-  const uid = process.getuid?.();
-  if (uid !== undefined && info.uid !== uid)
-    throw usage(`Workspace '${cwd}' must be owned by the current user.`);
+  const cwd = await validateWorkspace(stored?.cwd ?? draft.cwd);
   const images = await validateImages(
     draft.imagePaths.map((path) => ({ path: resolve(cwd, nonBlank(path, "image")) })),
   );
   return effectiveRequest(draft, agent, cwd, images, stored !== undefined);
-}
-
-async function workspaceStat(cwd: string) {
-  try {
-    return await stat(cwd);
-  } catch (error) {
-    if (errnoCode(error) === "ENOENT") throw usage(`Workspace '${cwd}' does not exist.`);
-    throw usage(`Workspace '${cwd}' could not be inspected.`);
-  }
 }
 
 function validateStored(
