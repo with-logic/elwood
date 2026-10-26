@@ -1,11 +1,16 @@
 /**
  * Real-CLI verification of the agent-neutral `highTrust` switch (C-E2E-16 for
- * C-API-54 / C-CLAUDE-21): a Claude session started with `highTrust: true` reaches
- * `ready` in bypass-permissions mode with no acceptance dialog left on screen —
- * answering the one-time "WARNING: Claude Code running in Bypass Permissions mode"
- * dialog when the installed CLI renders it (2.1.268 on a Max account did NOT; see
- * docs/cli-behavior.md) — and a Codex session started with `highTrust: true`
- * reaches `ready` with the persisted posture `danger-full-access` / `never`.
+ * C-API-54 / C-CLAUDE-21): a Claude session started with `highTrust: true` answers the
+ * one-time "WARNING: Claude Code running in Bypass Permissions mode" dialog and reaches
+ * `ready` in bypass-permissions mode with no acceptance dialog left on screen. The
+ * suite's private Claude config (`claude-home.ts`) has never accepted the dialog and
+ * has no `skipDangerousModePermissionPrompt` setting, so the CLI always renders it
+ * (docs/cli-behavior.md). The PTY's output and writes are recorded from spawn, so the
+ * answer is proven even if it came before `startClaude` resolved and anyone could
+ * subscribe. The folder-trust gate before it opens on `No, exit` too and takes the same
+ * keys, so each write is matched to the screen the PTY had painted when it was made. A
+ * Codex session started with `highTrust: true` reaches `ready` with the persisted
+ * posture `danger-full-access` / `never`.
  */
 
 import assert from "node:assert/strict";
@@ -20,7 +25,9 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
+import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanup, makeProject, observeSession, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { type PtyRecord, recordPty, screenAfter } from "./pty-record.ts";
 import { trustPromptVisible } from "./trust-screens.ts";
 
 type Launch = {
@@ -38,12 +45,16 @@ function bypassDialogVisible(text: string): boolean {
   return /running in Bypass Permissions mode/i.test(text);
 }
 
+// The bypass dialog opens on `No, exit`: Elwood moves to `Yes, I accept`, then confirms it.
+const selectAccept = "\u001b[H\u001b[B";
+
 test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permissions mode", {
   skip: skipIf(skipReason("claude")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");
   let session: ClaudeSessionApi | undefined;
+  const pty = recordPty();
   try {
     session = await startClaude({
       cwd: project.cwd,
@@ -51,12 +62,11 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
       highTrust: true,
       autotrust: true,
     });
+    const subscribedAt = Date.now();
     const observed = observeSession(session);
-    let dialogSeen = false;
     await waitFor(
       () => {
         const text = session?.terminal.snapshot().text ?? "";
-        if (bypassDialogVisible(text)) dialogSeen = true;
         if (session?.status !== "ready") return undefined;
         // `ready` must never mask a still-visible trust-style dialog (C-CLAUDE-21).
         return trustPromptVisible(text, "claude") ? undefined : true;
@@ -72,18 +82,29 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
       "bypassPermissions",
       "the persisted posture carries the expanded permission mode",
     );
-    // Whether the installed CLI renders the one-time acceptance dialog is version- and
-    // machine-dependent. When it does, Elwood must have answered it under its own label.
+    // The dialog renders in the private config, and Elwood answers it once. It can clear
+    // between two polls of the screen, so the PTY's writes, each read against the screen
+    // painted before it, are the evidence.
+    const onDialog: PtyRecord["writes"][number][] = [];
+    for (const write of pty.writes) {
+      if (bypassDialogVisible(await screenAfter(pty, write.after))) onDialog.push(write);
+    }
+    assert.deepEqual(
+      onDialog.map(({ data }) => data),
+      [selectAccept, `${selectAccept}\r`],
+      "Elwood moved to Yes, I accept and confirmed it, once",
+    );
+    // The live `startup_prompt` activity fires with the answer's first write, so an
+    // observer subscribed after start sees it whenever that write came later.
+    const answeredAt = onDialog[0]?.at ?? 0;
     const answered = observed.activities.filter((event) => {
       const activity = event as { readonly kind?: string; readonly label?: string };
       return activity.kind === "startup_prompt" && activity.label === "bypass_permissions";
     });
-    console.log(
-      `bypass-permissions acceptance dialog ${dialogSeen ? "rendered and was answered" : "did not render"} (claude ${answered.length} answer(s))`,
-    );
-    assert.equal(answered.length, dialogSeen ? 1 : 0, "dialog answered exactly when rendered");
+    assert.equal(answered.length, answeredAt >= subscribedAt ? 1 : 0, "answer activity, live");
     observed.dispose();
   } finally {
+    resetRuntimeSeamsForTests();
     await cleanup(session);
   }
 });
