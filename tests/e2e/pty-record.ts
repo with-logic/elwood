@@ -16,12 +16,8 @@ export type PtyRecord = {
   readonly output: string[];
   /** Each size, from spawn on, with the number of output chunks received before it. */
   readonly sizes: { readonly outputChunksBefore: number; readonly size: TerminalSize }[];
-  /** Each write, with its time and the number of output chunks received before it. */
-  readonly writes: {
-    readonly at: number;
-    readonly data: string;
-    readonly outputChunksBefore: number;
-  }[];
+  /** Each write, in order, with the number of output chunks received before it. */
+  readonly writes: { readonly data: string; readonly outputChunksBefore: number }[];
 };
 
 /**
@@ -39,11 +35,7 @@ export function recordPty(): PtyRecord {
       ...pty,
       write(data) {
         const text = Buffer.from(data).toString("utf8");
-        record.writes.push({
-          at: Date.now(),
-          data: text,
-          outputChunksBefore: record.output.length,
-        });
+        record.writes.push({ data: text, outputChunksBefore: record.output.length });
         pty.write(data);
       },
       resize(size) {
