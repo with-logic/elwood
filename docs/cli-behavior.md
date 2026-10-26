@@ -2452,3 +2452,19 @@ Queued editors after the first use `⇧→ prev question`; only the first uses
 frames. If a local skip and Esc collapse coalesce into one output render, the
 smaller badge does not identify the removed question. Preserve the prior focused
 editor count until a matching remaining editor confirms that removal.
+
+## Login-shell not-found handlers (2026-10-26)
+
+A probe runs its CLI through the user's interactive login shell, so a CLI missing
+from PATH meets whatever not-found handler the startup files define. zsh 5.9 runs
+`command_not_found_handler` and bash 4.0 and later run `command_not_found_handle`.
+Ubuntu's `/etc/bash.bashrc` defines the bash one when the `command-not-found`
+package is installed, to suggest a package. The handler's
+output goes to the shell's stdout and stderr, which a probe captures, and the
+handler's return status becomes the probe's. One that returns 1 turns "not found"
+(127) into an ordinary failure. Measured with a handler printing a marker: zsh 5.9
+on macOS, and bash 5.2.37 in a Debian trixie container, both captured the marker
+and reported the handler's status. macOS's bash 3.2 predates the hook. The probe
+script now runs `unset -f command_not_found_handler command_not_found_handle
+2>/dev/null || :` before its command. Each shell ignores the other's name. With it,
+both shells exit 127 and capture no marker.

@@ -7,8 +7,9 @@
 import { randomBytes } from "node:crypto";
 
 /**
- * The line a probe shell writes once the user's startup files have loaded, immediately before
- * the probe command runs. It separates the profile's launch time from the command's own bound
+ * The line a probe shell writes once the user's startup files have loaded, before the probe
+ * command runs. It separates the profile's launch time from the command's own bound, which
+ * covers everything after the line: the not-found handlers' removal, then the command
  * (PRD §9.2, C-PERF-05). Owned here, by the reader, so the runner never loads the shell
  * helpers that the writer, `probeShellCommand`, lives in. It ends in a token drawn once per
  * parent process: stdout, which the runner also watches, carries the profile's own output,
@@ -33,6 +34,16 @@ export const probeControlFd = 3;
  * own output and fail the probe anyway. The runner removes the line from captured stdout.
  */
 export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; else echo ${probeCommandStartLine}; fi; `;
+
+/**
+ * Removes the user's not-found handlers before the probe command runs: zsh's
+ * `command_not_found_handler` and bash's `command_not_found_handle`. A shell that finds no
+ * command runs its handler, so its output would be captured as the command's, and the status
+ * the handler returns would replace the 127 that tells preflight the CLI is missing. Each
+ * shell ignores the other's name, and a failed `unset` cannot end the shell under `errexit`.
+ */
+export const probeNotFoundHandlerReset =
+  "unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; ";
 
 /** Whether a probe runs a script that announces its command with the start line. */
 export function announcesStart(args: readonly string[]): boolean {

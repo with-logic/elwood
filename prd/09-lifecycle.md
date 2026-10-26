@@ -146,7 +146,7 @@ the host. A probe runs through the user's interactive login shell (§4.2), and
 loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
-bounded separately. After the startup files load, and immediately before the probe
+bounded separately. After the startup files load, and before the probe
 command runs, the probe shell writes a start line of Elwood's own, ending in a random
 token chosen once per parent process so that no startup file's output can pass for it,
 on a private channel that is neither stdout nor stderr, so a startup file that
@@ -156,6 +156,11 @@ stderr) writes the line on stdout instead. Not stderr, which a startup file may
 discard or merge into stdout: a startup file that hid stdout would also hide the
 command's own output. Elwood removes the line from captured stdout, so on either
 channel the probe's captured output is exactly the shell's and the command's.
+After the start line and before the command, the probe script removes the user's
+not-found handlers, zsh's `command_not_found_handler` and bash's
+`command_not_found_handle`, under the command's bound, which starts at the line. A
+CLI missing from the login shell's PATH therefore exits 127 and is reported as not
+found, and nothing a handler would print is captured.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that
