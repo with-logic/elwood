@@ -3,23 +3,16 @@
  * Covers PRD §12A.4 and C-CLI-13/C-CLI-15.
  */
 
-import {
-  chmodSync,
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { decodeConfig, parseConfigValue, setConfigValue } from "../../src/cli/config/codec.ts";
 import { resolveConfigPath, resolveStateLocation } from "../../src/cli/config/paths.ts";
 import { readConfig, writeConfig } from "../../src/cli/config/store.ts";
 import { CliValidationError } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
-const sandbox = () => mkdtempSync(join(tmpdir(), "elwood-cli-config-"));
+const sandbox = () => tempDir("elwood-cli-config-");
 
 describe("CLI config", () => {
   test("C-CLI-13 resolves explicit, absolute XDG, relative-XDG, and home fallbacks", () => {

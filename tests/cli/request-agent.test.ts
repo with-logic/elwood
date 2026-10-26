@@ -3,13 +3,11 @@
  * never probed, an unselected new session is (PRD §12A.1/§12A.4, C-CLI-21).
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
 import { autoDetectedSource } from "../../src/cli/request/agent-detect.ts";
 import { resolveRunRequest } from "../../src/cli/request/index.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectClaude, detectCodex, detectNothing } from "./agent-fakes.ts";
 
 async function* stdin(value = "") {
@@ -19,7 +17,7 @@ async function* stdin(value = "") {
 
 describe("effective request agent selection", () => {
   test("C-CLI-21 a selected agent is never probed; an unselected new session is", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const context = {
       env: {},
       homeDir: root,
@@ -46,7 +44,7 @@ describe("effective request agent selection", () => {
   });
 
   test("C-CLI-21 a config-selected agent is never probed", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const parsed = parseCliArgs(["go"]);
     if (parsed.command !== "run") throw new Error("expected run");
     await expect(
@@ -87,7 +85,7 @@ describe("effective request agent selection", () => {
       "--codex-approval-policy and ELWOOD_CODEX_SANDBOX are incompatible with the auto-detected Claude agent. Remove --codex-approval-policy. Use --no-defaults to ignore ELWOOD_CODEX_SANDBOX, or select --agent codex.",
     ],
   ])("C-CLI-20/C-CLI-21 names auto-detection and offers the other agent %#", async (argv, env, detect, message) => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const parsed = parseCliArgs(argv);
     if (parsed.command !== "run") throw new Error("expected run");
     await expect(

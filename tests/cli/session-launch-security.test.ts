@@ -3,21 +3,13 @@
  * Implements PRD §12A.5 and C-CLI-15.
  */
 
-import {
-  chmodSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session/launch.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import { ensurePrivateStateRoot } from "../../src/state/private-session.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { effectiveRequest } from "./main-fakes.ts";
 
 function request(root: string, stateDir: string): EffectiveRunRequest {
@@ -46,7 +38,7 @@ function dependencies(starts: string[]): CliLaunchDependencies {
 
 describe("CLI new-session state root", () => {
   test("C-CLI-15 creates an absent private root before adapter preparation", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-state-root-"));
+    const root = tempDir("elwood-cli-state-root-");
     const stateDir = join(root, "state");
     const starts: string[] = [];
 
@@ -62,7 +54,7 @@ describe("CLI new-session state root", () => {
   });
 
   test("C-CLI-15 rejects a linked root without changing its target", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-state-link-"));
+    const root = tempDir("elwood-cli-state-link-");
     const target = join(root, "target");
     const stateDir = join(root, "state");
     mkdirSync(target);
@@ -81,7 +73,7 @@ describe("CLI new-session state root", () => {
   });
 
   test("C-CLI-15 rejects a linked sessions directory without changing its target", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-sessions-link-"));
+    const root = tempDir("elwood-cli-sessions-link-");
     const target = join(root, "target");
     const stateDir = join(root, "state");
     mkdirSync(target);
@@ -99,7 +91,7 @@ describe("CLI new-session state root", () => {
   });
 
   test("C-CLI-15 rejects an existing non-private state root without chmodding it", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-state-mode-"));
+    const root = tempDir("elwood-cli-state-mode-");
     const stateDir = join(root, "state");
     mkdirSync(stateDir);
     chmodSync(stateDir, 0o755);

@@ -2,19 +2,17 @@
  * Effective-setting inspection and validation tests (PRD §12A.4, C-CLI-19/C-CLI-21).
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { writeEffectiveConfig } from "../../src/cli/config/effective.ts";
 import { autoDetectedSource } from "../../src/cli/request/agent-detect.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectClaude, detectCodex, detectNothing } from "./agent-fakes.ts";
 import { MemoryWriter } from "./run-fakes.ts";
 
 function harness() {
-  const root = mkdtempSync(join(tmpdir(), "elwood-effective-config-"));
+  const root = tempDir("elwood-effective-config-");
   const writer = new MemoryWriter();
   return {
     root,
