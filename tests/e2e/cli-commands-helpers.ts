@@ -28,6 +28,14 @@ export const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import
 /** The listed-row fields these e2e checks read, derived from the public row type. */
 export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault">;
 
+/** The `elwood models --output=json` document. */
+export type ModelsDocument = {
+  readonly schemaVersion: 1;
+  readonly type: "models";
+  readonly agent: "claude" | "codex";
+  readonly models: readonly ListedModel[];
+};
+
 /**
  * A sandboxed `CODEX_HOME` for `elwood models`. `configureDefault` names a non-current
  * row in config.toml and returns the id the next probe must mark `(default)`: that row
@@ -36,6 +44,7 @@ export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault
 export function codexDefaultSandbox(project: E2eProject) {
   const sandbox = sandboxedCodexHome(project, "");
   return {
+    sandbox,
     configureDefault(unconfigured: readonly ListedModel[]): string {
       const drawn = drawnCodexDefault(unconfigured);
       const configured = unconfigured.find((model) => !model.isCurrent && model.id !== drawn);
@@ -43,8 +52,18 @@ export function codexDefaultSandbox(project: E2eProject) {
       writeFileSync(sandbox.configPath, `model = "${configured.id}"\n`);
       return drawn ?? configured.id;
     },
-    dispose: sandbox.dispose,
   };
+}
+
+/**
+ * Passes a CLI run only once it has confirmed its own cleanup: status 0 does, since a
+ * cleanup failure fails an otherwise successful run (PRD §12A). Otherwise the agent it
+ * launched may still be running, so this throws, and a tracked launch keeps the scratch.
+ */
+export function cleanedUp(result: Invocation): Invocation {
+  if (result.status === 0) return result;
+  const streams = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
+  throw new Error(`the CLI exited ${result.status} without confirming its cleanup\n${streams}`);
 }
 
 /** The ids of the rows a `elwood models` text table marks `(default)`. */

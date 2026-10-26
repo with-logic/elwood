@@ -13,9 +13,11 @@ import { ComposerCleanup } from "../../src/core/input/composer-cleanup.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import { currentRenderedFrame } from "../../src/terminal/cursor.ts";
+import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import {
   cleanup,
   codexAuthMissing,
+  type E2eSession,
   makeProject,
   observeSession,
   prepareInteractivePrompt,
@@ -42,15 +44,25 @@ for (const agent of ["claude", "codex"] as const) {
     copyFileSync(fixture, image);
     const sandbox = agent === "codex" ? sandboxedCodexHome(project, "") : undefined;
     const clipboard = agent === "codex" ? execFileSync("/usr/bin/pbpaste") : undefined;
-    t.after(() => {
-      sandbox?.dispose();
-      if (clipboard) execFileSync("/usr/bin/pbcopy", { input: clipboard });
+    const launches = codexLaunches();
+    let started: E2eSession | undefined;
+    t.after(async () => {
+      try {
+        // Codex's sandbox stays, with the project, unless its Codex is confirmed gone.
+        if (sandbox) await endCodexTestAfter(t, { sessions: [started], sandbox, launches });
+        else await cleanup(started);
+      } finally {
+        if (clipboard) execFileSync("/usr/bin/pbcopy", { input: clipboard });
+      }
     });
-    const session = await (agent === "claude" ? startClaude : startCodex)({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      autotrust: true,
-    });
+    const session = await launches.track<E2eSession>(
+      (agent === "claude" ? startClaude : startCodex)({
+        cwd: project.cwd,
+        stateDir: project.stateDir,
+        autotrust: true,
+      }),
+    );
+    started = session;
     const observed = observeSession(session);
     const closing = new AbortController();
     let queue: ControlQueue | undefined;
@@ -151,7 +163,6 @@ for (const agent of ["claude", "codex"] as const) {
       closing.abort();
       queue?.close();
       observed.dispose();
-      await cleanup(session);
     }
   });
 }

@@ -6,6 +6,7 @@ import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { type CodexTestEnd, codexLaunches, endCodexTest } from "./codex-test-end.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -33,6 +34,8 @@ for (const agent of ["claude", "codex"] as const) {
           )
         : undefined;
     let session: E2eSession | undefined;
+    const launches = codexLaunches();
+    let failure: CodexTestEnd["failure"];
     let armed = false;
     let resuming = false;
     let submitted = false;
@@ -73,28 +76,32 @@ for (const agent of ["claude", "codex"] as const) {
     });
     try {
       // Both native CLIs reject this model before consuming model quota.
-      session = await (agent === "claude" ? startClaude : startCodex)({
-        cwd: project.cwd,
-        stateDir: project.stateDir,
-        autotrust: true,
-        autoupdate: false,
-        initialSize: { cols: 140, rows: 35 },
-        model: "gpt-elwood-nonexistent-acceptance-probe",
-      });
+      session = await launches.track<E2eSession>(
+        (agent === "claude" ? startClaude : startCodex)({
+          cwd: project.cwd,
+          stateDir: project.stateDir,
+          autotrust: true,
+          autoupdate: false,
+          initialSize: { cols: 140, rows: 35 },
+          model: "gpt-elwood-nonexistent-acceptance-probe",
+        }),
+      );
       for (const phase of ["cold", "resume"] as const) {
         if (phase === "resume") {
           const id: string = session.elwoodSessionId;
           await session.stop();
           armed = false;
           resuming = true;
-          session = await (agent === "claude" ? resumeClaude : resumeCodex)({
-            cwd: project.cwd,
-            stateDir: project.stateDir,
-            elwoodSessionId: id,
-            autotrust: true,
-            autoupdate: false,
-            initialSize: { cols: 140, rows: 35 },
-          });
+          session = await launches.track<E2eSession>(
+            (agent === "claude" ? resumeClaude : resumeCodex)({
+              cwd: project.cwd,
+              stateDir: project.stateDir,
+              elwoodSessionId: id,
+              autotrust: true,
+              autoupdate: false,
+              initialSize: { cols: 140, rows: 35 },
+            }),
+          );
         }
         attempted = 0;
         delivered = 0;
@@ -151,10 +158,17 @@ for (const agent of ["claude", "codex"] as const) {
           observed.dispose();
         }
       }
+    } catch (error) {
+      failure = { error };
+      throw error;
     } finally {
-      await cleanup(session);
-      sandbox?.dispose();
-      resetRuntimeSeamsForTests();
+      try {
+        // Codex's sandbox stays, with the project, unless its Codex is confirmed gone.
+        if (sandbox) await endCodexTest({ sessions: [session], sandbox, launches, failure });
+        else await cleanup(session);
+      } finally {
+        resetRuntimeSeamsForTests();
+      }
     }
   });
 }

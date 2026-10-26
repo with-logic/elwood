@@ -8,9 +8,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { classifyCodexUpdateFrame } from "../../src/codex/update/classification.ts";
 import { safeUpdateOption } from "../../src/codex/update/selection.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { nativeUpdaterSandbox } from "./codex-native-update-sandbox.ts";
-import { cleanup, observeSession, skipIf, waitFor } from "./helpers.ts";
+import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
+import { observeSession, skipIf, waitFor } from "./helpers.ts";
 
 const binary = join(
   homedir(),
@@ -32,23 +32,25 @@ test("C-CODEX-12 genuine updater holds narrow input and selects only the full-me
   const sandbox = await nativeUpdaterSandbox(binary);
   assert.equal(process.env["CODEX_HOME"], parentCodexHome);
   let session: CodexSessionApi | undefined;
+  const launches = codexLaunches();
   t.after(async () => {
     try {
-      await cleanup(session);
+      // The sandbox stays, with its project, unless this Codex is confirmed gone.
+      await endCodexTestAfter(t, { sessions: [session], sandbox: sandbox.codex, launches });
     } finally {
-      resetRuntimeSeamsForTests();
-      sandbox.dispose();
       assert.equal(process.env["CODEX_HOME"], parentCodexHome);
     }
   });
-  session = await startCodex({
-    cwd: sandbox.project,
-    stateDir: join(sandbox.project, ".state"),
-    initialSize: { cols: 100, rows: 6 },
-    autoupdate: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-  });
+  session = await launches.track(
+    startCodex({
+      cwd: sandbox.project,
+      stateDir: join(sandbox.project, ".state"),
+      initialSize: { cols: 100, rows: 6 },
+      autoupdate: false,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+    }),
+  );
   const active = session;
   const observed = observeSession(active);
   t.after(() => observed.dispose());
@@ -111,14 +113,16 @@ test("C-CODEX-12 genuine updater holds narrow input and selects only the full-me
   assert.notEqual(await queued, "fulfilled");
   assert.deepEqual(sandbox.applicationAttempts, []);
   // The held caller belongs to the closed session. The positive phase has no prompt.
-  session = await startCodex({
-    cwd: sandbox.project,
-    stateDir: join(sandbox.project, ".positive-state"),
-    initialSize: { cols: 100, rows: 6 },
-    autoupdate: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-  });
+  session = await launches.track(
+    startCodex({
+      cwd: sandbox.project,
+      stateDir: join(sandbox.project, ".positive-state"),
+      initialSize: { cols: 100, rows: 6 },
+      autoupdate: false,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+    }),
+  );
   const positive = session;
   await waitFor(
     () => (positive.terminal.snapshot().text.includes("0.155.1 -> 0.156.1") ? true : undefined),

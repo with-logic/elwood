@@ -9,13 +9,15 @@ import { existsSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import {
+  cleanedUp,
   codexDefaultSandbox,
   defaultRowIds,
   drivePty,
   invoke,
-  type ListedModel,
+  type ModelsDocument,
   parse,
 } from "./cli-commands-helpers.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import { e2eTimeoutMs, makeProject, pathRemoved, skipReason, turnsEnabled } from "./helpers.ts";
 
 type SessionsDocument = {
@@ -31,12 +33,6 @@ type SessionsDocument = {
     readonly resumable: boolean;
     readonly live: boolean;
   }[];
-};
-type ModelsDocument = {
-  readonly schemaVersion: 1;
-  readonly type: "models";
-  readonly agent: "claude" | "codex";
-  readonly models: readonly ListedModel[];
 };
 type ResultDocument = {
   readonly type: "result" | "error";
@@ -145,13 +141,13 @@ for (const agent of ["claude", "codex"] as const) {
     const project = makeProject(agent);
     const state = `--state-dir=${project.stateDir}`;
     const codexHome = agent === "codex" ? codexDefaultSandbox(project) : undefined;
-    try {
-      const json = parse<ModelsDocument>(
-        await invoke(
-          ["models", `--agent=${agent}`, state, "--output=json", "--timeout=2m"],
-          project.cwd,
-        ),
+    const launches = codexLaunches();
+    const models = (...args: string[]) =>
+      launches.track(
+        invoke(["models", `--agent=${agent}`, state, ...args], project.cwd).then(cleanedUp),
       );
+    const body = async () => {
+      const json = parse<ModelsDocument>(await models("--output=json", "--timeout=2m"));
       assert.equal(json.type, "models");
       assert.equal(json.agent, agent);
       assert.ok(json.models.length >= 2, JSON.stringify(json));
@@ -160,7 +156,7 @@ for (const agent of ["claude", "codex"] as const) {
         ? codexHome.configureDefault(json.models)
         : json.models.find((model) => model.isDefault)?.id;
       assert.ok(expectedDefault, JSON.stringify(json));
-      const text = await invoke(["models", `--agent=${agent}`, state, "--timeout=2m"], project.cwd);
+      const text = await models("--timeout=2m");
       assert.equal(text.status, 0, text.stderr);
       assert.match(text.stdout, /^CURRENT\s+ID\s+LABEL\s+DEFAULT\s+DESCRIPTION\n/);
       assert.match(text.stdout, /\n\*\s+\S/);
@@ -170,10 +166,11 @@ for (const agent of ["claude", "codex"] as const) {
         await invoke(["sessions", state, "--output=json"], tmpdir()),
       );
       assert.deepEqual(listed.sessions, [], "the models probe tears its identity down");
-    } finally {
-      codexHome?.dispose();
-      rmSync(project.cwd, { recursive: true, force: true });
-    }
+    };
+    // Codex's sandbox stays, with the project, unless every run confirmed its cleanup.
+    if (codexHome)
+      await runCodexTest({ sessions: () => [], sandbox: codexHome.sandbox, launches }, body);
+    else await body().finally(() => rmSync(project.cwd, { recursive: true, force: true }));
   });
 
   test(`C-CLI-25 elwood interactive opens the real ${agent} TUI in a PTY and exits with its status`, {
