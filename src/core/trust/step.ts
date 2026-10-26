@@ -37,11 +37,25 @@ export function trustStep(option: SelectableOption): TrustStep {
  * blind. Only another complete dialog replacing the gate makes its return a fresh one.
  */
 export type TrustPhase = {
+  /**
+   * A confirming write was started, whatever its outcome: a rejected or abandoned write
+   * may still have reached the CLI, so the gate's later numbered steps are retries.
+   */
+  confirmationWriteAttempted: boolean;
   /** A confirming write fulfilled. That is not clearance, which only a frame verifies. */
-  confirmed: boolean;
+  confirmationWriteFulfilled: boolean;
   /** A frame rendered after the last write: only such a frame can show it was ignored. */
   renderedSinceWrite: boolean;
 };
+
+/** The phase of a gate the CLI drew afresh: nothing written to it yet. */
+export function freshPhase(): TrustPhase {
+  return {
+    confirmationWriteAttempted: false,
+    confirmationWriteFulfilled: false,
+    renderedSinceWrite: false,
+  };
+}
 
 type NumberedOption = Extract<SelectableOption, { style: "numbered" }>;
 

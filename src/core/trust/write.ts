@@ -33,8 +33,8 @@ export class TrustAttempt {
   constructor(
     candidate: TrustCandidate,
     identity: string,
+    phase: TrustPhase,
     numberedRetry: NumberedRetry = retypeAfterRender,
-    phase: TrustPhase = { confirmed: false, renderedSinceWrite: false },
   ) {
     this.candidate = candidate;
     this.identity = identity;
@@ -78,7 +78,8 @@ export class TrustAttempt {
   }
 
   private completion(): StartupWriteCompletion {
-    return this.clearance && this.phase.confirmed && !this.invalidated ? "answered" : "cancelled";
+    const answered = this.clearance && this.phase.confirmationWriteFulfilled && !this.invalidated;
+    return answered ? "answered" : "cancelled";
   }
 
   private async atomic(
@@ -132,8 +133,8 @@ export class TrustAttempt {
   }
 
   private stepFor(option: SelectableOption): TrustStep | undefined {
-    if (option.style !== "numbered" || !this.phase.confirmed) return trustStep(option);
-    return this.numberedRetry(option, this.phase.renderedSinceWrite);
+    const retry = option.style === "numbered" && this.phase.confirmationWriteAttempted;
+    return retry ? this.numberedRetry(option, this.phase.renderedSinceWrite) : trustStep(option);
   }
 
   /**
@@ -144,7 +145,7 @@ export class TrustAttempt {
    * gate (which a human must answer), or closing (C-TRUST-01).
    */
   private awaiting(view: TrustView | undefined): boolean {
-    if (!this.phase.confirmed) return false;
+    if (!this.phase.confirmationWriteFulfilled) return false;
     return view === undefined || (view.kind === "unknown" && view.gate !== true);
   }
 
@@ -170,11 +171,12 @@ export class TrustAttempt {
     if (Date.now() >= this.retryAt || step.keys !== this.previousKeys) {
       if (this.controller.signal.aborted) return false;
       this.phase.renderedSinceWrite = false;
+      this.phase.confirmationWriteAttempted ||= step.confirm;
       const result = write(step.keys);
       // A void writer has already fulfilled before an observer can replace the frame.
-      if (result === undefined && step.confirm) this.phase.confirmed = true;
+      if (result === undefined && step.confirm) this.phase.confirmationWriteFulfilled = true;
       const fulfilled = await this.own(result);
-      if (fulfilled && step.confirm) this.phase.confirmed = true;
+      if (fulfilled && step.confirm) this.phase.confirmationWriteFulfilled = true;
       this.previousKeys = step.keys;
       this.retryAt = Date.now() + retryMs;
       if (!fulfilled) return false;

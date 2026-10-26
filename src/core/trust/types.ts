@@ -3,7 +3,7 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupWriteCompletion } from "../startup/write.ts";
 import { optionInput, type SelectableOption } from "../terminal-options.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
-import type { NumberedRetry, TrustPhase } from "./step.ts";
+import { freshPhase, type NumberedRetry, type TrustPhase } from "./step.ts";
 import { choiceIdentity, type TrustCandidate } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
 
@@ -58,7 +58,7 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
     reportedPending: false,
     legacyAnswered: false,
     callerOwned: false,
-    phase: { confirmed: false, renderedSinceWrite: false },
+    phase: freshPhase(),
     attempt: undefined,
   };
 }
@@ -79,10 +79,11 @@ export function attempted<A extends ElwoodAgentKind>(
  */
 export function leaveFrame(episode: Episode, offAllowlistGate: boolean): void {
   episode.lastIdentity = undefined;
-  if (episode.attempt !== undefined && episode.phase.confirmed && !offAllowlistGate) return;
+  const confirmed = episode.phase.confirmationWriteFulfilled;
+  if (episode.attempt !== undefined && confirmed && !offAllowlistGate) return;
   episode.attempt?.cancel();
   episode.attempt = undefined;
   episode.attemptedIdentity = undefined;
   // Another complete dialog replaced the gate, so the CLI drew its return afresh.
-  if (offAllowlistGate) episode.phase.confirmed = false;
+  if (offAllowlistGate) Object.assign(episode.phase, freshPhase());
 }

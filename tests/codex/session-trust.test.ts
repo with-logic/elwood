@@ -108,10 +108,13 @@ describe("CodexSessionApi trust prompts", () => {
     ptys[0]!.failOnWrite = "1\r";
     ptys[0]!.emitData(`${tty(codexTrust)}\r\n› 1. Yes, continue`);
     await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
-    // Retryable: a later frame re-attempts the answer with a now-succeeding write.
+    // Retryable: a later frame re-attempts the answer with a now-succeeding write. A
+    // rejected write may still have reached Codex, so the retry is Enter alone on the
+    // affirmative under the caret, never the number again (C-TRUST-01).
     ptys[0]!.failOnWrite = undefined;
     ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexTrust)}\r\n› 1. Yes, continue`);
-    await expect.poll(() => ptys[0]!.writes).toContain("1\r");
+    await expect.poll(() => ptys[0]!.writes).toContain("\r");
+    expect(ptys[0]!.writes).not.toContain("1\r");
   });
 
   test("C-CODEX-15 a not-yet-rendered option emits a TRANSIENT attention, persists NO durable warning", async () => {

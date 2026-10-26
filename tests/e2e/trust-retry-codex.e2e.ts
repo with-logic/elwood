@@ -11,75 +11,19 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { teardownOrKillCodex } from "./codex-ready.ts";
-import {
-  codexAuthMissing,
-  makeProject,
-  sandboxedCodexHome,
-  skipIf,
-  skipNow,
-  skipReason,
-  waitFor,
-} from "./helpers.ts";
-import { holdCliOutput, outputMatcher } from "./output-hold.ts";
+import { startLaggedCodex } from "./codex-trust-lag.ts";
+import { codexAuthMissing, skipIf, skipNow, skipReason, waitFor } from "./helpers.ts";
 
-/** Codex refuses a turn on an unknown model before any quota is used. */
-const bogusModel = "gpt-elwood-nonexistent-model";
 const lagMs = 2_000;
 /** How long after `ready` a stray submission has to show itself. */
 const settleMs = 5_000;
-const directoryTrustOutput = /trustthisfolder\?|trustthecontentsofthisdirectory/i;
-
-type Launch = { displayed: boolean; answerWritten: boolean; readonly writes: string[] };
-
-/** Records the launch's writes; Elwood sees no output for `lagMs` after the answer write. */
-function lagAfterAnswerWrite(): Launch {
-  const launch: Launch = { displayed: false, answerWritten: false, writes: [] };
-  const gate = outputMatcher(directoryTrustOutput);
-  holdCliOutput({
-    output(data) {
-      if (!launch.displayed) launch.displayed = gate(data);
-    },
-    input(data, output) {
-      launch.writes.push(data);
-      if (data !== "1\r" || launch.answerWritten) return;
-      launch.answerWritten = true;
-      output.hold(lagMs);
-    },
-  });
-  return launch;
-}
 
 test("C-TRUST-01 a Codex whose screen trails its trust answer never receives the number again", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
   timeout: 180_000,
 }, async (t) => {
-  const project = makeProject("codex");
-  execFileSync("git", ["init", "-q", project.cwd]);
-  const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
-  const launch = lagAfterAnswerWrite();
-  let session: CodexSessionApi | undefined;
-  t.after(async () => {
-    let failures: readonly unknown[] = [];
-    try {
-      if (session !== undefined) failures = await teardownOrKillCodex(session);
-    } finally {
-      resetRuntimeSeamsForTests();
-      sandbox.dispose();
-    }
-    if (failures.length > 0) throw new AggregateError(failures, "Codex teardown failed");
-  });
-  session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    model: bogusModel,
-    autotrust: true,
-  });
-  const live = session;
+  const { session: live, launch } = await startLaggedCodex(t, lagMs);
   const submitted: string[] = [];
   const reports: string[] = [];
   live.on("hook", (event) => {

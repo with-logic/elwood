@@ -50,12 +50,17 @@ test("C-TRUST-01 Claude never gets a bare Enter, even with its caret on the numb
   expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
 });
 
-test("C-TRUST-01 a rejected retry leaves the gate answered once: the next attempt never retypes blind", async () => {
+test.each<[string, readonly string[]]>([
+  ["first answer", ["1\r"]],
+  ["retry", ["1\r", "\r"]],
+])("C-TRUST-01 a rejected %s leaves the gate typed: the next attempt never retypes blind", async (_, before) => {
   const frame = `${codexTrust}\n› 1. Yes, continue\n  2. No, quit\nPress enter to continue`;
   const writes: string[] = [];
   const write = (input: string) => {
     writes.push(input);
-    return writes.length === 2 ? Promise.reject(new Error("PTY write failed")) : undefined;
+    return writes.length === before.length
+      ? Promise.reject(new Error("PTY write failed"))
+      : undefined;
   };
   const responder = new TrustPromptResponder("codex", codexTrustClearance, true, {
     numberedRetry: codexNumberedRetry,
@@ -65,10 +70,11 @@ test("C-TRUST-01 a rejected retry leaves the gate answered once: the next attemp
   const failed = expect(first.settled).rejects.toThrow("PTY write failed");
   await vi.advanceTimersByTimeAsync(260);
   await failed;
-  expect(writes).toEqual(["1\r", "\r"]);
-  // Codex may already have taken "1\r"; its stale gate gets Enter alone, never the number.
+  expect(writes).toEqual(before);
+  // A rejected write may still have reached Codex, which may have taken "1\r" already:
+  // its stale gate gets Enter alone, never the number.
   expect(responder.handle(frame, write, () => frame)?.kind).toBe("attempted");
   await vi.advanceTimersByTimeAsync(1_000);
-  expect(writes.slice(2).length).toBeGreaterThan(0);
-  expect(writes.slice(2).every((input) => input === "\r")).toBe(true);
+  expect(writes.slice(before.length).length).toBeGreaterThan(0);
+  expect(writes.slice(before.length).every((input) => input === "\r")).toBe(true);
 });
