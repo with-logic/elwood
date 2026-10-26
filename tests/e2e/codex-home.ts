@@ -51,7 +51,11 @@ process.on("exit", () => {
   } catch (error) {
     process.exitCode = 1;
     const reason = error instanceof Error ? error.message : String(error);
-    writeSync(2, `Kept the e2e Codex home ${defaultCodexHome}: ${reason}\n`);
+    try {
+      writeSync(2, `Could not clean up the e2e Codex home ${defaultCodexHome}: ${reason}\n`);
+    } catch {
+      // stderr is closed: the exit code still fails the run.
+    }
   }
 });
 if (existsSync(userCodexAuthPath)) copyCodexAuth(defaultCodexHome);
