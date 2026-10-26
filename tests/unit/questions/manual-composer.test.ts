@@ -1,7 +1,7 @@
 /** The captured post-question composer supports a successor round (C-API-56). */
 import { expect, test } from "vitest";
 import { claudeEmptyInputFrame } from "../../../src/claude/composer/empty-input.ts";
-import { claudeModelComposerClearance } from "../../../src/claude/model-composer.ts";
+import { claudeLastComposerClearance } from "../../../src/claude/composer/last.ts";
 import { claudeScreenFactTable, liveClaudeClearance } from "../../../src/claude/screen-table.ts";
 import { readScreenFacts } from "../../../src/core/screen-facts.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
@@ -17,17 +17,17 @@ test("C-API-56 actual manual-mode frame with earlier question prompts proves emp
     await terminal.writeOutput(
       `\x1b[2J\x1b[H${manualComposerSnapshot.lines.join("\r\n")}\x1b[?25h\x1b]0;✳ Claude Code\x07\x1b[${manualComposerSnapshot.cursorY + 1};${manualComposerSnapshot.cursorX + 1}H`,
     );
-    expect(claudeModelComposerClearance(terminal.snapshot().text)).toBe(true);
+    expect(claudeLastComposerClearance(terminal.snapshot().text)).toBe(true);
     expect(
-      liveClaudeClearance(() => terminal, claudeModelComposerClearance)(terminal.snapshot().text),
+      liveClaudeClearance(() => terminal, claudeLastComposerClearance)(terminal.snapshot().text),
     ).toBe(true);
     expect(claudeEmptyInputFrame(terminal)).toBeDefined();
     await terminal.writeOutput("\x1b[?25l");
     expect(
-      liveClaudeClearance(() => terminal, claudeModelComposerClearance)(terminal.snapshot().text),
+      liveClaudeClearance(() => terminal, claudeLastComposerClearance)(terminal.snapshot().text),
     ).toBe(false);
     expect(
-      claudeModelComposerClearance(
+      claudeLastComposerClearance(
         manualComposerSnapshot.text.replace(
           "⏸ manual mode on · ? for shortcuts",
           "arbitrary footer",

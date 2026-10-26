@@ -1169,13 +1169,14 @@ column 2, and the idle title `✳`. The transcript above it still held the submi
 prompt, echoed as `❯ Create a file named …`. Claude echoes every submitted prompt that
 way, so the whole-frame clearance, which rejects any caret row that is not an empty
 composer, rejected the frame, and the session stayed `blocked` while Claude sat idle:
-15 s in the capture, and until its timeout in C-ATTN-01. Attention
-clearance now also accepts the last composer with its rules and native footer, the
-path the model picker already used for `❯ /model`
-(`tests/fixtures/claude-2.1.310/permission-declined/`). The real-CLI C-ATTN-01 had not
-caught this on the developer's machine because their own `PermissionRequest` hook
-allowed the command, so the dialog never rendered there; the private config dir from
-C-E2E-23 has no user hooks. C-ATTN-02.
+15 s in the capture, and the whole wait of a C-ATTN-01 run in the same private config.
+Attention clearance now also accepts the last composer with its rules and native
+footer (`claudeLastComposerClearance`), the path the model picker already used for
+`❯ /model` (`tests/fixtures/claude-2.1.310/permission-declined/`). The real-CLI C-ATTN-01 runs
+Claude with the developer's own config dir, and had not caught this on the developer's
+machine: their own `PermissionRequest` hook allowed the command, so the dialog never
+rendered there. This capture is a manual reproduction in a private config dir with no
+user hooks. C-ATTN-02.
 
 ## Codex in-TUI update prompt (and the restart loop)
 

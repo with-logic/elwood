@@ -9,11 +9,11 @@
 
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
-import { claudeModelComposerClearance } from "../model-composer.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
+import { claudeLastComposerClearance } from "./last.ts";
 
 export function liveClaudeIdleComposer(readTerminal: () => ElwoodTerminal): TrustClearance {
   const wholeFrame = liveClaudeClearance(readTerminal);
-  const lastComposer = liveClaudeClearance(readTerminal, claudeModelComposerClearance);
+  const lastComposer = liveClaudeClearance(readTerminal, claudeLastComposerClearance);
   return (text) => wholeFrame(text) || lastComposer(text);
 }

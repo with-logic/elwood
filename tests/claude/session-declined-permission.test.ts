@@ -11,12 +11,11 @@ import { liveClaudeIdleComposer } from "../../src/claude/composer/idle.ts";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { startClaude } from "../../src/index.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
-import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-type NativeFrame = ReturnType<typeof readNativeInputFrame>;
 const capture = (name: string) =>
   readNativeInputFrame(
     new URL(`../fixtures/claude-2.1.310/permission-declined/${name}.json`, import.meta.url),
@@ -24,22 +23,16 @@ const capture = (name: string) =>
 const dialog = capture("dialog");
 const declined = capture("declined");
 
-/** The bytes that repaint `frame` whole: its rows, cursor, cursor visibility, and title. */
-const paint = (frame: NativeFrame) =>
-  `\u001b[2J\u001b[H${frame.text.replaceAll("\n", "\r\n")}` +
-  `\u001b[${frame.cursorY + 1};${frame.cursorX + 1}H\u001b[?25${frame.visible ? "h" : "l"}` +
-  `\u001b]0;${frame.title}\u0007`;
-
 test("C-ATTN-02 the declined frame is idle only past the prompt its transcript echoes", async () => {
   const echoed = declined.text.split("\n").filter((row) => row.startsWith("❯ Create a file"));
   expect(echoed).toHaveLength(1);
   const terminal = createHeadlessTerminal({ cols: declined.cols, rows: declined.rows }, () => {});
   try {
-    await terminal.writeOutput(paint(declined));
+    await terminal.writeOutput(nativeFrameOutput(declined));
     const text = terminal.snapshot().text;
     expect(liveClaudeClearance(() => terminal)(text)).toBe(false); // the echoed prompt's caret
     expect(liveClaudeIdleComposer(() => terminal)(text)).toBe(true);
-    await terminal.writeOutput(paint(dialog));
+    await terminal.writeOutput(nativeFrameOutput(dialog));
     expect(liveClaudeIdleComposer(() => terminal)(terminal.snapshot().text)).toBe(false);
   } finally {
     terminal.dispose();
@@ -63,13 +56,13 @@ test("C-ATTN-02 a Claude session whose permission dialog is declined returns to 
       load_reason: "session_start",
     });
     await expect.poll(() => session.status).toBe("ready");
-    ptys[0]!.emitData(paint(dialog));
+    ptys[0]!.emitData(nativeFrameOutput(dialog));
     await session.terminal.settled();
     expect(session.status).toBe("blocked");
     const before = ptys[0]!.writes.length;
     const queued = session.sendMessage("queued follow-up");
     void queued.catch(() => undefined);
-    ptys[0]!.emitData(paint(declined));
+    ptys[0]!.emitData(nativeFrameOutput(declined));
     await session.terminal.settled();
     expect(session.statusDecisions()).toContainEqual(
       expect.objectContaining({

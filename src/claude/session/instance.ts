@@ -20,11 +20,11 @@ import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts"
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { attachClaudeImages } from "../attach-images.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
+import { claudeLastComposerClearance } from "../composer/last.ts";
 import { createClaudeRecoveryComposer } from "../composer/staged-input.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
-import { claudeModelComposerClearance } from "../model-composer.ts";
 import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
@@ -36,7 +36,7 @@ import { ClaudeQuestionsSession } from "./questions.ts";
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
   protected readonly picker = {
     ...claudeModelPicker,
-    isClear: liveClaudeClearance(() => this.terminal, claudeModelComposerClearance),
+    isClear: liveClaudeClearance(() => this.terminal, claudeLastComposerClearance),
   };
   protected override composerIsEmpty(text: string): boolean {
     return liveClaudeIdleComposer(() => this.terminal)(text);
