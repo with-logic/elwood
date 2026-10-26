@@ -593,6 +593,31 @@ and log databases, a models cache, and plugin and skill caches. An e2e that leav
 `CODEX_HOME` unset therefore writes into the developer's own `~/.codex`, so the suite
 gives every process a private one (`tests/e2e/codex-home.ts`, C-E2E-22).
 
+**Codex 0.164.0 draws its trust gates differently when hook trust is not bypassed
+(2026-10-25).** Native launches at 100 × 40 in a `git init` scratch directory with a
+fresh `CODEX_HOME`:
+
+- With `--dangerously-bypass-hook-trust` or `-c hookTrust="trust-all"` (Elwood passes
+  one of them on every launch, `src/codex/command.ts`), the `Folder access` gate is the
+  0.156.1 layout: `1. Trust and continue`, `2. Quit`, and `enter continue · esc quit`.
+  No hook gate follows.
+- With neither, as C-E2E-09 launches Codex to see both gates, the same gate's decline
+  reads `2. Back to Agent Command Center` and its footer is `enter continue · esc back`.
+  After `Trust and continue`, `Hooks need review` follows with `1 hook is new or
+  changed.`, `Hooks can run outside the sandbox after you trust them.`, `1. Review
+  hooks`, `2. Trust all and continue`, `3. Continue without trusting (hooks won't
+  run)`, and `enter confirm · esc skip`. Alternate screen or `--no-alt-screen` drew
+  the same rows.
+
+Without this grammar the unknown option and footers left both gates' option tails
+invalid, so the responder held each gate and never answered it. The two footers are
+bound to their gates (`TrustPromptSpec.footer`): each ends a dialog only under the
+header, explanation, and options of the gate that draws it, and never counts as one of
+the generic native footers that let an off-allowlist gate hold input. Under any other
+dialog, or in conversation text, they make no frame a trust gate. The sanitized
+captures, with the bypass and without, are `tests/fixtures/codex-0.164.0/trust/`.
+C-CODEX-15.
+
 ### Where the clearance grammar lives
 
 "This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout

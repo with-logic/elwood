@@ -8,6 +8,7 @@ import {
   type SelectableOption,
   selectableOptions,
 } from "../terminal-options.ts";
+import { gateFooters } from "./options.ts";
 
 const headerStart =
   /^(?:Do you|Quick safety|Is this|Load this|Trust the|Trust this|New MCP|WARNING:|Claude Code running|Hooks need)/i;
@@ -21,6 +22,11 @@ const conversationRow =
 export type TrustDialog = {
   readonly header: string;
   readonly options: readonly SelectableOption[];
+  /**
+   * The gate-bound footer ending the dialog (`gateFooters`), which only the allowlisted
+   * gate that names it may accept. Unknown-gate holding never counts it as a footer.
+   */
+  readonly gateFooter?: string;
 };
 
 /** Parse the last standalone candidate once; never borrow an earlier candidate's options. */
@@ -74,6 +80,10 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
   if (lines.slice(0, start).some((line) => conversationRow.test(line))) return undefined;
   const tail = lines.slice(start);
   const unknownTail = tail.some((line) => /^\s*(?:[●•]|(?:user|assistant)\s*:)/i.test(line));
+  const lastRow = tail.findLastIndex((line) => line.trim() !== "");
+  const gateFooter = gateFooters.find((footer) => tail[lastRow]?.trim() === footer);
+  // Set aside here, the gate-bound footer is judged against each gate's own (`prompts.ts`).
+  const body = gateFooter === undefined ? tail : tail.slice(0, lastRow);
   const text = tail.join("\n");
   const header = nonOptionText(text);
   const options = selectableOptions(text);
@@ -86,9 +96,13 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     return afterHeader;
   });
   return {
-    dialog: { header: header.trim().replace(/\s+/g, " "), options },
+    dialog: {
+      header: header.trim().replace(/\s+/g, " "),
+      options,
+      ...(gateFooter === undefined ? {} : { gateFooter }),
+    },
     validTail:
-      !unknownTail && (optionStart < 0 || validOptionTail(tail.slice(optionStart), options)),
+      !unknownTail && (optionStart < 0 || validOptionTail(body.slice(optionStart), options)),
     footer: footerRow.test(text.slice(text.trimEnd().lastIndexOf("\n") + 1)),
   };
 }

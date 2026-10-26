@@ -18,7 +18,9 @@ import {
   claudeExtensionOptions,
   claudeMcpOptions,
   claudeWorkspaceOptions,
+  codexFolderAccessFooter,
   codexFolderAccessOptions,
+  codexHooksFooter,
   codexHooksOptions,
   codexWorkspaceOptions,
 } from "./options.ts";
@@ -115,6 +117,7 @@ export const trustPromptAllowlist = [
   },
   {
     // Codex 0.156.1's Folder access dialog keeps the existing workspace policy/label.
+    // Codex 0.164 ends it in its own footer when hook trust is not bypassed.
     id: "workspace_trust",
     agent: "codex",
     headerPattern: /^Trust this folder\?(?:\s|$)/,
@@ -122,6 +125,7 @@ export const trustPromptAllowlist = [
     optionPattern: codexFolderAccessOptions,
     accept: /^Trust and continue$/,
     answerPolicy: "autotrust",
+    footer: codexFolderAccessFooter,
   },
   // Codex trusts every configured hook, including third-party hooks, because the
   // bridge requires hook trust. This is session-wide and independent of autotrust.
@@ -135,5 +139,6 @@ export const trustPromptAllowlist = [
     // generic "Yes" that could belong to a different dialog in the same frame.
     accept: trustHooksOption,
     answerPolicy: "always",
+    footer: codexHooksFooter,
   },
 ] as const satisfies readonly TrustPromptSpec[];

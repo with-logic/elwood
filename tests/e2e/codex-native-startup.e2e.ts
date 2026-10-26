@@ -4,7 +4,11 @@ import test from "node:test";
 import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import { codexWarningsFromText } from "../../src/codex/startup-prompts.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
-import { nativeCodex, unauthenticatedMcp } from "./codex-native-startup-harness.ts";
+import {
+  nativeCodex,
+  nativeFolderTrust,
+  unauthenticatedMcp,
+} from "./codex-native-startup-harness.ts";
 import { codexAuthMissing, skipIf, skipReason, waitFor } from "./helpers.ts";
 
 test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain recovery", {
@@ -22,8 +26,7 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
     const directory = await waitFor(
       () => {
         const frame = active.frame();
-        return /Do you trust the contents of this directory\?/.test(frame) &&
-          /Yes, continue/.test(frame)
+        return nativeFolderTrust.question.test(frame) && nativeFolderTrust.affirmative.test(frame)
           ? frame
           : undefined;
       },
@@ -41,13 +44,14 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
       "native hook trust options",
       25_000,
     );
-    assert.doesNotMatch(hooks, /Do you trust the contents of this directory\?/);
+    assert.doesNotMatch(hooks, nativeFolderTrust.question);
     await answer(hooks, "hook_trust", "2\r");
     await waitFor(
       () => {
         const frame = active.frame();
         return /OpenAI Codex \(v/.test(frame) &&
-          !/Hooks need review|Do you trust the contents/.test(frame) &&
+          !/Hooks need review/.test(frame) &&
+          !nativeFolderTrust.question.test(frame) &&
           /MCP startup issue|MCP startup incomplete|MCP server is not logged in/.test(frame)
           ? true
           : undefined;

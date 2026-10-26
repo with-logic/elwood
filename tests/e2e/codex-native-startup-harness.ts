@@ -1,4 +1,5 @@
 /** Real Codex PTY with an isolated config for startup-layout checks (PRD §12, C-E2E-09). */
+import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node-pty";
@@ -6,6 +7,16 @@ import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { type CodexTestSession, codexLaunches, endCodexTest } from "./codex-test-end.ts";
 import { makeProject, sandboxedCodexHome, waitFor } from "./helpers.ts";
+
+/**
+ * Codex's own folder-trust question and its affirmative, read from the raw frame. Codex 0.15x
+ * asked "Do you trust the contents of this directory?" with "Yes, continue"; 0.164 asks
+ * "Trust this folder?" with "Trust and continue", and only inside a Git repository.
+ */
+export const nativeFolderTrust = {
+  question: /Do you trust the contents of this directory\?|Trust this folder\?/,
+  affirmative: /Yes, continue|Trust and continue/,
+} as const;
 
 /** Local authentication failure creates Codex's own MCP warning without an external service. */
 export async function unauthenticatedMcp() {
@@ -30,6 +41,8 @@ export async function unauthenticatedMcp() {
 /** Omit hook-trust bypass deliberately: this test must see both native trust gates. */
 export function nativeCodex(mcpUrl: string) {
   const project = makeProject("codex");
+  // Codex 0.164 asks for folder trust only inside a Git repository (docs/cli-behavior.md).
+  execFileSync("git", ["init", "-q", project.cwd]);
   const sandbox = sandboxedCodexHome(
     project,
     `check_for_update_on_startup = false

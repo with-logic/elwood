@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Elwood now recognizes Codex 0.164's folder-access and `Hooks need review` gates as
+  0.164 draws them when hook trust is not bypassed: the folder gate's decline reads
+  `Back to Agent Command Center`, and the two gates end in `enter continue · esc back`
+  and `enter confirm · esc skip`. Before, both gates were held but never answered.
+  Each of these footers counts only under its own gate, so the same text under any
+  other dialog or in conversation text makes no frame a trust gate. Elwood's own
+  launches bypass hook trust, so they get the `Quit` / `enter continue · esc quit`
+  layout Elwood already handled.
+
 - The CLI now refuses a workspace that another user could swap out before the
   agent starts in it. It checked that the workspace was yours, then launched in
   its path, so anyone able to write to a directory on that path, or to a
@@ -22,6 +31,7 @@ back each entry are listed in `prd/14-conformance.md`.
   directory to fix. Workspaces under `/tmp` or the macOS temporary directories,
   and home paths, are unaffected. Owners and mode bits only: ACLs are not
   checked.
+
 - Elwood now runs at most 8 login-shell probes (`--version`, `--help`, `update`,
   and PATH lookups) at once in a process; more wait their turn, and a probe's time
   bounds start when it runs. Each probe starts an interactive login shell, and with
