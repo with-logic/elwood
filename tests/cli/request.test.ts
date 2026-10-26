@@ -3,13 +3,13 @@
  * Covers PRD §12A.1/§12A.2/§12A.4 and C-CLI-03/C-CLI-04/C-CLI-06/C-CLI-14/C-CLI-21.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
 import { autoDetectedSource } from "../../src/cli/request/agent-detect.ts";
 import { finalizeRunRequest, resolveRunRequest } from "../../src/cli/request/index.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectCodex } from "./agent-fakes.ts";
 
 async function* stdin(value = "") {
@@ -19,7 +19,7 @@ async function* stdin(value = "") {
 
 describe("effective CLI request", () => {
   test("C-CLI-14 applies flag > env > config > built-in precedence", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const configPath = join(root, "config.json");
     writeFileSync(
       configPath,
@@ -38,7 +38,7 @@ describe("effective CLI request", () => {
   });
 
   test("C-CLI-14 negative flags and no-defaults make inherited settings reversible", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const configPath = join(root, "config.json");
     writeFileSync(
       configPath,
@@ -71,7 +71,7 @@ describe("effective CLI request", () => {
   });
 
   test("C-CLI-20 incompatibility errors identify inherited sources and recovery flags", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const context = {
       env: { ELWOOD_STREAM: "true" },
       homeDir: root,
@@ -86,7 +86,7 @@ describe("effective CLI request", () => {
   });
 
   test("C-CLI-19 provenance distinguishes positive flags and environment values", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const flagged = parseCliArgs(["--trust", "--debug", "go"]);
     const inherited = parseCliArgs(["go"]);
     if (flagged.command !== "run" || inherited.command !== "run") throw new Error("expected run");
@@ -110,7 +110,7 @@ describe("effective CLI request", () => {
   });
 
   test("C-CLI-03/C-CLI-04 finalizes cwd and ordered images before launch", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const workspace = join(root, "workspace");
     mkdirSync(workspace);
     writeFileSync(join(workspace, "a.png"), "a");
@@ -141,7 +141,7 @@ describe("effective CLI request", () => {
   });
 
   test("C-CLI-03 snapshots the invocation cwd for a new session", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const parsed = parseCliArgs(["go"]);
     if (parsed.command !== "run") throw new Error("expected run");
     const draft = await resolveRunRequest(
@@ -153,7 +153,7 @@ describe("effective CLI request", () => {
   });
 
   test("C-CLI-06 rejects adapter-specific and output incompatibilities", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const root = tempDir("elwood-cli-request-");
     const context = {
       env: {},
       homeDir: root,
