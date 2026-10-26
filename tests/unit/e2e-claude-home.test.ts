@@ -5,7 +5,7 @@
  * that process exits: a login without its refresh token, the global config without its
  * project entries, MCP servers, or bypass acceptance, the model catalog, no user settings,
  * and afterwards nothing but the user's own files, unchanged. No case reads the real
- * keychain: each gives the child a `.credentials.json` or a custom config dir, which skip it.
+ * keychain: each child reads an empty fake one (`fake-keychain.ts`).
  */
 
 import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -159,6 +159,7 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
     credentialsMode: null,
     config: "{}",
     catalog: null,
+    storage: null,
   } satisfies Seen;
 
   test("C-E2E-23 the harness reads the child's report only in the shape it declares", () => {
@@ -170,6 +171,7 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
       ["entries", null],
       ["credentials", 1],
       ["credentialsMode", "0600"],
+      ["storage", 1],
     ] as const)
       expect(() => parseSeen(JSON.stringify({ ...report, [key]: value }))).toThrow(
         `claude-home child reported a malformed ${key}`,
