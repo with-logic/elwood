@@ -1928,6 +1928,13 @@ only the production clear write made both tests retain the image and text and fa
 This verifies an automation-owned idle composer, not cleanup across caller edits
 or blocking dialogs. Codex clipboard text is restored after attachment.
 
+codex-cli 0.164 (2026-10-26) saves the pasted image as `codex-clipboard-<suffix>.png`
+in its temp dir when the `[Image #1]` chip appears, and clearing the draft leaves that
+file in place. The draft is never submitted, so no transcript names the copy, and a
+session removes only the copies its transcript names. So a cancelled Codex image draft
+leaves its copy in the temp dir. `composer-cleanup.e2e.ts` gives its Codex a `TMPDIR`
+inside the sandbox home, asserts the copy lands there, and removes it with the sandbox.
+
 
 Native startup protocol replies also emit xterm `onData`. The actual-session
 image-cancellation proof exposed this on both adapters: treating those replies as
