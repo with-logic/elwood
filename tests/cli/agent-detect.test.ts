@@ -3,8 +3,7 @@
  * Each case spawns a real shell against a real temp directory placed on PATH.
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -16,6 +15,7 @@ import {
 import type { CliAgent } from "../../src/cli/types.ts";
 import { resetRuntimeSeamsForTests, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 /**
  * A hermetic stand-in for the user's login shell. It enforces the same
@@ -27,7 +27,7 @@ function stubShell(bin: string): {
   readonly shell: string;
   readonly install: (agent: CliAgent) => void;
 } {
-  const root = mkdtempSync(join(tmpdir(), "elwood-agent-detect-"));
+  const root = tempDir("elwood-agent-detect-");
   const shell = join(root, "login-shell");
   writeFileSync(
     shell,
@@ -44,7 +44,7 @@ function stubShell(bin: string): {
 }
 
 function emptyBin(): string {
-  const bin = join(mkdtempSync(join(tmpdir(), "elwood-agent-bin-")), "bin");
+  const bin = join(tempDir("elwood-agent-bin-"), "bin");
   mkdirSync(bin);
   return bin;
 }

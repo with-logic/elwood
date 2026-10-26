@@ -2,8 +2,7 @@
  * CLI facade ordering and exact-resume coverage (PRD §12A.2, C-CLI-03/C-CLI-08).
  */
 
-import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { finalizeRunRequest } from "../../src/cli/request/index.ts";
@@ -25,6 +24,7 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { FakeUnderlying } from "../unit/simple-fakes.ts";
 import { effectiveRequest } from "./main-fakes.ts";
 
@@ -72,14 +72,14 @@ function dependencies(id = "new-id"): CliSessionDependencies {
 
 describe("headless CLI session", () => {
   test("C-CLI-16 prepares a new session with a preallocated identity", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
+    const root = tempDir("elwood-cli-session-");
     const prepared = await prepareCliSession(draft(root), dependencies("allocated"));
     expect(prepared.request).toMatchObject({ agent: "codex", cwd: root });
     expect(prepared.session).toMatchObject({ id: "allocated", resumed: false });
   });
 
   test("C-CLI-16 default preparation allocates without eagerly launching", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
+    const root = tempDir("elwood-cli-session-");
     const prepared = await prepareCliSession(draft(root));
     expect(prepared.session.id).toMatch(/^[0-9a-f-]{36}$/u);
     expect(prepared.session.session).toBeUndefined();
@@ -87,7 +87,7 @@ describe("headless CLI session", () => {
 
   test("C-CLI-08 persona is one discarded setup turn and setup is single-flight", async () => {
     vi.useFakeTimers();
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
+    const root = tempDir("elwood-cli-session-");
     const live = Object.assign(new FakeUnderlying(), {
       emitter: new TypedEmitter<
         ElwoodCommonEventMap & {
@@ -125,7 +125,7 @@ describe("headless CLI session", () => {
   });
 
   test("C-CLI-08 resume switches model before user work and never applies persona", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
+    const root = tempDir("elwood-cli-session-");
     const live = new FakeUnderlying();
     const session = new HeadlessCliSession(
       effective(root, { resume: "s1", model: "next", persona: "ignored" }),
@@ -138,7 +138,7 @@ describe("headless CLI session", () => {
   });
 
   test("C-CLI-08/C-CLI-09 cleanup owns live, rejected, and mismatched launches", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
+    const root = tempDir("elwood-cli-session-");
     const live = new FakeUnderlying();
     const owned = new HeadlessCliSession(effective(root), "s1", async () => live);
     const statuses: string[] = [];
@@ -170,7 +170,7 @@ describe("headless CLI session", () => {
   });
 
   test("C-CLI-03 exact resume selects stored adapters and their config in both directions", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
+    const root = tempDir("elwood-cli-session-");
     const stateDir = join(root, "state");
     prepareStateDir(stateDir, { cwd: root });
     for (const agent of ["claude", "codex"] as const) {

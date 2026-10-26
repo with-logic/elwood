@@ -1,7 +1,6 @@
 /** Filesystem-failure coverage for private CLI config storage. Covers PRD C-CLI-15. */
 
-import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 
@@ -35,8 +34,9 @@ vi.mock("node:fs", async (importOriginal) => {
 
 import { readConfig, writeConfig } from "../../src/cli/config/store.ts";
 import { CliValidationError } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
-const root = () => mkdtempSync(join(tmpdir(), "elwood-config-fault-"));
+const root = () => tempDir("elwood-config-fault-");
 const config = { schemaVersion: 1 } as const;
 
 describe("CLI config store failures", () => {

@@ -2,18 +2,18 @@
  * Global config command behavior and shell-output tests (PRD §12A.4, C-CLI-14/C-CLI-15).
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { runConfigCommand } from "../../src/cli/config/commands.ts";
 import { cliConfigHelp } from "../../src/cli/help.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import { CliValidationError } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { MemoryWriter } from "./run-fakes.ts";
 
 function harness() {
-  const root = mkdtempSync(join(tmpdir(), "elwood-config-command-"));
+  const root = tempDir("elwood-config-command-");
   const path = join(root, "nested", "config.json");
   const writer = new MemoryWriter();
   const stdout = new AsyncOutputSink(writer);
