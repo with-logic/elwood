@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `stop()` or `kill()` whose termination fails now still cleans up the
+  session's runtime (its hook bridge and terminal renderer, and Codex's transcript
+  watcher). Before, a PTY that could not be signaled, did not exit, or could not be
+  reaped skipped that cleanup, and so did every retry while the reap kept failing,
+  until a `teardown()`. The call still rejects with the same `termination_failed`;
+  if cleanup fails as well, its message is in `details.cleanupError`. `close()`
+  keeps those messages too, as `cleanupError` and `killCleanupError`.
+
 - Sessions start again for macOS users whose login shell is `/bin/bash` or
   `/bin/sh`. macOS's bash 3.2, started as an interactive login shell, closes
   every inherited descriptor above stderr, so the probe start line added for
