@@ -8,7 +8,7 @@
  */
 
 import { currentCommandRunner } from "../../runtime/seams.ts";
-import { probeShellCommand, shellQuote, userShell } from "../../runtime/shell.ts";
+import { probeShellStatus, shellQuote, userShell } from "../../runtime/shell.ts";
 import { type CliAgent, CliValidationError } from "../types.ts";
 import { layered, type SourcedValue, sourced } from "./sources.ts";
 
@@ -30,7 +30,8 @@ export const noAgentFoundMessage =
 /**
  * True when the login shell resolves `agent` as a command. Uses the same
  * interactive login shell as the agent PTY so PATH resolution is identical, but
- * asks only `command -v`, so the agent itself never starts (C-CLI-14). A probe
+ * asks only `command -v`, so the agent itself never starts (C-CLI-14), and by its exit status
+ * alone: its output is discarded. A probe
  * that could not run at all (missing or broken shell, probe timeout) is a
  * distinct failure: it says nothing about which agents are installed.
  */
@@ -38,7 +39,7 @@ export async function loginShellResolves(
   agent: CliAgent,
   shell: string = userShell(),
 ): Promise<boolean> {
-  const command = probeShellCommand(`command -v ${shellQuote(agent)}`);
+  const command = probeShellStatus(`command -v ${shellQuote(agent)}`);
   const result = await currentCommandRunner()(shell, command);
   if (result.error !== undefined) {
     throw new CliValidationError("no_agent_found", probeFailedMessage(shell, result.error));
