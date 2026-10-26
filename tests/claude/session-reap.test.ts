@@ -91,6 +91,22 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     await rejected;
   });
 
+  test("C-LIFE-10 a teardown whose reap fails keeps that typed failure's errno", async () => {
+    installFakes();
+    throwingKiller();
+    const session = await startClaude({ cwd: tempDir() });
+    const rejected: unknown = await session.teardown().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toMatchObject({ code: "teardown_failed" });
+    const { failures } = (rejected as { details: { failures: unknown[] } }).details;
+    expect(failures[0]).toMatchObject({
+      code: "termination_failed",
+      details: { errno: "EPERM" },
+    });
+  });
+
   test("C-ERR-01 stop() and kill() reject with termination_failed when signaling the PTY throws", async () => {
     // The group reap succeeds, so only the PTY signal failed. The public verbs must
     // still reject with the documented code, keeping the underlying cause and errno.
