@@ -23,8 +23,6 @@ export type TranscriptActivityEmitter = {
 /** A watcher plus a hook to flush any early-buffered warnings once the sink exists. */
 export type WiredTranscriptWatcher = {
   readonly watcher: ClaudeTranscriptWatcher;
-  /** Include deferred startup diagnostics in the exit-order barrier. */
-  readonly duringDelivery: (work: () => void) => void;
   /** Flush warnings buffered before the session sink existed; call once it does. */
   readonly flushPendingWarnings: () => void;
   /**
@@ -65,22 +63,11 @@ export function createTranscriptWatcher(
   // containment (see core/transcript/warning-router). `sink` is optional here; when
   // omitted the router simply buffers with no sink to flush to.
   const warnings = createTranscriptWarningRouter(() => sink?.());
-  let deliveryDepth = 0;
-  function duringDelivery(work: () => void): void {
-    deliveryDepth += 1;
-    try {
-      work();
-    } finally {
-      deliveryDepth -= 1;
-    }
-  }
-  const route = (warning: Parameters<typeof warnings.route>[0]) =>
-    duringDelivery(() => warnings.route(warning));
-  const flushPendingWarnings = () => duringDelivery(warnings.flushPendingWarnings);
+  const route = (warning: Parameters<typeof warnings.route>[0]) => warnings.route(warning);
+  const flushPendingWarnings = () => warnings.flushPendingWarnings();
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
-    (event) =>
-      duringDelivery(() => emitter.emit("activity", activity.activityFromClaudeTranscript(event))),
+    (event) => emitter.emit("activity", activity.activityFromClaudeTranscript(event)),
     {
       onDrop: (notice) => route(dropWarning(notice)),
       onReadError: (notice) => route(readErrorWarning(notice)),
@@ -94,12 +81,6 @@ export function createTranscriptWatcher(
   // and surfaced as a bounded diagnostic; a throwing diagnostic route is swallowed.
   const noop = () => undefined;
   const finishSafely = (afterFlush: () => void = noop) => {
-    if (deliveryDepth > 0) {
-      // A listener can synchronously stop the PTY; finish transcript and diagnostic
-      // fan-out before terminal finalization closes the consumer's activity stream.
-      queueMicrotask(() => finishSafely(afterFlush));
-      return;
-    }
     try {
       watcher.finish();
     } catch (error) {
@@ -112,7 +93,7 @@ export function createTranscriptWatcher(
       afterFlush();
     }
   };
-  return { watcher, duringDelivery, flushPendingWarnings, finishSafely };
+  return { watcher, flushPendingWarnings, finishSafely };
 }
 
 /** Turn-boundary hooks: a first observe here recovers the already-committed tail. */

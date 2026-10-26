@@ -60,7 +60,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const warnGate = createCodexStartupWarningGate(
     () => session,
     () => promptResponder.closingSignal.aborted,
-    (deliver) => wired.duringDelivery(deliver),
   );
   // Transcript diagnostics flow through the same startup warning gate.
   const wired = transcript.createCodexTranscriptWatcher(elwoodSessionId, emitter, () => warnGate);

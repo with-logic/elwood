@@ -5,16 +5,14 @@ import { createStartupWarningGate, deliverFrameWarnings, type FrameWarningSink }
 export function createSessionStartupWarningGate(
   session: () => FrameWarningSink | undefined,
   suppress: (warning: ElwoodWarningEvent) => boolean,
-  duringDelivery: (deliver: () => void) => void,
 ): ReturnType<typeof createStartupWarningGate> {
   return createStartupWarningGate({
-    emitWarnings: (warnings) =>
-      duringDelivery(() => {
-        for (const warning of warnings) {
-          // A preceding listener can stop the session. Recheck each warning while
-          // preserving every admitted warning's paired activity.
-          if (!suppress(warning)) deliverFrameWarnings(session(), [warning]);
-        }
-      }),
+    emitWarnings: (warnings) => {
+      for (const warning of warnings) {
+        // A preceding listener can stop the session. Recheck each warning while
+        // preserving every admitted warning's paired activity.
+        if (!suppress(warning)) deliverFrameWarnings(session(), [warning]);
+      }
+    },
   });
 }
