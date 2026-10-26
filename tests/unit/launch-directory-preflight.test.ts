@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
 import { fakeLaunch, resetFakeLaunch, resetPreflightCaches } from "../helpers/fake-launch.ts";
+import { replaceDirectory } from "../helpers/replace-directory.ts";
 import {
   resumableStateDir as resumable,
   type SessionAdapter,
@@ -99,6 +100,16 @@ describe.each([
     });
     expect(launchedIn).toEqual([cwd]);
     expect(existsSync(cwd), "the directory must not be recreated").toBe(false);
+  });
+
+  test(`C-API-61 ${agent} start whose directory is replaced while it launches reports that`, async () => {
+    const cwd = worktree();
+    fakeLaunch(undefined, () => replaceDirectory(cwd));
+    await expect(start({ cwd })).rejects.toMatchObject({
+      code: `${agent}_start_failed`,
+      message: "The working directory (`cwd`) was replaced by another directory.",
+      details: { cwd },
+    });
   });
 
   test(`C-API-61 ${agent} resume whose directory is removed while it launches reports that`, async () => {

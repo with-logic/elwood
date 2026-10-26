@@ -13,6 +13,7 @@ import { currentPlatform } from "../seams.ts";
 
 const notADirectory = "The working directory (`cwd`) is not an existing directory.";
 const uncheckable = "Could not check the working directory (`cwd`).";
+const replaced = "The working directory (`cwd`) was replaced by another directory.";
 const missingCodes = new Set<string | undefined>(["ENOENT", "ENOTDIR"]);
 
 /**
@@ -27,17 +28,30 @@ export function resolveLaunchDirectory(agent: ElwoodAgentKind, cwd: string): str
   }
 }
 
+/** Which directory `cwd` named when it was checked (device and inode); none where unchecked. */
+export type LaunchDirectoryIdentity = { readonly dev: bigint; readonly ino: bigint } | undefined;
+
 /**
- * Rejects unless `cwd` is an existing directory. Start and resume call it before any probe
- * and again after preflight, since the directory can be removed while preflight runs.
+ * Rejects unless `cwd` is an existing directory and, given the directory an earlier check
+ * found, still that one. Start and resume call it before any probe.
  */
-export async function assertLaunchDirectory(agent: ElwoodAgentKind, cwd: string): Promise<void> {
+export async function assertLaunchDirectory(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  checked?: LaunchDirectoryIdentity,
+): Promise<LaunchDirectoryIdentity> {
   // An unsupported platform stays preflight's first error, ahead of anything about `cwd`.
-  if (currentPlatform() !== "darwin") return;
+  if (currentPlatform() !== "darwin") return undefined;
   let message = notADirectory;
   let details: Readonly<Record<string, string>> = { errno: "ENOTDIR" };
   try {
-    if ((await stat(cwd)).isDirectory()) return;
+    const info = await stat(cwd, { bigint: true });
+    if (info.isDirectory()) {
+      const { dev, ino } = info;
+      if (checked === undefined || (dev === checked.dev && ino === checked.ino))
+        return { dev, ino };
+      [message, details] = [replaced, {}];
+    }
   } catch (error) {
     details = causeDetails(error);
     if (!missingCodes.has(errnoCode(error))) message = uncheckable;
@@ -46,23 +60,28 @@ export async function assertLaunchDirectory(agent: ElwoodAgentKind, cwd: string)
 }
 
 /**
- * Runs the launch that follows the last check, and checks `cwd` again only if it fails. When
- * that check fails too, because `cwd` has gone (state setup never makes it, so it fails with
- * `ENOENT` instead of recreating the project), is no longer a directory, or can't be checked,
- * the check's failure is the error, keeping the failed launch's cause and cleanup details
- * (§9.1, §10). While `cwd` is still a directory, the launch's own failure is rethrown.
+ * Checks `cwd`, since it can go while preflight runs, then runs the launch. If the launch
+ * fails, `cwd` is checked again against the directory found first, so one deleted and made
+ * again while the launch failed is not taken for the same directory. When that check fails,
+ * because `cwd` has gone (state setup never makes it, so it fails with `ENOENT` instead of
+ * recreating the project), is no longer a directory, was replaced, or can't be checked, the
+ * check's failure is the error, keeping the failed launch's cause and cleanup details (§9.1,
+ * §10). While `cwd` is still that directory, the launch's own failure is rethrown.
  */
 export async function recheckLaunchDirectoryOnFailure<T>(
   agent: ElwoodAgentKind,
   cwd: string,
   launch: () => Promise<T>,
 ): Promise<T> {
+  const checked = await assertLaunchDirectory(agent, cwd);
   try {
     return await launch();
   } catch (error) {
-    await assertLaunchDirectory(agent, cwd).catch((directoryError: ElwoodError) => {
-      const checked = { cwd, errno: directoryError.details["errno"] };
-      const details = { ...launchFailureDetails(error), ...checked };
+    await assertLaunchDirectory(agent, cwd, checked).catch((directoryError: ElwoodError) => {
+      // `errno` is the check's, so a replaced directory has none, not the launch's.
+      const { errno: _launchErrno, ...launched } = launchFailureDetails(error);
+      const { errno } = directoryError.details;
+      const details = { ...launched, cwd, ...(errno ? { errno } : {}) };
       throw elwoodError(directoryError.code, directoryError.message, details);
     });
     throw error;
