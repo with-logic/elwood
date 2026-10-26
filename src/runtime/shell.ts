@@ -13,7 +13,12 @@ import {
   homeGuardStopMarker,
   privateHomes,
 } from "./home-guard/index.ts";
-import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
+import {
+  probeControlClose,
+  probeControlFd,
+  probeNotFoundHandlerReset,
+  probeStartScript,
+} from "./probe/start.ts";
 import { shellQuote } from "./shell-quote.ts";
 
 export function userShell(): string {
@@ -49,7 +54,8 @@ export function loginShellCommand(command: string): LoginShellArgs {
 export function probeShellCommand(command: string): LoginShellArgs {
   // The start line comes first, so the runner still tells a shell that never started the
   // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
-  const script = `${probeStartScript}${homeGuardScript("probe")}${probeNotFoundHandlerReset}${command}`;
+  const guard = homeGuardScript("probe");
+  const script = `${probeStartScript}${guard}${probeControlClose}${probeNotFoundHandlerReset}${command}`;
   return loginShellArgs(script);
 }
 
@@ -83,17 +89,18 @@ type GuardedLaunch = "session" | "probe";
 
 /**
  * Shell code that writes the stop marker with why the guard stopped the launch, and exits
- * `homeGuardExitCode`. Not on stderr, which a startup file can redirect. A session's shell
- * writes to its terminal, `/dev/tty`, which its PTY captures however the startup files
- * redirected stdin, stdout, or stderr, and falls back to stdout only if it cannot open it. A
- * probe runs in a session of its own, with no terminal (`runProbe`), so it writes to the stdout
- * the probe runner captures.
+ * `homeGuardExitCode`. Not on stderr, nor first on stdout, which a startup file can redirect. A
+ * session's shell writes to its terminal, `/dev/tty`, which its PTY captures however the
+ * startup files redirected stdin, stdout, or stderr. A probe runs in a session of its own, with
+ * no terminal (`runProbe`), so it writes on the runner's control descriptor, where its start
+ * line went. Either falls back to stdout only if it cannot write there: a probe shell that
+ * closed the descriptor wrote its start line on stdout too.
  */
 function refuse(refusal: Refusal, launch: GuardedLaunch): string {
   const line = shellQuote(`${homeGuardStopMarker}: ${refusalReason(refusal)}`);
   const write = `printf '%s\\n' ${line}`;
-  const report = launch === "session" ? `{ ${write} >/dev/tty; } 2>/dev/null || ${write}` : write;
-  return `{ ${report}; exit ${homeGuardExitCode}; }; `;
+  const channel = launch === "session" ? "/dev/tty" : `&${probeControlFd}`;
+  return `{ { ${write} >${channel}; } 2>/dev/null || ${write}; exit ${homeGuardExitCode}; }; `;
 }
 
 // The real path of `$elwood_home`, resolved as the CLI will, against the shell's cwd. `builtin`
