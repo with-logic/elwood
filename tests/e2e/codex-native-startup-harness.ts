@@ -8,16 +8,6 @@ import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { type CodexTestSession, codexLaunches, endCodexTest } from "./codex-test-end.ts";
 import { makeProject, sandboxedCodexHome, waitFor } from "./helpers.ts";
 
-/**
- * Codex's own folder-trust question and its affirmative, read from the raw frame. Codex 0.15x
- * asked "Do you trust the contents of this directory?" with "Yes, continue"; 0.164 asks
- * "Trust this folder?" with "Trust and continue", and only inside a Git repository.
- */
-export const nativeFolderTrust = {
-  question: /Do you trust the contents of this directory\?|Trust this folder\?/,
-  affirmative: /Yes, continue|Trust and continue/,
-} as const;
-
 /** Local authentication failure creates Codex's own MCP warning without an external service. */
 export async function unauthenticatedMcp() {
   const server = createServer((_request, response) => {

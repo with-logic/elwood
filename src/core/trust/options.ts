@@ -19,4 +19,5 @@ export const codexFolderAccessOptions =
 // each belongs to one gate and ends a dialog only under that gate (`TrustPromptSpec.footer`).
 export const codexFolderAccessFooter = "enter continue · esc back";
 export const codexHooksFooter = "enter confirm · esc skip";
-export const gateFooters: readonly string[] = [codexFolderAccessFooter, codexHooksFooter];
+export const gateFooters = [codexFolderAccessFooter, codexHooksFooter] as const;
+export type GateFooter = (typeof gateFooters)[number];

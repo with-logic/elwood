@@ -8,7 +8,7 @@ import {
   type SelectableOption,
   selectableOptions,
 } from "../terminal-options.ts";
-import { gateFooters } from "./options.ts";
+import { type GateFooter, gateFooters } from "./options.ts";
 
 const headerStart =
   /^(?:Do you|Quick safety|Is this|Load this|Trust the|Trust this|New MCP|WARNING:|Claude Code running|Hooks need)/i;
@@ -26,7 +26,7 @@ export type TrustDialog = {
    * The gate-bound footer ending the dialog (`gateFooters`), which only the allowlisted
    * gate that names it may accept. Unknown-gate holding never counts it as a footer.
    */
-  readonly gateFooter?: string;
+  readonly gateFooter?: GateFooter;
 };
 
 /** Parse the last standalone candidate once; never borrow an earlier candidate's options. */
@@ -38,8 +38,11 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
 type Candidate = {
   readonly dialog: TrustDialog;
   readonly validTail: boolean;
-  /** The frame ends in a native footer row: the dialog finished painting. */
-  readonly footer: boolean;
+  /**
+   * The frame ends in a generic native footer row (`footerRow`): the dialog finished
+   * painting. A gate-bound footer (`TrustDialog.gateFooter`) never sets it.
+   */
+  readonly hasGenericFooter: boolean;
 };
 
 /**
@@ -82,7 +85,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
   const unknownTail = tail.some((line) => /^\s*(?:[●•]|(?:user|assistant)\s*:)/i.test(line));
   const lastRow = tail.findLastIndex((line) => line.trim() !== "");
   const gateFooter = gateFooters.find((footer) => tail[lastRow]?.trim() === footer);
-  // Set aside here, the gate-bound footer is judged against each gate's own (`prompts.ts`).
+  // Set aside here: only the allowlisted gate whose `TrustPromptSpec.footer` names it accepts it.
   const body = gateFooter === undefined ? tail : tail.slice(0, lastRow);
   const text = tail.join("\n");
   const header = nonOptionText(text);
@@ -103,7 +106,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     },
     validTail:
       !unknownTail && (optionStart < 0 || validOptionTail(body.slice(optionStart), options)),
-    footer: footerRow.test(text.slice(text.trimEnd().lastIndexOf("\n") + 1)),
+    hasGenericFooter: footerRow.test(text.slice(text.trimEnd().lastIndexOf("\n") + 1)),
   };
 }
 

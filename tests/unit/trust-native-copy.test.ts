@@ -22,19 +22,19 @@ const folderAccess = readFileSync(
 );
 // Codex 0.164 as Elwood launches it, with the hook-trust bypass; then without it,
 // `Back to Agent Command Center` and each gate's own footer (docs/cli-behavior.md).
-const folderAccess164 = capturedFrame("codex-0.164.0/trust/folder-access");
-const folderAccess164Native = capturedFrame("codex-0.164.0/trust/folder-access-no-hook-bypass");
-const hooks164Native = capturedFrame("codex-0.164.0/trust/hooks-no-hook-bypass");
+const folderAccess164Bypassed = capturedFrame("codex-0.164.0/trust/folder-access");
+const folderAccess164NoBypass = capturedFrame("codex-0.164.0/trust/folder-access-no-hook-bypass");
+const hooks164NoBypass = capturedFrame("codex-0.164.0/trust/hooks-no-hook-bypass");
 
 afterEach(() => vi.restoreAllMocks());
 
 test.each([
   [directory, true, "workspace_trust", "1\r"],
   [folderAccess, true, "workspace_trust", "1\r"],
-  [folderAccess164, true, "workspace_trust", "1\r"],
-  [folderAccess164Native, true, "workspace_trust", "1\r"],
+  [folderAccess164Bypassed, true, "workspace_trust", "1\r"],
+  [folderAccess164NoBypass, true, "workspace_trust", "1\r"],
   [hooks, false, "hook_trust", "2\r"],
-  [hooks164Native, false, "hook_trust", "2\r"],
+  [hooks164NoBypass, false, "hook_trust", "2\r"],
 ] as const)("C-TRUST-01 preserves native Codex trust explanation: %s", (frame, trust, label, key) => {
   const writes: string[] = [];
   const result = new TrustPromptResponder("codex", codexTrustClearance, trust).handle(
