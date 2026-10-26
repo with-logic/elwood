@@ -14,6 +14,7 @@ import {
   type TranscriptWarningSink,
 } from "../../core/transcript/warning-router.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
+import { CodexClipboardCopies } from "../images/clipboard-copies.ts";
 import {
   CodexTranscriptWatcher,
   codexDropWarning,
@@ -85,10 +86,12 @@ export function createCodexTranscriptWatcher(
       );
     }
   }
+  const clipboardCopies = new CodexClipboardCopies();
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) =>
       duringDelivery(() => {
+        clipboardCopies.observe(event.item);
         deliver("codex:transcript", event);
         deliver("activity", activity.activityFromCodexTranscript(event));
       }),
@@ -117,6 +120,8 @@ export function createCodexTranscriptWatcher(
         route(codexPollStoppedWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
+      // The CLI has exited and the flush has read its last records (C-API-46).
+      clipboardCopies.removeAll();
       afterFlush();
     }
   };

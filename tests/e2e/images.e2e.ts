@@ -3,14 +3,16 @@
  * ingestion so an `[Image #N]` chip actually renders in the composer. This is the
  * external-system check the feature needs — the attach mechanisms are
  * version-coupled CLI behavior that only a real CLI can validate.
- * Implements C-E2E-12 (Claude, C-API-45) and C-E2E-13 (Codex, C-API-46).
+ * Implements C-E2E-12 (Claude, C-API-45) and C-E2E-13 (Codex, C-API-46), including the
+ * removal of the temp copy Codex saves of each pasted image.
  */
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync } from "node:fs";
+import { basename, join } from "node:path";
 import test from "node:test";
+import { isRecord } from "../../src/core/predicates.ts";
 import {
   type ClaudeSessionApi,
   type CodexSessionApi,
@@ -73,8 +75,11 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
   const sentinel = "elwood-e2e-clipboard-sentinel";
   execFileSync("/usr/bin/pbcopy", { input: sentinel });
   let session: CodexSessionApi | undefined;
+  const localImages: string[] = [];
+  let copy = "";
   try {
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
+    session.on("codex:transcript", ({ item }) => localImages.push(...localImagePaths(item)));
     await prepareInteractivePrompt(session, observeSession(session), "codex");
     const submitted = session.sendMessage("here is an image", { images: [{ path: image }] });
     await waitFor(
@@ -86,8 +91,26 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
     // Production restored the sentinel — the injected image is no longer the
     // clipboard, proving snapshot-and-restore actually happened (C-API-46).
     assert.equal(execFileSync("/usr/bin/pbpaste").toString(), sentinel);
+    // Codex saved the pasted image to a temp file its transcript names.
+    copy = await waitFor(() => localImages[0], "the submitted image in the transcript");
+    assert.match(basename(copy), /^codex-clipboard-/);
+    assert.equal(existsSync(copy), true, "Codex saved the pasted image");
   } finally {
     await cleanup(session);
     execFileSync("/usr/bin/pbcopy", { input: priorClipboard }); // restore dev's real clipboard
   }
+  assert.equal(existsSync(copy), false, "the session removed Codex's copy when it ended");
 });
+
+/** The `local_image` paths of a completed user message in a Codex transcript item. */
+function localImagePaths(item: unknown): string[] {
+  const payload = isRecord(item) ? item["payload"] : undefined;
+  const message = isRecord(payload) ? payload["item"] : undefined;
+  if (!(isRecord(message) && message["type"] === "UserMessage")) return [];
+  const content = Array.isArray(message["content"]) ? message["content"] : [];
+  return content.flatMap((part: unknown) =>
+    isRecord(part) && part["type"] === "local_image" && typeof part["path"] === "string"
+      ? [part["path"]]
+      : [],
+  );
+}

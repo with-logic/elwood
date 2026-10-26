@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Codex session now removes the `codex-clipboard-*.png` file Codex saves in the
+  temp directory for each image Elwood pastes into it, once the session's CLI has
+  exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image
+  attach left one such file behind for good. Only files the session's own transcript
+  names are removed.
 - A Claude session whose permission dialog is declined with Escape now returns to
   `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
   `blocked` while the prompt that led to the dialog was still on screen: Claude

@@ -2078,6 +2078,20 @@ bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
 
 
+## Codex keeps a temp copy of every pasted image (codex-cli 0.164.0, 2026-10-26)
+
+On Ctrl+V with an image on the clipboard, Codex writes the image to
+`$TMPDIR/codex-clipboard-<suffix>.png` before the `[Image #N]` chip appears, and nothing
+in Codex ever removes it: a real attach left the file in place after the turn finished
+and after `teardown()`. The suffix is six random characters on 0.164.0; an earlier
+rollout on the same machine names a UUID form (`codex-clipboard-<uuid>.png`). When the message is submitted,
+the rollout records the path twice: as `{"type":"local_image","path":...}` in the
+content of an `event_msg` `item_completed` `UserMessage`, and as
+`<image name=[Image #1] path="...">` text beside the inline `input_image` data in the
+`response_item` message. The image itself travels inline, so nothing reads the file
+after submission. Elwood removes the copies the session's transcript names once the CLI
+exits (C-API-46).
+
 ## Cached image recovery frames (2026-10-01)
 
 The existing captured image-chip and staged-text layouts establish live composer
