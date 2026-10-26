@@ -20,7 +20,7 @@ type CodexModelSwitch = {
   /**
    * Reports a restore failure that had to be SWALLOWED because a primary error is
    * being preserved (both the picker and the restore failed). Without this the user
-   * would get no signal that their global config.toml may remain mutated. Optional;
+   * would get no signal that the session's config.toml may remain mutated. Optional;
    * omitted in tests that don't assert the diagnostic.
    */
   readonly onRestoreError?: (error: unknown) => void;

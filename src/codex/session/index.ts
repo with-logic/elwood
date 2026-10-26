@@ -26,6 +26,7 @@ import {
   type SessionRecord,
 } from "../../state/store.ts";
 import * as preflight from "../preflight.ts";
+import { codexHomeReportPath, explainCodexStartFailure } from "../pty.ts";
 import { buildCodexSession } from "./build.ts";
 import type { CodexSessionApi, StartCodexOptions } from "./types.ts";
 
@@ -120,6 +121,7 @@ export function startCodexFromRecord(
         },
         owner,
       );
+      const report = codexHomeReportPath(runtime);
       return withSocketHomeCleanup(
         () => releaseLaunchSocket(runtime.socketPath),
         () =>
@@ -131,6 +133,8 @@ export function startCodexFromRecord(
             resumed,
             preflightWarning,
             activate,
+          }).catch((error: unknown) => {
+            throw explainCodexStartFailure(error, report);
           }),
       );
     },
