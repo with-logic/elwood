@@ -62,7 +62,11 @@ reused; the socket path is a per-launch runtime value, embedded only in the gene
 private bridge script and never in the session record, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
-socket can leak undiscoverably across restart/resume cycles. A launch that ends
+socket can leak undiscoverably across restart/resume cycles. Each Codex launch also
+writes its `CODEX_HOME` report (§4.2) into the socket home, named after that
+launch's socket file, so a failed first start leaves nothing in the session
+directory. The report is removed when its launch's PTY exits, a failed start
+included, and teardown removes any that remain with the home. A launch that ends
 without teardown — `stop`, `kill`, the agent exiting, or a failed start — removes
 its own socket file and then the socket home if that left it empty, so a session
 that is never torn down leaves nothing in the OS temp dir; a home that still holds
