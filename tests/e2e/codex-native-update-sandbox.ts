@@ -12,10 +12,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
-import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import {
+  resetRuntimeSeamsForTests,
+  setCommandRunnerForTests,
+  setPtyFactoryForTests,
+} from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
-import { seedCodexHome } from "./scratch.ts";
+import { type CodexSandbox, seedCodexHome } from "./scratch.ts";
 
 export async function nativeUpdaterSandbox(sourceBinary: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_update-")));
@@ -23,13 +27,15 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
   const codexProofHome = join(root, "codex-home");
   const release = join(codexProofHome, "packages/standalone/releases/0.155.1-aarch64-apple-darwin");
   const dispose = () => rmSync(root, { recursive: true, force: true });
+  // A probe whose process group outlived its cleanup may still be running Codex in this home.
+  let unconfirmedGroup: number | undefined;
   try {
     mkdirSync(project);
     mkdirSync(release, { recursive: true, mode: 0o700 });
     const binary = join(release, "codex");
     copyFileSync(sourceBinary, binary);
     chmodSync(binary, 0o700);
-    seedCodexHome(
+    const configPath = seedCodexHome(
       codexProofHome,
       `check_for_update_on_startup = true\n[projects."${project}"]\ntrust_level = "trusted"\n`,
     );
@@ -41,8 +47,11 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
         dismissed_version: null,
       }),
     );
-    const probe = (args: readonly string[]) =>
-      runProbe("env", [`CODEX_HOME=${codexProofHome}`, binary, ...args]);
+    const probe = async (args: readonly string[]) => {
+      const result = await runProbe("env", [`CODEX_HOME=${codexProofHome}`, binary, ...args]);
+      unconfirmedGroup ??= result.error?.cleanupProcessGroupId;
+      return result;
+    };
     const version = await probe(["--version"]);
     if (version.status !== 0 || !/^codex-cli 0\.155\.1\s*$/.test(version.stdout))
       throw new Error("Native updater proof requires Codex 0.155.1");
@@ -83,17 +92,37 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
         },
       };
     });
+    // The proof pins its home through the runtime seams rather than `CODEX_HOME`, so
+    // unpinning them is what keeps a later test off this home, kept or removed.
+    const codex: CodexSandbox = {
+      project: {
+        cwd: project,
+        stateDir: join(project, ".state"),
+        sessionDir: (id) => join(project, ".state", "sessions", id),
+      },
+      home: codexProofHome,
+      configPath,
+      dispose: () => {
+        resetRuntimeSeamsForTests();
+        dispose();
+      },
+      restoreHome: resetRuntimeSeamsForTests,
+    };
     return {
       project,
+      codex,
       version: version.stdout.trim(),
       applicationAttempts,
       protocolReplies,
       permitSafeSelection(check: (input: string) => boolean) {
         permitSelection = check;
       },
-      dispose,
     };
   } catch (error) {
+    if (unconfirmedGroup !== undefined) {
+      const kept = `kept ${root}, which its Codex process group ${unconfirmedGroup} may still use`;
+      throw new AggregateError([error], `Native updater preflight cleanup failed; ${kept}`);
+    }
     dispose();
     throw error;
   }
