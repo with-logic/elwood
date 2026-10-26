@@ -14,8 +14,9 @@
  *   and so invalidate, the user's own login; it lasts as long as the access token, so each
  *   process copies it afresh. MCP OAuth tokens are left out.
  * - `.claude.json`: the user's global config without `projects` (one entry per directory
- *   Claude ever ran in) or `mcpServers`, so first-run screens and notices the user has
- *   already dismissed stay dismissed, and no user MCP server starts.
+ *   Claude ever ran in), `mcpServers`, or `bypassPermissionsModeAccepted`, so first-run
+ *   screens and notices the user has already dismissed stay dismissed, no user MCP server
+ *   starts, and the bypass-permissions dialog always renders for the e2e to answer.
  * - `cache/model-catalog/`: the served model catalog, so the model picker lists it without
  *   racing its first fetch (`claude-compiled-fallback.ts`).
  */
@@ -65,7 +66,7 @@ function accessOnly(credentials: string): string | undefined {
   return JSON.stringify({ claudeAiOauth: access });
 }
 
-/** The user's global config without its per-project entries or MCP servers. */
+/** The user's global config without its per-project entries, MCP servers, or bypass acceptance. */
 function seededGlobalConfig(): string {
   const parsed: unknown = existsSync(userGlobalConfig)
     ? JSON.parse(readFileSync(userGlobalConfig, "utf8"))
@@ -73,6 +74,7 @@ function seededGlobalConfig(): string {
   const {
     projects: _projects,
     mcpServers: _mcp,
+    bypassPermissionsModeAccepted: _accepted,
     ...rest
   } = (parsed ?? {}) as Record<string, unknown>;
   return JSON.stringify({ ...rest, hasCompletedOnboarding: true });

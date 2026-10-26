@@ -3,9 +3,9 @@
  * C-E2E-23). Each case loads the module in a child process, the way the e2e runner does,
  * with a fake user config dir, and checks what the private dir held and what is left once
  * that process exits: a login without its refresh token, the global config without its
- * project entries or MCP servers, the model catalog, no user settings, and afterwards
- * nothing but the user's own files, unchanged. No case reads the real keychain: each
- * gives the child a `.credentials.json` or a custom config dir, which skip it.
+ * project entries, MCP servers, or bypass acceptance, the model catalog, no user settings,
+ * and afterwards nothing but the user's own files, unchanged. No case reads the real
+ * keychain: each gives the child a `.credentials.json` or a custom config dir, which skip it.
  */
 
 import { spawnSync } from "node:child_process";
@@ -84,7 +84,12 @@ function userConfig(dir: string): void {
   writeFileSync(join(dir, ".credentials.json"), JSON.stringify(login));
   writeFileSync(
     join(dir, ".claude.json"),
-    JSON.stringify({ projects: { "/work": {} }, mcpServers: { s: {} }, theme: "dark" }),
+    JSON.stringify({
+      projects: { "/work": {} },
+      mcpServers: { s: {} },
+      bypassPermissionsModeAccepted: true,
+      theme: "dark",
+    }),
   );
   writeFileSync(join(dir, "settings.json"), JSON.stringify({ model: "opus" }));
   writeFileSync(join(dir, "cache", "model-catalog", "catalog.json"), "[]");
