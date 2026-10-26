@@ -132,13 +132,12 @@ export function rethrowUnlessGroupGone(error: unknown): void {
 }
 
 /**
- * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
- * once: `stop()` then a later `teardown()` both want to guarantee the group is
- * gone, but signaling the same numeric pgid twice is unsafe — once the group is
- * empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit an
- * unrelated group. So the latch is set only AFTER the kill succeeds (an already
- * empty group's `ESRCH` is normalized to success by `reapProcessGroup`). A real
- * failure (e.g. EPERM) leaves the latch OPEN and rethrows, so a later call can retry.
+ * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most once:
+ * `stop()` then a later `teardown()` both want the group gone, but signaling the same
+ * numeric pgid twice is unsafe — once the group is empty the kernel may recycle the
+ * pid, and a second `kill(-pgid)` would hit an unrelated group. So the latch is set
+ * only AFTER the kill succeeds (an empty group's `ESRCH` counts as success, see
+ * `reapProcessGroup`); a real failure (e.g. EPERM) leaves it OPEN for a later retry.
  */
 export class SessionReaper {
   private readonly leaderPid: number;
