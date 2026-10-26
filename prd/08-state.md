@@ -18,6 +18,19 @@ directories unless a future explicit option asks it to.
 The default `.elwood/` directory and generated `.elwood/.gitignore` should be
 readable by normal local tooling, while session-specific subdirectories remain
 private.
+A state directory is made only while the session's `cwd` exists, and `cwd`
+itself is never made. One at or under `cwd`, the default `.elwood/` or a
+caller-provided `stateDir`, is made only below it, one directory at a time,
+however either path is spelled (in another letter case on a case-insensitive
+volume, or through a symlink). A caller-provided `stateDir` elsewhere is
+created with its missing parents. The `sessions` directory, each session
+directory, and every state file are made only inside their existing parent: a
+missing parent fails the write with `ENOENT`. So a removed worktree, or a
+removed state directory, is never recreated by a start, a resume, or a running
+session's later writes. A start fails instead, before its agent is spawned, and
+so does a write whose state directory is gone, as when it was in the removed
+worktree; a running session whose state directory is elsewhere keeps writing
+there (C-STATE-14).
 
 Before creating or changing state, Elwood MUST reject a symlink at the state
 root, sessions directory, or session directory, and reject user-owned symlink

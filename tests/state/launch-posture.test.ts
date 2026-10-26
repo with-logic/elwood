@@ -25,7 +25,7 @@ function readRecord(stateDir: string, id: string): Record<string, { launch?: unk
 }
 
 function resumableRecord(cwd: string, stateDir: string, id: string) {
-  prepareStateDir(stateDir);
+  prepareStateDir(stateDir, { cwd });
   const record = updateSessionResumeId(createSessionRecord({ cwd, id }), "claude", "claude-native");
   return record;
 }

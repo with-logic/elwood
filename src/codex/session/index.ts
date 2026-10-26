@@ -58,7 +58,10 @@ export async function startCodexWithId(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );
-  prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
+  prepareStateDir(stateDir, {
+    cwd: options.cwd,
+    isImplicitDefaultStateDir: options.stateDir === undefined,
+  });
   const createdRecord = createSessionRecord({
     cwd: options.cwd,
     id: elwoodSessionId,

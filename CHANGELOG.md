@@ -12,6 +12,27 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Starting a session whose `cwd` was deleted no longer recreates it. The default
+  state directory lives under `cwd`, and creating it created every missing parent,
+  so a session for a deleted worktree started in a new, empty directory. A state
+  directory is now made only while `cwd` exists, and one at or under `cwd`, the
+  default `.elwood/` or your own `stateDir`, only below it, so such a start
+  rejects before spawning (for now with `ENOENT`) and the worktree stays gone,
+  as does a `stateDir` elsewhere. State writes no longer make missing parent
+  directories either, so a running session whose state directory was in its
+  removed worktree fails its later writes (a new loop rejects with
+  `loop_persistence_failed`), and a resume whose state directory is removed
+  fails, instead of recreating either.
+- Codex `listModels()` and `setModel` no longer freeze the process when
+  `config.toml` is a FIFO. Elwood read the file with a blocking read, so a FIFO
+  left in its place, by an agent that can write to its `CODEX_HOME`, blocked the
+  event loop and every session in the process until something wrote to it. Elwood
+  now opens the file without waiting, reads it only if it is a regular file of at
+  most 1 MiB, and rejects anything else with `model_automation_failed`
+  (`details.code` `EFTYPE`, `EISDIR`, or `EFBIG`). A `setModel` that cannot read
+  the config now rejects with `model_automation_failed` before it opens the picker,
+  and one that cannot reread it for the restore rejects the same way; both used to
+  reject with the raw file-system error.
 - Elwood now recognizes Codex 0.164's folder-access and `Hooks need review` gates as
   0.164 draws them when hook trust is not bypassed: the folder gate's decline reads
   `Back to Agent Command Center`, and the two gates end in `enter continue · esc back`

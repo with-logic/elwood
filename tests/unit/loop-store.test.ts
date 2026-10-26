@@ -154,7 +154,7 @@ describe("loop sidecar store", () => {
 
 function stateRoot(): string {
   const root = tempDir("elwood-loop-state-");
-  prepareStateDir(root);
+  prepareStateDir(root, { cwd: root });
   return root;
 }
 

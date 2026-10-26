@@ -101,7 +101,7 @@ describe("CodexSessionApi resume options", () => {
     const cwd = realpathSync(tempDir());
     installFakes();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id: "codex-priv", adapter: "codex" });
     writeSessionRecord(
       { ...record, codex: { resumeId: "codex-session-9" } },
@@ -125,7 +125,7 @@ describe("CodexSessionApi resume options", () => {
     const cwd = realpathSync(tempDir());
     installFakes();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id: "posture-codex", adapter: "codex" });
     writeSessionRecord(
       {
@@ -152,7 +152,7 @@ describe("CodexSessionApi resume options", () => {
         : { status: 0, stdout: "unknown build", stderr: "" },
     );
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id: "codex-resume", adapter: "codex" });
     writeSessionRecord(
       { ...record, codex: { resumeId: "codex-session-9" } },

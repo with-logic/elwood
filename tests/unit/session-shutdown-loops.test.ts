@@ -157,7 +157,7 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
 
   test("teardown preserves loop_persistence_failed but still removes session files", async () => {
     const root = tempDir("elwood-shutdown-loops-");
-    prepareStateDir(root);
+    prepareStateDir(root, { cwd: root });
     const id = "teardown-loop-failure";
     const dir = sessionDir(root, id);
     writeSessionRecord(createSessionRecord({ cwd: root, id }), dir);
