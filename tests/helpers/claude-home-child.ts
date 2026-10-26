@@ -7,6 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isRecord } from "../../src/core/predicates.ts";
 
 const claudeHomeModule = resolve(import.meta.dirname, "../e2e/claude-home.ts");
 
@@ -54,7 +55,38 @@ export function runChild(env: Readonly<Record<string, string>>) {
 export function childClaudeHome(env: Readonly<Record<string, string>>): Seen {
   const run = runChild(env);
   if (run.status !== 0) throw new Error(`claude-home child exited ${run.status}: ${run.stderr}`);
-  return JSON.parse(run.stdout) as Seen;
+  return parseSeen(run.stdout);
+}
+
+/** The child's report, checked field by field against `Seen`. */
+export function parseSeen(text: string): Seen {
+  const report: unknown = JSON.parse(text);
+  if (!isRecord(report)) throw new Error("claude-home child reported no object");
+  const field = <T>(key: keyof Seen, valid: (value: unknown) => value is T): T => {
+    const value = report[key];
+    if (!valid(value)) throw new Error(`claude-home child reported a malformed ${key}`);
+    return value;
+  };
+  const isString = (value: unknown): value is string => typeof value === "string";
+  const stringOrNull = (value: unknown): value is string | null =>
+    value === null || isString(value);
+  return {
+    dir: field("dir", isString),
+    env: field("env", isString),
+    user: field("user", isString),
+    global: field("global", isString),
+    entries: field(
+      "entries",
+      (value): value is string[] => Array.isArray(value) && value.every(isString),
+    ),
+    credentials: field("credentials", stringOrNull),
+    credentialsMode: field(
+      "credentialsMode",
+      (value): value is number | null => value === null || typeof value === "number",
+    ),
+    config: field("config", stringOrNull),
+    catalog: field("catalog", stringOrNull),
+  };
 }
 
 /** Every file under `dir` with its contents, to show a dir is unchanged. */
