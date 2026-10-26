@@ -5,17 +5,20 @@
  * imports from here instead of re-declaring its own copy.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TranscriptActivityEmitter } from "../../src/claude/session/transcript.ts";
 import type { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 import type { ClaudeTranscriptEvent } from "../../src/claude/transcript/index.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
-/** A fresh transcript path in its own temp directory (the file is NOT created). */
+/**
+ * A fresh transcript path in its own temp directory (the file is NOT created). The
+ * directory is removed when the calling test finishes.
+ */
 export function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
+  return join(tempDir("elwood-tx-"), "t.jsonl");
 }
 
 /** A minimal Claude assistant transcript record carrying one text block. */
