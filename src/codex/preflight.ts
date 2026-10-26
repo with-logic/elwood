@@ -1,16 +1,20 @@
 /**
- * Codex CLI availability and version checks.
- * Implements PRD §9.2 and §10.
+ * Codex CLI availability and version checks, run in the session's directory.
+ * Implements PRD §9.2, §10, and C-PTY-08.
  */
 
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
-import type { ElwoodWarningEvent } from "../core/types.ts";
+import type { ElwoodWarningEvent, PreflightOptions } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { createProbeCache } from "../runtime/probe-cache.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
+import {
+  type AutoupdateOutcome,
+  cachedAutoupdate,
+  cachedVersionRead,
+} from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
@@ -25,33 +29,35 @@ export type CodexPreflightWarning = DistributiveOmit<
 // poison every later Codex start in the process (C-LIFE-11) — a later start re-probes.
 const capabilityProbe = createProbeCache<CodexCliCapabilities>(1);
 
+/** Checks the `codex` that a session launched in `cwd` would run (C-PTY-08). */
 export async function preflightCodex(
-  strictVersionCheck: boolean,
-  autoupdate = false,
+  cwd: string,
+  options: PreflightOptions = {},
 ): Promise<CodexPreflightWarning | undefined> {
   // Platform check is synchronous and first: unsupported hosts throw before
   // any subprocess is spawned.
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let updateError: unknown;
-  if (autoupdate) {
+  let failedUpdate: Extract<AutoupdateOutcome, { readonly ok: false }> | undefined;
+  if (options.autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
     // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
     const outcome = await cachedAutoupdate(
       "codex",
+      cwd,
       async () => {
-        await readCodexVersion(); // verify existence only after owning the cross-process lease
-        await runCodexUpdate();
+        await readCodexVersion(cwd); // verify existence only after owning the cross-process lease
+        await runCodexUpdate(cwd);
       },
       () => capabilityProbe.clear(),
     );
-    if (!outcome.ok) updateError = outcome.error;
+    if (!outcome.ok) failedUpdate = outcome;
   }
-  const result = await readCodexVersion();
+  const result = await readCodexVersion(cwd);
   const version = parseVersion(result.stdout);
   if (!version) {
-    if (strictVersionCheck) {
+    if (options.strictVersionCheck) {
       throw elwoodError("codex_version_unsupported", "Could not parse Codex CLI version.");
     }
     return versionWarning(result.stdout);
@@ -64,21 +70,27 @@ export async function preflightCodex(
     );
   }
   // Installed CLI is compatible: a failed best-effort update is a warning, not a start failure.
-  return updateError === undefined ? undefined : buildUpdateWarning("codex", version, updateError);
+  return failedUpdate === undefined
+    ? undefined
+    : buildUpdateWarning("codex", version, failedUpdate.error, failedUpdate.updateCwd);
 }
 
-async function runCodexUpdate(): Promise<void> {
-  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex update"));
+async function runCodexUpdate(cwd: string): Promise<void> {
+  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex update"), {
+    cwd,
+  });
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
 }
 
-async function readCodexVersion(): Promise<CommandResult> {
+async function readCodexVersion(cwd: string): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
-  const result = await cachedVersionRead("codex", () =>
-    Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
+  const result = await cachedVersionRead("codex", cwd, () =>
+    Promise.resolve(
+      currentCommandRunner()(userShell(), probeShellCommand("codex --version"), { cwd }),
+    ),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");

@@ -87,10 +87,10 @@ describe("Codex core helpers", () => {
     };
     expect(minimumCodexVersion).toBe("0.124.0");
     setPlatformForTests("linux");
-    await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
+    await expect(preflightCodex(process.cwd())).rejects.toThrow(ElwoodError);
     setPlatformForTests("darwin");
     setVersion({ status: 1, stdout: "", stderr: "boom" });
-    await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
+    await expect(preflightCodex(process.cwd())).rejects.toThrow(ElwoodError);
     setVersion({
       status: null,
       stdout: "",
@@ -98,24 +98,30 @@ describe("Codex core helpers", () => {
       error: { code: "SIGTERM", message: "terminated" },
     });
     // C-PERF-03: the underlying cause/errno is preserved in details.
-    await expect(preflightCodex(false)).rejects.toMatchObject({
+    await expect(preflightCodex(process.cwd())).rejects.toMatchObject({
       code: "codex_start_failed",
       details: { stderr: "terminated", cause: "terminated", errno: "SIGTERM" },
     });
     // An error without a code carries the cause but no synthetic errno.
     setVersion({ status: null, stdout: "", stderr: "gone", error: { message: "spawn died" } });
-    await expect(preflightCodex(false)).rejects.toMatchObject({
+    await expect(preflightCodex(process.cwd())).rejects.toMatchObject({
       code: "codex_start_failed",
       details: { stderr: "gone", cause: "spawn died" },
     });
     setVersion({ status: 0, stdout: "unparseable", stderr: "" });
     // Non-strict unparseable version resolves with a warning (does not throw).
-    await expect(preflightCodex(false)).resolves.toMatchObject({ code: "version_unparseable" });
-    await expect(preflightCodex(true)).rejects.toThrow(ElwoodError);
+    await expect(preflightCodex(process.cwd())).resolves.toMatchObject({
+      code: "version_unparseable",
+    });
+    await expect(preflightCodex(process.cwd(), { strictVersionCheck: true })).rejects.toThrow(
+      ElwoodError,
+    );
     setVersion({ status: 0, stdout: `codex-cli ${minimumCodexVersion}\n`, stderr: "" });
-    await expect(preflightCodex(true)).resolves.toBeUndefined();
+    await expect(
+      preflightCodex(process.cwd(), { strictVersionCheck: true }),
+    ).resolves.toBeUndefined();
     setVersion({ status: 0, stdout: "0.1.0", stderr: "" });
-    await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
+    await expect(preflightCodex(process.cwd())).rejects.toThrow(ElwoodError);
   });
 
   test("C-HRESP-10 serializes Codex hook response variants", () => {

@@ -14,6 +14,7 @@ import type {
   ElwoodCommonEventMap,
   ElwoodSessionStatus,
   ElwoodStatusDecision,
+  PreflightOptions,
   StatusMatch,
   TerminalSize,
   Unsubscribe,
@@ -31,7 +32,7 @@ import type { CodexTranscriptEvent } from "../transcript/index.ts";
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
 
-export type StartCodexOptions = {
+export type StartCodexOptions = PreflightOptions & {
   readonly cwd: string;
   readonly stateDir?: string;
   readonly initialSize?: TerminalSize;
@@ -45,13 +46,11 @@ export type StartCodexOptions = {
   readonly configOverrides?: readonly string[];
   /** Agent-neutral "never ask": expands to `danger-full-access` + `never` (C-API-54). */
   readonly highTrust?: boolean;
-  readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
-  readonly strictVersionCheck?: boolean;
 };
 
-export type ResumeCodexOptions = {
+export type ResumeCodexOptions = PreflightOptions & {
   readonly elwoodSessionId: string;
   readonly cwd?: string;
   readonly stateDir?: string;
@@ -61,10 +60,8 @@ export type ResumeCodexOptions = {
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly highTrust?: boolean;
-  readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
-  readonly strictVersionCheck?: boolean;
 };
 
 export type CodexEventMap = ElwoodCommonEventMap & {

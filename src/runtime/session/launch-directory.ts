@@ -60,36 +60,61 @@ export async function assertLaunchDirectory(
 }
 
 /**
- * Checks `cwd`, since it can go while preflight runs, then runs the launch. If the launch
- * fails, `cwd` is checked again against the directory found first, so one deleted and made
- * again while the launch failed is not taken for the same directory. When that check fails,
- * because `cwd` has gone (state setup never makes it, so it fails with `ENOENT` instead of
- * recreating the project), is no longer a directory, was replaced, or can't be checked, the
- * check's failure is the error, keeping the failed launch's cause and cleanup details (§9.1,
- * §10). While `cwd` is still that directory, the launch's own failure is rethrown.
+ * Checks `cwd`, then runs an operation in it: preflight's probes, or the launch. If the operation
+ * fails, `cwd` is checked again against the directory found first, so one deleted and made again
+ * meanwhile is not taken for the same directory. When that check fails, because `cwd` has gone
+ * (state setup never makes it, so it fails with `ENOENT` instead of recreating the project), is
+ * no longer a directory, was replaced, or can't be checked, the check's failure is the error,
+ * keeping the operation's cause and cleanup details (§9.1, §10). While `cwd` is still that
+ * directory, the operation's own failure is rethrown.
  */
 export async function recheckLaunchDirectoryOnFailure<T>(
   agent: ElwoodAgentKind,
   cwd: string,
-  launch: () => Promise<T>,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return inCheckedDirectory(agent, cwd, await assertLaunchDirectory(agent, cwd), operation);
+}
+
+/**
+ * Runs preflight as `recheckLaunchDirectoryOnFailure` does, and checks `cwd` once more after it
+ * succeeds: its answers describe the directory its probes ran in, so a `cwd` replaced meanwhile
+ * fails the start or resume even when every probe passed, as when a best-effort update's failed
+ * read is followed by a read in the new directory (§4.2, C-API-61).
+ */
+export async function preflightInLaunchDirectory<T>(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  preflight: () => Promise<T>,
 ): Promise<T> {
   const checked = await assertLaunchDirectory(agent, cwd);
+  const answer = await inCheckedDirectory(agent, cwd, checked, preflight);
+  await assertLaunchDirectory(agent, cwd, checked);
+  return answer;
+}
+
+async function inCheckedDirectory<T>(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  checked: LaunchDirectoryIdentity,
+  operation: () => Promise<T>,
+): Promise<T> {
   try {
-    return await launch();
+    return await operation();
   } catch (error) {
     await assertLaunchDirectory(agent, cwd, checked).catch((directoryError: ElwoodError) => {
-      // `errno` is the check's, so a replaced directory has none, not the launch's.
-      const { errno: _launchErrno, ...launched } = launchFailureDetails(error);
+      // `errno` is the check's, so a replaced directory has none, not the operation's.
+      const { errno: _operationErrno, ...failed } = failureDetails(error);
       const { errno } = directoryError.details;
-      const details = { ...launched, cwd, ...(errno ? { errno } : {}) };
+      const details = { ...failed, cwd, ...(errno ? { errno } : {}) };
       throw elwoodError(directoryError.code, directoryError.message, details);
     });
     throw error;
   }
 }
 
-/** What a failed launch reported: a typed error's details under its message, else its cause. */
-function launchFailureDetails(error: unknown): Readonly<Record<string, unknown>> {
+/** What a failed operation reported: a typed error's details under its message, else its cause. */
+function failureDetails(error: unknown): Readonly<Record<string, unknown>> {
   return error instanceof ElwoodError
     ? { cause: error.message, ...error.details }
     : causeDetails(error);

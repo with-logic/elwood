@@ -40,19 +40,19 @@ describe("version-read cache", () => {
         }, 5);
       });
     });
-    await Promise.all([preflightClaude(false), preflightCodex(false)]);
+    await Promise.all([preflightClaude(process.cwd()), preflightCodex(process.cwd())]);
     expect(maxInFlight).toBe(2);
   });
 
-  test("C-PERF-02 reads --version at most once per process", async () => {
+  test("C-PERF-02 reads --version at most once per process for one directory", async () => {
     let reads = 0;
     setPlatformForTests("darwin");
     setCommandRunnerForTests(() => {
       reads += 1;
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(false);
-    await preflightClaude(true);
+    await preflightClaude(process.cwd());
+    await preflightClaude(process.cwd(), { strictVersionCheck: true });
     expect(reads).toBe(1);
   });
 
@@ -66,7 +66,11 @@ describe("version-read cache", () => {
           setTimeout(() => resolve({ status: 0, stdout: "2.1.144", stderr: "" }), 5);
         }),
     );
-    await Promise.all([preflightClaude(false), preflightClaude(false), preflightClaude(false)]);
+    await Promise.all([
+      preflightClaude(process.cwd()),
+      preflightClaude(process.cwd()),
+      preflightClaude(process.cwd()),
+    ]);
     expect(reads).toBe(1);
   });
 
@@ -78,7 +82,7 @@ describe("version-read cache", () => {
       versions.push("read");
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(false, true);
+    await preflightClaude(process.cwd(), { autoupdate: true });
     // One read before the update, one after the invalidate.
     expect(versions).toHaveLength(2);
   });
@@ -94,10 +98,10 @@ describe("autoupdate dedupe", () => {
       commands.push(args.join(" "));
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(false, true);
-    await preflightClaude(false, true);
-    await preflightCodex(false, true);
-    await preflightCodex(false, true);
+    await preflightClaude(process.cwd(), { autoupdate: true });
+    await preflightClaude(process.cwd(), { autoupdate: true });
+    await preflightCodex(process.cwd(), { autoupdate: true });
+    await preflightCodex(process.cwd(), { autoupdate: true });
     const updates = commands.filter((command) => command.includes(" update"));
     expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
     expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
@@ -120,9 +124,9 @@ describe("autoupdate dedupe", () => {
     // Three concurrent autoupdate callers: one update, all resolve (none
     // rejects on the stale 2.1.1 pre-update read).
     await Promise.all([
-      preflightClaude(false, true),
-      preflightClaude(false, true),
-      preflightClaude(false, true),
+      preflightClaude(process.cwd(), { autoupdate: true }),
+      preflightClaude(process.cwd(), { autoupdate: true }),
+      preflightClaude(process.cwd(), { autoupdate: true }),
     ]);
     expect(updates).toBe(1);
   });
@@ -141,9 +145,9 @@ describe("autoupdate dedupe", () => {
       return { status: 0, stdout: versions.shift() ?? "codex-cli 0.132.0", stderr: "" };
     });
     await Promise.all([
-      preflightCodex(false, true),
-      preflightCodex(false, true),
-      preflightCodex(false, true),
+      preflightCodex(process.cwd(), { autoupdate: true }),
+      preflightCodex(process.cwd(), { autoupdate: true }),
+      preflightCodex(process.cwd(), { autoupdate: true }),
     ]);
     expect(updates).toBe(1);
   });
@@ -159,8 +163,8 @@ describe("autoupdate dedupe", () => {
       return { status: 0, stdout: "2.1.144", stderr: "" }; // installed == min → compatible
     });
     const results = await Promise.allSettled([
-      preflightClaude(false, true),
-      preflightClaude(false, true),
+      preflightClaude(process.cwd(), { autoupdate: true }),
+      preflightClaude(process.cwd(), { autoupdate: true }),
     ]);
     // Best-effort: the shared update fails ONCE, but neither caller rejects — both warn and
     // continue (the installed CLI meets the minimum). This is the fleet-death regression fixed.

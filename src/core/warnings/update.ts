@@ -59,6 +59,7 @@ export function buildUpdateWarning(
   agent: ElwoodAgentKind,
   installedVersion: string,
   error: unknown,
+  updateCwd: string,
 ): UpdateFailedWarning {
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
@@ -76,6 +77,7 @@ export function buildUpdateWarning(
     installedVersion,
     errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),
+    updateCwd,
   };
 }
 

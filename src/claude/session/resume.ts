@@ -7,7 +7,7 @@ import { elwoodError } from "../../core/errors.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
 import {
-  assertLaunchDirectory,
+  preflightInLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -48,10 +48,9 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   // before it decides which shared state to remove (C-API-20).
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
-    await assertLaunchDirectory("claude", cwd);
-    const warning = await preflightClaude(
-      options.strictVersionCheck ?? false,
-      options.autoupdate ?? false,
+    // `cwd` is checked before any probe; if it goes or is replaced, that is the failure.
+    const warning = await preflightInLaunchDirectory("claude", cwd, () =>
+      preflightClaude(cwd, options),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,

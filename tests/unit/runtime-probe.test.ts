@@ -4,7 +4,7 @@
  * killed as a whole process group, and never signaled on a clean exit.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
@@ -19,6 +19,13 @@ afterEach(() => vi.restoreAllMocks());
 describe("runtime probe runner", () => {
   test("the production command runner IS the bounded probe", () => {
     expect(currentCommandRunner()).toBe(runProbe);
+  });
+
+  test("C-PTY-08 runs in the given cwd, else in Elwood's own", async () => {
+    const cwd = realpathSync(tempDir());
+    const pwd = ["-e", "process.stdout.write(process.cwd())"];
+    expect((await runProbe(node, pwd, { cwd })).stdout).toBe(cwd);
+    expect((await runProbe(node, pwd)).stdout).toBe(process.cwd());
   });
 
   test("reports spawn failures for missing commands", async () => {

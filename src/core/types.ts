@@ -63,7 +63,18 @@ export type ClaudePermissionMode =
 export type ClaudeToolRule = string;
 export type ClaudeSettingsOverrides = Readonly<Record<string, unknown>>;
 
-export type StartClaudeOptions = {
+/**
+ * How a start or resume checks its CLI before launching it (§9.2). The version is always read
+ * and checked against the minimum; these change only what else happens.
+ */
+export type PreflightOptions = {
+  /** Runs the CLI's own update first, best-effort (C-LIFE-11). Off by default. */
+  readonly autoupdate?: boolean;
+  /** Fails on a version that can't be parsed, instead of warning. Off by default. */
+  readonly strictVersionCheck?: boolean;
+};
+
+export type StartClaudeOptions = PreflightOptions & {
   readonly cwd: string;
   readonly stateDir?: string;
   readonly name?: string;
@@ -79,13 +90,11 @@ export type StartClaudeOptions = {
   readonly settingsOverrides?: ClaudeSettingsOverrides;
   /** Agent-neutral "never ask": expands to `permissionMode: "bypassPermissions"` (C-API-54). */
   readonly highTrust?: boolean;
-  readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
-  readonly strictVersionCheck?: boolean;
 };
 
-export type ResumeClaudeOptions = {
+export type ResumeClaudeOptions = PreflightOptions & {
   readonly elwoodSessionId: string;
   readonly cwd?: string;
   readonly stateDir?: string;
@@ -97,10 +106,8 @@ export type ResumeClaudeOptions = {
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly tools?: readonly ClaudeToolRule[];
   readonly highTrust?: boolean;
-  readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
-  readonly strictVersionCheck?: boolean;
 };
 
 export type HookErrorEvent = {

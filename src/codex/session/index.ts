@@ -8,6 +8,7 @@ import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import {
   assertLaunchDirectory,
+  preflightInLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -65,9 +66,9 @@ export async function startCodexWithId(
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
   await assertLaunchDirectory("codex", options.cwd);
   const stateDir = canonicalStatePath(stateDirPath);
-  const warning = await preflight.preflightCodex(
-    options.strictVersionCheck ?? false,
-    options.autoupdate ?? false,
+  // A probe whose directory goes or is replaced fails as that directory, not a missing CLI.
+  const warning = await preflightInLaunchDirectory("codex", options.cwd, () =>
+    preflight.preflightCodex(options.cwd, options),
   );
   const session = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () => {
     prepareStateDir(stateDir, {

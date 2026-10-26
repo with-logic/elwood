@@ -1,7 +1,7 @@
 /**
  * A keyed cache for probe results that stays bounded for a long-lived host. Implements the
- * per-process version and capability caches of PRD §9.2 (C-PERF-02) and the
- * never-cache-a-rejection rule of C-LIFE-11.
+ * bounded per-directory version cache and per-process capability cache of PRD §9.2 (C-PERF-02)
+ * and the never-cache-a-rejection rule of C-LIFE-11.
  */
 
 export type ProbeCache<T> = {

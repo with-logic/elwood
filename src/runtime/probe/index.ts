@@ -3,13 +3,14 @@
  * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05,
  * C-PERF-07): a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
  * `update`, or `--help` probe, a slow login-shell profile is bounded separately from the CLI
- * it launches, and only a few probes run at once.
+ * it launches, and only a few probes run at once. A probe runs in `options.cwd` when given
+ * (§4.2, C-PTY-08).
  */
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { completeUtf8Length } from "../../core/utf8.ts";
-import type { CommandResult } from "../seams.ts";
+import type { CommandOptions, CommandResult } from "../seams.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
 import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
@@ -74,11 +75,19 @@ class CappedBuffer {
 }
 
 /** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
-export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
-  return withProbeSlot(() => spawnProbe(command, args));
+export function runProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions = {},
+): Promise<CommandResult> {
+  return withProbeSlot(() => spawnProbe(command, args, options));
 }
 
-function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
+function spawnProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions,
+): Promise<CommandResult> {
   return new Promise((resolve) => {
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
@@ -87,6 +96,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // A fourth pipe carries only the probe shell's start line, unless the shell closed it.
     const child = spawn(command, [...args], {
       detached: true,
+      cwd: options.cwd,
       stdio: ["pipe", "pipe", "pipe", "pipe"],
     });
     const out = new CappedBuffer();
@@ -151,7 +161,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // `error` always carries a `code`, which preflight maps to `*_not_found`.
     child.on("error", (e: NodeJS.ErrnoException) => {
       const [stdout, stderr] = captured();
-      settle({ status: null, stdout, stderr, error: mapError(e) });
+      settle({ status: null, stdout, stderr, error: { code: e.code, message: e.message } });
     });
     child.on("close", (code) => {
       const [stdout, stderr] = captured();
@@ -163,13 +173,6 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
     let timer = boundBy(launchTimeoutMs, () => launchTimedOut(...captured()));
   });
-}
-
-function mapError(error: NodeJS.ErrnoException): {
-  readonly code?: string | undefined;
-  readonly message: string;
-} {
-  return { code: error.code, message: error.message };
 }
 
 function commandTimedOut(stdout: string, stderr: string): CommandResult {

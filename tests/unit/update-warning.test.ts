@@ -13,7 +13,7 @@ describe("buildUpdateWarning", () => {
       stderr: "boom",
       errno: "ETIMEDOUT",
     });
-    expect(buildUpdateWarning("claude", "2.1.223", error)).toEqual({
+    expect(buildUpdateWarning("claude", "2.1.223", error, "/work/a")).toEqual({
       agent: "claude",
       source: "lifecycle",
       code: "agent_update_failed",
@@ -22,6 +22,7 @@ describe("buildUpdateWarning", () => {
       installedVersion: "2.1.223",
       errorCode: "ETIMEDOUT",
       raw: "boom",
+      updateCwd: "/work/a",
     });
   });
 
@@ -32,11 +33,13 @@ describe("buildUpdateWarning", () => {
       errno: "ETIMEDOUT",
       phase: "login_shell",
     });
-    expect(buildUpdateWarning("claude", "2.1.310", error).errorCode).toBe("login_shell_failed");
+    expect(buildUpdateWarning("claude", "2.1.310", error, "/work").errorCode).toBe(
+      "login_shell_failed",
+    );
   });
 
   test("falls back to a generic error code and empty stderr for a non-ElwoodError / no details", () => {
-    const warning = buildUpdateWarning("codex", "0.132.0", new Error("plain failure"));
+    const warning = buildUpdateWarning("codex", "0.132.0", new Error("plain failure"), "/work");
     expect(warning.errorCode).toBe("update_failed"); // no allowlisted errno available
     expect(warning.raw).toBe(""); // no stderr to surface
     expect(warning.installedVersion).toBe("0.132.0");
@@ -44,7 +47,7 @@ describe("buildUpdateWarning", () => {
 
   test("truncates an oversized stderr to keep the warning payload bounded", () => {
     const error = elwoodError("claude_update_failed", "failed", { stderr: "x".repeat(5000) });
-    const warning = buildUpdateWarning("claude", "2.1.223", error);
+    const warning = buildUpdateWarning("claude", "2.1.223", error, "/work");
     expect(warning.raw.length).toBeLessThanOrEqual(2000); // the 2 KB `maxStderr` cap
   });
 });
@@ -54,6 +57,7 @@ test("C-PERF-04 contention reports a skipped active updater rather than a failed
     "codex",
     "0.154.0",
     elwoodError("codex_update_failed", "internal", { updateReason: "active_owner" }),
+    "/work",
   );
   expect(warning.errorCode).toBe("update_active");
   expect(warning.message).toBe(
@@ -76,6 +80,7 @@ test.each([
       updateReason: "cleanup_pending",
       cleanupErrorCode: "ETIMEDOUT",
     }),
+    "/work",
   );
   expect(warning.errorCode).toBe("update_active");
   expect(warning.message).toBe(

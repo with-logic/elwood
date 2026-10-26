@@ -61,8 +61,10 @@ warning and continues by default, with an option for callers to make this fatal.
 
 The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
-allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
-never terminal transcripts, prompts, tokens, or environment secrets. Like all
+allowlisted error code (e.g. a timeout/`errno`), bounded captured stderr, and
+`updateCwd`, the launch directory of the start or resume that triggered the shared
+update, which may be another session's — never terminal transcripts, prompts,
+tokens, or environment secrets. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
 `ready`.
@@ -75,17 +77,27 @@ an inherited `SHELL` environment override from the parent process.
 
 These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
-preflights on a single thread. Elwood reads each adapter's `--version` at most
-once per parent process — concurrent first reads share a single subprocess, and
-later reads reuse the cached result — mirroring the once-per-process autoupdate
-dedupe (C-LIFE-09). The cached version and adapter-capability reads are invalidated
-after every coordinated update attempt, including a failed or peer-owned attempt,
-because a failed installer may still have partially changed the binary. When
-`autoupdate` is set, concurrent callers share one update and all validate the same
-post-attempt version, so no caller proceeds on a stale pre-update version or races
-a second update. This mutual exclusion also applies across separate Elwood parent
-processes for the same macOS user and adapter: an atomic lease names the adapter in
-a stable per-account cache independent of `TMPDIR`; contenders wait without
+preflights on a single thread. Each `--version` and `update` probe runs in the
+session's launch directory (§4.2). Elwood reads each adapter's `--version` in each such directory and
+reuses a successful read while it is kept — concurrent reads
+share a single subprocess, mirroring the once-per-process autoupdate dedupe
+(C-LIFE-09). A read is kept for the directory itself, its device and inode as well
+as its path, so a directory deleted and made again at the same path is read again.
+A failed read is not kept, so the next start reads again (C-LIFE-11).
+Only the 32 most recently used directories' results are kept, enough for a host
+running sessions in many worktrees at once, and a kept `--version` read holds only
+the last 65,536 UTF-16 code units of each output stream (one fewer when that cut
+would start inside a surrogate pair), so a long-lived host that launches in many
+directories stays bounded; an evicted directory is read again. The cached version reads, in every directory, and adapter-capability
+reads are invalidated after every coordinated update attempt, including a failed or
+peer-owned attempt, because a failed installer may still have partially changed
+the binary. When
+`autoupdate` is set, concurrent callers share one update, which runs in the
+directory of the start that triggers it; each caller then validates the post-attempt
+version that its own launch directory resolves, so no caller proceeds on a stale
+pre-update version or races a second update. This mutual exclusion also applies
+across separate Elwood parent processes for the same macOS user and adapter: an
+atomic lease names the adapter in a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
 running a duplicate update. Contender waiting is bounded to 165 seconds: the owner
 runs two probes under the lease, a `--version` read confirming the CLI exists and then

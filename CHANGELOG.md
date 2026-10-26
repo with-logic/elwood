@@ -12,6 +12,22 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- The version checks at start and resume now run in the session's directory,
+  where its CLI launches, and with `autoupdate` the update command runs in the
+  directory of the start or resume that triggers it. These checks ran in the
+  host's working directory, so under a per-directory tool manager (asdf or mise
+  shims, or a shell startup file that builds PATH from `$PWD`) Elwood could
+  check, update, or refuse to start a different `claude` or `codex` than the one
+  the session then ran. A directory's successful answer is reused while it is
+  kept. Elwood keeps the answers for the 32 most recently used directories, and
+  of each answer only the last 65,536 UTF-16 code units of each output stream. A
+  directory deleted and made again is checked again. If the session's directory
+  is removed or replaced while these checks run, on start or on resume, the start
+  or resume fails with `claude_start_failed` or `codex_start_failed` and
+  `details.cwd`. It no longer reports a missing CLI or launches with the old
+  directory's answer. The `agent_update_failed` warning now has `updateCwd`, the
+  directory the shared update ran in.
+
 - A start or resume whose launch fails while its `cwd` is deleted and made again
   now fails with the adapter's `*_start_failed` for that `cwd`, as it does when
   `cwd` is simply gone. It used to find the new directory in its place and report

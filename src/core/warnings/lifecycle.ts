@@ -23,6 +23,8 @@ export type AgentUpdateFailedWarning = {
   readonly installedVersion: string;
   readonly errorCode: string;
   readonly raw: string;
+  /** The launch directory of the start or resume that triggered the shared update (§9.2). */
+  readonly updateCwd: string;
 };
 
 /** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */

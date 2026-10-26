@@ -66,7 +66,7 @@ describe("preflight", () => {
     setPlatformForTests("darwin");
     setVersion({ status: 1, stdout: "", stderr: "boom" });
     // A plain non-zero probe carries stderr and no synthetic cause/errno.
-    await expect(preflightClaude(false)).rejects.toMatchObject({
+    await expect(preflightClaude(process.cwd())).rejects.toMatchObject({
       code: "claude_start_failed",
       details: { stderr: "boom" },
     });
@@ -78,16 +78,20 @@ describe("preflight", () => {
       stderr: "",
       error: { code: "ETIMEDOUT", message: "probe timed out after 15000 ms" },
     });
-    await expect(preflightClaude(false)).rejects.toMatchObject({
+    await expect(preflightClaude(process.cwd())).rejects.toMatchObject({
       code: "claude_start_failed",
       details: { cause: "probe timed out after 15000 ms", errno: "ETIMEDOUT" },
     });
     setVersion({ status: 0, stdout: "unparseable", stderr: "" });
     // Non-strict unparseable version resolves with a warning (does not throw).
-    await expect(preflightClaude(false)).resolves.toMatchObject({ code: "version_unparseable" });
-    await expect(preflightClaude(true)).rejects.toThrow(ElwoodError);
+    await expect(preflightClaude(process.cwd())).resolves.toMatchObject({
+      code: "version_unparseable",
+    });
+    await expect(preflightClaude(process.cwd(), { strictVersionCheck: true })).rejects.toThrow(
+      ElwoodError,
+    );
     setVersion({ status: 0, stdout: "2.1.1", stderr: "" });
-    await expect(preflightClaude(false)).rejects.toThrow(ElwoodError);
+    await expect(preflightClaude(process.cwd())).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 

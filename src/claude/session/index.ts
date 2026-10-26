@@ -9,6 +9,7 @@ import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reas
 import type { StartClaudeOptions } from "../../core/types.ts";
 import {
   assertLaunchDirectory,
+  preflightInLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -64,8 +65,10 @@ export async function startClaudeWithId(
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
   await assertLaunchDirectory("claude", options.cwd);
   const stateDir = canonicalStatePath(stateDirPath);
-  const strict = options.strictVersionCheck ?? false;
-  const warning = await preflightClaude(strict, options.autoupdate ?? false);
+  // A probe whose directory goes or is replaced fails as that directory, not a missing CLI.
+  const warning = await preflightInLaunchDirectory("claude", options.cwd, () =>
+    preflightClaude(options.cwd, options),
+  );
   const session = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,

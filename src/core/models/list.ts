@@ -5,15 +5,14 @@
 
 import type { ElwoodAgentSession } from "../agent-session.ts";
 import { errnoCode, toError } from "../errors.ts";
+import type { PreflightOptions } from "../types.ts";
 import type { AgentModelOption } from "./rows.ts";
 
 /** Launch-relevant options for a throwaway model-listing probe (C-API-41). */
-export type ListModelsOptions = {
+export type ListModelsOptions = PreflightOptions & {
   readonly cwd: string;
   readonly stateDir?: string;
-  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
-  readonly strictVersionCheck?: boolean;
   /** Bounds the picker automation, exactly as on a live session's `listModels`. */
   readonly timeoutMs?: number;
 };
