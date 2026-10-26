@@ -9,14 +9,18 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
-import {
-  homeGuardExitCode,
-  homeGuardStopped,
-  homeGuardStoppedReason,
-} from "../home-guard/index.ts";
+import { homeGuardStopped } from "../home-guard/index.ts";
 import type { CommandResult } from "../seams.ts";
-import { CappedBuffer, maxProbeStreamOutputBytes } from "./capped-buffer.ts";
+import { CappedBuffer } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
+import {
+  commandTimedOut,
+  guardStopped,
+  launchTimedOut,
+  mapError,
+  overflow,
+  shellExited,
+} from "./results.ts";
 import { withProbeSlot } from "./slots.ts";
 import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
@@ -90,9 +94,10 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       );
     };
     const captured = (): [string, string] => [start.stripFromStdout(out.text()), err.text()];
-    // Each phase's bound aborts the probe with its own typed timeout when it expires.
-    const boundBy = (ms: number, result: () => CommandResult) => {
-      const bound = setTimeout(() => settle(result(), true), ms);
+    // Each phase's bound aborts the probe with its own typed timeout, for its length, when it
+    // expires.
+    const boundBy = (ms: number, timedOut: typeof commandTimedOut) => {
+      const bound = setTimeout(() => settle(timedOut(ms, ...captured()), true), ms);
       bound.unref?.();
       return bound;
     };
@@ -114,7 +119,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       if (!start.feed(channel, chunk)) return;
       control.off("data", onControl);
       clearTimeout(timer);
-      timer = boundBy(commandTimeoutMs, () => commandTimedOut(...captured()));
+      timer = boundBy(commandTimeoutMs, commandTimedOut);
     }
     const onControl = (chunk: Buffer): void => onStart("control", chunk);
     control.on("data", onControl);
@@ -135,45 +140,6 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       else settle({ status: code, stdout, stderr });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
-    let timer = boundBy(launchTimeoutMs, () => launchTimedOut(...captured()));
+    let timer = boundBy(launchTimeoutMs, launchTimedOut);
   });
-}
-
-function mapError(error: NodeJS.ErrnoException): {
-  readonly code?: string | undefined;
-  readonly message: string;
-} {
-  return { code: error.code, message: error.message };
-}
-
-function commandTimedOut(stdout: string, stderr: string): CommandResult {
-  const message = `probe timed out after ${commandTimeoutMs} ms`;
-  return { status: null, stdout, stderr, error: { code: "ETIMEDOUT", message } };
-}
-
-function launchTimedOut(stdout: string, stderr: string): CommandResult {
-  const message = `login shell did not start the probe command within ${launchTimeoutMs} ms`;
-  const error = { code: "ETIMEDOUT", message, phase: "login_shell" } as const;
-  return { status: null, stdout, stderr, error };
-}
-
-function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
-  const message = `login shell exited with status ${status} before starting the probe command`;
-  const error = { message, phase: "login_shell", shellStatus: status } as const;
-  return { status: null, stdout, stderr, error };
-}
-
-/** A probe the e2e home guard stopped: the login shell's failure, with only the fixed reason. */
-function guardStopped(stdout: string, stderr: string): CommandResult {
-  const error = {
-    message: homeGuardStoppedReason,
-    phase: "login_shell",
-    shellStatus: homeGuardExitCode,
-  } as const;
-  return { status: null, stdout, stderr, error };
-}
-
-function overflow(stdout: string, stderr: string): CommandResult {
-  const message = `a probe output stream exceeded ${maxProbeStreamOutputBytes} bytes`;
-  return { status: null, stdout, stderr, error: { code: "E2BIG", message } };
 }
