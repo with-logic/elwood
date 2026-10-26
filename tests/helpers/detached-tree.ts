@@ -9,8 +9,16 @@
  * leave the tree running.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { onTestFinished } from "vitest";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
@@ -18,16 +26,33 @@ import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { delay, killGroupsWhoseCommandHas, POLL_INTERVAL_MS } from "./process-liveness.ts";
 import { tempDir } from "./tmp.ts";
 
-// `hold.cjs <dir> <name> [next] [mode]`: records its pid as <dir>/<name>.pid, optionally
-// starts `next` DETACHED (Node's `detached` is `setsid()`, as Claude does for hooks),
-// and stays alive. `ignore-term` makes the PTY leader ignore SIGTERM like a CLI whose
-// graceful shutdown is stuck, forcing the SIGKILL escalation.
+/** Where `with-daemon` puts its copies of Node, named as the Codex TUI and its daemon are. */
+const TUI_BINARY = "bin/codex";
+const DAEMON_BINARY = "packages/app-server-daemon/releases/0.164.0/bin/codex";
+/** Node itself, for the hooks and the MCP server, which run from neither copy. */
+const NODE = realpathSync(process.execPath);
+/** How long a test waits for a process of the tree to record its pid. */
+const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
+
+// `hold.cjs <dir> <name> [next] [mode] [...]`: records its pid as <dir>/<name>.pid,
+// optionally starts `next` DETACHED from plain Node (Node's `detached` is `setsid()`, as
+// the CLIs do for hooks, which run as `sh` and `node`), and stays alive. `ignore-term`
+// makes the PTY leader ignore SIGTERM, like a CLI whose graceful shutdown is stuck.
+// `with-daemon` runs the leader from a copy of
+// Node named `codex` and has it start, detached and with their real arguments, the
+// Codex 0.164 TUI's app-server `daemon` (which starts an `mcp` server from plain Node)
+// and its `updater` loop, from a copy at the daemon's install (docs/cli-behavior.md).
 const HOLD = `
 const { spawn } = require("node:child_process");
 const { writeFileSync } = require("node:fs");
 const [dir, name, next, mode] = process.argv.slice(2);
+const start = (binary, args) => spawn(binary, [__filename, dir, ...args], { detached: true, stdio: "ignore" });
 if (mode === "ignore-term") process.on("SIGTERM", () => {});
-if (next) spawn(process.execPath, [__filename, dir, next, next === "child" ? "grandchild" : ""], { detached: true, stdio: "ignore" });
+if (next) start(${JSON.stringify(NODE)}, [next, next === "child" ? "grandchild" : ""]);
+if (mode === "with-daemon") {
+  start(dir + "/${DAEMON_BINARY}", ["daemon", "mcp", "", "app-server", "--listen", "unix://", "--analytics-default-enabled", "--managed-daemon"]);
+  start(dir + "/${DAEMON_BINARY}", ["updater", "", "", "app-server", "daemon", "pid-update-loop"]);
+}
 writeFileSync(dir + "/" + name + ".pid", String(process.pid));
 setInterval(() => {}, 1e9);
 `;
@@ -35,10 +60,19 @@ setInterval(() => {}, 1e9);
 export type DetachedTree = { readonly pty: PtyProcess; readonly dir: string };
 
 /** Starts the leader under a real PTY; it starts the detached child, which starts the grandchild. */
-export function startDetachedTree(mode: "" | "ignore-term" = ""): DetachedTree {
+export function startDetachedTree(mode: "" | "ignore-term" | "with-daemon" = ""): DetachedTree {
   const dir = holdDir("elwood-detached-");
+  const asCodex = mode === "with-daemon";
+  const command = asCodex ? join(dir, TUI_BINARY) : process.execPath;
+  if (asCodex) {
+    for (const binary of [TUI_BINARY, DAEMON_BINARY].map((path) => join(dir, path))) {
+      // A clone where the file system allows one: instant, and no extra space on APFS.
+      mkdirSync(dirname(binary), { recursive: true });
+      copyFileSync(NODE, binary, constants.COPYFILE_FICLONE);
+    }
+  }
   const pty = nodePtyFactory({
-    command: process.execPath,
+    command,
     args: [join(dir, "hold.cjs"), dir, "leader", "child", mode],
     cwd: dir,
     env: process.env,
@@ -47,10 +81,20 @@ export function startDetachedTree(mode: "" | "ignore-term" = ""): DetachedTree {
   return { pty, dir };
 }
 
+/** Waits for the pid file of `name`, a process a `with-daemon` leader starts. */
+export async function extraPid(
+  tree: DetachedTree,
+  name: "daemon" | "mcp" | "updater",
+): Promise<number> {
+  const pid = await waitForPid(tree.dir, name, PID_FILE_WAIT_TIMEOUT_MS);
+  if (pid === undefined) throw new Error(`the ${name} process never started`);
+  return pid;
+}
+
 /** Waits for the detached child's and grandchild's pid files (the leader is `pty.pid`). */
 export async function detachedDescendantPids(tree: DetachedTree): Promise<[number, number]> {
-  const child = await waitForPid(tree.dir, "child", 10_000);
-  const grandchild = await waitForPid(tree.dir, "grandchild", 10_000);
+  const child = await waitForPid(tree.dir, "child", PID_FILE_WAIT_TIMEOUT_MS);
+  const grandchild = await waitForPid(tree.dir, "grandchild", PID_FILE_WAIT_TIMEOUT_MS);
   if (child === undefined || grandchild === undefined) {
     throw new Error("the detached tree never started");
   }

@@ -12,6 +12,7 @@
 
 import { errnoCode } from "../../../core/errors.ts";
 import type { ProcessEntry } from "../process-table.ts";
+import type { DaemonScope } from "../shared-daemon.ts";
 import type { SweepFailures } from "./failures.ts";
 
 /**
@@ -23,8 +24,11 @@ export type SweepOps = {
   readonly stopGroup: (pgid: number) => void;
   /** SIGKILLs the process group `pgid`; tolerates an already-empty group. */
   readonly killGroup: (pgid: number) => void;
-  /** Lists the host process table, rejecting after `timeoutMs`. */
-  readonly listProcesses: (timeoutMs: number) => Promise<readonly ProcessEntry[]>;
+  /** Lists the host process table within `timeoutMs`, marking `shared` rows in `scope`. */
+  readonly listProcesses: (
+    timeoutMs: number,
+    scope?: DaemonScope,
+  ) => Promise<readonly ProcessEntry[]>;
 };
 
 export type SweepState = {
