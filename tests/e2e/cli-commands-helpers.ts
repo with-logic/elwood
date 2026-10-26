@@ -28,6 +28,37 @@ export const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import
 /** The listed-row fields these e2e checks read, derived from the public row type. */
 export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault">;
 
+/** The `elwood sessions --output=json` document. */
+export type SessionsDocument = {
+  readonly schemaVersion: 1;
+  readonly type: "sessions";
+  readonly stateDir: string;
+  readonly sessions: readonly {
+    readonly id: string;
+    readonly agent: "claude" | "codex";
+    readonly cwd: string;
+    readonly createdAt: string;
+    readonly lastUsedAt: string;
+    readonly resumable: boolean;
+    readonly live: boolean;
+  }[];
+};
+
+/** The fields these checks read from an `elwood --output=json` run's last record. */
+export type ResultDocument = {
+  readonly type: "result" | "error";
+  readonly response: string;
+  readonly sessionId: string | null;
+};
+
+/** The `elwood models --output=json` document. */
+export type ModelsDocument = {
+  readonly schemaVersion: 1;
+  readonly type: "models";
+  readonly agent: "claude" | "codex";
+  readonly models: readonly ListedModel[];
+};
+
 /**
  * A sandboxed `CODEX_HOME` for `elwood models`. `configureDefault` names a non-current
  * row in config.toml and returns the id the next probe must mark `(default)`: that row
@@ -36,6 +67,7 @@ export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault
 export function codexDefaultSandbox(project: E2eProject) {
   const sandbox = sandboxedCodexHome(project, "");
   return {
+    sandbox,
     configureDefault(unconfigured: readonly ListedModel[]): string {
       const drawn = drawnCodexDefault(unconfigured);
       const configured = unconfigured.find((model) => !model.isCurrent && model.id !== drawn);
@@ -43,7 +75,6 @@ export function codexDefaultSandbox(project: E2eProject) {
       writeFileSync(sandbox.configPath, `model = "${configured.id}"\n`);
       return drawn ?? configured.id;
     },
-    dispose: sandbox.dispose,
   };
 }
 
