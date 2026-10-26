@@ -1479,6 +1479,13 @@ new CLI version or native capture was verified.
   means observed: each write first awaits `terminal.settled()`, because a dialog can
   be received before it is rendered. xterm parses the first write after user input
   synchronously and later ones on a timer, so that window is real and input-dependent.
+- Claude 2.1.310 shows a message submitted during a running turn as queued. It renders
+  as `❯ <message>` above the composer, with `ctrl+x ctrl+s to send now` beneath it, and
+  the composer reads `❯ Press up to edit queued messages`. In a turn told not to use
+  tools it was still queued 10 s later, with the reply still streaming. A check that the
+  message left the composer must read only the last `❯` line, because the queued row
+  also starts with `❯` and holds the message. Observed with `sendGuidance` in a private
+  config dir, 2026-10-26 (C-API-37).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
