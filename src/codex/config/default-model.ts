@@ -18,16 +18,18 @@ const profileKey = /^\s*profile\s*=\s*(?:"([^"]*)"|'([^']*)')/;
  * Marks the configured default once per listing, under the process-wide config lock. A
  * concurrent `setModel` holds that lock while Codex's picker has written its selection
  * into config.toml, so the temporary selection is never read as the default. A deadline
- * or session close while waiting rejects without reading. `configPath` is the session's own
- * config, fixed at launch.
+ * or session close while waiting rejects without reading. `resolveConfigPath` resolves the
+ * session's own config (C-CODEX-24), waiting for its launch report if need be.
  */
-export function withCodexDefault(
+export async function withCodexDefault(
   options: readonly AgentModelOption[],
   signal: AbortSignal,
-  configPath: string,
+  resolveConfigPath: (signal: AbortSignal) => Promise<string>,
 ): Promise<readonly AgentModelOption[]> {
-  const mark = async () => markCodexDefault(options, configuredCodexModel(configPath));
-  return withCodexConfigLock(mark, {
+  // Resolved first: a report that cannot be read rejects without waiting for the lock.
+  const path = await resolveConfigPath(signal);
+  const mark = async () => markCodexDefault(options, configuredCodexModel(path));
+  return await withCodexConfigLock(mark, {
     signal,
     error: () => signal.reason,
   });
