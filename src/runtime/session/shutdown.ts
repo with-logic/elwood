@@ -138,7 +138,9 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
         ctx.markSignaled();
         return terminatePty(host.pty, "SIGKILL", host.reapPolicy.reaper);
       },
-      () => host.reapPolicy.reaper.reap(), // No-op once latched; retries a failed reap.
+      // No-op once latched; retries a failed reap, typed so `teardown_failed` keeps its
+      // errno and process-group id (§10).
+      () => host.reapPolicy.orThrow(),
       () => host.cleanupRuntime(),
       () => host.submitEvidence("teardown_completed"),
       host.removeFiles,
