@@ -55,13 +55,10 @@ for (const agent of ["claude", "codex"] as const) {
         if (clipboard) execFileSync("/usr/bin/pbcopy", { input: clipboard });
       }
     });
-    const session = await launches.track<E2eSession>(
-      (agent === "claude" ? startClaude : startCodex)({
-        cwd: project.cwd,
-        stateDir: project.stateDir,
-        autotrust: true,
-      }),
-    );
+    const options = { cwd: project.cwd, stateDir: project.stateDir, autotrust: true };
+    const session: E2eSession = await (agent === "claude"
+      ? startClaude(options)
+      : launches.track(startCodex(options)));
     started = session;
     const observed = observeSession(session);
     const closing = new AbortController();

@@ -76,32 +76,26 @@ for (const agent of ["claude", "codex"] as const) {
     });
     try {
       // Both native CLIs reject this model before consuming model quota.
-      session = await launches.track<E2eSession>(
-        (agent === "claude" ? startClaude : startCodex)({
-          cwd: project.cwd,
-          stateDir: project.stateDir,
-          autotrust: true,
-          autoupdate: false,
-          initialSize: { cols: 140, rows: 35 },
-          model: "gpt-elwood-nonexistent-acceptance-probe",
-        }),
-      );
+      const launch = {
+        cwd: project.cwd,
+        stateDir: project.stateDir,
+        autotrust: true,
+        autoupdate: false,
+        initialSize: { cols: 140, rows: 35 },
+      };
+      const model = "gpt-elwood-nonexistent-acceptance-probe";
+      session = await (agent === "claude"
+        ? startClaude({ ...launch, model })
+        : launches.track(startCodex({ ...launch, model })));
       for (const phase of ["cold", "resume"] as const) {
         if (phase === "resume") {
           const id: string = session.elwoodSessionId;
           await session.stop();
           armed = false;
           resuming = true;
-          session = await launches.track<E2eSession>(
-            (agent === "claude" ? resumeClaude : resumeCodex)({
-              cwd: project.cwd,
-              stateDir: project.stateDir,
-              elwoodSessionId: id,
-              autotrust: true,
-              autoupdate: false,
-              initialSize: { cols: 140, rows: 35 },
-            }),
-          );
+          session = await (agent === "claude"
+            ? resumeClaude({ ...launch, elwoodSessionId: id })
+            : launches.track(resumeCodex({ ...launch, elwoodSessionId: id })));
         }
         attempted = 0;
         delivered = 0;

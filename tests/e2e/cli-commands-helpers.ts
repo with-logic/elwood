@@ -28,6 +28,29 @@ export const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import
 /** The listed-row fields these e2e checks read, derived from the public row type. */
 export type ListedModel = Pick<AgentModelOption, "id" | "isCurrent" | "isDefault">;
 
+/** The `elwood sessions --output=json` document. */
+export type SessionsDocument = {
+  readonly schemaVersion: 1;
+  readonly type: "sessions";
+  readonly stateDir: string;
+  readonly sessions: readonly {
+    readonly id: string;
+    readonly agent: "claude" | "codex";
+    readonly cwd: string;
+    readonly createdAt: string;
+    readonly lastUsedAt: string;
+    readonly resumable: boolean;
+    readonly live: boolean;
+  }[];
+};
+
+/** The fields these checks read from an `elwood --output=json` run's last record. */
+export type ResultDocument = {
+  readonly type: "result" | "error";
+  readonly response: string;
+  readonly sessionId: string | null;
+};
+
 /** The `elwood models --output=json` document. */
 export type ModelsDocument = {
   readonly schemaVersion: 1;
@@ -53,17 +76,6 @@ export function codexDefaultSandbox(project: E2eProject) {
       return drawn ?? configured.id;
     },
   };
-}
-
-/**
- * Passes a CLI run only once it has confirmed its own cleanup: status 0 does, since a
- * cleanup failure fails an otherwise successful run (PRD §12A). Otherwise the agent it
- * launched may still be running, so this throws, and a tracked launch keeps the scratch.
- */
-export function cleanedUp(result: Invocation): Invocation {
-  if (result.status === 0) return result;
-  const streams = `stdout: ${result.stdout}\nstderr: ${result.stderr}`;
-  throw new Error(`the CLI exited ${result.status} without confirming its cleanup\n${streams}`);
 }
 
 /** The ids of the rows a `elwood models` text table marks `(default)`. */

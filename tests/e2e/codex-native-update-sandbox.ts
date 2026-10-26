@@ -27,6 +27,8 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
   const codexProofHome = join(root, "codex-home");
   const release = join(codexProofHome, "packages/standalone/releases/0.155.1-aarch64-apple-darwin");
   const dispose = () => rmSync(root, { recursive: true, force: true });
+  // A probe whose process group outlived its cleanup may still be running Codex in this home.
+  let unconfirmedGroup: number | undefined;
   try {
     mkdirSync(project);
     mkdirSync(release, { recursive: true, mode: 0o700 });
@@ -45,8 +47,11 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
         dismissed_version: null,
       }),
     );
-    const probe = (args: readonly string[]) =>
-      runProbe("env", [`CODEX_HOME=${codexProofHome}`, binary, ...args]);
+    const probe = async (args: readonly string[]) => {
+      const result = await runProbe("env", [`CODEX_HOME=${codexProofHome}`, binary, ...args]);
+      unconfirmedGroup ??= result.error?.cleanupProcessGroupId;
+      return result;
+    };
     const version = await probe(["--version"]);
     if (version.status !== 0 || !/^codex-cli 0\.155\.1\s*$/.test(version.stdout))
       throw new Error("Native updater proof requires Codex 0.155.1");
@@ -114,6 +119,10 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
       },
     };
   } catch (error) {
+    if (unconfirmedGroup !== undefined) {
+      const kept = `kept ${root}, which its Codex process group ${unconfirmedGroup} may still use`;
+      throw new AggregateError([error], `Native updater preflight cleanup failed; ${kept}`);
+    }
     dispose();
     throw error;
   }
