@@ -57,12 +57,13 @@ function under(prefixes: readonly string[], table: readonly ProcessRow[]): reado
   return [...found.values()];
 }
 
-/** The live processes whose command line names a path inside `dir`, with their descendants. */
-export function processesUnder(
-  dir: string,
-  table: readonly ProcessRow[] = processRows(),
-): readonly ProcessRow[] {
-  return under(prefixesOf(dir), table);
+/**
+ * The live processes whose command line names a path inside `dir`, with their
+ * descendants, from `table` or else a fresh read, which follows the check of `dir`.
+ */
+export function processesUnder(dir: string, table?: readonly ProcessRow[]): readonly ProcessRow[] {
+  const prefixes = prefixesOf(dir);
+  return under(prefixes, table ?? processRows());
 }
 
 /**
@@ -98,9 +99,10 @@ function signal(pid: number, name: NodeJS.Signals): void {
 }
 
 /**
- * Stops every process running from `dir` (`processesUnder`) through `send` (a test can
- * record instead), or throws, in which case the caller must keep the directory: when one is still running 10 s on, or when reading the
- * process table fails or would run past that deadline.
+ * Stops every process running from `dir` (`processesUnder`) through `send`, which a test
+ * can replace to record instead, or throws, in which case the caller must keep the
+ * directory: when one is still running 10 s on, or when reading the process table fails
+ * or would run past that deadline.
  */
 export function stopProcessesUnder(dir: string, send: Send = signal): void {
   const prefixes = prefixesOf(dir);

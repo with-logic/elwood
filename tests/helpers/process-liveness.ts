@@ -44,7 +44,7 @@ export async function pollGone({
  * process that no handle they hold can reach. Throws when `ps` itself fails.
  */
 export function killIfCommandHas(pid: number, marker: string, send: Send = sendSignal): void {
-  assertNarrowMarker(marker);
+  assertMarkerMeetsMinimumLength(marker);
   if (!commandOf(pid)?.includes(marker)) return;
   try {
     send(pid, "SIGKILL");
@@ -89,7 +89,7 @@ export function processRows(timeoutMs?: number): readonly ProcessRow[] {
  * temp directory they run from. Throws when `ps` itself fails.
  */
 export function killGroupsWhoseCommandHas(marker: string, send: Send = sendSignal): number {
-  assertNarrowMarker(marker);
+  assertMarkerMeetsMinimumLength(marker);
   let signaled = 0;
   for (const { pid, pgid, stat, command } of processRows()) {
     if (stat.startsWith("Z") || !command.includes(marker)) continue;
@@ -112,13 +112,16 @@ const sendSignal: Send = (pid, signal) => void process.kill(pid, signal);
 const MIN_MARKER_LENGTH = 12;
 
 /**
- * Throws for a marker too short to name only the caller's processes: an empty one is in
- * every command line, so a variable that came out empty would kill every process on the
- * host. Real markers are temp directories and random-suffixed commands.
+ * Throws for a marker shorter than `MIN_MARKER_LENGTH` non-blank characters: an empty one
+ * is in every command line, so a variable that came out empty would kill every process
+ * on the host. Length is all it checks. The caller must still pass a marker that names
+ * only its own processes, such as a fresh temp directory or a random-suffixed command.
  */
-function assertNarrowMarker(marker: string): void {
+function assertMarkerMeetsMinimumLength(marker: string): void {
   if (marker.trim().length < MIN_MARKER_LENGTH) {
-    throw new Error(`Refusing to kill by the marker ${JSON.stringify(marker)}: too broad`);
+    throw new Error(
+      `Refusing to kill by the marker ${JSON.stringify(marker)}: shorter than ${MIN_MARKER_LENGTH} non-blank characters`,
+    );
   }
 }
 
