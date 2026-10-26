@@ -22,6 +22,7 @@ import {
   codexReadErrorWarning,
 } from "../transcript/index.ts";
 import type { CodexEventMap } from "./types.ts";
+import { imageCopyRemovalFailedWarning } from "./warnings.ts";
 
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 type WiredCodexTranscriptWatcher = {
@@ -121,8 +122,12 @@ export function createCodexTranscriptWatcher(
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
       // The CLI has exited and the flush has read its last records: remove the image
-      // copies they named before finishing the exit (C-API-46).
-      clipboardCopies.removeAll(afterFlush);
+      // copies they named, and report one that stays, before finishing the exit (C-API-46).
+      clipboardCopies.removeAll((failure) => {
+        // `route` contains a throwing listener, so the exit always finishes.
+        if (failure !== undefined) route(imageCopyRemovalFailedWarning(elwoodSessionId, failure));
+        afterFlush();
+      });
     }
   };
   return { watcher, duringDelivery, flushPendingWarnings, finishSafely };
