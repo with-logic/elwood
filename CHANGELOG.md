@@ -39,6 +39,15 @@ back each entry are listed in `prd/14-conformance.md`.
   running session whose state directory was in its removed worktree fails its
   later writes (a new loop rejects with `loop_persistence_failed`), and a resume
   whose state directory is removed fails, instead of recreating either.
+- `elwood run` no longer recreates a workspace removed between its validation
+  and the launch when `--state-dir` is inside it. The CLI made its state root
+  with every missing parent, the workspace included. It now makes the root only
+  while the workspace exists, and the launch fails with `claude_start_failed` or
+  `codex_start_failed`, with `details.cwd`, instead. A state root elsewhere, the
+  CLI's own or a library `stateDir`, that is made while the workspace is being
+  removed is removed again rather than left behind, unless another start has
+  put its session in it meanwhile; a directory that can't be removed shows as
+  `details.cleanupErrorCode`.
 - Starting or resuming a session whose `cwd` does not exist now rejects with
   `claude_start_failed` or `codex_start_failed`, with `details.cwd` and
   `details.errno`, before any probe, state write, or spawn (resume reads and
