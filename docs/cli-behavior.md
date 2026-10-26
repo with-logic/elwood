@@ -1158,6 +1158,40 @@ prompt; `--no-trust` and generic permission dialogs remain human blocks. The sta
 deliver this attention after the responder has already continued, so treating
 every attention event as fatal produces a false `blocked_prompt`.
 
+### Claude keeps the prompt's caret after a declined permission dialog (2.1.310, 2026-10-26)
+
+A real Claude 2.1.310 session in `default` mode (189x48, Opus 5.5, a private
+`CLAUDE_CONFIG_DIR` with no user settings) asked to create a file rendered the
+`Do you want to proceed?` dialog with its cursor hidden. Escape declined it. The next
+frame showed `⎿  Interrupted · What should Claude do instead?`, the idle composer
+fenced by rules, the `⏸ manual mode on · ? for shortcuts` footer, a visible cursor at
+column 2, and the idle title `✳`. The transcript above it still held the submitted
+prompt, echoed as `❯ Create a file named …`. Claude echoes every submitted prompt that
+way, so the whole-frame clearance, which rejects any caret row that is not an empty
+composer, rejected the frame, and the session stayed `blocked` while Claude sat idle:
+15 s in the capture, and the whole wait of a C-ATTN-01 run in the same private config.
+Attention clearance now also accepts the last composer with its rules and native
+footer (`claudeLastComposerClearance`), the path the model picker already used for
+`❯ /model` (`tests/fixtures/claude-2.1.310/permission-declined/`). The real-CLI C-ATTN-01 runs
+Claude with the developer's own config dir, and had not caught this on the developer's
+machine: their own `PermissionRequest` hook allowed the command, so the dialog never
+rendered there. This capture is a manual reproduction in a private config dir with no
+user hooks. C-ATTN-02.
+
+A resumed session repaints those carets too. In the same private config, a `default`-mode
+session ran one turn and was stopped, then resumed with `highTrust`. Bypass mode had
+never been accepted there, so the resume opened on the bypass-permissions dialog, and
+autotrust answered it. Claude then painted the resumed transcript, with
+`❯ Reply with exactly: hello. …`, above the idle bypass-mode composer, its footer, and a
+visible cursor at column 2. Startup trust clearance used the same whole-frame check,
+so the answer never settled. The session sat at `running` for the 60 s observed and
+never reached `ready`. Startup trust clearance now uses the same predicate as attention
+clearance (`tests/fixtures/claude-2.1.310/resume-bypass/`). Rerun with that change, the same
+resume answered the dialog, recorded a `bypass_permissions` startup prompt, and reached
+`ready` 4.6 s after launch. A folder-trust gate on
+resume goes through the same clearance, but that case was not captured. C-TRUST-01,
+C-CLAUDE-21.
+
 ## Codex in-TUI update prompt (and the restart loop)
 
 Independent of the `autoupdate` preflight (`codex update` run before spawn), the
@@ -1459,6 +1493,13 @@ new CLI version or native capture was verified.
   means observed: each write first awaits `terminal.settled()`, because a dialog can
   be received before it is rendered. xterm parses the first write after user input
   synchronously and later ones on a timer, so that window is real and input-dependent.
+- Claude 2.1.310 shows a message submitted during a running turn as queued. It renders
+  as `❯ <message>` above the composer, with `ctrl+x ctrl+s to send now` beneath it, and
+  the composer reads `❯ Press up to edit queued messages`. In a turn told not to use
+  tools it was still queued 10 s later, with the reply still streaming. A check that the
+  message left the composer must read only the last `❯` line, because the queued row
+  also starts with `❯` and holds the message. Observed with `sendGuidance` in a private
+  config dir, 2026-10-26 (C-API-37).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

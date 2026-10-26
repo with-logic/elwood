@@ -12,6 +12,17 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
+  a startup trust gate, such as the bypass-permissions dialog when a resume adds
+  `highTrust` in a config that never accepted bypass mode. Before, it stayed
+  `running` after the gate cleared: the resumed transcript repaints the earlier
+  prompts as `❯ <prompt>`, and Elwood did not count the composer below them as
+  proof that the gate was gone.
+- A Claude session whose permission dialog is declined with Escape now returns to
+  `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
+  `blocked` while the prompt that led to the dialog was still on screen: Claude
+  echoes each submitted prompt as `❯ <prompt>` in its transcript, and Elwood read
+  that caret as a dialog still in the way of the idle composer.
 - Codex sessions now use the `CODEX_HOME` their login shell exports, not
   Elwood's own. The launch script writes the exported `CODEX_HOME` and `HOME`, and
   the directory it starts Codex in, to a private report just before `exec codex`,

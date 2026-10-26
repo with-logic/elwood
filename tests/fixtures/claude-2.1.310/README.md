@@ -67,3 +67,28 @@ bypassPermissions` and autotrust, in an empty temporary project and a private
 answered the folder-trust gate. `bypass-permissions-100.txt` is a 100x40 terminal,
 where the sentences wrap, and `bypass-permissions-200.txt` a 200x40 one, where they
 do not. The cursor starts on `No, exit`.
+
+## Declined permission dialog (`permission-declined/`)
+
+Captured on 2026-10-26 from Claude Code 2.1.310 with Opus 5.5, started by Elwood in
+`default` permission mode with autotrust, in an empty temporary project, a 189x48
+terminal, and a private `CLAUDE_CONFIG_DIR` with no `settings.json`. The session was
+asked to create `elwood.txt` with its shell tool. `dialog.json` is the
+`Do you want to proceed?` dialog, cursor hidden. `declined.json` is the frame about
+6 s after a raw Escape declined it: the `⎿  Interrupted` banner, the idle composer
+with its rules and footer, and a visible cursor at column 2. The submitted prompt
+is still echoed as `❯ Create a file named …` above both. The project path is
+normalized to `/tmp/ELWOOD_CAPTURE/project`.
+
+## Bypass dialog on a resumed session (`resume-bypass/`)
+
+Captured on 2026-10-26 from Claude Code 2.1.310 with Opus 5.5 through Elwood, in a
+189x48 terminal and a private `CLAUDE_CONFIG_DIR` with no `settings.json` that had
+never accepted bypass mode. A `default`-mode session in an empty temporary project ran
+one turn (`Reply with exactly: hello. Do not use tools.`) and was stopped. It was then
+resumed with `highTrust`. `dialog.json` is the bypass-permissions dialog the resume
+opened on, with its cursor hidden and the terminal title not yet set. `accepted.json` is
+the frame after Elwood accepted it: the resumed transcript, with the earlier prompt
+echoed as `❯ Reply with exactly: hello. …`, above the idle bypass-mode composer, its
+rules, and its footer, with a visible cursor at column 2. The project path is
+normalized to `/tmp/ELWOOD_CAPTURE/project`.

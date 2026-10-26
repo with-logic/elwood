@@ -1,5 +1,23 @@
-/** Validate native capture metadata before replaying it in terminal regressions. */
+/** Validate native capture metadata, and replay a capture into a terminal, for terminal regressions. */
 import { readFileSync } from "node:fs";
+
+/** A native capture's screen: its rows, its cursor and whether it shows, and the title. */
+export type NativeFrame = {
+  readonly text: string;
+  readonly title: string;
+  readonly cursorX: number;
+  readonly cursorY: number;
+  readonly visible: boolean;
+};
+
+/**
+ * The bytes that repaint `frame` whole on a terminal of the capture's size. A capture's
+ * cursor is zero-based and CSI `H` is one-based, so (x 2, y 12) is `CSI 13;3H`.
+ */
+export function nativeFrameOutput(frame: NativeFrame): string {
+  const cursor = `\u001b[${frame.cursorY + 1};${frame.cursorX + 1}H\u001b[?25${frame.visible ? "h" : "l"}`;
+  return `\u001b[2J\u001b[H${frame.text.replaceAll("\n", "\r\n")}${cursor}\u001b]0;${frame.title}\u0007`;
+}
 
 export function readNativeInputFrame(path: URL) {
   const value: unknown = JSON.parse(readFileSync(path, "utf8"));

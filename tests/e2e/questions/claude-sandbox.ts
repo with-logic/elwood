@@ -1,11 +1,9 @@
 /** Private Claude auth/config and runtime seams for native question proofs (PRD §12). */
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -23,9 +21,14 @@ import { shellQuote } from "../../../src/runtime/shell.ts";
 import { privateTempDir } from "../../helpers/private-temp.ts";
 import { accessOnlyLogin, keychainLogin } from "../claude-login.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
-import { parentFileFingerprint } from "../parent-file-fingerprint.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { claudeQuestionLabel, claudeQuestionVersion } from "./claude-cases.ts";
+import {
+  assertParentUnchanged,
+  parentConfiguration,
+  parentFingerprint,
+  userConfigDirSetting,
+} from "./claude-parent.ts";
 
 /** The skip gate and sandbox select from the same pinned and installed binary locations. */
 export function claudeQuestionBinary(): string | undefined {
@@ -35,16 +38,6 @@ export function claudeQuestionBinary(): string | undefined {
   ].find((path) => existsSync(path));
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parentConfiguration(path: string): Readonly<Record<string, unknown>> {
-  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(parsed)) throw new Error("Parent Claude configuration must be a JSON object");
-  return parsed;
-}
-
 /** The keychain login JSON, the same item the default e2e config dir copies (`claude-login.ts`). */
 function credentials(): string {
   const login = keychainLogin();
@@ -52,26 +45,22 @@ function credentials(): string {
   return login.trim();
 }
 
-function parentFingerprint(credential: string): Readonly<Record<string, string>> {
-  const paths = [".claude.json", ".claude/settings.json", ".claude/hooks.json"];
-  return Object.fromEntries([
-    ["keychain", createHash("sha256").update(credential).digest("hex")],
-    ...paths.map((name) => [name, parentFileFingerprint(join(homedir(), name))]),
-  ]);
-}
-
-/** Owns private credentials and process seams; dispose removes/resets them and checks parent drift.
+/** Owns private credentials and process seams; dispose removes/resets them and checks parent drift:
+ * the parent settings, hooks, and login are unchanged, and its global config names no private path.
+ * Only the default Claude config dir is supported: a set `CLAUDE_CONFIG_DIR` fails setup.
  * Setup failures attempt private-root cleanup and preserve the original error; disposal may report drift.
  */
 export async function nativeClaudeQuestionSandbox() {
+  // The parent files and keychain item `claude-parent.ts` checks are the default config dir's.
+  if (userConfigDirSetting())
+    throw new Error("The native Claude question proof needs the default Claude config dir");
   const environment = { ...process.env };
   const credential = credentials();
   // Reduced before any private file exists, so a keychain item without a login leaves nothing.
   const login = accessOnlyLogin(credential, "Private Claude authentication");
   if (login === undefined) throw new Error("Private Claude authentication holds no Claude login");
   const fingerprint = parentFingerprint(credential);
-  const globalPath = join(homedir(), ".claude.json");
-  const globalBefore = parentConfiguration(globalPath);
+  parentConfiguration(); // refuse a parent config the post-run check cannot read
   const root = realpathSync(
     privateTempDir(
       "elwood_native_claude_questions-",
@@ -159,19 +148,7 @@ export async function nativeClaudeQuestionSandbox() {
         resetRuntimeSeamsForTests();
         rmSync(root, { recursive: true, force: true });
         assertParentEnvironmentUnchanged(environment, process.env);
-        const after = parentFingerprint(credentials());
-        const changed = Object.keys(fingerprint).filter(
-          (name) => fingerprint[name] !== after[name],
-        );
-        if (changed.length) {
-          const globalAfter = parentConfiguration(globalPath);
-          const keys = Object.keys({ ...globalBefore, ...globalAfter }).filter(
-            (key) => JSON.stringify(globalBefore[key]) !== JSON.stringify(globalAfter[key]),
-          );
-          throw new Error(
-            `Parent Claude configuration changed: ${changed.join(", ")} (fields: ${keys.join(", ")})`,
-          );
-        }
+        assertParentUnchanged(fingerprint, credentials(), root);
       },
     };
   } catch (error) {
