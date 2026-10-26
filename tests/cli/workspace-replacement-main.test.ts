@@ -82,7 +82,7 @@ test("C-CLI-15 C-CLI-17 a new run in a replaceable workspace fails with status 2
 
 test("C-CLI-15 C-CLI-17 a resume whose stored workspace is replaceable fails with status 2", async () => {
   const { cwd, shared, stateDir } = replaceableWorkspace();
-  ensurePrivateStateRoot(stateDir);
+  ensurePrivateStateRoot(stateDir, cwd);
   writeSessionRecord(
     createSessionRecord({ cwd, id: "saved", adapter: "claude" }),
     sessionDir(stateDir, "saved"),

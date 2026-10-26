@@ -114,15 +114,18 @@ export function underlyingErrno(error: unknown): string | undefined {
 
 /**
  * Extracts diagnosable details from an underlying failure (C-ERR-08):
- * message as cause, plus errno/syscall/path when the error exposes them.
+ * message as cause, plus errno/syscall/path when the error exposes them, and the
+ * `cleanupErrorCode` of a cleanup that failed after it, when one was attached.
  */
 export function causeDetails(error: unknown): Readonly<Record<string, string>> {
   if (!(error instanceof Error)) return { cause: String(error) };
   const details: Record<string, string> = { cause: error.message };
   const { code, syscall, path } = error as NodeJS.ErrnoException;
+  const { cleanupErrorCode } = error as { cleanupErrorCode?: unknown };
   if (typeof code === "string") details["errno"] = code;
   if (typeof syscall === "string") details["syscall"] = syscall;
   if (typeof path === "string") details["path"] = path;
+  if (typeof cleanupErrorCode === "string") details["cleanupErrorCode"] = cleanupErrorCode;
   return details;
 }
 
