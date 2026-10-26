@@ -16,6 +16,7 @@ import { runProbe } from "../../src/runtime/probe/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { copyCodexAuth } from "./codex-home.ts";
+import { registerPrivateHome } from "./home-guard.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
 
@@ -33,12 +34,15 @@ export async function nativeResponseSandbox() {
   const bin = join(root, "bin");
   const binary = join(bin, "codex");
   // Codex 0.159.2 may start an app-server daemon for `home`, which outlives the TUI.
+  let unregisterHome = () => {};
   const dispose = () => {
+    unregisterHome();
     stopProcessesUnder(root);
     rmSync(root, { recursive: true, force: true });
   };
   try {
     for (const dir of [home, cwd, stateDir, bin]) mkdirSync(dir, { mode: 0o700 });
+    unregisterHome = registerPrivateHome(home);
     copyFileSync(responseBinary, binary);
     chmodSync(binary, 0o700);
     copyCodexAuth(home);

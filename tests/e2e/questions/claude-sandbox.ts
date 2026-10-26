@@ -20,6 +20,7 @@ import {
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { privateTempDir } from "../../helpers/private-temp.ts";
 import { accessOnlyLogin, keychainLogin } from "../claude-login.ts";
+import { registerPrivateHome } from "../home-guard.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { claudeQuestionLabel, claudeQuestionVersion } from "./claude-cases.ts";
@@ -73,8 +74,10 @@ export async function nativeClaudeQuestionSandbox() {
   const stateDir = join(root, "state");
   const bin = join(root, "bin");
   const writes: string[] = [];
+  let unregisterHome = () => {};
   try {
     for (const dir of [home, cwd, stateDir, bin]) mkdirSync(dir, { mode: 0o700 });
+    unregisterHome = registerPrivateHome(home);
     const binary = join(bin, "claude");
     const installed = claudeQuestionBinary();
     if (!installed) throw new Error(`${claudeQuestionLabel} binary unavailable`);
@@ -145,6 +148,7 @@ export async function nativeClaudeQuestionSandbox() {
       stateDir,
       writes,
       dispose() {
+        unregisterHome();
         resetRuntimeSeamsForTests();
         rmSync(root, { recursive: true, force: true });
         assertParentEnvironmentUnchanged(environment, process.env);
@@ -152,6 +156,7 @@ export async function nativeClaudeQuestionSandbox() {
       },
     };
   } catch (error) {
+    unregisterHome();
     resetRuntimeSeamsForTests();
     try {
       rmSync(root, { recursive: true, force: true });

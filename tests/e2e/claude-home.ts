@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { isRecord } from "../../src/core/predicates.ts";
 import { privateTempDir } from "../helpers/private-temp.ts";
 import { accessOnlyLogin, keychainLogin } from "./claude-login.ts";
+import { registerPrivateHome } from "./home-guard.ts";
 
 /**
  * Carries the user's own `CLAUDE_CONFIG_DIR` ("" when unset) into `node --test` workers,
@@ -101,4 +102,5 @@ writeFileSync(join(defaultClaudeConfigDir, ".claude.json"), seededGlobalConfig()
 const catalog = join(userConfigDir, "cache", "model-catalog");
 if (existsSync(catalog))
   cpSync(catalog, join(defaultClaudeConfigDir, "cache", "model-catalog"), { recursive: true });
+registerPrivateHome(defaultClaudeConfigDir);
 process.env["CLAUDE_CONFIG_DIR"] = defaultClaudeConfigDir;
