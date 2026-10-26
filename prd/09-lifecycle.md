@@ -166,7 +166,8 @@ and the probe command then has a default timeout of 15 seconds from that line un
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
-Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
+Either timeout reports `ETIMEDOUT`. A probe whose process dies of a signal Elwood did not
+send reports the status a shell would, 128 plus the signal's number. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the

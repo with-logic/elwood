@@ -36,6 +36,13 @@ back each entry are listed in `prd/14-conformance.md`.
   read as `*_start_failed`, and whatever it printed reached that error's
   `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
   handlers before running the CLI.
+- A probe whose command dies of a signal now reports the status a shell would,
+  128 plus the signal's number, instead of no status. A login shell that dies
+  before starting the command is still a login-shell failure. `elwood interactive`'s
+  PATH lookup likewise now fails with "login shell exited with status 143" where it
+  said "status null".
+- `*_start_failed` details and the `agent_update_failed` warning now carry a failed
+  probe's exit status as `exitStatus`, as the spec already said the warning would.
 - `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
   detached hook processes ten seconds, up from three, before they reject with
   `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
