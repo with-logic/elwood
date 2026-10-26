@@ -78,12 +78,15 @@ describe("C-LIFE-10 Codex's daemon, stopped as it starts (real processes)", () =
       const [child] = await detachedDescendantPids(tree);
       const becoming = await extraPid(tree, "becoming");
       let leaderKilled = false;
-      // Then the leader dies, as one something else kills can, before the walk's next read.
+      // The sequence: the walk stops the group of the process about to become the daemon,
+      // which then takes the daemon's path. Before the walk's next read, something else
+      // SIGKILLs the PTY leader, as one can, and the leader's exit leaves that stopped
+      // group under PID 1, outside the leader's tree. The walk must still resume it.
       const stopGroup = (pgid: number) => {
         if (pgid === becoming) becomeDaemon(tree);
         osProcessTreeOps.stopGroup(pgid);
         if (pgid !== becoming) return;
-        // This process's own child, held stopped by the walk: its pid is still the leader's.
+        // The leader is this test's own child, so its pid is still its own until reaped.
         process.kill(tree.pty.pid, "SIGKILL");
         leaderKilled = true;
         waitSync(() => parentOf(becoming) === 1, "the leader's exit never reparented it");

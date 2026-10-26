@@ -54,6 +54,7 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
       "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
     );
     expect(calls.slice(-2)).toEqual(["cont 5010", "kill 5002"]);
+    expect(calls).not.toContain("kill 5010"); // Never killed, then resumed.
   });
 
   test("a resumed group already gone needs nothing; any other refusal fails the sweep", async () => {

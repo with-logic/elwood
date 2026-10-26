@@ -20,7 +20,7 @@ import { errnoCode } from "../../../core/errors.ts";
 import { groupIdsToResume } from "../shared-daemon.ts";
 import type { SweepOps, SweepState } from "./rounds.ts";
 
-export async function killSignaledGroups(
+export async function killOrResumeSignaledGroups(
   ops: SweepOps,
   state: SweepState,
   deadline: number,
