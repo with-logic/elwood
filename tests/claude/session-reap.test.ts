@@ -8,6 +8,7 @@
 
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { cleanupFailureMessage } from "../../src/cli/output/cleanup-error.ts";
 import { startClaude } from "../../src/index.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { bridgeAccepts } from "../helpers/fake-pty.ts";
@@ -95,16 +96,39 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     installFakes();
     throwingKiller();
     const session = await startClaude({ cwd: tempDir() });
+    const leader = ptys.at(-1)!.pid;
     const rejected: unknown = await session.teardown().then(
       () => undefined,
       (error: unknown) => error,
     );
     expect(rejected).toMatchObject({ code: "teardown_failed" });
     const { failures } = (rejected as { details: { failures: unknown[] } }).details;
-    expect(failures[0]).toMatchObject({
-      code: "termination_failed",
-      details: { errno: "EPERM" },
+    // The termination step's reap, then the reap retry, both typed.
+    expect(failures).toMatchObject([
+      { code: "termination_failed", details: { errno: "EPERM" } },
+      { code: "termination_failed", details: { errno: "EPERM", processGroupId: leader } },
+    ]);
+  });
+
+  test("C-LIFE-10 a teardown after the exit reap failed keeps the retry's typed failure", async () => {
+    installFakes();
+    throwingKiller();
+    const session = await startClaude({ cwd: tempDir() });
+    const leader = ptys.at(-1)!.pid;
+    ptys.at(-1)!.emitExit({ exitCode: 0 }); // the exit reap fails; nothing is signaled again
+    const rejected: unknown = await session.teardown().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toMatchObject({
+      code: "teardown_failed",
+      details: {
+        failures: [
+          { code: "termination_failed", details: { errno: "EPERM", processGroupId: leader } },
+        ],
+      },
     });
+    expect(cleanupFailureMessage(rejected)).toBe("Cleanup failed (termination_failed EPERM).");
   });
 
   test("C-ERR-01 stop() and kill() reject with termination_failed when signaling the PTY throws", async () => {

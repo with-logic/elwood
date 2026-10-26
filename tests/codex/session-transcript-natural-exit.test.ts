@@ -74,7 +74,7 @@ test.each([
   setProcessTreeOpsForTests({
     killGroup: () => {
       attempts += 1;
-      if (fail) throw new Error("reap refused");
+      if (fail) throw Object.assign(new Error("reap refused"), { code: "EPERM" });
     },
   });
   const session = await startCodex({ cwd });
@@ -94,9 +94,14 @@ test.each([
     );
     for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
     expect(shutdown).toBeDefined();
-    await expect(shutdown).rejects.toMatchObject({
-      code: verb === "teardown" ? "teardown_failed" : "termination_failed",
-    });
+    // The retry's typed failure keeps its errno and the leader's group id (§10).
+    const typed = {
+      code: "termination_failed",
+      details: { errno: "EPERM", processGroupId: pty.pid },
+    };
+    await expect(shutdown).rejects.toMatchObject(
+      verb === "teardown" ? { code: "teardown_failed", details: { failures: [typed] } } : typed,
+    );
     const failedAttempts = attempts;
     fail = false;
     const retried = session[verb]();
