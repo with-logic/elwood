@@ -37,3 +37,11 @@ export function loginShellCommand(command: string): LoginShellArgs {
 export function probeShellCommand(command: string): LoginShellArgs {
   return loginShellCommand(`${probeStartScript}${command}`);
 }
+
+/**
+ * The same login shell, for a lookup answered by its exit status alone (`command -v`). The
+ * command's output goes to `/dev/null`, so the probe captures none of it.
+ */
+export function probeShellStatus(command: string): LoginShellArgs {
+  return probeShellCommand(`${command} >/dev/null 2>&1`);
+}
