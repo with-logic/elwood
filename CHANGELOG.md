@@ -12,6 +12,17 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Starting a session whose `cwd` was deleted no longer recreates it. The default
+  state directory lives under `cwd`, and creating it created every missing parent,
+  so a session for a deleted worktree started in a new, empty directory. A state
+  directory is now made only while `cwd` exists, and one at or under `cwd`, the
+  default `.elwood/` or your own `stateDir`, only below it, so such a start
+  rejects before spawning (for now with `ENOENT`) and the worktree stays gone,
+  as does a `stateDir` elsewhere. State writes no longer make missing parent
+  directories either, so a running session whose state directory was in its
+  removed worktree fails its later writes (a new loop rejects with
+  `loop_persistence_failed`), and a resume whose state directory is removed
+  fails, instead of recreating either.
 - Codex `listModels()` and `setModel` no longer freeze the process when
   `config.toml` is a FIFO. Elwood read the file with a blocking read, so a FIFO
   left in its place, by an agent that can write to its `CODEX_HOME`, blocked the

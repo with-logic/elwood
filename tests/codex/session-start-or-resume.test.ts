@@ -17,7 +17,7 @@ describe("startOrResumeCodex", () => {
     const cwd = tempDir();
     installFakes();
     const stateDir = join(cwd, ".elwood");
-    prepareStateDir(stateDir);
+    prepareStateDir(stateDir, { cwd });
     const record = createSessionRecord({ cwd, id: "resumable", adapter: "codex" });
     writeSessionRecord(
       { ...record, codex: { resumeId: "codex-native" } },
@@ -56,6 +56,7 @@ test("C-API-26 highTrust expands and rejects conflicting posture on resume and f
   const cwd = tempDir();
   installFakes();
   const stateDir = join(cwd, ".elwood");
+  prepareStateDir(stateDir, { cwd, isImplicitDefaultStateDir: true });
   const record = createSessionRecord({ cwd, id: "high", adapter: "codex" });
   writeSessionRecord(
     { ...record, codex: { resumeId: "native", launch: { sandbox: "read-only" } } },

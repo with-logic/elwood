@@ -7,7 +7,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startOrResumeClaude } from "../../src/index.ts";
-import { createSessionRecord, sessionDir, writeSessionRecord } from "../../src/state/store.ts";
+import {
+  createSessionRecord,
+  prepareStateDir,
+  sessionDir,
+  writeSessionRecord,
+} from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -96,6 +101,7 @@ test("C-API-26 highTrust expands and rejects conflicting posture on resume and f
   const cwd = tempDir();
   installFakes();
   const stateDir = join(cwd, ".elwood");
+  prepareStateDir(stateDir, { cwd, isImplicitDefaultStateDir: true });
   const record = createSessionRecord({ cwd, id: "high", adapter: "claude" });
   writeSessionRecord(
     { ...record, claude: { resumeId: "native", launch: { permissionMode: "plan" } } },
