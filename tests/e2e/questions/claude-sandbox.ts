@@ -1,16 +1,14 @@
 /** Private Claude auth/config and runtime seams for native question proofs (PRD §12). */
-import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
@@ -20,6 +18,8 @@ import {
   setPtyFactoryForTests,
 } from "../../../src/runtime/seams.ts";
 import { shellQuote } from "../../../src/runtime/shell.ts";
+import { privateTempDir } from "../../helpers/private-temp.ts";
+import { accessOnlyLogin, keychainLogin } from "../claude-login.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { claudeQuestionLabel, claudeQuestionVersion } from "./claude-cases.ts";
@@ -30,8 +30,6 @@ import {
   userConfigDirSetting,
 } from "./claude-parent.ts";
 
-const keychainTimeoutMs = 5_000;
-
 /** The skip gate and sandbox select from the same pinned and installed binary locations. */
 export function claudeQuestionBinary(): string | undefined {
   return [
@@ -40,19 +38,11 @@ export function claudeQuestionBinary(): string | undefined {
   ].find((path) => existsSync(path));
 }
 
+/** The keychain login JSON, the same item the default e2e config dir copies (`claude-login.ts`). */
 function credentials(): string {
-  const result = spawnSync(
-    "/usr/bin/security",
-    ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
-    { encoding: "utf8", timeout: keychainTimeoutMs },
-  );
-  if (result.status !== 0) throw new Error("Private Claude authentication unavailable");
-  try {
-    JSON.parse(result.stdout);
-  } catch {
-    throw new Error("Private Claude authentication is malformed");
-  }
-  return result.stdout.trim();
+  const login = keychainLogin();
+  if (login === undefined) throw new Error("Private Claude authentication unavailable");
+  return login.trim();
 }
 
 /** Owns private credentials and process seams; dispose removes/resets them and checks parent drift:
@@ -66,9 +56,18 @@ export async function nativeClaudeQuestionSandbox() {
     throw new Error("The native Claude question proof needs the default Claude config dir");
   const environment = { ...process.env };
   const credential = credentials();
+  // Reduced before any private file exists, so a keychain item without a login leaves nothing.
+  const login = accessOnlyLogin(credential, "Private Claude authentication");
+  if (login === undefined) throw new Error("Private Claude authentication holds no Claude login");
   const fingerprint = parentFingerprint(credential);
   parentConfiguration(); // refuse a parent config the post-run check cannot read
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_claude_questions-")));
+  const root = realpathSync(
+    privateTempDir(
+      "elwood_native_claude_questions-",
+      join(homedir(), ".claude"),
+      "Claude config dir",
+    ),
+  );
   const home = join(root, "home");
   const cwd = join(root, "project");
   const stateDir = join(root, "state");
@@ -81,7 +80,7 @@ export async function nativeClaudeQuestionSandbox() {
     if (!installed) throw new Error(`${claudeQuestionLabel} binary unavailable`);
     copyFileSync(realpathSync(installed), binary);
     chmodSync(binary, 0o700);
-    writeFileSync(join(home, ".credentials.json"), credential, { mode: 0o600 });
+    writeFileSync(join(home, ".credentials.json"), login, { mode: 0o600 });
     writeFileSync(
       join(home, ".claude.json"),
       JSON.stringify({

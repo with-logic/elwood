@@ -71,7 +71,8 @@ export function keychainLogin(service = defaultService): string | undefined {
 
 /**
  * `credentials` reduced to its Claude login without the refresh token, or undefined when
- * it holds no Claude login. Throws when it is not JSON; `source` names it in the error.
+ * it holds no Claude login: no `claudeAiOauth` record with a non-empty access token. Throws
+ * when it is not JSON; `source` names it in the error.
  */
 export function accessOnlyLogin(credentials: string, source: string): string | undefined {
   let parsed: unknown;
@@ -80,11 +81,10 @@ export function accessOnlyLogin(credentials: string, source: string): string | u
   } catch {
     throw new Error(`${source} is not JSON`);
   }
-  if (!(isRecord(parsed) && isRecord(parsed["claudeAiOauth"]))) return undefined;
-  const {
-    refreshToken: _refresh,
-    refreshTokenExpiresAt: _expires,
-    ...access
-  } = parsed["claudeAiOauth"];
+  const oauth = isRecord(parsed) ? parsed["claudeAiOauth"] : undefined;
+  if (!isRecord(oauth)) return undefined;
+  const accessToken = oauth["accessToken"];
+  if (typeof accessToken !== "string" || accessToken === "") return undefined;
+  const { refreshToken: _refresh, refreshTokenExpiresAt: _expires, ...access } = oauth;
   return JSON.stringify({ claudeAiOauth: access });
 }
