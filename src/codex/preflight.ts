@@ -1,6 +1,6 @@
 /**
- * Codex CLI availability and version checks.
- * Implements PRD §9.2 and §10.
+ * Codex CLI availability and version checks, run in the session's launch directory.
+ * Implements PRD §9.2, §10, and C-PTY-08.
  */
 
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
@@ -25,7 +25,9 @@ export type CodexPreflightWarning = DistributiveOmit<
 // poison every later Codex start in the process (C-LIFE-11) — a later start re-probes.
 const capabilityProbe = createProbeCache<CodexCliCapabilities>(1);
 
+/** Checks the `codex` that a session launched in `cwd` would run (C-PTY-08). */
 export async function preflightCodex(
+  cwd: string,
   strictVersionCheck: boolean,
   autoupdate = false,
 ): Promise<CodexPreflightWarning | undefined> {
@@ -41,14 +43,14 @@ export async function preflightCodex(
     const outcome = await cachedAutoupdate(
       "codex",
       async () => {
-        await readCodexVersion(); // verify existence only after owning the cross-process lease
-        await runCodexUpdate();
+        await readCodexVersion(cwd); // verify existence only after owning the cross-process lease
+        await runCodexUpdate(cwd);
       },
       () => capabilityProbe.clear(),
     );
     if (!outcome.ok) updateError = outcome.error;
   }
-  const result = await readCodexVersion();
+  const result = await readCodexVersion(cwd);
   const version = parseVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
@@ -67,18 +69,20 @@ export async function preflightCodex(
   return updateError === undefined ? undefined : buildUpdateWarning("codex", version, updateError);
 }
 
-async function runCodexUpdate(): Promise<void> {
-  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex update"));
+async function runCodexUpdate(cwd: string): Promise<void> {
+  const update = probeShellCommand("codex update");
+  const result = await currentCommandRunner()(userShell(), update, { cwd });
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
 }
 
-async function readCodexVersion(): Promise<CommandResult> {
+async function readCodexVersion(cwd: string): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
-  const result = await cachedVersionRead("codex", () =>
-    Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
+  const command = probeShellCommand("codex --version");
+  const result = await cachedVersionRead("codex", cwd, () =>
+    Promise.resolve(currentCommandRunner()(userShell(), command, { cwd })),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");

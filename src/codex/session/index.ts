@@ -66,9 +66,13 @@ export async function startCodexWithId(
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
   await assertLaunchDirectory("codex", options.cwd);
   const stateDir = canonicalStatePath(stateDirPath);
-  const warning = await preflight.preflightCodex(
-    options.strictVersionCheck ?? false,
-    options.autoupdate ?? false,
+  // A probe that fails because `cwd` went or was replaced fails as that, not a missing CLI.
+  const warning = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () =>
+    preflight.preflightCodex(
+      options.cwd,
+      options.strictVersionCheck ?? false,
+      options.autoupdate ?? false,
+    ),
   );
   const session = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () => {
     prepareStateDir(stateDir, {

@@ -18,6 +18,14 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- Preflight now checks the CLI the session will actually run. The `--version`
+  and `update` probes start their login shell in the session's launch directory
+  (the PTY's directory, on start and on resume), not Elwood's own, so a
+  per-directory tool manager (asdf or mise shims, a profile that builds PATH from
+  `$PWD`) resolves the same CLI as the session. A launch directory removed while
+  preflight runs fails the start or resume with `*_start_failed` and
+  `details.cwd`, not `*_not_found`. The one best-effort update per process runs in the launch
+  directory of the start or resume that triggers it.
 - Probe diagnostics no longer carry the login shell's own output.
   `agent_update_failed`'s `raw`, `version_unparseable`'s `raw`, and a failed
   `--version` or `--help` probe's `details.stderr` now hold only the CLI's own

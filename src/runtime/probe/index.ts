@@ -3,13 +3,13 @@
  * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05,
  * C-PERF-07): a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
  * `update`, or `--help` probe, a slow login-shell profile is bounded separately from the CLI
- * it launches, and only a few probes run at once.
+ * it launches, and only a few probes run at once. A probe runs in `options.cwd` (§4.2).
  */
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { exitStatus } from "../exit-status.ts";
-import type { CommandResult } from "../seams.ts";
+import type { CommandOptions, CommandResult } from "../seams.ts";
 import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
 import { type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
@@ -41,20 +41,19 @@ export function resetProbeTimeoutsForTests(): void {
 }
 
 /** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
-export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
-  return withProbeSlot(() => spawnProbe(command, args));
-}
-
-function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
-  return probeCapture(args).then(
-    (capture) => spawnCaptured(command, args, capture),
-    (error: Error) => outputUnavailable(error),
-  );
+export function runProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions = {},
+): Promise<CommandResult> {
+  const spawnWith = (capture: ProbeCapture) => spawnCaptured(command, args, options, capture);
+  return withProbeSlot(() => probeCapture(args).then(spawnWith, outputUnavailable));
 }
 
 function spawnCaptured(
   command: string,
   args: readonly string[],
+  options: CommandOptions,
   capture: ProbeCapture,
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
@@ -67,6 +66,7 @@ function spawnCaptured(
     const child = releasedOnThrow(capture, () =>
       spawn(command, [...args], {
         detached: true,
+        cwd: options.cwd,
         stdio: ["pipe", "pipe", "pipe", "pipe"],
         env: capture.env,
       }),
