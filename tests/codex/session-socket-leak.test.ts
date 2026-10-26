@@ -11,36 +11,18 @@
  * the leak checks see only this launch's homes/sockets.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/index.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import {
-  resetSocketHomeRootForTests,
-  setSocketHomeRootForTests,
-} from "../../src/state/socket-home.ts";
+import { isolateFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
 import { boundSocketPathLength, socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 import { becomeReady, installFakes, resetFakes, tempDir } from "./helpers.ts";
 
-let privateTmp: string | undefined;
+afterEach(resetFakes);
 
-afterEach(() => {
-  resetFakes();
-  resetSocketHomeRootForTests();
-  if (privateTmp) rmSync(privateTmp, { recursive: true, force: true });
-  privateTmp = undefined;
-});
-
-function isolateTmp(): string {
-  // Rooted at a SHORT `/tmp`: production adds `elwood-<16hex>/<8>.sock`, and nesting
-  // under the long macOS `os.tmpdir()` overflows the ~104-byte Unix-socket path cap, so
-  // the bridge would fail to `listen` here. See the Claude mirror for the full note —
-  // including why this overrides the socket-home root instead of `process.env.TMPDIR`.
-  privateTmp = mkdtempSync("/tmp/elwood-sockhome-");
-  setSocketHomeRootForTests(privateTmp);
-  return privateTmp;
-}
+/** This test's private socket-home root under the short `/tmp`; see the Claude mirror. */
+const isolateTmp = isolateFakeSocketHomes;
 
 describe("§9.1 a failed Codex start does not leak its socket file", () => {
   test("§8.1 the isolated-tmp bound socket path clears the ~104-byte cap on ANY machine", () => {

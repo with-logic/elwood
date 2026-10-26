@@ -9,48 +9,31 @@
  * concurrent launch's socket is in — via withSocketHomeCleanup; on success ownership
  * transfers, stop releases the launch's socket, and teardown sweeps the whole home.
  *
- * The socket home lands under `os.tmpdir()`, which honors `TMPDIR`. Each test points
- * `TMPDIR` at a FRESH private dir so the leak checks see ONLY this launch's homes/sockets
- * — never a parallel worker's — making the assertions exact.
+ * Each test's socket homes land under the fake helpers' fresh private root
+ * (`fake-socket-homes.ts`), so the leak checks see ONLY this launch's homes/sockets —
+ * never a parallel worker's — making the assertions exact.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session/index.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import {
-  resetSocketHomeRootForTests,
-  setSocketHomeRootForTests,
-} from "../../src/state/socket-home.ts";
+import { isolateFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
 import { boundSocketPathLength, socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
-let privateTmp: string | undefined;
-
-afterEach(() => {
-  resetFakes();
-  resetSocketHomeRootForTests(); // restore before removing the private tmp
-  if (privateTmp) rmSync(privateTmp, { recursive: true, force: true });
-  privateTmp = undefined;
-});
+afterEach(resetFakes);
 
 /**
- * Point the SOCKET-HOME ROOT at a fresh private dir so socket homes are isolated per
- * test. Rooted at a SHORT `/tmp` (not the long macOS `os.tmpdir()`): production adds
- * `elwood-<16hex>/<8>.sock`, and nesting under the already-long default tmp overflows
- * macOS's ~104-byte Unix-socket path cap, so the bridge would fail to `listen` here.
- *
- * Scoped to the socket-home module, NOT `process.env.TMPDIR`: the env is per-process
- * and Vitest's `forks` pool reuses one process across files, so redirecting `TMPDIR`
- * also moved concurrently-running files' `os.tmpdir()` here — and the `rm -rf` below
- * then deleted their scratch dirs mid-test.
+ * This test's private socket-home root: the fake helpers' own, under the SHORT `/tmp`
+ * (not the long macOS `os.tmpdir()`), which production extends by
+ * `elwood-<16hex>/<8>.sock`. Nesting under the default tmp overflows macOS's ~104-byte
+ * Unix-socket path cap, so the bridge would fail to `listen` here. It redirects only the
+ * socket-home module, NOT `process.env.TMPDIR`: Vitest's `forks` pool reuses one process
+ * across files, so moving `TMPDIR` also moved concurrently-running files' `os.tmpdir()`,
+ * and removing it then deleted their scratch dirs mid-test.
  */
-function isolateTmp(): string {
-  privateTmp = mkdtempSync("/tmp/elwood-sockhome-");
-  setSocketHomeRootForTests(privateTmp);
-  return privateTmp;
-}
+const isolateTmp = isolateFakeSocketHomes;
 
 describe("§9.1 a failed Claude start does not leak its socket file", () => {
   test("§8.1 the isolated-tmp bound socket path clears the ~104-byte cap on ANY machine", () => {
