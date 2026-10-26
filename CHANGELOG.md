@@ -18,6 +18,10 @@ back each entry are listed in `prd/14-conformance.md`.
   attach left one such file behind for good. Only files the session's own transcript
   names directly in Elwood's temp directory are removed; a Codex whose login shell sets
   another `TMPDIR` keeps its copies there.
+- A Codex session that cannot remove one of those copies now emits one
+  `image_copy_removal_failed` warning before `terminal:exit`. Its `errorCode` is the
+  first failure's errno token, or `UnknownError` when it has none. The copy is left
+  for the OS to reap. A copy that was already gone is not a failure.
 - A CLI missing from the login shell's PATH is reported as `claude_not_found` or
   `codex_not_found` even when the user's startup files define a not-found handler
   (zsh's `command_not_found_handler`, bash's `command_not_found_handle`). The probe

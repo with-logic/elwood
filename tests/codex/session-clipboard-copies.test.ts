@@ -98,21 +98,53 @@ test("C-API-46 a copy the final flush reads first is removed before the exit fin
   await session.teardown();
 });
 
-test("C-API-46 a copy that cannot be removed is left and the exit still finishes", async () => {
+test("C-API-46 a copy that cannot be removed is left, reported once, and the exit still finishes", async () => {
   installFakes();
   const cwd = tempDir();
   const rollout = join(cwd, "rollout.jsonl");
-  // A directory under a copy's name: unlinking it fails with EPERM or EISDIR, not ENOENT.
-  const stuck = join(tmpdir(), `codex-clipboard-${randomUUID()}.png`);
-  mkdirSync(stuck);
-  onTestFinished(() => rmSync(stuck, { recursive: true, force: true }));
+  // Directories under copy names: unlinking one fails with EPERM or EISDIR, not ENOENT.
+  const stuckCopy = () => join(tmpdir(), `codex-clipboard-${randomUUID()}.png`);
+  const stuck = [stuckCopy(), stuckCopy()] as const;
+  for (const path of stuck) {
+    mkdirSync(path);
+    onTestFinished(() => rmSync(path, { recursive: true, force: true }));
+  }
   const pasted = copyIn(tmpdir());
   const { session, seen } = await sessionReading(cwd, rollout);
-  appendFileSync(rollout, userMessage([stuck, pasted]));
+  const events: string[] = [];
+  session.on("warning", () => {
+    throw new Error("a warning listener bug"); // must not keep the exit from finishing
+  });
+  session.on("warning", (event) =>
+    events.push(`${event.code}${"errorCode" in event ? ` ${event.errorCode}` : ""}`),
+  );
+  session.on("terminal:exit", () => events.push("terminal:exit"));
+  appendFileSync(rollout, userMessage([stuck[0], pasted, stuck[1]]));
   await expect.poll(() => seen.length).toBe(1);
   await session.stop();
   expect(session.status).toBe("stopped");
-  expect(existsSync(stuck)).toBe(true);
+  expect(stuck.every((path) => existsSync(path))).toBe(true);
   expect(existsSync(pasted)).toBe(false); // the failure did not stop the next removal
+  // One content-free warning for the session, before its exit.
+  expect(events).toEqual([
+    expect.stringMatching(/^image_copy_removal_failed (EPERM|EISDIR)$/),
+    "terminal:exit",
+  ]);
+  await session.teardown();
+});
+
+test("C-API-46 a named copy already gone at exit is not a failure", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const rollout = join(cwd, "rollout.jsonl");
+  const pasted = copyIn(tmpdir());
+  const { session, seen } = await sessionReading(cwd, rollout);
+  const warnings: string[] = [];
+  session.on("warning", (event) => warnings.push(event.code));
+  appendFileSync(rollout, userMessage([pasted]));
+  await expect.poll(() => seen.length).toBe(1);
+  rmSync(pasted);
+  await session.stop();
+  expect(warnings).toEqual([]);
   await session.teardown();
 });
