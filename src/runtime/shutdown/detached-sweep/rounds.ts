@@ -76,16 +76,17 @@ export function unreachedGroups(state: SweepState): number[] {
 
 /**
  * The signaled groups this read does not hold: each with a live member that this read
- * and the one before did not both show stopped, and the leader's own group while this
+ * and the one before did not both show stopped, and any leader's own group while this
  * read does not show the leader live, since its exit leaves descendants out of reach.
  */
 export function unheldGroups(
   table: readonly ProcessEntry[],
   state: SweepState,
-  leaderPid: number,
+  leaderPid?: number,
 ): number[] {
   const unheld = new Set<number>();
-  if (!table.some((row) => row.pid === leaderPid && !row.zombie)) unheld.add(leaderPid);
+  const leaderGone = !table.some((row) => row.pid === leaderPid && !row.zombie);
+  if (leaderPid !== undefined && leaderGone) unheld.add(leaderPid);
   for (const row of table) {
     if (row.zombie || !state.signaledGroupIds.has(row.pgid)) continue;
     if (!(row.stopped && state.stoppedPidsLastRead.has(row.pid))) unheld.add(row.pgid);
@@ -154,7 +155,7 @@ function isAnchor(parent: ProcessEntry, state: SweepState): boolean {
 }
 
 /** A group that vanished (`ESRCH`) needs nothing; any other refusal is judged at the end. */
-function stopGroup(group: number, ops: SweepOps, state: SweepState): void {
+export function stopGroup(group: number, ops: SweepOps, state: SweepState): void {
   try {
     ops.stopGroup(group);
     state.signaledDescendantGroupIds.push(group);
