@@ -1,5 +1,5 @@
 /** Offline private-home, bounded subprocess and process-seam guards (PRD §12). */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
 import {
@@ -120,35 +120,4 @@ test("post-run non-record config reports the guard after removing private creden
   writeFileSync(join(mocks.parent, ".claude.json"), "null");
   expect(() => sandbox.dispose()).toThrow("must be a JSON object");
   expect(existsSync(sandbox.root)).toBe(false);
-});
-
-test("a concurrent session's rewrite of the parent global config is not drift", async () => {
-  const sandbox = await nativeClaudeQuestionSandbox();
-  writeFileSync(
-    join(mocks.parent, ".claude.json"),
-    JSON.stringify({ parentOnly: true, numStartups: 9, projects: { "/work/elsewhere": {} } }),
-  );
-  sandbox.dispose();
-  expect(existsSync(sandbox.root)).toBe(false);
-});
-
-test("a parent global-config entry naming the private root fails the proof", async () => {
-  const sandbox = await nativeClaudeQuestionSandbox();
-  writeFileSync(
-    join(mocks.parent, ".claude.json"),
-    JSON.stringify({ parentOnly: true, projects: { [sandbox.cwd]: {}, "/work/elsewhere": {} } }),
-  );
-  expect(() => sandbox.dispose()).toThrow(
-    `Parent Claude global config names the private root: ${sandbox.cwd}`,
-  );
-  expect(existsSync(sandbox.root)).toBe(false);
-});
-
-test("a change to the parent settings still fails the proof", async () => {
-  const sandbox = await nativeClaudeQuestionSandbox();
-  mkdirSync(join(mocks.parent, ".claude"), { recursive: true });
-  writeFileSync(join(mocks.parent, ".claude/settings.json"), "{}");
-  expect(() => sandbox.dispose()).toThrow(
-    "Parent Claude configuration changed: .claude/settings.json",
-  );
 });

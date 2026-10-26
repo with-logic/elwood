@@ -22,6 +22,7 @@ import {
   setPtyFactoryForTests,
 } from "../../../src/runtime/seams.ts";
 import { shellQuote } from "../../../src/runtime/shell.ts";
+import { claudeProjectKeys, projectKeysWithin } from "../claude-projects.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 import { parentFileFingerprint } from "../parent-file-fingerprint.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
@@ -47,11 +48,20 @@ function parentConfiguration(path: string): Readonly<Record<string, unknown>> {
   return parsed;
 }
 
-/** The `projects` keys of the parent global config at `path` that name the private `root`. */
-function parentProjectsNaming(path: string, root: string): readonly string[] {
-  const projects = parentConfiguration(path)["projects"];
-  const name = basename(root);
-  return isRecord(projects) ? Object.keys(projects).filter((key) => key.includes(name)) : [];
+/** The parent global config's project keys that name the private `root` or a path inside it. */
+function parentProjectKeysWithin(path: string, root: string): readonly string[] {
+  const keys = claudeProjectKeys(parentConfiguration(path), "Parent Claude configuration");
+  // `root` is resolved; Claude may also record the temp dir's unresolved spelling.
+  return projectKeysWithin(keys, [root, join(tmpdir(), basename(root))]);
+}
+
+/**
+ * The user's own `CLAUDE_CONFIG_DIR` setting, "" when unset. The e2e runner keeps it in
+ * `ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR` (`claude-home.ts`) and points `CLAUDE_CONFIG_DIR` at
+ * its private dir.
+ */
+function userConfigDirSetting(): string {
+  return process.env["ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR"] ?? process.env["CLAUDE_CONFIG_DIR"] ?? "";
 }
 
 function credentials(): string {
@@ -83,9 +93,13 @@ function parentFingerprint(credential: string): Readonly<Record<string, string>>
 
 /** Owns private credentials and process seams; dispose removes/resets them and checks parent drift:
  * the parent settings, hooks, and login are unchanged, and its global config names no private path.
+ * Only the default Claude config dir is supported: a set `CLAUDE_CONFIG_DIR` fails setup.
  * Setup failures attempt private-root cleanup and preserve the original error; disposal may report drift.
  */
 export async function nativeClaudeQuestionSandbox() {
+  // The parent files and keychain item checked below are the default config dir's.
+  if (userConfigDirSetting())
+    throw new Error("The native Claude question proof needs the default Claude config dir");
   const environment = { ...process.env };
   const credential = credentials();
   const fingerprint = parentFingerprint(credential);
@@ -178,10 +192,10 @@ export async function nativeClaudeQuestionSandbox() {
         );
         if (changed.length)
           throw new Error(`Parent Claude configuration changed: ${changed.join(", ")}`);
-        const named = parentProjectsNaming(globalPath, root);
-        if (named.length)
+        const privateProjectKeys = parentProjectKeysWithin(globalPath, root);
+        if (privateProjectKeys.length)
           throw new Error(
-            `Parent Claude global config names the private root: ${named.join(", ")}`,
+            `Parent Claude global config names the private root: ${privateProjectKeys.join(", ")}`,
           );
       },
     };
