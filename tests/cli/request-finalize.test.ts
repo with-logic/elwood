@@ -1,12 +1,12 @@
 /** Final request workspace validation. Covers PRD C-CLI-03/C-CLI-04. */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
 import { finalizeRunRequest, resolveRunSettings } from "../../src/cli/request/index.ts";
 import type { ResolvedRunRequest } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectNothing } from "./agent-fakes.ts";
 
 type DraftOverrides = Omit<Partial<ResolvedRunRequest>, "cwd"> & {
@@ -35,7 +35,7 @@ function draft(root: string, overrides: DraftOverrides = {}): ResolvedRunRequest
 
 describe("final request workspaces", () => {
   test("C-CLI-03/C-CLI-08 finalizes new and resumed workspaces and rejects invalid state", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const root = tempDir("elwood-request-finalize-");
     await expect(finalizeRunRequest(draft(root))).resolves.toMatchObject({ cwd: root, images: [] });
     await expect(finalizeRunRequest(draft(root, { resume: "s", cwd: undefined }))).rejects.toThrow(
       /Stored session/iu,
@@ -65,8 +65,8 @@ describe("final request workspaces", () => {
   });
 
   test("C-CLI-03 resume cannot override its stored workspace", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
-    const other = mkdtempSync(join(tmpdir(), "elwood-request-finalize-other-"));
+    const root = tempDir("elwood-request-finalize-");
+    const other = tempDir("elwood-request-finalize-other-");
     await expect(
       finalizeRunRequest(draft(root, { resume: "s", cwd: other, cwdExplicit: true }), {
         agent: "codex",
@@ -76,7 +76,7 @@ describe("final request workspaces", () => {
   });
 
   test("C-CLI-03/C-CLI-20 identifies non-directory and uninspectable workspaces", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const root = tempDir("elwood-request-finalize-");
     const file = join(root, "file");
     writeFileSync(file, "x");
     await expect(finalizeRunRequest(draft(root, { cwd: file }))).rejects.toThrow(
@@ -88,7 +88,7 @@ describe("final request workspaces", () => {
   });
 
   test("C-CLI-03 requires workspace ownership when POSIX identity is available", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const root = tempDir("elwood-request-finalize-");
     const spy = vi.spyOn(process, "getuid").mockReturnValue((process.getuid?.() ?? 0) + 1);
     await expect(finalizeRunRequest(draft(root))).rejects.toThrow(/owned/iu);
     spy.mockRestore();
@@ -98,7 +98,7 @@ describe("final request workspaces", () => {
   });
 
   test("C-CLI-06 validates explicit adapter posture after stored adapter selection", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const root = tempDir("elwood-request-finalize-");
     await expect(
       finalizeRunRequest(draft(root, { claudeOptionsExplicit: true }), {
         agent: "codex",
@@ -114,7 +114,7 @@ describe("final request workspaces", () => {
   });
 
   test("C-CLI-06 finalizes legacy selected options and default Codex posture", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const root = tempDir("elwood-request-finalize-");
     const {
       sandbox: _sandbox,
       approvalPolicy: _approval,
@@ -132,7 +132,7 @@ describe("final request workspaces", () => {
   });
 
   test("C-CLI-19 records stored-session and adapter-default provenance", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const root = tempDir("elwood-request-finalize-");
     const parsed = parseCliArgs(["--resume", "s"]);
     if (parsed.command !== "run") throw new Error("expected run");
     const resolved = await resolveRunSettings(
