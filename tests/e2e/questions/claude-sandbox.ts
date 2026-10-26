@@ -127,10 +127,11 @@ export async function nativeClaudeQuestionSandbox() {
         CLAUDE_CONFIG_DIR: home,
         ZDOTDIR: home,
       };
+      // Claude's temp root stays: `claude-home.ts` set it to a private directory.
       for (const key of Object.keys(env)) {
         if (
           key === "CLAUDECODE" ||
-          key.startsWith("CLAUDE_CODE_") ||
+          (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_TMPDIR") ||
           anthropicVariables.includes(key)
         )
           delete env[key];

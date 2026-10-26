@@ -20,6 +20,7 @@ import type {
   Unsubscribe,
 } from "../../src/index.ts";
 import type { AgentName } from "./availability.ts";
+import { claudeTempKey } from "./claude-home.ts";
 import { waitFor } from "./wait-for.ts";
 
 export {
@@ -53,9 +54,11 @@ export type HookEvent = ClaudeHookEvent | CodexHookEvent;
 // suite itself runs nested inside a Claude Code session, claude >= 2.1.201
 // skips conversation persistence for the nested instance (no projects/*.jsonl
 // is written), which silently breaks every resume flow. Strip the nesting
-// markers so spawned agents behave exactly as they would for a real user.
+// markers so spawned agents behave exactly as they would for a real user. Claude's temp
+// root stays: `claude-home.ts` set it to a private directory.
 for (const key of Object.keys(process.env)) {
-  if (key === "CLAUDECODE" || key.startsWith("CLAUDE_CODE_")) delete process.env[key];
+  if (key === "CLAUDECODE" || (key.startsWith("CLAUDE_CODE_") && key !== claudeTempKey))
+    delete process.env[key];
 }
 
 /** The events `observeSession` records, with the payload each adapter emits. */

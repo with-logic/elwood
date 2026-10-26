@@ -5,7 +5,8 @@
  * `CLAUDE_CONFIG_DIR` at a private directory and removes it when the process exits. What
  * Claude persists while the suite drives it — the global config's entry for each scratch
  * project, transcripts under `projects/`, prompt history, shell snapshots — lands there,
- * never in the user's `~/.claude.json` or `~/.claude/`, which are only read.
+ * never in the user's `~/.claude.json` or `~/.claude/`, which are only read. It also points
+ * `CLAUDE_CODE_TMPDIR`, Claude's temp root, at a second private directory it removes at exit.
  *
  * The private dir starts with three copies:
  * - `.credentials.json` (0600): the user's Claude login, from their own `.credentials.json`
@@ -125,3 +126,21 @@ if (existsSync(catalog))
   cpSync(catalog, join(defaultClaudeConfigDir, "cache", "model-catalog"), { recursive: true });
 registerPrivateHome(defaultClaudeConfigDir);
 process.env["CLAUDE_CONFIG_DIR"] = defaultClaudeConfigDir;
+
+/** The variable naming the directory Claude keeps its temp root in, `/tmp` when unset. */
+export const claudeTempKey = "CLAUDE_CODE_TMPDIR";
+
+/**
+ * This process's `CLAUDE_CODE_TMPDIR`, removed when it exits. Claude keeps a directory per
+ * working directory under its temp root, holding each session's scratchpad, and that
+ * directory outlives the session; under the shared `/tmp`, each scratch project would leave
+ * one behind. The prefix is short because Claude puts its messaging socket at
+ * `<root>/cc-socks/<pid>.sock` only while that path fits a socket address.
+ */
+export const defaultClaudeTempDir = privateTempDir(
+  "elwood_e2e_ctmp-",
+  userConfigDir,
+  "Claude config dir",
+);
+process.on("exit", () => rmSync(defaultClaudeTempDir, { recursive: true, force: true }));
+process.env[claudeTempKey] = defaultClaudeTempDir;
