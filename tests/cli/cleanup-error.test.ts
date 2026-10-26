@@ -1,6 +1,7 @@
 /**
  * The CLI's content-free cleanup diagnostic (PRD §12A.2, C-CLI-09): typed failures by
- * code and errno token only; never a message, path, or other free text.
+ * code, errno tokens, and unconfirmed process-group ids only; never a message, path,
+ * or other free text.
  */
 
 import { describe, expect, test } from "vitest";
@@ -56,6 +57,33 @@ describe("C-CLI-09 cleanupFailureMessage", () => {
       "a reap errno that is not an errno token",
       elwoodError("termination_failed", "x", { reapErrno: "/private/path" }),
       "Cleanup failed (termination_failed).",
+    ],
+    [
+      "a sweep failure's unconfirmed process groups, after its errno",
+      elwoodError("termination_failed", "x", {
+        errno: "EAGAIN",
+        unconfirmedProcessGroupIds: [4242, 4243],
+      }),
+      "Cleanup failed (termination_failed EAGAIN process groups 4242 4243).",
+    ],
+    [
+      "process-group ids that are not positive integers",
+      elwoodError("termination_failed", "x", {
+        unconfirmedProcessGroupIds: [0, -1, 1.5, "4242", Number.MAX_SAFE_INTEGER + 1, 7],
+      }),
+      "Cleanup failed (termination_failed process groups 7).",
+    ],
+    [
+      "unconfirmed process groups that are not a list",
+      elwoodError("termination_failed", "x", { unconfirmedProcessGroupIds: "4242" }),
+      "Cleanup failed (termination_failed).",
+    ],
+    [
+      "more unconfirmed process groups than a sweep failure can name",
+      elwoodError("termination_failed", "x", {
+        unconfirmedProcessGroupIds: Array.from({ length: 20 }, (_, index) => index + 1),
+      }),
+      `Cleanup failed (termination_failed process groups ${Array.from({ length: 16 }, (_, index) => index + 1).join(" ")}).`,
     ],
     [
       "a teardown by its typed step failures",

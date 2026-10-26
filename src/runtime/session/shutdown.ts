@@ -21,7 +21,10 @@ export type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_c
 
 /** The reap surface shutdown drives: the typed-throw reap plus the retryable one-shot. */
 export type ShutdownReapPolicy = Pick<SessionReapPolicy, "orThrow"> & {
-  readonly reaper: Pick<SessionReapPolicy["reaper"], "reap">;
+  readonly reaper: Pick<
+    SessionReapPolicy["reaper"],
+    "reap" | "reapAndThrowOnDetachedSweepFailure" | "sweepDetached"
+  >;
 };
 
 /** The session surface the shutdown/teardown orchestration drives. */
@@ -138,8 +141,10 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
         ctx.markSignaled();
         return terminatePty(host.pty, "SIGKILL", host.reapPolicy.reaper);
       },
-      // No-op once latched; retries a failed reap, typed so `teardown_failed` keeps its
-      // errno and process-group id (§10).
+      // No-op once latched; retries a failed reap, and keeps failing while a detached
+      // sweep is unresolved, so a retry never reports a possibly running hook as reaped.
+      // Typed, so `teardown_failed` keeps its errno, the leader's process-group id, and
+      // any unconfirmed process-group ids (§10).
       () => host.reapPolicy.orThrow(),
       () => host.cleanupRuntime(),
       () => host.submitEvidence("teardown_completed"),

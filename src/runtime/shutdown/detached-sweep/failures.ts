@@ -4,7 +4,7 @@
  * the process-group ids involved, so a failure never carries raw process or `ps` output.
  */
 
-import { errnoCode } from "../../../core/errors.ts";
+import { errnoCode, isErrnoToken } from "../../../core/errors.ts";
 
 /** A sweep that could not confirm every group reaped, naming (some of) those groups. */
 export type SweepFailure = Error & {
@@ -24,10 +24,6 @@ export type FailureReason =
   | "could not stop a live descendant group"
   | "could not kill a signaled descendant group";
 
-// An errno-shaped token (`EPERM`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`): fixed by the
-// platform, never process or user content, so it can travel in a public message.
-const ERRNO_TOKEN = /^E[A-Z0-9_]{1,40}$/;
-
 /** Collects one sweep's failures: each reason once, the first errno token, the group ids. */
 export class SweepFailures {
   private readonly reasons = new Set<string>();
@@ -36,7 +32,7 @@ export class SweepFailures {
 
   record(reason: FailureReason, error: unknown, processGroupIds: readonly number[]): void {
     const code = errnoCode(error);
-    const token = code !== undefined && ERRNO_TOKEN.test(code) ? code : undefined;
+    const token = isErrnoToken(code) ? code : undefined;
     this.reasons.add(token === undefined ? reason : `${reason} (${token})`);
     this.code ??= token;
     for (const id of processGroupIds) this.processGroupIds.add(id);

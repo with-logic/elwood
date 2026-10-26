@@ -4,7 +4,8 @@
  * with `setsid()`, so a hook in flight at teardown is in its own session and group, and
  * the leader-group SIGKILL alone leaves it running, reparented to PID 1. These tests
  * build that shape with real processes under a real PTY and drive the production
- * reaper (real `ps`, real signals), scoped to processes this test spawned.
+ * reaper and `terminatePty` (real `ps`, real signals), scoped to processes this test
+ * spawned.
  */
 
 import { spawn } from "node:child_process";
@@ -13,6 +14,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
   detachedDescendantPids,
   detachedShape,
@@ -37,6 +39,28 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
     expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
     expect(await pollGone({ pid: tree.pty.pid, timeoutMs: 5_000 })).toBe(true);
+  });
+
+  test("kill reaps a setsid child and its own setsid grandchild", async () => {
+    const tree = startDetachedTree();
+    const [child, grandchild] = await detachedDescendantPids(tree);
+    await terminatePty(tree.pty, "SIGKILL", new SessionReaper(tree.pty.pid));
+    expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
+    expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
+  });
+
+  test("an ignored SIGTERM escalates and still reaps the detached descendants", async () => {
+    const tree = startDetachedTree("ignore-term");
+    const [child, grandchild] = await detachedDescendantPids(tree);
+    expect(await observedProcessShape([tree.pty.pid, child, grandchild])).toEqual(
+      detachedShape(tree.pty.pid, child, grandchild),
+    );
+    await terminatePty(tree.pty, "SIGTERM", new SessionReaper(tree.pty.pid), {
+      gracefulMs: 300,
+      forceMs: 5_000,
+    });
+    expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
+    expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
   });
 
   test("a detached process that is NOT a descendant of the leader is left alone", async () => {

@@ -19,13 +19,20 @@ const deadPty = {
   resize: () => "resized" as const,
   kill: () => {},
 };
-const exitingPty = {
-  ...deadPty,
-  onExit: (handler: (exit: PtyExit) => void) => {
-    queueMicrotask(() => handler({ exitCode: 0 }));
-    return () => {};
-  },
-};
+/** A PTY whose leader exits once SIGKILLed, as a real one does after the sweep. */
+function killablePty() {
+  let exited: ((exit: PtyExit) => void) | undefined;
+  return {
+    ...deadPty,
+    onExit: (handler: (exit: PtyExit) => void) => {
+      exited = handler;
+      return () => {};
+    },
+    kill: (signal?: string) => {
+      if (signal === "SIGKILL") queueMicrotask(() => exited?.({ exitCode: 0 }));
+    },
+  };
+}
 const throwingReaper = (code?: string) =>
   new SessionReaper(LEADER, {
     ...quietProcessTree(),
@@ -41,7 +48,7 @@ describe("C-LIFE-10 terminatePty", () => {
       ...quietProcessTree(),
       killGroup: (p) => killed.push(p),
     });
-    await terminatePty(exitingPty, "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
+    await terminatePty(killablePty(), "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
     expect(killed).toEqual([LEADER]);
   });
 
@@ -151,7 +158,7 @@ describe("C-LIFE-10 terminatePty", () => {
       },
     });
     await expect(
-      terminatePty(exitingPty, "SIGKILL", epermReaper, { gracefulMs: 0, forceMs: 10 }),
+      terminatePty(killablePty(), "SIGKILL", epermReaper, { gracefulMs: 0, forceMs: 10 }),
     ).rejects.toMatchObject({
       code: "termination_failed",
       details: { cause: "reap failure", errno: "EPERM" },

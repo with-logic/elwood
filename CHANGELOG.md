@@ -167,6 +167,29 @@ back each entry are listed in `prd/14-conformance.md`.
   appears. Codex 0.164 lost its directory-trust answers the same way (0 of 16
   fresh git-folder launches reported one); they are now reported too.
 
+- `kill()`, `teardown()`, and a `stop()` that has to escalate no longer leave a
+  CLI hook running after the session ends. Claude and Codex start every hook
+  command in its own session and process group, so killing the CLI's process
+  group missed a hook still in flight, such as a slow `SessionEnd` hook; it kept
+  running under PID 1. Before Elwood SIGKILLs a live CLI it now freezes it,
+  finds those descendants by parent pid, and kills their groups (a process whose
+  own parent already exited is under PID 1 and out of reach). That adds two
+  process-table reads to those paths, or four when such a hook exists, because
+  Elwood acts only on processes two consecutive reads show stopped; deeper
+  nesting, or a process forked as the CLI was frozen (Elwood stops its group
+  again), takes more reads within a three-second bound. Sessions shutting down
+  together share reads. If the walk cannot confirm every group stopped (including
+  when the CLI exits on its own first), the call still kills the CLI and then
+  rejects: `stop()` and `kill()` with `termination_failed` (with up to
+  16 of the unconfirmed process-group ids in `details.unconfirmedProcessGroupIds`),
+  `teardown()` with `teardown_failed`, and later shutdown calls on that session
+  keep rejecting. The CLI's cleanup diagnostic names those ids too, for example
+  `Cleanup failed (termination_failed EAGAIN process groups 4242).` The walk also
+  reaps the shell Codex starts a few seconds after launch to snapshot the user's
+  shell environment, which a slow shell profile keeps running. A `stop()` that
+  Codex exits on gracefully is not walked, so a snapshot shell still running then
+  is left running.
+
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was
   reaped now says so. The typed startup error keeps its code and
