@@ -6,7 +6,10 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
+import {
+  DETACHED_SWEEP_BUDGET_MS,
+  sweepDetachedGroups,
+} from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import {
   errno,
   hook,
@@ -82,7 +85,7 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
     const { ops, calls, asRead } = scripted([], {
       killGroup: (pgid) => {
         calls.push(`kill ${pgid}`);
-        clock = 5_000; // the kill pass ran past the deadline
+        clock = DETACHED_SWEEP_BUDGET_MS + 1_000; // the kill pass ran past the deadline
         throw errno("EPERM");
       },
       listProcesses: () => {
