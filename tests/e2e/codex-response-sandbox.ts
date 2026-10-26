@@ -17,6 +17,7 @@ import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runti
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { copyCodexAuth } from "./codex-home.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
+import { stopProcessesUnder } from "./scratch-processes.ts";
 
 export const responseModel = "gpt-6-luna";
 export const responseBinary = join(
@@ -31,7 +32,11 @@ export async function nativeResponseSandbox() {
   const stateDir = join(root, "state");
   const bin = join(root, "bin");
   const binary = join(bin, "codex");
-  const dispose = () => rmSync(root, { recursive: true, force: true });
+  // Codex 0.159.2 may start an app-server daemon for `home`, which outlives the TUI.
+  const dispose = () => {
+    stopProcessesUnder(root);
+    rmSync(root, { recursive: true, force: true });
+  };
   try {
     for (const dir of [home, cwd, stateDir, bin]) mkdirSync(dir, { mode: 0o700 });
     copyFileSync(responseBinary, binary);
@@ -108,7 +113,11 @@ export async function nativeResponseSandbox() {
       },
     };
   } catch (error) {
-    dispose();
+    try {
+      dispose();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Native response sandbox setup failed");
+    }
     throw error;
   }
 }

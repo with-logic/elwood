@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { after } from "node:test";
 import type { AgentName } from "./availability.ts";
 import { copyCodexAuth, userCodexAuthPath } from "./codex-home.ts";
+import { stopProcessesUnder } from "./scratch-processes.ts";
 
 export type E2eProject = {
   readonly cwd: string;
@@ -26,7 +27,12 @@ export type CodexSandbox = {
   readonly project: E2eProject;
   readonly home: string;
   readonly configPath: string;
-  /** Restores `CODEX_HOME` and removes the sandbox (including the auth.json copy). */
+  /**
+   * Restores `CODEX_HOME`, stops what still runs from the sandbox, such as the app-server
+   * daemon Codex may start for it (`stopProcessesUnder`), and removes the sandbox (including
+   * the auth.json copy). When something there will not stop, or the removal fails, it throws
+   * and keeps the sandbox and its project past the file's sweep.
+   */
   dispose(): void;
   /** Restores `CODEX_HOME` and leaves the sandbox, which a Codex process may still use. */
   restoreHome(): void;
@@ -109,7 +115,14 @@ export function sandboxedCodexHome(project: E2eProject, config: string): CodexSa
     configPath,
     dispose: () => {
       restoreHome();
-      rmSync(home, { recursive: true, force: true });
+      try {
+        stopProcessesUnder(home);
+        rmSync(home, { recursive: true, force: true });
+      } catch (error) {
+        // Kept for diagnosis, and out of the file's sweep, which would race what still runs.
+        keepScratch(project.cwd, home);
+        throw error;
+      }
     },
     restoreHome,
   };
