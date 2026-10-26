@@ -1,19 +1,23 @@
 /**
  * The Codex config transaction's two termination properties: a switch still WAITING for
- * the process-wide lock rejects as soon as its session closes, and the CLI-exit barrier
+ * the config lock rejects as soon as its session closes, and the CLI-exit barrier
  * applies on the success path too (PRD §5.3, C-CODEX-14).
  */
 
 import { expect, test } from "vitest";
 import { runCodexModelSwitch } from "../../src/codex/config/transaction.ts";
 
-/** A holder that occupies the process-wide lock until the returned release is called. */
+/** Every transaction here is on one config file, so they share its lock. */
+const path = "/elwood-test/codex-home/config.toml";
+
+/** A holder that occupies the config lock until the returned release is called. */
 function holdTheLock(): { readonly release: () => void; readonly held: Promise<void> } {
   let release: () => void = () => undefined;
   const applied = new Promise<void>((resolve) => {
     release = resolve;
   });
   const held = runCodexModelSwitch({
+    path,
     snapshot: () => "snap",
     apply: () => applied,
     restore: () => undefined,
@@ -26,6 +30,7 @@ test("C-CODEX-14 a switch queued behind the config lock rejects when its session
   const closing = new AbortController();
   let waiterApplied = false;
   const queued = runCodexModelSwitch({
+    path,
     snapshot: () => "snap",
     apply: () => {
       waiterApplied = true;
@@ -48,6 +53,7 @@ test("C-CODEX-14 a cancelled waiter does not run its task once the lock frees", 
   const closing = new AbortController();
   let waiterApplied = false;
   const queued = runCodexModelSwitch({
+    path,
     snapshot: () => "snap",
     apply: () => {
       waiterApplied = true;
@@ -75,6 +81,7 @@ test("C-CODEX-14 a switch interrupted by close waits for the CLI exit before res
     };
   });
   const switching = runCodexModelSwitch({
+    path,
     snapshot: () => "snap",
     // Closing aborts the picker's reads and writes, so the switch rejects; the dying CLI
     // can still write config.toml, which is what the exit barrier is for.
@@ -102,6 +109,7 @@ test("C-CODEX-14 a switch interrupted by close waits for the CLI exit before res
 test("C-CODEX-14 a restore that fails after a termination rejection is still reported", async () => {
   const reported: string[] = [];
   const failure = await runCodexModelSwitch({
+    path,
     snapshot: () => "snap",
     apply: () => Promise.reject(new Error("session_not_running")),
     waitForCliExit: () => Promise.resolve(),
@@ -124,6 +132,7 @@ test("C-CODEX-14 a switch started on an already-closed session rejects at once",
   const closed = new AbortController();
   closed.abort();
   const queued = runCodexModelSwitch({
+    path,
     snapshot: () => "snap",
     apply: () => Promise.resolve(),
     restore: () => undefined,
