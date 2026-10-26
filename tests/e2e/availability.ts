@@ -17,7 +17,6 @@ import { e2eRunDir } from "./run-dir.ts";
 
 export type AgentName = "claude" | "codex";
 
-export const e2eTimeoutMs = Number(process.env["ELWOOD_E2E_TIMEOUT_MS"] ?? 180_000);
 export const turnsEnabled = process.env["ELWOOD_E2E_SKIP_TURNS"] !== "1";
 /** Skip reason for tests that run a real model turn; `undefined` when turns are on. */
 export const skipTurns = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
