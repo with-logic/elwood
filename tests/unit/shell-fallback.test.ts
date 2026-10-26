@@ -36,14 +36,14 @@ describe("user shell", () => {
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; claude --version`,
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; claude --version`,
     ]);
     // A lookup answered by its status alone discards its output.
     expect(probeShellStatus("command -v claude")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; command -v claude >/dev/null 2>&1`,
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

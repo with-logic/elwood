@@ -22,6 +22,13 @@ back each entry are listed in `prd/14-conformance.md`.
   `image_copy_removal_failed` warning before `terminal:exit`. Its `errorCode` is the
   first failure's errno token, or `UnknownError` when it has none. The copy is left
   for the OS to reap. A copy that was already gone is not a failure.
+- A CLI missing from the login shell's PATH is reported as `claude_not_found` or
+  `codex_not_found` even when the user's startup files define a not-found handler
+  (zsh's `command_not_found_handler`, bash's `command_not_found_handle`). The probe
+  ran the handler, so a handler that returned another status made a missing CLI
+  read as `*_start_failed`, and whatever it printed reached that error's
+  `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
+  handlers before running the CLI.
 - `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
   detached hook processes ten seconds, up from three, before they reject with
   `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
