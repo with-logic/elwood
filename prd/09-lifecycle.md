@@ -287,9 +287,12 @@ intentionally not persisted yet.
 For either adapter, resume validates the loop sidecar before starting the agent,
 silently removes definitions whose seven-day wall-clock expiry passed during
 downtime, and restores surviving definitions with the same IDs and persisted
-jitter. It restores no timer or due state: every surviving cadence starts fresh
-from the resumed session's first readiness, using that launch's current
-permissions and blocking-dialog posture, and no missed run is replayed.
+jitter. That removal, and any at activation (§8.1), is part of the launch's startup
+publication, so a resume that then fails restores the sidecar it found unless the
+earlier launch has written it since. It restores no timer or due state: every
+surviving cadence starts fresh from the resumed session's first readiness, using
+that launch's current permissions and blocking-dialog posture, and no missed run is
+replayed.
 
 ### 9.4 Exit
 

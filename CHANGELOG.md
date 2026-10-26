@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A resume that fails partway through launching, such as when its PTY can't be
+  spawned, no longer leaves its session's expired loops pruned from `loops.json`.
+  Resume removes expired loops before it starts the agent and again as it commits,
+  and both writes now belong to the launch's startup publication, which a failed
+  launch restores, as it already restored the session record. A prune the earlier
+  session made meanwhile, through `listLoops()` for instance, stays.
 - Starting a session whose `cwd` was deleted no longer recreates it. The default
   state directory lives under `cwd`, and creating it created every missing parent,
   so a session for a deleted worktree started in a new, empty directory. A state

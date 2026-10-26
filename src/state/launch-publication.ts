@@ -11,8 +11,13 @@ type PublishedFile = { before: string | undefined; written: readonly (string | u
 export class LaunchPublication {
   private readonly files = new Map<string, PublishedFile>();
 
-  write(path: string, text: string): void {
-    const current = read(path);
+  /**
+   * Publish `text` at `path`. A caller that has just read the file passes what it read as
+   * `readText`, so a large file is not read again for the rollback preimage.
+   */
+  write(path: string, text: string, readText?: string): void {
+    assertStatePath(path);
+    const current = readText ?? readFile(path);
     const entry = this.files.get(path) ?? { before: current, written: [current] };
     // Preserve a predecessor's intervening record update across our next write.
     if (!entry.written.includes(current)) entry.before = current;
@@ -21,6 +26,11 @@ export class LaunchPublication {
     this.files.set(path, entry);
     writePrivateFileAtomic(path, text);
     entry.written = [text];
+  }
+
+  /** A predecessor's later write to `path` stands: rollback leaves it, whatever its bytes. */
+  forget(path: string): void {
+    this.files.delete(path);
   }
 
   clear(): void {
@@ -51,6 +61,10 @@ export class LaunchPublication {
 
 function read(path: string): string | undefined {
   assertStatePath(path);
+  return readFile(path);
+}
+
+function readFile(path: string): string | undefined {
   return readPrivateFile(path, currentFileOwner(), () =>
     elwoodError("state_corrupt", "Launch state is not a valid private file."),
   );

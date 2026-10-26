@@ -104,7 +104,7 @@ Each criterion has:
 | C-LOOP-10 | §5.9 | Live scheduling/submission failure emits redacted failure evidence and rearms fresh unless the session is non-live, when the persisted definition waits for resume. |
 | C-LOOP-11 | §8.2 | The loop sidecar stores stable identity, cadence, exact prompt, jitter, creation, and expiry but no live timer or transient scheduling state. |
 | C-LOOP-12 | §5.9 §9.3 | Resume discards missed runs and starts fresh clocks for surviving definitions from restored readiness. |
-| C-LOOP-13 | §5.9 | Loops expire seven wall-clock days after original creation; expiry beats pending submission, emits live only, and is pruned silently during resume or stopped/exited management. |
+| C-LOOP-13 | §5.9 | Loops expire seven wall-clock days after original creation; expiry beats pending submission, emits live only, and is pruned silently during resume or stopped/exited management. A resume's prune, at launch or at activation, is part of its startup publication: a resume that then fails restores the sidecar it found unless the earlier launch has written it since. |
 | C-LOOP-14 | §5.9 §8.4 | Stop, unexpected exit, and process failure preserve loops; kill clears them permanently; teardown removes them with session state. |
 | C-LOOP-15 | §5.9 | `listLoops` orders immutable snapshots by creation then ID and exposes exact message, cadence, interval when fixed, jitter, times, state, and only a scheduled next-due time. |
 | C-LOOP-16 | §5.4 §5.9 | `loop` events match the specified `created`/`fired`/`cancelled`/`expired`/`failed` union and never contain a stored message or serialized request. |

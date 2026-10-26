@@ -77,8 +77,10 @@ committed successor keeps its state, while a failed successor permits the predec
 to finish the requested cleanup before its shutdown promise resolves. A pending
 successor does not activate loop timers. Successful activation rereads the latest
 durable loop definitions and revokes prior scheduling in the same synchronous commit,
-so a successful predecessor cancellation or creation is preserved. An activation
-read failure stops the built launch before ownership rolls back. If resume fails,
+so a successful predecessor cancellation or creation is preserved. Activation prunes
+loops that expired since the launch read them as part of the startup publication. An
+activation read or prune failure stops the built launch before ownership rolls back,
+and rollback restores that prune. If resume fails,
 ownership returns to the prior
 viable launch only when no newer reservation or launch has replaced that attempt.
 A failed overlapping launch therefore preserves the original live launch's cleanup
@@ -91,7 +93,8 @@ settings instead use fresh per-launch filenames permanently bound to that launch
 PTY. Pending or committed successors never redirect a predecessor's hook policy. A failed
 attempt restores each prior file only while it still owns the reservation and the
 file still contains that attempt's exact published bytes. A newer predecessor
-record update or newer generation is preserved. If a predecessor updates a file
+record or loop update, even one whose bytes match the attempt's, or a newer
+generation is preserved. If a predecessor updates a file
 between two pending-launch writes, that external version becomes the rollback
 baseline for the later write. Pending-launch hook record writes participate in the
 same transaction. Superseded or failed generations cannot publish metadata.
