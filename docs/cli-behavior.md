@@ -1742,6 +1742,63 @@ was still loading. `tests/unit/probe-closed-descriptor.test.ts` covers this with
 where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main` at
 613b3ea5.
 
+## Login-shell output around a probe command (2026-10-26)
+
+A probe's captured output becomes `agent_update_failed.raw`, `version_unparseable.raw`,
+and a failed `--version` or `--help` probe's `details.stderr`. It used to hold everything
+the login shell printed, not only the CLI's output. We measured with zsh 5.9 and macOS
+bash 3.2.57, using a private `ZDOTDIR` or `HOME`:
+
+- After the `-c` command, zsh `-l -i -c` runs a startup file's EXIT trap and then
+  `.zlogout`, on the same stdout and stderr. With no trap set, zsh `exec`s a final
+  external command and runs neither. With a trap set, it does not `exec`, so both
+  run. A builtin last command (`printf`) always runs `.zlogout`.
+- bash 3.2 `-l -i -c` prints `bash: no job control in this shell` on stderr at startup.
+  After the command it runs a profile's EXIT trap. It did not run `~/.bash_logout`.
+- While the command runs, zsh's `TRAPDEBUG` (or `trap … DEBUG`) prints before every
+  command and `TRAPZERR` after every failing one, including commands inside a
+  redirected `{ … }` group, whose output then lands in that group's redirection. A
+  background helper the profile started (`( … ) &!`) writes to the shell's streams
+  whenever it likes.
+
+So markers around the command cannot separate its output: they delimit a time window,
+not an author. The probe script now `exec`s the command with `>"$ELWOOD_PROBE_OUTPUT/stdout"
+2>"$ELWOOD_PROBE_OUTPUT/stderr"`, into two named pipes in a directory the runner makes for
+that probe alone.
+With the redirection on the `exec` itself, zsh and bash both print a DEBUG trap's output
+on the shell's own streams before the `exec`, and nothing runs after it: no trap, no
+EXIT trap, no `.zlogout`. A failed `exec` ends the probe with 127 (not found) or 126
+(not executable), and the pipe carries the shell's own message about it; bash 3.2 adds its
+`no job control` notice. Except for one case, neither comes from a startup file: zsh 5.9 runs
+a startup file's `command_not_found_handler` when `exec` finds no command, with the `exec`'s
+redirections applied, and the probe's status is then whatever the handler returns. bash's
+`exec` runs no `command_not_found_handle`. The probe script therefore runs
+`unset -f command_not_found_handler 2>/dev/null || :` before its `exec`; zsh's `unset -f`
+fails when no such function exists, so the `|| :` keeps `errexit` from ending the shell.
+bash `exec`s only programs (`exec command -v x` fails on Linux, which has no
+`/usr/bin/command`), so `command -v` runs as a status-only probe with its output sent to
+`/dev/null`. `elwood interactive`'s PATH read runs `/bin/sh -c 'printf …' sh "$PATH"`:
+the login shell expands its own PATH into the argument, and `/bin/sh`'s builtin `printf`
+needs no PATH lookup, so an empty PATH still prints. zsh's `echo` to a closed stdout
+reports a write error but returns 0. bash's returns 1, which `set -e` turns into an exit,
+so the start line's stdout copy is written as `{ echo …; } 2>/dev/null || :`.
+
+Named pipes, not files: a file does not tell its reader when its writers are done. In
+a test, a child that inherited the file from a command that then exited kept writing,
+unsupervised, into a file Elwood had already removed, and an update probe would have
+released its lease while such a child ran. A named pipe behaves as the command's own pipe did: the probe waits for
+every holder, a full pipe blocks its writer at the cap, and closing Elwood's read end
+stops a writer left over with `SIGPIPE`. Node reads a named pipe as a `net.Socket`, but
+on macOS kqueue reports its data and never its end: with every writer gone, the
+socket's `end` did not fire within 5 s. The runner therefore opens each pipe
+non-blocking and reads it every 25 ms, where `read` returns 0 once no writer holds it.
+Without a writer a pipe reads as ended, so the runner holds one of its own until the
+probe's process exits; the command's `exec` then opens its write end without waiting.
+Node has no `mkfifo`, so `/usr/bin/mkfifo` makes them. `ulimit -f` would not have been
+an answer either: it would kill `claude update` and `codex update` while they download.
+`tests/unit/probe-shell-output.test.ts` checks each leak against real zsh, and
+`tests/cli/interactive-path.test.ts` checks the PATH read against real zsh and bash.
+
 ## Testing against the real CLIs
 
 - `test:e2e` runs **serially** (`--test-concurrency=1`): Codex config-file

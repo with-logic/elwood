@@ -25,22 +25,24 @@ describe("user shell", () => {
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    // Same shell and flags; the probe writes its start line on descriptor 3 and closes it, or
-    // writes it on stdout if the shell already closed descriptor 3, then runs the command
-    // (C-PERF-05).
-    const line = probeCommandStartLine;
+    // Same shell and flags; the probe writes its start line on descriptor 3 if the shell kept
+    // it open, then on stdout, and `exec`s the command into its private named pipes
+    // (C-PERF-05, §9.2). A builtin's probe answers by status alone, its output discarded.
+    const start =
+      `if { echo ${probeCommandStartLine} >&3; } 2>/dev/null; then exec 3>&-; fi; ` +
+      `{ echo ${probeCommandStartLine}; } 2>/dev/null || :; `;
     expect(probeShellCommand("claude --version")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; claude --version`,
+      `${start}unset -f command_not_found_handler 2>/dev/null || :; ` +
+        `exec claude --version >"$ELWOOD_PROBE_OUTPUT/stdout" 2>"$ELWOOD_PROBE_OUTPUT/stderr"`,
     ]);
-    // A lookup answered by its status alone discards its output.
     expect(probeShellStatus("command -v claude")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; command -v claude >/dev/null 2>&1`,
+      `${start}command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

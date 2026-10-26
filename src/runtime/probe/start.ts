@@ -1,7 +1,8 @@
 /**
- * Recognizes the probe shell's start line, which ends the login shell's launch phase and starts
- * the probe command's own bound: on the runner's private control descriptor, or on stdout from a
- * shell that closed that descriptor at startup. Implements PRD §9.2 and C-PERF-05.
+ * The probe shell's scripts, and recognition of their start line, which ends the login shell's
+ * launch phase and starts the probe command's own bound: on the runner's private control
+ * descriptor, or on stdout from a shell that closed that descriptor at startup. Implements
+ * PRD §9.2 and C-PERF-05.
  */
 
 import { randomBytes } from "node:crypto";
@@ -19,28 +20,52 @@ export const probeCommandStartLine = `elwood-probe-command-start-${randomBytes(8
 /**
  * The start line's primary channel: a fourth pipe the runner opens for every probe. Not stdout
  * or stderr, so a profile that redirects those (`exec 2>&1`, `exec 2>/dev/null`) cannot hide
- * the line, and captured output stays exactly the profile's and the command's. A shell that
- * closed it at startup writes the line on stdout instead (`probeStartScript`).
+ * the line. A shell that closed it at startup is started by the line's stdout copy instead
+ * (`probeStartScript`). Neither channel carries the command's output (`probeScript`).
  */
 export const probeControlFd = 3;
 
 /**
- * The probe shell's script prefix: it writes the start line, closes the descriptor so the
- * command does not inherit it, then the probe command runs. macOS's bash 3.2 started with both
- * `-l` and `-i` closes every inherited descriptor above stderr before running the script, so
- * there the write fails, silently, and the line goes to stdout. Not stderr: a profile may send
- * that to `/dev/null` or into stdout, while a profile that hid stdout would hide the command's
- * own output and fail the probe anyway. The runner removes the line from captured stdout.
+ * The probe shell's script prefix: it writes the start line on the control descriptor and
+ * closes it, so the command does not inherit it, then writes the line on stdout. macOS's bash
+ * 3.2 started with both `-l` and `-i` closes every inherited descriptor above stderr before
+ * running the script, so there the first write fails, silently, and the stdout copy starts the
+ * command's bound instead. Not stderr: a profile is likelier to send that to `/dev/null` or
+ * into stdout. Each write tolerates a closed stream, so a startup file's `errexit` cannot end
+ * the shell before its command.
  */
-export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; else echo ${probeCommandStartLine}; fi; `;
+export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; fi; { echo ${probeCommandStartLine}; } 2>/dev/null || :; `;
+
+/** The environment variable that names a probe script's private output directory. */
+export const probeOutputEnv = "ELWOOD_PROBE_OUTPUT";
+
+/** The redirection a probe script gives the command it `exec`s: the runner's named pipes. */
+export const probeOutputRedirect = `>"$${probeOutputEnv}/stdout" 2>"$${probeOutputEnv}/stderr"`;
+
+/**
+ * A probe's whole script: the start line, then `exec` of the command with its stdout and stderr
+ * redirected into the runner's private named pipes (`named-pipes.ts`). After `exec` no shell
+ * code runs (no trap, no EXIT trap, no `.zlogout`), and nothing the startup files started holds
+ * those pipes, so they carry only the command's output. The probe's process is the command
+ * itself, so its exit status is the command's and a bound's signal reaches it directly.
+ * `command` is one simple command the shell can `exec`: a program and its arguments.
+ *
+ * zsh runs a startup file's `command_not_found_handler` when `exec` finds no command, under the
+ * command's redirections, so the handler's output would reach the pipes as the command's: the
+ * script removes it first. bash's `exec` runs no handler.
+ */
+export function probeScript(command: string): string {
+  return `${probeStartScript}${dropNotFoundHandler}exec ${command} ${probeOutputRedirect}`;
+}
+
+const dropNotFoundHandler = "unset -f command_not_found_handler 2>/dev/null || :; ";
 
 /** Whether a probe runs a script that announces its command with the start line. */
 export function announcesStart(args: readonly string[]): boolean {
-  return args.at(-1)?.startsWith(probeStartScript) ?? false;
+  return args.at(-1)?.includes(probeStartScript) ?? false;
 }
 
-const startText = `${probeCommandStartLine}\n`;
-const startBytes = Buffer.from(startText);
+const startBytes = Buffer.from(`${probeCommandStartLine}\n`);
 
 /** Finds the start line in a stream whose chunks may split it anywhere. */
 export class ProbeStartWatcher {
@@ -68,11 +93,18 @@ export class ProbeStartWatcher {
   }
 }
 
-/** The two streams a probe's start line can arrive on. */
+/** The two streams watched for a probe's start line: the control descriptor and stdout. */
 export type ProbeStartChannel = "control" | "stdout";
 
 /** Watches both channels; the first to carry the start line starts the command. */
 export class ProbeStart {
+  /** Whether the probe's script will write the start line; whether it has is `started`. */
+  readonly expectsStartLine: boolean;
+
+  constructor(args: readonly string[]) {
+    this.expectsStartLine = announcesStart(args);
+  }
+
   // One watcher per channel: a channel added to `ProbeStartChannel` must be given its own.
   private readonly watchers: Readonly<Record<ProbeStartChannel, ProbeStartWatcher>> = {
     control: new ProbeStartWatcher(),
@@ -86,12 +118,7 @@ export class ProbeStart {
 
   /** True exactly once across both channels: for the chunk that completes the start line. */
   feed(channel: ProbeStartChannel, chunk: Buffer): boolean {
-    if (this.started) return false; // later copies are the command's own output
+    if (this.started) return false; // only the first start line starts the command
     return this.watchers[channel].feed(chunk);
-  }
-
-  /** Removes the start line from captured stdout if the shell wrote it there (C-PERF-05). */
-  stripFromStdout(captured: string): string {
-    return this.watchers.stdout.started ? captured.replace(startText, "") : captured;
   }
 }

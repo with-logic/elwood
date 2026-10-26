@@ -8,11 +8,16 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
-import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import {
+  probeOutputEnv,
+  probeOutputRedirect,
+  probeStartScript,
+} from "../../src/runtime/probe/start.ts";
+import { loginShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { e2eRunDir } from "./run-dir.ts";
 
 export type AgentName = "claude" | "codex";
@@ -23,7 +28,8 @@ export const skipTurns = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 dis
 /** With `ELWOOD_E2E_REQUIRE=1` a would-be skip is a failure (CI must exercise the CLIs). */
 export const requireAll = process.env["ELWOOD_E2E_REQUIRE"] === "1";
 
-type Probed = { readonly path: string } | { readonly skip: string };
+/** A CLI that resolves, and its path, `null` for a shell function, or why it does not. */
+type Probed = { readonly path: string | null } | { readonly skip: string };
 const probed = new Map<AgentName, Probed>();
 
 /**
@@ -70,23 +76,33 @@ export function skipReason(agent: AgentName): string | undefined {
 export function resolvedAgentPath(agent: AgentName): string {
   const result = probedAgent(agent);
   if ("skip" in result) throw new Error(result.skip);
+  if (result.path === null) throw new Error(`${agent} resolves only as a login-shell function`);
   return result.path;
 }
 
 function probe(agent: AgentName): Probed {
   const shell = userShell();
-  const result = spawnSync(shell, [...probeShellCommand(`command -v ${agent}`)], {
+  // Found as detection finds it, by the login shell's own `command -v`, which also finds a
+  // function zsh can `exec`; then the program's path, from `/bin/sh`, if it is one. Its output
+  // goes to plain files in a directory of this run's, by the probe script's own redirection.
+  const output = mkdtempSync(join(e2eRunDir, "probe-"));
+  const script =
+    `${probeStartScript}command -v ${agent} >/dev/null 2>&1 || exit 1; ` +
+    `exec /bin/sh -c 'command -v "$1" || :' sh ${agent} ${probeOutputRedirect}`;
+  const result = spawnSync(shell, [...loginShellCommand(script)], {
     encoding: "utf8",
+    env: { ...process.env, [probeOutputEnv]: output },
     // The fourth pipe receives the probe shell's start line, as `runProbe`'s does, unless the
-    // shell closed it; then the line precedes the command's output on stdout.
+    // shell closed it.
     stdio: ["ignore", "pipe", "pipe", "pipe"],
     // The production probe's launch plus command bounds (§9.2, C-PERF-05): a loaded host's
     // interactive profile alone can exceed 15 s, which must not read as a missing CLI.
     timeout: probeLaunchTimeoutMs + probeCommandTimeoutMs,
   });
-  // `command -v` prints the path last; an interactive profile may print its own lines first.
-  const path = result.stdout.trim().split("\n").at(-1);
-  if (result.status === 0 && path) return { path };
+  const stdout = join(output, "stdout");
+  const path = existsSync(stdout) ? readFileSync(stdout, "utf8").trim() : "";
+  rmSync(output, { recursive: true, force: true });
+  if (result.status === 0) return { path: path || null };
   const detail = result.error ? ` (${result.error.message})` : "";
   return { skip: `${agent} CLI does not resolve in the login shell ${shell}${detail}` };
 }

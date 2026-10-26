@@ -8,11 +8,13 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
+import { exitStatus } from "../exit-status.ts";
 import type { CommandResult } from "../seams.ts";
-import { CappedBuffer, maxProbeStreamOutputBytes } from "./capped-buffer.ts";
+import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
+import { type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
 import { withProbeSlot } from "./slots.ts";
-import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
+import { ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
 /** The probe command's own default bound, from the shell's start line (C-PERF-03). */
 export const probeCommandTimeoutMs = 15_000;
@@ -44,18 +46,31 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
 }
 
 function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
+  return probeCapture(args).then(
+    (capture) => spawnCaptured(command, args, capture),
+    (error: Error) => outputUnavailable(error),
+  );
+}
+
+function spawnCaptured(
+  command: string,
+  args: readonly string[],
+  capture: ProbeCapture,
+): Promise<CommandResult> {
   return new Promise((resolve) => {
+    const start = new ProbeStart(args);
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
     // controlling terminal and can leave its short-lived command's process group in the
     // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
     // A fourth pipe carries only the probe shell's start line, unless the shell closed it.
-    const child = spawn(command, [...args], {
-      detached: true,
-      stdio: ["pipe", "pipe", "pipe", "pipe"],
-    });
-    const out = new CappedBuffer();
-    const err = new CappedBuffer();
+    const child = releasedOnThrow(capture, () =>
+      spawn(command, [...args], {
+        detached: true,
+        stdio: ["pipe", "pipe", "pipe", "pipe"],
+        env: capture.env,
+      }),
+    );
     // Node exposes the extra `pipe` in `stdio` as a Readable.
     const control = child.stdio[probeControlFd] as Readable;
     let settled = false;
@@ -66,12 +81,9 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       settled = true;
       clearTimeout(timer);
       control.off("data", onControl); // a settled probe arms no command bound
-      // The result already owns the decoded text. An unresolved probe's reaper retains the
-      // child and its listeners, and through them these captures, so the chunks are dropped
-      // here rather than left for the reaper to outlive. The listeners themselves stay: a
-      // late `close` still has to find `settled` already true, which is the guard below.
-      out.release();
-      err.release();
+      // The result already owns the decoded text; every settle path drops the capture. The
+      // listeners stay: a late `close` still has to find `settled` already true.
+      capture.release();
       if (!kill) {
         resolve(result);
         return;
@@ -83,25 +95,26 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
         }),
       );
     };
-    const captured = (): [string, string] => [start.stripFromStdout(out.text()), err.text()];
+    // Read when a bound fires, before its signal: nothing written after it is kept.
+    const captured = (): [string, string] => capture.text();
     // Each phase's bound aborts the probe with its own typed timeout when it expires.
     const boundBy = (ms: number, result: () => CommandResult) => {
       const bound = setTimeout(() => settle(result(), true), ms);
       bound.unref?.();
       return bound;
     };
-    const onData = (buffer: CappedBuffer) => (chunk: Buffer) => {
-      buffer.append(chunk);
-      if (out.overflowed || err.overflowed) settle(overflow(...captured()), true);
-    };
-    const start = new ProbeStart();
-    const expectsStartLine = announcesStart(args);
     // A shell that closed the control descriptor writes the start line on stdout (start.ts).
-    // Watched before capture, so a chunk that both starts the command and overflows the cap
-    // has its bound cleared by the overflow's settle rather than armed after it.
+    // Watched before a direct command's capture, so a chunk that both starts the command and
+    // overflows the cap has its bound cleared by the overflow's settle, not armed after it.
     child.stdout.on("data", (chunk: Buffer) => onStart("stdout", chunk));
-    child.stdout.on("data", onData(out));
-    child.stderr.on("data", onData(err));
+    // The probe ends once its process has closed and its capture has ended, in either order:
+    // a command's heirs can hold its output open after it exits, as they can a pipe.
+    let exited: (() => CommandResult) | undefined;
+    const finish = () => exited && capture.ended() && settle(exited());
+    capture.watch(child, {
+      overflowed: () => settle(overflow(...captured()), true),
+      ended: finish,
+    });
     // The start line ends the login shell's launch phase: the command's own bound begins
     // there, so the user's profile load is never charged to the CLI (C-PERF-05).
     function onStart(channel: ProbeStartChannel, chunk: Buffer): void {
@@ -118,16 +131,34 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       const [stdout, stderr] = captured();
       settle({ status: null, stdout, stderr, error: mapError(e) });
     });
-    child.on("close", (code) => {
-      const [stdout, stderr] = captured();
+    child.on("close", (code, signal) => {
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
-      if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
-      else settle({ status: code, stdout, stderr });
+      if (start.expectsStartLine && !start.started) {
+        settle(shellExited(code, ...captured()));
+        return;
+      }
+      // A signal death reads as a shell reports it, 128+n.
+      exited = () => ({ status: exitStatus(code, signal), ...output(captured()) });
+      finish();
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
     let timer = boundBy(launchTimeoutMs, () => launchTimedOut(...captured()));
   });
+}
+
+function output([stdout, stderr]: [string, string]) {
+  return { stdout, stderr };
+}
+
+/** Runs `spawnIt`; a spawn that throws leaves no output directory behind. */
+function releasedOnThrow<T>(capture: ProbeCapture, spawnIt: () => T): T {
+  try {
+    return spawnIt();
+  } catch (error) {
+    capture.release();
+    throw error;
+  }
 }
 
 function mapError(error: NodeJS.ErrnoException): {
@@ -152,6 +183,12 @@ function shellExited(status: number | null, stdout: string, stderr: string): Com
   const message = `login shell exited with status ${status} before starting the probe command`;
   const error = { message, phase: "login_shell", shellStatus: status } as const;
   return { status: null, stdout, stderr, error };
+}
+
+function outputUnavailable(error: NodeJS.ErrnoException): CommandResult {
+  const message = `could not create the probe's private output pipes: ${error.message}`;
+  const code = typeof error.code === "string" ? { code: error.code } : {};
+  return { status: null, stdout: "", stderr: "", error: { message, ...code } };
 }
 
 function overflow(stdout: string, stderr: string): CommandResult {

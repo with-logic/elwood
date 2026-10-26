@@ -14,7 +14,7 @@ import {
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import { probeShellCommand } from "../../src/runtime/shell.ts";
+import { probeShellCommand, shellQuote } from "../../src/runtime/shell.ts";
 import { pollGone } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -53,16 +53,17 @@ test("C-PERF-03 the command bound starts at the start line and still kills a hun
   expect(performance.now() - started).toBeLessThan(10_000);
 });
 
-test("C-PERF-05 the start line never reaches captured stderr", async () => {
-  const result = await probe("printf warn >&2", "echo err >&2; exit 2");
-  expect(result).toEqual({ status: 2, stdout: "", stderr: "warnerr\n" });
+test("C-PERF-05 neither the start line nor the profile's stderr reaches captured stderr", async () => {
+  const result = await probe("printf FAKE-SECRET >&2", "/bin/sh -c 'echo err >&2; exit 2'");
+  expect(result).toEqual({ status: 2, stdout: "", stderr: "err\n" });
 });
 
 test("C-PERF-03 a command-bound timeout kills the command's whole process group", async () => {
   // Generous: the bound must not expire before the command has recorded its grandchild.
   setProbeTimeoutsForTests({ commandMs: 2_000, launchMs: 10_000 });
   const pidFile = join(tempDir("elwood-probe-"), "grandchild.pid");
-  const result = await probe("true", `sleep 30 & echo $! > '${pidFile}'; wait`);
+  const command = `sleep 30 & echo $! > ${shellQuote(pidFile)}; wait`;
+  const result = await probe("true", `/bin/sh -c ${shellQuote(command)}`);
   expect(result.error).toMatchObject({
     code: "ETIMEDOUT",
     message: "probe timed out after 2000 ms",
@@ -85,6 +86,15 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
     phase: "login_shell",
     shellStatus: 0,
   });
+});
+
+test("C-PERF-05 a profile that closes stdout under errexit still runs the command", async () => {
+  // bash fails the start line's stdout copy there; that must not end the shell first.
+  const rc = join(tempDir("elwood-probe-"), "errexit.rc");
+  writeFileSync(rc, "exec >&-\nset -e\n");
+  const script = probeShellCommand("echo 2.1.310")[3];
+  const result = await runProbe("/bin/bash", ["--rcfile", rc, "-i", "-c", script]);
+  expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });
 
 test.each([
