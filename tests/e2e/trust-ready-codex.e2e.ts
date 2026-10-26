@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { teardownOrKillCodex } from "./codex-ready.ts";
+import { codexLaunches, endCodexTest } from "./codex-ready.ts";
 import {
   bogusCodexModel,
   codexAuthMissing,
@@ -75,22 +75,23 @@ test("C-API-28 a Codex trust gate painted after the readiness deadline precedes 
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
   const launch = holdAfterBootComposer();
   let session: CodexSessionApi | undefined;
+  const launches = codexLaunches();
   t.after(async () => {
-    let failures: readonly unknown[] = [];
     try {
-      if (session !== undefined) failures = await teardownOrKillCodex(session);
+      // The sandbox goes only once every Codex process that could use it is confirmed gone.
+      await endCodexTest({ sessions: [session], project, sandbox, launches, failure: undefined });
     } finally {
       resetRuntimeSeamsForTests();
-      sandbox.dispose();
     }
-    if (failures.length > 0) throw new AggregateError(failures, "Codex teardown failed");
   });
-  session = await startCodex({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    model: bogusCodexModel,
-    autotrust: true,
-  });
+  session = await launches.track(
+    startCodex({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      model: bogusCodexModel,
+      autotrust: true,
+    }),
+  );
   const live = session;
   let readyAt: number | undefined;
   let readyScreen = "";
