@@ -1,12 +1,12 @@
 /**
  * One Codex session's `setModel` config transaction: the snapshot, the picker flow, and the
  * compare-and-swap restore of THAT session's config.toml, with the restore warnings.
- * Implements PRD §5.3 setModel restore and C-CODEX-14.
+ * Implements PRD §5.3 setModel restore, C-CODEX-14, and C-CODEX-25.
  */
 
 import { isCallerInputIntervention } from "../../core/models/intervention.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
-import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
+import { currentCodexConfig, restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { codexRestoreFailedWarning, codexRestoreSkippedWarning } from "./warnings.ts";
 
@@ -39,7 +39,7 @@ export function switchCodexModel(
     restore: (snapshot) => {
       // Raw input that took over the picker revokes restore authority.
       const outcome = isCallerInputIntervention(signal.reason)
-        ? snapshotCodexConfig(path) === snapshot
+        ? currentCodexConfig(path) === snapshot
           ? "unchanged"
           : "interrupted"
         : restoreCodexConfig({ path, snapshot });
