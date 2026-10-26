@@ -1054,13 +1054,39 @@ The acceptance is persisted in Claude's global config as
 `bypassPermissionsModeAccepted` (the binary describes it as "Whether the user has
 accepted the bypass permissions mode dialog"), and `--bg` refuses bypass mode
 until it has been accepted once interactively, so the dialog is at most
-once-per-machine. **Empirically, on 2.1.268 (Claude Max account, macOS) the
-dialog did NOT render at all** — neither through Elwood's `--permission-mode
-bypassPermissions` launch nor with a raw `--dangerously-skip-permissions`
-launch — and no `bypassPermissionsModeAccepted` key existed anywhere under
-`~/.claude*`; the session went straight to the composer with the persistent
-`⏵⏵ bypass permissions on (shift+tab to cycle)` footer. Whether it appears is
-therefore version/account-gated, and Elwood must be correct in BOTH states:
+once-per-machine. On 2.1.268 (Claude Max account, macOS) the dialog did not render
+at all, through Elwood's `--permission-mode bypassPermissions` launch or a raw
+`--dangerously-skip-permissions` one, and no `bypassPermissionsModeAccepted` key
+existed anywhere under `~/.claude*`. The likely reason is a user setting, not the
+version or account: the developer's `~/.claude/settings.json` sets
+`"skipDangerousModePermissionPrompt": true`. On 2.1.310, in a config that has never
+accepted the dialog, that setting alone decides whether it renders: in an empty
+`CLAUDE_CONFIG_DIR` (no settings, never accepted) the dialog renders, and adding the
+setting there sends the session straight to the composer. The 2.1.310 copy
+is longer and opens with the cursor on the decline
+(`tests/fixtures/claude-2.1.310/bypass-permissions-{100,200}.txt`):
+
+```
+WARNING: Claude Code running in Bypass Permissions mode
+
+In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.
+This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.
+
+By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.
+
+https://code.claude.com/docs/en/security
+
+❯ No, exit
+  Yes, I accept
+
+Enter to confirm · Esc to cancel
+```
+
+Until the native-copy pattern accepted the sandbox sentence and the link, Elwood
+held this dialog as unrecognized prose and the session stayed `blocked` under
+`autotrust`. The suite never saw it because the developer's setting hid it, so
+whether it appears depends on the user's settings and Elwood must be correct in
+BOTH states:
 
 - The dialog is an allowlisted trust prompt (`bypass_permissions`), answered
   under `autotrust` by the same header-anchored, numbered-or-cursor machinery as

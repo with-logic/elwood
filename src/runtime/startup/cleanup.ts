@@ -53,20 +53,20 @@ export type UnconfirmedStartupPtyCleanup = {
  * launch minted is removed on ANY failure before the session takes ownership — a
  * failed state/runtime write, bridge start, PTY start, or guarded post-spawn step
  * otherwise leaks a socket under `/tmp/elwood-*` (§9.1). It removes only THIS launch's
- * own file, never the shared stable home a concurrent launch may still own; the home is
- * deterministic, so the session's next start/resume/teardown collects any empty
- * leftover. On success ownership transfers to the returned session (teardown removes the
- * whole home). The cleanup is contained so it never replaces the original startup error.
+ * own file, and the stable home only when that leaves it empty, so a home a concurrent
+ * launch's socket is in stays (§8.1). On success ownership transfers to the returned
+ * session (teardown removes the whole home; its bridge's stop releases its socket). The
+ * cleanup is contained so it never replaces the original startup error.
  */
 export async function withSocketHomeCleanup<T>(
-  removeOwnSocketFile: () => void,
+  releaseSocket: () => void,
   build: () => Promise<T>,
 ): Promise<T> {
   try {
     return await build();
   } catch (error) {
     try {
-      removeOwnSocketFile();
+      releaseSocket();
     } catch {
       // Secondary: the original startup error is the one that rejects.
     }

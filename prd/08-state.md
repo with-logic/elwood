@@ -23,7 +23,13 @@ itself is never made. One at or under `cwd`, the default `.elwood/` or a
 caller-provided `stateDir`, is made only below it, one directory at a time,
 however either path is spelled (in another letter case on a case-insensitive
 volume, or through a symlink). A caller-provided `stateDir` elsewhere is
-created with its missing parents. The `sessions` directory, each session
+created with its missing parents, and `cwd` is checked again once it, its
+`sessions` directory, and the new session's directory are made: if `cwd` was
+removed meanwhile, every directory that setup made is removed again, except one
+another start has put its session directory in, and the start fails, with the
+`cleanupErrorCode` of any directory that could not be removed. A start that
+finds a directory removed under it by such a start makes it again while its own
+`cwd` exists. The `sessions` directory, each session
 directory, and every state file are made only inside their existing parent: a
 missing parent fails the write with `ENOENT`. So a removed worktree, or a
 removed state directory, is never recreated by a start, a resume, or a running
@@ -56,12 +62,18 @@ reused; the socket path is a per-launch runtime value, embedded only in the gene
 private bridge script and never in the session record, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
-socket can leak undiscoverably across restart/resume cycles. Across separate Elwood
+socket can leak undiscoverably across restart/resume cycles. A launch that ends
+without teardown — `stop`, `kill`, the agent exiting, or a failed start — removes
+its own socket file and then the socket home if that left it empty, so a session
+that is never torn down leaves nothing in the OS temp dir; a home that still holds
+another launch's socket is kept, and the session's next start or resume
+recreates the home. Across separate Elwood
 processes, running two live sessions with the same full identity (`stateDir`,
 adapter, and session id) is unsupported: the processes share files and socket
 homes without a cross-process ownership protocol. Within one process, overlapping
 resume and cleanup follow the successor protocol below. A failed start removes
-only its own socket file, preserving any overlapping launch. `stateDir`
+only its own socket file (and the home only once it is empty), preserving any
+overlapping launch. `stateDir`
 length MUST NOT constrain whether a session can start.
 
 Within one Elwood process, a validated resume attempt revokes the prior launch's
@@ -171,7 +183,8 @@ core state must not become a transcript store.
 
 ### 8.4 Cleanup
 
-Runtime files needed for resume/debugging are kept by default after `stop`.
+Runtime files needed for resume/debugging are kept by default after `stop`. The
+socket home is not among them: `stop` removes it once it is empty (§8.1).
 Loop definitions are likewise kept after `stop`, unexpected exit, or process
 failure. `kill` permanently removes all loop definitions while preserving the
 ordinary session record; a later resume has no loops.
