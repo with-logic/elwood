@@ -65,7 +65,10 @@ export async function startClaudeWithId(
   await assertLaunchDirectory("claude", options.cwd);
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
-  const warning = await preflightClaude(strict, options.autoupdate ?? false);
+  // A probe that fails because `cwd` went or was replaced fails as that, not a missing CLI.
+  const warning = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () =>
+    preflightClaude(options.cwd, strict, options.autoupdate ?? false),
+  );
   const session = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,

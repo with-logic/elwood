@@ -41,7 +41,7 @@ function closingShell(profile = ""): string {
 test("C-PERF-05 a login shell that closed descriptor 3 still passes Claude's version probe", async () => {
   setPlatformForTests("darwin");
   vi.spyOn(shell, "userShell").mockReturnValue(closingShell());
-  await expect(preflightClaude(true)).resolves.toBeUndefined();
+  await expect(preflightClaude(process.cwd(), true)).resolves.toBeUndefined();
 });
 
 test.each([

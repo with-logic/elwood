@@ -88,12 +88,16 @@ test("C-PERF-02 a peer-owned attempt invalidates the Codex capability probe too"
   }));
   try {
     // Prime the capability cache from the pre-update CLI, as a first launch would.
-    expect(await detectCodexCliCapabilities()).toMatchObject({ supportsHookTrustBypass: true });
+    expect(await detectCodexCliCapabilities(process.cwd())).toMatchObject({
+      supportsHookTrustBypass: true,
+    });
     // The peer's update changes what the installed CLI supports.
     helpReply = "";
-    await preflightCodex(false, true);
+    await preflightCodex(process.cwd(), false, true);
     // A stale capability here would launch Codex with flags the new binary rejects.
-    expect(await detectCodexCliCapabilities()).toMatchObject({ supportsHookTrustBypass: false });
+    expect(await detectCodexCliCapabilities(process.cwd())).toMatchObject({
+      supportsHookTrustBypass: false,
+    });
   } finally {
     release.resolve();
     await owner;

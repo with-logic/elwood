@@ -10,36 +10,72 @@ import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 
 let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
 
-/** The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. */
+/**
+ * The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. It is `ok`
+ * unless an update command ran and failed, or was skipped for another updater.
+ */
 export type AutoupdateOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: unknown };
 
-// The settled autoupdate outcome per adapter. Every `autoupdate: true` caller awaits the SAME
+/** One launch's update: check that its launch directory resolves the CLI, then update it. */
+export type UpdateSteps = {
+  /** Rejects when the CLI is missing, or its check fails, in the launch's directory. */
+  readonly verify: () => Promise<unknown>;
+  readonly update: () => Promise<void>;
+};
+
+/** A settled attempt; `updated` is false when the triggering launch's CLI check failed. */
+type Attempt = { readonly updated: boolean; readonly outcome: AutoupdateOutcome };
+
+// The settled autoupdate attempt per adapter. Every `autoupdate: true` caller awaits the SAME
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
 // `{ok:false}` value, NOT a rejected promise — so one failed update can neither reject the other
 // concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Best-effort → not retried.
-const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
+const autoupdates = new Map<UpdateAdapter, Promise<Attempt>>();
 
 /**
  * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
- * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
- * version cache whether this process owned the update or waited for a peer.
+ * in-flight attempt, so it runs in the launch directory of the start or resume that triggers it.
+ * NEVER rejects — a throwing update resolves to `{ok:false, error}` so the caller can contain it
+ * (warn + continue). The cross-process coordinator invalidates the local version cache whether
+ * this process owned the update or waited for a peer.
+ *
+ * A trigger whose CLI check fails runs no update command, so it is not an attempt: it reports
+ * no failure, it is forgotten, and each launch that shared it tries again, in its own directory.
  */
 export function cachedAutoupdate(
   adapter: UpdateAdapter,
-  runUpdate: () => Promise<void>,
+  steps: UpdateSteps,
   afterAttempt?: () => void,
 ): Promise<AutoupdateOutcome> {
   const existing = autoupdates.get(adapter);
-  if (existing) return existing;
-  const pending = coordinateUpdate(adapter, runUpdate).then(
-    () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
-    (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
-  );
+  if (existing) {
+    return existing.then((attempt) =>
+      attempt.updated ? attempt.outcome : cachedAutoupdate(adapter, steps, afterAttempt),
+    );
+  }
+  let verifying = false;
+  // The check runs only after this process owns the cross-process lease. Its error still reaches
+  // the coordinator, which keeps the lease while a probe group it could not stop is alive.
+  const run = async () => {
+    verifying = true;
+    await steps.verify();
+    verifying = false;
+    await steps.update();
+  };
+  const pending = coordinateUpdate(adapter, run)
+    .then(
+      () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
+      (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
+    )
+    .then((outcome): Attempt => {
+      if (!verifying) return { updated: true, outcome };
+      autoupdates.delete(adapter); // before any sharer retries
+      return { updated: false, outcome: { ok: true } };
+    });
   autoupdates.set(adapter, pending);
-  return pending;
+  return pending.then((attempt) => attempt.outcome);
 }
 
 function finalizeAutoupdate(
@@ -62,25 +98,28 @@ function finalizeAutoupdate(
 const readSucceeded = (result: CommandResult): boolean =>
   result.status === 0 && result.error === undefined;
 
-// The `--version` read per adapter. Concurrent first spawns share the in-flight PROMISE, so N of
-// them start ONE subprocess; once it settles, only a successful read is kept, as a value.
+// The `--version` read per adapter, keyed by the launch directory its probe shell starts in: a
+// per-directory tool manager can resolve a different binary there (C-PTY-08). Concurrent first
+// spawns share the in-flight PROMISE, so N of them start ONE subprocess; once it settles, only a
+// successful read is kept, as a value, for the most recent directory.
 const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
   claude: createProbeCache(1, readSucceeded),
   codex: createProbeCache(1, readSucceeded),
 };
 
 /**
- * Reads the adapter's `--version` once per process for as long as a read succeeds. Concurrent
- * callers share the single in-flight read and its outcome; later callers reuse a successful
- * result. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
- * error), is not retained, so the next caller after it settles reads again (C-LIFE-11).
- * Invalidated after an autoupdate so the post-update version is re-read.
+ * Reads the adapter's `--version` in `cwd`, and reuses a successful read there while it is the
+ * most recently read directory. Concurrent callers for one directory share the single in-flight
+ * read and its outcome. A read that rejects, or resolves with a failed probe (nonzero exit,
+ * timeout, spawn error), is not retained, so the next caller after it settles reads again
+ * (C-LIFE-11). Invalidated after an autoupdate so the post-update version is re-read.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
+  cwd: string,
   read: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
-  return versionReads[adapter].get(adapter, read);
+  return versionReads[adapter].get(cwd, read);
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {

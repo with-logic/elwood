@@ -33,8 +33,8 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
     scripts.push(args.at(-1) ?? "");
     return { status: 0, stdout: "codex-cli 0.164.0", stderr: "" };
   });
-  await preflightCodex(false, true);
-  await detectCodexCliCapabilities();
+  await preflightCodex(process.cwd(), false, true);
+  await detectCodexCliCapabilities(process.cwd());
   expect(scripts).toEqual([
     probeScript("codex --version"),
     probeScript("codex update"),
@@ -58,7 +58,7 @@ test("C-PERF-05 a login shell that fails before `codex update` reports login_she
         }
       : { status: 0, stdout: "codex-cli 0.164.0", stderr: "" },
   );
-  const warning = await preflightCodex(false, true);
+  const warning = await preflightCodex(process.cwd(), false, true);
   expect(warning).toMatchObject({
     code: "agent_update_failed",
     agent: "codex",

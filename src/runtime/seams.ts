@@ -22,6 +22,9 @@ export type CommandResult = {
   } & ProbeCleanup;
 };
 
+/** Where a probe runs: `cwd` defaults to Elwood's own working directory. */
+export type CommandOptions = { readonly cwd?: string };
+
 /**
  * Runs a subprocess and returns its result. Production is async (`spawn`) so a
  * roster of concurrent spawns never serializes on the host event loop; test
@@ -30,6 +33,7 @@ export type CommandResult = {
 export type CommandRunner = (
   command: string,
   args: readonly string[],
+  options?: CommandOptions,
 ) => CommandResult | Promise<CommandResult>;
 
 let ptyFactory: PtyFactory | null = null;
