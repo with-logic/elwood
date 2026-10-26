@@ -31,10 +31,11 @@ export type MaterializedImages = {
 type TempDir = { readonly path: string; readonly remove: () => Promise<void> };
 
 /**
- * Makes the temp dir synchronously and watches `signal` from that same tick, so an abort
- * at any later point removes the dir before the code that aborted resumes. A write still
- * in flight then lands in a removed dir and fails. A removal that fails at abort stays
- * for `remove` to retry.
+ * Makes the temp dir synchronously and watches `signal` from that same tick until `remove`
+ * has removed it, so an abort at any point before then removes the dir before the code
+ * that aborted resumes. A write still in flight either fails or finishes into the removed
+ * dir; either way nothing stays on disk. A removal that fails at abort stays for `remove`
+ * to retry.
  */
 function makeTempDir(signal: AbortSignal | undefined): TempDir {
   const path = mkdtempSync(join(tmpdir(), "elwood-image-"));
@@ -51,10 +52,12 @@ function makeTempDir(signal: AbortSignal | undefined): TempDir {
   return {
     path,
     remove: async () => {
+      if (present) {
+        await rm(path, { recursive: true, force: true });
+        present = false; // cleared only on success → a transient failure stays retryable
+      }
+      // Only now: an abort while `rm` is pending still removes the dir synchronously.
       signal?.removeEventListener("abort", removeNow);
-      if (!present) return;
-      await rm(path, { recursive: true, force: true });
-      present = false; // cleared only on success → a transient failure stays retryable
     },
   };
 }

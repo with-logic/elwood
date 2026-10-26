@@ -24,21 +24,20 @@ afterEach(() => {
   vi.resetModules();
 });
 
-/** `node:fs/promises` with each `writeFile` held until `release`, recording its path. */
-function holdWrites() {
+/** `node:fs/promises` with each `name` call held until `release`, recording its path. */
+function hold(name: "writeFile" | "rm") {
   const held = { path: "", release: () => {} };
   const gate = new Promise<void>((resolve) => {
     held.release = resolve;
   });
   vi.doMock("node:fs/promises", async () => {
     const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-    return {
-      ...actual,
-      writeFile: (path: string, data: Uint8Array) => {
-        held.path = path;
-        return gate.then(() => actual.writeFile(path, data));
-      },
+    const original = actual[name] as (path: string, ...rest: unknown[]) => Promise<void>;
+    const heldCall = (path: string, ...rest: unknown[]) => {
+      held.path = path;
+      return gate.then(() => original(path, ...rest));
     };
+    return { ...actual, [name]: heldCall };
   });
   return held;
 }
@@ -48,34 +47,64 @@ describe("image temps on abort (C-API-44)", () => {
     const controller = new AbortController();
     let file = "";
     let release = () => {};
-    const driver: AttachDriver = (paths) => {
+    const driver: AttachDriver = (paths, signal) => {
       file = paths[0] as string;
+      if (signal.aborted) return Promise.resolve(); // only when an assertion below failed
       return new Promise((resolve) => {
         release = resolve;
       });
     };
     const done = enqueueSubmission(images, driver, (attach) => attach!(controller.signal));
-    await expect.poll(() => file).not.toBe("");
-    expect(existsSync(file)).toBe(true);
-    controller.abort();
-    expect(existsSync(dirname(file))).toBe(false); // gone synchronously, inside abort()
-    release();
-    await done;
+    try {
+      await expect.poll(() => file).not.toBe("");
+      expect(existsSync(file)).toBe(true);
+      controller.abort();
+      expect(existsSync(dirname(file))).toBe(false); // gone synchronously, inside abort()
+    } finally {
+      controller.abort();
+      release();
+      await done.catch(() => undefined);
+    }
   });
 
   test("C-API-44 an abort while a write is in flight removes the temp dir at once", async () => {
-    const held = holdWrites();
+    const held = hold("writeFile");
     const { materializeImages: mocked } = await import("../../src/core/images/materialize.ts");
     const controller = new AbortController();
     const writing = mocked(images, controller.signal);
-    writing.catch(() => undefined); // asserted below, once the held write lands
-    await expect.poll(() => held.path).not.toBe("");
-    const dir = dirname(held.path);
-    expect(existsSync(dir)).toBe(true); // the write has not landed yet
-    controller.abort();
-    expect(existsSync(dir)).toBe(false); // gone synchronously, inside abort()
-    held.release(); // the held write now lands in a removed dir
+    const settled = writing.then(
+      (materialized) => materialized,
+      () => undefined,
+    );
+    try {
+      await expect.poll(() => held.path).not.toBe("");
+      expect(existsSync(dirname(held.path))).toBe(true); // the write has not landed yet
+      controller.abort();
+      expect(existsSync(dirname(held.path))).toBe(false); // gone synchronously, inside abort()
+    } finally {
+      controller.abort();
+      held.release(); // the held write now lands in a removed dir
+      await (await settled)?.cleanup();
+    }
     await expect(writing).rejects.toMatchObject({ code: "image_attach_failed" });
+    expect(existsSync(dirname(held.path))).toBe(false);
+  });
+
+  test("C-API-44 an abort while cleanup's removal is pending still removes the dir at once", async () => {
+    const held = hold("rm");
+    const { materializeImages: mocked } = await import("../../src/core/images/materialize.ts");
+    const controller = new AbortController();
+    const { paths, cleanup } = await mocked(images, controller.signal);
+    const dir = dirname(paths[0] as string);
+    const removing = cleanup();
+    try {
+      await expect.poll(() => held.path).toBe(dir);
+      controller.abort();
+      expect(existsSync(dir)).toBe(false); // gone synchronously, inside abort()
+    } finally {
+      held.release();
+      await removing;
+    }
     expect(existsSync(dir)).toBe(false);
   });
 

@@ -79,15 +79,19 @@ for (const { agent, helpers, start, attached } of adapters) {
     ] as const)(`C-API-44 ${agent} %s removes the in-flight attach's temp image before it resolves`, async (verb) => {
       helpers.installFakes();
       const session = await start(helpers.tempDir());
-      await expect.poll(() => session.status).toBe("ready");
-      const sent = session.sendMessage("look", { images: [{ data: png, format: "png" }] });
-      sent.catch(() => undefined); // asserted below, after the shutdown
-      await expect.poll(attached).not.toBe("");
-      const file = attached();
-      expect(existsSync(file)).toBe(true); // the attach is still waiting for its chip
-      await session[verb]();
-      expect(existsSync(dirname(file))).toBe(false);
-      await expect(sent).rejects.toMatchObject({ code: "session_not_running" });
+      try {
+        await expect.poll(() => session.status).toBe("ready");
+        const sent = session.sendMessage("look", { images: [{ data: png, format: "png" }] });
+        sent.catch(() => undefined); // asserted below, after the shutdown
+        await expect.poll(attached).not.toBe("");
+        const file = attached();
+        expect(existsSync(file)).toBe(true); // the attach is still waiting for its chip
+        await session[verb]();
+        expect(existsSync(dirname(file))).toBe(false);
+        await expect(sent).rejects.toMatchObject({ code: "session_not_running" });
+      } finally {
+        await session.teardown(); // a no-op after the verb; frees the session if a check failed
+      }
     });
   });
 }
