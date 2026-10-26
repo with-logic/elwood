@@ -86,7 +86,7 @@ function refusalReason(refusal: Refusal): string {
   }
 }
 
-/** The launch a guard script stops: a session's PTY, or a probe, which has no terminal. */
+/** The launch a guard script stops: a session, in its PTY, or a probe, which has no terminal. */
 type GuardedLaunch = "session" | "probe";
 
 /**
@@ -94,8 +94,8 @@ type GuardedLaunch = "session" | "probe";
  * `homeGuardExitCode`. Not on stderr, which a startup file can redirect. A session's shell
  * writes to its terminal, `/dev/tty`, which its PTY captures however the startup files
  * redirected stdin, stdout, or stderr, and falls back to stdout only if it cannot open it. A
- * probe has no terminal of its own (one opened there could be the user's), so it writes to the
- * stdout the probe runner captures.
+ * probe runs in a session of its own, with no terminal (`runProbe`), so it writes to the stdout
+ * the probe runner captures.
  */
 function refuse(refusal: Refusal, launch: GuardedLaunch): string {
   const line = shellQuote(`${homeGuardStopMarker}: ${refusalReason(refusal)}`);

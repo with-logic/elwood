@@ -49,7 +49,7 @@ test("C-E2E-24 a guarded probe still announces its start, and never writes to a 
   guardWith(":");
   expect(announcesStart(probeShellCommand("codex --version"))).toBe(true);
   expect(announcesStart(probeShellStatus("command -v codex"))).toBe(true);
-  // A probe inherits Elwood's own terminal, which may be the user's.
+  // A probe runs in a session of its own, with no terminal to write to.
   vi.stubEnv(homeGuardHomesKey, "not a list");
   expect(loginShellCommand("codex")[3]).toContain("/dev/tty");
   expect(probeShellCommand("codex --version")[3]).not.toContain("/dev/tty");
