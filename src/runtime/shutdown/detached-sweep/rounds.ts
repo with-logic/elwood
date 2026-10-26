@@ -36,7 +36,10 @@ export type SweepOps = {
 export type SweepState = {
   /** Groups a SIGSTOP returned for, the leader's included: signaled, not yet held. */
   readonly signaledGroupIds: Set<number>;
-  /** The descendant groups among them, in the order signaled: SIGKILLed in reverse. */
+  /**
+   * The descendant groups among them, in the order signaled: SIGKILLed in reverse, but
+   * those the latest read shows holding Codex's daemon, which are resumed (`kill.ts`).
+   */
   readonly signaledDescendantGroupIds: number[];
   /** Pids the previous read showed stopped inside a signaled group. */
   stoppedPidsLastRead: ReadonlySet<number>;

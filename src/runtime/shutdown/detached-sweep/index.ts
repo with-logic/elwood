@@ -28,7 +28,12 @@ import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { type FailureReason, type SweepFailure, SweepFailures } from "./failures.ts";
-import { confirmedGone, confirmLiveGroups, killSignaledGroups, recordFailedRead } from "./kill.ts";
+import {
+  confirmedGone,
+  confirmLiveGroups,
+  killOrResumeSignaledGroups,
+  recordFailedRead,
+} from "./kill.ts";
 import {
   newSweepState,
   restopEscapedGroups,
@@ -80,7 +85,7 @@ export async function sweepDetachedGroups(
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
   await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
-  await killSignaledGroups(ops, state, deadline);
+  await killOrResumeSignaledGroups(ops, state, deadline);
   for (const [group, error] of state.unstoppable) {
     if (state.live.has(group))
       state.failures.record("could not stop a live descendant group", error, [group]);
