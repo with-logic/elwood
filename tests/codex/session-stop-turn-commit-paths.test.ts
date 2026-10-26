@@ -78,7 +78,7 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
   expect(ptys[0]!.killSignals).toEqual(["SIGTERM"]);
 });
 
-/** Records the process-group SIGSTOPs the detached sweep sends, on a quiet fake tree. */
+/** Records the group SIGSTOPs and table reads shutdown sends, on a quiet fake tree. */
 function groupStops(): string[] {
   const quiet = quietProcessTree();
   const stops: string[] = [];
@@ -88,13 +88,18 @@ function groupStops(): string[] {
       stops.push(`SIGSTOP -${pgid}`);
       quiet.stopGroup(pgid);
     },
+    listProcesses: (timeoutMs, scope) => {
+      stops.push("read");
+      return quiet.listProcesses(timeoutMs, scope);
+    },
     killGroup: (pgid) => void reapedGroups.push(pgid),
   });
   return stops;
 }
 
-// Without a wait, the first signal goes out in the same tick as the call: SIGTERM for a
-// stop, and for a kill the SIGSTOP of the CLI's group that starts the detached sweep.
+// Without a wait, shutdown starts in the same tick as the call: for a stop, the table read
+// that records the CLI's descendants, which the SIGTERM follows at once (§5.3); for a
+// kill, the SIGSTOP of the CLI's group that starts the detached sweep, and its first read.
 test.each([
   ["kill forces termination", "kill", true, {}],
   ["a Stop without a transcript path leaves nothing to read", "stop", false, {}],
@@ -112,8 +117,10 @@ test.each([
   await stopHook(session, cwd, withPath ? path : null);
   const shutdown = tracked(session[verb]());
   expect([...ptys[0]!.killSignals, ...stops]).toEqual(
-    verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`] : ["SIGTERM"],
+    verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`, "read"] : ["read"],
   );
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
   await shutdown;
   expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
 });

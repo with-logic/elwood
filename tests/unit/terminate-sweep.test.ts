@@ -11,7 +11,7 @@ import { describe, expect, test } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
-import { harness, sweepFailure, swept, timeouts } from "../helpers/termination-harness.ts";
+import { harness, sweepFailure, swept, timeouts, watched } from "../helpers/termination-harness.ts";
 
 describe("C-LIFE-10 terminatePty detached sweep", () => {
   test("kill sweeps detached descendants before it SIGKILLs the live leader", async () => {
@@ -20,16 +20,17 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     expect(calls).toEqual([...swept, "signal SIGKILL", "unsubscribe", "reap"]);
   });
 
-  test("a leader that exits on SIGTERM is not swept", async () => {
-    const { pty, reaper, calls } = harness({ exitsOn: ["SIGTERM"] });
-    await terminatePty(pty, "SIGTERM", reaper, timeouts);
-    expect(calls).toEqual(["signal SIGTERM", "unsubscribe", "reap"]);
-  });
-
   test("an ignored SIGTERM is swept before the escalating SIGKILL", async () => {
     const { pty, reaper, calls } = harness({ exitsOn: ["SIGKILL"] });
     await terminatePty(pty, "SIGTERM", reaper, timeouts);
-    expect(calls).toEqual(["signal SIGTERM", ...swept, "signal SIGKILL", "unsubscribe", "reap"]);
+    expect(calls).toEqual([
+      ...watched,
+      ...swept,
+      "signal SIGKILL",
+      "unsubscribe",
+      "survivors (leader gone: true)",
+      "reap",
+    ]);
   });
 
   test("an exit during the sweep is observed, and no SIGKILL goes to the retired pid", async () => {
@@ -39,10 +40,11 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     const { pty, reaper, calls } = harness({ exitDuringSweep: true });
     await expect(terminatePty(pty, "SIGTERM", reaper, timeouts)).resolves.toBeUndefined();
     expect(calls).toEqual([
-      "signal SIGTERM",
+      ...watched,
       "sweep (exited: false)",
       "swept (exited: true)",
       "unsubscribe",
+      "survivors (leader gone: true)",
       "reap",
     ]);
   });

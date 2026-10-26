@@ -1,7 +1,8 @@
 /**
  * A scripted PTY and session reaper for the `terminatePty` tests (PRD §5.3 and §9.4,
- * C-LIFE-10): the fake leader exits on the signals a script names, or during the sweep,
- * and every signal, sweep, and reap is logged. No real process is signaled.
+ * C-LIFE-10): the fake leader exits on the signals a script names, or during the sweep
+ * or the survivor watch's first read, and every signal, sweep, watch step, and reap is
+ * logged. No real process is signaled.
  */
 
 import type { PtyExit, PtyProcess } from "../../src/pty/types.ts";
@@ -26,7 +27,10 @@ type Script = {
   readonly exitsOn?: readonly Signal[];
   /** Exit while the sweep is in progress (models a leader dying mid-sweep). */
   readonly exitDuringSweep?: boolean;
+  /** Exit while the survivor watch's first read is in progress, before any signal. */
+  readonly exitDuringFirstRead?: boolean;
   readonly sweepError?: unknown;
+  readonly survivorError?: unknown;
   readonly killError?: Error;
 };
 
@@ -59,8 +63,23 @@ export function harness(script: Script) {
         ? Promise.resolve()
         : Promise.reject(script.sweepError);
     },
+    watchSurvivors: (leaderExited: () => boolean) => {
+      calls.push("watch");
+      return {
+        firstRead: Promise.resolve().then(() => {
+          calls.push("first read");
+          if (script.exitDuringFirstRead) onExit?.({ exitCode: 0 });
+        }),
+        finish: () => {
+          calls.push(`survivors (leader gone: ${leaderExited()})`);
+          const error = script.survivorError;
+          return error === undefined ? Promise.resolve() : Promise.reject(error);
+        },
+      };
+    },
   };
   return { pty, reaper, calls };
 }
 
 export const swept = ["sweep (exited: false)", "swept (exited: false)"];
+export const watched = ["watch", "first read", "signal SIGTERM"];

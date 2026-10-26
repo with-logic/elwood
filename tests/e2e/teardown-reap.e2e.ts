@@ -5,8 +5,9 @@
  * spawned under this test process must be gone. Claude and Codex start every hook
  * command with `setsid()`, so the hook tests also prove
  * that a hook still running when Elwood kills the CLI — in its own session and group —
- * is reaped: on Claude's `teardown()`, on a Claude `stop()` whose SessionEnd hook
- * outlasts the graceful window, and on Codex's `teardown()`.
+ * is reaped: on Claude's `teardown()`, on a Claude `stop()` during a SessionStart hook,
+ * on a Claude `stop()` whose SessionEnd hook outlasts the graceful window, and on
+ * Codex's `teardown()`.
  */
 
 import assert from "node:assert/strict";
@@ -85,6 +86,22 @@ test("C-LIFE-10 teardown reaps a Claude hook running in its own process group", 
     const hookPid = await waitFor(() => readHookPid(pidFile), "SessionStart hook pid", 60_000);
     assert.deepEqual(await hookShape(hookPid, leaders), detached);
     await session.teardown();
+    await waitFor(() => (isReaped(hookPid) ? true : undefined), `hook ${hookPid} reaped`, 10_000);
+  } finally {
+    await cleanup(session);
+    killGroupsWhoseCommandHas(marker);
+  }
+});
+
+test("C-LIFE-10 stop reaps a SessionStart hook running in its own process group", {
+  skip: skipIf(skipReason("claude")),
+  timeout: 180_000,
+}, async () => {
+  const { session, leaders, pidFile, marker } = await startWithSlowHook("SessionStart");
+  try {
+    const hookPid = await waitFor(() => readHookPid(pidFile), "SessionStart hook pid", 60_000);
+    assert.deepEqual(await hookShape(hookPid, leaders), detached);
+    await session.stop();
     await waitFor(() => (isReaped(hookPid) ? true : undefined), `hook ${hookPid} reaped`, 10_000);
   } finally {
     await cleanup(session);

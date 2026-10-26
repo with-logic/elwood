@@ -55,6 +55,14 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
+- `stop()` no longer leaves running the detached processes a CLI's own graceful
+  exit leaves behind. Codex exits on SIGTERM within a fraction of a second, but
+  leaves the shell it starts to snapshot your shell environment, and whatever
+  your profile started from it, running under PID 1. `stop()` now records the
+  session's detached descendants, by pid and start time, from just before its
+  SIGTERM until the CLI exits, then kills those still running, never Codex's
+  shared app-server daemon. It rejects with `termination_failed` when it can't
+  confirm them gone, as `kill()` already does.
 - `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
   app-server daemon, its updater loop, or what the daemon started, such as plugin
   MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex

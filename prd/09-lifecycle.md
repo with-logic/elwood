@@ -246,7 +246,8 @@ exit is awaited within a bounded window, and the leader's process group is SIGKI
 every path, even if the PTY signal throws. That kill is what stops a CLI-spawned
 descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
 the leader exits. A leader that ignores the SIGTERM has its detached descendants
-reaped before the escalating SIGKILL, as §5.3 specifies. The original startup error is
+reaped before the escalating SIGKILL, and the ones a leader leaves when it exits on the
+SIGTERM are reaped after, as for `stop()` (§5.3). The original startup error is
 preserved; a cleanup or reap failure is secondary and never replaces it. When that PTY termination or group reap cannot be
 confirmed, part of the CLI's process tree may still be running, and a typed startup
 error keeps its code and message and gains two details. `cleanupErrorCode` is
@@ -358,6 +359,7 @@ sticky: because signal ownership is separate from the in-flight promise, a later
 `stop()`/`kill()`/`teardown()` after a failed one runs a fresh attempt that RETRIES
 the reap, runtime cleanup, and file removal — without re-signaling the PTY — rather
 than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
-exception is a detached-descendant walk that could not complete (§5.3): with the
-leader gone it cannot be retried, so every later call keeps rejecting for it. Each
+exception is a detached-descendant walk, or a `stop()`'s reap of the detached
+descendants its leader's exit left, that could not complete (§5.3): with the leader
+gone it cannot be retried, so every later call keeps rejecting for it. Each
 caller still observes its own operation's success or typed failure.

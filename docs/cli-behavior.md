@@ -1415,10 +1415,29 @@ slowing the PTY's own interactive login shell, and with that profile:
 
 Claude 2.1.310 under the same profile started no shell that sources `.zshrc`
 non-interactively, and nothing survived. So the premise behind the graceful-stop
-exception, that the CLI's own SIGTERM shutdown ends its detached descendants, holds
-for Claude's hooks but not for this Codex shell: a `stop()` during the snapshot
-leaves it running. `tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open
-this way and checks that `teardown()` reaps it.
+exception, that the CLI's own SIGTERM shutdown ends its detached descendants, held
+for Claude's hooks but not for this Codex shell.
+
+## `stop()` reaps what a graceful exit leaves (2026-10-26)
+
+`stop()` no longer relies on that premise. Before its SIGTERM it reads the process
+table, and it reads it again, back to back, until the leader's exit, recording every
+detached descendant by pid and start time (`ps` `lstart`, in the C locale and UTC, so
+it reads the same every time). After the exit it SIGSTOPs and SIGKILLs the recorded
+processes still alive, by the walk's rules, never Codex's shared daemon. Elwood records
+the snapshot shell well before a `stop()` can land: the shell starts seconds after
+launch, and Codex takes about 190 ms to exit after the SIGTERM, a window of several reads.
+
+Measured 2026-10-26 with Codex 0.164.0 and the slow profile above: on `origin/main` the
+snapshot shell was still running 10 s after `stop()` resolved, and its `sleep` with it.
+With the record and the reap, both were gone and nothing from the profile was left. With
+the reap disabled (the watch told the leader never exited), the shell survived again.
+Claude 2.1.310 ends a slow `SessionStart` hook itself on SIGTERM, so on `origin/main` a
+`stop()` during one already left nothing; the record and reap keep it that way.
+
+`tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open this way and checks that
+`teardown()`, `kill()`, and `stop()` each reap it. `tests/e2e/teardown-reap.e2e.ts`
+checks that a Claude `stop()` during a slow `SessionStart` hook leaves nothing.
 
 ## Codex 0.164 starts an app-server daemon per `CODEX_HOME` (2026-10-25)
 

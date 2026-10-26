@@ -13,10 +13,11 @@ import {
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
+import type { SurvivorWatch } from "./detached-sweep/survivors.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
-type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached">;
+type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached" | "watchSurvivors">;
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
@@ -32,12 +33,14 @@ const POST_EXIT_REAP_RETRY_MS = 25;
  *
  * Before the SIGKILL — the initial signal, or the escalation after an ignored
  * SIGTERM — the detached-descendant sweep runs while the leader is still alive and
- * still the parent of its `setsid()` hooks. A leader that exits on SIGTERM is not
- * swept: the CLI's own graceful shutdown ends its hooks. One exit latch spans every
- * phase, and once it has seen the exit, nothing more is sent to the leader's pid,
- * which may already belong to another process: an exit during the sweep's table reads
- * cancels the SIGKILL. A sweep failure is reported like a reap failure, after the
- * leader is still killed and reaped.
+ * still the parent of its `setsid()` hooks. A SIGTERM is sent only after one table
+ * read, and reads repeat until the leader exits, recording its detached descendants;
+ * once it has exited, those still alive are reaped (`survivors.ts`), since a CLI's
+ * graceful exit can leave them running. One exit latch spans every phase, and once it
+ * has seen the exit, nothing more is sent to the leader's pid, which may already belong
+ * to another process: an exit during the sweep's table reads cancels the SIGKILL. A
+ * sweep or survivor failure is reported like a reap failure, after the leader is still
+ * killed and reaped.
  */
 export async function terminatePty(
   pty: PtyProcess,
@@ -49,11 +52,14 @@ export async function terminatePty(
   let sweepError: unknown;
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
+  let survivors: SurvivorWatch | undefined;
   try {
     const latch = new PtyExitLatch(pty);
     exit = latch;
     if (signal === "SIGTERM") {
-      pty.kill("SIGTERM");
+      survivors = reaper.watchSurvivors(() => latch.exited);
+      await survivors.firstRead;
+      if (!latch.exited) pty.kill("SIGTERM");
       observedExit = await latch.within(timeouts.gracefulMs);
     }
     if (!observedExit) {
@@ -69,6 +75,9 @@ export async function terminatePty(
   } finally {
     exit?.dispose();
   }
+  // Always ends the watch, which reads until told; an earlier sweep failure is the one reported.
+  const survivorError = await survivors?.finish().then(() => undefined, toError);
+  sweepError ??= survivorError;
   if (sweepError !== undefined) {
     terminationError =
       terminationError === undefined

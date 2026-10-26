@@ -50,6 +50,17 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
   });
 
+  test("a graceful stop reaps what the leader leaves running, a process it starts after", async () => {
+    // The leader exits on SIGTERM, half a second after starting another detached process.
+    const tree = startDetachedTree("late-on-term");
+    const [child, grandchild] = await detachedDescendantPids(tree);
+    await terminatePty(tree.pty, "SIGTERM", new SessionReaper(tree.pty.pid));
+    const late = await waitForTreeProcessPid(tree, "late");
+    for (const pid of [child, grandchild, late]) {
+      expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
+    }
+  });
+
   test("an ignored SIGTERM escalates and still reaps the detached descendants", async () => {
     const tree = startDetachedTree("ignore-term");
     const [child, grandchild] = await detachedDescendantPids(tree);
