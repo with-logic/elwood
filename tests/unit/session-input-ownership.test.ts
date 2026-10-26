@@ -1,7 +1,10 @@
 /** Private picker input views preserve terminal behavior and revoke only raw input (C-API-55). */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { stageComposer } from "../../src/core/input/composer-cleanup.ts";
+import { bindStartupLifetime } from "../../src/runtime/session/frames.ts";
+import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import {
+  onCallerInput,
   SessionInputOwnership,
   withAutomatedInput,
 } from "../../src/runtime/session/session-input.ts";
@@ -71,6 +74,31 @@ test("C-API-55/56 native protocol replies preserve picker and staged cleanup aut
     expect(signal.aborted).toBe(false);
   } finally {
     closing.abort();
+    inner.dispose();
+  }
+});
+
+test("C-TRUST-01 a closed session stops handing caller input to its startup prompts", () => {
+  const inner = createHeadlessTerminal({ cols: 80, rows: 24 }, () => undefined);
+  const owner = new SessionInputOwnership(inner);
+  const other = vi.fn();
+  const stopOther = onCallerInput(owner.caller, other);
+  const trust = { inputBlocking: false, blockedPrompt: undefined, dispose: vi.fn() };
+  const callerInput = vi.fn();
+  const closing = new AbortController();
+  const session = { closing, bindInitialReadinessHold: vi.fn(), terminal: owner.caller };
+  try {
+    bindStartupLifetime(session, { ...trust, callerInput }, createReadinessGate(vi.fn(), false));
+    owner.caller.xterm.input("1");
+    expect(callerInput).toHaveBeenCalledTimes(1);
+    closing.abort();
+    owner.caller.xterm.input("2");
+    expect(callerInput).toHaveBeenCalledTimes(1); // the closed session's listener is gone
+    expect(other).toHaveBeenCalledTimes(2); // and only that one
+    stopOther();
+    owner.caller.xterm.input("3");
+    expect(other).toHaveBeenCalledTimes(2);
+  } finally {
     inner.dispose();
   }
 });
