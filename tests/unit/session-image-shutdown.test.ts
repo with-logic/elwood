@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
+import { attachedImage, png } from "../fixtures/owned-turn/attachments.ts";
 
 const clipboard = vi.hoisted(() => ({ path: "" }));
 vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
@@ -26,8 +27,10 @@ vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
   restoreClipboardText: () => Promise.resolve(true),
 }));
 
-const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const IMAGE_PATH = /(\/[\w./-]*elwood-image-[\w-]+\/[\w-]+\.png)/;
+/** The temp image an adapter attached through `pty`'s writes, or "" before it attaches. */
+const attachedPath = (pty: { readonly writes: readonly string[] }) =>
+  pty.writes.map((write) => attachedImage(write, clipboard.path || undefined)).find(Boolean)
+    ?.path ?? "";
 
 afterEach(() => {
   clipboard.path = "";
@@ -52,7 +55,7 @@ const adapters = [
       return session;
     },
     // Claude reads the image from the absolute path Elwood pastes into the composer.
-    attached: () => claude.ptys[0]!.writes.join("").match(IMAGE_PATH)?.[1] ?? "",
+    attached: () => attachedPath(claude.ptys[0]!),
   },
   {
     agent: "codex",
@@ -63,7 +66,7 @@ const adapters = [
       return session;
     },
     // Codex reads the image from the file Elwood lays on the (faked) clipboard.
-    attached: () => clipboard.path,
+    attached: () => attachedPath(codex.ptys[0]!),
   },
 ] as const;
 
@@ -79,7 +82,7 @@ for (const { agent, helpers, start, attached } of adapters) {
       await expect.poll(() => session.status).toBe("ready");
       const sent = session.sendMessage("look", { images: [{ data: png, format: "png" }] });
       sent.catch(() => undefined); // asserted below, after the shutdown
-      await expect.poll(attached).toMatch(IMAGE_PATH);
+      await expect.poll(attached).not.toBe("");
       const file = attached();
       expect(existsSync(file)).toBe(true); // the attach is still waiting for its chip
       await session[verb]();
