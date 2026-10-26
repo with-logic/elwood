@@ -10,7 +10,7 @@
 
 import { realpathSync } from "node:fs";
 import { isStringArray } from "../../src/core/predicates.ts";
-import { homeGuardHomesKey } from "../../src/runtime/shell.ts";
+import { homeGuardHomesKey } from "../../src/runtime/home-guard/index.ts";
 
 // A list this process inherited is not the suite's: it could name any directory, the user's
 // own CLI homes included. Each process lists only the homes it creates, and the processes it

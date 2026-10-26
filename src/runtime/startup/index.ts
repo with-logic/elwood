@@ -6,7 +6,7 @@
 import { isClaudeReauthRequiredText } from "../../claude/login/expiry-screen.ts";
 import { elwoodError } from "../../core/errors.ts";
 import type { PtyExit } from "../../pty/types.ts";
-import { homeGuardStopped, homeGuardStoppedReason } from "../shell.ts";
+import { homeGuardStopped, homeGuardStoppedReason } from "../home-guard/index.ts";
 
 export type StartupAdapter = "claude" | "codex";
 type StartupValue<T> = T | (() => T);
@@ -31,7 +31,8 @@ export async function assertStartupUsable(input: {
   if (exit) {
     // The guard's own line is in the output, among the user's startup output: name the guard
     // instead of forwarding that output.
-    const guard = homeGuardStopped(exit.exitCode) ? `: ${homeGuardStoppedReason}` : "";
+    const stopped = homeGuardStopped(exit.exitCode, readStartupValue(input.output));
+    const guard = stopped ? `: ${homeGuardStoppedReason}` : "";
     throw elwoodError(
       `${input.adapter}_start_failed`,
       `${input.adapter} exited during startup${guard}.`,
