@@ -77,14 +77,19 @@ export function enqueueSubmission(
   return done;
 }
 
-/** Validate paths (async) → materialize → drive the adapter attach → clean up temp files. */
+/**
+ * Validate paths (async) → materialize → drive the adapter attach → clean up temp files.
+ * Materialization watches the attach's abort signal, so an abort, as when the session
+ * closes, removes the temp files at once, before `stop`, `kill`, or `teardown` resolves
+ * (best-effort: the cleanup here retries a removal that failed then; §5.3, §8.4).
+ */
 async function runAttach(
   snapshot: ImageSnapshot,
   driver: AttachDriver,
   signal: AbortSignal,
 ): Promise<void> {
   const validated = await validateImagePaths(snapshot);
-  const materialized = await materializeImages(validated);
+  const materialized = await materializeImages(validated, signal);
   try {
     await driver(materialized.paths, signal);
   } finally {
