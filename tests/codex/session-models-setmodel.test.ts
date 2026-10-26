@@ -130,30 +130,34 @@ describe("CodexSessionApi setModel", () => {
   });
 
   test("C-CODEX-14 two interleaving sessions cannot persist the wrong model", async () => {
-    // A single process-global config.toml with two concurrent setModel switches. The process-wide config lock serializes the whole
-    // snapshot/picker/restore transaction so session B cannot snapshot A's
-    // transiently-persisted model and restore it as the user's default.
+    // Two sessions on one config.toml with concurrent setModel switches. That file's lock
+    // serializes the whole snapshot/picker/restore transaction so session B cannot
+    // snapshot A's transiently-persisted model and restore it as the user's default.
     const cwd = tempDir();
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const [a, b] = await Promise.all([startCodex({ cwd }), startCodex({ cwd })]);
+    // The two starts race to spawn, so each session's PTY is found by the id its launch exports.
+    const ptyOf = (id: string) =>
+      ptys.findIndex((pty) => pty.options.env["ELWOOD_SESSION_ID"] === id);
+    const [ptyA, ptyB] = [ptyOf(a.elwoodSessionId), ptyOf(b.elwoodSessionId)];
     const warningsA = collectWarnings(a);
     const warningsB = collectWarnings(b);
-    await becomeReadyFor(a.elwoodSessionId, cwd, 0);
-    await becomeReadyFor(b.elwoodSessionId, cwd, 1);
+    await becomeReadyFor(a.elwoodSessionId, cwd, ptyA);
+    await becomeReadyFor(b.elwoodSessionId, cwd, ptyB);
     await expect.poll(() => a.status === "ready" && b.status === "ready").toBe(true);
 
     const persisted = 'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\n\n[hooks]\n';
     const settingA = a.setModel("gpt-5.4", { timeoutMs: 30_000 });
     const settingB = b.setModel("gpt-5.4", { timeoutMs: 30_000 });
     // Only A holds the lock: B must NOT have written /model yet.
-    await until(() => ptys[0]!.writes.includes("/model"));
-    expect(ptys[1]!.writes.includes("/model")).toBe(false);
-    await driveSetModel(configPath, persisted, 0);
+    await until(() => ptys[ptyA]!.writes.includes("/model"));
+    expect(ptys[ptyB]!.writes.includes("/model")).toBe(false);
+    await driveSetModel(configPath, persisted, ptyA);
     await settingA;
     // A released the lock and restored the user default before B started.
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
-    await driveSetModel(configPath, persisted, 1);
+    await driveSetModel(configPath, persisted, ptyB);
     await settingB;
     // B snapshotted the RESTORED default (not A's transient model) and restored
     // it, so the final on-disk default is the user's original, not gpt-5.4.

@@ -43,10 +43,11 @@ export async function pollGone({
  * still change hands between that read and the signal, so callers use this only for a
  * process that no handle they hold can reach. Throws when `ps` itself fails.
  */
-export function killIfCommandHas(pid: number, marker: string): void {
+export function killIfCommandHas(pid: number, marker: string, send: Send = sendSignal): void {
+  assertMarkerMeetsMinimumLength(marker);
   if (!commandOf(pid)?.includes(marker)) return;
   try {
-    process.kill(pid, "SIGKILL");
+    send(pid, "SIGKILL");
   } catch {
     // It exited between the read and the kill.
   }
@@ -87,18 +88,41 @@ export function processRows(timeoutMs?: number): readonly ProcessRow[] {
  * signaled. `marker` must name only processes the caller started, such as the fresh
  * temp directory they run from. Throws when `ps` itself fails.
  */
-export function killGroupsWhoseCommandHas(marker: string): number {
+export function killGroupsWhoseCommandHas(marker: string, send: Send = sendSignal): number {
+  assertMarkerMeetsMinimumLength(marker);
   let signaled = 0;
   for (const { pid, pgid, stat, command } of processRows()) {
     if (stat.startsWith("Z") || !command.includes(marker)) continue;
     try {
-      process.kill(pid === pgid ? -pgid : pid, "SIGKILL");
+      send(pid === pgid ? -pgid : pid, "SIGKILL");
     } catch {
       // It exited between the read and the kill.
     }
     signaled += 1;
   }
   return signaled;
+}
+
+/** Sends `signal` to `pid` (a negative pid names a group); a test can record instead. */
+export type Send = (pid: number, signal: NodeJS.Signals) => void;
+
+const sendSignal: Send = (pid, signal) => void process.kill(pid, signal);
+
+/** The fewest non-blank characters a kill marker may have. */
+const MIN_MARKER_LENGTH = 12;
+
+/**
+ * Throws for a marker shorter than `MIN_MARKER_LENGTH` non-blank characters: an empty one
+ * is in every command line, so a variable that came out empty would kill every process
+ * on the host. Length is all it checks. The caller must still pass a marker that names
+ * only its own processes, such as a fresh temp directory or a random-suffixed command.
+ */
+function assertMarkerMeetsMinimumLength(marker: string): void {
+  if (marker.trim().length < MIN_MARKER_LENGTH) {
+    throw new Error(
+      `Refusing to kill by the marker ${JSON.stringify(marker)}: shorter than ${MIN_MARKER_LENGTH} non-blank characters`,
+    );
+  }
 }
 
 /** `pid`'s command line, or `undefined` when no such process exists. */
