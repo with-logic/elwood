@@ -22,6 +22,8 @@ export type Seen = {
   readonly credentialsMode: number | null;
   readonly config: string | null;
   readonly catalog: string | null;
+  /** `CLAUDE_SECURESTORAGE_CONFIG_DIR` as the child's Claudes would inherit it. */
+  readonly storage: string | null;
 };
 
 const script = `
@@ -38,6 +40,7 @@ const script = `
     credentialsMode: existsSync(login) ? statSync(login).mode & 0o777 : null,
     config: read(".claude.json"),
     catalog: read("cache/model-catalog/catalog.json"),
+    storage: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? null,
   }));`;
 
 /**
@@ -48,7 +51,10 @@ export function runChild(env: Readonly<Record<string, string>>) {
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   delete childEnv["ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR"];
   delete childEnv["CLAUDE_CONFIG_DIR"];
-  Object.assign(childEnv, { ELWOOD_E2E_SECURITY_BIN: fakeKeychain().bin }, env);
+  delete childEnv["ELWOOD_E2E_USER_CLAUDE_STORAGE_SETTING"];
+  delete childEnv["CLAUDE_SECURESTORAGE_CONFIG_DIR"];
+  const securityBin = env["ELWOOD_E2E_SECURITY_BIN"] ?? fakeKeychain().bin;
+  Object.assign(childEnv, env, { ELWOOD_E2E_SECURITY_BIN: securityBin });
   return spawnSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], {
     env: childEnv,
     encoding: "utf8",
@@ -86,6 +92,7 @@ export function parseSeen(text: string): Seen {
     ),
     config: field("config", isStringOrNull),
     catalog: field("catalog", isStringOrNull),
+    storage: field("storage", isStringOrNull),
   };
 }
 

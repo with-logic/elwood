@@ -22,15 +22,27 @@ const itemNotFound = 44;
 const defaultService = "Claude Code-credentials";
 
 /**
- * The keychain item Claude keeps its login in for a `CLAUDE_CONFIG_DIR` set to `setting`
- * ("" when unset, as Claude treats an empty one). A set dir's item carries the first eight
- * hex digits of the SHA-256 of the setting as written, NFC-normalized, even when it names
- * `~/.claude`. Read from claude 2.1.310, and checked against it: with the dir set, Claude
- * reported itself logged in exactly while an item of this name existed.
+ * The setting Claude names its keychain item for: `CLAUDE_SECURESTORAGE_CONFIG_DIR` when it
+ * is set, even to "", else the `CLAUDE_CONFIG_DIR` setting ("" when unset). Read from claude
+ * 2.1.310.
  */
-export function keychainService(setting: string): string {
-  if (setting === "") return defaultService;
-  const digest = createHash("sha256").update(setting.normalize("NFC")).digest("hex");
+export function keychainStorageSetting(
+  secureStorageSetting: string | undefined,
+  configDirSetting: string,
+): string {
+  return secureStorageSetting ?? configDirSetting;
+}
+
+/**
+ * The keychain item Claude keeps its login in for `storageSetting` (`keychainStorageSetting`;
+ * "" when unset, as Claude treats an empty one). A set dir's item carries the first eight hex
+ * digits of the SHA-256 of the setting as written, NFC-normalized, even when it names
+ * `~/.claude`. Read from claude 2.1.310, and checked against it: with `CLAUDE_CONFIG_DIR` set,
+ * Claude reported itself logged in exactly while an item of this name existed.
+ */
+export function keychainService(storageSetting: string): string {
+  if (storageSetting === "") return defaultService;
+  const digest = createHash("sha256").update(storageSetting.normalize("NFC")).digest("hex");
   return `${defaultService}-${digest.slice(0, 8)}`;
 }
 

@@ -1,16 +1,17 @@
 /**
  * Where the e2e suite's private Claude config dir gets the user's login (`tests/e2e/
  * claude-home.ts`, `claude-login.ts`, PRD §12, C-E2E-23): from where the user's own Claude
- * reads it. On macOS that is the keychain item for the user's `CLAUDE_CONFIG_DIR` setting,
- * which Claude prefers to a credentials file. Each case loads the module in a child process
- * whose keychain is a fake one (`fake-keychain.ts`).
+ * reads it. On macOS that is the keychain item Claude names for the user's settings, which it
+ * prefers to a credentials file. The naming cases call `claude-login.ts` directly; the
+ * platform cases load `claude-home.ts` in a child process whose keychain is a fake one
+ * (`fake-keychain.ts`).
  */
 
 import { readdirSync } from "node:fs";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { keychainService } from "../e2e/claude-login.ts";
+import { keychainService, keychainStorageSetting } from "../e2e/claude-login.ts";
 import { childClaudeHome, login, runChild, userConfig } from "../helpers/claude-home-child.ts";
 import { fakeKeychain } from "../helpers/fake-keychain.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -30,6 +31,12 @@ describe("C-E2E-23 the keychain item Claude reads for a config dir", () => {
     // Claude hashes the setting NFC-normalized, as written.
     expect(keychainService("/u/café")).toBe(keychainService("/u/café"));
     expect(keychainService("/u/.claude")).not.toBe(keychainService("/u/.claude/"));
+  });
+
+  test("is named for CLAUDE_SECURESTORAGE_CONFIG_DIR when it is set, even empty", () => {
+    expect(keychainStorageSetting("/s", "/c")).toBe("/s");
+    expect(keychainStorageSetting("", "/c")).toBe("");
+    expect(keychainStorageSetting(undefined, "/c")).toBe("/c");
   });
 });
 
@@ -75,6 +82,44 @@ describe.skipIf(!onMac)("C-E2E-23 on macOS the private dir copies the login", ()
     });
     expect(keychain.lookups()).toEqual(["Claude Code-credentials"]);
     expect(JSON.parse(seen.credentials ?? "")).toEqual({ claudeAiOauth: accessOnly });
+  });
+
+  test.each([
+    ["unset", undefined],
+    ["empty", ""],
+  ])("from the default item when CLAUDE_CONFIG_DIR is %s", (_case, setting) => {
+    const item = { claudeAiOauth: { ...login.claudeAiOauth, accessToken: "from-default" } };
+    const service = "Claude Code-credentials";
+    const keychain = fakeKeychain({ service, login: JSON.stringify(item) });
+    const env = { TMPDIR: tempDir("claude-keychain-tmp-"), HOME: tempDir("claude-keychain-home-") };
+    const seen = childClaudeHome({
+      ...env,
+      ...(setting === undefined ? {} : { CLAUDE_CONFIG_DIR: setting }),
+      ELWOOD_E2E_SECURITY_BIN: keychain.bin,
+    });
+    expect(JSON.parse(seen.credentials ?? "")).toEqual({
+      claudeAiOauth: { ...accessOnly, accessToken: "from-default" },
+    });
+    expect(keychain.lookups()).toEqual([service]);
+  });
+
+  test("from CLAUDE_SECURESTORAGE_CONFIG_DIR's item, and keeps that variable from its Claudes", () => {
+    const user = tempDir("claude-keychain-user-");
+    const storage = tempDir("claude-keychain-storage-");
+    const keychain = fakeKeychain({
+      service: keychainService(storage),
+      login: JSON.stringify(login),
+    });
+    const env = { TMPDIR: tempDir("claude-keychain-tmp-"), HOME: tempDir("claude-keychain-home-") };
+    const seen = childClaudeHome({
+      ...env,
+      CLAUDE_CONFIG_DIR: user,
+      CLAUDE_SECURESTORAGE_CONFIG_DIR: storage,
+      ELWOOD_E2E_SECURITY_BIN: keychain.bin,
+    });
+    expect(JSON.parse(seen.credentials ?? "")).toEqual({ claudeAiOauth: accessOnly });
+    expect(keychain.lookups()).toEqual([keychainService(storage)]);
+    expect(seen.storage).toBeNull(); // the suite's Claudes name their item for the private dir
   });
 
   test("and fails, leaving nothing, when the keychain cannot be read", () => {

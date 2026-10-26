@@ -12,21 +12,25 @@ import { tempDir } from "./tmp.ts";
 
 /** One keychain item: a login stored under `service`, or a lookup that fails with `status`. */
 type Item = { readonly service: string } & (
-  | { readonly login: string }
-  | { readonly status: number }
+  | { readonly login: string; readonly status?: never }
+  | { readonly status: number; readonly login?: never }
 );
+
+/** The shell lines that answer a lookup of `item`'s service. */
+function answerFor(item: Item | undefined): string {
+  if (item === undefined) return "";
+  const named = `[ "$3" = ${shellQuote(item.service)} ]`;
+  if (item.login !== undefined)
+    return `${named} && { printf '%s' ${shellQuote(item.login)}; exit 0; }`;
+  return `${named} && exit ${item.status}`;
+}
 
 /** A fake `security` holding `item`, and the services looked up through it so far. */
 export function fakeKeychain(item?: Item): { bin: string; lookups: () => readonly string[] } {
   const dir = tempDir("fake-keychain-");
   const bin = join(dir, "security");
   const log = join(dir, "lookups");
-  const answer =
-    item === undefined
-      ? ""
-      : "login" in item
-        ? `[ "$3" = ${shellQuote(item.service)} ] && { printf '%s' ${shellQuote(item.login)}; exit 0; }`
-        : `[ "$3" = ${shellQuote(item.service)} ] && exit ${item.status}`;
+  const answer = answerFor(item);
   // `keychainLogin` runs `security find-generic-password -s <service> -w`.
   writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$3" >> ${shellQuote(log)}\n${answer}\nexit 44\n`);
   chmodSync(bin, 0o700);

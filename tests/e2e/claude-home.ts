@@ -25,7 +25,12 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { isRecord } from "../../src/core/predicates.ts";
 import { privateTempDir } from "../helpers/private-temp.ts";
-import { accessOnlyLogin, keychainLogin, keychainService } from "./claude-login.ts";
+import {
+  accessOnlyLogin,
+  keychainLogin,
+  keychainService,
+  keychainStorageSetting,
+} from "./claude-login.ts";
 
 /**
  * Carries the user's own `CLAUDE_CONFIG_DIR` ("" when unset) into `node --test` workers,
@@ -34,6 +39,19 @@ import { accessOnlyLogin, keychainLogin, keychainService } from "./claude-login.
 const userSettingKey = "ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR";
 const userSetting = process.env[userSettingKey] ?? process.env["CLAUDE_CONFIG_DIR"] ?? "";
 process.env[userSettingKey] = userSetting;
+
+/**
+ * Carries the setting the user's own Claude names its keychain item for
+ * (`keychainStorageSetting`) into workers. `CLAUDE_SECURESTORAGE_CONFIG_DIR` itself is
+ * removed, so each Claude the suite starts names its item for the private dir, which has
+ * none, and reads the private dir's credentials file, never the user's item.
+ */
+const userStorageKey = "ELWOOD_E2E_USER_CLAUDE_STORAGE_SETTING";
+const userStorageSetting =
+  process.env[userStorageKey] ??
+  keychainStorageSetting(process.env["CLAUDE_SECURESTORAGE_CONFIG_DIR"], userSetting);
+process.env[userStorageKey] = userStorageSetting;
+delete process.env["CLAUDE_SECURESTORAGE_CONFIG_DIR"];
 
 /**
  * Whether the user has `CLAUDE_CONFIG_DIR` set, to any dir. Claude then keeps the global
@@ -51,12 +69,13 @@ export const userGlobalConfig = hasUserConfigDirSetting
   : join(homedir(), ".claude.json");
 
 /**
- * The user's login JSON, from where the user's own Claude reads it: on macOS the keychain
- * item for their `CLAUDE_CONFIG_DIR` setting, set or not, else their credentials file.
- * Claude prefers the item when both exist.
+ * The user's login JSON, from where the user's own Claude reads it. On macOS that is the
+ * keychain item Claude names for their settings, set or not, and their credentials file only
+ * when there is no such item. Elsewhere it is the credentials file.
  */
 function userCredentials(): string | undefined {
-  const item = platform() === "darwin" ? keychainLogin(keychainService(userSetting)) : undefined;
+  const item =
+    platform() === "darwin" ? keychainLogin(keychainService(userStorageSetting)) : undefined;
   if (item !== undefined) return item;
   const file = join(userConfigDir, ".credentials.json");
   return existsSync(file) ? readFileSync(file, "utf8") : undefined;
