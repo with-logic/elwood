@@ -1,4 +1,5 @@
 /** Real Codex PTY with an isolated config for startup-layout checks (PRD §12, C-E2E-09). */
+import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node-pty";
@@ -30,6 +31,8 @@ export async function unauthenticatedMcp() {
 /** Omit hook-trust bypass deliberately: this test must see both native trust gates. */
 export function nativeCodex(mcpUrl: string) {
   const project = makeProject("codex");
+  // Codex 0.164 asks for folder trust only inside a Git repository (docs/cli-behavior.md).
+  execFileSync("git", ["init", "-q", project.cwd]);
   const sandbox = sandboxedCodexHome(
     project,
     `check_for_update_on_startup = false

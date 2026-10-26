@@ -5,7 +5,11 @@
  * Implements PRD §12A.2/§12A.10 and C-CLI-05/C-CLI-09/C-CLI-26.
  */
 
-import { blockingTrustSpecs, trustPromptAllowlist } from "../../core/trust/prompts.ts";
+import {
+  blockingTrustSpecs,
+  type TrustPromptSpec,
+  trustPromptAllowlist,
+} from "../../core/trust/prompts.ts";
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { ElwoodWarningEvent } from "../../core/warnings/index.ts";
 import type { HeadedDisplay } from "../head/display.ts";
@@ -61,7 +65,7 @@ export function subscribeRunEvents(
 }
 
 function attentionNeedsHuman(request: EffectiveRunRequest, label: string): boolean {
-  const matches = (prompt: (typeof trustPromptAllowlist)[number]) =>
+  const matches = (prompt: TrustPromptSpec) =>
     prompt.agent === request.agent && prompt.id === label;
   return (
     !trustPromptAllowlist.some(matches) ||

@@ -13,12 +13,7 @@ import {
   skipTurns,
   waitFor,
 } from "./helpers.ts";
-
-// Codex's own directory-trust question and affirmative: 0.15x asked "Do you trust the contents
-// of this directory?" with "Yes, continue"; 0.164 asks "Trust this folder?" with "Trust and
-// continue", and only inside a Git repository (docs/cli-behavior.md).
-const trustQuestion = /Do you trust the contents of this directory\?|Trust this folder\?/;
-const trustAffirmative = /Yes, continue|Trust and continue/;
+import { codexFolderTrust } from "./trust-screens.ts";
 
 test("C-TRUST-01 production Codex holds queued input through human trust and native cursor clearance", {
   skip: skipIf(skipReason("codex"), codexAuthMissing(), skipTurns),
@@ -65,7 +60,7 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
       if (mode) cursorVisible = mode[1] === "h";
     }
     const frame = active.terminal.snapshot();
-    if (trustQuestion.test(frame.text)) {
+    if (codexFolderTrust.question.test(frame.text)) {
       observedTrust = true;
       order.length = 0;
     }
@@ -78,8 +73,8 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
       /^› (?:Ask|Write|Implement|Find|Summarize|Explain|Improve|Run|Use|Type|Describe|Review|What)/.test(
         frame.lines[row] ?? "",
       ) &&
-      !trustQuestion.test(frame.text) &&
-      !trustAffirmative.test(frame.text)
+      !codexFolderTrust.question.test(frame.text) &&
+      !codexFolderTrust.affirmative.test(frame.text)
     )
       order.push("native-clear");
   });
@@ -94,8 +89,8 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
   void pending.catch(() => undefined);
   await waitFor(
     () =>
-      trustQuestion.test(active.terminal.snapshot().text) &&
-      trustAffirmative.test(active.terminal.snapshot().text)
+      codexFolderTrust.question.test(active.terminal.snapshot().text) &&
+      codexFolderTrust.affirmative.test(active.terminal.snapshot().text)
         ? true
         : undefined,
     "native untrusted directory dialog",

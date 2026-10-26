@@ -6,10 +6,11 @@ import { codexWarningsFromText } from "../../src/codex/startup-prompts.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { nativeCodex, unauthenticatedMcp } from "./codex-native-startup-harness.ts";
 import { codexAuthMissing, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { codexFolderTrust } from "./trust-screens.ts";
 
 test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain recovery", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
-  timeout: 90_000,
+  timeout: 150_000,
 }, async (t) => {
   const mcp = await unauthenticatedMcp();
   let native: ReturnType<typeof nativeCodex> | undefined;
@@ -22,13 +23,13 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
     const directory = await waitFor(
       () => {
         const frame = active.frame();
-        return /Do you trust the contents of this directory\?/.test(frame) &&
-          /Yes, continue/.test(frame)
+        return codexFolderTrust.question.test(frame) && codexFolderTrust.affirmative.test(frame)
           ? frame
           : undefined;
       },
       "native directory trust options",
-      25_000,
+      // Under load, 0.164 painted its gate up to 30.6 s after first output (docs/cli-behavior.md).
+      45_000,
     );
     await answer(directory, "workspace_trust", "1\r");
     const hooks = await waitFor(
@@ -41,13 +42,14 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
       "native hook trust options",
       25_000,
     );
-    assert.doesNotMatch(hooks, /Do you trust the contents of this directory\?/);
+    assert.doesNotMatch(hooks, codexFolderTrust.question);
     await answer(hooks, "hook_trust", "2\r");
     await waitFor(
       () => {
         const frame = active.frame();
         return /OpenAI Codex \(v/.test(frame) &&
-          !/Hooks need review|Do you trust the contents/.test(frame) &&
+          !/Hooks need review/.test(frame) &&
+          !codexFolderTrust.question.test(frame) &&
           /MCP startup issue|MCP startup incomplete|MCP server is not logged in/.test(frame)
           ? true
           : undefined;
