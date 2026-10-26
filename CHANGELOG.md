@@ -75,6 +75,17 @@ back each entry are listed in `prd/14-conformance.md`.
   footer is never recognized; a prompt painted after that would still follow
   `ready`.
 
+- With `autotrust`, keys a caller sends with `sendKeys` (or `terminal.sendInput`,
+  `xterm.input`) while a trust prompt is on screen now hand that prompt to the
+  caller: Elwood stops answering it. Before, its retry could follow the caller's
+  keys. When the CLI had already left the prompt but Elwood's screen had not caught
+  up, that retry landed in the composer and submitted the caller's text along with
+  the answer. A prompt the caller owns that stays up past five seconds is reported
+  `blocked`, as before; a later trust prompt is answered as usual. The same keys
+  also stop Elwood retrying its skip choice on a Codex update prompt, which could
+  otherwise follow them onto whatever Codex drew next. Elwood then leaves that
+  update prompt to the caller until Codex shows its composer.
+
 - A successful `listModels` or `setModel` no longer releases queued input on the
   first frame without the picker. It now waits until no part of the picker has
   been the bottom of the screen across five readings at least 40 ms apart. Before,
@@ -204,6 +215,19 @@ back each entry are listed in `prd/14-conformance.md`.
   `… +K models`) and every measured effort glyph, and follows the cursor across a
   scrolling window. `listModels` also returns the `↓`-marked last visible row, with the
   marker kept in its `raw`.
+- Claude `listModels()` and `listClaudeModels()` return every model the `/model`
+  picker lists, not just its ten-row window: an account with 13 models now gets 13
+  rows, in picker order. Elwood reveals the hidden rows with arrow keys and then
+  cancels, so the model and effort are unchanged. `setModel` can select any listed
+  row, including one outside the window, walking only until that row is on screen,
+  and an unknown id's error lists every row. The list's length is the highest
+  rendered row plus the `… +K models` count, and `K` falls as the window scrolls
+  while that sum stays the same. A frame that marks rows hidden without a count, or
+  implies a different length from the first one read, is never acted on: Elwood waits
+  for a repaint that matches, and fails with `model_automation_failed` at the timeout
+  rather than returning part of the list. A frame with no count line is read as the
+  whole list; Claude 2.1.310 paints that line before the dialog's footer, so a complete
+  dialog always carries it.
 - `listModels` and `listClaudeModels` no longer return a partial catalog read while
   the picker was still painting. Claude draws it over the slash-command menu, so a
   probe could return only `default`, or fail with "Could not parse any model picker
