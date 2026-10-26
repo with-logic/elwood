@@ -20,7 +20,7 @@ import {
 } from "../../src/runtime/home-guard/index.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { announcesStart } from "../../src/runtime/probe/start.ts";
-import { probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
+import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
 import { assertStartupUsable } from "../../src/runtime/startup/index.ts";
 import { loginShells } from "../helpers/login-shells.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -45,10 +45,15 @@ function guardWith(tail: string, list = (codex: string) => JSON.stringify([codex
 const command = "printf 'command ran\\n'";
 const stopped = { message: homeGuardStoppedReason, phase: "login_shell", shellStatus: 97 };
 
-test("C-E2E-24 a guarded probe still announces its start", () => {
+test("C-E2E-24 a guarded probe still announces its start, and never writes to a terminal", () => {
   guardWith(":");
   expect(announcesStart(probeShellCommand("codex --version"))).toBe(true);
   expect(announcesStart(probeShellStatus("command -v codex"))).toBe(true);
+  // A probe inherits Elwood's own terminal, which may be the user's.
+  vi.stubEnv(homeGuardHomesKey, "not a list");
+  expect(loginShellCommand("codex")[3]).toContain("/dev/tty");
+  expect(probeShellCommand("codex --version")[3]).not.toContain("/dev/tty");
+  expect(probeShellStatus("command -v codex")[3]).not.toContain("/dev/tty");
 });
 
 describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
