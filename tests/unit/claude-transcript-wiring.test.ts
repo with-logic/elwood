@@ -4,7 +4,7 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test } from "vitest";
 import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import {
   resetByteReaderForTests,
@@ -23,6 +23,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const recorded: ElwoodWarningEvent[] = [];
     let sink: WarningSink | undefined; // not ready yet (early startup)
     const { watcher, flushPendingWarnings } = createTranscriptWatcher("s9", emitter, () => sink);
+    onTestFinished(() => watcher.stop()); // never poll past the temp dir's removal
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
@@ -45,6 +46,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     let failNext = true;
     let sink: WarningSink | undefined; // buffer the notice before the sink exists
     const { watcher, flushPendingWarnings } = createTranscriptWatcher("s9", emitter, () => sink);
+    onTestFinished(() => watcher.stop()); // never poll past the temp dir's removal
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
@@ -81,6 +83,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
       },
     };
     const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
+    onTestFinished(() => watcher.stop()); // never poll past the temp dir's removal
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
