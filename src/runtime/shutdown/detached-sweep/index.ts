@@ -1,6 +1,7 @@
 /**
  * Stops and SIGKILLs every process group a LIVE PTY leader's linked descendants have
- * moved into, before Elwood kills the leader. Implements PRD §5.3 and §9.4 (C-LIFE-10).
+ * moved into, before Elwood kills the leader, sparing those of Codex's shared daemon
+ * (below). Implements PRD §5.3 and §9.4 (C-LIFE-10).
  * Claude and Codex start each hook command with `setsid()`, so a hook in flight at
  * teardown sits in its own session and process group: the leader-group SIGKILL misses
  * it, and once the leader dies the hook is reparented to PID 1 and nothing links it to
@@ -16,12 +17,15 @@
  * signaled group, the leader's included. A read that shows a signaled group's member
  * running stops that group again. With no hook in flight that takes two reads; each
  * level of nesting adds two more. Then the signaled groups are SIGKILLed deepest first
- * (`kill.ts`). (A parent that ignores SIGCHLD would have its exited children reaped
- * while stopped; the CLIs and hook shells don't.)
+ * (`kill.ts`). Codex's shared daemon and its updater, and what they started, are the
+ * session's no more than the user's: the walk never follows them (`shared-daemon.ts`).
+ * (A parent that ignores SIGCHLD would have its exited children reaped while stopped;
+ * the CLIs and hook shells don't.)
  */
 
 import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
+import { daemonScope } from "../shared-daemon.ts";
 import { type FailureReason, type SweepFailure, SweepFailures } from "./failures.ts";
 import { confirmedGone, confirmLiveGroups, killSignaledGroups, recordFailedRead } from "./kill.ts";
 import {
@@ -97,12 +101,14 @@ async function stopDescendantGroups(
   deadline: number,
   state: SweepState,
 ): Promise<void> {
+  // Each group the walk stops is a root too, so a process in it is read itself.
+  const scope = daemonScope(state.signaledGroupIds);
   try {
     while (true) {
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return unconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const table = await ops.listProcesses(remainingMs);
+      const table = await ops.listProcesses(remainingMs, scope);
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;

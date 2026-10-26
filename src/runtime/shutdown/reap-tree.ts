@@ -19,12 +19,12 @@
 import { errnoCode } from "../../core/errors.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { type SweepOps, sweepDetachedGroups } from "./detached-sweep/index.ts";
-import { listProcessTableShared } from "./process-table.ts";
+import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
  * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, and
- * table read.
+ * table read, which marks Codex's shared daemon.
  */
 export type ProcessTreeOps = SweepOps;
 
@@ -78,7 +78,7 @@ export const osProcessTreeOps: ProcessTreeOps = {
   stopGroup(pgid: number): void {
     process.kill(-pgid, "SIGSTOP");
   },
-  listProcesses: listProcessTableShared,
+  listProcesses: (timeoutMs, scope) => listProcessTableMarkingDaemon(timeoutMs, scope),
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle
