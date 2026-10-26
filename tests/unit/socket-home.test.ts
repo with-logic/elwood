@@ -116,6 +116,21 @@ describe("releaseLaunchSocket", () => {
     expect(() => releaseLaunchSocket(sock)).not.toThrow();
   });
 
+  test("§8.1 an unexpected rmdir failure reaches the caller's cleanup path", () => {
+    const parent = tempDir("locked-");
+    const home = join(parent, `${SOCKET_HOME_PREFIX}locked`);
+    mkdirSync(home);
+    const sock = join(home, "abcd1234.sock");
+    writeFileSync(sock, "");
+    chmodSync(parent, 0o500); // the emptied home's own entry cannot be removed: EACCES
+    try {
+      expect(() => releaseLaunchSocket(sock)).toThrow(expect.objectContaining({ code: "EACCES" }));
+      expect(existsSync(sock)).toBe(false); // its own socket file still went first
+    } finally {
+      chmodSync(parent, 0o700); // so the test's temp dir can be removed
+    }
+  });
+
   test("no-ops on a path outside a home this scheme owns", () => {
     const sock = join(tempDir("not-owned-"), "abcd1234.sock");
     writeFileSync(sock, "");

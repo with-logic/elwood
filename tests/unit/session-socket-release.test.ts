@@ -20,14 +20,24 @@ import * as codex from "../codex/helpers.ts";
 import { socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 
 let privateRoot: string | undefined;
+const started: { teardown(): Promise<void> }[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+  // Even a test that failed before its own stop closes every bridge it started, before the
+  // seams are reset and the root holding their sockets is removed.
+  await Promise.allSettled(started.splice(0).map((session) => session.teardown()));
   claude.resetFakes();
   codex.resetFakes();
   resetSocketHomeRootForTests();
   if (privateRoot) rmSync(privateRoot, { recursive: true, force: true });
   privateRoot = undefined;
 });
+
+/** `session`, torn down after the test however it ends. */
+function tracked<T extends { teardown(): Promise<void> }>(session: T): T {
+  started.push(session);
+  return session;
+}
 
 /** Mints socket homes under a short private root, so the bound path clears macOS's cap. */
 function isolateSocketHomes(): string {
@@ -40,11 +50,12 @@ const adapters = [
   {
     agent: "claude",
     helpers: claude,
-    start: (cwd: string) => startClaude({ cwd }),
-    resume: (id: string, cwd: string) => resumeClaude({ elwoodSessionId: id, cwd }),
-    // Persists the resume id, so a later resume of the session can launch.
-    ready: (id: string, cwd: string) =>
-      claude.ptys[0]!.dispatchHook(id, {
+    start: async (cwd: string) => tracked(await startClaude({ cwd })),
+    resume: async (elwoodSessionId: string, cwd: string) =>
+      tracked(await resumeClaude({ elwoodSessionId, cwd })),
+    // SessionStart records the agent's session id, so a later resume of the session can launch.
+    recordAgentSessionId: (elwoodSessionId: string, cwd: string) =>
+      claude.ptys[0]!.dispatchHook(elwoodSessionId, {
         hook_event_name: "SessionStart",
         session_id: "claude-release",
         cwd,
@@ -54,13 +65,16 @@ const adapters = [
   {
     agent: "codex",
     helpers: codex,
-    start: (cwd: string) => startCodex({ cwd }),
-    resume: (id: string, cwd: string) => resumeCodex({ elwoodSessionId: id, cwd }),
-    ready: (id: string, cwd: string) => codex.becomeReady(id, cwd),
+    start: async (cwd: string) => tracked(await startCodex({ cwd })),
+    resume: async (elwoodSessionId: string, cwd: string) =>
+      tracked(await resumeCodex({ elwoodSessionId, cwd })),
+    // Records the agent's session id the same way, and also marks the session ready.
+    recordAgentSessionId: (elwoodSessionId: string, cwd: string) =>
+      codex.becomeReady(elwoodSessionId, cwd),
   },
 ] as const;
 
-for (const { agent, helpers, start, resume, ready } of adapters) {
+for (const { agent, helpers, start, resume, recordAgentSessionId } of adapters) {
   describe(`${agent} socket home release`, () => {
     test.each([
       "stop",
@@ -90,7 +104,7 @@ for (const { agent, helpers, start, resume, ready } of adapters) {
       const cwd = helpers.tempDir();
       const root = isolateSocketHomes();
       const first = await start(cwd);
-      await ready(first.elwoodSessionId, cwd);
+      await recordAgentSessionId(first.elwoodSessionId, cwd);
       const second = await resume(first.elwoodSessionId, cwd); // overlaps the live first
       expect(socketHomesIn(root)).toHaveLength(1);
       expect(socketFilesIn(root)).toHaveLength(2);

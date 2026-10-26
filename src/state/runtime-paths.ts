@@ -6,7 +6,8 @@
  * settings, bridge script, socket FILE and token are minted anew for every launch.
  * Each PTY keeps its own hook route even while another launch is pending. The socket
  * home is ensured private (0700) here. Only the current owner may remove the whole
- * home; a failed launch removes only its own socket file.
+ * home; a launch that fails or ends without teardown removes its own socket file, then
+ * the home only if that left it empty.
  */
 
 import { randomUUID } from "node:crypto";

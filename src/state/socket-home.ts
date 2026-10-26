@@ -132,10 +132,15 @@ export function releaseLaunchSocket(socketPath: string): void {
   rmSync(socketPath, { force: true });
   try {
     rmdirSync(home);
-  } catch {
-    // Another launch's socket is still inside (ENOTEMPTY), or the home is already gone.
+  } catch (error) {
+    // Another launch's socket is still inside, or the home is already gone; anything
+    // else is a real failure for the caller's cleanup path, as an `rmSync` one is.
+    if (!keptHomeCodes.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
   }
 }
+
+/** `rmdir` errors that mean the home stays for another launch, or is already gone. */
+const keptHomeCodes = new Set(["ENOTEMPTY", "EEXIST", "ENOENT"]);
 
 /**
  * Removes a session's ENTIRE stable socket home (every launch's socket file), so a

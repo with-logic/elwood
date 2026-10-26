@@ -62,7 +62,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     expect(boundSocketPathLength(priv)).toBeLessThan(104);
   });
 
-  test("a bridge-start failure removes its own socket file AND shuts down the partial bridge", async () => {
+  test("C-STATE-12 a bridge-start failure removes its own socket file and the empty socket home, AND shuts down the partial bridge", async () => {
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
     let stops = 0;
@@ -84,7 +84,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     expect(stops).toBe(1); // the partially-started bridge's listener is not leaked
   });
 
-  test("a PTY-start failure removes its own socket file", async () => {
+  test("C-STATE-12 a PTY-start failure removes its own socket file and the empty socket home", async () => {
     const cwd = tempDir();
     installFakes();
     setPtyFactoryForTests(() => {
@@ -136,7 +136,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     expect(socketHomesIn(priv)).toEqual([]); // teardown removed it
   });
 
-  test("§8.1 start→stop→resume→teardown is restart-safe: ONE stable home, fully collected", async () => {
+  test("C-STATE-12 start→stop→resume→teardown is restart-safe: stop removes the empty home, teardown the rest", async () => {
     // A session's socket home is STABLE (fingerprint of the id), so a resume — even in a
     // fresh process that remembers no prior path — targets the SAME home rather than
     // leaking a new anonymous one per launch. stop() releases its emptied home and resume
