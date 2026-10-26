@@ -1,7 +1,7 @@
 /** Native cancelled image/text drafts clear without submitting a model turn (C-API-44/56). */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { attachClaudeImages } from "../../src/claude/attach-images.ts";
@@ -12,6 +12,8 @@ import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { ComposerCleanup } from "../../src/core/input/composer-cleanup.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
+import { nodePtyFactory } from "../../src/pty/node.ts";
+import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { currentRenderedFrame } from "../../src/terminal/cursor.ts";
 import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import {
@@ -28,6 +30,21 @@ import {
 } from "./helpers.ts";
 
 const fixture = join(import.meta.dirname, "..", "fixtures", "sample.png");
+
+/**
+ * Codex saves each image pasted into its composer as a copy in its temp dir and never
+ * removes it, and nothing names the copy of a draft that is never submitted, so Elwood does
+ * not remove it either (`docs/cli-behavior.md`). This Codex keeps its temp files in its
+ * sandbox home, which goes with the sandbox. Returns that temp dir.
+ */
+function useCodexTempDirIn(home: string): string {
+  const dir = join(home, "tmp");
+  mkdirSync(dir);
+  setPtyFactoryForTests((options) =>
+    nodePtyFactory({ ...options, env: { ...options.env, TMPDIR: `${dir}/` } }),
+  );
+  return dir;
+}
 const chip = /\[Image #\d+\]/;
 const marker = "ELWOOD_CANCELLED_DRAFT";
 for (const agent of ["claude", "codex"] as const) {
@@ -52,9 +69,11 @@ for (const agent of ["claude", "codex"] as const) {
         if (sandbox) await endCodexTestAfter(t, { sessions: [started], sandbox, launches });
         else await cleanup(started);
       } finally {
+        resetRuntimeSeamsForTests();
         if (clipboard) execFileSync("/usr/bin/pbcopy", { input: clipboard });
       }
     });
+    const codexTemp = sandbox ? useCodexTempDirIn(sandbox.home) : undefined;
     const options = { cwd: project.cwd, stateDir: project.stateDir, autotrust: true };
     const session: E2eSession = await (agent === "claude"
       ? startClaude(options)
@@ -153,6 +172,11 @@ for (const agent of ["claude", "codex"] as const) {
         false,
       );
       if (clipboard) assert.deepEqual(execFileSync("/usr/bin/pbpaste"), clipboard);
+      // The cancelled draft's copy is in the sandbox's temp dir, which goes with the sandbox.
+      if (codexTemp) {
+        const copies = readdirSync(codexTemp).filter((name) => name.startsWith("codex-clipboard-"));
+        assert.equal(copies.length, 1, "Codex saved the pasted image in the sandbox's temp dir");
+      }
     } catch (error) {
       diagnose("failure");
       throw error;

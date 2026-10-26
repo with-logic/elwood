@@ -27,6 +27,10 @@ back each entry are listed in `prd/14-conformance.md`.
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- `elwood interactive` hands the agent the login shell's own PATH even when the
+  user's startup files define a `printf` function or alias. The PATH lookup ran
+  the login shell's `printf`, which such a function or alias replaced, so the
+  agent could get another PATH, or Elwood's own when nothing framed was printed.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
