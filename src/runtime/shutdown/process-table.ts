@@ -11,6 +11,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { coalesceUnstarted } from "./coalesce.ts";
 
 /** One row of the host process table. */
 export type ProcessEntry = {
@@ -21,6 +22,8 @@ export type ProcessEntry = {
   readonly zombie: boolean;
   /** Stopped (state `T`) when its row was read, as a delivered SIGSTOP leaves it. */
   readonly stopped: boolean;
+  /** When it started, to the second (`lstart`): with the pid, it names one process. */
+  readonly startedAt: string;
   /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
   readonly name: string;
   /** Codex's shared daemon or its updater, never followed or killed (`shared-daemon.ts`). */
@@ -30,18 +33,37 @@ export type ProcessEntry = {
 // An absolute path, so a caller's PATH can never substitute another `ps`. macOS is
 // the only supported platform (PRD §2); `-A -o` is POSIX, so Linux CI parses the same.
 export const PS_PATH = "/bin/ps";
-const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm=,pid="] as const;
-// About 50 bytes a row: 16 MiB holds over 300,000 processes, yet bounds a runaway `ps`.
+const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat=,lstart=,ucomm=,pid="] as const;
+// Only these: in the C locale `lstart` is always `Www Mmm dd hh:mm:ss yyyy`, so where it
+// ends is known, and in UTC a process's start reads the same however the host's zone changes.
+const PS_ENV = { LC_ALL: "C", TZ: "UTC" };
+// About 80 bytes a row: 16 MiB holds over 200,000 processes, yet bounds a runaway `ps`.
 const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 // The short name may hold spaces or be empty, and `ps` prints it raw, so a newline in it
 // starts what reads as another row: each row ends with its pid again (docs/cli-behavior.md).
-const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s(.*)\s(\d+)\s*$/;
+const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+ \S+ +\d+ [\d:]+ \d+)\s(.*)\s(\d+)\s*$/;
+
+/** One process's identity: its pid and start time, which no later process with its pid shares. */
+export function processIdentity(row: Pick<ProcessEntry, "pid" | "startedAt">): string {
+  return `${row.pid} ${row.startedAt}`;
+}
+
+/** A row's fields where no read showed them: a live process not stopped, of no known start. */
+export const UNREAD: Omit<ProcessEntry, "pid" | "pgid"> = {
+  ppid: 0,
+  zombie: false,
+  stopped: false,
+  startedAt: "",
+  name: "",
+  shared: false,
+};
 
 /** The bounds a `ps` run gets: its timeout, its output cap, and the signal that ends it. */
 export type PsRunOptions = {
   readonly timeout: number;
   readonly maxBuffer: number;
   readonly killSignal: "SIGKILL";
+  readonly env: Readonly<Record<string, string>>;
 };
 
 /** Runs a file to completion and resolves its stdout; `execFile`, promisified. */
@@ -53,9 +75,9 @@ export type PsRunner = (
 
 export const runFile: PsRunner = promisify(execFile);
 
-/** The bounds every `ps` run gets: `timeoutMs`, the output cap, and SIGKILL to end it. */
+/** The bounds every `ps` run gets: `timeoutMs`, the output cap, SIGKILL, and `PS_ENV`. */
 export function psRunOptions(timeoutMs: number): PsRunOptions {
-  return { timeout: timeoutMs, maxBuffer: PS_MAX_OUTPUT_BYTES, killSignal: "SIGKILL" };
+  return { timeout: timeoutMs, maxBuffer: PS_MAX_OUTPUT_BYTES, killSignal: "SIGKILL", env: PS_ENV };
 }
 
 /** Lists every process on the host, rejecting when `ps` fails or exceeds `timeoutMs`. */
@@ -67,61 +89,21 @@ export async function listProcessTable(
   return parseProcessTable(stdout);
 }
 
-/**
- * Joins every request made before a listing starts into that one listing, so a fleet
- * shutting down together runs one `ps` instead of one per session. A request never
- * joins a listing that has already started: each sweep needs a table read after its
- * own leader was frozen. The listing starts on the next turn of the event loop and may
- * run for the largest timeout any of its requests asked for, while each request still
- * rejects with `ETIMEDOUT` at its own timeout: one session's nearly spent deadline never
- * cuts short another's read.
- */
-export function coalesceUnstarted<T>(
-  run: (timeoutMs: number) => Promise<T>,
-): (timeoutMs: number) => Promise<T> {
-  type Batch = { timeoutMs: number; readonly result: Promise<T> };
-  let open: Batch | undefined;
-  const startBatch = (timeoutMs: number): Batch => {
-    const { promise: started, resolve: start } = Promise.withResolvers<void>();
-    const batch: Batch = { timeoutMs, result: started.then(() => run(batch.timeoutMs)) };
-    setImmediate(() => {
-      open = undefined;
-      start();
-    });
-    return batch;
-  };
-  return (timeoutMs) => {
-    open ??= startBatch(timeoutMs);
-    open.timeoutMs = Math.max(open.timeoutMs, timeoutMs);
-    return withinOwnTimeout(open.result, timeoutMs);
-  };
-}
-
-/** `result`, or an `ETIMEDOUT` rejection once `timeoutMs` passes first. */
-function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timedOut = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      reject(Object.assign(new Error("process table read timed out"), { code: "ETIMEDOUT" }));
-    }, timeoutMs);
-  });
-  return Promise.race([result, timedOut]).finally(() => clearTimeout(timer));
-}
-
 /** The production listing: concurrent shutdowns share one `ps` per event-loop turn. */
 export const listProcessTableShared = coalesceUnstarted(listProcessTable);
 
 /**
- * Parses `ps -o pid=,ppid=,pgid=,stat=,ucomm=,pid=`. Throws on a line that is not one
- * whole row: one cut short, or one whose trailing pid is not its first, as a line a
- * newline in a name started is (`ROW`). Throws, too, on a pid listed twice.
+ * Parses a `PS_ARGS` read (C locale). Throws on a line that is not one whole row: one cut
+ * short, or one whose trailing pid is not its first, as a line a newline in a name
+ * started is (`ROW`). Throws, too, on a pid listed twice.
  */
 export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
   const entries: ProcessEntry[] = [];
   const pids = new Set<number>();
   for (const line of stdout.split("\n")) {
     if (line.trim() === "") continue;
-    const [, pid = "", ppid, pgid, state = "", name = "", trailingPid] = ROW.exec(line) ?? [];
+    const [, pid = "", ppid, pgid, state = "", startedAt = "", name = "", trailingPid] =
+      ROW.exec(line) ?? [];
     if (pid === "" || pid !== trailingPid) {
       throw new Error("process table read has a line that is not one whole row");
     }
@@ -133,6 +115,7 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
       pgid: Number(pgid),
       zombie: state.startsWith("Z"),
       stopped: state.startsWith("T"),
+      startedAt,
       name: name.trim(),
       shared: false,
     });
@@ -161,13 +144,9 @@ export function detachedDescendantGroups(
 ): ReadonlyMap<number, ReadonlySet<ProcessEntry>> {
   const children = childrenByParent(table);
   const leader = table.find((entry) => entry.pid === leaderPid) ?? {
+    ...UNREAD,
     pid: leaderPid,
-    ppid: 0,
     pgid: leaderPid,
-    zombie: false,
-    stopped: false,
-    name: "",
-    shared: false,
   };
   const excluded = new Set([leaderPid, hostPid, leader.pgid]);
   for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);
