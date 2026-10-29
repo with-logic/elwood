@@ -73,3 +73,14 @@ Default-branch pushes and manual cache preparation warm the shared SDK,
 reviewer tools, and installed caller dependencies. Exact cache matches skip
 installation; changed manifests, toolchains, or cache versions rebuild the
 necessary layer. Cache preparation does not call a model or publish a review.
+
+## Secret scanning
+
+Secret-scan results are advisory for merging into `main`. PR, merge-queue, and
+pushed-range scans fail their jobs on findings. Full-history audits on new tag
+pushes, first default-branch pushes, and manual runs warn on findings during
+historical triage; scanner, Git, and configuration errors fail the job.
+The release workflow separately scans its selected source before publication;
+findings and errors remain blocking there. Repository checkout hooks and native
+exceptions are documented in the
+[maintainer guide](https://github.com/with-logic/elwood/blob/main/.github/secret-scanning.md).
