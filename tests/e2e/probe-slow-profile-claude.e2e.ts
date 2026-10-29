@@ -16,8 +16,8 @@ import {
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
 import { shellQuote, userShell } from "../../src/runtime/shell.ts";
-import { resolvedAgentPath } from "./availability.ts";
-import { e2eTimeoutMs, makeProject, skipIf, skipReason } from "./helpers.ts";
+import { pathSkipReason, resolvedAgentProgramPath } from "./availability.ts";
+import { e2eTimeoutMs, makeProject, skipIf } from "./helpers.ts";
 
 // The profile sleeps twice the command bound. Real `claude --version` answered in at most
 // 0.12 s across 16 concurrent runs on a loaded host, so the command bound is ample.
@@ -26,7 +26,8 @@ const commandBoundMs = 2_000;
 
 test("C-PERF-05 a real Claude session starts when its login profile outlasts the probe command bound", {
   skip: skipIf(
-    skipReason("claude"),
+    // The profile puts the directory of `claude`'s program on PATH, so it needs a program.
+    pathSkipReason("claude"),
     !userShell().endsWith("/zsh") && "needs zsh for a private ZDOTDIR",
   ),
   timeout: e2eTimeoutMs + 30_000,
@@ -38,7 +39,7 @@ test("C-PERF-05 a real Claude session starts when its login profile outlasts the
   mkdirSync(zdotdir);
   writeFileSync(
     join(zdotdir, ".zshrc"),
-    `sleep ${profileSeconds}\nexport PATH=${shellQuote(dirname(resolvedAgentPath("claude")))}:"$PATH"\n`,
+    `sleep ${profileSeconds}\nexport PATH=${shellQuote(dirname(resolvedAgentProgramPath("claude")))}:"$PATH"\n`,
   );
   const previous = process.env["ZDOTDIR"];
   process.env["ZDOTDIR"] = zdotdir;
