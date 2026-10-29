@@ -163,7 +163,7 @@ jobs:
           fi
           jq -c '.[] | {rule: .RuleID, line: .StartLine, commit: .Commit}' "$report/findings.json"
           count=$(jq length "$report/findings.json")
-          echo "Gitleaks: $count potential finding(s). See docs/secret-scanning.md for remediation and native exceptions."
+          echo "Gitleaks: $count potential finding(s). See .github/secret-scanning.md for remediation and native exceptions."
           exit "$status"
 
   publish:
