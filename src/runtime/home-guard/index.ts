@@ -24,8 +24,8 @@ export const homeGuardStopMarker = `elwood-home-guard-stopped-${randomBytes(8).t
 
 /** Why a launch the e2e home guard stopped failed, for its start or probe error. */
 export const homeGuardStoppedReason =
-  "the e2e home guard stopped its login shell: a startup file left CODEX_HOME or " +
-  "CLAUDE_CONFIG_DIR unexported or not one of the suite's private homes, or " +
+  "the e2e home guard stopped its login shell: a startup file left CODEX_HOME, " +
+  "CLAUDE_CONFIG_DIR, or CLAUDE_CODE_TMPDIR unexported or not one of the suite's private homes, or " +
   `${homeGuardHomesKey} is not a JSON array of absolute paths`;
 
 /**

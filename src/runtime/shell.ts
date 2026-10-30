@@ -5,7 +5,6 @@
  */
 
 import { userInfo } from "node:os";
-import type { ElwoodAgentKind } from "../core/activity/index.ts";
 import { isStringArray } from "../core/predicates.ts";
 import { homeGuardExitCode, homeGuardHomesKey, homeGuardStopMarker } from "./home-guard/index.ts";
 import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
@@ -56,13 +55,10 @@ export function probeShellStatus(command: string): LoginShellArgs {
   return probeShellCommand(`${command} >/dev/null 2>&1`);
 }
 
-/** The variable naming each adapter's CLI home. */
-const homeVariables = {
-  claude: "CLAUDE_CONFIG_DIR",
-  codex: "CODEX_HOME",
-} as const satisfies Record<ElwoodAgentKind, string>;
+/** The private CLI homes and Claude temp root protected during e2e launches. */
+const homeVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_CODE_TMPDIR"] as const;
 
-type HomeVariable = (typeof homeVariables)[ElwoodAgentKind];
+type HomeVariable = (typeof homeVariables)[number];
 
 /**
  * Why the guard stops a launch: the list cannot be read, or a guarded variable is no longer an
@@ -120,9 +116,10 @@ const realHome =
 
 /**
  * The e2e suite's CLI home guard (PRD §12, C-E2E-24). The suite points `CLAUDE_CONFIG_DIR`
- * and `CODEX_HOME` at private homes it creates and lists in `ELWOOD_E2E_PRIVATE_HOMES`, but
+ * and `CODEX_HOME`, plus `CLAUDE_CODE_TMPDIR`, at private roots listed in
+ * `ELWOOD_E2E_PRIVATE_HOMES`, but
  * each CLI starts through the user's login shell, whose startup files run after Elwood hands
- * over its environment and could replace, unset, or unexport either one. Each of the two that
+ * over its environment and could replace, unset, or unexport them. Each variable that
  * Elwood's own environment sets to a listed home is guarded: the login shell, after its
  * startup files, exits `homeGuardExitCode` before the agent or probe command unless the
  * variable is still exported and its real path is a listed home. A list that cannot be read
@@ -135,7 +132,7 @@ export function homeGuardScript(launch: GuardedLaunch): string {
   const homes = privateHomes(raw);
   if (homes === undefined) return refuse({ kind: "unreadable_list" }, launch);
   const listed = homes.map(shellQuote).join("|");
-  return Object.values(homeVariables)
+  return homeVariables
     .filter((name) => homes.includes(process.env[name] ?? ""))
     .map(
       // `printenv` sees only what the shell exports, which is what the CLI inherits.

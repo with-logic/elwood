@@ -2212,6 +2212,26 @@ bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
 
 
+## Claude's temp root (Claude 2.1.310, 2026-10-26)
+
+Claude keeps its temp files under a root: `CLAUDE_CODE_TMPDIR` when set, else `/tmp`, so
+the macOS `TMPDIR` does not move it. Measured with real sessions started through Elwood:
+
+- Under `<root>/claude-<uid>/`, Claude makes one folder per working directory, named for
+  the directory's real path with each character other than a letter or digit replaced by
+  `-`. It holds a folder per session with that session's `scratchpad/`. The folder is
+  still there after `stop()` and after `teardown()`; nothing in Claude removes it. Every
+  e2e scratch project left one in the shared `/tmp/claude-<uid>` until the suite gave each
+  e2e process a private `CLAUDE_CODE_TMPDIR` (C-E2E-23).
+- Claude's messaging socket is `<root>/cc-socks/<pid>.sock`. The 2.1.310 bundle uses that
+  path only while it is at most 103 bytes, and otherwise falls back to
+  `/tmp/cc-socks-<uid>/<pid>.sock`, so a long root moves the socket back into the shared
+  `/tmp`. The e2e root's prefix is short for that reason.
+- Claude, run directly in a PTY, removes its socket when it exits on SIGTERM, SIGHUP,
+  `/exit`, or Ctrl-C. A SIGKILL leaves it: after `teardown()`, which SIGKILLs a live session,
+  `/tmp/cc-socks/<pid>.sock` remained for the dead pid. After `stop()`, whose SIGTERM
+  Claude exits on, it did not.
+
 ## Codex keeps a temp copy of every pasted image (codex-cli 0.164.0, 2026-10-26)
 
 On Ctrl+V with an image on the clipboard, Codex writes the image to

@@ -21,9 +21,15 @@ import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { recordCredentialVariables, recordedVariables } from "./claude-credential-hook.ts";
-import { defaultClaudeConfigDir, userConfigDir, userGlobalConfig } from "./claude-home.ts";
+import {
+  defaultClaudeConfigDir,
+  defaultClaudeTempDir,
+  userConfigDir,
+  userGlobalConfig,
+} from "./claude-home.ts";
 import { anthropicCredentialVariables } from "./claude-login.ts";
 import { claudeProjectKeys, projectKeysWithin } from "./claude-projects.ts";
+import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
 import { notZsh, useExportingZdotdir } from "./exporting-zdotdir.ts";
 import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
@@ -108,6 +114,17 @@ function privateLoginTest(name: string, skip: string | false, startupLine?: stri
       folders.filter((folder) => folder.includes(folderName)),
       [],
       "the user's transcript folders never include the scratch project",
+    );
+    const tempFolder = claudeTempFolder(cwd);
+    assert.deepEqual(
+      claudeTempFoldersNamed(defaultClaudeTempDir, tempFolder),
+      [tempFolder],
+      "Claude keeps the scratch project's temp folder under the private temp root",
+    );
+    assert.deepEqual(
+      claudeTempFoldersNamed("/tmp", tempFolder),
+      [],
+      "and never under the shared /tmp",
     );
   });
 }
