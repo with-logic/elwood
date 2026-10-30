@@ -23,14 +23,15 @@ export type ProcessEntry = {
   readonly stopped: boolean;
   /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
   readonly name: string;
+  /** Codex's shared daemon or its updater, never followed or killed (`shared-daemon.ts`). */
+  readonly shared: boolean;
 };
 
 // An absolute path, so a caller's PATH can never substitute another `ps`. macOS is
 // the only supported platform (PRD §2); `-A -o` is POSIX, so Linux CI parses the same.
-const PS_PATH = "/bin/ps";
+export const PS_PATH = "/bin/ps";
 const PS_ARGS = ["-A", "-o", "pid=,ppid=,pgid=,stat=,ucomm=,pid="] as const;
-// About 50 bytes per row, so 16 MiB holds over 300,000 processes: far beyond any real
-// host, while still bounding what a runaway `ps` can make this process buffer.
+// About 50 bytes a row: 16 MiB holds over 300,000 processes, yet bounds a runaway `ps`.
 const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 // The short name may hold spaces or be empty, and `ps` prints it raw, so a newline in it
 // starts what reads as another row: each row ends with its pid again (docs/cli-behavior.md).
@@ -52,17 +53,17 @@ export type PsRunner = (
 
 export const runFile: PsRunner = promisify(execFile);
 
+/** The bounds every `ps` run gets: `timeoutMs`, the output cap, and SIGKILL to end it. */
+export function psRunOptions(timeoutMs: number): PsRunOptions {
+  return { timeout: timeoutMs, maxBuffer: PS_MAX_OUTPUT_BYTES, killSignal: "SIGKILL" };
+}
+
 /** Lists every process on the host, rejecting when `ps` fails or exceeds `timeoutMs`. */
 export async function listProcessTable(
   timeoutMs: number,
   run: PsRunner = runFile,
 ): Promise<readonly ProcessEntry[]> {
-  const options: PsRunOptions = {
-    timeout: timeoutMs,
-    maxBuffer: PS_MAX_OUTPUT_BYTES,
-    killSignal: "SIGKILL",
-  };
-  const { stdout } = await run(PS_PATH, PS_ARGS, options);
+  const { stdout } = await run(PS_PATH, PS_ARGS, psRunOptions(timeoutMs));
   return parseProcessTable(stdout);
 }
 
@@ -133,6 +134,7 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
       zombie: state.startsWith("Z"),
       stopped: state.startsWith("T"),
       name: name.trim(),
+      shared: false,
     });
   }
   return entries;
@@ -149,8 +151,9 @@ export function parseProcessTable(stdout: string): readonly ProcessEntry[] {
  * once the group is gone, so the parent rows let a caller signal it only once a parent
  * is known to be stopped: a stopped parent cannot reap its exited child, so that child
  * keeps its pid and the group keeps its id. A leader missing from the table is given
- * as a row that is not stopped. The host's group (`hostPid`'s) and the ids
- * `kill(-pgid)` would misroute (`<= 1`) are never returned.
+ * as a row that is not stopped. The host's group (`hostPid`'s) and the ids `kill(-pgid)`
+ * would misroute (`<= 1`) are never returned. Nor is a `shared` process (Codex's daemon
+ * or its updater) or anything it started: the walk never descends into one.
  */
 export function detachedDescendantGroups(
   table: readonly ProcessEntry[],
@@ -164,6 +167,7 @@ export function detachedDescendantGroups(
     zombie: false,
     stopped: false,
     name: "",
+    shared: false,
   };
   const excluded = new Set([leaderPid, hostPid, leader.pgid]);
   for (const entry of table) if (entry.pid === hostPid) excluded.add(entry.pgid);
@@ -172,7 +176,7 @@ export function detachedDescendantGroups(
   const visited = new Set([leaderPid]);
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     for (const child of children.get(parent.pid) ?? []) {
-      if (visited.has(child.pid)) continue;
+      if (visited.has(child.pid) || child.shared) continue;
       visited.add(child.pid);
       pending.push(child);
       if (child.zombie || child.pgid <= 1 || excluded.has(child.pgid)) continue;
@@ -184,7 +188,8 @@ export function detachedDescendantGroups(
   return groups;
 }
 
-function childrenByParent(table: readonly ProcessEntry[]): Map<number, ProcessEntry[]> {
+/** The table's rows grouped by their parent's pid. */
+export function childrenByParent(table: readonly ProcessEntry[]): Map<number, ProcessEntry[]> {
   const children = new Map<number, ProcessEntry[]>();
   for (const entry of table) {
     const siblings = children.get(entry.ppid);

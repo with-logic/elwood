@@ -21,6 +21,9 @@ The instructions below are for maintainers. This project is spec-first:
 
 ## Setup and checks
 
+For source-checkout Git hooks and repository secret-scanning exceptions, see the
+[maintainer guide](https://github.com/with-logic/elwood/blob/main/.github/secret-scanning.md).
+
 ```sh
 npm install
 npm run check

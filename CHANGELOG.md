@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a
@@ -62,6 +69,11 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
+- `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
+  app-server daemon, its updater loop, or what the daemon started, such as plugin
+  MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex
+  on that home, yours included, as a detached child of the TUI: when the session's
+  own TUI had started it, the walk that reaps detached hooks SIGKILLed it.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed
