@@ -6,11 +6,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  exitStatus,
-  type InteractiveLaunch,
-  spawnInteractiveAgent,
-} from "../../src/cli/interactive/spawn.ts";
+import { type InteractiveLaunch, spawnInteractiveAgent } from "../../src/cli/interactive/spawn.ts";
+import { exitStatus } from "../../src/runtime/exit-status.ts";
 import * as shell from "../../src/runtime/shell.ts";
 
 const roots: string[] = [];

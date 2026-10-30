@@ -1348,8 +1348,8 @@ listing that shows the leader live, leaves no live group unreached, and holds ev
 live process in every stopped group that way, the leader's included, so none of them
 can have started a process the listing missed; a leader exit observed first fails it,
 because the leader's detached children are then out of reach. Then the stopped groups
-are SIGKILLed deepest first
-(`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
+are SIGKILLed deepest first, except one that holds Codex's daemon, which is resumed
+(below) (`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
 flight, and two more per level of nesting. A process whose own parent exited before
 the walk is already under PID 1 and out of reach. macOS refuses a stop or a kill of
 a group whose members are all unreaped zombies with `EPERM`, so either counts as a
@@ -1460,6 +1460,65 @@ names a path inside the home, plus its descendants: SIGTERM first, then SIGKILL 
 later. A sandbox where something will not stop is kept.
 `tests/e2e/scratch-processes.e2e.ts` starts a daemon with `daemon start` and checks that
 removing the sandbox, and exiting the run, stop it.
+
+## Elwood's teardown never kills that daemon (2026-10-26)
+
+While the TUI that started them runs, the daemon and its updater loop are setsid
+children of it, the shape of a hook in flight. So when a session's own TUI had started
+them, the detached walk that `kill()`, `teardown()`, and a `stop()` escalation run killed
+the daemon, its updater loop, and everything the daemon had started, though the daemon
+serves every Codex on the home, the user's own included. The walk now never descends into
+one (PRD §5.3, C-LIFE-10): a process whose `ucomm` (short name) is `codex`, that leads its
+own group, whose parent is named `codex` or is PID 1, and whose `comm` has
+`/packages/app-server-daemon/` in it. On macOS `comm` is `argv[0]`, which Codex sets to
+the full path; it reads that way even after the home is removed.
+
+`comm` is read, one `ps -o comm= -p <pid>` per process and at most four at once, only for
+the processes that pass the other tests and that the walk can reach: the session's TUI and
+its descendants. None starts past the table read's deadline; the read then fails as a timed
+out one does. Every extra read costs a walk whose deadline, three seconds when these were
+measured, must hold on a loaded host:
+
+- `comm` in every table read doubled its cost (94 to 200 ms at a load of about 220): 4 of
+  9 real-process reap tests failed with `ETIMEDOUT`, none on `origin/main`.
+- Given several pids, macOS `ps` reads every process on the host (230 to 370 ms at a
+  load of about 25): with one `ps -p` for all candidates, a real Codex `teardown()`
+  failed in 5 of 7 runs, none of 2 on `origin/main`.
+- One `ps` per candidate anywhere on the host took 4 to 9 ms from a shell, but 120 to
+  870 ms when spawned by the process tearing the session down. The user's own daemon was
+  always a candidate, so every read paid that again: a real Codex `teardown()` failed in
+  2 of 5 runs, none of 5 on `origin/main`.
+
+A walk remembers each daemon it found, by pid, parent, and group, so when the session's
+TUI started one, the walk's first read pays its path reads, and no later read does unless
+its parent changed. A candidate no read has confirmed, such as the TUI's fork before its
+`exec`, is read again on every read until one does or it is gone. A walk with no
+candidate under its TUI runs the same single `ps` per read as before. In 3
+real Codex `teardown()`s, alternated with 3 on `origin/main`, it ran no path read. One run
+on each side failed at the deadline, when the host's 3,700 processes made a single table
+read take 1.6 to 2.1 s; the other reads took 350 to 540 ms.
+
+No real-Codex e2e proves this: in 8 runs of Codex 0.164.0 under Elwood, from fresh
+homes, with and without the hook-trust bypass and the update check, with holds of up to
+40 s, none started the daemon. `tests/unit/reap-detached-real.test.ts` builds the
+measured shape from real processes instead, with its install in place and removed.
+
+The TUI forks the daemon as a `codex` group leader of its own and then `exec`s it, so a
+path read can come between the two, and the walk can then stop the group after the
+`exec`. A stopped process cannot `exec`, so the kill pass goes by the latest read: a group
+it shows holding the daemon, or a process not stopped that could still become it, gets
+SIGCONT, not SIGKILL. A leader killed by something else while the walk holds it leaves
+that stopped daemon under PID 1, out of the leader's reach, so each group the walk stopped
+is a root of its own for the path reads. `tests/unit/shared-daemon-real.test.ts`
+reproduces both with a real process: Node cannot `exec`, but setting `process.title`
+changes what macOS `ps` reads as `comm` (`ucomm` stays the executable's name).
+
+A descendant can set its `comm` to the daemon's path (Node does by setting
+`process.title`), and a binary named `codex` that leads its own group is then spared as
+the daemon would be. That gives it nothing it lacks: the walk follows parent pids from the
+leader, so a descendant whose parent exits first is out of its reach. Measured on
+`origin/main` (2026-10-26): a setsid hook that backgrounds `/bin/sleep 300` and exits
+leaves the sleep under PID 1 before `kill()`, which resolves with the sleep still running.
 
 ## `ps` prints a process's short name raw (2026-10-26)
 
@@ -1814,6 +1873,14 @@ An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
 (`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
 key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.
 
+`ready` does not show that Claude got neither credential variable (Claude 2.1.310,
+2026-10-26). With the copied login, an invalid `ANTHROPIC_API_KEY` from the launch
+shell's startup files keeps the TUI from `ready`, but an invalid `ANTHROPIC_AUTH_TOKEN`
+does not: Claude reaches `ready` with it set. Both variables can also come from the
+developer's own startup files, after Elwood's environment is handed over. So C-E2E-23
+unsets both in the launch shell, and a `SessionStart` project hook records which of the
+two Claude's own environment holds (`tests/e2e/claude-credential-hook.ts`).
+
 The private dir carries none of the user's `settings.json`, so it shows what a fresh
 install does: the bypass-permissions dialog appears unless
 `skipDangerousModePermissionPrompt` is set (see above), and the footer shows Claude's
@@ -2144,6 +2211,26 @@ and neither ran a model turn. This proves native staged geometry and retry
 bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
 
+
+## Claude's temp root (Claude 2.1.310, 2026-10-26)
+
+Claude keeps its temp files under a root: `CLAUDE_CODE_TMPDIR` when set, else `/tmp`, so
+the macOS `TMPDIR` does not move it. Measured with real sessions started through Elwood:
+
+- Under `<root>/claude-<uid>/`, Claude makes one folder per working directory, named for
+  the directory's real path with each character other than a letter or digit replaced by
+  `-`. It holds a folder per session with that session's `scratchpad/`. The folder is
+  still there after `stop()` and after `teardown()`; nothing in Claude removes it. Every
+  e2e scratch project left one in the shared `/tmp/claude-<uid>` until the suite gave each
+  e2e process a private `CLAUDE_CODE_TMPDIR` (C-E2E-23).
+- Claude's messaging socket is `<root>/cc-socks/<pid>.sock`. The 2.1.310 bundle uses that
+  path only while it is at most 103 bytes, and otherwise falls back to
+  `/tmp/cc-socks-<uid>/<pid>.sock`, so a long root moves the socket back into the shared
+  `/tmp`. The e2e root's prefix is short for that reason.
+- Claude, run directly in a PTY, removes its socket when it exits on SIGTERM, SIGHUP,
+  `/exit`, or Ctrl-C. A SIGKILL leaves it: after `teardown()`, which SIGKILLs a live session,
+  `/tmp/cc-socks/<pid>.sock` remained for the dead pid. After `stop()`, whose SIGTERM
+  Claude exits on, it did not.
 
 ## Codex keeps a temp copy of every pasted image (codex-cli 0.164.0, 2026-10-26)
 

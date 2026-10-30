@@ -9,6 +9,7 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
+import { exitStatus } from "../exit-status.ts";
 import { homeGuardStopped } from "../home-guard/index.ts";
 import type { CommandResult } from "../seams.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
@@ -129,7 +130,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       const [stdout, stderr] = captured();
       settle({ status: null, stdout, stderr, error: mapError(e) });
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       const [stdout, stderr] = captured();
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
@@ -137,7 +138,8 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       // The e2e home guard runs after the start line but stops the shell before the command.
       else if (expectsStartLine && homeGuardStopped(code, stdout))
         settle(guardStopped(stdout, stderr));
-      else settle({ status: code, stdout, stderr });
+      // A signal death reads as a shell reports it, 128+n.
+      else settle({ status: exitStatus(code, signal), stdout, stderr });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
     let timer = boundBy(launchTimeoutMs, launchTimedOut);

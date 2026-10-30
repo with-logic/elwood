@@ -12,6 +12,7 @@
 
 import { errnoCode } from "../../../core/errors.ts";
 import type { ProcessEntry } from "../process-table.ts";
+import type { DaemonScope } from "../shared-daemon.ts";
 import type { SweepFailures } from "./failures.ts";
 
 /**
@@ -23,14 +24,22 @@ export type SweepOps = {
   readonly stopGroup: (pgid: number) => void;
   /** SIGKILLs the process group `pgid`; tolerates an already-empty group. */
   readonly killGroup: (pgid: number) => void;
-  /** Lists the host process table, rejecting after `timeoutMs`. */
-  readonly listProcesses: (timeoutMs: number) => Promise<readonly ProcessEntry[]>;
+  /** SIGCONTs the process group `pgid`: one the sweep stopped but must not kill. */
+  readonly continueGroup: (pgid: number) => void;
+  /** Lists the host process table within `timeoutMs`, marking `shared` rows in `scope`. */
+  readonly listProcesses: (
+    timeoutMs: number,
+    scope?: DaemonScope,
+  ) => Promise<readonly ProcessEntry[]>;
 };
 
 export type SweepState = {
   /** Groups a SIGSTOP returned for, the leader's included: signaled, not yet held. */
   readonly signaledGroupIds: Set<number>;
-  /** The descendant groups among them, in the order signaled: SIGKILLed in reverse. */
+  /**
+   * The descendant groups among them, in the order signaled: SIGKILLed in reverse, but
+   * those the latest read shows holding Codex's daemon, which are resumed (`kill.ts`).
+   */
   readonly signaledDescendantGroupIds: number[];
   /** Pids the previous read showed stopped inside a signaled group. */
   stoppedPidsLastRead: ReadonlySet<number>;
@@ -40,6 +49,8 @@ export type SweepState = {
   live: ReadonlyMap<number, ReadonlySet<ProcessEntry>>;
   /** Signaled groups not yet held: see `unheldGroups`, plus any signaled since that read. */
   unheld: readonly number[];
+  /** The latest table a read returned, by which the kill pass picks the groups to resume. */
+  latest: readonly ProcessEntry[];
   readonly failures: SweepFailures;
 };
 
@@ -51,6 +62,7 @@ export function newSweepState(failures: SweepFailures): SweepState {
     unstoppable: new Map(),
     live: new Map(),
     unheld: [],
+    latest: [],
     failures,
   };
 }

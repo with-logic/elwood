@@ -19,7 +19,8 @@ import {
 } from "../../../src/runtime/seams.ts";
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { privateTempDir } from "../../helpers/private-temp.ts";
-import { accessOnlyLogin, keychainLogin } from "../claude-login.ts";
+import { accessOnlyLogin, anthropicCredentialVariables, keychainLogin } from "../claude-login.ts";
+import { isNestedClaudeVariable } from "../claude-temp.ts";
 import { registerPrivateHome } from "../home-guard.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
@@ -30,6 +31,9 @@ import {
   parentFingerprint,
   userConfigDirSetting,
 } from "./claude-parent.ts";
+
+/** The Anthropic variables a pinned question Claude never sees: its login, and its endpoint. */
+const anthropicVariables = [...anthropicCredentialVariables, "ANTHROPIC_BASE_URL"];
 
 /** The skip gate and sandbox select from the same pinned and installed binary locations. */
 export function claudeQuestionBinary(): string | undefined {
@@ -106,7 +110,7 @@ export async function nativeClaudeQuestionSandbox() {
     const pin = (args: readonly string[]) =>
       prefixShellArgument(
         args,
-        `export HOME=${shellQuote(home)} CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL`,
+        `export HOME=${shellQuote(home)} CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ${anthropicVariables.join(" ")}`,
       );
     setCommandRunnerForTests((command, args) =>
       runProbe("env", [
@@ -124,13 +128,9 @@ export async function nativeClaudeQuestionSandbox() {
         CLAUDE_CONFIG_DIR: home,
         ZDOTDIR: home,
       };
+      // Claude's temp root stays: `claude-home.ts` set it to a private directory.
       for (const key of Object.keys(env)) {
-        if (
-          key === "CLAUDECODE" ||
-          key.startsWith("CLAUDE_CODE_") ||
-          ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"].includes(key)
-        )
-          delete env[key];
+        if (isNestedClaudeVariable(key) || anthropicVariables.includes(key)) delete env[key];
       }
       const pty = nodePtyFactory({ ...options, args: pin(options.args), env });
       return {
