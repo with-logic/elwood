@@ -72,6 +72,11 @@ beforeEach(() => {
 });
 
 test("default lease options coordinate through the stable account cache", async () => {
+  // Before anything runs: the default root must be the mocked home's. A lease module loaded
+  // before this file's mocks would put it in the developer's real cache.
+  if (failures.mockHome === "" || !updateLockPath("codex").startsWith(`${failures.mockHome}/`)) {
+    throw new Error("the default lease root is not under the mocked home: nothing was run");
+  }
   rmSync(failures.mockHome, { recursive: true, force: true });
   let ran = false;
   await coordinatedAutoupdate("codex", () => {

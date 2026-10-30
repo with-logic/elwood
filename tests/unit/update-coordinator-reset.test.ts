@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import * as preloadOnce from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => {
@@ -24,18 +25,26 @@ async function loadWithUserHome(home: string) {
     const os = await importOriginal<typeof import("node:os")>();
     return { ...os, userInfo: () => ({ ...os.userInfo(), homedir: home }) };
   });
+  // The preload keeps one update module across module resets, bound to the real `node:os`. This
+  // test needs one of its own, bound to the mocked one.
+  vi.doUnmock("../../src/runtime/update/once.ts");
   vi.resetModules();
-  const [claude, codex, lock, once, seams] = await Promise.all([
-    import("../../src/claude/preflight.ts"),
-    import("../../src/codex/preflight.ts"),
-    import("../../src/runtime/update/lock.ts"),
-    import("../../src/runtime/update/once.ts"),
-    import("../../src/runtime/seams.ts"),
-  ]);
-  // Before any update can run: the default lease root must be the fake home's, not the real one.
+  // In order: the update module binds to this lease module, and each preflight to that update module.
+  const lock = await import("../../src/runtime/update/lock.ts");
+  const once = await import("../../src/runtime/update/once.ts");
+  const seams = await import("../../src/runtime/seams.ts");
+  const claude = await import("../../src/claude/preflight.ts");
+  const codex = await import("../../src/codex/preflight.ts");
+  // Before any update can run: the update module must be a new one, whose lease module's default
+  // root is the fake home's, not the real one.
   const root = join(home, "Library", "Caches", "elwood", `${userInfo().uid}-updates`);
+  if (once === preloadOnce) {
+    throw new Error(
+      "the update module is the preload's, bound to the real node:os: nothing was run",
+    );
+  }
   if (lock.updateLockPath("claude") !== join(root, "claude.lock")) {
-    throw new Error(`the default lease root is not under ${home}`);
+    throw new Error(`the default lease root is not under ${home}: nothing was run`);
   }
   return {
     preflight: { claude: claude.preflightClaude, codex: codex.preflightCodex },
