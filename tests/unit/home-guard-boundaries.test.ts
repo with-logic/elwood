@@ -8,13 +8,16 @@
  * The suite's registry never trusts a list its process inherited. Sessions: `home-guard-startup`.
  */
 
+import { spawnSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { loginShellResolves } from "../../src/cli/request/agent-detect.ts";
 import { probeFailureDetails } from "../../src/core/errors.ts";
 import { homeGuardHomesKey, homeGuardStoppedReason } from "../../src/runtime/home-guard/index.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { announcesStart } from "../../src/runtime/probe/start.ts";
+import type { CommandResult } from "../../src/runtime/seams.ts";
 import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
 import { loginShells } from "../helpers/login-shells.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -37,7 +40,26 @@ function guardWith(tail: string, list = (codex: string) => JSON.stringify([codex
 }
 
 const command = "printf 'command ran\\n'";
-const stopped = { message: homeGuardStoppedReason, phase: "login_shell", shellStatus: 97 };
+
+/**
+ * How a probe the guard stopped after a startup file hid stdout fails. Its stop line goes on the
+ * control descriptor, beside its start line. A shell that closed that descriptor, as macOS's bash
+ * 3.2 does as a login shell, wrote its start line on the hidden stdout too, so the probe is the
+ * login shell's failure by its status alone (C-PERF-05).
+ */
+function hiddenStdoutStop(shell: string): NonNullable<CommandResult["error"]> {
+  const opened = spawnSync(shell, ["-l", "-i", "-c", "{ : >&3; } 2>/dev/null"], {
+    stdio: ["ignore", "ignore", "ignore", "pipe"],
+  });
+  if (opened.status === 0) return stopped;
+  const message = "login shell exited with status 97 before starting the probe command";
+  return { message, phase: "login_shell", shellStatus: 97 };
+}
+const stopped: NonNullable<CommandResult["error"]> = {
+  message: homeGuardStoppedReason,
+  phase: "login_shell",
+  shellStatus: 97,
+};
 
 test("C-E2E-24 a guarded probe still announces its start, and never writes to a terminal", () => {
   guardWith(":");
@@ -63,6 +85,23 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
       stderr: "",
       cause: homeGuardStoppedReason,
       phase: "login_shell",
+    });
+  });
+
+  test.each([
+    ["with output", probeShellCommand],
+    ["by status only", probeShellStatus],
+  ])("the guard stops, %s, after a startup file hid stdout, is a login-shell failure", async (_case, probe) => {
+    guardWith('exec >/dev/null; export CODEX_HOME="$HOME"');
+    const result = await runProbe(shell, probe(command));
+    expect(result).toMatchObject({ status: null, error: hiddenStdoutStop(shell) });
+  });
+
+  test("stops auto-detection, after a startup file hid stdout, as a failed check", async () => {
+    guardWith('exec >/dev/null; export CODEX_HOME="$HOME"');
+    await expect(loginShellResolves("codex", shell)).rejects.toMatchObject({
+      code: "no_agent_found",
+      message: expect.stringContaining(hiddenStdoutStop(shell).message),
     });
   });
 

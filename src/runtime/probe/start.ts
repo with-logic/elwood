@@ -27,14 +27,18 @@ export const probeCommandStartLine = `elwood-probe-command-start-${randomBytes(8
 export const probeControlFd = 3;
 
 /**
- * The probe shell's script prefix: it writes the start line, closes the descriptor so the
- * command does not inherit it, then the probe command runs. macOS's bash 3.2 started with both
- * `-l` and `-i` closes every inherited descriptor above stderr before running the script, so
- * there the write fails, silently, and the line goes to stdout. Not stderr: a profile may send
- * that to `/dev/null` or into stdout, while a profile that hid stdout would hide the command's
- * own output and fail the probe anyway. The runner removes the line from captured stdout.
+ * The probe shell's script prefix: it writes the start line on the control descriptor. macOS's
+ * bash 3.2 started with both `-l` and `-i` closes every inherited descriptor above stderr before
+ * running the script, so there the write fails, silently, and the line goes to stdout. Not
+ * stderr: a profile may send that to `/dev/null` or into stdout, while a profile that hid stdout
+ * would hide the line, and so fail the probe as the login shell's. The runner removes the line
+ * from captured stdout. The descriptor stays open for the e2e home guard, which writes its stop
+ * line where the start line went (PRD §12), until `probeControlClose`.
  */
-export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; else echo ${probeCommandStartLine}; fi; `;
+export const probeStartScript = `{ echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null || echo ${probeCommandStartLine}; `;
+
+/** Closes the control descriptor before the probe command, so the command does not inherit it. */
+export const probeControlClose = `exec ${probeControlFd}>&-; `;
 
 /**
  * Removes the user's not-found handlers before the probe command runs: zsh's

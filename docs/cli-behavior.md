@@ -1806,10 +1806,12 @@ shell exited with status 0 before starting the probe command` although its comma
 and so did `elwood`'s agent detection. Any macOS user whose login shell is bash could not
 start a session. GitHub's `macos-latest` runner user's shell is bash.
 
-The probe script now tests the write: `if { echo L >&3; } 2>/dev/null; then exec 3>&-;
-else echo L; fi`. zsh, ksh, macOS and Debian dash, non-login bash 3.2 and bash 5.2 took
-descriptor 3 when it was open and stdout when it was closed, and none printed the failed
-redirection's error. The fallback is stdout, not stderr. Under real `bash -l -i` with a
+The probe script now tests the write, then keeps descriptor 3 open through the e2e home
+guard (PRD §12), whose stop line takes the same path, and closes it only before the command:
+`{ echo L >&3; } 2>/dev/null || echo L; <guard>; exec 3>&-; <command>`. zsh, ksh, macOS
+and Debian dash, non-login bash 3.2 and bash 5.2 took descriptor 3 when it was open and
+stdout when it was closed, and none printed the failed redirection's error. The fallback
+is stdout, not stderr. Under real `bash -l -i` with a
 `~/.bash_profile` of `exec 2>/dev/null` or `exec 2>&1`, the line arrived on stdout and the
 probe passed. A stderr fallback would have been discarded by the first and moved into
 stdout by the second. A profile that hid stdout would hide the command's own output and
