@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
 import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
+import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const zsh = "/bin/zsh";
@@ -19,7 +20,7 @@ const hasZsh = existsSync(zsh);
 if (!hasZsh) console.warn(`SKIPPING C-PTY-02: ${zsh} is not installed on this host`);
 
 /** A reaper with an injected killer so tests never signal a real process group. */
-function testReaper(reaped: number[], pid = 1000) {
+function testReaper(reaped: number[], pid = FAKE_PID) {
   return new SessionReaper(pid, { ...quietProcessTree(), killGroup: (pgid) => reaped.push(pgid) });
 }
 
@@ -124,7 +125,7 @@ describe("node PTY adapter", () => {
     let exitHandler: (() => void) | undefined;
     await terminatePty(
       {
-        pid: 1000,
+        pid: FAKE_PID,
         onData: () => () => {},
         onExit: (handler) => {
           exitHandler = () => handler({ exitCode: 0 });
@@ -142,7 +143,7 @@ describe("node PTY adapter", () => {
       { gracefulMs: 0, forceMs: 10 },
     );
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
-    expect(reaped).toEqual([1000]); // reaped after exit
+    expect(reaped).toEqual([FAKE_PID]); // reaped after exit
   });
 
   test("C-LIFE-10 termination reports failure but STILL reaps the group", async () => {
@@ -153,7 +154,7 @@ describe("node PTY adapter", () => {
       await expect(
         terminatePty(
           {
-            pid: 1000,
+            pid: FAKE_PID,
             onData: () => () => {},
             onExit: () => () => {},
             write: () => {},
@@ -165,7 +166,7 @@ describe("node PTY adapter", () => {
           { gracefulMs: 0, forceMs: 0 },
         ),
       ).rejects.toMatchObject({ code: "termination_failed" });
-      expect(reaped).toEqual([1000]); // reaped despite the failure
+      expect(reaped).toEqual([FAKE_PID]); // reaped despite the failure
     }
   });
 
@@ -175,7 +176,7 @@ describe("node PTY adapter", () => {
       await expect(
         terminatePty(
           {
-            pid: 1000,
+            pid: FAKE_PID,
             onData: () => () => {},
             onExit: () => () => {},
             write: () => {},
@@ -192,7 +193,7 @@ describe("node PTY adapter", () => {
         code: "termination_failed",
         details: { cause: String(thrown).replace(/^Error: /, "") },
       });
-      expect(reaped).toEqual([1000]); // reaped even when the PTY op threw
+      expect(reaped).toEqual([FAKE_PID]); // reaped even when the PTY op threw
     }
   });
 });
