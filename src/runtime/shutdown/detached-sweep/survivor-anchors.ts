@@ -16,11 +16,13 @@ export class SurvivorAnchors {
   private readonly state: SweepState;
   private readonly record: DescendantRecord;
   private readonly ops: SweepOps;
+  private readonly background: boolean;
 
-  constructor(state: SweepState, record: DescendantRecord, ops: SweepOps) {
+  constructor(state: SweepState, record: DescendantRecord, ops: SweepOps, background: boolean) {
     this.state = state;
     this.record = record;
     this.ops = ops;
+    this.background = background;
   }
 
   /** Wraps SIGSTOP so its first successful send retains that table's member identities. */
@@ -40,12 +42,13 @@ export class SurvivorAnchors {
   /** Rejects and restores any stopped group whose pre-signal member no longer anchors it. */
   afterRead(table: readonly ProcessEntry[]): boolean {
     let matched = true;
+    const blocked = this.background ? this.record.unsafeBackgroundGroups(table) : new Set<number>();
     for (const [group, identities] of this.members) {
       this.readAfterStop.add(group);
       const anchors = table.filter(
         (row) => !row.zombie && row.pgid === group && identities.has(processIdentity(row)),
       );
-      if (anchors.length === 0) {
+      if (anchors.length === 0 || blocked.has(group)) {
         this.restore(group);
         matched = false;
       } else if (anchors.some((row) => row.stopped)) this.confirmed.add(group);

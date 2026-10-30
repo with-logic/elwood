@@ -366,6 +366,10 @@ the background reap of the processes it recorded resolves it (C-LIFE-14); one th
 recorded no process, or whose live non-daemon survivors have ambiguous second-resolution
 identities (§5.3), is never resolved from those observations. Foreground and background
 descendant reaps of the session are serialized, and a failed stopped-group resume stays
-pending until resumed or confirmed unnecessary. A failed restoration whose stopped
+pending until resumed or confirmed unnecessary. Ambiguous identities veto only their current
+group, so unrelated safe groups can still recover. After the automatic sixty-second
+window, an explicit shutdown makes a fresh serialized confirmation of the retained
+processes and resume debt without re-signaling the PTY; unreadable or live survivor
+evidence still rejects. A failed restoration whose stopped
 members were never identified by a post-stop read remains unresolved. Each caller still observes its own
 operation's success or typed failure.

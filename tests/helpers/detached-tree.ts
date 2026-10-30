@@ -34,7 +34,6 @@ const DAEMON_BINARY = "packages/app-server-daemon/releases/0.164.0/bin/codex";
 const NODE = realpathSync(process.execPath);
 /** How long a test waits for a process of the tree to record its pid. */
 const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
-
 // `hold.cjs <dir> <name> [next] [mode] [...]`: records its pid as <dir>/<name>.pid,
 // optionally starts `next` DETACHED from plain Node (Node's `detached` is `setsid()`, as
 // the CLIs do for hooks, which run as `sh` and `node`), and stays alive. `ignore-term`
@@ -197,3 +196,5 @@ function readPid(dir: string, name: string): number | undefined {
   const pid = Number(readFileSync(path, "utf8"));
   return Number.isInteger(pid) && pid > 1 ? pid : undefined;
 }
+
+export { markingLateSeen } from "./detached-tree/observed-late.ts";

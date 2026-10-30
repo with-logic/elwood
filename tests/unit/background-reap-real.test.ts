@@ -7,18 +7,19 @@
  * reap is reading or waiting for its next attempt.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { BACKGROUND_REAP_RETRY_MS } from "../../src/runtime/shutdown/detached-sweep/background.ts";
-import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { runFileUnreferenced } from "../../src/runtime/shutdown/unreferenced-read.ts";
+import { PENDING_READ_HOST, WAITING_RETRY_HOST } from "../helpers/background-hosts.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
-import { pollGone } from "../helpers/process-liveness.ts";
-import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
+import { killIfCommandHas, pollGone } from "../helpers/process-liveness.ts";
+import { stopBystander } from "../helpers/setsid-pair.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const SHUTDOWN = resolve(import.meta.dirname, "../../src/runtime/shutdown");
 
@@ -44,35 +45,48 @@ describe("C-LIFE-14 the background reap on real processes", () => {
     await vi.waitFor(() => expect(retry).not.toThrow(), { timeout: 10_000 });
   }, 60_000);
 
-  test("a host whose only work left is a background reap exits at once", async () => {
-    // A recorded process the reap can never end: its signals go nowhere.
-    const recorded = startBystander();
-    let host: ChildProcess | undefined;
-    try {
-      const pid = recorded.pid as number;
-      const row = (await listProcessTable(10_000)).find((entry) => entry.pid === pid);
-      host = spawn(process.execPath, ["--no-warnings", "--input-type=module", "-e", HOST], {
-        env: { ...process.env, ROW: JSON.stringify(row), SHUTDOWN },
+  test("a host exits while its controlled process-table read is still pending", async () => {
+    const marker = tempDir("elwood-pending-read-");
+    const host = spawn(
+      process.execPath,
+      ["--no-warnings", "--input-type=module", "-e", PENDING_READ_HOST],
+      {
+        env: { ...process.env, SHUTDOWN, MARKER: marker },
         stdio: ["ignore", "pipe", "inherit"],
-      });
-      const exited = once(host, "exit");
-      const [line] = await once(host.stdout as NodeJS.ReadableStream, "data");
+      },
+    );
+    const exited = once(host, "exit");
+    let readerPid: number | undefined;
+    try {
+      const [line] = await once(host.stdout, "data");
+      readerPid = Number(String(line).trim().split(" ")[1]);
+      expect(Number.isInteger(readerPid)).toBe(true);
       const started = performance.now();
-      expect(String(line)).toBe("reaping 1 recorded process\n");
-      expect(await exited).toEqual([0, null]);
-      // Each attempt's reads would otherwise hold the host for its whole deadline.
+      expect(
+        await Promise.race([
+          exited,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("referenced read held the host")), 1_500).unref(),
+          ),
+        ]),
+      ).toEqual([0, null]);
       expect(performance.now() - started).toBeLessThan(1_500);
+      process.kill(readerPid, 0); // The read is still pending, not a quickly completed ps.
     } finally {
-      if (host !== undefined) await stopBystander(host);
-      await stopBystander(recorded);
+      await stopBystander(host);
+      if (readerPid !== undefined) killIfCommandHas(readerPid, marker);
     }
-  }, 30_000);
+  }, 10_000);
 
   test("a host whose reap waits for its next attempt exits at once", async () => {
-    const host = spawn(process.execPath, ["--no-warnings", "--input-type=module", "-e", WAITER], {
-      env: { ...process.env, SHUTDOWN },
-      stdio: ["ignore", "pipe", "inherit"],
-    });
+    const host = spawn(
+      process.execPath,
+      ["--no-warnings", "--input-type=module", "-e", WAITING_RETRY_HOST],
+      {
+        env: { ...process.env, SHUTDOWN },
+        stdio: ["ignore", "pipe", "inherit"],
+      },
+    );
     const exited = once(host, "exit");
     try {
       const [line] = await once(host.stdout, "data");
@@ -93,46 +107,3 @@ describe("C-LIFE-14 the background reap on real processes", () => {
     });
   });
 });
-
-/** Records `ROW` as a hook of a made-up leader and reaps it in the background, signaling nothing. */
-const HOST = `
-const { DescendantRecord } = await import(process.env.SHUTDOWN + "/detached-sweep/record.ts");
-const { reapInBackground } = await import(process.env.SHUTDOWN + "/detached-sweep/background.ts");
-const { osProcessTreeOps } = await import(process.env.SHUTDOWN + "/process-tree-ops.ts");
-const row = JSON.parse(process.env.ROW);
-const leader = { ...row, pid: 999999, ppid: 1, pgid: 999999 };
-const record = new DescendantRecord();
-record.observe([leader, { ...row, ppid: leader.pid }], leader.pid);
-const nowhere = () => undefined;
-reapInBackground(record, {
-  stopGroup: nowhere,
-  killGroup: nowhere,
-  continueGroup: nowhere,
-  listProcesses: osProcessTreeOps.listProcessesUnreferenced,
-});
-process.stdout.write("reaping " + record.pids.length + " recorded process\\n");
-`;
-
-/**
- * Reaps a made-up hook in the background with scripted ops, which signal nothing and read
- * at once: the hook is stopped, held over two reads, and killed, and then the reap waits
- * for its next attempt.
- */
-const WAITER = `
-const { DescendantRecord } = await import(process.env.SHUTDOWN + "/detached-sweep/record.ts");
-const { reapInBackground } = await import(process.env.SHUTDOWN + "/detached-sweep/background.ts");
-const { UNREAD } = await import(process.env.SHUTDOWN + "/process-table.ts");
-const leader = { ...UNREAD, pid: 999998, ppid: 1, pgid: 999998, startedAt: "made up" };
-const hook = { ...UNREAD, pid: 999997, ppid: leader.pid, pgid: 999997, startedAt: "made up" };
-const record = new DescendantRecord();
-record.observe([leader, hook], leader.pid);
-let stopped = false;
-let killed = false;
-reapInBackground(record, {
-  stopGroup: () => void (stopped = true),
-  killGroup: () => void (killed = true),
-  continueGroup: () => undefined,
-  listProcesses: () => Promise.resolve(killed ? [] : [{ ...hook, ppid: 1, stopped }]),
-});
-process.stdout.write("reaping\\n");
-`;

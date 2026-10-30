@@ -47,7 +47,14 @@ export class SessionReapPolicy {
    * Reap on explicit shutdown, including an unresolved detached sweep; wrap any failure
    * as a typed `termination_failed`.
    */
-  orThrow(): void {
+  orThrow(): void | Promise<void> {
+    const confirmation = this.reaper.confirmDetachedSweepFailure();
+    return confirmation === undefined
+      ? this.orThrowConfirmed()
+      : confirmation.then(() => this.orThrowConfirmed());
+  }
+
+  private orThrowConfirmed(): void {
     try {
       this.reaper.reapAndThrowOnDetachedSweepFailure();
     } catch (error) {

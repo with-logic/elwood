@@ -73,12 +73,19 @@ test("C-LIFE-14 foreground survivor cleanup waits for the same session's backgro
   await watch.firstRead;
   exited = true;
   const before = foregroundReads;
-  const finished = watch.finish();
+  let finishedYet = false;
+  const finished = watch.finish().then(() => {
+    finishedYet = true;
+  });
   await vi.advanceTimersByTimeAsync(0);
   expect(foregroundReads).toBe(before);
+  expect(finishedYet).toBe(false);
   held.resolve([]);
   await finished;
   expect(backgroundReads).toBe(1);
+  expect(finishedYet).toBe(true);
+  expect(foregroundReads).toBeGreaterThan(before);
+  expect(fake.calls).toContain("kill 5002");
 });
 
 test.each([

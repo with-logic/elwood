@@ -5,8 +5,6 @@
  * leader's tree, nor Codex's app-server daemon or its updater loop.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
@@ -14,6 +12,7 @@ import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   type DetachedTree,
   detachedDescendantPids,
+  markingLateSeen,
   startDetachedTree,
   waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
@@ -37,17 +36,7 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
     tree.pty.pid,
     {
       ...realOps,
-      listProcesses: async (timeoutMs, scope) => {
-        const table = await realOps.listProcesses(timeoutMs, scope);
-        const latePidFile = join(tree.dir, "late.pid");
-        if (existsSync(latePidFile)) {
-          const latePid = Number(readFileSync(latePidFile, "utf8"));
-          if (table.some((row) => row.pid === latePid && !row.zombie)) {
-            writeFileSync(join(tree.dir, "seen"), "");
-          }
-        }
-        return table;
-      },
+      listProcesses: markingLateSeen(tree, (row) => !row.zombie),
     },
     () => exited,
     (outcome) => {

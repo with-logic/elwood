@@ -93,7 +93,7 @@ export class SessionReaper {
   private done = false;
   /** One session owns at most one foreground or background descendant reap. */
   private readonly reaping = new SerialReapQueue();
-  /** The first sweep or survivor reap that failed; with the leader gone it can't be retried. */
+  /** Retained failure: only the leader-rooted walk is never rerun; recorded survivors retry. */
   private unresolvedSweep: SweepFailure | undefined;
   /** Each failure's recorded processes, reaped in the background (`background.ts`). */
   private readonly reapsInBackground: BackgroundReap[] = [];
@@ -119,13 +119,23 @@ export class SessionReaper {
    * sweep or survivor reap is unresolved, so no later call reports success for a hook
    * that may still run, until a read shows no recorded non-daemon survivor remains and
    * every failed daemon resume has succeeded or become unnecessary.
-   * The caller sweeps first, before any SIGKILL to a live leader.
+   * The caller sweeps before any SIGKILL to a live leader. Explicit retries first await
+   * confirmDetachedSweepFailure when its automatic recovery window expired.
    */
   reapAndThrowOnDetachedSweepFailure(): void {
     this.reap();
     const resolved = this.reapsInBackground.every((reap) => reap.resolved());
     if (resolved) this.unresolvedSweep = undefined;
     if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+  }
+
+  /** Fresh serialized confirmation only after a retained recovery's automatic window expired. */
+  confirmDetachedSweepFailure(): Promise<void> | undefined {
+    const confirmations = this.reapsInBackground
+      .map((reap) => reap.confirm())
+      .filter((pending) => pending !== undefined);
+    if (confirmations.length === 0) return undefined;
+    return Promise.all(confirmations).then(() => undefined);
   }
 
   /**
@@ -165,8 +175,11 @@ export class SessionReaper {
     this.unresolvedSweep ??= failure;
     const unreferenced = this.ops.listProcessesUnreferenced ?? this.ops.listProcesses;
     this.reapsInBackground.push(
-      reapInBackground(record, { ...this.ops, listProcesses: unreferenced }, (attempt) =>
-        this.reaping.run(attempt),
+      reapInBackground(
+        record,
+        { ...this.ops, listProcesses: unreferenced },
+        (attempt) => this.reaping.run(attempt),
+        this.ops,
       ),
     );
     throw failure;

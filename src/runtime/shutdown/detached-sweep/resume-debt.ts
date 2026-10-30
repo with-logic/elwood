@@ -7,13 +7,19 @@ import type { SweepOps } from "./rounds.ts";
 export class ResumeDebt {
   private readonly rows = new Map<string, ProcessEntry>();
 
+  /** Records live identities of a group Elwood stopped but could not resume. */
   remember(table: readonly ProcessEntry[], group: number): void {
     for (const row of table) {
       if (row.pgid === group && !row.zombie) this.rows.set(processIdentity(row), row);
     }
   }
 
-  /** Retries only still-stopped members of the same groups, never a replacement process. */
+  /** Pids with owed restoration, including a leader's group when no descendant was recorded. */
+  get pids(): readonly number[] {
+    return [...this.rows.values()].map((row) => row.pid);
+  }
+
+  /** True once no debt remains: resumed, already running, gone, or replaced. */
   retry(table: readonly ProcessEntry[], ops: Pick<SweepOps, "continueGroup">): boolean {
     const pending = new Set<number>();
     for (const [id, held] of this.rows) {

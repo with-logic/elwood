@@ -80,7 +80,7 @@ test("C-LIFE-10 a failed restoration without a post-stop read stays unresolved",
     listProcesses: (ms) =>
       ++reads === 1 ? fake.ops.listProcesses(ms) : Promise.reject(errno("EIO")),
   });
-  expect(record.canReapInBackground([])).toBe(false);
+  expect(record.hasUnknownResume).toBe(true);
 });
 
 test("C-LIFE-10 a survivor not confirmed stopped by the deadline is resumed", async () => {

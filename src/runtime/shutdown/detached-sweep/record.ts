@@ -8,7 +8,8 @@
  * read finishes before the SIGTERM is sent, and reads repeat until the leader's exit is
  * observed. A process is recorded by its pid and second-resolution start time
  * (`ProcessEntry.startedAt`). Background retries also refuse an identity first seen
- * within that start second, because a same-second reuse cannot be distinguished. The leader is held to the same identity: a read that does not show the
+ * within that start second, because a same-second reuse cannot be distinguished.
+ * The leader is held to the same observation: a read that does not show the
  * leader the first such read showed records nothing, because its pid may already belong
  * to another process. A leader the read before the SIGTERM does not show had exited
  * before the stop, leaving nothing linked; one that no read showed after a failed first
@@ -35,6 +36,8 @@ import type { SweepOps } from "./rounds.ts";
  * answers holds the SIGTERM back for the whole bound.
  */
 export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
+/** `ps lstart` represents epoch times only to the second. */
+export const PROCESS_START_TIME_RESOLUTION_MS = 1_000;
 
 /** The detached descendants seen so far, by pid and start time. */
 export class DescendantRecord {
@@ -62,7 +65,7 @@ export class DescendantRecord {
     leaderPid: number,
     beforeSignal = false,
     groups?: ReadonlyMap<number, ReadonlySet<ProcessEntry>>,
-    readStartedAt = Date.now(),
+    readStartedAtEpochMs = Date.now(),
   ): void {
     const leaderRow = table.find((row) => row.pid === leaderPid && !row.zombie);
     if (leaderRow === undefined) {
@@ -82,8 +85,12 @@ export class DescendantRecord {
       if (row.zombie || !observedGroups.has(row.pgid)) continue;
       const id = identity(row);
       if (!this.identities.has(id)) {
-        const started = Date.parse(`${row.startedAt} UTC`);
-        if (!Number.isFinite(started) || started + 1_000 > readStartedAt) this.ambiguous.add(id);
+        const startedEpochMs = Date.parse(`${row.startedAt} UTC`);
+        if (
+          !Number.isFinite(startedEpochMs) ||
+          startedEpochMs + PROCESS_START_TIME_RESOLUTION_MS > readStartedAtEpochMs
+        )
+          this.ambiguous.add(id);
       }
       this.identities.add(id);
     }
@@ -99,17 +106,27 @@ export class DescendantRecord {
     return this.leader === "";
   }
 
-  /** A same-second reuse cannot be distinguished; background retries leave it unresolved. */
-  canReapInBackground(table: readonly ProcessEntry[]): boolean {
-    return (
-      !this.unknownResume &&
-      this.survivors(table).every((row) => !this.ambiguous.has(identity(row)))
+  /** Groups with a recorded member whose second-resolution identity remains ambiguous. */
+  unsafeBackgroundGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
+    return new Set(
+      this.survivors(table)
+        .filter((row) => this.ambiguous.has(identity(row)))
+        .map((row) => row.pgid),
     );
+  }
+
+  /** An unobserved failed restoration is never cleared by an unrelated empty survivor set. */
+  get hasUnknownResume(): boolean {
+    return this.unknownResume;
   }
 
   /** The pid of each process recorded, whatever it runs now. */
   get pids(): readonly number[] {
-    return [...this.identities].map((id) => Number.parseInt(id, 10));
+    return [
+      ...new Set(
+        [...this.identities].map((id) => Number.parseInt(id, 10)).concat(this.resumes.pids),
+      ),
+    ];
   }
 
   /**
@@ -144,9 +161,9 @@ export function watchDescendants(
   let watching = true;
   const scope = daemonScope(new Set([leaderPid]));
   const readOnce = (beforeSignal = false) => {
-    const readStartedAt = Date.now();
+    const readStartedAtEpochMs = Date.now();
     return ops.listProcesses(RECORD_READ_MS, scope).then(
-      (table) => record.observe(table, leaderPid, beforeSignal, undefined, readStartedAt),
+      (table) => record.observe(table, leaderPid, beforeSignal, undefined, readStartedAtEpochMs),
       () => undefined,
     );
   };

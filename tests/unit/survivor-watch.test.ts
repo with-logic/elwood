@@ -20,7 +20,7 @@ const orphaned: readonly ProcessEntry[] = [
 describe("C-LIFE-10 a graceful stop's survivor watch", () => {
   test("a leader with no reapable group id is not watched", async () => {
     const { ops, calls } = scripted([orphaned]);
-    const keep = vi.fn();
+    const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(undefined, ops, () => true, keep);
     await watch.firstRead;
     await watch.finish();
@@ -30,7 +30,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
 
   test("a leader not seen to exit is not reaped after", async () => {
     const { ops, calls } = scripted([tree]);
-    const keep = vi.fn();
+    const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(LEADER, ops, () => false, keep);
     await watch.firstRead;
     await watch.finish();
@@ -40,7 +40,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
 
   test("once the leader is gone, the recorded survivors are reaped and the outcome kept", async () => {
     const { ops, calls } = scripted([tree, orphaned]);
-    const keep = vi.fn();
+    const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(LEADER, ops, () => true, keep);
     await watch.firstRead;
     await watch.finish();
@@ -48,8 +48,8 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     expect(keep).toHaveBeenCalledOnce();
     expect(keep.mock.calls[0]?.[0]).toBeUndefined(); // No failure, handed with its record.
     const record = keep.mock.calls[0]?.[1];
-    expect(record.pids).toEqual([5002, 5003]);
-    expect(record.survivors(orphaned)).toEqual(orphaned);
+    expect(record?.pids).toEqual([5002, 5003]);
+    expect(record?.survivors(orphaned)).toEqual(orphaned);
   });
 
   test("a reap that fails hands its failure to keep, once", async () => {
@@ -57,7 +57,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
       throw errno("EPERM");
     };
     const { ops } = scripted([tree, orphaned], { stopGroup: refusingStop });
-    const keep = vi.fn();
+    const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(LEADER, ops, () => true, keep);
     await watch.firstRead;
     await watch.finish();
@@ -68,7 +68,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
       processGroupIds: [5002],
     });
     const record = keep.mock.calls[0]?.[1];
-    expect(record.pids).toEqual([5002, 5003]);
-    expect(record.survivors(orphaned)).toEqual(orphaned);
+    expect(record?.pids).toEqual([5002, 5003]);
+    expect(record?.survivors(orphaned)).toEqual(orphaned);
   });
 });

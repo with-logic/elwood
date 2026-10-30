@@ -24,7 +24,10 @@ back each entry are listed in `prd/14-conformance.md`.
 - Background shutdown retries serialize with foreground descendant reaping and retain
   failed attempts to resume Codex's shared daemon. A stopped daemon no longer makes a
   failed shutdown appear resolved. A retry leaves an ambiguous same-second process
-  identity unresolved instead of signaling a possible replacement process.
+  identity unresolved instead of signaling a possible replacement process. That veto
+  applies only to its group, so independent safe groups and owed daemon resumes
+  still recover. After the automatic retry window ends, a later shutdown performs
+  a fresh confirmation and can clear a failure whose recorded survivors have exited.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a

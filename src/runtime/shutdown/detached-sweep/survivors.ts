@@ -85,6 +85,7 @@ export async function reapRecordedSurvivors(
   ops: SweepOps,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
   firstTable?: readonly ProcessEntry[],
+  background = false,
 ): Promise<SweepFailure | undefined> {
   const state = newSweepState(new SweepFailures());
   if (!record.known) {
@@ -93,8 +94,16 @@ export async function reapRecordedSurvivors(
   }
   if (record.pids.length === 0) return undefined;
   const deadline = performance.now() + budgetMs;
-  const anchors = new SurvivorAnchors(state, record, ops);
-  await stopSurvivorGroups(record, anchors.stoppingOps(), deadline, state, firstTable, anchors);
+  const anchors = new SurvivorAnchors(state, record, ops, background);
+  await stopSurvivorGroups(
+    record,
+    anchors.stoppingOps(),
+    deadline,
+    state,
+    firstTable,
+    anchors,
+    background,
+  );
   anchors.restoreUnconfirmed();
   await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
@@ -108,6 +117,7 @@ async function stopSurvivorGroups(
   state: SweepState,
   firstTable: readonly ProcessEntry[] | undefined,
   anchors: SurvivorAnchors,
+  background: boolean,
 ): Promise<void> {
   // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
   // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
@@ -125,8 +135,12 @@ async function stopSurvivorGroups(
       initial = undefined;
       state.latest = table;
       if (!anchors.afterRead(table)) return;
-      const roots = survivorGroups(record.survivors(table), table);
-      state.live = liveGroups(table, roots);
+      const blocked = background ? record.unsafeBackgroundGroups(table) : new Set<number>();
+      const roots = survivorGroups(
+        record.survivors(table).filter((row) => !blocked.has(row.pgid)),
+        table,
+      );
+      state.live = new Map([...liveGroups(table, roots)].filter(([group]) => !blocked.has(group)));
       state.unheld = unheldGroups(table, state);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       restopEscapedGroups(table, ops, state);
