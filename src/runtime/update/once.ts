@@ -25,7 +25,9 @@ const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
  * Runs the adapter's update at most once per process; concurrent callers share the single
  * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
- * version cache whether this process owned the update or waited for a peer.
+ * version cache whether this process owned the update or waited for a peer. The one exception
+ * is test-only: after `resetAutoupdateForTests()`, until a test sets a coordinator, it throws
+ * at once instead of returning.
  */
 export function cachedAutoupdate(
   adapter: UpdateAdapter,
@@ -87,9 +89,25 @@ export function invalidateVersionRead(adapter: UpdateAdapter): void {
   versionReads[adapter].clear();
 }
 
+/**
+ * Stands in for the coordinator after a reset, until a test sets one. The production coordinator
+ * takes its default root from the passwd database, not `HOME`, so a test's private `HOME` would
+ * not keep it out of the developer's real lease root. It throws rather than rejects: a rejection
+ * would be contained as a best-effort update's warning, and the preflight would carry on.
+ */
+function refuseRealUpdateRoot(): never {
+  throw new Error("set a private update root: call setUpdateCoordinatorForTests after the reset");
+}
+
+/** Clears the update attempts, and refuses any further update until a test sets a coordinator. */
 export function resetAutoupdateForTests(): void {
   autoupdates.clear();
-  coordinateUpdate = coordinatedAutoupdate;
+  coordinateUpdate = refuseRealUpdateRoot;
+}
+
+/** Whether an update would be refused: true from a reset until a test sets a coordinator. */
+export function updatesRefusedForTests(): boolean {
+  return coordinateUpdate === refuseRealUpdateRoot;
 }
 
 export function setUpdateCoordinatorForTests(coordinator: typeof coordinatedAutoupdate): void {
