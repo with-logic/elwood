@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { homeGuardStopMarker } from "../../src/runtime/home-guard/index.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../src/runtime/startup/buffer.ts";
 import {
   resetStartupWaitMsForTests,
@@ -20,6 +21,21 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
     expect(buffer.read()).toBe("hello world");
   });
 
+  test("reads its source PTY directly until release, then lets go of it", () => {
+    const handlers: ((data: string) => void)[] = [];
+    const source = {
+      onData(handler: (data: string) => void) {
+        handlers.push(handler);
+        return () => handlers.splice(handlers.indexOf(handler), 1);
+      },
+    };
+    const buffer = createStartupBuffer({ source });
+    for (const handler of handlers) handler("banner");
+    expect(buffer.read()).toBe("banner");
+    buffer.release();
+    expect(handlers).toEqual([]);
+  });
+
   test("release stops collecting and clears the retained buffer", () => {
     const buffer = createStartupBuffer();
     buffer.push("startup banner");
@@ -31,7 +47,7 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
   });
 
   test("caps the buffer so a chatty CLI cannot balloon it", () => {
-    const buffer = createStartupBuffer(8);
+    const buffer = createStartupBuffer({ capBytes: 8 });
     buffer.push("1234");
     buffer.push("5678ABCD");
     // First push filled it to 4, the second is truncated at the 8-byte cap.
@@ -42,7 +58,7 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
   });
 
   test("§9.1 retains UTF-8 bytes rather than UTF-16 code units", () => {
-    const buffer = createStartupBuffer(7);
+    const buffer = createStartupBuffer({ capBytes: 7 });
     buffer.push("aé🙂z");
     expect(buffer.read()).toBe("aé🙂");
     expect(Buffer.byteLength(buffer.read(), "utf8")).toBe(7);
@@ -51,7 +67,7 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
   test.each([
     0, 1, 2, 3, 4,
   ])("§9.1 an astral code point requires all four bytes with %i available", (available) => {
-    const buffer = createStartupBuffer(2 + available);
+    const buffer = createStartupBuffer({ capBytes: 2 + available });
     buffer.push("ab");
     buffer.push("🙂");
     expect(buffer.read()).toBe(available === 4 ? "ab🙂" : "ab");
@@ -60,7 +76,7 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
   });
 
   test("§9.1 later chunks cannot fill space after an unfit code point", () => {
-    const buffer = createStartupBuffer(5);
+    const buffer = createStartupBuffer({ capBytes: 5 });
     buffer.push("é");
     buffer.push("éé");
     expect(buffer.read()).toBe("éé");
@@ -69,6 +85,23 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
     buffer.release();
     buffer.push("later");
     expect(buffer.read()).toBe("");
+  });
+
+  test("C-E2E-24 watches for the home guard's stop marker past the cap, until release", () => {
+    const buffer = createStartupBuffer({ capBytes: 8, watchStopMarker: true });
+    const sawStopMarker = buffer.sawStopMarker ?? (() => expect.unreachable());
+    buffer.push("profile output");
+    expect(sawStopMarker()).toBe(false);
+    buffer.push(homeGuardStopMarker.slice(0, 10));
+    buffer.push(`${homeGuardStopMarker.slice(10)}: reason\r\n`);
+    expect(buffer.read()).toBe("profile ");
+    expect(sawStopMarker()).toBe(true);
+    buffer.push("output after the marker");
+    expect(sawStopMarker()).toBe(true);
+    buffer.release();
+    expect(sawStopMarker()).toBe(false);
+    buffer.push(homeGuardStopMarker);
+    expect(sawStopMarker()).toBe(false);
   });
 
   test("§9.1 an oversized chunk retains only the first 64 KiB prefix", () => {

@@ -4,24 +4,21 @@
  * login-shell failure that carries only the guard's fixed reason, never the shell's stderr,
  * even when a startup file redirected that stderr. Only the guard's stop line with its status
  * counts: a command that exits with the same status is still the command's failure. A login
- * shell that fails before the start line is still the login shell's own failure (C-PERF-05). A
- * session whose login shell the guard stops during startup fails with a start error that names
- * the guard. The suite's registry never trusts a list its process inherited.
+ * shell that fails before the start line is still the login shell's own failure (C-PERF-05).
+ * The suite's registry never trusts a list its process inherited. Sessions: `home-guard-startup`.
  */
 
+import { spawnSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { loginShellResolves } from "../../src/cli/request/agent-detect.ts";
 import { probeFailureDetails } from "../../src/core/errors.ts";
-import {
-  homeGuardHomesKey,
-  homeGuardStopMarker,
-  homeGuardStoppedReason,
-} from "../../src/runtime/home-guard/index.ts";
+import { homeGuardHomesKey, homeGuardStoppedReason } from "../../src/runtime/home-guard/index.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { announcesStart } from "../../src/runtime/probe/start.ts";
+import type { CommandResult } from "../../src/runtime/seams.ts";
 import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
-import { assertStartupUsable } from "../../src/runtime/startup/index.ts";
 import { loginShells } from "../helpers/login-shells.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -43,7 +40,26 @@ function guardWith(tail: string, list = (codex: string) => JSON.stringify([codex
 }
 
 const command = "printf 'command ran\\n'";
-const stopped = { message: homeGuardStoppedReason, phase: "login_shell", shellStatus: 97 };
+
+/**
+ * How a probe the guard stopped after a startup file hid stdout fails. Its stop line goes on the
+ * control descriptor, beside its start line. A shell that closed that descriptor, as macOS's bash
+ * 3.2 does as a login shell, wrote its start line on the hidden stdout too, so the probe is the
+ * login shell's failure by its status alone (C-PERF-05).
+ */
+function hiddenStdoutStop(shell: string): NonNullable<CommandResult["error"]> {
+  const opened = spawnSync(shell, ["-l", "-i", "-c", "{ : >&3; } 2>/dev/null"], {
+    stdio: ["ignore", "ignore", "ignore", "pipe"],
+  });
+  if (opened.status === 0) return stopped;
+  const message = "login shell exited with status 97 before starting the probe command";
+  return { message, phase: "login_shell", shellStatus: 97 };
+}
+const stopped: NonNullable<CommandResult["error"]> = {
+  message: homeGuardStoppedReason,
+  phase: "login_shell",
+  shellStatus: 97,
+};
 
 test("C-E2E-24 a guarded probe still announces its start, and never writes to a terminal", () => {
   guardWith(":");
@@ -69,6 +85,23 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
       stderr: "",
       cause: homeGuardStoppedReason,
       phase: "login_shell",
+    });
+  });
+
+  test.each([
+    ["with output", probeShellCommand],
+    ["by status only", probeShellStatus],
+  ])("the guard stops, %s, after a startup file hid stdout, is a login-shell failure", async (_case, probe) => {
+    guardWith('exec >/dev/null; export CODEX_HOME="$HOME"');
+    const result = await runProbe(shell, probe(command));
+    expect(result).toMatchObject({ status: null, error: hiddenStdoutStop(shell) });
+  });
+
+  test("stops auto-detection, after a startup file hid stdout, as a failed check", async () => {
+    guardWith('exec >/dev/null; export CODEX_HOME="$HOME"');
+    await expect(loginShellResolves("codex", shell)).rejects.toMatchObject({
+      code: "no_agent_found",
+      message: expect.stringContaining(hiddenStdoutStop(shell).message),
     });
   });
 
@@ -99,30 +132,5 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
     expect(process.env[homeGuardHomesKey]).toBe(JSON.stringify([codex]));
     const result = await runProbe(shell, probeShellCommand(command));
     expect(result).toMatchObject({ status: null, error: stopped });
-  });
-});
-
-describe("C-E2E-24 a session whose login shell exits during startup", () => {
-  const started = (exitCode: number, output: string) =>
-    assertStartupUsable({ adapter: "codex", exit: { exitCode }, output, waitMs: 0 });
-  const stopLine = `${homeGuardStopMarker}: the login shell left CODEX_HOME unexported\r\n`;
-
-  test("with the guard's status and stop line, fails naming the guard", async () => {
-    await expect(started(97, `profile output\r\n${stopLine}`)).rejects.toMatchObject({
-      code: "codex_start_failed",
-      message: `codex exited during startup: ${homeGuardStoppedReason}.`,
-      details: { exitCode: 97 },
-    });
-  });
-
-  test.each([
-    ["the guard's status without its stop line", 97, "profile output\r\n"],
-    ["another status after the stop line", 1, stopLine],
-  ])("with %s, fails as before", async (_case, exitCode, output) => {
-    await expect(started(exitCode, output)).rejects.toMatchObject({
-      code: "codex_start_failed",
-      message: "codex exited during startup.",
-      details: { exitCode },
-    });
   });
 });

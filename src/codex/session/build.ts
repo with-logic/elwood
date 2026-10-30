@@ -88,7 +88,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       throw error;
     },
   );
-  const startupOutput = createStartupBuffer();
+  const startupOutput = createStartupBuffer({ source: pty });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
@@ -147,7 +147,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       emitUpdateAttention(emitter, record.elwoodSessionId, result.updateGeneration);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
-    startupOutput.push,
   );
   const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup(), resumed);
   session = new CodexSessionImpl(

@@ -5,6 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { StreamMarkerWatcher } from "../stream-marker.ts";
 
 /**
  * The line a probe shell writes once the user's startup files have loaded, before the probe
@@ -26,14 +27,18 @@ export const probeCommandStartLine = `elwood-probe-command-start-${randomBytes(8
 export const probeControlFd = 3;
 
 /**
- * The probe shell's script prefix: it writes the start line, closes the descriptor so the
- * command does not inherit it, then the probe command runs. macOS's bash 3.2 started with both
- * `-l` and `-i` closes every inherited descriptor above stderr before running the script, so
- * there the write fails, silently, and the line goes to stdout. Not stderr: a profile may send
- * that to `/dev/null` or into stdout, while a profile that hid stdout would hide the command's
- * own output and fail the probe anyway. The runner removes the line from captured stdout.
+ * The probe shell's script prefix: it writes the start line on the control descriptor. macOS's
+ * bash 3.2 started with both `-l` and `-i` closes every inherited descriptor above stderr before
+ * running the script, so there the write fails, silently, and the line goes to stdout. Not
+ * stderr: a profile may send that to `/dev/null` or into stdout, while a profile that hid stdout
+ * would hide the line, and so fail the probe as the login shell's. The runner removes the line
+ * from captured stdout. The descriptor stays open for the e2e home guard, which writes its stop
+ * line where the start line went (PRD §12), until `probeControlClose`.
  */
-export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; else echo ${probeCommandStartLine}; fi; `;
+export const probeStartScript = `{ echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null || echo ${probeCommandStartLine}; `;
+
+/** Closes the control descriptor before the probe command, so the command does not inherit it. */
+export const probeControlClose = `exec ${probeControlFd}>&-; `;
 
 /**
  * Removes the user's not-found handlers before the probe command runs: zsh's
@@ -53,46 +58,20 @@ export function announcesStart(args: readonly string[]): boolean {
 const startText = `${probeCommandStartLine}\n`;
 const startBytes = Buffer.from(startText);
 
-/** Finds the start line in a stream whose chunks may split it anywhere. */
-export class ProbeStartWatcher {
-  private tail = Buffer.alloc(0);
-  private seen = false;
-
-  /** Whether the start line has been seen: the probe command has begun. */
-  get started(): boolean {
-    return this.seen;
-  }
-
-  /** True exactly once: for the chunk that completes the start line. */
-  feed(chunk: Buffer): boolean {
-    if (this.seen) return false;
-    const window = Buffer.concat([this.tail, chunk]);
-    if (window.includes(startBytes)) {
-      this.seen = true;
-      this.tail = Buffer.alloc(0);
-      return true;
-    }
-    // Keep a copy of only what could still begin a split start line: a view would pin the
-    // whole chunk for as long as an unresolved probe's reaper retains this watcher.
-    this.tail = Buffer.from(window.subarray(Math.max(0, window.length - (startBytes.length - 1))));
-    return false;
-  }
-}
-
 /** The two streams a probe's start line can arrive on. */
 export type ProbeStartChannel = "control" | "stdout";
 
 /** Watches both channels; the first to carry the start line starts the command. */
 export class ProbeStart {
   // One watcher per channel: a channel added to `ProbeStartChannel` must be given its own.
-  private readonly watchers: Readonly<Record<ProbeStartChannel, ProbeStartWatcher>> = {
-    control: new ProbeStartWatcher(),
-    stdout: new ProbeStartWatcher(),
+  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarkerWatcher>> = {
+    control: new StreamMarkerWatcher(startBytes),
+    stdout: new StreamMarkerWatcher(startBytes),
   };
 
   /** Whether any channel has carried the start line. */
   get started(): boolean {
-    return Object.values(this.watchers).some((watcher) => watcher.started);
+    return Object.values(this.watchers).some((watcher) => watcher.seen);
   }
 
   /** True exactly once across both channels: for the chunk that completes the start line. */
@@ -103,6 +82,6 @@ export class ProbeStart {
 
   /** Removes the start line from captured stdout if the shell wrote it there (C-PERF-05). */
   stripFromStdout(captured: string): string {
-    return this.watchers.stdout.started ? captured.replace(startText, "") : captured;
+    return this.watchers.stdout.seen ? captured.replace(startText, "") : captured;
   }
 }
