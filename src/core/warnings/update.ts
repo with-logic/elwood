@@ -2,8 +2,8 @@
  * Builds the best-effort `agent_update_failed` warning (PRD §9.2, C-LIFE-11) shared by both
  * adapter preflights. A `claude update` / `codex update` that fails is contained (never fatal
  * when the installed CLI is compatible) and surfaced as this live warning with the diagnostics
- * the PRD allows — the installed version in use, the update probe's errno, and the updater's own
- * stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
+ * the PRD allows — the installed version in use, the update probe's exit status and errno, and
+ * the updater's own stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
  * prompts). Contention is not a failed update and reports differently: an error carrying
  * `updateReason: "active_owner"` — another process held the update lease until this caller's
  * wait expired — becomes `errorCode: "update_active"` with a message saying the update was
@@ -63,6 +63,7 @@ export function buildUpdateWarning(
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
+  const exitStatus = typeof details["exitStatus"] === "number" ? details["exitStatus"] : undefined;
   const skipped = skippedUpdates.get(details["updateReason"]);
   return {
     agent,
@@ -76,6 +77,7 @@ export function buildUpdateWarning(
     installedVersion,
     errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),
+    ...(exitStatus === undefined ? {} : { exitStatus }),
   };
 }
 
