@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- CLI agent auto-detection and `elwood interactive`'s PATH lookup now run in the
+  effective workspace, including `--cwd`, so a directory-dependent login-shell
+  PATH selects the same executable that the agent launch uses.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,

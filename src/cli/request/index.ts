@@ -12,7 +12,12 @@ import {
   type RequestContext,
   type ResolvedRunRequest,
 } from "../types.ts";
-import { type AgentDetector, detectAvailableAgent, selectAgent } from "./agent-detect.ts";
+import {
+  type AgentDetector,
+  detectAvailableAgent,
+  loginShellResolves,
+  selectAgent,
+} from "./agent-detect.ts";
 import { explicitAdapterOptions, layeredSettings } from "./layers.ts";
 import { resolvePosture } from "./posture.ts";
 import { ioSettings, optionSettings } from "./settings.ts";
@@ -38,7 +43,7 @@ type SettingsContext = Omit<RequestContext, "stdin">;
 export async function resolveRunRequest(
   parsed: ParsedRunCommand,
   context: RequestContext,
-  detectAgent: AgentDetector = detectAvailableAgent,
+  detectAgent?: AgentDetector,
 ): Promise<ResolvedRunRequest> {
   return {
     ...(await resolveRunSettings(parsed, context, detectAgent)),
@@ -53,7 +58,7 @@ export async function resolveRunRequest(
 export async function resolveRunSettings(
   parsed: ParsedRunCommand,
   context: SettingsContext,
-  detectAgent: AgentDetector = detectAvailableAgent,
+  detectAgent?: AgentDetector,
 ): Promise<ResolvedRunRequest> {
   const useDefaults = parsed.flags.ignoreDefaults !== true;
   const configLocation = resolveConfigLocation(context.env, context.invocationCwd, context.homeDir);
@@ -63,6 +68,8 @@ export async function resolveRunSettings(
   const config = configRead.config;
   const env = useDefaults ? decodeEnvironment(context.env) : {};
   const resuming = parsed.flags.resume !== undefined;
+  const layers = layeredSettings(parsed, env, config, configLocation.path, context, resuming);
+  const cwd = layers.cwd.value ?? context.invocationCwd;
   const agentSetting = await selectAgent(
     {
       flag: parsed.flags.agent,
@@ -70,7 +77,8 @@ export async function resolveRunSettings(
       config: sourced(config.agent, configKey(configLocation.path, "agent")),
       resuming,
     },
-    detectAgent,
+    detectAgent ??
+      (() => detectAvailableAgent((agent) => loginShellResolves(agent, undefined, cwd))),
   );
   const agent = requiredChoice(agentSetting.value!, cliAgents, "agent");
   // High trust is rejected against explicit posture BEFORE the adapter check, so
@@ -83,7 +91,6 @@ export async function resolveRunSettings(
   const debug = parsed.flags.debug ?? false;
   const head = parsed.flags.head ?? false;
   validateOutput(output, io.stream, io.verbose, debug, head);
-  const layers = layeredSettings(parsed, env, config, configLocation.path, context, resuming);
   const agentOptions = optionSettings(config, configLocation.path, layers.model, layers.effort);
   const selected = agentOptions.values[agent];
   const posture = resolvePosture(parsed, env, config, configLocation.path, agent);

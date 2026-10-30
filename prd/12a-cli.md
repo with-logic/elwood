@@ -28,7 +28,8 @@ A new session defaults to the invocation directory; `-C`/`--cwd` overrides it.
 When no flag, environment variable, or configuration key selects an agent, a
 new session auto-detects one: Elwood tries `claude` first, then `codex`, and
 uses the first whose command resolves in the user's login shell — the same
-resolution the agent launch itself uses (§4.2) — without running either agent.
+resolution the agent launch itself uses (§4.2), from the effective workspace — without
+running either agent.
 Both probes run concurrently; the order only decides the winner. The resolved
 agent reports the source `auto-detected`. When neither command resolves, the
 invocation fails before any launch with the stable code `no_agent_found` and
@@ -442,7 +443,7 @@ Listing sessions resolves only state-directory and output settings. Adapter,
 model, permission, trust, and turn-lifecycle environment defaults are irrelevant
 and MUST NOT prevent listing. Config files still undergo strict schema decoding.
 Interactive foreground launches MUST resolve the executable in the same
-interactive login-shell environment used by auto-detection, through the same
+interactive login-shell environment and effective workspace used by auto-detection, through the same
 bounded probe, so the user's startup files get the login shell's launch bound and
 the lookup the command bound (§9.2, C-PERF-05). The frame carries the login
 shell's own `$PATH`, printed by `/bin/sh`, which loads no startup file, so a
