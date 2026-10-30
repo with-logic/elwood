@@ -13,12 +13,13 @@ import { join } from "node:path";
 import type { TerminalSize } from "../../src/index.ts";
 import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
 import { answerCodexHomeReport } from "./codex-home.ts";
+import { FAKE_PID, LARGEST_OS_PID } from "./fake-pid.ts";
 import { launchArtifactPaths } from "./launch-artifacts.ts";
 import { realTmpRoot } from "./real-tmp.ts";
 
 export type BridgeReply = { exitCode: number; stdout: string; stderr: string };
 
-let anonymousPid = 1000;
+let anonymousPid = FAKE_PID;
 
 export class FakePty implements PtyProcess {
   readonly pid: number;
@@ -33,8 +34,12 @@ export class FakePty implements PtyProcess {
   resizeError: Error | undefined;
   failOnWrite: string | undefined;
 
-  /** Adapter helpers pass `1000 + registry.length`; ad-hoc factories get a fresh pid. */
+  /**
+   * Adapter helpers pass `FAKE_PID + registry.length`; ad-hoc factories get a fresh pid.
+   * A pid an OS can assign is refused: it can be the test runner's own (`fake-pid.ts`).
+   */
   constructor(options: PtySpawnOptions, pid: number = anonymousPid++) {
+    if (pid <= LARGEST_OS_PID) throw new Error(`fake pid ${pid} is one an OS can assign`);
     answerCodexHomeReport(options);
     this.options = options;
     this.size = options.size;

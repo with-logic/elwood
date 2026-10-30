@@ -1,0 +1,9 @@
+# Audited by Codex, 2026-10-28; review tracking:
+# https://github.com/with-logic/pipeline/issues/121
+# Native Codex capture metadata: a numbered item from a synthetic answer.
+# The same fixture blob appears in its branch commit and merged squash commit.
+8b0a2007217639e1d0e3486d967e46ebac0f6594:tests/fixtures/codex-0.163.0/questions/editor/modal-single-line-capture.json:generic-api-key:17
+7346b4468fb69497a8c331556445749022d52ee8:tests/fixtures/codex-0.163.0/questions/editor/modal-single-line-capture.json:generic-api-key:17
+
+# Fabricated sentinel in a bounded-error redaction unit test; never a credential.
+99fad748ed6bf406e5ee0c5f403fe033030e08a3:tests/unit/bounded-error-token.test.ts:generic-api-key:31
