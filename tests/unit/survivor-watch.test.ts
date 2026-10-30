@@ -47,6 +47,9 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     expect(calls.join(", ")).toBe("list, list, stop 5002, list, list, kill 5002");
     expect(keep).toHaveBeenCalledOnce();
     expect(keep.mock.calls[0]?.[0]).toBeUndefined(); // No failure, handed with its record.
+    const record = keep.mock.calls[0]?.[1];
+    expect(record.pids).toEqual([5002, 5003]);
+    expect(record.survivors(orphaned)).toEqual(orphaned);
   });
 
   test("a reap that fails hands its failure to keep, once", async () => {
@@ -64,5 +67,8 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
         "Could not reap detached descendants: could not stop a live descendant group (EPERM)",
       processGroupIds: [5002],
     });
+    const record = keep.mock.calls[0]?.[1];
+    expect(record.pids).toEqual([5002, 5003]);
+    expect(record.survivors(orphaned)).toEqual(orphaned);
   });
 });

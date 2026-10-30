@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Background shutdown retries serialize with foreground descendant reaping and retain
+  failed attempts to resume Codex's shared daemon. A stopped daemon no longer makes a
+  failed shutdown appear resolved. A retry leaves an ambiguous same-second process
+  identity unresolved instead of signaling a possible replacement process.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a
@@ -45,14 +49,15 @@ back each entry are listed in `prd/14-conformance.md`.
   whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
   SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
   idle host they take as long as before, because the walk ends as soon as it is done.
-- When `kill()`, `teardown()`, or `stop()` cannot confirm a session's detached hook
-  processes reaped, Elwood now keeps reaping the ones it saw, in the background, for
-  up to a minute. Before, a walk that missed its deadline left them running for good
+- When `kill()`, `teardown()`, or `stop()` cannot confirm that a session's detached
+  hook processes have been reaped, Elwood now keeps reaping the ones it saw in the
+  background for up to a minute. Before, a walk that missed its deadline left them running for good
   under PID 1: the call rejected with `termination_failed`, and nothing reaped them
   after. Elwood knows each one by pid and start time, so it never signals a process
   that later reused one of those pids, and its background work never keeps your
-  process alive. Once a read shows them all gone, a later `stop()`, `kill()`, or
-  `teardown()` of the session resolves instead of rejecting again.
+  process alive. Once no recorded non-daemon survivor remains and every failed daemon
+  resume has succeeded or become unnecessary, later shutdown calls resolve instead of
+  rejecting again.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,

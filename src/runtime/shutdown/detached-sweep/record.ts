@@ -6,9 +6,9 @@
  * (docs/cli-behavior.md). Once the leader exits, those processes are reparented to PID 1
  * and nothing links them to the session, so the links are read while it lives: the first
  * read finishes before the SIGTERM is sent, and reads repeat until the leader's exit is
- * observed. A process is recorded by its pid and start time, which together name one
- * process (see `ProcessEntry.startedAt`), so a pid reused after the exit is never taken
- * for it. The leader is held to the same identity: a read that does not show the
+ * observed. A process is recorded by its pid and second-resolution start time
+ * (`ProcessEntry.startedAt`). Background retries also refuse an identity first seen
+ * within that start second, because a same-second reuse cannot be distinguished. The leader is held to the same identity: a read that does not show the
  * leader the first such read showed records nothing, because its pid may already belong
  * to another process. A leader the read before the SIGTERM does not show had exited
  * before the stop, leaving nothing linked; one that no read showed after a failed first
@@ -24,6 +24,7 @@ import {
 } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
+import { ResumeDebt } from "./resume-debt.ts";
 import type { SweepOps } from "./rounds.ts";
 
 /**
@@ -38,6 +39,9 @@ export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
 /** The detached descendants seen so far, by pid and start time. */
 export class DescendantRecord {
   private readonly identities = new Set<string>();
+  private readonly ambiguous = new Set<string>();
+  /** Shared-daemon groups this record’s reap stopped but could not resume. */
+  readonly resumes = new ResumeDebt();
   /** The leader's identity, from the first read that showed it. */
   private leader: string | undefined;
   /**
@@ -52,7 +56,13 @@ export class DescendantRecord {
    * descendant, if `table` shows the leader live as the first such read did. `beforeSignal`
    * marks the read before the SIGTERM, whose not showing the leader is knowledge too.
    */
-  observe(table: readonly ProcessEntry[], leaderPid: number, beforeSignal = false): void {
+  observe(
+    table: readonly ProcessEntry[],
+    leaderPid: number,
+    beforeSignal = false,
+    groups?: ReadonlyMap<number, ReadonlySet<ProcessEntry>>,
+    readStartedAt = Date.now(),
+  ): void {
     const leaderRow = table.find((row) => row.pid === leaderPid && !row.zombie);
     if (leaderRow === undefined) {
       // Gone before the SIGTERM: nothing is linked to it, and its pid is no one's to follow.
@@ -65,10 +75,22 @@ export class DescendantRecord {
     this.leader ??= identity(leaderRow);
     if (identity(leaderRow) !== this.leader) return;
     this.known = true;
-    const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+    const observedGroups =
+      groups ?? detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
     for (const row of table) {
-      if (!row.zombie && groups.has(row.pgid)) this.identities.add(identity(row));
+      if (row.zombie || !observedGroups.has(row.pgid)) continue;
+      const id = identity(row);
+      if (!this.identities.has(id)) {
+        const started = Date.parse(`${row.startedAt} UTC`);
+        if (!Number.isFinite(started) || started + 1_000 > readStartedAt) this.ambiguous.add(id);
+      }
+      this.identities.add(id);
     }
+  }
+
+  /** A same-second reuse cannot be distinguished; background retries leave it unresolved. */
+  canReapInBackground(table: readonly ProcessEntry[]): boolean {
+    return this.survivors(table).every((row) => !this.ambiguous.has(identity(row)));
   }
 
   /** The pid of each process recorded, whatever it runs now. */
@@ -107,11 +129,13 @@ export function watchDescendants(
   const record = new DescendantRecord();
   let watching = true;
   const scope = daemonScope(new Set([leaderPid]));
-  const readOnce = (beforeSignal = false) =>
-    ops.listProcesses(RECORD_READ_MS, scope).then(
-      (table) => record.observe(table, leaderPid, beforeSignal),
+  const readOnce = (beforeSignal = false) => {
+    const readStartedAt = Date.now();
+    return ops.listProcesses(RECORD_READ_MS, scope).then(
+      (table) => record.observe(table, leaderPid, beforeSignal, undefined, readStartedAt),
       () => undefined,
     );
+  };
   const firstRead = readOnce(true);
   const finishing = Promise.withResolvers<void>();
   const reading = (async () => {

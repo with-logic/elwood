@@ -52,6 +52,7 @@ export function watchSurvivors(
   ops: SweepOps,
   leaderExited: () => boolean,
   keep: (failure: SweepFailure | undefined, record: DescendantRecord) => void,
+  reap: typeof reapRecordedSurvivors = reapRecordedSurvivors,
 ): SurvivorWatch {
   if (leaderPid === undefined)
     return { firstRead: Promise.resolve(), finish: () => Promise.resolve() };
@@ -60,7 +61,7 @@ export function watchSurvivors(
     firstRead: watch.firstRead,
     finish: async () => {
       const record = await watch.finish();
-      if (leaderExited()) keep(await reapRecordedSurvivors(record, ops), record);
+      if (leaderExited()) keep(await reap(record, ops), record);
     },
   };
 }
@@ -76,6 +77,7 @@ export async function reapRecordedSurvivors(
   record: DescendantRecord,
   ops: SweepOps,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
+  firstTable?: readonly ProcessEntry[],
 ): Promise<SweepFailure | undefined> {
   const state = newSweepState(new SweepFailures());
   if (!record.known) {
@@ -84,8 +86,8 @@ export async function reapRecordedSurvivors(
   }
   if (record.pids.length === 0) return undefined;
   const deadline = performance.now() + budgetMs;
-  await stopSurvivorGroups(record, ops, deadline, state);
-  await killOrResumeSignaledGroups(ops, state, deadline);
+  await stopSurvivorGroups(record, ops, deadline, state, firstTable);
+  await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
 
@@ -95,19 +97,22 @@ async function stopSurvivorGroups(
   ops: SweepOps,
   deadline: number,
   state: SweepState,
+  firstTable: readonly ProcessEntry[] | undefined,
 ): Promise<void> {
   // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
   // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
   // can leave the daemon in it under PID 1, under no recorded pid.
   const scopeRoots = new Set(record.pids);
   const scope = daemonScope(scopeRoots);
+  let initial = firstTable;
   try {
     while (true) {
       for (const group of state.signaledGroupIds) scopeRoots.add(group);
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const table = await ops.listProcesses(remainingMs, scope);
+      const table = initial ?? (await ops.listProcesses(remainingMs, scope));
+      initial = undefined;
       state.latest = table;
       const roots = survivorGroups(record.survivors(table), table);
       state.live = liveGroups(table, roots);

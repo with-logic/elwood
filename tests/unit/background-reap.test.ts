@@ -5,7 +5,7 @@
  * rejecting. Injected process operations only: every signal is logged, none is sent.
  */
 
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   BACKGROUND_REAP_LIFETIME_MS,
   BACKGROUND_REAP_RETRY_MS,
@@ -21,7 +21,9 @@ import {
   scripted,
 } from "../helpers/scripted-process-tree.ts";
 
+beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -105,7 +107,7 @@ describe("C-LIFE-14 a failed walk's recorded processes", () => {
   test("keep a failure that recorded none rejecting, with no read after it", async () => {
     const { reaper, calls } = failingWalk([leaderRow], () => orphaned);
     await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow(UNREADABLE);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.advanceTimersByTimeAsync(BACKGROUND_REAP_RETRY_MS * 2);
     expect(retry(reaper)).toThrow(UNREADABLE);
     expect(calls.filter((call) => call === "list")).toHaveLength(2);
   });
@@ -118,7 +120,7 @@ describe("C-LIFE-14 a failed walk's recorded processes", () => {
       return orphaned;
     });
     await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow(UNREADABLE);
-    await new Promise((resolve) => setTimeout(resolve, BACKGROUND_REAP_RETRY_MS * 1.5));
+    await vi.advanceTimersByTimeAsync(BACKGROUND_REAP_RETRY_MS * 1.5);
     expect(calls.filter((call) => call === "list")).toHaveLength(3);
     expect(beyondLeader(calls)).toEqual([]);
     expect(retry(reaper)).toThrow(UNREADABLE);

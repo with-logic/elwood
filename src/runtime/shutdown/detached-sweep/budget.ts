@@ -1,6 +1,6 @@
 /**
  * The detached walk's deadline (PRD §5.3 and §9.4, C-LIFE-10), which the survivor reap
- * and each read of a `stop()`'s record share. It lives in a module of its own because
+ * and each process-table read in `stop()`’s descendant watch share. It lives in a module of its own because
  * `index.ts` imports `record.ts`, so `record.ts` reading it from `index.ts` would be an
  * import cycle, which leaves it uninitialized when `record.ts` loads first.
  */

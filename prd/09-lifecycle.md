@@ -363,5 +363,8 @@ exception is a detached-descendant walk, or a `stop()`'s reap of the detached
 descendants its leader's exit left, that could not complete (§5.3): with the leader
 gone the walk cannot be retried, so every later call keeps rejecting for it until
 the background reap of the processes it recorded resolves it (C-LIFE-14); one that
-recorded no process is never resolved. Each caller still observes its own
+recorded no process, or whose live non-daemon survivors have ambiguous second-resolution
+identities (§5.3), is never resolved from those observations. Foreground and background
+descendant reaps of the session are serialized, and a failed shared-daemon resume stays
+pending until resumed or confirmed unnecessary. Each caller still observes its own
 operation's success or typed failure.

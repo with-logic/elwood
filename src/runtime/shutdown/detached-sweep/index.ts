@@ -89,7 +89,7 @@ export async function sweepDetachedGroups(
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
   await stopDescendantGroups(leaderPid, { ops, record }, leaderExited, deadline, state);
-  await killOrResumeSignaledGroups(ops, state, deadline);
+  await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
 
@@ -116,10 +116,11 @@ async function stopDescendantGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      const readStartedAt = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
-      record.observe(table, leaderPid);
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+      record.observe(table, leaderPid, false, state.live, readStartedAt);
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       if (leaderExited())

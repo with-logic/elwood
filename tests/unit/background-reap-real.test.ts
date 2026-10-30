@@ -7,7 +7,7 @@
  * reap is reading or waiting for its next attempt.
  */
 
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
@@ -26,6 +26,8 @@ describe("C-LIFE-14 the background reap on real processes", () => {
   test("ends what a failed walk recorded, and a later call resolves", async () => {
     const tree = startDetachedTree();
     const [child, grandchild] = await detachedDescendantPids(tree);
+    // A second-resolution identity must already be older than its start second when recorded.
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
     let walkReads = 0;
     // The walk's first read succeeds, and every later one fails, as past a deadline.
     const listProcesses: typeof osProcessTreeOps.listProcesses = (timeoutMs, scope) => {
@@ -45,20 +47,23 @@ describe("C-LIFE-14 the background reap on real processes", () => {
   test("a host whose only work left is a background reap exits at once", async () => {
     // A recorded process the reap can never end: its signals go nowhere.
     const recorded = startBystander();
+    let host: ChildProcess | undefined;
     try {
       const pid = recorded.pid as number;
       const row = (await listProcessTable(10_000)).find((entry) => entry.pid === pid);
-      const host = spawn(process.execPath, ["--no-warnings", "--input-type=module", "-e", HOST], {
+      host = spawn(process.execPath, ["--no-warnings", "--input-type=module", "-e", HOST], {
         env: { ...process.env, ROW: JSON.stringify(row), SHUTDOWN },
         stdio: ["ignore", "pipe", "inherit"],
       });
-      const [line] = await once(host.stdout, "data");
+      const exited = once(host, "exit");
+      const [line] = await once(host.stdout as NodeJS.ReadableStream, "data");
       const started = performance.now();
       expect(String(line)).toBe("reaping 1 recorded process\n");
-      await once(host, "exit");
+      expect(await exited).toEqual([0, null]);
       // Each attempt's reads would otherwise hold the host for its whole deadline.
       expect(performance.now() - started).toBeLessThan(1_500);
     } finally {
+      if (host !== undefined) await stopBystander(host);
       await stopBystander(recorded);
     }
   }, 30_000);
@@ -69,12 +74,16 @@ describe("C-LIFE-14 the background reap on real processes", () => {
       stdio: ["ignore", "pipe", "inherit"],
     });
     const exited = once(host, "exit");
-    const [line] = await once(host.stdout, "data");
-    const started = performance.now();
-    expect(String(line)).toBe("reaping\n");
-    await exited;
-    // A timer that held the host would hold it the whole second until the next attempt.
-    expect(performance.now() - started).toBeLessThan(BACKGROUND_REAP_RETRY_MS * 0.8);
+    try {
+      const [line] = await once(host.stdout, "data");
+      const started = performance.now();
+      expect(String(line)).toBe("reaping\n");
+      expect(await exited).toEqual([0, null]);
+      // A referenced timer would hold the host until the next attempt.
+      expect(performance.now() - started).toBeLessThan(BACKGROUND_REAP_RETRY_MS * 0.8);
+    } finally {
+      await stopBystander(host);
+    }
   }, 30_000);
 
   test("an unreferenced read still ends at its timeout", async () => {
