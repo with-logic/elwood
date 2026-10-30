@@ -5,8 +5,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { constants } from "node:os";
 import { causeDetails, elwoodError, errnoCode } from "../../core/errors.ts";
+import { exitStatus } from "../../runtime/exit-status.ts";
 import { type CommandResult, currentCommandRunner } from "../../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import type { CliAgent } from "../types.ts";
@@ -35,13 +35,6 @@ export const spawnInteractiveAgent: InteractiveSpawner = async (launch) => {
     child.once("exit", (code, signal) => resolve(exitStatus(code, signal)));
   });
 };
-
-/** A signal-terminated agent maps to the shell convention 128 + signal number. */
-export function exitStatus(code: number | null, signal: NodeJS.Signals | null): number {
-  if (code !== null) return code;
-  const number = signal === null ? undefined : constants.signals[signal];
-  return number === undefined ? 1 : 128 + number;
-}
 
 function spawnFailure(launch: InteractiveLaunch, error: unknown) {
   const missing = errnoCode(error) === "ENOENT";

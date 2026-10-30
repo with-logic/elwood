@@ -42,7 +42,8 @@ export class LineEmitter {
     for (const line of lines) this.emitLine(path, line);
   }
 
-  private emitLine(path: string, line: string): void {
+  /** Emit one line taken as complete (a transcript's last, un-terminated record at its end). */
+  emitLine(path: string, line: string): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
