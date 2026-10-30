@@ -4,16 +4,17 @@
  * machine. No agent is started: the leftover is a plain Node process run from the root.
  */
 
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after } from "node:test";
 import { killGroupsWhoseCommandHas, processRows } from "../helpers/process-liveness.ts";
 import { makeProject } from "./helpers.ts";
+import { FIXTURE_LIFETIME_MS } from "./scratch-processes/fixture.ts";
 
-/** The leftover exits by itself after this, even when the sweep and this file's check fail. */
-const LIFETIME_MS = 60_000;
 const marker = `elwood-scratch-sweep-${randomUUID()}`;
 
 // The scratch sweep registered its hook when this file imported it, so this one runs after
@@ -26,10 +27,22 @@ after(() => {
   if (left.length > 0) throw new Error(`the scratch sweep left ${left.join("; ")}`);
 });
 
-test("C-E2E-03 the scratch sweep stops a process a test left running from its project", () => {
+test("C-E2E-03 the scratch sweep stops a process a test left running from its project", async () => {
   const project = makeProject("codex");
   const script = join(project.cwd, "left-running.mjs");
-  writeFileSync(script, `setTimeout(() => process.exit(), ${LIFETIME_MS});\n`);
+  writeFileSync(
+    script,
+    `process.send("ready"); process.disconnect(); setTimeout(() => process.exit(), ${FIXTURE_LIFETIME_MS});\n`,
+  );
   // Detached and unreferenced, as an agent's daemon outlives the test that started it.
-  spawn(process.execPath, [script, marker], { detached: true, stdio: "ignore" }).unref();
+  const child = spawn(process.execPath, [script, marker], {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+  await once(child, "message", { signal: AbortSignal.timeout(10_000) });
+  assert.ok(
+    processRows().some((row) => row.pid === child.pid && row.command.includes(marker)),
+    "the leftover is live before the sweep",
+  );
+  child.unref();
 });
