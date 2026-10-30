@@ -49,12 +49,26 @@ Each probe's shell therefore starts in the directory the session's PTY launches
 in, not Elwood's own working directory: a per-directory tool
 manager (asdf or mise shims, or a startup file that builds PATH from `$PWD`) can
 resolve a different CLI in each directory. Start and resume check that directory
-before any probe (C-API-61). A probe whose directory is gone by the time it spawns
-(removed after that check) fails the start or resume with `claude_start_failed` or
-`codex_start_failed`, `details.cwd`, and the probe's own failure as
-`details.cause`, never as a missing CLI: when preflight fails, Elwood checks that the
-directory is still the one it checked, and one made again in its place fails as
-replaced.
+before any probe (C-API-61). A version or capability probe starts only while its
+directory is still the one its answer is kept for (§9.2): one whose directory was
+removed or replaced after that check runs nothing, and fails the start or resume
+with `claude_start_failed` or `codex_start_failed`, `details.cwd`, and the probe's
+own failure as `details.cause`, never as a missing CLI: when preflight fails,
+Elwood checks that the directory is still the one it checked, and one made again in
+its place fails as replaced.
+
+The identity captured by the initial start/resume check MUST be carried through
+preflight, cache lookup, updates, and capability probes. The child verifies its
+actual initial working directory before loading user startup files, closing a
+replacement between the host's final check and the child entering that directory.
+After startup files load, the original launch path MUST still name that checked
+directory before the probe or agent command runs. A startup file's deliberate `cd`
+continues to affect its environment and command; it does not permit replacement of
+the original launch directory. A refusal is a start failure with `details.cwd` and
+the probe's own cause where applicable; a failed host-side stat preserves its errno.
+A child-side checked-directory refusal exits that child with status 96 before the
+requested command starts; this is not an Elwood CLI exit status.
+
 A probe's shell startup and its command are bounded separately (§9.2), so a slow
 profile is not reported as a failing CLI.
 

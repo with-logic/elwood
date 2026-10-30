@@ -144,6 +144,7 @@ export function probeFailureDetails(result: {
   readonly error?: {
     readonly code?: string | undefined;
     readonly message: string;
+    readonly cwd?: string;
     // Structurally narrower than `string`: the only producer is `abortProbe`, whose
     // `ProbeCleanup` type pins this to the bounded allowlist plus `ETIMEDOUT`. Importing
     // that union here would make `errors.ts` depend on a module that depends on it, so
@@ -158,6 +159,7 @@ export function probeFailureDetails(result: {
   const details: Record<string, string | number> = { stderr: loginShell ? "" : result.stderr };
   if (result.error) {
     details["cause"] = result.error.message;
+    if (result.error.cwd !== undefined) details["cwd"] = result.error.cwd;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;
     if (result.error.phase !== undefined) details["phase"] = result.error.phase;
     if (result.error.cleanupErrorCode !== undefined)

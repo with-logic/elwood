@@ -1742,6 +1742,18 @@ was still loading. `tests/unit/probe-closed-descriptor.test.ts` covers this with
 where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main` at
 613b3ea5.
 
+## Checked-directory shell guards (2026-10-30)
+
+A trusted non-login `/bin/sh -p` checks the child's actual `.` device/inode before
+executing the user's login shell. The post-profile check runs in another such
+shell: a zsh `TRAPDEBUG` writes inside command substitutions, so comparing a stat
+captured directly in the user's shell rejects a valid directory when the trap's
+output contaminates the result. `probe-shell-output.test.ts` reproduces that with
+real zsh, including `errexit`, and verifies the command's private capture still
+contains only the command's output. Both checks use fixed `/usr/bin/stat` paths.
+The post-profile check validates the original launch path; a profile's deliberate
+`cd` continues to affect its command and Codex's relative home report.
+
 ## Login-shell output around a probe command (2026-10-26)
 
 A probe's captured output becomes `agent_update_failed.raw`, `version_unparseable.raw`,

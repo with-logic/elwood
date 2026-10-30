@@ -12,12 +12,24 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Starts and resumes carry the initially checked working-directory identity through
+  preflight and cached probes. The child checks its initial directory before shell
+  startup and the original path again before running its command, so a replacement
+  cannot become a newly trusted probe directory or run an agent in its place. A
+  profile's deliberate `cd` remains supported. Failed directory checks retain their
+  path and errno in the start failure.
+
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
+- A `--version` or Codex `--help` probe now starts only while its launch
+  directory is still the one its answer is kept for. One that waited for a probe
+  slot while the directory was removed or replaced runs nothing, and the start or
+  resume fails with that as its `details.cause`, so a directory put back
+  afterwards is never answered with its replacement's version or capabilities.
 - A session's agent now starts only in the directory its start or resume
   checked first. A launch directory removed or replaced at any point after
   preflight, up to the moment the PTY is spawned (including during Codex's

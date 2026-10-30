@@ -95,7 +95,10 @@ it ran in (its device and inode) as well as its path: a directory deleted and ma
 again at the same path is read again, a symlink to a read directory is read as its
 own path, and a read whose directory was replaced while it ran, or could not be
 identified, is not kept. Nor is a `--version` read with a stream longer than 65,536
-UTF-16 code units. All cached version and capability reads, in every directory, are
+UTF-16 code units. A read's probe starts only while its directory is still the one
+the read is kept for, checked as it spawns: a probe that waited for a slot while
+its directory was replaced runs nothing and fails, so a directory put back
+afterwards is never answered with its replacement's read. All cached version and capability reads, in every directory, are
 invalidated after every coordinated update attempt, including a failed or peer-owned attempt, because
 a failed installer may still have partially changed the binary. When `autoupdate`
 is set, concurrent callers share one update, which runs in the launch directory of

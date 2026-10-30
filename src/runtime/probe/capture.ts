@@ -10,6 +10,7 @@
  */
 
 import type { Readable } from "node:stream";
+import type { CommandResult } from "../seams.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
 import { NamedPipeCapture } from "./named-pipes.ts";
 import { announcesStart, probeOutputRedirect } from "./start.ts";
@@ -102,4 +103,11 @@ class DiscardedCapture implements ProbeCapture {
   release(): void {
     // Nothing was kept.
   }
+}
+
+/** A private capture that could not be created fails before the probe spawns. */
+export function outputUnavailable(error: NodeJS.ErrnoException): CommandResult {
+  const message = `could not create the probe's private output pipes: ${error.message}`;
+  const code = typeof error.code === "string" ? { code: error.code } : {};
+  return { status: null, stdout: "", stderr: "", error: { message, ...code } };
 }

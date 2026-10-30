@@ -3,7 +3,6 @@
  * Implements PRD §4, §6, and §9.
  */
 
-import { resolve } from "node:path";
 import { bridgeScriptSource } from "../../bridge/script.ts";
 import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
@@ -109,7 +108,8 @@ export function spawnClaudePty(
     return currentPtyFactory()({
       command: launch.command,
       args: launch.args,
-      cwd: resolve(options.cwd),
+      cwd: options.launchDirectory.cwd,
+      directoryIdentity: options.launchDirectory.identity,
       env: {
         ...process.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,
