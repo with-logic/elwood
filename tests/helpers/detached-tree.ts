@@ -16,6 +16,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -89,6 +90,10 @@ export function startDetachedTree(
       // A clone where the file system allows one: instant, and no extra space on APFS.
       mkdirSync(dirname(binary), { recursive: true });
       copyFileSync(NODE, binary, constants.COPYFILE_FICLONE);
+      // Homebrew Node 26 loads libnode through ../lib; keep that lookup at each fixture prefix.
+      const libraryDir = join(dirname(dirname(NODE)), "lib");
+      if (existsSync(libraryDir))
+        symlinkSync(libraryDir, join(dirname(dirname(binary)), "lib"), "dir");
     }
   }
   const pty = nodePtyFactory({
