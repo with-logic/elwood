@@ -4,6 +4,7 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
+import type { DirectoryIdentity } from "../../core/directory-identity.ts";
 import { type DirectoryRead, readInDirectory } from "../probe/directory-key.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
@@ -149,8 +150,9 @@ export function cachedVersionRead(
   adapter: UpdateAdapter,
   cwd: string,
   read: (options: CommandOptions) => Promise<CommandResult>,
+  identity?: DirectoryIdentity,
 ): Promise<CommandResult> {
-  return readInDirectory(versionReads[adapter], cwd, read);
+  return readInDirectory(versionReads[adapter], cwd, read, identity);
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {

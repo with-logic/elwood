@@ -10,6 +10,7 @@ import { type BigIntStats, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { DirectoryIdentity } from "../../core/directory-identity.ts";
 import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
 import { currentPlatform } from "../seams.ts";
 
@@ -31,7 +32,7 @@ export function resolveLaunchDirectory(agent: ElwoodAgentKind, cwd: string): str
 }
 
 /** Which directory `cwd` named when it was checked (device and inode); none where unchecked. */
-export type LaunchDirectoryIdentity = { readonly dev: bigint; readonly ino: bigint } | undefined;
+export type LaunchDirectoryIdentity = DirectoryIdentity | undefined;
 
 /** A launch's directory as it was first checked: its path and which directory it was. */
 export type CheckedLaunchDirectory = {
@@ -66,8 +67,8 @@ export async function checkLaunchDirectory(
 }
 
 /**
- * Throws unless `directory` is still the directory it was checked as. Synchronous, so the spawn
- * it guards runs in that directory: nothing else runs between them (C-API-61).
+ * Last host-side check of the initially checked directory. The native factory’s child-side
+ * guard closes the subsequent path-resolution race before user profiles run (C-API-61).
  */
 export function assertLaunchDirectoryUnchanged(directory: CheckedLaunchDirectory): void {
   const { agent, cwd, identity } = directory;
@@ -118,7 +119,7 @@ export async function recheckLaunchDirectoryOnFailure<T>(
   try {
     return await launch();
   } catch (error) {
-    if (failedItsCheck(error, directory)) throw error;
+    if (isLaunchDirectoryCheckFailure(error, directory)) throw error;
     await assertLaunchDirectory(agent, cwd, identity).catch((directoryError: ElwoodError) => {
       // `errno` is the check's, so a replaced directory has none, not the launch's.
       const { errno: _launchErrno, ...launched } = launchFailureDetails(error);
@@ -126,12 +127,18 @@ export async function recheckLaunchDirectoryOnFailure<T>(
       const details = { ...launched, cwd, ...(errno ? { errno } : {}) };
       throw elwoodError(directoryError.code, directoryError.message, details);
     });
+    if (error instanceof ElwoodError && error.code === `${agent}_start_failed`) {
+      throw elwoodError(error.code, error.message, { ...error.details, cwd });
+    }
     throw error;
   }
 }
 
 /** Whether `error` is `directory`'s own check failing, as `assertLaunchDirectoryUnchanged` throws. */
-function failedItsCheck(error: unknown, { agent, cwd }: CheckedLaunchDirectory): boolean {
+function isLaunchDirectoryCheckFailure(
+  error: unknown,
+  { agent, cwd }: CheckedLaunchDirectory,
+): boolean {
   return (
     error instanceof ElwoodError &&
     error.code === `${agent}_start_failed` &&

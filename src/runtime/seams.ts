@@ -3,6 +3,7 @@
  * Implements PRD §13 testability without changing public behavior.
  */
 
+import type { DirectoryIdentity } from "../core/directory-identity.ts";
 import { nodePtyFactory } from "../pty/node.ts";
 import type { PtyFactory } from "../pty/types.ts";
 import type { ProbeCleanup } from "./probe/cleanup.ts";
@@ -15,6 +16,7 @@ export type CommandResult = {
   readonly error?: {
     readonly code?: string | undefined;
     readonly message: string;
+    readonly cwd?: string;
     /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
     readonly phase?: "login_shell";
     /** The login shell's own status when it exited before starting the command. */
@@ -23,12 +25,12 @@ export type CommandResult = {
 };
 
 /** Which directory a path named when it was checked: its device and inode. */
-export type DirectoryIdentity = { readonly dev: bigint; readonly ino: bigint };
+export type { DirectoryIdentity } from "../core/directory-identity.ts";
 
 /**
  * Where a probe runs: `cwd` defaults to Elwood's own working directory. Given the `identity`
- * `cwd` had when the probe's answer was keyed, the probe spawns only while `cwd` is still that
- * directory, and otherwise fails without running (C-PERF-02).
+ * initially checked for the launch, or captured when the probe was keyed, the child checks
+ * its kernel cwd before profiles and the original path before its command (C-PERF-02).
  */
 export type CommandOptions =
   | { readonly cwd?: string; readonly identity?: undefined }

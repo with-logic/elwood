@@ -11,7 +11,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
 import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
-import { probedDirectoryChanged } from "../../src/runtime/probe/directory-key.ts";
 import {
   currentCommandRunner,
   setCommandRunnerForTests,
@@ -143,8 +142,8 @@ export const directoryLossCases = [
   },
 ] as const;
 
-/** A probe's own failure when its directory changed before it could start: it ran nothing. */
-export const probeRefused = { cause: probedDirectoryChanged, stderr: "" };
+/** A probe’s stat failure after its directory was removed, before it ran anything. */
+export const probeRefused = { cause: expect.stringContaining("ENOENT"), stderr: "" };
 
 /**
  * Matches the error of a launch that lost `cwd`, `as` one of `directoryLossCases`, with the

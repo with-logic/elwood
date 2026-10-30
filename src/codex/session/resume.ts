@@ -47,6 +47,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
         record.cwd,
         options.strictVersionCheck ?? false,
         options.autoupdate ?? false,
+        directory.identity,
       ),
     );
     // Resume defaults to the posture this session launched with; explicit options

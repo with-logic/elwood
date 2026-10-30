@@ -2,7 +2,7 @@
  * The preflight caches are per launch directory: each directory's `--version`, and Codex's
  * `--help`, is probed once, in that directory, only the most recently used directories' answers
  * are kept, an answer is kept only for a directory it can identify and a version read only when
- * it is small, and an autoupdate invalidates every directory's. Covers PRD §9.2 and C-PERF-02.
+ * it is small, and an autoupdate invalidates every directory's cached answers. Covers PRD §9.2 and C-PERF-02.
  */
 
 import { symlinkSync } from "node:fs";

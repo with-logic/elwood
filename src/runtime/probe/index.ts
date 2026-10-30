@@ -8,12 +8,13 @@
 
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
+import { checkedCommand } from "../checked-command.ts";
 import { exitStatus } from "../exit-status.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
-import { type ProbeCapture, probeCapture } from "./capture.ts";
+import { outputUnavailable, type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
-import { probedDirectoryReplaced } from "./directory-key.ts";
+import { directoryShellExit, probedDirectoryReplaced } from "./directory-key.ts";
 import { withProbeSlot } from "./slots.ts";
 import { ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
@@ -65,13 +66,20 @@ function spawnCaptured(
   }
   return new Promise((resolve) => {
     const start = new ProbeStart(args);
+    const launch = checkedCommand(
+      command,
+      args,
+      options.cwd ?? process.cwd(),
+      options.identity,
+      start.expectsStartLine,
+    );
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
     // controlling terminal and can leave its short-lived command's process group in the
     // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
     // A fourth pipe carries only the probe shell's start line, unless the shell closed it.
     const child = releasedOnThrow(capture, () =>
-      spawn(command, [...args], {
+      spawn(launch.command, [...launch.args], {
         detached: true,
         cwd: options.cwd,
         stdio: ["pipe", "pipe", "pipe", "pipe"],
@@ -142,7 +150,7 @@ function spawnCaptured(
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
       if (start.expectsStartLine && !start.started) {
-        settle(shellExited(code, ...captured()));
+        settle(directoryShellExit(code, shellExited(code, ...captured()), options, command));
         return;
       }
       // A signal death reads as a shell reports it, 128+n.
@@ -183,12 +191,6 @@ function shellExited(status: number | null, stdout: string, stderr: string): Com
   const message = `login shell exited with status ${status} before starting the probe command`;
   const error = { message, phase: "login_shell", shellStatus: status } as const;
   return { status: null, stdout, stderr, error };
-}
-
-function outputUnavailable(error: NodeJS.ErrnoException): CommandResult {
-  const message = `could not create the probe's private output pipes: ${error.message}`;
-  const code = typeof error.code === "string" ? { code: error.code } : {};
-  return { status: null, stdout: "", stderr: "", error: { message, ...code } };
 }
 
 function overflow(stdout: string, stderr: string): CommandResult {

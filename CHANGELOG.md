@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Starts and resumes carry the initially checked working-directory identity through
+  preflight and cached probes. The child checks its initial directory before shell
+  startup and the original path again before running its command, so a replacement
+  cannot become a newly trusted probe directory or run an agent in its place. A
+  profile's deliberate `cd` remains supported. Failed directory checks retain their
+  path and errno in the start failure.
+
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,

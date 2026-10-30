@@ -3,8 +3,10 @@
  * for the directory it ran in. Implements the per-directory caches of PRD §9.2 (C-PERF-02).
  */
 
-import { statSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
+import { errnoCode } from "../../core/errors.ts";
+import { directoryGuardExitCode } from "../checked-command.ts";
 import type { ProbeCache } from "../probe-cache.ts";
 import type { CommandOptions, CommandResult, DirectoryIdentity } from "../seams.ts";
 
@@ -41,13 +43,20 @@ export async function readInDirectory<T>(
   cache: ProbeCache<DirectoryRead<T>>,
   cwd: string,
   read: (options: CommandOptions) => Promise<T>,
+  expected?: DirectoryIdentity,
 ): Promise<T> {
   const identity = await identityOf(cwd);
+  if (
+    expected !== undefined &&
+    (identity === undefined || keyOf(cwd, expected) !== keyOf(cwd, identity))
+  ) {
+    return read({ cwd, identity: expected });
+  }
   // A directory that can't be identified is read, but its answer is neither shared nor kept.
   if (identity === undefined) return read({ cwd });
   const key = keyOf(cwd, identity);
   const { value } = await cache.get(key, async () => {
-    const value = await read({ cwd, identity });
+    const value = await read({ cwd, identity: expected ?? identity });
     const after = await identityOf(cwd);
     return { value, sameDirectory: after !== undefined && keyOf(cwd, after) === key };
   });
@@ -56,8 +65,8 @@ export async function readInDirectory<T>(
 
 /**
  * A probe's failure, without running, when `cwd` is no longer the directory `identity` names;
- * none when it is, or no identity was given. Synchronous, so the spawn that follows it runs in
- * that directory.
+ * none when it is, or no identity was given. The child checks its actual kernel cwd too,
+ * closing a subsequent replacement before the login shell runs.
  */
 export function probedDirectoryReplaced(options: CommandOptions): CommandResult | undefined {
   const { cwd, identity } = options;
@@ -65,12 +74,44 @@ export function probedDirectoryReplaced(options: CommandOptions): CommandResult 
   try {
     const { dev, ino } = statSync(cwd, { bigint: true });
     if (dev === identity.dev && ino === identity.ino) return undefined;
-  } catch {
-    // Gone: not the directory it was either.
+  } catch (error) {
+    const code = errnoCode(error);
+    const message = String(error);
+    return {
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: { message, cwd, code },
+    };
   }
-  return { status: null, stdout: "", stderr: "", error: { message: probedDirectoryChanged } };
+  return { status: null, stdout: "", stderr: "", error: { message: probedDirectoryChanged, cwd } };
 }
 
 /** Why a probe did not run: its directory was removed or replaced before it could start there. */
 export const probedDirectoryChanged =
   "The directory was removed or replaced before the probe started.";
+
+/** A child-side directory refusal never ran the probe; retain its checked launch path. */
+export function directoryShellExit(
+  status: number | null,
+  result: CommandResult,
+  options: CommandOptions,
+  command: string,
+): CommandResult {
+  if (options.identity === undefined) return result;
+  if (status === 126 || status === 127) {
+    try {
+      accessSync(command, constants.X_OK);
+    } catch (error) {
+      const code = errnoCode(error);
+      return {
+        status: null,
+        stdout: "",
+        stderr: "",
+        error: { code, message: `spawn ${command} ${code}` },
+      };
+    }
+  }
+  if (status !== directoryGuardExitCode) return result;
+  return { ...result, error: { ...result.error!, cwd: options.cwd } };
+}

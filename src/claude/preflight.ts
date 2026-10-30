@@ -3,6 +3,7 @@
  * Implements PRD §9.2, §10, and C-PTY-08.
  */
 
+import type { DirectoryIdentity } from "../core/directory-identity.ts";
 import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
@@ -28,6 +29,7 @@ export async function preflightClaude(
   cwd: string,
   strictVersionCheck: boolean,
   autoupdate = false,
+  identity?: DirectoryIdentity,
 ): Promise<ClaudePreflightWarning | undefined> {
   // Platform check is synchronous and first: unsupported hosts throw before
   // any subprocess is spawned.
@@ -40,12 +42,12 @@ export async function preflightClaude(
     // we re-read the installed version and fall through to the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11).
     const outcome = await cachedAutoupdate("claude", cwd, {
-      verify: () => readClaudeVersion(cwd),
-      update: () => runClaudeUpdate(cwd),
+      verify: () => readClaudeVersion(cwd, identity),
+      update: () => runClaudeUpdate(cwd, identity),
     });
     if (!outcome.ok) failedUpdate = outcome;
   }
-  const result = await readClaudeVersion(cwd);
+  const result = await readClaudeVersion(cwd, identity);
   const version = parseVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
@@ -71,9 +73,13 @@ export async function preflightClaude(
   );
 }
 
-async function runClaudeUpdate(cwd: string): Promise<void> {
+async function runClaudeUpdate(cwd: string, identity?: DirectoryIdentity): Promise<void> {
   const update = probeShellCommand("claude update");
-  const result = await currentCommandRunner()(userShell(), update, { cwd });
+  const result = await currentCommandRunner()(
+    userShell(),
+    update,
+    identity === undefined ? { cwd } : { cwd, identity },
+  );
   if (result.status !== 0) {
     throw elwoodError(
       "claude_update_failed",
@@ -83,14 +89,23 @@ async function runClaudeUpdate(cwd: string): Promise<void> {
   }
 }
 
-async function readClaudeVersion(cwd: string): Promise<CommandResult> {
+async function readClaudeVersion(
+  cwd: string,
+  identity?: DirectoryIdentity,
+): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const command = probeShellCommand("claude --version");
-  const result = await cachedVersionRead("claude", cwd, (options) =>
-    Promise.resolve(currentCommandRunner()(userShell(), command, options)),
+  const result = await cachedVersionRead(
+    "claude",
+    cwd,
+    (options) => Promise.resolve(currentCommandRunner()(userShell(), command, options)),
+    identity,
   );
-  if (result.error?.code === "ENOENT" || result.status === 127) {
+  if (
+    (result.error?.code === "ENOENT" && result.error.cwd === undefined) ||
+    result.status === 127
+  ) {
     // The probe's own failure is the cause, so a launch directory that went while it was
     // probed reports why the probe failed, not a missing CLI (C-PTY-08).
     const missing = result.error

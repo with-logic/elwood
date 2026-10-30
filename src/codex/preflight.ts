@@ -3,6 +3,7 @@
  * Implements PRD §9.2, §10, and C-PTY-08.
  */
 
+import type { DirectoryIdentity } from "../core/directory-identity.ts";
 import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
@@ -45,6 +46,7 @@ export async function preflightCodex(
   cwd: string,
   strictVersionCheck: boolean,
   autoupdate = false,
+  identity?: DirectoryIdentity,
 ): Promise<CodexPreflightWarning | undefined> {
   // Platform check is synchronous and first: unsupported hosts throw before
   // any subprocess is spawned.
@@ -58,12 +60,15 @@ export async function preflightCodex(
     const outcome = await cachedAutoupdate(
       "codex",
       cwd,
-      { verify: () => readCodexVersion(cwd), update: () => runCodexUpdate(cwd) },
+      {
+        verify: () => readCodexVersion(cwd, identity),
+        update: () => runCodexUpdate(cwd, identity),
+      },
       () => capabilityProbe.clear(),
     );
     if (!outcome.ok) failedUpdate = outcome;
   }
-  const result = await readCodexVersion(cwd);
+  const result = await readCodexVersion(cwd, identity);
   const version = parseVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
@@ -84,22 +89,32 @@ export async function preflightCodex(
   );
 }
 
-async function runCodexUpdate(cwd: string): Promise<void> {
+async function runCodexUpdate(cwd: string, identity?: DirectoryIdentity): Promise<void> {
   const update = probeShellCommand("codex update");
-  const result = await currentCommandRunner()(userShell(), update, { cwd });
+  const result = await currentCommandRunner()(
+    userShell(),
+    update,
+    identity === undefined ? { cwd } : { cwd, identity },
+  );
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
 }
 
-async function readCodexVersion(cwd: string): Promise<CommandResult> {
+async function readCodexVersion(cwd: string, identity?: DirectoryIdentity): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const command = probeShellCommand("codex --version");
-  const result = await cachedVersionRead("codex", cwd, (options) =>
-    Promise.resolve(currentCommandRunner()(userShell(), command, options)),
+  const result = await cachedVersionRead(
+    "codex",
+    cwd,
+    (options) => Promise.resolve(currentCommandRunner()(userShell(), command, options)),
+    identity,
   );
-  if (result.error?.code === "ENOENT" || result.status === 127) {
+  if (
+    (result.error?.code === "ENOENT" && result.error.cwd === undefined) ||
+    result.status === 127
+  ) {
     // The probe's own failure is the cause, so a launch directory that went while it was
     // probed reports why the probe failed, not a missing CLI (C-PTY-08).
     const missing = result.error
@@ -122,8 +137,11 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
  * run in `cwd` (C-PTY-08). On resume that is the record's directory, where Codex relaunches: a
  * per-directory tool manager can resolve a different build in each directory (§9.2).
  */
-export function detectCodexCliCapabilities(cwd: string): Promise<CodexCliCapabilities> {
-  return readInDirectory(capabilityProbe, cwd, detectCapabilities);
+export function detectCodexCliCapabilities(
+  cwd: string,
+  identity?: DirectoryIdentity,
+): Promise<CodexCliCapabilities> {
+  return readInDirectory(capabilityProbe, cwd, detectCapabilities, identity);
 }
 
 async function detectCapabilities(options: CommandOptions): Promise<CodexCliCapabilities> {
