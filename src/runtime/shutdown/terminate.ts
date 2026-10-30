@@ -60,7 +60,8 @@ export async function terminatePty(
       let leaderGone = false;
       survivors = reaper.watchSurvivors(() => latch.exited || leaderGone);
       leaderGone = await survivors.firstRead;
-      if (!(latch.exited || leaderGone)) pty.kill("SIGTERM");
+      if (!(latch.exited || leaderGone))
+        leaderGone = await survivors.sendSignal(() => pty.kill("SIGTERM"));
       observedExit = leaderGone || (await latch.within(timeouts.gracefulMs));
     }
     if (!observedExit) {

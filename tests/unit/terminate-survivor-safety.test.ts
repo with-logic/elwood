@@ -29,12 +29,14 @@ test("C-LIFE-10 a first read without the leader sends no PTY signal before its e
 test("C-LIFE-10 throwing SIGTERM keeps a recorded detached child's failure sticky", async () => {
   vi.useFakeTimers();
   const tree = [leaderRow, hook(5002)];
-  const fake = scripted([tree], {
-    stopGroup: () => {
-      throw errno("EPERM");
+  const fake = scripted([tree]);
+  const reaper = new SessionReaper(LEADER, {
+    ...fake.ops,
+    stopGroup: (group) => {
+      if (group !== LEADER) throw errno("EPERM");
+      fake.ops.stopGroup(group);
     },
   });
-  const reaper = new SessionReaper(LEADER, fake.ops);
   const signal = () => {
     throw new Error("TERM failed");
   };

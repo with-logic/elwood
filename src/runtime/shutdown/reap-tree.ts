@@ -164,8 +164,13 @@ export class SessionReaper {
     const leaderPid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
     const keep = (failure: SweepFailure | undefined, record: DescendantRecord) =>
       this.keep(failure, record);
-    return watchSurvivors(leaderPid, this.ops, leaderExited, keep, (record, ops) =>
-      this.reaping.run(() => reapRecordedSurvivors(record, ops)),
+    return watchSurvivors(
+      leaderPid,
+      this.ops,
+      leaderExited,
+      keep,
+      (record, ops) => this.reaping.run(() => reapRecordedSurvivors(record, ops)),
+      (attempt) => this.reaping.run(attempt),
     );
   }
 

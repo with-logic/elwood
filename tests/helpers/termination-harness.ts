@@ -71,6 +71,10 @@ export function harness(script: Script) {
           if (script.exitDuringFirstRead) onExit?.({ exitCode: 0 });
           return false;
         }),
+        sendSignal: (send: () => void) => {
+          send();
+          return Promise.resolve(false);
+        },
         finish: () => {
           calls.push(`survivors (leader gone: ${leaderExited()})`);
           const error = script.survivorError;

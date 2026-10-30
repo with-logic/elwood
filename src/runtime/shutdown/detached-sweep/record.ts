@@ -101,6 +101,11 @@ export class DescendantRecord {
     this.unknownResume = true;
   }
 
+  /** The first recording read's leader identity, never recaptured from a replacement. */
+  get leaderIdentity(): string | undefined {
+    return this.leader;
+  }
+
   /** Whether the read before SIGTERM showed the leader already gone. */
   get leaderGone(): boolean {
     return this.leader === "";
@@ -141,6 +146,8 @@ export class DescendantRecord {
 
 /** A recording in progress. */
 export type DescendantWatch = {
+  readonly record: DescendantRecord;
+  readonly leaderIdentity: string | undefined;
   /** Settles to whether the first read showed the leader gone; false for a failed read. */
   readonly firstRead: Promise<boolean>;
   /** Stops reading once the read in flight settles, and resolves to the record. */
@@ -167,7 +174,11 @@ export function watchDescendants(
       () => undefined,
     );
   };
-  const firstRead = readOnce(true).then(() => record.leaderGone);
+  let firstIdentity: string | undefined;
+  const firstRead = readOnce(true).then(() => {
+    firstIdentity = record.leaderIdentity;
+    return record.leaderGone;
+  });
   const finishing = Promise.withResolvers<void>();
   const reading = (async () => {
     await firstRead;
@@ -179,6 +190,10 @@ export function watchDescendants(
     }
   })();
   return {
+    record,
+    get leaderIdentity() {
+      return firstIdentity;
+    },
     firstRead,
     finish: async () => {
       watching = false;

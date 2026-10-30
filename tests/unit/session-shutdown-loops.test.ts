@@ -47,7 +47,11 @@ function recordingReap(calls: string[]): ShutdownReapPolicy {
       reap: () => void calls.push("reap"),
       reapAndThrowOnDetachedSweepFailure: () => void calls.push("reap"),
       sweepDetached: async () => {},
-      watchSurvivors: () => ({ firstRead: Promise.resolve(false), finish: async () => {} }),
+      watchSurvivors: () => ({
+        firstRead: Promise.resolve(false),
+        sendSignal: () => Promise.resolve(true),
+        finish: async () => {},
+      }),
     },
   };
 }
@@ -68,7 +72,11 @@ function host(
         reap: () => undefined,
         reapAndThrowOnDetachedSweepFailure: () => undefined,
         sweepDetached: async () => {},
-        watchSurvivors: () => ({ firstRead: Promise.resolve(false), finish: async () => {} }),
+        watchSurvivors: () => ({
+          firstRead: Promise.resolve(false),
+          sendSignal: () => Promise.resolve(true),
+          finish: async () => {},
+        }),
       },
     },
     status: () => "exited",

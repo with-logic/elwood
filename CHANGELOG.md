@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Graceful SIGTERM now waits for a stopped leader whose original identity is
+  confirmed by a fresh process-table read, within the first read's existing deadline.
+  Unknown, replaced, or unheld leaders receive no SIGTERM; the temporarily stopped
+  group is resumed on both success and failure, with failed restoration retained.
+
 - A session's first descendant reap still starts in the caller's tick when its
   signal queue is idle. Concurrent foreground and background passes remain serialized,
   and a rejected pass no longer prevents queued cleanup from running.
