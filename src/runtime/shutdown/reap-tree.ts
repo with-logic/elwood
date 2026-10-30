@@ -32,6 +32,7 @@ import {
   type GroupReapOps,
   type ProcessTreeOps,
 } from "./process-tree-ops.ts";
+import { SerialReapQueue } from "./reap-queue.ts";
 
 export {
   osProcessTreeOps,
@@ -91,7 +92,7 @@ export class SessionReaper {
   private readonly ops: ProcessTreeOps;
   private done = false;
   /** One session owns at most one foreground or background descendant reap. */
-  private reaping: Promise<void> = Promise.resolve();
+  private readonly reaping = new SerialReapQueue();
   /** The first sweep or survivor reap that failed; with the leader gone it can't be retried. */
   private unresolvedSweep: SweepFailure | undefined;
   /** Each failure's recorded processes, reaped in the background (`background.ts`). */
@@ -141,7 +142,7 @@ export class SessionReaper {
     const record = new DescendantRecord();
     const budget = DETACHED_SWEEP_BUDGET_MS;
     this.keep(
-      await this.serialize(() =>
+      await this.reaping.run(() =>
         sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, budget, record),
       ),
       record,
@@ -154,15 +155,8 @@ export class SessionReaper {
     const keep = (failure: SweepFailure | undefined, record: DescendantRecord) =>
       this.keep(failure, record);
     return watchSurvivors(leaderPid, this.ops, leaderExited, keep, (record, ops) =>
-      this.serialize(() => reapRecordedSurvivors(record, ops)),
+      this.reaping.run(() => reapRecordedSurvivors(record, ops)),
     );
-  }
-
-  /** Runs one identity-sensitive signal pass after every earlier pass has settled. */
-  private serialize<T>(attempt: () => Promise<T>): Promise<T> {
-    const result = this.reaping.then(attempt);
-    this.reaping = result.then(() => undefined);
-    return result;
   }
 
   /** Keeps `failure`, and reaps the processes `record` holds in the background. */
@@ -172,7 +166,7 @@ export class SessionReaper {
     const unreferenced = this.ops.listProcessesUnreferenced ?? this.ops.listProcesses;
     this.reapsInBackground.push(
       reapInBackground(record, { ...this.ops, listProcesses: unreferenced }, (attempt) =>
-        this.serialize(attempt),
+        this.reaping.run(attempt),
       ),
     );
     throw failure;

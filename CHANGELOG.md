@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A session's first descendant reap still starts in the caller's tick when its
+  signal queue is idle. Concurrent foreground and background passes remain serialized,
+  and a rejected pass no longer prevents queued cleanup from running.
+
 - Background shutdown retries serialize with foreground descendant reaping and retain
   failed attempts to resume Codex's shared daemon. A stopped daemon no longer makes a
   failed shutdown appear resolved. A retry leaves an ambiguous same-second process
