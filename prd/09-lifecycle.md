@@ -146,7 +146,7 @@ the host. A probe runs through the user's interactive login shell (§4.2), and
 loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
-bounded separately. After the startup files load, and immediately before the probe
+bounded separately. After the startup files load, and before the probe
 command runs, the probe shell writes a start line of Elwood's own, ending in a random
 token chosen once per parent process so that no startup file's output can pass for it,
 on a private channel that is neither stdout nor stderr, so a startup file that
@@ -156,12 +156,20 @@ stderr) writes the line on stdout instead. Not stderr, which a startup file may
 discard or merge into stdout: a startup file that hid stdout would also hide the
 command's own output. Elwood removes the line from captured stdout, so on either
 channel the probe's captured output is exactly the shell's and the command's.
+After the start line and before the command, the probe script removes the user's
+not-found handlers, zsh's `command_not_found_handler` and bash's
+`command_not_found_handle`, under the command's bound, which starts at the line. A
+CLI missing from the login shell's PATH therefore exits 127 and is reported as not
+found, and nothing a handler would print is captured.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
-Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
+Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
+process dies of a signal Elwood did not send reports the status a shell would, 128 plus
+the signal's number; a login shell that dies before then is a login-shell failure, as
+follows. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
@@ -196,10 +204,11 @@ non-PTY probe — `--version`, `--help` capability detection, and
 otherwise) surfaces through that probe's existing public error name —
 `claude_start_failed` / `codex_start_failed` — with the underlying reason
 preserved in the error `details` as `cause` (and `errno`, e.g. `ETIMEDOUT` on
-timeout or `E2BIG` on overflow) alongside any `stderr`. An UPDATE failure
+timeout or `E2BIG` on overflow) alongside any `stderr`, and the status the probe
+reported, if any, as `exitStatus`. An UPDATE failure
 (`claude update` / `codex update`), being best-effort maintenance, does NOT
 surface as a start-blocking error; it is contained and surfaces as the live
-`agent_update_failed` warning carrying the same bounded diagnostics (exit status,
+`agent_update_failed` warning carrying the same bounded diagnostics (`exitStatus`,
 `errno`, `stderr`), while startup continues through the compatibility gate. A
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.
@@ -287,9 +296,12 @@ intentionally not persisted yet.
 For either adapter, resume validates the loop sidecar before starting the agent,
 silently removes definitions whose seven-day wall-clock expiry passed during
 downtime, and restores surviving definitions with the same IDs and persisted
-jitter. It restores no timer or due state: every surviving cadence starts fresh
-from the resumed session's first readiness, using that launch's current
-permissions and blocking-dialog posture, and no missed run is replayed.
+jitter. That removal, and any at activation (§8.1), is part of the launch's startup
+publication, so a resume that then fails restores the sidecar it found unless the
+earlier launch has written it since. It restores no timer or due state: every
+surviving cadence starts fresh from the resumed session's first readiness, using
+that launch's current permissions and blocking-dialog posture, and no missed run is
+replayed.
 
 ### 9.4 Exit
 

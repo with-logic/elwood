@@ -12,6 +12,120 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
+- The walk that reaps detached hook processes now reads each process's short name,
+  which `ps` prints raw, and refuses a table read it cannot trust instead of acting
+  on it: one with a line that is not one whole row, such as a line a newline in a
+  process's name starts, or with a pid listed twice. A refused read fails as an
+  unreadable table does, so while a process on the host has a newline in its name,
+  `kill()`, `teardown()`, and a `stop()` that escalates reject with
+  `termination_failed` (`teardown_failed` from `teardown()`).
+- A Codex session now removes the `codex-clipboard-*.png` file Codex saves in the
+  temp directory for each image Elwood pastes into it, once the session's CLI has
+  exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image
+  attach left one such file behind for good. Only files the session's own transcript
+  names directly in Elwood's temp directory are removed; a Codex whose login shell sets
+  another `TMPDIR` keeps its copies there.
+- A Codex session that cannot remove one of those copies now emits one
+  `image_copy_removal_failed` warning before `terminal:exit`. Its `errorCode` is the
+  first failure's errno token, or `UnknownError` when it has none. The copy is left
+  for the OS to reap. A copy that was already gone is not a failure.
+- A CLI missing from the login shell's PATH is reported as `claude_not_found` or
+  `codex_not_found` even when the user's startup files define a not-found handler
+  (zsh's `command_not_found_handler`, bash's `command_not_found_handle`). The probe
+  ran the handler, so a handler that returned another status made a missing CLI
+  read as `*_start_failed`, and whatever it printed reached that error's
+  `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
+  handlers before running the CLI.
+- A probe whose command dies of a signal now reports the status a shell would,
+  128 plus the signal's number, instead of no status. A login shell that dies
+  before starting the command is still a login-shell failure. `elwood interactive`'s
+  PATH lookup likewise now fails with "login shell exited with status 143" where it
+  said "status null".
+- `*_start_failed` details and the `agent_update_failed` warning now carry a failed
+  probe's exit status as `exitStatus`, as the spec already said the warning would.
+- `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
+  detached hook processes ten seconds, up from three, before they reject with
+  `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
+  process-table read can take over half a second, and a hook that started a detached
+  child of its own takes six reads. So these calls rejected, and kept rejecting,
+  while the walk was still making progress. The ten seconds bound the walk, not the
+  whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
+  SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
+  idle host they take as long as before, because the walk ends as soon as it is done.
+- `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
+  the attach's `elwood-image-*` temp directory before they resolve, even while its
+  image is still being written. Before, the attach removed it only after it unwound,
+  which could come after shutdown resolved, so a host that exited right away left
+  the directory in the OS temp dir. Removal stays best-effort: one that fails at
+  shutdown is retried when the attach unwinds.
+- `elwood interactive` hands the agent the login shell's own PATH even when the
+  user's startup files define a `printf` function or alias. The PATH lookup ran
+  the login shell's `printf`, which such a function or alias replaced, so the
+  agent could get another PATH, or Elwood's own when nothing framed was printed.
+- `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
+  app-server daemon, its updater loop, or what the daemon started, such as plugin
+  MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex
+  on that home, yours included, as a detached child of the TUI: when the session's
+  own TUI had started it, the walk that reaps detached hooks SIGKILLed it.
+- A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
+  a startup trust gate, such as the bypass-permissions dialog when a resume adds
+  `highTrust` in a config that never accepted bypass mode. Before, it stayed
+  `running` after the gate cleared: the resumed transcript repaints the earlier
+  prompts as `❯ <prompt>`, and Elwood did not count the composer below them as
+  proof that the gate was gone.
+- A Claude session whose permission dialog is declined with Escape now returns to
+  `ready`, as C-ATTN-02 requires, and releases queued input. Before, it stayed
+  `blocked` while the prompt that led to the dialog was still on screen: Claude
+  echoes each submitted prompt as `❯ <prompt>` in its transcript, and Elwood read
+  that caret as a dialog still in the way of the idle composer.
+- Codex sessions now use the `CODEX_HOME` their login shell exports, not
+  Elwood's own. The launch script writes the exported `CODEX_HOME` and `HOME`, and
+  the directory it starts Codex in, to a private report just before `exec codex`,
+  and starts Codex only if that write succeeds. `listModels()` reads `isDefault`
+  from that home's `config.toml`, and `setModel` snapshots and restores that file.
+  Elwood used to read and restore `$CODEX_HOME` or `~/.codex` from its own
+  environment, which, when a profile moved the home, reported the wrong default and
+  restored a file Codex never touched while leaving the picker's change in the real
+  one. A relative `CODEX_HOME` or `HOME` resolves as Codex resolves it, from a
+  symlinked `cwd` too. A model operation that starts before the report is written
+  waits for it within its deadline, and a deadline that ends the wait names the
+  report in `details.path`. A report that cannot be read rejects with
+  `model_automation_failed`, and `setModel` rejects before it opens the picker. A
+  start whose report could not be written rejects with `codex_start_failed` and
+  `details.phase: "codex_home_report"`. `listCodexModels()` and `elwood models`
+  follow the same rule.
+- A Claude session started with `highTrust` or `permissionMode: "bypassPermissions"`
+  now answers Claude 2.1.310's bypass-permissions acceptance dialog under
+  `autotrust`, as C-CLAUDE-21 requires. Claude 2.1.310 added a sandbox warning and a
+  security-guide link to the dialog, and Elwood did not recognize the longer copy,
+  so the session stayed `blocked` wherever the dialog renders: a Claude config that
+  has never accepted it and whose settings do not set
+  `skipDangerousModePermissionPrompt`.
+- A session that ends without `teardown()` no longer leaves an empty
+  `elwood-<fingerprint>` directory in the OS temp dir. `stop()`, `kill()`, the
+  agent exiting on its own, and a failed start now remove the session's socket
+  home once the launch's own socket file is gone, unless another live launch of
+  the same session still has its socket there. The next start or resume
+  recreates the home. Previously every stopped or failed session kept its empty
+  home until it was torn down.
+- A start or resume whose launch fails while its `cwd` is deleted and made again
+  now fails with the adapter's `*_start_failed` for that `cwd`, as it does when
+  `cwd` is simply gone. It used to find the new directory in its place and report
+  the launch's own failure instead.
+
+- A resume that fails partway through launching, such as when its PTY can't be
+  spawned, no longer leaves its session's expired loops pruned from `loops.json`.
+  Resume removes expired loops before it starts the agent and again as it commits,
+  and both writes now belong to the launch's startup publication, which a failed
+  launch restores, as it already restored the session record. A prune the earlier
+  session made meanwhile, through `listLoops()` for instance, stays.
 - Starting a session whose `cwd` was deleted no longer recreates it. The default
   state directory lives under `cwd`, and creating it created every missing parent,
   so a session for a deleted worktree started in a new, empty directory. A state
@@ -22,6 +136,15 @@ back each entry are listed in `prd/14-conformance.md`.
   running session whose state directory was in its removed worktree fails its
   later writes (a new loop rejects with `loop_persistence_failed`), and a resume
   whose state directory is removed fails, instead of recreating either.
+- `elwood run` no longer recreates a workspace removed between its validation
+  and the launch when `--state-dir` is inside it. The CLI made its state root
+  with every missing parent, the workspace included. It now makes the root only
+  while the workspace exists, and the launch fails with `claude_start_failed` or
+  `codex_start_failed`, with `details.cwd`, instead. A state root elsewhere, the
+  CLI's own or a library `stateDir`, that is made while the workspace is being
+  removed is removed again rather than left behind, unless another start has
+  put its session in it meanwhile; a directory that can't be removed shows as
+  `details.cleanupErrorCode`.
 - Starting or resuming a session whose `cwd` does not exist now rejects with
   `claude_start_failed` or `codex_start_failed`, with `details.cwd` and
   `details.errno`, before any probe, state write, or spawn (resume reads and
@@ -130,7 +253,16 @@ back each entry are listed in `prd/14-conformance.md`.
   (`phase: "login_shell"`), even though the command had run. A shell that
   closed descriptor 3 now writes the line on stdout, and Elwood removes it from
   the captured output.
-
+- Codex `setModel` and `listModels` calls on sessions that use different
+  `config.toml` files no longer wait on each other. The lock that keeps two switches
+  from interleaving their snapshot and restore was shared by every Codex session in
+  the process, so a slow switch in one home could use up another home's picker
+  deadline and fail it with `model_automation_failed`. Each config file, the one the
+  session's launch shell reported, now has its own lock, and paths that name the same
+  file through a symlink, another letter case, or another Unicode form share it, even
+  before Codex creates the file. On a case-sensitive volume, two configs whose paths
+  differ only in case share one lock too. A config path that cannot be resolved, such
+  as a symlink loop, rejects with `model_automation_failed`.
 - A Codex `stop()` or `teardown()` that gives up waiting for the ended turn's record
   now says so. When the 2-second wait runs out with Codex still running, the session
   emits one content-free `turn_commit_wait_expired` warning, with its `activity`, before
@@ -704,7 +836,7 @@ back each entry are listed in `prd/14-conformance.md`.
   records those even when its signal did not take. The wait now applies whether the
   switch succeeded or failed: the question is whether the dying CLI can still write
   `config.toml`, not whether Elwood's automation worked.
-- A Codex `setModel` still waiting for the process-wide `config.toml` lock rejects
+- A Codex `setModel` still waiting for its `config.toml` lock rejects
   with `session_not_running` as soon as its own session closes, instead of staying
   pending until the session ahead of it finishes its transaction and exit wait. A
   cancelled call never runs its switch when the lock frees.

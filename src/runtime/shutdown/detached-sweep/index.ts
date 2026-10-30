@@ -1,6 +1,7 @@
 /**
  * Stops and SIGKILLs every process group a LIVE PTY leader's linked descendants have
- * moved into, before Elwood kills the leader. Implements PRD §5.3 and §9.4 (C-LIFE-10).
+ * moved into, before Elwood kills the leader, but Codex's shared daemon, its updater,
+ * and what they started (below). Implements PRD §5.3 and §9.4 (C-LIFE-10).
  * Claude and Codex start each hook command with `setsid()`, so a hook in flight at
  * teardown sits in its own session and process group: the leader-group SIGKILL misses
  * it, and once the leader dies the hook is reparented to PID 1 and nothing links it to
@@ -16,14 +17,24 @@
  * signaled group, the leader's included. A read that shows a signaled group's member
  * running stops that group again. With no hook in flight that takes two reads; each
  * level of nesting adds two more. Then the signaled groups are SIGKILLed deepest first
- * (`kill.ts`). (A parent that ignores SIGCHLD would have its exited children reaped
- * while stopped; the CLIs and hook shells don't.)
+ * (`kill.ts`). Codex's app-server daemon and its updater loop are shared by every Codex
+ * on the same `CODEX_HOME`, the user's own included, so the walk never descends into
+ * either: neither one nor anything it started is killed (`shared-daemon.ts`). A group it
+ * stopped as its process became one is resumed with SIGCONT, never SIGKILLed, even once
+ * the leader's exit left it under PID 1. (A parent that ignores SIGCHLD would have its
+ * exited children reaped while stopped; the CLIs and hook shells don't.)
  */
 
 import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
+import { daemonScope } from "../shared-daemon.ts";
 import { type FailureReason, type SweepFailure, SweepFailures } from "./failures.ts";
-import { confirmedGone, confirmLiveGroups, killSignaledGroups, recordFailedRead } from "./kill.ts";
+import {
+  confirmedGone,
+  confirmLiveGroups,
+  killOrResumeSignaledGroups,
+  recordFailedRead,
+} from "./kill.ts";
 import {
   newSweepState,
   restopEscapedGroups,
@@ -36,22 +47,28 @@ import {
 
 export type { SweepOps } from "./rounds.ts";
 
-/** The whole sweep's deadline. A few `ps` reads normally finish well inside it. */
-export const DETACHED_SWEEP_BUDGET_MS = 3_000;
+/**
+ * The whole sweep's deadline. A hook that started a setsid child of its own takes six
+ * reads, and on a loaded host one read can take over half a second (docs/cli-behavior.md).
+ */
+export const DETACHED_SWEEP_BUDGET_MS = 10_000;
 
 /**
  * Sweeps `leaderPid`'s detached descendant groups and resolves to the unresolved
- * failure, or `undefined` once a read converged and every group it signaled was killed.
+ * failure, or `undefined` once a read converged and every group it signaled was killed,
+ * or resumed as holding Codex's daemon.
  * The leader's own group is left to the group reap. A leader whose exit was observed
  * before the sweep, or whose group refuses its SIGSTOP because it already exited (see
  * `leaderStopFailure`), exited before Elwood signaled it: nothing more is sent and nothing
  * fails. Otherwise `leaderExited` is read after each table read that does not converge;
  * a read that converges ends the walk before that check. Once the leader has exited its
  * pid may be reused, so the sweep stops no further group and never signals the leader's
- * group again, though it still SIGKILLs the groups it already signaled. These are
+ * group again, though it still SIGKILLs the groups it already signaled (resuming any
+ * that hold Codex's daemon). These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;
  * an unreadable table; the deadline passing, or the leader exiting, before a read
- * converged; and a live group that could not be stopped or killed.
+ * converged; a live group that could not be stopped or killed; and a group spared for
+ * Codex's daemon that could not be resumed (a SIGCONT refused but for its being gone).
  */
 export async function sweepDetachedGroups(
   leaderPid: number,
@@ -70,7 +87,7 @@ export async function sweepDetachedGroups(
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
   await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
-  await killSignaledGroups(ops, state, deadline);
+  await killOrResumeSignaledGroups(ops, state, deadline);
   for (const [group, error] of state.unstoppable) {
     if (state.live.has(group))
       state.failures.record("could not stop a live descendant group", error, [group]);
@@ -94,12 +111,15 @@ async function stopDescendantGroups(
   deadline: number,
   state: SweepState,
 ): Promise<void> {
+  // Each group the walk stops is a root too: its exit can leave one under PID 1.
+  const scope = daemonScope(state.signaledGroupIds);
   try {
     while (true) {
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return unconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const table = await ops.listProcesses(remainingMs);
+      const table = await ops.listProcesses(remainingMs, scope);
+      state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;

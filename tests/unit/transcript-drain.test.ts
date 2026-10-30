@@ -5,20 +5,20 @@
  * a content-free drop and termination completes rather than a 256 MiB sync loop.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
-import { type DrainContext, drainToBudget } from "../../src/claude/transcript/drain.ts";
 import { DropReporter, type TranscriptDropNotice } from "../../src/claude/transcript/drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "../../src/claude/transcript/emit.ts";
+import { type DrainContext, drainToBudget } from "../../src/core/transcript/drain.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const assistant = (text: string) => ({
   type: "assistant",
   message: { content: [{ type: "text", text }] },
 });
-const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-drain-")), "t.jsonl");
+const tmpFile = () => join(tempDir("elwood-drain-"), "t.jsonl");
 
 /**
  * A real drain context: real cursor reads, real parse/emit, real drop accounting.
@@ -30,7 +30,7 @@ function harness(now: () => number = () => 0) {
   const drops: TranscriptDropNotice[] = [];
   const dropReporter = new DropReporter("s1", (d) => drops.push(d));
   const lines = new LineEmitter("s1", (e) => events.push(e), dropReporter);
-  const context: DrainContext = {
+  const context: DrainContext<TranscriptCursor> = {
     readFs: <T>(_path: string, read: () => T) => read(),
     lines,
     drops: dropReporter,
@@ -81,7 +81,7 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     writeFileSync(path, `${JSON.stringify(assistant("pending"))}\n`);
     const cursor = new TranscriptCursor(path);
     const { context, drops } = harness();
-    const guarded: DrainContext = { ...context, readFs: () => undefined };
+    const guarded: DrainContext<TranscriptCursor> = { ...context, readFs: () => undefined };
     // Zero budget → the read loop is skipped and remainingBytes() is the only read;
     // it is contained to undefined, and drainToBudget falls back to 0 bytes.
     expect(() => drainToBudget(guarded, [cursor], { chunks: 0 })).not.toThrow();
@@ -111,13 +111,51 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     const records = Array.from({ length: 4 }, () => JSON.stringify(assistant(filler)));
     writeFileSync(path, `${records.join("\n")}\n`);
     let calls = 0;
-    // First deadline check (loop entry) is under the slice; after one chunk the clock
-    // jumps past it, so the loop yields with a large budget (100) still unspent.
+    // The first chunk is read whatever the clock says; after it the clock is past the
+    // slice, so the loop yields with a large budget (100) still unspent.
     const clock = () => (calls++ === 0 ? 0 : 1_000);
     const { context, events, drops } = harness(clock);
     drainToBudget(context, [cursor], { chunks: 100 }); // budget ample; the SLICE bounds it
     expect(drops.some((d) => d.cause === "unread_backlog")).toBe(true); // backlog dropped
     expect(events.length).toBeLessThan(4); // slice cut the drain short: not read to EOF
+  });
+
+  test("a slice spent before the first read still delivers each cursor's first chunk", () => {
+    // A host too loaded to begin the drain within its slice: every clock read after the
+    // deadline is taken is past it. Each cursor's small final tail still arrives whole.
+    const paths = [tmpFile(), tmpFile()];
+    const cursors = paths.map((path) => {
+      writeFileSync(path, "");
+      return new TranscriptCursor(path);
+    });
+    for (const [i, path] of paths.entries())
+      writeFileSync(path, `${JSON.stringify(assistant(`tail ${i}`))}\n`);
+    let calls = 0;
+    const { context, events, drops } = harness(() => (calls++ === 0 ? 0 : 1_000));
+    drainToBudget(context, cursors, { chunks: 100 });
+    expect(
+      events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : "")),
+    ).toEqual(["tail 0", "tail 1"]);
+    expect(drops).toEqual([]);
+  });
+
+  test("a spent slice reads the first chunk of 16 transcripts, and drops the rest's", () => {
+    // Past its slice, a call reads no more than one live scan does (16 chunks): a session
+    // with more transcripts holding unread tails keeps the 17th as a content-free drop.
+    const paths = Array.from({ length: 17 }, () => tmpFile());
+    const cursors = paths.map((path) => {
+      writeFileSync(path, "");
+      return new TranscriptCursor(path);
+    });
+    for (const [i, path] of paths.entries())
+      writeFileSync(path, `${JSON.stringify(assistant(`tail ${i}`))}\n`);
+    let calls = 0;
+    const { context, events, drops } = harness(() => (calls++ === 0 ? 0 : 1_000));
+    drainToBudget(context, cursors, { chunks: 100 });
+    expect(
+      events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : "")),
+    ).toEqual(Array.from({ length: 16 }, (_, i) => `tail ${i}`));
+    expect(drops).toEqual([{ elwoodSessionId: "s1", path: paths[16], cause: "unread_backlog" }]);
   });
 
   test("retire and finish draw from ONE shared watcher-wide budget", () => {

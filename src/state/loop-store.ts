@@ -14,11 +14,17 @@ export type PersistedLoopDefinition = LoopDefinition;
 
 const LOOP_SIDECAR_NAME = "loops.json";
 
-/** Read and validate a session's sidecar. Absence is the canonical empty state. */
-export function readLoopDefinitions(
-  stateDir: string,
-  elwoodSessionId: string,
-): readonly PersistedLoopDefinition[] {
+export type LoopSidecar = {
+  readonly definitions: readonly PersistedLoopDefinition[];
+  /** The text the definitions were read from; `undefined` when there is no sidecar. */
+  readonly text: string | undefined;
+};
+
+/**
+ * Read and validate a session's sidecar, keeping the text it was read from. Absence is the
+ * canonical empty state.
+ */
+export function readLoopSidecar(stateDir: string, elwoodSessionId: string): LoopSidecar {
   const corrupt = () => corruptState(elwoodSessionId);
   let text: string | undefined;
   try {
@@ -26,21 +32,25 @@ export function readLoopDefinitions(
   } catch {
     throw corrupt(); // an invalid session id or an unsafe/unreadable sidecar
   }
-  if (text === undefined) return [];
+  if (text === undefined) return { definitions: [], text };
   try {
     const definitions = validateLoopSidecar(JSON.parse(text));
     if (definitions === null) throw corrupt();
-    return definitions;
+    return { definitions, text };
   } catch {
     throw corrupt();
   }
 }
 
-/** Atomically replace the sidecar with fresh, canonical, private definitions. */
+/**
+ * Atomically replace the sidecar with fresh, canonical, private definitions, through `write`
+ * when a launch must be able to restore it.
+ */
 export function writeLoopDefinitions(
   stateDir: string,
   elwoodSessionId: string,
   definitions: readonly PersistedLoopDefinition[],
+  write: (path: string, text: string) => void = writePrivateFileAtomic,
 ): void {
   const canonical = validateLoopSidecar({
     schemaVersion: LOOP_SIDECAR_SCHEMA_VERSION,
@@ -48,10 +58,7 @@ export function writeLoopDefinitions(
   });
   if (canonical === null) throw new TypeError("Loop definitions are invalid.");
   const sidecar = { schemaVersion: LOOP_SIDECAR_SCHEMA_VERSION, loops: canonical };
-  writePrivateFileAtomic(
-    sidecarPath(stateDir, elwoodSessionId),
-    `${JSON.stringify(sidecar, null, 2)}\n`,
-  );
+  write(sidecarPath(stateDir, elwoodSessionId), `${JSON.stringify(sidecar, null, 2)}\n`);
 }
 
 /** Remove definitions expired at or before `now`, without mutating the input. */

@@ -1,6 +1,6 @@
 /**
- * Marking the Codex configured default on listed rows, read under the process-wide config
- * lock that a concurrent `setModel` holds while Codex's picker has its selection written
+ * Marking the Codex configured default on listed rows, read under the config file's lock,
+ * which a concurrent `setModel` on that file holds while Codex's picker has its selection written
  * into config.toml. Covers PRD §5.3 `isDefault` and C-API-23.
  */
 
@@ -60,6 +60,7 @@ describe("Codex configured default under the config lock", () => {
     const path = tempCodexHome('model = "gpt-6-astra"\n');
     let finishApply: () => void = () => undefined;
     const switching = runCodexModelSwitch({
+      path,
       snapshot: () => snapshotCodexConfig(path),
       // Codex's picker persists its selection while the switch is still in flight.
       apply: () => {
@@ -73,15 +74,17 @@ describe("Codex configured default under the config lock", () => {
       },
     });
     let settled = false;
-    const listing = withCodexDefault(rows, new AbortController().signal, path).finally(() => {
-      settled = true;
-    });
+    const listing = withCodexDefault(rows, new AbortController().signal, async () => path).finally(
+      () => {
+        settled = true;
+      },
+    );
     try {
       await setImmediate();
       expect(readFileSync(path, "utf8")).toBe('model = "gpt-6-luna"\n');
       expect(settled, "the listing must not read the switch's temporary selection").toBe(false);
     } finally {
-      // Release the process-wide lock even when an assertion fails.
+      // Release the config lock even when an assertion fails.
       finishApply();
       await switching;
     }
@@ -92,6 +95,7 @@ describe("Codex configured default under the config lock", () => {
     const path = tempCodexHome('model = "gpt-6-astra"\n');
     let release: () => void = () => undefined;
     const held = runCodexModelSwitch({
+      path,
       snapshot: () => undefined,
       apply: () =>
         new Promise<void>((resolve) => {
@@ -101,7 +105,7 @@ describe("Codex configured default under the config lock", () => {
     });
     try {
       const deadline = new AbortController();
-      const listing = withCodexDefault(rows, deadline.signal, path);
+      const listing = withCodexDefault(rows, deadline.signal, async () => path);
       deadline.abort(new Error("Timed out waiting for model picker operation."));
       await expect(listing).rejects.toThrow("Timed out waiting for model picker operation.");
     } finally {

@@ -5,19 +5,21 @@
 
 import {
   chmodSync,
+  existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session/launch.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
+import { resetRuntimeSeamsForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import { ensurePrivateStateRoot } from "../../src/state/private-session.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { effectiveRequest } from "./main-fakes.ts";
 
 function request(root: string, stateDir: string): EffectiveRunRequest {
@@ -34,7 +36,10 @@ function dependencies(starts: string[]): CliLaunchDependencies {
   const unavailable = (): Promise<never> => Promise.reject(new Error("unexpected adapter"));
   return {
     prepareStateRoot: ensurePrivateStateRoot,
-    startClaude: unavailable,
+    startClaude: (_options, id) => {
+      starts.push(id);
+      return Promise.reject(new Error("startClaude"));
+    },
     resumeClaude: unavailable,
     startCodex: (_options, id) => {
       starts.push(id);
@@ -46,7 +51,7 @@ function dependencies(starts: string[]): CliLaunchDependencies {
 
 describe("CLI new-session state root", () => {
   test("C-CLI-15 creates an absent private root before adapter preparation", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-state-root-"));
+    const root = tempDir("elwood-cli-state-root-");
     const stateDir = join(root, "state");
     const starts: string[] = [];
 
@@ -62,7 +67,7 @@ describe("CLI new-session state root", () => {
   });
 
   test("C-CLI-15 rejects a linked root without changing its target", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-state-link-"));
+    const root = tempDir("elwood-cli-state-link-");
     const target = join(root, "target");
     const stateDir = join(root, "state");
     mkdirSync(target);
@@ -81,7 +86,7 @@ describe("CLI new-session state root", () => {
   });
 
   test("C-CLI-15 rejects a linked sessions directory without changing its target", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-sessions-link-"));
+    const root = tempDir("elwood-cli-sessions-link-");
     const target = join(root, "target");
     const stateDir = join(root, "state");
     mkdirSync(target);
@@ -99,7 +104,7 @@ describe("CLI new-session state root", () => {
   });
 
   test("C-CLI-15 rejects an existing non-private state root without chmodding it", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-cli-state-mode-"));
+    const root = tempDir("elwood-cli-state-mode-");
     const stateDir = join(root, "state");
     mkdirSync(stateDir);
     chmodSync(stateDir, 0o755);
@@ -111,5 +116,30 @@ describe("CLI new-session state root", () => {
 
     expect(starts).toEqual([]);
     expect(lstatSync(stateDir).mode & 0o777).toBe(0o755);
+  });
+
+  test.each([
+    "claude",
+    "codex",
+  ] as const)("C-CLI-15 C-API-61 a %s workspace removed once its effective request is built fails the launch, not recreated", async (agent) => {
+    setPlatformForTests("darwin"); // where the launch directory is checked
+    const cwd = join(tempDir("elwood-cli-state-workspace-"), "worktree");
+    mkdirSync(cwd);
+    const starts: string[] = [];
+    const removed = effectiveRequest({ agent, trust: false, stateDir: join(cwd, "state"), cwd });
+    const launch = createCliLaunch(removed, "gone", dependencies(starts));
+    // Removed once the effective request (a fixture here, not validated) and the launch are
+    // built, before the launch runs.
+    rmSync(cwd, { recursive: true });
+    try {
+      await expect(launch()).rejects.toMatchObject({
+        code: `${agent}_start_failed`,
+        details: { cwd, errno: "ENOENT" },
+      });
+    } finally {
+      resetRuntimeSeamsForTests();
+    }
+    expect(existsSync(cwd), "the workspace must not be recreated").toBe(false);
+    expect(starts).toEqual([]);
   });
 });

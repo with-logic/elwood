@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { resetSocketHomeRootForTests } from "../../src/state/socket-home.ts";
 import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -29,6 +30,7 @@ describe("bridge socket home", () => {
     const stateDir = join(cwd, "n".repeat(80), "deeply".repeat(12), "elwood-state");
     expect(stateDir.length).toBeGreaterThan(160);
     installFakes();
+    resetSocketHomeRootForTests(); // this test checks the real root; teardown removes its home
     const session = await startClaude({ cwd, stateDir });
     // The socket path is regenerated per launch, kept short, and never on the record.
     const socketPath = socketPathFromBridge(stateDir, session.elwoodSessionId);

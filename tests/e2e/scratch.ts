@@ -3,9 +3,8 @@
  * tmpdir that are swept after the file's tests finish, and a per-test `CODEX_HOME`
  * seeded with only the user's `auth.json` and a given `config.toml`, for Codex config
  * persistence (C-CODEX-14). Importing this module installs the suite's default Codex
- * home (`codex-home.ts`), so no Codex e2e touches the developer's own Codex home.
- * Claude has no equivalent sandbox: its credentials live in the macOS keychain, so
- * Claude e2e runs use the real `~/.claude` state.
+ * home (`codex-home.ts`) and Claude config dir (`claude-home.ts`), so no e2e touches the
+ * developer's own Codex home or Claude config.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -13,7 +12,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after } from "node:test";
 import type { AgentName } from "./availability.ts";
+import "./claude-home.ts";
 import { copyCodexAuth, userCodexAuthPath } from "./codex-home.ts";
+import { registerPrivateHome } from "./home-guard.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
 
 export type E2eProject = {
@@ -92,11 +93,13 @@ export function codexAuthMissing(): string | undefined {
 
 /**
  * Creates the private Codex home `home`: a 0600 copy of the user's `auth.json` and the given
- * `config.toml`, whose path it returns. Filesystem only; callers decide who names the home.
+ * `config.toml`, whose path it returns, registered with the CLI home guard (`home-guard.ts`).
+ * Callers decide who names the home.
  */
 export function seedCodexHome(home: string, config: string): string {
   if (!existsSync(userCodexAuthPath)) throw new Error(codexAuthMissing());
   mkdirSync(home, { recursive: true, mode: 0o700 });
+  registerPrivateHome(home);
   copyCodexAuth(home);
   const configPath = join(home, "config.toml");
   writeFileSync(configPath, config);

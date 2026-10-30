@@ -16,17 +16,22 @@ export function assertStatePath(path: string): void {
   const leaf = resolve(path);
   let current = leaf;
   while (true) {
-    try {
-      const info = lstatSync(current);
-      if (info.isSymbolicLink() && (current === leaf || info.uid !== 0)) {
-        throw elwoodError("state_corrupt", `State path must not follow a symlink: ${current}`);
-      }
-    } catch (error) {
-      if (errnoCode(error) !== "ENOENT") throw error;
-    }
+    assertSafeEntry(current, current === leaf);
     const parent = dirname(current);
     if (parent === current) return;
     current = parent;
+  }
+}
+
+/** A missing entry passes; a symlink fails, unless it is an ancestor that root owns. */
+function assertSafeEntry(path: string, isLeaf: boolean): void {
+  try {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() && (isLeaf || info.uid !== 0)) {
+      throw elwoodError("state_corrupt", `State path must not follow a symlink: ${path}`);
+    }
+  } catch (error) {
+    if (errnoCode(error) !== "ENOENT") throw error;
   }
 }
 
@@ -45,7 +50,12 @@ export type StateDirectoryMode = typeof PRIVATE_STATE_MODE | typeof SHARED_STATE
  */
 export type StateDirectoryPolicy = "with-parents" | "inside-parent" | "must-exist";
 
-/** Makes the state directory `path` as `policy` allows, without checking or changing it. */
+/**
+ * Makes the state directory `path` as `policy` allows, once `assertStatePath` finds no unsafe
+ * symlink leading to it: `path` itself must not be one, and an ancestor may be only when root
+ * owns it, as with `/tmp`. It does not check who owns an existing directory or change its mode;
+ * `prepareStateDirectory` does both.
+ */
 export function makeStateDirectory(
   path: string,
   mode: StateDirectoryMode,
@@ -53,6 +63,15 @@ export function makeStateDirectory(
 ): void {
   assertStatePath(path);
   makeAs[policy](path, mode);
+}
+
+/**
+ * Makes `path` inside its existing parent, an ancestry the caller has already checked, so only
+ * `path` itself is checked not to be a symlink.
+ */
+export function makeStateDirectoryBelow(path: string, mode: StateDirectoryMode): void {
+  assertSafeEntry(path, true);
+  makeInsideParent(path, mode);
 }
 
 /**

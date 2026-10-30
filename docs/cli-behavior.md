@@ -531,6 +531,45 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
   native binary and field-captured model/effort dialogs.
 
+## Login-shell `CODEX_HOME` (2026-10-25)
+
+Codex runs as `$SHELL -l -i -c 'exec codex …'` (§4.2). The login shell inherits
+Elwood's environment and the user's startup files can change it, so what decides
+which `config.toml` Codex reads and the picker writes is the environment after
+those files run, not Elwood's own.
+Codex takes a non-empty `CODEX_HOME`, canonicalized (a relative one from the
+directory it runs in), else `$HOME/.codex`. Startup files can make that answer
+depend on the launch itself:
+
+- **`$PWD`.** The login shell starts in the session `cwd`, so
+  `export CODEX_HOME="$PWD/codex-home"` gives every project its own home. Real Codex
+  0.164.0 in two projects under that profile kept each project's default and restore
+  in that project's home.
+- **The terminal and the session's environment.** Only the PTY launch has a TTY on
+  stdin and `ELWOOD_SESSION_ID`. A second shell started to ask (the first version of
+  this fix ran `printf` in a separate login shell) has neither, so a profile that
+  branches on `[[ -t 0 ]]` or on a session variable answers for a different home. The
+  real e2e's profile exports the session home only when both are present.
+- **Exported values only.** Codex sees only exported variables. A profile that
+  assigns `CODEX_HOME=…` without `export` changes what Codex sees only if the
+  variable was already exported, for example inherited from Elwood's environment.
+  Otherwise Codex keeps the inherited value, or none. The report is written by a
+  child `/bin/sh`, which sees exactly what `codex` inherits.
+- **A symlinked `cwd`.** The kernel follows a symlink before a later `..`, and so
+  does Codex. From `feature-link -> worktrees/feature`, real Codex 0.164.0 with
+  `CODEX_HOME=../codex-home` ran with `worktrees/codex-home`: its picker wrote that
+  file, not the `codex-home` beside the link. Resolving the value by name against
+  the session `cwd` read and restored the wrong file.
+
+Elwood therefore has the launch script write the answer just before `exec codex`:
+`/bin/sh -c 'printf "%s\0%s\0%s\0" "$CODEX_HOME" "$HOME" "$PWD"' > <report> || exit 73; exec codex …`,
+with the report in the session's socket home, named after the launch's socket. The
+session canonicalizes a non-empty home with `realpath` on the unnormalized
+`$PWD/$CODEX_HOME`, which follows links the way the kernel does. Profile output
+(banners, `nvm` notices) goes to the terminal, never to the report, so nothing has to
+be parsed out of shell noise. If the report cannot be written, the launch shell exits
+with 73 and never starts Codex. C-CODEX-24.
+
 ## Trust prompts
 
 The real Claude folder-trust prompt renders as **one dialog** spanning header →
@@ -1012,6 +1051,22 @@ does not send Ctrl+T automatically. Captures and the local failing-server/401
 real-CLI test verify the detailed rows. The current welcome chrome and native
 warning prefixes distinguish these banners from conversational quotations.
 
+**Codex 0.164.0 shows only a badge (2026-10-25).** In C-E2E-09's native run (an MCP
+server answering 401, `startup_timeout_sec = 2`), the welcome is no longer boxed, and
+the only startup trace is `⚠ 1 warning · f2 to view` at the end of the composer's
+model footer, which the composer clearance already strips. Ctrl+T opened the
+`/ T R A N S C R I P T /` overlay. It holds both canonical rows, the `elwood_probe`
+not-logged-in row with its `codex mcp login elwood_probe` command and
+`⚠ MCP startup incomplete (failed: elwood_probe)`, under an unboxed
+`>_ OpenAI Codex (v0.164.0)` and above the overlay's own key hints. That overlay is
+Codex's transcript view, where the conversation also renders, so it is not a startup
+region; the parser finds no welcome box there and returns nothing. Elwood sends neither F2 nor Ctrl+T, so on 0.164 a
+session emits no MCP startup warning: the count names no server and no recovery
+command (PRD §5.7, C-CODEX-09). The captures are
+`tests/fixtures/codex-0.164.0/boot/warning-badge.txt` and
+`warning-transcript-overlay.txt`; C-E2E-09 asserts the badge, that its frame reads as
+the composer, and that no warning parses from it.
+
 Native 0.154.0 startup renders no `•`/`●` row at any point: recorded frame by frame
 (2026-09-17) through the directory gate, hooks gate, welcome, and composer with
 both an MCP endpoint that fails at once and one that accepts the connection and
@@ -1038,13 +1093,39 @@ The acceptance is persisted in Claude's global config as
 `bypassPermissionsModeAccepted` (the binary describes it as "Whether the user has
 accepted the bypass permissions mode dialog"), and `--bg` refuses bypass mode
 until it has been accepted once interactively, so the dialog is at most
-once-per-machine. **Empirically, on 2.1.268 (Claude Max account, macOS) the
-dialog did NOT render at all** — neither through Elwood's `--permission-mode
-bypassPermissions` launch nor with a raw `--dangerously-skip-permissions`
-launch — and no `bypassPermissionsModeAccepted` key existed anywhere under
-`~/.claude*`; the session went straight to the composer with the persistent
-`⏵⏵ bypass permissions on (shift+tab to cycle)` footer. Whether it appears is
-therefore version/account-gated, and Elwood must be correct in BOTH states:
+once-per-machine. On 2.1.268 (Claude Max account, macOS) the dialog did not render
+at all, through Elwood's `--permission-mode bypassPermissions` launch or a raw
+`--dangerously-skip-permissions` one, and no `bypassPermissionsModeAccepted` key
+existed anywhere under `~/.claude*`. The likely reason is a user setting, not the
+version or account: the developer's `~/.claude/settings.json` sets
+`"skipDangerousModePermissionPrompt": true`. On 2.1.310, in a config that has never
+accepted the dialog, that setting alone decides whether it renders: in an empty
+`CLAUDE_CONFIG_DIR` (no settings, never accepted) the dialog renders, and adding the
+setting there sends the session straight to the composer. The 2.1.310 copy
+is longer and opens with the cursor on the decline
+(`tests/fixtures/claude-2.1.310/bypass-permissions-{100,200}.txt`):
+
+```
+WARNING: Claude Code running in Bypass Permissions mode
+
+In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.
+This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.
+
+By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.
+
+https://code.claude.com/docs/en/security
+
+❯ No, exit
+  Yes, I accept
+
+Enter to confirm · Esc to cancel
+```
+
+Until the native-copy pattern accepted the sandbox sentence and the link, Elwood
+held this dialog as unrecognized prose and the session stayed `blocked` under
+`autotrust`. The suite never saw it because the developer's setting hid it, so
+whether it appears depends on the user's settings and Elwood must be correct in
+BOTH states:
 
 - The dialog is an allowlisted trust prompt (`bypass_permissions`), answered
   under `autotrust` by the same header-anchored, numbered-or-cursor machinery as
@@ -1076,6 +1157,40 @@ transient only when its trust policy already authorizes the exact allowlisted
 prompt; `--no-trust` and generic permission dialogs remain human blocks. The startup replay buffer can
 deliver this attention after the responder has already continued, so treating
 every attention event as fatal produces a false `blocked_prompt`.
+
+### Claude keeps the prompt's caret after a declined permission dialog (2.1.310, 2026-10-26)
+
+A real Claude 2.1.310 session in `default` mode (189x48, Opus 5.5, a private
+`CLAUDE_CONFIG_DIR` with no user settings) asked to create a file rendered the
+`Do you want to proceed?` dialog with its cursor hidden. Escape declined it. The next
+frame showed `⎿  Interrupted · What should Claude do instead?`, the idle composer
+fenced by rules, the `⏸ manual mode on · ? for shortcuts` footer, a visible cursor at
+column 2, and the idle title `✳`. The transcript above it still held the submitted
+prompt, echoed as `❯ Create a file named …`. Claude echoes every submitted prompt that
+way, so the whole-frame clearance, which rejects any caret row that is not an empty
+composer, rejected the frame, and the session stayed `blocked` while Claude sat idle:
+15 s in the capture, and the whole wait of a C-ATTN-01 run in the same private config.
+Attention clearance now also accepts the last composer with its rules and native
+footer (`claudeLastComposerClearance`), the path the model picker already used for
+`❯ /model` (`tests/fixtures/claude-2.1.310/permission-declined/`). The real-CLI C-ATTN-01 runs
+Claude with the developer's own config dir, and had not caught this on the developer's
+machine: their own `PermissionRequest` hook allowed the command, so the dialog never
+rendered there. This capture is a manual reproduction in a private config dir with no
+user hooks. C-ATTN-02.
+
+A resumed session repaints those carets too. In the same private config, a `default`-mode
+session ran one turn and was stopped, then resumed with `highTrust`. Bypass mode had
+never been accepted there, so the resume opened on the bypass-permissions dialog, and
+autotrust answered it. Claude then painted the resumed transcript, with
+`❯ Reply with exactly: hello. …`, above the idle bypass-mode composer, its footer, and a
+visible cursor at column 2. Startup trust clearance used the same whole-frame check,
+so the answer never settled. The session sat at `running` for the 60 s observed and
+never reached `ready`. Startup trust clearance now uses the same predicate as attention
+clearance (`tests/fixtures/claude-2.1.310/resume-bypass/`). Rerun with that change, the same
+resume answered the dialog, recorded a `bypass_permissions` startup prompt, and reached
+`ready` 4.6 s after launch. A folder-trust gate on
+resume goes through the same clearance, but that case was not captured. C-TRUST-01,
+C-CLAUDE-21.
 
 ## Codex in-TUI update prompt (and the restart loop)
 
@@ -1220,7 +1335,8 @@ returns `EPERM`, not `ESRCH`. `src/runtime/shutdown/process-table.ts` reads the
 table and finds these groups by walking parent pids from the leader.
 
 Elwood therefore walks the tree only before a SIGKILL it sends to a live leader. It
-SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=`. A
+SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=,ucomm=,pid=`
+(the short name and the pid again are for Codex's daemon, below). A
 group id from `ps` is only a snapshot, `kill()` returning means the SIGSTOP was sent,
 not delivered, and `ps` reads each process's state at its own moment (on macOS it
 takes the set of pids first and each row's state afterwards). So Elwood relies only
@@ -1232,8 +1348,8 @@ listing that shows the leader live, leaves no live group unreached, and holds ev
 live process in every stopped group that way, the leader's included, so none of them
 can have started a process the listing missed; a leader exit observed first fails it,
 because the leader's detached children are then out of reach. Then the stopped groups
-are SIGKILLed deepest first
-(`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
+are SIGKILLed deepest first, except one that holds Codex's daemon, which is resumed
+(below) (`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
 flight, and two more per level of nesting. A process whose own parent exited before
 the walk is already under PID 1 and out of reach. macOS refuses a stop or a kill of
 a group whose members are all unreaped zombies with `EPERM`, so either counts as a
@@ -1264,6 +1380,17 @@ ms and 7–18 ms with the walk disabled, where the in-flight hook survived every
 real CLIs: Claude `teardown()` with a hook in its own group, a `stop()` whose
 `SessionEnd` hook outlasts the graceful window, and Codex `teardown()` with a hook.
 With the walk disabled all three fail with the hook still running.
+
+On a loaded host the walk outgrew its first three-second deadline (measured
+2026-10-26, macOS Darwin 25.5, about 3,700 processes on the host). A `kill()` of a
+setsid hook with a setsid child of its own takes six reads. That is two to hold the
+leader's group, and two more for each level of nesting. At a 1-minute load of 70 to
+92, those reads took 78–644 ms each, and the walk took 1.1–2.6 s. Under the
+repository's own parallel test run on that host, reads passed half a second, and so
+six of them passed three seconds. `kill()` then rejected with `termination_failed`,
+though each read was making progress. The deadline is now ten seconds.
+`tests/unit/sweep-deadline-real.test.ts` slows each real read by 600 ms and checks
+that `kill()` still reaps such a tree.
 
 Codex also starts a shell of its own, not a hook, that the walk has to reach
 (measured 2026-10-25, Codex 0.164, macOS Darwin 25.5). A few seconds after launch
@@ -1334,6 +1461,75 @@ later. A sandbox where something will not stop is kept.
 `tests/e2e/scratch-processes.e2e.ts` starts a daemon with `daemon start` and checks that
 removing the sandbox, and exiting the run, stop it.
 
+## Elwood's teardown never kills that daemon (2026-10-26)
+
+While the TUI that started them runs, the daemon and its updater loop are setsid
+children of it, the shape of a hook in flight. So when a session's own TUI had started
+them, the detached walk that `kill()`, `teardown()`, and a `stop()` escalation run killed
+the daemon, its updater loop, and everything the daemon had started, though the daemon
+serves every Codex on the home, the user's own included. The walk now never descends into
+one (PRD §5.3, C-LIFE-10): a process whose `ucomm` (short name) is `codex`, that leads its
+own group, whose parent is named `codex` or is PID 1, and whose `comm` has
+`/packages/app-server-daemon/` in it. On macOS `comm` is `argv[0]`, which Codex sets to
+the full path; it reads that way even after the home is removed.
+
+`comm` is read, one `ps -o comm= -p <pid>` per process and at most four at once, only for
+the processes that pass the other tests and that the walk can reach: the session's TUI and
+its descendants. None starts past the table read's deadline; the read then fails as a timed
+out one does. Every extra read costs a walk whose deadline, three seconds when these were
+measured, must hold on a loaded host:
+
+- `comm` in every table read doubled its cost (94 to 200 ms at a load of about 220): 4 of
+  9 real-process reap tests failed with `ETIMEDOUT`, none on `origin/main`.
+- Given several pids, macOS `ps` reads every process on the host (230 to 370 ms at a
+  load of about 25): with one `ps -p` for all candidates, a real Codex `teardown()`
+  failed in 5 of 7 runs, none of 2 on `origin/main`.
+- One `ps` per candidate anywhere on the host took 4 to 9 ms from a shell, but 120 to
+  870 ms when spawned by the process tearing the session down. The user's own daemon was
+  always a candidate, so every read paid that again: a real Codex `teardown()` failed in
+  2 of 5 runs, none of 5 on `origin/main`.
+
+A walk remembers each daemon it found, by pid, parent, and group, so when the session's
+TUI started one, the walk's first read pays its path reads, and no later read does unless
+its parent changed. A candidate no read has confirmed, such as the TUI's fork before its
+`exec`, is read again on every read until one does or it is gone. A walk with no
+candidate under its TUI runs the same single `ps` per read as before. In 3
+real Codex `teardown()`s, alternated with 3 on `origin/main`, it ran no path read. One run
+on each side failed at the deadline, when the host's 3,700 processes made a single table
+read take 1.6 to 2.1 s; the other reads took 350 to 540 ms.
+
+No real-Codex e2e proves this: in 8 runs of Codex 0.164.0 under Elwood, from fresh
+homes, with and without the hook-trust bypass and the update check, with holds of up to
+40 s, none started the daemon. `tests/unit/reap-detached-real.test.ts` builds the
+measured shape from real processes instead, with its install in place and removed.
+
+The TUI forks the daemon as a `codex` group leader of its own and then `exec`s it, so a
+path read can come between the two, and the walk can then stop the group after the
+`exec`. A stopped process cannot `exec`, so the kill pass goes by the latest read: a group
+it shows holding the daemon, or a process not stopped that could still become it, gets
+SIGCONT, not SIGKILL. A leader killed by something else while the walk holds it leaves
+that stopped daemon under PID 1, out of the leader's reach, so each group the walk stopped
+is a root of its own for the path reads. `tests/unit/shared-daemon-real.test.ts`
+reproduces both with a real process: Node cannot `exec`, but setting `process.title`
+changes what macOS `ps` reads as `comm` (`ucomm` stays the executable's name).
+
+A descendant can set its `comm` to the daemon's path (Node does by setting
+`process.title`), and a binary named `codex` that leads its own group is then spared as
+the daemon would be. That gives it nothing it lacks: the walk follows parent pids from the
+leader, so a descendant whose parent exits first is out of its reach. Measured on
+`origin/main` (2026-10-26): a setsid hook that backgrounds `/bin/sleep 300` and exits
+leaves the sleep under PID 1 before `kill()`, which resolves with the sleep still running.
+
+## `ps` prints a process's short name raw (2026-10-26)
+
+To recognize Codex's daemon (above), each table read also lists every process's short
+name (`ucomm`), and `ps` prints it raw. A process whose name is `a`, a newline, and
+`1 5000 1 S    ` reads as two rows, the second a forged process 1 whose parent is 5000
+(measured on macOS 26). `comm` and `ps -c` escape it as `\012`, but `comm` in every table
+read doubled its cost (94 to 200 ms at a load of about 220). So each row ends with its pid
+again (`-o pid=,ppid=,pgid=,stat=,ucomm=,pid=`), and a read with any line that is not one
+whole row, or one pid twice, is unreadable: the walk fails rather than act on it.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
@@ -1378,6 +1574,13 @@ new CLI version or native capture was verified.
   means observed: each write first awaits `terminal.settled()`, because a dialog can
   be received before it is rendered. xterm parses the first write after user input
   synchronously and later ones on a timer, so that window is real and input-dependent.
+- Claude 2.1.310 shows a message submitted during a running turn as queued. It renders
+  as `❯ <message>` above the composer, with `ctrl+x ctrl+s to send now` beneath it, and
+  the composer reads `❯ Press up to edit queued messages`. In a turn told not to use
+  tools it was still queued 10 s later, with the reply still streaming. A check that the
+  message left the composer must read only the last `❯` line, because the queued row
+  also starts with `❯` and holds the message. Observed with `sendGuidance` in a private
+  config dir, 2026-10-26 (C-API-37).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
@@ -1631,6 +1834,58 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
 
+### Claude under a private `CLAUDE_CONFIG_DIR` (2.1.310, 2026-10-26)
+
+With `CLAUDE_CONFIG_DIR` set, Claude keeps everything there: its global config is
+`$CLAUDE_CONFIG_DIR/.claude.json` instead of `~/.claude.json`, and settings,
+`projects/` transcripts, history and backups sit beside it. `claude auth status`
+reports both paths (`configDirectory`, `projectsDirectory`). Without the variable,
+every directory Claude runs in gets an entry in `~/.claude.json` and a transcript
+folder under `~/.claude/projects/`, so each real-Claude e2e scratch project used
+to leave both behind.
+
+An empty config dir is logged out (`loggedIn: false`): Claude does not read the
+default `Claude Code-credentials` keychain item for it. It does read a
+`$CLAUDE_CONFIG_DIR/.credentials.json` holding the keychain item's JSON. A copy with
+`refreshToken` and `refreshTokenExpiresAt` removed logs in (`authMethod:
+"claude.ai"`), creates no new keychain item, and cannot refresh, so it can never
+rotate the user's own refresh token. It works until the access token's `expiresAt`,
+which is why `tests/e2e/claude-home.ts` copies it afresh in each process.
+
+A set config dir has a keychain item of its own (claude 2.1.310, 2026-10-26):
+`Claude Code-credentials-` followed by the first eight hex digits of the SHA-256 of
+the `CLAUDE_CONFIG_DIR` value as written, NFC-normalized, even when it names
+`~/.claude`. An empty value counts as unset. With `CLAUDE_CONFIG_DIR` set to a fresh
+dir, `claude auth status` reported `loggedIn: true` exactly while an item of that
+name existed. The item wins over a `.credentials.json` in the same dir: with both
+holding different logins, Claude reported the item's. So a user with the variable
+set may have their login only in that item, and `tests/e2e/claude-home.ts` reads it
+from there first. The 2.1.310 binary also lets `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+replace the setting the item is named for (read from the code, not exercised). When
+it is set, even to an empty value, it decides the name: empty means the default item,
+anything else that value's hash. Only when it is unset does `CLAUDE_CONFIG_DIR` decide.
+Claude also passes the variable on to the teammates it spawns. So a Claude started with
+a private `CLAUDE_CONFIG_DIR` would still use the user's item while the variable is
+inherited. `tests/e2e/claude-home.ts` reads the user's login from the item that
+variable names, then removes it from the suite's environment.
+
+An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
+(`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
+key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.
+
+`ready` does not show that Claude got neither credential variable (Claude 2.1.310,
+2026-10-26). With the copied login, an invalid `ANTHROPIC_API_KEY` from the launch
+shell's startup files keeps the TUI from `ready`, but an invalid `ANTHROPIC_AUTH_TOKEN`
+does not: Claude reaches `ready` with it set. Both variables can also come from the
+developer's own startup files, after Elwood's environment is handed over. So C-E2E-23
+unsets both in the launch shell, and a `SessionStart` project hook records which of the
+two Claude's own environment holds (`tests/e2e/claude-credential-hook.ts`).
+
+The private dir carries none of the user's `settings.json`, so it shows what a fresh
+install does: the bypass-permissions dialog appears unless
+`skipDangerousModePermissionPrompt` is set (see above), and the footer shows Claude's
+default permission mode. C-E2E-23.
+
 ### A rate-limited Codex turn stays running for minutes (2026-10-25)
 
 Codex 0.164.0 retries a `429 Too Many Requests` after the server's retry delay. In
@@ -1761,6 +2016,13 @@ Enter and observes no `UserPromptSubmit` hook, so no model turn runs. Disabling
 only the production clear write made both tests retain the image and text and fail.
 This verifies an automation-owned idle composer, not cleanup across caller edits
 or blocking dialogs. Codex clipboard text is restored after attachment.
+
+codex-cli 0.164 (2026-10-26) saves the pasted image as `codex-clipboard-<suffix>.png`
+in its temp dir when the `[Image #1]` chip appears, and clearing the draft leaves that
+file in place. The draft is never submitted, so no transcript names the copy, and a
+session removes only the copies its transcript names. So a cancelled Codex image draft
+leaves its copy in the temp dir. `composer-cleanup.e2e.ts` gives its Codex a `TMPDIR`
+inside the sandbox home, asserts the copy lands there, and removes it with the sandbox.
 
 
 Native startup protocol replies also emit xterm `onData`. The actual-session
@@ -1949,6 +2211,21 @@ and neither ran a model turn. This proves native staged geometry and retry
 bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
 
+
+## Codex keeps a temp copy of every pasted image (codex-cli 0.164.0, 2026-10-26)
+
+On Ctrl+V with an image on the clipboard, Codex writes the image to
+`$TMPDIR/codex-clipboard-<suffix>.png` before the `[Image #N]` chip appears, and nothing
+in Codex ever removes it: a real attach left the file in place after the turn finished
+and after `teardown()`. The suffix is six random characters on 0.164.0; an earlier
+rollout on the same machine names a UUID form (`codex-clipboard-<uuid>.png`). When the message is submitted,
+the rollout records the path twice: as `{"type":"local_image","path":...}` in the
+content of an `event_msg` `item_completed` `UserMessage`, and as
+`<image name=[Image #1] path="...">` text beside the inline `input_image` data in the
+`response_item` message. The image itself travels inline, so nothing reads the file
+after submission. Once the CLI exits, Elwood removes the copies the session's transcript
+names directly in Elwood's own temp directory (C-API-46). A Codex whose login shell sets
+another `TMPDIR` keeps its copies there, and Elwood does not remove them.
 
 ## Cached image recovery frames (2026-10-01)
 
@@ -2262,3 +2539,19 @@ Queued editors after the first use `⇧→ prev question`; only the first uses
 frames. If a local skip and Esc collapse coalesce into one output render, the
 smaller badge does not identify the removed question. Preserve the prior focused
 editor count until a matching remaining editor confirms that removal.
+
+## Login-shell not-found handlers (2026-10-26)
+
+A probe runs its CLI through the user's interactive login shell, so a CLI missing
+from PATH meets whatever not-found handler the startup files define. zsh 5.9 runs
+`command_not_found_handler` and bash 4.0 and later run `command_not_found_handle`.
+Ubuntu's `/etc/bash.bashrc` defines the bash one when the `command-not-found`
+package is installed, to suggest a package. The handler's
+output goes to the shell's stdout and stderr, which a probe captures, and the
+handler's return status becomes the probe's. One that returns 1 turns "not found"
+(127) into an ordinary failure. Measured with a handler printing a marker: zsh 5.9
+on macOS, and bash 5.2.37 in a Debian trixie container, both captured the marker
+and reported the handler's status. macOS's bash 3.2 predates the hook. The probe
+script now runs `unset -f command_not_found_handler command_not_found_handle
+2>/dev/null || :` before its command. Each shell ignores the other's name. With it,
+both shells exit 127 and capture no marker.

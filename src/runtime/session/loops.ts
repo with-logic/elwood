@@ -23,7 +23,10 @@ export type LoopEventEmitter = {
 type SessionLoopsInput = {
   readonly stateDir: string;
   readonly elwoodSessionId: string;
-  readonly ownership: Pick<LaunchOwnership, "canPersist" | "onCommit" | "onRevoked">;
+  readonly ownership: Pick<
+    LaunchOwnership,
+    "canPersist" | "persistFile" | "onCommit" | "onRevoked"
+  >;
   readonly definitions: readonly PersistedLoopDefinition[];
   readonly queue: ControlQueue;
   readonly emitter: LoopEventEmitter;
@@ -41,7 +44,13 @@ export class SessionLoops {
     this.mayPersistLoops = input.ownership.canPersist;
     this.scheduler = createScheduler(input);
     input.ownership.onCommit(() => {
-      const definitions = loadRuntimeLoopDefinitions(input.stateDir, input.elwoodSessionId);
+      // Commit runs before the launch's publication clears, so a failed one restores this prune.
+      const { stateDir, elwoodSessionId, ownership } = input;
+      const definitions = loadRuntimeLoopDefinitions(
+        stateDir,
+        elwoodSessionId,
+        ownership.persistFile,
+      );
       this.scheduler.pause();
       this.scheduler = createScheduler({ ...input, definitions });
       this.active = true;
@@ -119,8 +128,9 @@ function createScheduler(input: SessionLoopsInput): LoopScheduler {
     schedule: (run, delayMs) => outsideStopInput(() => scheduleLoopTimer(run, delayMs)),
     createId: randomUUID,
     persist: (definitions) => {
-      if (input.ownership.canPersist())
-        writeLoopDefinitions(input.stateDir, input.elwoodSessionId, definitions);
+      const { stateDir, elwoodSessionId, ownership } = input;
+      if (ownership.canPersist())
+        writeLoopDefinitions(stateDir, elwoodSessionId, definitions, ownership.persistFile);
     },
     submit: (message, loopId, signal) =>
       outsideStopInput(() =>

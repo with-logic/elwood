@@ -50,6 +50,8 @@ vi.mock("../../src/runtime/probe/index.ts", async (original) => ({
 }));
 vi.mock("../../src/pty/node.ts", () => ({ nodePtyFactory: mocks.pty }));
 beforeEach(() => {
+  // The developer's own CLAUDE_CONFIG_DIR, as the e2e runner records it: unset.
+  vi.stubEnv("ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR", "");
   mocks.parent = mkdtempSync(join(tmpdir(), "elwood-claude-proof-parent-"));
   const versions = join(mocks.parent, ".local/share/claude/versions");
   mkdirSync(versions, { recursive: true });
@@ -60,7 +62,14 @@ beforeEach(() => {
     output: [],
     status: 0,
     signal: null,
-    stdout: '{"syntheticCredential":true}',
+    stdout: JSON.stringify({
+      claudeAiOauth: {
+        accessToken: "synthetic",
+        refreshToken: "rotating",
+        refreshTokenExpiresAt: 1,
+      },
+      mcpOAuth: { server: { accessToken: "mcp" } },
+    }),
     stderr: "",
   };
   mocks.keychain.mockReset().mockReturnValue(credential);
@@ -71,6 +80,7 @@ beforeEach(() => {
   mocks.remove.mockClear();
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   resetRuntimeSeamsForTests();
   rmSync(mocks.parent, { recursive: true, force: true });
 });

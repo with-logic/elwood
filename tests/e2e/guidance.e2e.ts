@@ -31,13 +31,18 @@ type GuidanceOutcome = {
   readonly screen: string;
 };
 
-/** True if the marker is still sitting UNSUBMITTED on the composer prompt-glyph line. */
+/**
+ * True if the marker is still sitting UNSUBMITTED in the composer: the LAST prompt-glyph
+ * line. Earlier glyph lines are not the composer: Claude 2.1.310 shows a message submitted
+ * during a turn as a queued `❯ <message>` row above it, with `ctrl+x ctrl+s to send now`
+ * beneath, while the composer reads `❯ Press up to edit queued messages`.
+ */
 function markerStuckInComposer(text: string, glyph: string, marker: string): boolean {
-  for (const line of text.split("\n")) {
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith(glyph) && trimmed.includes(marker)) return true;
-  }
-  return false;
+  const glyphLines = text
+    .split("\n")
+    .map((line) => line.trimStart())
+    .filter((line) => line.startsWith(glyph));
+  return glyphLines.at(-1)?.includes(marker) ?? false;
 }
 
 async function guidanceFlow(

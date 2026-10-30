@@ -23,7 +23,13 @@ itself is never made. One at or under `cwd`, the default `.elwood/` or a
 caller-provided `stateDir`, is made only below it, one directory at a time,
 however either path is spelled (in another letter case on a case-insensitive
 volume, or through a symlink). A caller-provided `stateDir` elsewhere is
-created with its missing parents. The `sessions` directory, each session
+created with its missing parents, and `cwd` is checked again once it, its
+`sessions` directory, and the new session's directory are made: if `cwd` was
+removed meanwhile, every directory that setup made is removed again, except one
+another start has put its session directory in, and the start fails, with the
+`cleanupErrorCode` of any directory that could not be removed. A start that
+finds a directory removed under it by such a start makes it again while its own
+`cwd` exists. The `sessions` directory, each session
 directory, and every state file are made only inside their existing parent: a
 missing parent fails the write with `ENOENT`. So a removed worktree, or a
 removed state directory, is never recreated by a start, a resume, or a running
@@ -56,12 +62,22 @@ reused; the socket path is a per-launch runtime value, embedded only in the gene
 private bridge script and never in the session record, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
-socket can leak undiscoverably across restart/resume cycles. Across separate Elwood
+socket can leak undiscoverably across restart/resume cycles. Each Codex launch also
+writes its `CODEX_HOME` report (§4.2) into the socket home, named after that
+launch's socket file, so a failed first start leaves nothing in the session
+directory. The report is removed when its launch's PTY exits, a failed start
+included, and teardown removes any that remain with the home. A launch that ends
+without teardown — `stop`, `kill`, the agent exiting, or a failed start — removes
+its own socket file and then the socket home if that left it empty, so a session
+that is never torn down leaves nothing in the OS temp dir; a home that still holds
+another launch's socket is kept, and the session's next start or resume
+recreates the home. Across separate Elwood
 processes, running two live sessions with the same full identity (`stateDir`,
 adapter, and session id) is unsupported: the processes share files and socket
 homes without a cross-process ownership protocol. Within one process, overlapping
 resume and cleanup follow the successor protocol below. A failed start removes
-only its own socket file, preserving any overlapping launch. `stateDir`
+only its own socket file (and the home only once it is empty), preserving any
+overlapping launch. `stateDir`
 length MUST NOT constrain whether a session can start.
 
 Within one Elwood process, a validated resume attempt revokes the prior launch's
@@ -77,8 +93,10 @@ committed successor keeps its state, while a failed successor permits the predec
 to finish the requested cleanup before its shutdown promise resolves. A pending
 successor does not activate loop timers. Successful activation rereads the latest
 durable loop definitions and revokes prior scheduling in the same synchronous commit,
-so a successful predecessor cancellation or creation is preserved. An activation
-read failure stops the built launch before ownership rolls back. If resume fails,
+so a successful predecessor cancellation or creation is preserved. Activation prunes
+loops that expired since the launch read them as part of the startup publication. An
+activation read or prune failure stops the built launch before ownership rolls back,
+and rollback restores that prune. If resume fails,
 ownership returns to the prior
 viable launch only when no newer reservation or launch has replaced that attempt.
 A failed overlapping launch therefore preserves the original live launch's cleanup
@@ -91,7 +109,8 @@ settings instead use fresh per-launch filenames permanently bound to that launch
 PTY. Pending or committed successors never redirect a predecessor's hook policy. A failed
 attempt restores each prior file only while it still owns the reservation and the
 file still contains that attempt's exact published bytes. A newer predecessor
-record update or newer generation is preserved. If a predecessor updates a file
+record or loop update, even one whose bytes match the attempt's, or a newer
+generation is preserved. If a predecessor updates a file
 between two pending-launch writes, that external version becomes the rollback
 baseline for the later write. Pending-launch hook record writes participate in the
 same transaction. Superseded or failed generations cannot publish metadata.
@@ -168,7 +187,8 @@ core state must not become a transcript store.
 
 ### 8.4 Cleanup
 
-Runtime files needed for resume/debugging are kept by default after `stop`.
+Runtime files needed for resume/debugging are kept by default after `stop`. The
+socket home is not among them: `stop` removes it once it is empty (§8.1).
 Loop definitions are likewise kept after `stop`, unexpected exit, or process
 failure. `kill` permanently removes all loop definitions while preserving the
 ordinary session record; a later resume has no loops.

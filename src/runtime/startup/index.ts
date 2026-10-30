@@ -1,11 +1,12 @@
 /**
  * Startup readiness checks for newly spawned agent PTYs.
- * Implements PRD §9.1 and §10.
+ * Implements PRD §9.1 and §10, and names the e2e home guard of §12 (C-E2E-24).
  */
 
 import { isClaudeReauthRequiredText } from "../../claude/login/expiry-screen.ts";
 import { elwoodError } from "../../core/errors.ts";
 import type { PtyExit } from "../../pty/types.ts";
+import { homeGuardStopped, homeGuardStoppedReason } from "../home-guard/index.ts";
 
 export type StartupAdapter = "claude" | "codex";
 type StartupValue<T> = T | (() => T);
@@ -28,10 +29,15 @@ export async function assertStartupUsable(input: {
   await new Promise((resolve) => setTimeout(resolve, input.waitMs ?? startupWaitMs));
   const exit = readStartupValue(input.exit);
   if (exit) {
-    throw elwoodError(`${input.adapter}_start_failed`, `${input.adapter} exited during startup.`, {
-      exitCode: exit.exitCode,
-      signal: exit.signal,
-    });
+    // The guard's own line is in the output, among the user's startup output: name the guard
+    // instead of forwarding that output.
+    const stopped = homeGuardStopped(exit.exitCode, readStartupValue(input.output));
+    const guard = stopped ? `: ${homeGuardStoppedReason}` : "";
+    throw elwoodError(
+      `${input.adapter}_start_failed`,
+      `${input.adapter} exited during startup${guard}.`,
+      { exitCode: exit.exitCode, signal: exit.signal },
+    );
   }
   if (isAuthFailure(input.adapter, readStartupValue(input.output))) {
     throw elwoodError(

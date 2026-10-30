@@ -17,9 +17,9 @@ import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
 import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
+import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
-import { liveClaudeClearance } from "../screen-table.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { currentClaudeHookBridgeFactory } from "./bridge.ts";
@@ -40,8 +40,9 @@ export async function buildClaudeSession(
 ): Promise<ClaudeSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
-  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
+  const publish = runtime.stateOwnership.publishFile;
+  writeSessionRecord(record, runtime.sessionDir, publish);
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, publish) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -102,17 +103,18 @@ export async function buildClaudeSession(
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
+  const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
   const frameObserver = createSessionFrameObserver(
     observers,
     () => session,
     () => promptResponder,
     readiness,
-    liveClaudeClearance(() => terminal),
+    idleComposerClearance,
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,
     frameObserver.refresh,
-    liveClaudeClearance(() => terminal),
+    idleComposerClearance,
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();

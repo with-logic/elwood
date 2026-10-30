@@ -5,52 +5,35 @@
  * PRD §9.1/§8.1: sessionRuntime ensures the session's stable home and reserves a fresh
  * per-launch socket PATH inside it; the socket is bound later by bridge.start() (after
  * the state/runtime files are written). ANY failure before the session takes ownership
- * removes THIS launch's own socket file — never the shared home, which a concurrent
- * launch may own — via withSocketHomeCleanup; on success ownership transfers and teardown
- * sweeps the whole home.
+ * removes THIS launch's own socket file, and the home only once it is empty — never one a
+ * concurrent launch's socket is in — via withSocketHomeCleanup; on success ownership
+ * transfers, stop releases the launch's socket, and teardown sweeps the whole home.
  *
- * The socket home lands under `os.tmpdir()`, which honors `TMPDIR`. Each test points
- * `TMPDIR` at a FRESH private dir so the leak checks see ONLY this launch's homes/sockets
- * — never a parallel worker's — making the assertions exact.
+ * Each test's socket homes land under the fake helpers' fresh private root
+ * (`fake-socket-homes.ts`), so the leak checks see ONLY this launch's homes/sockets —
+ * never a parallel worker's — making the assertions exact.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session/index.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import {
-  resetSocketHomeRootForTests,
-  setSocketHomeRootForTests,
-} from "../../src/state/socket-home.ts";
+import { isolateFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
 import { boundSocketPathLength, socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
-let privateTmp: string | undefined;
-
-afterEach(() => {
-  resetFakes();
-  resetSocketHomeRootForTests(); // restore before removing the private tmp
-  if (privateTmp) rmSync(privateTmp, { recursive: true, force: true });
-  privateTmp = undefined;
-});
+afterEach(resetFakes);
 
 /**
- * Point the SOCKET-HOME ROOT at a fresh private dir so socket homes are isolated per
- * test. Rooted at a SHORT `/tmp` (not the long macOS `os.tmpdir()`): production adds
- * `elwood-<16hex>/<8>.sock`, and nesting under the already-long default tmp overflows
- * macOS's ~104-byte Unix-socket path cap, so the bridge would fail to `listen` here.
- *
- * Scoped to the socket-home module, NOT `process.env.TMPDIR`: the env is per-process
- * and Vitest's `forks` pool reuses one process across files, so redirecting `TMPDIR`
- * also moved concurrently-running files' `os.tmpdir()` here — and the `rm -rf` below
- * then deleted their scratch dirs mid-test.
+ * This test's private socket-home root: the fake helpers' own, under the SHORT `/tmp`
+ * (not the long macOS `os.tmpdir()`), which production extends by
+ * `elwood-<16hex>/<8>.sock`. Nesting under the default tmp overflows macOS's ~104-byte
+ * Unix-socket path cap, so the bridge would fail to `listen` here. It redirects only the
+ * socket-home module, NOT `process.env.TMPDIR`: Vitest's `forks` pool reuses one process
+ * across files, so moving `TMPDIR` also moved concurrently-running files' `os.tmpdir()`,
+ * and removing it then deleted their scratch dirs mid-test.
  */
-function isolateTmp(): string {
-  privateTmp = mkdtempSync("/tmp/elwood-sockhome-");
-  setSocketHomeRootForTests(privateTmp);
-  return privateTmp;
-}
+const isolateTmp = isolateFakeSocketHomes;
 
 describe("§9.1 a failed Claude start does not leak its socket file", () => {
   test("§8.1 the isolated-tmp bound socket path clears the ~104-byte cap on ANY machine", () => {
@@ -62,7 +45,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     expect(boundSocketPathLength(priv)).toBeLessThan(104);
   });
 
-  test("a bridge-start failure removes its own socket file AND shuts down the partial bridge", async () => {
+  test("C-STATE-12 a bridge-start failure removes its own socket file and the empty socket home, AND shuts down the partial bridge", async () => {
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
     let stops = 0;
@@ -80,10 +63,11 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
       code: "hook_bridge_failed", // NOT "stop failed too" — the secondary error is contained
     });
     expect(socketFilesIn(priv)).toEqual([]); // the launch's own socket file is gone
+    expect(socketHomesIn(priv)).toEqual([]); // and so is the home it emptied (§8.1)
     expect(stops).toBe(1); // the partially-started bridge's listener is not leaked
   });
 
-  test("a PTY-start failure removes its own socket file", async () => {
+  test("C-STATE-12 a PTY-start failure removes its own socket file and the empty socket home", async () => {
     const cwd = tempDir();
     installFakes();
     setPtyFactoryForTests(() => {
@@ -94,6 +78,7 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
       code: "pty_start_failed",
     });
     expect(socketFilesIn(priv)).toEqual([]);
+    expect(socketHomesIn(priv)).toEqual([]);
   });
 
   test("a failing overlapping launch never removes a LIVE launch's socket", async () => {
@@ -134,11 +119,11 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     expect(socketHomesIn(priv)).toEqual([]); // teardown removed it
   });
 
-  test("§8.1 start→stop→resume→teardown is restart-safe: ONE stable home, fully collected", async () => {
+  test("C-STATE-12 start→stop→resume→teardown is restart-safe: stop removes the empty home, teardown the rest", async () => {
     // A session's socket home is STABLE (fingerprint of the id), so a resume — even in a
     // fresh process that remembers no prior path — targets the SAME home rather than
-    // leaking a new anonymous one per launch. stop() keeps it (for resume); teardown
-    // sweeps every launch's socket by removing the one home.
+    // leaking a new anonymous one per launch. stop() releases its emptied home and resume
+    // recreates it; teardown sweeps every launch's socket by removing the one home.
     const cwd = tempDir();
     installFakes();
     const priv = isolateTmp();
@@ -149,10 +134,10 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
       cwd,
       source: "startup",
     });
-    await first.stop(); // stop keeps state (and the home) for resume
-    expect(socketHomesIn(priv)).toHaveLength(1);
+    await first.stop(); // stop keeps state for resume, but not the emptied home (§8.1)
+    expect(socketHomesIn(priv)).toEqual([]);
     const resumed = await resumeClaude({ elwoodSessionId: first.elwoodSessionId, cwd });
-    // Resume reused the SAME stable home — still exactly one, not two leaked dirs.
+    // Resume recreated the SAME stable home — exactly one, not a second leaked dir.
     expect(socketHomesIn(priv)).toHaveLength(1);
     await resumed.teardown();
     expect(socketHomesIn(priv)).toEqual([]); // the single home (all launches) is gone

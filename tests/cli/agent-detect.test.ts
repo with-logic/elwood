@@ -3,8 +3,7 @@
  * Each case spawns a real shell against a real temp directory placed on PATH.
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -14,8 +13,10 @@ import {
   noAgentFoundMessage,
 } from "../../src/cli/request/agent-detect.ts";
 import type { CliAgent } from "../../src/cli/types.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
 import { resetRuntimeSeamsForTests, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { probeShellStatus, userShell } from "../../src/runtime/shell.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 /**
  * A hermetic stand-in for the user's login shell. It enforces the same
@@ -27,7 +28,7 @@ function stubShell(bin: string): {
   readonly shell: string;
   readonly install: (agent: CliAgent) => void;
 } {
-  const root = mkdtempSync(join(tmpdir(), "elwood-agent-detect-"));
+  const root = tempDir("elwood-agent-detect-");
   const shell = join(root, "login-shell");
   writeFileSync(
     shell,
@@ -44,7 +45,7 @@ function stubShell(bin: string): {
 }
 
 function emptyBin(): string {
-  const bin = join(mkdtempSync(join(tmpdir(), "elwood-agent-bin-")), "bin");
+  const bin = join(tempDir("elwood-agent-bin-"), "bin");
   mkdirSync(bin);
   return bin;
 }
@@ -101,14 +102,21 @@ describe("agent auto-detection", () => {
     const calls: { readonly command: string; readonly args: readonly string[] }[] = [];
     setCommandRunnerForTests((command, args) => {
       calls.push({ command, args });
-      const codex = args.at(-1) === probeShellCommand("command -v 'codex'").at(-1);
+      const codex = args.at(-1) === probeShellStatus("command -v 'codex'").at(-1);
       return { status: codex ? 0 : 1, stdout: "", stderr: "" };
     });
     await expect(detectAvailableAgent()).resolves.toBe("codex");
     expect(calls).toEqual([
-      { command: userShell(), args: probeShellCommand("command -v 'claude'") },
-      { command: userShell(), args: probeShellCommand("command -v 'codex'") },
+      { command: userShell(), args: probeShellStatus("command -v 'claude'") },
+      { command: userShell(), args: probeShellStatus("command -v 'codex'") },
     ]);
+  });
+
+  test("C-CLI-21 the lookup answers by its status alone, capturing none of its output", async () => {
+    const stub = stubShell(emptyBin());
+    stub.install("claude");
+    const result = await runProbe(stub.shell, probeShellStatus("command -v claude"));
+    expect(result).toEqual({ status: 0, stdout: "", stderr: "" });
   });
 
   test("C-CLI-21 both agents are probed concurrently, then chosen in detection order", async () => {

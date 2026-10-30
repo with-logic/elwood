@@ -1,7 +1,6 @@
 /** Source-aware CLI setting conflicts. Covers PRD C-CLI-03/C-CLI-06/C-CLI-20. */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
@@ -11,6 +10,7 @@ import {
   resolveRunSettings,
 } from "../../src/cli/request/index.ts";
 import type { ParsedRunCommand, RequestContext } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectNothing } from "./agent-fakes.ts";
 
 async function* emptyStdin(...values: readonly string[]) {
@@ -19,7 +19,7 @@ async function* emptyStdin(...values: readonly string[]) {
 }
 
 function root(): string {
-  return mkdtempSync(join(tmpdir(), "elwood-request-conflict-"));
+  return tempDir("elwood-request-conflict-");
 }
 
 function run(argv: readonly string[]): ParsedRunCommand {

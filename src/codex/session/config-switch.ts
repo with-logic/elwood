@@ -1,7 +1,7 @@
 /**
  * One Codex session's `setModel` config transaction: the snapshot, the picker flow, and the
  * compare-and-swap restore of THAT session's config.toml, with the restore warnings.
- * Implements PRD §5.3 setModel restore, C-CODEX-14, and C-CODEX-25.
+ * Implements PRD §5.3 setModel restore, C-CODEX-14, C-CODEX-24, and C-CODEX-25.
  */
 
 import { isCallerInputIntervention } from "../../core/models/intervention.ts";
@@ -12,24 +12,28 @@ import { codexRestoreFailedWarning, codexRestoreSkippedWarning } from "./warning
 
 export type CodexConfigSwitchSession = {
   readonly elwoodSessionId: string;
-  /** The config.toml this session's Codex uses, fixed at launch. */
-  readonly configPath: string;
+  /** The config.toml of the `CODEX_HOME` this session's Codex runs with (C-CODEX-24). */
+  readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   readonly waitForCliExit: () => Promise<unknown> | undefined;
   readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
 };
 
 /**
  * Restores the user's config default after picker changes; the live CLI retains its
- * selection. The process-wide transaction lock prevents interleaved snapshots and restores
+ * selection. The config file's transaction lock prevents interleaved snapshots and restores
  * even when automation rejects after Codex writes (C-CODEX-14).
  */
-export function switchCodexModel(
+export async function switchCodexModel(
   session: CodexConfigSwitchSession,
   flow: () => Promise<void>,
   signal: AbortSignal,
 ): Promise<void> {
-  const { elwoodSessionId, configPath: path } = session;
-  return runCodexModelSwitch({
+  // Known before the picker runs: a switch whose config cannot be named is never made. A
+  // switch that starts before the launch shell has written its report waits for it.
+  const path = await session.resolveConfigPath(signal);
+  const { elwoodSessionId } = session;
+  await runCodexModelSwitch({
+    path,
     snapshot: () => snapshotCodexConfig(path),
     apply: flow,
     waitForCliExit: session.waitForCliExit,

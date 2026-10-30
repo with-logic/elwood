@@ -14,7 +14,7 @@ import {
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
-import { claudeModelComposerClearance } from "./model-composer.ts";
+import { claudeLastComposerClearance } from "./composer/last.ts";
 import {
   isClaudeIdleComposer,
   isClaudeSwitchConfirmation,
@@ -43,7 +43,7 @@ const pickerGrammar: DialogGrammar = {
 
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
-  isClear: claudeModelComposerClearance,
+  isClear: claudeLastComposerClearance,
   isCandidate: (text) => bottomDialogCandidate(text, pickerGrammar) || isClaudeSwitchShell(text),
   hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
   isCallerDialog: (text) => parseClaudeSwitchConfirmation(text)?.isCacheWarning === false,

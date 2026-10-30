@@ -2,13 +2,13 @@
  * Metadata, config, and run-routing tests for the side-effect-free CLI main (PRD §12A.1).
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { cliConfigHelp } from "../../src/cli/help.ts";
 import { executeDefaultCliRun, main, prepareDefaultCliSession } from "../../src/cli/main.ts";
 import type { ParsedRunCommand } from "../../src/cli/types.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { effectiveRequest, mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
 import { FakeCliSession } from "./run-fakes.ts";
 
@@ -86,7 +86,7 @@ describe("CLI main routing", () => {
   });
 
   test("C-CLI-14 config commands route without resolving a run", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-main-config-"));
+    const root = tempDir("elwood-main-config-");
     const h = mainHarness();
     const context = {
       ...h.context,
@@ -103,7 +103,7 @@ describe("CLI main routing", () => {
   });
 
   test("C-CLI-02 all config help forms bypass even malformed saved config", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-main-config-help-"));
+    const root = tempDir("elwood-main-config-help-");
     const config = join(root, "nested", "config.json");
     mkdirSync(join(root, "nested"));
     writeFileSync(config, "not json", { mode: 0o600 });
@@ -129,7 +129,7 @@ describe("CLI main routing", () => {
   // suite load that can exceed the suite default, which surfaced as a timeout rather
   // than a routing failure.
   test("C-CLI-02 run-only dependencies lazy-load after routing", { timeout: 60_000 }, async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-main-lazy-"));
+    const root = tempDir("elwood-main-lazy-");
     const prepared = mainHarness();
     expect(
       await main(["go"], prepared.context, {

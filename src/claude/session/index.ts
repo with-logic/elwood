@@ -18,7 +18,7 @@ import { safeSessionDir } from "../../state/files.ts";
 import type { LaunchReservation } from "../../state/launch-ownership.ts";
 import { claudeLaunchPosture, withClaudeLaunch } from "../../state/launch-posture.ts";
 import { sessionRuntime } from "../../state/runtime-paths.ts";
-import { removeOwnSocketFile } from "../../state/socket-home.ts";
+import { releaseLaunchSocket } from "../../state/socket-home.ts";
 import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir, prepareStateDir } from "../../state/store.ts";
@@ -66,11 +66,11 @@ export async function startClaudeWithId(
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
-  await assertLaunchDirectory("claude", options.cwd); // it may have gone during preflight
   const session = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
+      elwoodSessionId,
     });
     const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
     const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
@@ -97,9 +97,9 @@ export function startClaudeFromRecord(
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
   // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure
-  // before the session takes ownership removes THIS launch's own socket file — never the
-  // shared home, which a concurrent launch may own (§9.1). On success ownership transfers
-  // to the returned session, whose teardown removes the whole home via removeSessionFiles.
+  // before the session takes ownership releases THIS launch's own socket file, and the
+  // shared home only if no concurrent launch's socket is in it (§8.1, §9.1). On success
+  // ownership transfers to the returned session; teardown removes the whole home.
   return withLaunchOwnership(
     safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
@@ -113,7 +113,7 @@ export function startClaudeFromRecord(
         owner,
       );
       return withSocketHomeCleanup(
-        () => removeOwnSocketFile(runtime.socketPath),
+        () => releaseLaunchSocket(runtime.socketPath),
         () =>
           buildClaudeSession({
             record,

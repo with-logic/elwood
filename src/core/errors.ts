@@ -93,12 +93,17 @@ export function errnoCode(error: unknown): string | undefined {
 const MAX_ERRNO_SUFFIX_LENGTH = 40;
 const ERRNO_TOKEN = new RegExp(`^E[A-Z0-9_]{1,${MAX_ERRNO_SUFFIX_LENGTH}}$`);
 
+declare const errnoTokenBrand: unique symbol;
+
+/** A string `isErrnoToken` accepted, so a producer cannot pass unchecked text where one goes. */
+export type ErrnoToken = string & { readonly [errnoTokenBrand]: true };
+
 /**
  * True for an errno-shaped token (`EPERM`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`): fixed by
  * the platform or Node, never process or user content, so it can travel in a public
  * message or a CLI diagnostic.
  */
-export function isErrnoToken(value: unknown): value is string {
+export function isErrnoToken(value: unknown): value is ErrnoToken {
   return typeof value === "string" && ERRNO_TOKEN.test(value);
 }
 
@@ -114,22 +119,26 @@ export function underlyingErrno(error: unknown): string | undefined {
 
 /**
  * Extracts diagnosable details from an underlying failure (C-ERR-08):
- * message as cause, plus errno/syscall/path when the error exposes them.
+ * message as cause, plus errno/syscall/path when the error exposes them, and the
+ * `cleanupErrorCode` of a cleanup that failed after it, when one was attached.
  */
 export function causeDetails(error: unknown): Readonly<Record<string, string>> {
   if (!(error instanceof Error)) return { cause: String(error) };
   const details: Record<string, string> = { cause: error.message };
   const { code, syscall, path } = error as NodeJS.ErrnoException;
+  const { cleanupErrorCode } = error as { cleanupErrorCode?: unknown };
   if (typeof code === "string") details["errno"] = code;
   if (typeof syscall === "string") details["syscall"] = syscall;
   if (typeof path === "string") details["path"] = path;
+  if (typeof cleanupErrorCode === "string") details["cleanupErrorCode"] = cleanupErrorCode;
   return details;
 }
 
 /**
  * Diagnosable details for a failed CLI probe (C-ERR-08): stderr plus the
  * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
- * output overflow) so a start failure never drops the underlying reason.
+ * output overflow) so a start failure never drops the underlying reason. `exitStatus` is the
+ * status the probe reported, 128+n for a signal death, and is absent when it reported none.
  * A login-shell failure (`phase: "login_shell"`) never ran the command, so its stderr is
  * only the user's startup output, which can carry expanded secrets: it is withheld.
  * `cleanupErrorCode` and `cleanupProcessGroupId` appear only when an aborted probe's cleanup
@@ -137,6 +146,7 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
  * group, so it must never be signaled.
  */
 export function probeFailureDetails(result: {
+  readonly status?: number | null;
   readonly stderr: string;
   readonly error?: {
     readonly code?: string | undefined;
@@ -153,6 +163,7 @@ export function probeFailureDetails(result: {
 }): Readonly<Record<string, string | number>> {
   const loginShell = result.error?.phase === "login_shell";
   const details: Record<string, string | number> = { stderr: loginShell ? "" : result.stderr };
+  if (typeof result.status === "number") details["exitStatus"] = result.status;
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;

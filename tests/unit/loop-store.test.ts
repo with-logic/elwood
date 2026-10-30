@@ -10,7 +10,7 @@ import { ElwoodError } from "../../src/core/errors.ts";
 import { LOOP_EXPIRATION_MS } from "../../src/core/loops/constants.ts";
 import {
   pruneExpiredLoopDefinitions,
-  readLoopDefinitions,
+  readLoopSidecar,
   writeLoopDefinitions,
 } from "../../src/state/loop-store.ts";
 import {
@@ -20,6 +20,7 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { readLoopDefinitions } from "../helpers/loops.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const createdAt = 1_800_000_000_000;
@@ -60,8 +61,8 @@ describe("loop sidecar store", () => {
     const id = "round-trip";
     const withExtra = definitions.map((definition) => ({ ...definition, state: "due" }));
     writeLoopDefinitions(root, id, withExtra);
-    expect(readLoopDefinitions(root, id)).toEqual(definitions);
     const path = join(sessionDir(root, id), "loops.json");
+    expect(readLoopSidecar(root, id)).toEqual({ definitions, text: readFileSync(path, "utf8") });
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(readFileSync(path, "utf8")).not.toContain('"state"');
     expect(readFileSync(path, "utf8")).not.toContain("nextDueAt");

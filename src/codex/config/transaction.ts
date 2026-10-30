@@ -1,6 +1,6 @@
 /**
  * The Codex setModel config transaction: snapshot → drive the picker → restore,
- * all under the process-wide config lock. Factored out of session-instance so
+ * all under the lock for the session's config file. Factored out of session-instance so
  * every branch (switch succeeds/rejects × restore succeeds/throws) is unit
  * testable without a live session. Implements PRD §5.3 setModel restore and
  * C-CODEX-14 (a late picker rejection must still restore, and a restore failure
@@ -11,6 +11,8 @@ import type { MutexCancel } from "../../core/async-mutex.ts";
 import { withCodexConfigLock } from "./lock.ts";
 
 type CodexModelSwitch = {
+  /** The session's config.toml; the transaction holds that file's lock. */
+  readonly path: string;
   /** Reads the current config.toml so it can be restored after the switch. */
   readonly snapshot: () => string | undefined;
   /** Drives the picker; rejects if the CLI automation fails or times out. */
@@ -20,7 +22,7 @@ type CodexModelSwitch = {
   /**
    * Reports a restore failure that had to be SWALLOWED because a primary error is
    * being preserved (both the picker and the restore failed). Without this the user
-   * would get no signal that their global config.toml may remain mutated. Optional;
+   * would get no signal that the session's config.toml may remain mutated. Optional;
    * omitted in tests that don't assert the diagnostic.
    */
   readonly onRestoreError?: (error: unknown) => void;
@@ -35,11 +37,11 @@ type CodexModelSwitch = {
    * The wait is BEST-EFFORT and bounded: it settles on the observed PTY exit, or on its
    * own deadline if the process never reports one. So the restore is ordered after a
    * confirmed exit in the normal case, but a CLI that never exits cannot hold the
-   * process-wide config lock indefinitely — it is a bound, not a guarantee of exit.
+   * config lock indefinitely — it is a bound, not a guarantee of exit.
    */
   readonly waitForCliExit?: () => Promise<unknown> | undefined;
   /**
-   * Cancels this switch while it is still WAITING for the process-wide config lock, so a
+   * Cancels this switch while it is still WAITING for the config lock, so a
    * deadline or session close behind another transaction rejects at once instead of
    * waiting out that transaction (including its exit bound). Once this switch holds the
    * lock it owns config.toml and must finish its snapshot/restore.
@@ -49,7 +51,7 @@ type CodexModelSwitch = {
 
 export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const transaction = withCodexConfigLock(async () => {
+    const transact = async () => {
       const snapshot = io.snapshot();
       let primary: unknown;
       let failed = false;
@@ -82,7 +84,8 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       // returned promise, so it must be REPORTED instead of thrown into a void.
       restoreAfterSwitch(io, snapshot, failed || closing);
       if (failed) throw primary;
-    }, io.cancel);
+    };
+    const transaction = withCodexConfigLock(io.path, transact, io.cancel);
     // A rejection already delivered above makes this one a no-op.
     transaction.then(resolve, reject);
   });

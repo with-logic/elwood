@@ -6,7 +6,7 @@ import { codexEmptyInputFrame } from "../../src/codex/screen/empty-input.ts";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
 import { settledCursorVisible } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
-import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 
 for (const agent of ["claude", "codex"] as const) {
   test(`C-API-56 ${agent} observes native empty working input while retaining strict clearance`, async () => {
@@ -24,9 +24,7 @@ for (const agent of ["claude", "codex"] as const) {
     );
     const caret = agent === "claude" ? "❯" : "›";
     const paint = async (text: string) => {
-      await terminal.writeOutput(
-        `\u001b[2J\u001b[H${text.replaceAll("\n", "\r\n")}\u001b[${fixture.cursorY + 1};${fixture.cursorX + 1}H\u001b[?25${fixture.visible ? "h" : "l"}\u001b]0;${fixture.title}\u0007`,
-      );
+      await terminal.writeOutput(nativeFrameOutput({ ...fixture, text }));
     };
     try {
       expect(observe(terminal)).toBeUndefined();

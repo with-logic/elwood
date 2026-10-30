@@ -5,8 +5,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { constants } from "node:os";
 import { causeDetails, elwoodError, errnoCode } from "../../core/errors.ts";
+import { exitStatus } from "../../runtime/exit-status.ts";
 import { type CommandResult, currentCommandRunner } from "../../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import type { CliAgent } from "../types.ts";
@@ -36,13 +36,6 @@ export const spawnInteractiveAgent: InteractiveSpawner = async (launch) => {
   });
 };
 
-/** A signal-terminated agent maps to the shell convention 128 + signal number. */
-export function exitStatus(code: number | null, signal: NodeJS.Signals | null): number {
-  if (code !== null) return code;
-  const number = signal === null ? undefined : constants.signals[signal];
-  return number === undefined ? 1 : 128 + number;
-}
-
 function spawnFailure(launch: InteractiveLaunch, error: unknown) {
   const missing = errnoCode(error) === "ENOENT";
   const code = `${launch.agent}_${missing ? "not_found" : "start_failed"}` as const;
@@ -61,8 +54,11 @@ function spawnFailure(launch: InteractiveLaunch, error: unknown) {
  * and the `printf` the command's (§9.2, C-PERF-05).
  */
 async function loginShellPath(): Promise<string | undefined> {
-  // NUL framing separates the exported PATH from incidental shell-startup stdout.
-  const command = probeShellCommand("printf '\\0%s\\0' \"$PATH\"");
+  // The login shell expands its own `$PATH` into the argument, and `/bin/sh`, which loads no
+  // startup file, prints it with its builtin `printf`. A `printf` function or alias in the
+  // user's startup files therefore cannot print something else, and an empty PATH still
+  // prints. The NUL frame tells an empty PATH from a lookup that printed nothing.
+  const command = probeShellCommand(`/bin/sh -c 'printf "\\0%s\\0" "$1"' sh "$PATH"`);
   const result = await currentCommandRunner()(userShell(), command);
   // A shell that exited on its own, successfully, may never have run the lookup (§12A.9).
   const status = result.error === undefined ? result.status : result.error.shellStatus;

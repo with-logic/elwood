@@ -24,7 +24,7 @@ export function rejectCompiledClaudeFallback(
       "the served model catalog, so this run cannot test the catalog walk. Claude 2.1.310 " +
       "settles on the fallback for the whole process when CLAUDE_CODE_MODEL_CATALOG is off, " +
       "nonessential traffic is disabled, the provider is not first-party, its " +
-      "tengu_delegated_quail flag is off, or ~/.claude/cache/model-catalog/ holds no catalog " +
+      "tengu_delegated_quail flag is off, or its config dir's cache/model-catalog/ holds no catalog " +
       "and the first fetch takes longer than about 1.75 s (a loaded machine or slow network).",
   );
 }

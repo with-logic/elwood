@@ -5,17 +5,25 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import { loginShellCommand, probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
+
+const os = vi.hoisted(() => ({ userInfo: vi.fn() }));
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, userInfo: () => ({ ...actual.userInfo(), shell: null }) };
+  os.userInfo.mockImplementation(() => ({ ...actual.userInfo(), shell: null }));
+  return { ...actual, userInfo: os.userInfo };
 });
 
 describe("user shell", () => {
-  test("falls back to /bin/zsh when the platform reports no shell", () => {
-    expect(userShell()).toBe("/bin/zsh");
-    expect(loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
+  test("falls back to /bin/zsh when the platform reports no shell", async () => {
+    // A module the setup file loads may import shell.ts before this file's mock applies, as the
+    // probe runner once did, so take a fresh copy that reads the mocked `userInfo`.
+    vi.resetModules();
+    const shell = await import("../../src/runtime/shell.ts");
+    expect(shell.userShell()).toBe("/bin/zsh");
+    expect(os.userInfo).toHaveBeenCalled();
+    expect(shell.loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
   });
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
@@ -28,7 +36,14 @@ describe("user shell", () => {
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; claude --version`,
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; claude --version`,
+    ]);
+    // A lookup answered by its status alone discards its output.
+    expect(probeShellStatus("command -v claude")).toEqual([
+      "-l",
+      "-i",
+      "-c",
+      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

@@ -50,8 +50,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   const elwoodSessionId = record.elwoodSessionId;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
-  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
+  const publish = runtime.stateOwnership.publishFile;
+  writeSessionRecord(record, runtime.sessionDir, publish);
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, publish) : [];
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -81,7 +82,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       socketPath: runtime.socketPath,
     });
   }
-  const { pty, configPath } = await spawnCodexPty(record, runtime.bridgeScriptPath, options).catch(
+  const { pty, resolveConfigPath } = await spawnCodexPty(record, runtime, options).catch(
     async (error: unknown) => {
       await cleanupStartupResources({ bridge });
       throw error;
@@ -160,7 +161,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     terminalReplay,
     transcriptWatcher,
     loopDefinitions,
-    configPath,
+    resolveConfigPath,
   );
   const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);
