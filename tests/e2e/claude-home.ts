@@ -142,4 +142,5 @@ export const defaultClaudeTempDir = privateTempDir(
   "Claude config dir",
 );
 removeAtExit(defaultClaudeTempDir, "Claude temp root");
+registerPrivateHome(defaultClaudeTempDir);
 process.env[claudeTempKey] = defaultClaudeTempDir;

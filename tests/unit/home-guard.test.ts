@@ -65,6 +65,7 @@ async function launchWith(shell: string, tail: (root: string) => Tail, list?: st
   vi.stubEnv(homeGuardHomesKey, list ?? JSON.stringify([codex, claude, other]));
   vi.stubEnv("CODEX_HOME", codex);
   vi.stubEnv("CLAUDE_CONFIG_DIR", claude);
+  vi.stubEnv("CLAUDE_CODE_TMPDIR", claude);
   const { ZDOTDIR: _zdotdir, CDPATH: _cdpath, ...inherited } = process.env;
   const pty = nodePtyFactory({
     command: shell,
@@ -107,6 +108,8 @@ describe.each(loginShells)("C-E2E-24 a guarded login shell (%s)", (shell) => {
   test.each<[string, (root: string) => Tail]>([
     ["replaces a guarded home", () => both('export CODEX_HOME="$HOME/.codex"')],
     ["unsets a guarded home", () => both("unset CLAUDE_CONFIG_DIR")],
+    ["unsets Claude's temp root", () => both("unset CLAUDE_CODE_TMPDIR")],
+    ["replaces Claude's temp root", () => both('export CLAUDE_CODE_TMPDIR="$HOME"')],
     // POSIX sh cannot unexport, so its profile unsets instead.
     [
       "unexports a guarded home",
