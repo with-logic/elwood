@@ -69,6 +69,7 @@ export function harness(script: Script) {
         firstRead: Promise.resolve().then(() => {
           calls.push("first read");
           if (script.exitDuringFirstRead) onExit?.({ exitCode: 0 });
+          return false;
         }),
         finish: () => {
           calls.push(`survivors (leader gone: ${leaderExited()})`);

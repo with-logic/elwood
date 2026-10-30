@@ -16,6 +16,11 @@ back each entry are listed in `prd/14-conformance.md`.
   signal queue is idle. Concurrent foreground and background passes remain serialized,
   and a rejected pass no longer prevents queued cleanup from running.
 
+- Graceful shutdown skips SIGTERM when its first process-table read shows the leader
+  already gone, even before the PTY exit callback. Survivor cleanup restores an
+  unconfirmed or identity-mismatched stopped group instead of killing a potentially
+  reused group ID. A throwing PTY signal retains an unresolved survivor failure.
+
 - Background shutdown retries serialize with foreground descendant reaping and retain
   failed attempts to resume Codex's shared daemon. A stopped daemon no longer makes a
   failed shutdown appear resolved. A retry leaves an ambiguous same-second process
@@ -72,8 +77,8 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
-- `stop()` no longer leaves running the detached processes a CLI's own graceful
-  exit leaves behind. Codex exits on SIGTERM within a fraction of a second, but
+- `stop()` now reaps the detached processes its watch records before a CLI's graceful
+  exit. A process that loses its ancestry between successful reads can remain running. Codex exits on SIGTERM within a fraction of a second, but
   leaves the shell it starts to snapshot your shell environment, and whatever
   your profile started from it, running under PID 1. `stop()` now records the
   session's detached descendants, by pid and start time, from just before its

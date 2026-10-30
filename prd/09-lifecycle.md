@@ -365,6 +365,7 @@ gone the walk cannot be retried, so every later call keeps rejecting for it unti
 the background reap of the processes it recorded resolves it (C-LIFE-14); one that
 recorded no process, or whose live non-daemon survivors have ambiguous second-resolution
 identities (§5.3), is never resolved from those observations. Foreground and background
-descendant reaps of the session are serialized, and a failed shared-daemon resume stays
-pending until resumed or confirmed unnecessary. Each caller still observes its own
+descendant reaps of the session are serialized, and a failed stopped-group resume stays
+pending until resumed or confirmed unnecessary. A failed restoration whose stopped
+members were never identified by a post-stop read remains unresolved. Each caller still observes its own
 operation's success or typed failure.

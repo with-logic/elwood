@@ -40,7 +40,8 @@ export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
 export class DescendantRecord {
   private readonly identities = new Set<string>();
   private readonly ambiguous = new Set<string>();
-  /** Shared-daemon groups this record’s reap stopped but could not resume. */
+  private unknownResume = false;
+  /** Groups this record’s reap stopped but could not resume. */
   readonly resumes = new ResumeDebt();
   /** The leader's identity, from the first read that showed it. */
   private leader: string | undefined;
@@ -88,9 +89,22 @@ export class DescendantRecord {
     }
   }
 
+  /** A failed restoration whose stopped members were never read cannot be declared resolved. */
+  markUnknownResume(): void {
+    this.unknownResume = true;
+  }
+
+  /** Whether the read before SIGTERM showed the leader already gone. */
+  get leaderGone(): boolean {
+    return this.leader === "";
+  }
+
   /** A same-second reuse cannot be distinguished; background retries leave it unresolved. */
   canReapInBackground(table: readonly ProcessEntry[]): boolean {
-    return this.survivors(table).every((row) => !this.ambiguous.has(identity(row)));
+    return (
+      !this.unknownResume &&
+      this.survivors(table).every((row) => !this.ambiguous.has(identity(row)))
+    );
   }
 
   /** The pid of each process recorded, whatever it runs now. */
@@ -110,8 +124,8 @@ export class DescendantRecord {
 
 /** A recording in progress. */
 export type DescendantWatch = {
-  /** Settles once the first read has finished, whether or not it succeeded. */
-  readonly firstRead: Promise<void>;
+  /** Settles to whether the first read showed the leader gone; false for a failed read. */
+  readonly firstRead: Promise<boolean>;
   /** Stops reading once the read in flight settles, and resolves to the record. */
   readonly finish: () => Promise<DescendantRecord>;
 };
@@ -136,7 +150,7 @@ export function watchDescendants(
       () => undefined,
     );
   };
-  const firstRead = readOnce(true);
+  const firstRead = readOnce(true).then(() => record.leaderGone);
   const finishing = Promise.withResolvers<void>();
   const reading = (async () => {
     await firstRead;

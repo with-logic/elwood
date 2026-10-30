@@ -1,4 +1,4 @@
-/** Keeps a failed shared-daemon SIGCONT pending across background retries (C-LIFE-14). */
+/** Keeps a failed stopped-group SIGCONT pending across background retries (C-LIFE-14). */
 import { errnoCode } from "../../../core/errors.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
 import type { SweepOps } from "./rounds.ts";

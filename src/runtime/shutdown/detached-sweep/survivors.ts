@@ -7,9 +7,9 @@
  * anchors the groups it started, a group read with a member running is stopped again,
  * and once a read converges the signaled groups are SIGKILLed deepest first, but one
  * holding Codex's daemon, which is resumed (`kill.ts`). A group stops counting as a
- * survivor once no recorded process is alive in it. The one exposure the identity leaves
- * is a recorded process that exits between the read that shows it and the SIGSTOP, its
- * group id reused within that moment; anchors rule that out only for a live leader.
+ * survivor once no recorded process is alive in it. Each post-stop read checks the
+ * original member identities; an unconfirmed or mismatched group is resumed and
+ * never passed to the kill phase (`survivor-anchors.ts`).
  */
 
 import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
@@ -30,17 +30,19 @@ import {
   unheldGroups,
   unreachedGroups,
 } from "./rounds.ts";
+import { SurvivorAnchors } from "./survivor-anchors.ts";
 
 /** A graceful stop's watch for survivors, from the first recording read to the reap. */
 export type SurvivorWatch = {
-  /** Settles once the read before the SIGTERM has finished, whether or not it succeeded. */
-  readonly firstRead: Promise<void>;
+  /** Whether the read before SIGTERM showed the leader gone; false for a failed read. */
+  readonly firstRead: Promise<boolean>;
   /**
    * Stops recording, then, if `leaderExited` reports the exit, reaps the recorded
    * processes still alive and hands the outcome, a failure or `undefined`, to `keep`
-   * with the record.
+   * with the record. A failed termination without a confirmed exit retains a failure
+   * instead of discarding that record.
    */
-  readonly finish: () => Promise<void>;
+  readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
 
 /**
@@ -55,13 +57,18 @@ export function watchSurvivors(
   reap: typeof reapRecordedSurvivors = reapRecordedSurvivors,
 ): SurvivorWatch {
   if (leaderPid === undefined)
-    return { firstRead: Promise.resolve(), finish: () => Promise.resolve() };
+    return { firstRead: Promise.resolve(false), finish: () => Promise.resolve() };
   const watch = watchDescendants(leaderPid, ops, leaderExited);
   return {
     firstRead: watch.firstRead,
-    finish: async () => {
+    finish: async (failedTermination = false) => {
       const record = await watch.finish();
       if (leaderExited()) keep(await reap(record, ops), record);
+      else if (failedTermination) {
+        const failures = new SweepFailures();
+        failures.record("the leader's exit was not confirmed", undefined, []);
+        keep(failures.result(), record);
+      }
     },
   };
 }
@@ -86,7 +93,9 @@ export async function reapRecordedSurvivors(
   }
   if (record.pids.length === 0) return undefined;
   const deadline = performance.now() + budgetMs;
-  await stopSurvivorGroups(record, ops, deadline, state, firstTable);
+  const anchors = new SurvivorAnchors(state, record, ops);
+  await stopSurvivorGroups(record, anchors.stoppingOps(), deadline, state, firstTable, anchors);
+  anchors.restoreUnconfirmed();
   await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
@@ -98,6 +107,7 @@ async function stopSurvivorGroups(
   deadline: number,
   state: SweepState,
   firstTable: readonly ProcessEntry[] | undefined,
+  anchors: SurvivorAnchors,
 ): Promise<void> {
   // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
   // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
@@ -114,6 +124,7 @@ async function stopSurvivorGroups(
       const table = initial ?? (await ops.listProcesses(remainingMs, scope));
       initial = undefined;
       state.latest = table;
+      if (!anchors.afterRead(table)) return;
       const roots = survivorGroups(record.survivors(table), table);
       state.live = liveGroups(table, roots);
       state.unheld = unheldGroups(table, state);
