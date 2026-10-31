@@ -8,13 +8,18 @@ import { errnoCode } from "../../core/errors.ts";
 import type { SweepOps } from "./detached-sweep/index.ts";
 import { UNREAD } from "./process-table.ts";
 import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
+import { listProcessTableUnreferenced, runFileUnreferenced } from "./unreferenced-read.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
  * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, the
- * SIGCONT that resumes a group holding Codex's daemon, and table read.
+ * SIGCONT that resumes a group holding Codex's daemon, and table read. A reap in the
+ * background reads with `listProcessesUnreferenced` where there is one: a read that never
+ * keeps the host alive.
  */
-export type ProcessTreeOps = SweepOps;
+export type ProcessTreeOps = SweepOps & {
+  readonly listProcessesUnreferenced?: SweepOps["listProcesses"];
+};
 
 /** The part of the process-tree ops the group reap uses. */
 export type GroupReapOps = Pick<ProcessTreeOps, "killGroup">;
@@ -37,6 +42,13 @@ export const osProcessTreeOps: ProcessTreeOps = {
     process.kill(-pgid, "SIGCONT");
   },
   listProcesses: (timeoutMs, scope) => listProcessTableMarkingDaemon(timeoutMs, scope),
+  listProcessesUnreferenced: (timeoutMs, scope) =>
+    listProcessTableMarkingDaemon(
+      timeoutMs,
+      scope,
+      listProcessTableUnreferenced,
+      runFileUnreferenced,
+    ),
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle

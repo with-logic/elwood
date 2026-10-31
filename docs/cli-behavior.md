@@ -1421,10 +1421,12 @@ for Claude's hooks but not for this Codex shell.
 ## `stop()` reaps what a graceful exit leaves (2026-10-26)
 
 `stop()` no longer relies on that premise. Before its SIGTERM it reads the process
-table, and it reads it again, back to back, until the leader's exit, recording every
-detached descendant by pid and start time (`ps` `lstart`, in the C locale and UTC, so
+table, and it reads it again, back to back, until the leader's exit, recording each
+detached descendant those reads observe by pid and start time (`ps` `lstart`, in the C locale and UTC, so
 it reads the same every time). After the exit it SIGSTOPs and SIGKILLs the recorded
-processes still alive, by the walk's rules, never Codex's shared daemon. Elwood records
+processes still alive, by the walk's rules, never Codex's shared daemon. A process that
+starts and loses its ancestry between reads is not recorded and can survive a
+successful stop; the observed record is not a complete process-tree barrier. Elwood records
 the snapshot shell well before a `stop()` can land: the shell starts seconds after
 launch, and Codex takes about 190 ms to exit after the SIGTERM, a window of several reads.
 

@@ -13,7 +13,7 @@ import {
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import type { SurvivorWatch } from "./detached-sweep/survivors.ts";
+import type { SurvivorWatch } from "./detached-sweep/survivor-watch.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
@@ -57,10 +57,12 @@ export async function terminatePty(
     const latch = new PtyExitLatch(pty);
     exit = latch;
     if (signal === "SIGTERM") {
-      survivors = reaper.watchSurvivors(() => latch.exited);
-      await survivors.firstRead;
-      if (!latch.exited) pty.kill("SIGTERM");
-      observedExit = await latch.within(timeouts.gracefulMs);
+      let leaderGone = false;
+      survivors = reaper.watchSurvivors(() => latch.exited || leaderGone);
+      leaderGone = await survivors.firstRead;
+      if (!(latch.exited || leaderGone))
+        leaderGone = await survivors.sendSignal(() => pty.kill("SIGTERM"));
+      observedExit = leaderGone || (await latch.within(timeouts.gracefulMs));
     }
     if (!observedExit) {
       sweepError = await reaper.sweepDetached(() => latch.exited).then(() => undefined, toError);
@@ -76,7 +78,9 @@ export async function terminatePty(
     exit?.dispose();
   }
   // Always ends the watch, which reads until told; an earlier sweep failure is the one reported.
-  const survivorError = await survivors?.finish().then(() => undefined, toError);
+  const survivorError = await survivors
+    ?.finish(terminationError !== undefined)
+    .then(() => undefined, toError);
   sweepError ??= survivorError;
   if (sweepError !== undefined) {
     terminationError =

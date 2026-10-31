@@ -28,6 +28,7 @@
 import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
+import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import {
   confirmedGone,
@@ -35,6 +36,7 @@ import {
   killOrResumeSignaledGroups,
   recordFailedRead,
 } from "./kill.ts";
+import { DescendantRecord } from "./record.ts";
 import {
   newSweepState,
   recordUnconfirmed,
@@ -47,13 +49,8 @@ import {
   unreachedGroups,
 } from "./rounds.ts";
 
+export { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 export type { SweepOps } from "./rounds.ts";
-
-/**
- * The whole sweep's deadline. A hook that started a setsid child of its own takes six
- * reads, and on a loaded host one read can take over half a second (docs/cli-behavior.md).
- */
-export const DETACHED_SWEEP_BUDGET_MS = 10_000;
 
 /**
  * Sweeps `leaderPid`'s detached descendant groups and resolves to the unresolved
@@ -71,12 +68,15 @@ export const DETACHED_SWEEP_BUDGET_MS = 10_000;
  * an unreadable table; the deadline passing, or the leader exiting, before a read
  * converged; a live group that could not be stopped or killed; and a group spared for
  * Codex's daemon that could not be resumed (a SIGCONT refused but for its being gone).
+ * Each read is also recorded in `record`, by which a failure's survivors can still be
+ * reaped (`background.ts`).
  */
 export async function sweepDetachedGroups(
   leaderPid: number,
   ops: SweepOps,
   leaderExited: () => boolean,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
+  record: DescendantRecord = new DescendantRecord(),
 ): Promise<SweepFailure | undefined> {
   if (leaderExited()) return undefined;
   const deadline = performance.now() + budgetMs;
@@ -88,8 +88,8 @@ export async function sweepDetachedGroups(
   }
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
-  await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
-  await killOrResumeSignaledGroups(ops, state, deadline);
+  await stopDescendantGroups(leaderPid, { ops, record }, leaderExited, deadline, state);
+  await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
 
@@ -104,7 +104,7 @@ export async function sweepDetachedGroups(
  */
 async function stopDescendantGroups(
   leaderPid: number,
-  ops: SweepOps,
+  { ops, record }: { readonly ops: SweepOps; readonly record: DescendantRecord },
   leaderExited: () => boolean,
   deadline: number,
   state: SweepState,
@@ -116,9 +116,11 @@ async function stopDescendantGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      const readStartedAtEpochMs = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+      record.observe(table, leaderPid, false, state.live, readStartedAtEpochMs);
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       if (leaderExited())

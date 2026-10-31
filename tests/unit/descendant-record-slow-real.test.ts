@@ -7,7 +7,7 @@
  */
 
 import { expect, test } from "vitest";
-import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/record.ts";
+import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
 import { lateRealReads } from "../helpers/table-reads.ts";

@@ -6,12 +6,13 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
   type DetachedTree,
   detachedDescendantPids,
+  markingLateSeen,
   startDetachedTree,
   waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
@@ -33,7 +34,10 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
   const outcomes: unknown[] = [];
   const watch = watchSurvivors(
     tree.pty.pid,
-    realOps,
+    {
+      ...realOps,
+      listProcesses: markingLateSeen(tree, (row) => !row.zombie),
+    },
     () => exited,
     (outcome) => {
       outcomes.push(outcome);

@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
 import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
+import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 
 const LEADER = 1000;
 
@@ -137,7 +138,7 @@ describe("C-LIFE-10 terminatePty", () => {
       terminatePty(
         neverExits,
         "SIGTERM",
-        new SessionReaper(LEADER, { ...quietProcessTree(), killGroup: () => {} }),
+        new SessionReaper(LEADER, { ...quietPtyTree([neverExits]), killGroup: () => {} }),
         {
           gracefulMs: 0,
           forceMs: 0,

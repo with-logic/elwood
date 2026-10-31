@@ -4,10 +4,8 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import type { CodexSessionApi } from "../../src/index.ts";
-import {
-  quietProcessTree,
-  setProcessTreeOpsForTests,
-} from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
@@ -79,22 +77,22 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
 });
 
 /** Records the group SIGSTOPs and table reads shutdown sends, on a quiet fake tree. */
-function groupStops(): string[] {
-  const quiet = quietProcessTree();
-  const stops: string[] = [];
+function groupOperations(): string[] {
+  const quiet = quietPtyTree(ptys);
+  const operations: string[] = [];
   setProcessTreeOpsForTests({
     ...quiet,
     stopGroup: (pgid) => {
-      stops.push(`SIGSTOP -${pgid}`);
+      operations.push(`SIGSTOP -${pgid}`);
       quiet.stopGroup(pgid);
     },
     listProcesses: (timeoutMs, scope) => {
-      stops.push("read");
+      operations.push("read");
       return quiet.listProcesses(timeoutMs, scope);
     },
     killGroup: (pgid) => void reapedGroups.push(pgid),
   });
-  return stops;
+  return operations;
 }
 
 // Without a wait, shutdown starts in the same tick as the call: for a stop, the table read
@@ -111,12 +109,12 @@ test.each([
   ],
 ] as const)("C-LIFE-13 no commit wait: %s", async (_name, verb, withPath, hooks) => {
   installFakes();
-  const stops = groupStops();
+  const operations = groupOperations();
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd, hooks);
   await stopHook(session, cwd, withPath ? path : null);
   const shutdown = tracked(session[verb]());
-  expect([...ptys[0]!.killSignals, ...stops]).toEqual(
+  expect([...ptys[0]!.killSignals, ...operations]).toEqual(
     verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`, "read"] : ["read"],
   );
   await new Promise((resolve) => setImmediate(resolve));

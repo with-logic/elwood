@@ -18,18 +18,20 @@
 
 import { errnoCode } from "../../../core/errors.ts";
 import { groupIdsToResume } from "../shared-daemon.ts";
+import type { DescendantRecord } from "./record.ts";
 import type { SweepOps, SweepState } from "./rounds.ts";
 
 export async function killOrResumeSignaledGroups(
   ops: SweepOps,
   state: SweepState,
   deadline: number,
+  record?: DescendantRecord,
 ): Promise<void> {
   const toResume = groupIdsToResume(state.latest);
   const refused = new Map<number, unknown>();
   for (const group of [...state.signaledDescendantGroupIds].reverse()) {
     if (toResume.has(group)) {
-      resume(group, ops, state);
+      resume(group, ops, state, record);
       continue;
     }
     try {
@@ -50,11 +52,12 @@ export async function killOrResumeSignaledGroups(
 }
 
 /** SIGCONTs a group to resume; one already gone (`ESRCH`) needs nothing. */
-function resume(group: number, ops: SweepOps, state: SweepState): void {
+function resume(group: number, ops: SweepOps, state: SweepState, record?: DescendantRecord): void {
   try {
     ops.continueGroup(group);
   } catch (error) {
     if (errnoCode(error) === "ESRCH") return;
+    record?.resumes.remember(state.latest, group);
     state.failures.record("could not resume a group spared for Codex's shared daemon", error, [
       group,
     ]);

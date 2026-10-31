@@ -24,6 +24,7 @@ import {
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { createScratchRegistry, FakePty } from "../helpers/fake-pty.ts";
 import { isolateFakeSocketHomes, removeFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
+import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 
 export { type BridgeReply, dispatchRaw, FakePty, readBridgeScript } from "../helpers/fake-pty.ts";
 
@@ -45,7 +46,10 @@ export function installFakes(): void {
   setCommandRunnerForTests(versionOk);
   setStartupWaitMsForTests(25);
   // Record group reaps instead of issuing a real SIGKILL to a live pgid.
-  setProcessTreeOpsForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
+  setProcessTreeOpsForTests({
+    ...quietPtyTree(ptys),
+    killGroup: (pgid) => reapedGroups.push(pgid),
+  });
   setPtyFactoryForTests((options) => {
     const pty = new FakePty(options, 1000 + ptys.length);
     ptys.push(pty);

@@ -22,7 +22,7 @@ export type ProcessEntry = {
   readonly zombie: boolean;
   /** Stopped (state `T`) when its row was read, as a delivered SIGSTOP leaves it. */
   readonly stopped: boolean;
-  /** When it started, to the second (`lstart`): with the pid, it names one process. */
+  /** Second-resolution `lstart`: pid plus this observation cannot distinguish same-second reuse. */
   readonly startedAt: string;
   /** Its executable's short name (`ps`'s `ucomm`), at most 16 characters on macOS. */
   readonly name: string;
@@ -43,7 +43,7 @@ const PS_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 // starts what reads as another row: each row ends with its pid again (docs/cli-behavior.md).
 const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+ \S+ +\d+ [\d:]+ \d+)\s(.*)\s(\d+)\s*$/;
 
-/** One process's identity: its pid and start time, which no later process with its pid shares. */
+/** A pid/start-time observation; callers must reject ambiguous same-second reuse. */
 export function processIdentity(row: Pick<ProcessEntry, "pid" | "startedAt">): string {
   return `${row.pid} ${row.startedAt}`;
 }

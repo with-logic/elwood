@@ -12,6 +12,27 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Graceful SIGTERM now waits for a stopped leader whose original identity is
+  confirmed by a fresh process-table read, within the first read's existing deadline.
+  Unknown, replaced, or unheld leaders receive no SIGTERM; the temporarily stopped
+  group is resumed on both success and failure, with failed restoration retained.
+
+- A session's first descendant reap still starts in the caller's tick when its
+  signal queue is idle. Concurrent foreground and background passes remain serialized,
+  and a rejected pass no longer prevents queued cleanup from running.
+
+- Graceful shutdown skips SIGTERM when its first process-table read shows the leader
+  already gone, even before the PTY exit callback. Survivor cleanup restores an
+  unconfirmed or identity-mismatched stopped group instead of killing a potentially
+  reused group ID. A throwing PTY signal retains an unresolved survivor failure.
+
+- Background shutdown retries serialize with foreground descendant reaping and retain
+  failed attempts to resume Codex's shared daemon. A stopped daemon no longer makes a
+  failed shutdown appear resolved. A retry leaves an ambiguous same-second process
+  identity unresolved instead of signaling a possible replacement process. That veto
+  applies only to its group, so independent safe groups and owed daemon resumes
+  still recover. After the automatic retry window ends, a later shutdown performs
+  a fresh confirmation and can clear a failure whose recorded survivors have exited.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a
@@ -45,6 +66,15 @@ back each entry are listed in `prd/14-conformance.md`.
   whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
   SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
   idle host they take as long as before, because the walk ends as soon as it is done.
+- When `kill()`, `teardown()`, or `stop()` cannot confirm that a session's detached
+  hook processes have been reaped, Elwood now keeps reaping the ones it saw in the
+  background for up to a minute. Before, a walk that missed its deadline left them running for good
+  under PID 1: the call rejected with `termination_failed`, and nothing reaped them
+  after. Elwood knows each one by pid and start time, so it never signals a process
+  that later reused one of those pids, and its background work never keeps your
+  process alive. Once no recorded non-daemon survivor remains and every failed daemon
+  resume has succeeded or become unnecessary, later shutdown calls resolve instead of
+  rejecting again.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
@@ -55,8 +85,8 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
-- `stop()` no longer leaves running the detached processes a CLI's own graceful
-  exit leaves behind. Codex exits on SIGTERM within a fraction of a second, but
+- `stop()` now reaps the detached processes its watch records before a CLI's graceful
+  exit. A process that loses its ancestry between successful reads can remain running. Codex exits on SIGTERM within a fraction of a second, but
   leaves the shell it starts to snapshot your shell environment, and whatever
   your profile started from it, running under PID 1. `stop()` now records the
   session's detached descendants, by pid and start time, from just before its
