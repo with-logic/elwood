@@ -16,8 +16,10 @@ back each entry are listed in `prd/14-conformance.md`.
   preflight and cached probes. The child checks its initial directory before shell
   startup and the original path again before running its command, so a replacement
   cannot become a newly trusted probe directory or run an agent in its place. A
-  profile's deliberate `cd` remains supported. Failed directory checks retain their
-  path and errno in the start failure.
+  profile's deliberate `cd` remains supported. Host-side stat failures retain their
+  path and errno in the start failure; child-side refusals have no host errno.
+  An update refused before its command starts is neither cached nor reported as a
+  failed update attempt.
 
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its

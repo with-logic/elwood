@@ -3,7 +3,7 @@
  * for the directory it ran in. Implements the per-directory caches of PRD §9.2 (C-PERF-02).
  */
 
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { stat } from "node:fs/promises";
 import { errnoCode } from "../../core/errors.ts";
 import { directoryGuardExitCode } from "../checked-command.ts";
@@ -68,11 +68,13 @@ export async function readInDirectory<T>(
  * none when it is, or no identity was given. The child checks its actual kernel cwd too,
  * closing a subsequent replacement before the login shell runs.
  */
-export function probedDirectoryReplaced(options: CommandOptions): CommandResult | undefined {
+export async function refusedProbeDirectory(
+  options: CommandOptions,
+): Promise<CommandResult | undefined> {
   const { cwd, identity } = options;
   if (identity === undefined) return undefined;
   try {
-    const { dev, ino } = statSync(cwd, { bigint: true });
+    const { dev, ino } = await stat(cwd, { bigint: true });
     if (dev === identity.dev && ino === identity.ino) return undefined;
   } catch (error) {
     const code = errnoCode(error);
@@ -81,10 +83,17 @@ export function probedDirectoryReplaced(options: CommandOptions): CommandResult 
       status: null,
       stdout: "",
       stderr: "",
+      started: false,
       error: { message, cwd, code },
     };
   }
-  return { status: null, stdout: "", stderr: "", error: { message: probedDirectoryChanged, cwd } };
+  return {
+    status: null,
+    stdout: "",
+    stderr: "",
+    started: false,
+    error: { message: probedDirectoryChanged, cwd },
+  };
 }
 
 /** Why a probe did not run: its directory was removed or replaced before it could start there. */
@@ -99,6 +108,8 @@ export function directoryShellExit(
   command: string,
 ): CommandResult {
   if (options.identity === undefined) return result;
+  // 126/127 can mean the wrapper could not exec the configured shell. If that shell is
+  // executable, preserve its own profile's exit instead of inventing a missing command.
   if (status === 126 || status === 127) {
     try {
       accessSync(command, constants.X_OK);
@@ -112,6 +123,8 @@ export function directoryShellExit(
       };
     }
   }
-  if (status !== directoryGuardExitCode) return result;
-  return { ...result, error: { ...result.error!, cwd: options.cwd } };
+  // Status 96 alone may be the requested CLI's own exit. Only a pre-start shell failure
+  // identifies the guard's refusal; it has a message and no invented host-side errno.
+  if (status !== directoryGuardExitCode || result.error?.phase !== "login_shell") return result;
+  return { ...result, started: false, error: { ...result.error, cwd: options.cwd } };
 }

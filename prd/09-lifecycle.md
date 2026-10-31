@@ -57,7 +57,9 @@ reject or poison any other otherwise-compatible start in the roster. When the
 existence check fails in the launch directory of the start or resume that
 triggers the update (§9.2 below), no update command runs. That is not an update
 attempt: it records no `agent_update_failed` warning, and each launch that
-shared it tries the update again, in its own launch directory. If the
+shared it tries the update again, in its own launch directory. A directory guard
+that refuses before the update command starts is likewise not an update attempt:
+it has no `updateCwd`, produces no update-failure warning, and is not cached. If the
 installed agent version is below the minimum after that optional update step,
 startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`

@@ -22,6 +22,7 @@ import {
   cachedAutoupdate,
   cachedVersionRead,
   maxSettledPreflightDirectoryResults,
+  type UpdateNotStarted,
 } from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
@@ -89,16 +90,21 @@ export async function preflightCodex(
   );
 }
 
-async function runCodexUpdate(cwd: string, identity?: DirectoryIdentity): Promise<void> {
+async function runCodexUpdate(
+  cwd: string,
+  identity?: DirectoryIdentity,
+): Promise<UpdateNotStarted | undefined> {
   const update = probeShellCommand("codex update");
   const result = await currentCommandRunner()(
     userShell(),
     update,
     identity === undefined ? { cwd } : { cwd, identity },
   );
+  if (result.started === false) return { started: false, result };
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
+  return undefined;
 }
 
 async function readCodexVersion(cwd: string, identity?: DirectoryIdentity): Promise<CommandResult> {

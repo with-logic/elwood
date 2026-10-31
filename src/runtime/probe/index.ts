@@ -14,7 +14,7 @@ import type { CommandOptions, CommandResult } from "../seams.ts";
 import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
 import { outputUnavailable, type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
-import { directoryShellExit, probedDirectoryReplaced } from "./directory-key.ts";
+import { directoryShellExit, refusedProbeDirectory } from "./directory-key.ts";
 import { withProbeSlot } from "./slots.ts";
 import { ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
@@ -52,26 +52,28 @@ export function runProbe(
   return withProbeSlot(() => probeCapture(args).then(spawnWith, outputUnavailable));
 }
 
-function spawnCaptured(
+async function spawnCaptured(
   command: string,
   args: readonly string[],
   options: CommandOptions,
   capture: ProbeCapture,
 ): Promise<CommandResult> {
   // Checked last, as it spawns: a probe keyed to one directory never reads another (C-PERF-02).
-  const replaced = probedDirectoryReplaced(options);
-  if (replaced !== undefined) {
+  const refused = await refusedProbeDirectory(options);
+  if (refused !== undefined) {
     capture.release();
-    return Promise.resolve(replaced);
+    return refused;
   }
   return new Promise((resolve) => {
     const start = new ProbeStart(args);
-    const launch = checkedCommand(
-      command,
-      args,
-      options.cwd ?? process.cwd(),
-      options.identity,
-      start.expectsStartLine,
+    const launch = releasedOnThrow(capture, () =>
+      checkedCommand(
+        command,
+        args,
+        options.cwd ?? process.cwd(),
+        options.identity,
+        start.expectsStartLine,
+      ),
     );
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
@@ -161,12 +163,10 @@ function spawnCaptured(
     let timer = boundBy(launchTimeoutMs, () => launchTimedOut(...captured()));
   });
 }
-
 function output([stdout, stderr]: [string, string]) {
   return { stdout, stderr };
 }
-
-/** Runs `spawnIt`; a spawn that throws leaves no output directory behind. */
+/** A launch preparation or spawn that throws leaves no output capture behind. */
 function releasedOnThrow<T>(capture: ProbeCapture, spawnIt: () => T): T {
   try {
     return spawnIt();

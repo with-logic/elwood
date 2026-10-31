@@ -10,6 +10,8 @@ import type { ProbeCleanup } from "./probe/cleanup.ts";
 import { resetProbeTimeoutsForTests, runProbe } from "./probe/index.ts";
 
 export type CommandResult = {
+  /** Internal pre-command refusal, distinct from an update command that ran and failed. */
+  readonly started?: false;
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;

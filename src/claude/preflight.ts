@@ -14,6 +14,7 @@ import {
   type AutoupdateOutcome,
   cachedAutoupdate,
   cachedVersionRead,
+  type UpdateNotStarted,
 } from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
@@ -73,13 +74,17 @@ export async function preflightClaude(
   );
 }
 
-async function runClaudeUpdate(cwd: string, identity?: DirectoryIdentity): Promise<void> {
+async function runClaudeUpdate(
+  cwd: string,
+  identity?: DirectoryIdentity,
+): Promise<UpdateNotStarted | undefined> {
   const update = probeShellCommand("claude update");
   const result = await currentCommandRunner()(
     userShell(),
     update,
     identity === undefined ? { cwd } : { cwd, identity },
   );
+  if (result.started === false) return { started: false, result };
   if (result.status !== 0) {
     throw elwoodError(
       "claude_update_failed",
@@ -87,6 +92,7 @@ async function runClaudeUpdate(cwd: string, identity?: DirectoryIdentity): Promi
       probeFailureDetails(result),
     );
   }
+  return undefined;
 }
 
 async function readClaudeVersion(

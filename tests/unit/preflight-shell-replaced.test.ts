@@ -1,8 +1,8 @@
 /**
  * A version or capability answer describes the directory its probe ran in, so the caches never
  * answer one directory with another's: a directory replaced after its answer was kept is probed
- * again, and an answer read while its directory was replaced is not kept for the original. The
- * probes run for real through a stand-in login shell. Covers PRD §9.2 and C-PERF-02.
+ * again. A profile that replaces the directory is refused before the CLI runs; restoring the
+ * original reads its own CLI afresh. The probes run for real through a stand-in login shell. Covers PRD §9.2 and C-PERF-02.
  */
 
 import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -55,7 +55,7 @@ test("C-PERF-02 a codex directory replaced after its capabilities were kept is p
 
 test.each(
   agents,
-)("C-PERF-02 a %s answer read while its directory was replaced is not kept for the original", async (agent, _start, preflight, version, old, oldVersion) => {
+)("C-PERF-02 a %s profile replacement is refused before CLI exec, then the restored original is read", async (agent, _start, preflight, version, old, oldVersion) => {
   const cwd = project(agent, oldVersion);
   const original = join(dir("elwood-preflight-original-"), "original");
   const replacement = project(agent, version);
@@ -69,7 +69,7 @@ test.each(
   await expect(preflight(cwd, true)).rejects.toMatchObject(old);
 });
 
-test("C-PERF-02 capabilities read while their directory was replaced are not kept for the original", async () => {
+test("C-PERF-02 a capability profile replacement is refused before CLI exec, then the restored original is read", async () => {
   const cwd = project("codex", "codex-cli 0.150.0", "no such flag");
   const original = join(dir("elwood-preflight-original-"), "original");
   const replacement = project("codex", "codex-cli 0.150.0", hookTrustBypass);

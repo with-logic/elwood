@@ -1,6 +1,6 @@
 /** Child-side working-directory guards before profiles and command execution (C-API-61). */
 import type { DirectoryIdentity } from "../core/directory-identity.ts";
-import { shellQuote } from "./shell.ts";
+import { type LoginShellArgs, shellQuote } from "./shell.ts";
 
 /** Internal refusal before the requested command runs; never an Elwood CLI exit status. */
 export const directoryGuardExitCode = 96;
@@ -12,12 +12,14 @@ export function checkedCommand(
   cwd: string,
   identity: DirectoryIdentity | undefined,
   login: boolean,
-  platform: string = process.platform,
+  platform: NodeJS.Platform = process.platform,
 ): { readonly command: string; readonly args: readonly string[] } {
   if (identity === undefined) return { command, args };
+  const dialect = statDialect(platform);
+  if (login) validateLoginShellArgs(args);
   const guardedArgs = login
     ? args.map((arg, index) =>
-        index === 3 ? `${afterProfileGuard(cwd, identity, platform)}${arg}` : arg,
+        index === 3 ? `${afterProfileGuard(cwd, identity, dialect)}${arg}` : arg,
       )
     : args;
   return {
@@ -25,7 +27,7 @@ export function checkedCommand(
     args: [
       "-p",
       "-c",
-      `${directoryGuard(".", identity, platform)}exec "$@"`,
+      `${directoryGuard(".", identity, dialect)}exec "$@"`,
       "elwood-checked-cwd",
       command,
       ...guardedArgs,
@@ -34,12 +36,39 @@ export function checkedCommand(
 }
 
 /** `.` names the kernel cwd held by the wrapper; an absolute path checks its launch entry. */
-function directoryGuard(path: string, { dev, ino }: DirectoryIdentity, platform: string): string {
+function directoryGuard(
+  path: string,
+  { dev, ino }: DirectoryIdentity,
+  platform: StatDialect,
+): string {
   const statArgs = platform === "darwin" ? "-L -f '%d:%i'" : "-L -c '%d:%i'";
   return `[ "$(/usr/bin/stat ${statArgs} ${shellQuote(path)} 2>/dev/null)" = '${dev}:${ino}' ] || exit ${directoryGuardExitCode}; `;
 }
 
 /** A profile's DEBUG trap must not write inside the guard’s stat command substitution. */
-function afterProfileGuard(cwd: string, identity: DirectoryIdentity, platform: string): string {
+function afterProfileGuard(
+  cwd: string,
+  identity: DirectoryIdentity,
+  platform: StatDialect,
+): string {
   return `/bin/sh -p -c ${shellQuote(directoryGuard(cwd, identity, platform))} || exit ${directoryGuardExitCode}; `;
+}
+
+/** Guard syntax exists only for the stat tools shipped on these hosts. */
+type StatDialect = "darwin" | "linux";
+function statDialect(platform: NodeJS.Platform): StatDialect {
+  if (platform === "darwin" || platform === "linux") return platform;
+  throw new Error(`Checked-directory launches do not support ${platform}.`);
+}
+
+/** A guarded login launch must retain the builder's fourth-argument script position. */
+function validateLoginShellArgs(args: readonly string[]): asserts args is LoginShellArgs {
+  if (
+    args.length !== 4 ||
+    args[0] !== "-l" ||
+    args[1] !== "-i" ||
+    args[2] !== "-c" ||
+    typeof args[3] !== "string"
+  )
+    throw new TypeError("Expected login-shell arguments [-l, -i, -c, script].");
 }

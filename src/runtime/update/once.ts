@@ -26,10 +26,13 @@ export type AutoupdateOutcome =
 export type UpdateSteps = {
   /** Rejects when the CLI is missing, or its check fails, in the launch's directory. */
   readonly verify: () => Promise<unknown>;
-  readonly update: () => Promise<void>;
+  readonly update: (() => Promise<void>) | (() => Promise<UpdateNotStarted | undefined>);
 };
 
-/** A settled attempt; `updated` is false when the triggering launch's CLI check failed. */
+/** A directory guard refused before the updater ran; preserve that probe's diagnostics. */
+export type UpdateNotStarted = { readonly started: false; readonly result: CommandResult };
+
+/** A settled attempt; `updated` is false when its check or directory guard prevented it. */
 type Attempt = { readonly updated: boolean; readonly outcome: AutoupdateOutcome };
 
 // The settled autoupdate attempt per adapter. Every `autoupdate: true` caller awaits the SAME
@@ -60,14 +63,15 @@ export function cachedAutoupdate(
       attempt.updated ? attempt.outcome : cachedAutoupdate(adapter, cwd, steps, afterAttempt),
     );
   }
-  let stage: "waiting" | "verifying" | "updating" = "waiting";
+  let stage: "waiting" | "verifying" | "updating" | "not-started" = "waiting";
   // The check runs only after this process owns the cross-process lease. Its error still reaches
   // the coordinator, which keeps the lease while a probe group it could not stop is alive.
   const run = async () => {
     stage = "verifying";
     await steps.verify();
     stage = "updating";
-    await steps.update();
+    const update = await steps.update();
+    if (update?.started === false) stage = "not-started";
   };
   const failed = (error: unknown): AutoupdateOutcome =>
     stage === "updating" ? { ok: false, error, updateCwd: cwd } : { ok: false, error };
@@ -77,7 +81,7 @@ export function cachedAutoupdate(
       (error) => finalizeAutoupdate(adapter, failed(error), failed, afterAttempt),
     )
     .then((outcome): Attempt => {
-      if (stage !== "verifying") return { updated: true, outcome };
+      if (stage !== "verifying" && stage !== "not-started") return { updated: true, outcome };
       autoupdates.delete(adapter); // before any sharer retries
       return { updated: false, outcome: { ok: true } };
     });

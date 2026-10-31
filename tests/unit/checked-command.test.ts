@@ -22,7 +22,7 @@ test("C-API-61 unchecked commands preserve their arguments", () => {
 test.each([
   "darwin",
   "linux",
-])("C-API-61 uses %s's fixed stat format without a PATH lookup", (platform) => {
+] as const)("C-API-61 uses %s's fixed stat format without a PATH lookup", (platform) => {
   const launch = checkedCommand(
     "/bin/sh",
     ["-c", "echo"],
@@ -64,5 +64,37 @@ test("C-API-61 a profile's deliberate cd remains the command's effective directo
   expect(result.status).toBe(0);
   expect(result.stdout.trim()).toBe(
     spawnSync("/bin/pwd", ["-P"], { cwd: moved, encoding: "utf8" }).stdout.trim(),
+  );
+});
+
+test("C-API-61 unsupported stat dialects refuse only identity-bound launches", () => {
+  const args = ["-c", "echo"];
+  expect(checkedCommand("/bin/sh", args, "/work", undefined, true, "win32")).toEqual({
+    command: "/bin/sh",
+    args,
+  });
+  expect(() =>
+    checkedCommand("/bin/sh", args, "/work", { dev: 1n, ino: 2n }, false, "win32"),
+  ).toThrow("do not support win32");
+});
+
+test.each([
+  [],
+  ["-l", "-i", "-c"],
+  ["-l", "-i", "-c", "echo", "extra"],
+  ["-x", "-i", "-c", "echo"],
+  ["-l", "-x", "-c", "echo"],
+  ["-l", "-i", "-x", "echo"],
+])("C-API-61 malformed login-shell args %j cannot silently lose the guard", (...args) => {
+  expect(() => checkedCommand("/bin/sh", args, "/work", { dev: 1n, ino: 2n }, true)).toThrow(
+    "Expected login-shell arguments",
+  );
+});
+
+test("C-API-61 a sparse login-shell script position cannot omit the guard", () => {
+  const args = ["-l", "-i", "-c"];
+  args.length = 4;
+  expect(() => checkedCommand("/bin/sh", args, "/work", { dev: 1n, ino: 2n }, true)).toThrow(
+    "Expected login-shell arguments",
   );
 });
