@@ -1,7 +1,7 @@
 /** Concurrent descendant watches retain the shared production table-read pattern (C-LIFE-10). */
 import { expect, test } from "vitest";
 import { coalesceUnstarted } from "../../src/runtime/shutdown/coalesce.ts";
-import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/record.ts";
+import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
 import { leaderRow } from "../helpers/scripted-process-tree.ts";
 
 test("C-LIFE-10 concurrent survivor watches share a fresh table listing", async () => {

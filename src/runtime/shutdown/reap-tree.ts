@@ -22,11 +22,8 @@ import { type BackgroundReap, reapInBackground } from "./detached-sweep/backgrou
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { DETACHED_SWEEP_BUDGET_MS, sweepDetachedGroups } from "./detached-sweep/index.ts";
 import { DescendantRecord } from "./detached-sweep/record.ts";
-import {
-  reapRecordedSurvivors,
-  type SurvivorWatch,
-  watchSurvivors,
-} from "./detached-sweep/survivors.ts";
+import { type SurvivorWatch, watchSurvivors } from "./detached-sweep/survivor-watch.ts";
+import { reapRecordedSurvivors } from "./detached-sweep/survivors.ts";
 import {
   activeProcessTreeOps,
   type GroupReapOps,

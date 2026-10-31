@@ -148,7 +148,6 @@ describe("C-LIFE-10 session reap-failure handling", () => {
         });
         expect(reapedGroups).toContain(pty.pid);
       } finally {
-        // A throwing signal supplies no exit evidence; confirm exit before removing files.
         ptys.at(-1)!.emitExit({ exitCode: 0 });
         if (verb === "stop")
           await expect(session.teardown()).rejects.toMatchObject({ code: "teardown_failed" });

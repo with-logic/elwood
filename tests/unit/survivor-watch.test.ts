@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import { errno, hook, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
 

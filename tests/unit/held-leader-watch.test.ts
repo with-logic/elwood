@@ -1,6 +1,6 @@
 /** A survivor watch's held-leader boundary rejects gone or invalid leaders without signals (C-LIFE-10). */
 import { expect, test, vi } from "vitest";
-import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
 
 test.each([

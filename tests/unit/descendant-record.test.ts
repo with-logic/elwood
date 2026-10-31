@@ -6,11 +6,11 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import {
-  DescendantRecord,
   RECORD_READ_MS,
   watchDescendants,
-} from "../../src/runtime/shutdown/detached-sweep/record.ts";
+} from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
 import { hook, LEADER, leaderRow } from "../helpers/scripted-process-tree.ts";

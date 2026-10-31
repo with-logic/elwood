@@ -48,8 +48,8 @@ export function reapInBackground(
   const scope = daemonScope(new Set(record.pids));
   const withKnownPaths = (reads: SweepOps): SweepOps => ({
     ...reads,
-    listProcesses: (timeoutMs, innerScope = scope) =>
-      reads.listProcesses(timeoutMs, { ...innerScope, known: scope.known }),
+    listProcesses: (timeoutMs, innerScope) =>
+      reads.listProcesses(timeoutMs, { ...scope, ...innerScope, known: scope.known }),
   });
   const recoveryOps = withKnownPaths(ops);
   const foregroundOps = withKnownPaths(confirmationOps);

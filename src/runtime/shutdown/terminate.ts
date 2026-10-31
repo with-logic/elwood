@@ -13,7 +13,7 @@ import {
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import type { SurvivorWatch } from "./detached-sweep/survivors.ts";
+import type { SurvivorWatch } from "./detached-sweep/survivor-watch.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };

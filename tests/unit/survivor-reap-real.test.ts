@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
