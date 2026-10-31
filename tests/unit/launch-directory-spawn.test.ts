@@ -28,6 +28,7 @@ import {
   project,
   useProbeProjects,
 } from "../helpers/preflight-projects.ts";
+import { sessionState } from "../helpers/session-state.ts";
 
 const launches = useProbeProjects();
 const versions = { claude: "2.1.144 (Claude Code)", codex: "codex-cli 0.150.0" } as const;
@@ -106,7 +107,13 @@ describe.each(launchers)("a %s of %s", (_kind, agent, launch) => {
           details:
             agent === "codex" && when.startsWith("as its hook bridge") && change.how === "replaced"
               ? { cwd, cause: probedDirectoryChanged, stderr: "" }
-              : change.details(cwd),
+              : agent === "codex" && when.startsWith("as its hook bridge")
+                ? expect.objectContaining({
+                    cwd,
+                    errno: "ENOENT",
+                    cause: expect.stringContaining("ENOENT"),
+                  })
+                : change.details(cwd),
         }),
       );
       expect(launches).toEqual([]);
@@ -120,3 +127,28 @@ describe.each(launchers)("a %s of %s", (_kind, agent, launch) => {
     expect(launches.map((spawned) => spawned.cwd)).toEqual([cwd]);
   });
 });
+
+for (const agent of ["claude", "codex"] as const) {
+  test(`C-API-61 ${agent} late resume failure restores exact persisted posture and artifacts`, async () => {
+    const cwd = project(agent, versions[agent]);
+    const stateDir = createResumableSessionStateDir(agent, cwd);
+    const elwoodSessionId = `${agent}-probe-cwd`;
+    const before = sessionState(stateDir, elwoodSessionId);
+    const bridge = () => ({
+      start: async () => changeDirectory(cwd),
+      stop: async () => undefined,
+    });
+    if (agent === "claude") setHookBridgeFactoryForTests(bridge);
+    else setCodexHookBridgeFactoryForTests(bridge);
+    const resume =
+      agent === "claude"
+        ? resumeClaude({ stateDir, elwoodSessionId, permissionMode: "bypassPermissions" })
+        : resumeCodex({ stateDir, elwoodSessionId, sandbox: "danger-full-access" });
+    await expect(resume).rejects.toMatchObject({
+      code: `${agent}_start_failed`,
+      details: { cwd, errno: "ENOENT" },
+    });
+    expect(sessionState(stateDir, elwoodSessionId)).toEqual(before);
+    expect(launches).toEqual([]);
+  });
+}

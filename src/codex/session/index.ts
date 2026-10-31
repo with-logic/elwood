@@ -7,6 +7,7 @@ import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import {
+  assertLaunchDirectoryUnchanged,
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
@@ -78,6 +79,7 @@ export async function startCodexWithId(
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,
+      assertCwdUnchanged: () => assertLaunchDirectoryUnchanged(directory),
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,
     });

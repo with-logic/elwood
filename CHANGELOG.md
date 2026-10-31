@@ -15,6 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Update lease waiters retry in their own directory when the previous owner's
   directory guard refused before its updater ran. A profile's own exit 96 keeps
   its login-shell warning instead of being mistaken for that guard refusal.
+- Undo newly created state scaffolding when a start observes that its working
+  directory was replaced during setup, preserving existing files and other sessions.
 
 - Starts and resumes carry the initially checked working-directory identity through
   preflight and cached probes. The child checks its initial directory before shell

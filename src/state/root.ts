@@ -74,28 +74,50 @@ const maxStateTreeAttempts = 3;
 
 /**
  * Runs `makeTree`, which makes `deepest` and any of its missing parents for a session in `cwd`,
- * then requires `cwd` to exist still. A `cwd` removed meanwhile fails with ENOENT, and the
+ * then requires `cwd` to exist still. A supplied `check` instead verifies the launch's original
+ * directory before each attempt and afterward; `undoFiles` removes only this setup's files.
+ * A `cwd` removed meanwhile fails with ENOENT, and the
  * directories `makeTree` made are removed again, deepest first, so a root elsewhere does not
  * outlive the start that failed for it (C-STATE-14). One another start has put its session in
  * meanwhile is left to it, and so is one already gone.
  */
-export function makeStateTree(cwd: string, deepest: string, makeTree: () => void): void {
+export function makeStateTree(
+  cwd: string,
+  deepest: string,
+  makeTree: () => void,
+  check?: () => void,
+  undoFiles: () => void = () => undefined,
+): void {
+  const verify =
+    check ??
+    (() => {
+      realpathSync.native(cwd);
+    });
   const made = new Set<string>();
-  for (let attempt = 1; ; attempt += 1) {
-    for (let path = deepest; !existsSync(path); path = dirname(path)) made.add(path);
-    try {
-      makeTree();
-      break;
-    } catch (error) {
-      const retry = errnoCode(error) === "ENOENT" && existsSync(cwd);
-      if (!retry || attempt === maxStateTreeAttempts) throw error;
-    }
-  }
   try {
-    realpathSync.native(cwd);
+    for (let attempt = 1; ; attempt += 1) {
+      check?.();
+      for (let path = deepest; !existsSync(path); path = dirname(path)) made.add(path);
+      try {
+        makeTree();
+        break;
+      } catch (error) {
+        verify();
+        const retry = errnoCode(error) === "ENOENT";
+        if (!retry || attempt === maxStateTreeAttempts) throw error;
+      }
+    }
+    verify();
   } catch (error) {
-    // Deepest first: each path is a parent of the ones before it.
-    const cleanupErrorCode = removeMade([...made].sort((a, b) => b.length - a.length));
+    let cleanupErrorCode: string | undefined;
+    try {
+      undoFiles();
+    } catch (cleanupError) {
+      cleanupErrorCode = errnoCode(cleanupError);
+    }
+    // Deepest first; only empty directories are ours to remove.
+    const directoryErrorCode = removeMade([...made].sort((a, b) => b.length - a.length));
+    cleanupErrorCode ??= directoryErrorCode;
     throw cleanupErrorCode === undefined
       ? error
       : Object.assign(toError(error), { cleanupErrorCode });

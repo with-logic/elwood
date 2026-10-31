@@ -25,9 +25,11 @@ however either path is spelled (in another letter case on a case-insensitive
 volume, or through a symlink). A caller-provided `stateDir` elsewhere is
 created with its missing parents, and `cwd` is checked again once it, its
 `sessions` directory, and the new session's directory are made: if `cwd` was
-removed meanwhile, every directory that setup made is removed again, except one
-another start has put its session directory in, and the start fails, with the
-`cleanupErrorCode` of any directory that could not be removed. A start that
+removed or observed to name a different directory meanwhile, every empty directory
+that setup made is removed again, along with its newly created default `.gitignore`
+if that file is still its own and no other session is using the tree. A directory
+holding another start's session is kept. The start fails, with the
+`cleanupErrorCode` of any file or directory that could not be removed. A start that
 finds a directory removed under it by such a start makes it again while its own
 `cwd` exists. The `sessions` directory, each session
 directory, and every state file are made only inside their existing parent: a

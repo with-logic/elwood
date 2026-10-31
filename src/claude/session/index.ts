@@ -8,6 +8,7 @@ import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
 import {
+  assertLaunchDirectoryUnchanged,
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
@@ -73,6 +74,7 @@ export async function startClaudeWithId(
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareStateDir(stateDir, {
       cwd: options.cwd,
+      assertCwdUnchanged: () => assertLaunchDirectoryUnchanged(directory),
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,
     });
