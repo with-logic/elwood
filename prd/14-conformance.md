@@ -125,7 +125,7 @@ Each criterion has:
 | C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes both the underlying PTY and the headless terminal model, while closed-fd resize races during process exit are ignored. |
 | C-PTY-06 | §9.4 | Process exit emits a terminal/process exit event and updates session status. |
 | C-PTY-07 | §4.1 | Cursor-addressed PTY output renders into the headless xterm snapshot before startup prompt detection runs. |
-| C-PTY-08 | §4.2 §9.2 | Non-PTY CLI probes (`--version`, `update`, `--help`) and the agent PTY run through the same interactive login shell, started in the PTY's directory (the session's launch directory, on start and on resume), so every lifecycle operation resolves the same CLI installation as the session even under a per-directory tool manager, and Codex launches with only the flags its own `--help` lists. A probe whose launch directory is gone when it spawns fails with `*_start_failed` and `details.cwd`, never `*_not_found`. |
+| C-PTY-08 | §4.2 §9.2 | Non-PTY CLI probes (`--version`, `update`, `--help`) and the agent PTY run through the same interactive login shell, started in the PTY's directory (the session's launch directory, on start and on resume), so every lifecycle operation resolves the same CLI installation as the session even under a per-directory tool manager, and Codex launches with only the flags its own `--help` lists. A probe whose launch directory is gone when it spawns fails with `*_start_failed`, `details.cwd`, and the probe's own failure as `details.cause`, never `*_not_found` or its "not found on PATH" message; a directory made again in its place fails as replaced. |
 
 #### C-PERF: Startup Performance (§9)
 

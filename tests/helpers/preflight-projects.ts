@@ -6,9 +6,9 @@
  * preflight tests.
  */
 
-import { chmodSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
 import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
 import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import {
@@ -40,7 +40,9 @@ export function useProbeProjects(): Launch[] {
       throw new Error("no PTY in this test");
     });
     const home = dir("elwood-preflight-home-");
-    writeFileSync(join(home, ".profile"), 'echo startup noise\nexport PATH="$PWD/bin:$PATH"\n');
+    // A directory holding `gone-on-login` is removed by the shell's startup, after it started there.
+    const startup = '[ -e gone-on-login ] && rm -rf "$PWD"\nexport PATH="$PWD/bin:$PATH"\n';
+    writeFileSync(join(home, ".profile"), `echo startup noise\n${startup}`);
     vi.stubEnv("HOME", home);
     vi.stubEnv("PATH", "/usr/bin:/bin"); // no global CLI: a probe elsewhere finds none
     useStandInLoginShell(home);
@@ -75,13 +77,56 @@ export function project(cli: ElwoodAgentKind, version: string, help = ""): strin
   return cwd;
 }
 
-/** Removes `cwd` as the first probe is about to spawn, after the launch's own check passed. */
-export function removeWhenProbed(cwd: string): void {
+/**
+ * Removes `cwd` as the first probe is about to spawn, after the launch's own check of it passed,
+ * then runs that probe for real. Given a `replacement`, made while `cwd` still existed so it is
+ * a different directory, moves it into `cwd`'s place once that probe has failed.
+ */
+export function removeWhenProbed(cwd: string, replacement?: string): void {
   const probe = currentCommandRunner();
-  setCommandRunnerForTests((command, args, options) => {
+  setCommandRunnerForTests(async (command, args, options) => {
     setCommandRunnerForTests(probe);
     rmSync(cwd, { recursive: true, force: true });
-    return probe(command, args, options);
+    const result = await probe(command, args, options);
+    if (replacement !== undefined) renameSync(replacement, cwd);
+    return result;
+  });
+}
+
+/**
+ * How a launch whose directory was removed as its CLI was probed fails (C-API-61, C-PTY-08):
+ * as that directory, with the probe's own failure as the cause, never "not found on PATH". A
+ * directory made again in its place has no `errno` of its own, and keeps none of the probe's.
+ */
+export const directoryLossCases = [
+  {
+    how: "removed",
+    remade: false,
+    message: "The working directory (`cwd`) is not an existing directory.",
+    errno: "ENOENT",
+  },
+  {
+    how: "removed and made again",
+    remade: true,
+    message: "The working directory (`cwd`) was replaced by another directory.",
+    errno: undefined,
+  },
+] as const;
+
+/**
+ * Matches the error of a launch that lost `cwd`, `as` one of `directoryLossCases`. Its
+ * `details` must equal these exactly.
+ */
+export function lostDirectoryFailure(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  as: Pick<(typeof directoryLossCases)[number], "message" | "errno">,
+  cause: unknown = expect.stringMatching(/^spawn .* ENOENT$/), // the shell could not start there
+): unknown {
+  return expect.objectContaining({
+    code: `${agent}_start_failed`,
+    message: as.message,
+    details: { cwd, cause, ...(as.errno ? { errno: as.errno } : {}) },
   });
 }
 

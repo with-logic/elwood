@@ -3,13 +3,17 @@
  * Implements PRD §9.2, §10, and C-PTY-08.
  */
 
-import { elwoodError, probeFailureDetails } from "../core/errors.ts";
+import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
+import {
+  type AutoupdateOutcome,
+  cachedAutoupdate,
+  cachedVersionRead,
+} from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
@@ -30,16 +34,16 @@ export async function preflightClaude(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let updateError: unknown;
+  let failedUpdate: Extract<AutoupdateOutcome, { readonly ok: false }> | undefined;
   if (autoupdate) {
     // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
     // we re-read the installed version and fall through to the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11).
-    const outcome = await cachedAutoupdate("claude", {
+    const outcome = await cachedAutoupdate("claude", cwd, {
       verify: () => readClaudeVersion(cwd),
       update: () => runClaudeUpdate(cwd),
     });
-    if (!outcome.ok) updateError = outcome.error;
+    if (!outcome.ok) failedUpdate = outcome;
   }
   const result = await readClaudeVersion(cwd);
   const version = parseVersion(result.stdout);
@@ -61,7 +65,10 @@ export async function preflightClaude(
   }
   // Installed CLI is compatible: a failed best-effort update is a warning (naming the installed
   // version that will be used), not a start failure.
-  return updateError === undefined ? undefined : buildUpdateWarning("claude", version, updateError);
+  return (
+    failedUpdate &&
+    buildUpdateWarning("claude", version, failedUpdate.error, failedUpdate.updateCwd)
+  );
 }
 
 async function runClaudeUpdate(cwd: string): Promise<void> {
@@ -84,7 +91,12 @@ async function readClaudeVersion(cwd: string): Promise<CommandResult> {
     Promise.resolve(currentCommandRunner()(userShell(), command, { cwd })),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
+    // The probe's own failure is the cause, so a launch directory that went while it was
+    // probed reports why the probe failed, not a missing CLI (C-PTY-08).
+    const missing = result.error
+      ? "The login shell could not be started to find `claude`."
+      : "`claude` was not found on PATH.";
+    throw elwoodError("claude_not_found", missing, notFoundDetails(result, "claude"));
   }
   if (result.status !== 0) {
     throw elwoodError(
