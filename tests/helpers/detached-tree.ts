@@ -38,6 +38,8 @@ const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
 // optionally starts `next` DETACHED from plain Node (Node's `detached` is `setsid()`, as
 // the CLIs do for hooks, which run as `sh` and `node`), and stays alive. `ignore-term`
 // makes the PTY leader ignore SIGTERM, like a CLI whose graceful shutdown is stuck.
+// `late-on-term` makes it answer SIGTERM by starting a detached `late` process and
+// exiting half a second later, as Codex can start its snapshot shell during a stop.
 // `with-daemon` runs the leader from a copy of
 // Node named `codex` and has it start, detached and with their real arguments, the
 // Codex 0.164 TUI's app-server `daemon` (which starts an `mcp` server from plain Node)
@@ -51,6 +53,10 @@ const { existsSync, writeFileSync } = require("node:fs");
 const [dir, name, next, mode] = process.argv.slice(2);
 const start = (binary, args) => spawn(binary, [__filename, dir, ...args], { detached: true, stdio: "ignore" });
 if (mode === "ignore-term") process.on("SIGTERM", () => {});
+if (mode === "late-on-term") process.on("SIGTERM", () => {
+  start(process.execPath, ["late"]);
+  setTimeout(() => process.exit(0), 500);
+});
 if (next) start(${JSON.stringify(NODE)}, [next, next === "child" ? "grandchild" : ""]);
 if (mode === "with-daemon") {
   start(dir + "/${DAEMON_BINARY}", ["daemon", "mcp", "", "app-server", "--listen", "unix://", "--analytics-default-enabled", "--managed-daemon"]);
@@ -71,7 +77,7 @@ export type DetachedTree = { readonly pty: PtyProcess; readonly dir: string };
 
 /** Starts the leader under a real PTY; it starts the detached child, which starts the grandchild. */
 export function startDetachedTree(
-  mode: "" | "ignore-term" | "with-daemon" | "becomes-daemon" = "",
+  mode: "" | "ignore-term" | "late-on-term" | "with-daemon" | "becomes-daemon" = "",
 ): DetachedTree {
   const dir = holdDir("elwood-detached-");
   const asCodex = mode === "with-daemon" || mode === "becomes-daemon";
@@ -95,11 +101,11 @@ export function startDetachedTree(
 
 /**
  * Waits, up to `PID_FILE_WAIT_TIMEOUT_MS`, for the pid file of `processName`, a process a
- * `with-daemon` or `becomes-daemon` leader starts, and resolves to its pid.
+ * leader in a non-default mode starts, and resolves to its pid.
  */
 export async function waitForTreeProcessPid(
   tree: DetachedTree,
-  processName: "daemon" | "mcp" | "updater" | "becoming",
+  processName: "daemon" | "mcp" | "updater" | "becoming" | "late",
 ): Promise<number> {
   const pid = await waitForPid(tree.dir, processName, PID_FILE_WAIT_TIMEOUT_MS);
   if (pid === undefined) throw new Error(`the ${processName} process never wrote its pid file`);

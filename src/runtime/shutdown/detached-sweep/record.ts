@@ -71,6 +71,11 @@ export class DescendantRecord {
     }
   }
 
+  /** The pid of each process recorded, whatever it runs now. */
+  get pids(): readonly number[] {
+    return [...this.identities].map((id) => Number.parseInt(id, 10));
+  }
+
   /**
    * The rows of `table` that are recorded processes still alive: same pid, same start.
    * Never Codex's shared daemon, which one may have become by `exec` since it was recorded.

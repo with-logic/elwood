@@ -167,13 +167,20 @@ export function detachedDescendantGroups(
   return groups;
 }
 
-/** The table's rows grouped by their parent's pid. */
-export function childrenByParent(table: readonly ProcessEntry[]): Map<number, ProcessEntry[]> {
+/** The table's rows grouped by their parent's pid, built once per table. */
+export function childrenByParent(table: readonly ProcessEntry[]): ChildIndex {
+  const built = childIndexes.get(table);
+  if (built !== undefined) return built;
   const children = new Map<number, ProcessEntry[]>();
   for (const entry of table) {
     const siblings = children.get(entry.ppid);
     if (siblings) siblings.push(entry);
     else children.set(entry.ppid, [entry]);
   }
+  childIndexes.set(table, children);
   return children;
 }
+
+type ChildIndex = ReadonlyMap<number, readonly ProcessEntry[]>;
+/** Each read's index, built once however many walks from different roots read it. */
+const childIndexes = new WeakMap<readonly ProcessEntry[], ChildIndex>();

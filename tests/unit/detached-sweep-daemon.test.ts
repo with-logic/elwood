@@ -8,6 +8,9 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
+import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
+import { reapRecordedSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
 import {
   errno,
   hook,
@@ -86,5 +89,29 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
     });
     expect(refused.calls.slice(-2)).toEqual(["cont 5010", "kill 5002"]);
     expect(refused.calls).not.toContain("kill 5010");
+  });
+
+  test("the reap of a stop's survivors resumes a group that became the daemon too", async () => {
+    // Recorded as the TUI's fork; once the TUI exits it hangs off PID 1, then `exec`s.
+    const record = new DescendantRecord();
+    record.observe([leaderRow, forked], LEADER);
+    const orphan = { ...forked, ppid: 1 };
+    const { ops, calls } = scripted([[orphan], [{ ...orphan, shared: true }]]);
+    await expect(reapRecordedSurvivors(record, ops)).resolves.toBeUndefined();
+    expect(calls.join(", ")).toBe("list, stop 5010, list, list, cont 5010");
+  });
+
+  test("the reap of a stop's survivors reads each group it stopped, wherever its parent is", async () => {
+    // 5010, which a recorded hook started after the last recording read, is no recorded pid.
+    const record = new DescendantRecord();
+    record.observe([leaderRow, hook(5002)], LEADER);
+    const { ops } = scripted([[hook(5002, { ppid: 1 }), hook(5010, { ppid: 5002 })]]);
+    const roots: number[][] = [];
+    const listProcesses = (timeoutMs: number, scope?: DaemonScope) => {
+      roots.push([...(scope?.roots ?? [])]);
+      return ops.listProcesses(timeoutMs);
+    };
+    await expect(reapRecordedSurvivors(record, { ...ops, listProcesses })).resolves.toBeUndefined();
+    expect([roots[0], roots.at(-1)]).toEqual([[5002], [5002, 5010]]);
   });
 });

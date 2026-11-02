@@ -28,7 +28,7 @@
 import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
-import { type FailureReason, type SweepFailure, SweepFailures } from "./failures.ts";
+import { type SweepFailure, SweepFailures } from "./failures.ts";
 import {
   confirmedGone,
   confirmLiveGroups,
@@ -37,10 +37,12 @@ import {
 } from "./kill.ts";
 import {
   newSweepState,
+  recordUnconfirmed,
   restopEscapedGroups,
   type SweepOps,
   type SweepState,
   stopAnchoredGroups,
+  sweepOutcome,
   unheldGroups,
   unreachedGroups,
 } from "./rounds.ts";
@@ -88,11 +90,7 @@ export async function sweepDetachedGroups(
   state.unheld = [leaderPid];
   await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
   await killOrResumeSignaledGroups(ops, state, deadline);
-  for (const [group, error] of state.unstoppable) {
-    if (state.live.has(group))
-      state.failures.record("could not stop a live descendant group", error, [group]);
-  }
-  return state.failures.result();
+  return sweepOutcome(state);
 }
 
 /**
@@ -117,25 +115,23 @@ async function stopDescendantGroups(
     while (true) {
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
-        return unconfirmed(state, "process groups not confirmed stopped by the deadline");
+        return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       if (leaderExited())
-        return unconfirmed(state, "the leader exited before every group was confirmed stopped");
+        return recordUnconfirmed(
+          state,
+          "the leader exited before every group was confirmed stopped",
+        );
       restopEscapedGroups(table, ops, state);
       stopAnchoredGroups(table, ops, state);
     }
   } catch (error) {
-    unconfirmed(state, "process table unreadable", error);
+    recordUnconfirmed(state, "process table unreadable", error);
   }
-}
-
-/** Records `reason` against every group not yet confirmed stopped: unreached or unheld. */
-function unconfirmed(state: SweepState, reason: FailureReason, error?: unknown): void {
-  state.failures.record(reason, error, [...unreachedGroups(state), ...state.unheld]);
 }
 
 /**
