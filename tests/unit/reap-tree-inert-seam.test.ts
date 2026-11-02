@@ -8,6 +8,10 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import {
+  activeProcessTreeOps,
+  osProcessTreeOps,
+} from "../../src/runtime/shutdown/process-tree-ops.ts";
+import {
   quietProcessTree,
   resetProcessTreeOpsForTests,
   SessionReaper,
@@ -55,4 +59,16 @@ test("C-LIFE-10 the inert resume sends no real signal and lets go of the group",
   quiet.continueGroup(LEADER);
   expect(await quiet.listProcesses(1_000)).toEqual([]);
   expect(kill).not.toHaveBeenCalled();
+});
+
+test("C-LIFE-10 the active ops are production's, then a test's, then production's after a reset", () => {
+  expect(activeProcessTreeOps()).toBe(osProcessTreeOps);
+  const killGroup = () => {};
+  setProcessTreeOpsForTests({ killGroup });
+  const active = activeProcessTreeOps();
+  expect(active.killGroup).toBe(killGroup);
+  // An op the test left out is inert, never production's.
+  expect(active.listProcesses).not.toBe(osProcessTreeOps.listProcesses);
+  resetProcessTreeOpsForTests();
+  expect(activeProcessTreeOps()).toBe(osProcessTreeOps);
 });
