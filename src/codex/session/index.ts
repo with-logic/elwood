@@ -72,6 +72,7 @@ export async function startCodexWithId(
       options.cwd,
       options.strictVersionCheck ?? false,
       options.autoupdate ?? false,
+      directory.identity,
     ),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {

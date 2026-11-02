@@ -57,7 +57,12 @@ reject or poison any other otherwise-compatible start in the roster. When the
 existence check fails in the launch directory of the start or resume that
 triggers the update (§9.2 below), no update command runs. That is not an update
 attempt: it records no `agent_update_failed` warning, and each launch that
-shared it tries the update again, in its own launch directory. If the
+shared it tries the update again, in its own launch directory. A directory guard
+that refuses before the update command starts is likewise not an update attempt:
+it has no `updateCwd`, produces no update-failure warning, and is not cached. The
+lease owner publishes no completion for that refusal; a waiting process retries
+under the lease in its own launch directory. An unrelated login-profile exit,
+including status 96, remains a `login_shell_failed` update warning. If the
 installed agent version is below the minimum after that optional update step,
 startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`
@@ -90,13 +95,18 @@ preflights on a single thread. Each probe runs in the session's launch directory
 (§4.2). Elwood reads each adapter's `--version`, and Codex's `--help`, there and
 keeps the successful reads of the 32 most recently used launch directories —
 concurrent reads in one directory share a single subprocess — mirroring the
-once-per-process autoupdate dedupe (C-LIFE-09). A read is kept under the directory
-it ran in (its device and inode) as well as its path: a directory deleted and made
+once-per-process autoupdate dedupe (C-LIFE-09). A read is keyed by the launch
+directory (its device and inode) as well as its path: a directory deleted and made
 again at the same path is read again, a symlink to a read directory is read as its
-own path, and a read whose directory was replaced while it ran, or could not be
-identified, is not kept. Nor is a `--version` read with a stream longer than 65,536
-UTF-16 code units. All cached version and capability reads, in every directory, are
-invalidated after every coordinated update attempt, including a failed or peer-owned attempt, because
+own path, and a read whose directory replacement was detected at a validation
+boundary, or could not be identified, is not kept. Nor is a `--version` read with a
+stream longer than 65,536
+UTF-16 code units. A probe checks its actual initial directory before profiles and
+the original path after profiles (§4.2); a mismatch refuses the command and prevents
+cache retention. These checks do not make executable selection atomic or detect
+replacements wholly between checks. All cached version and capability reads, in
+every directory, are invalidated after every coordinated update attempt, including
+a failed or peer-owned attempt, because
 a failed installer may still have partially changed the binary. When `autoupdate`
 is set, concurrent callers share one update, which runs in the launch directory of
 the launch (start or resume) that triggers it; each caller then validates the

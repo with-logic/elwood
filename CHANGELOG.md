@@ -12,19 +12,36 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Update lease waiters retry in their own directory when the previous owner's
+  directory guard refused before its updater ran. A profile's own exit 96 keeps
+  its login-shell warning instead of being mistaken for that guard refusal.
+
+- Starts and resumes carry the initially checked working-directory identity through
+  preflight and cached probes. The child checks its initial directory before shell
+  startup and the original path again after profiles; a mismatch refuses the
+  command. These bounded checks do not make executable selection atomic or detect
+  replacements wholly between checks. A profile's deliberate `cd` remains supported.
+  Host-side stat failures retain their path and errno in the start failure; child-side refusals have no host errno.
+  An update refused before its command starts is neither cached nor reported as a
+  failed update attempt.
+
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
-- A session's agent now starts only in the directory its start or resume
-  checked first. A launch directory removed or replaced at any point after
-  preflight, up to the moment the PTY is spawned (including during Codex's
-  capability probe), fails the start or resume with `*_start_failed` and
+- A `--version` or Codex `--help` probe now starts only while its launch
+  directory matches at its child-side validation boundaries. A missing or replaced
+  directory detected there refuses the command and fails start or resume with
+  that as its `details.cause`; replacement wholly between checks is not detected.
+- A session validates the directory its start or resume checked first at defined
+  launch boundaries. A removal or replacement detected after preflight or before
+  PTY spawn (including after Codex's capability probe) fails start or resume with
+  `*_start_failed` and
   `details.cwd`, and no PTY is spawned, where the agent used to start in the
   replacement. The check after preflight compares the directory with the one
-  first checked, so no state is written into a replacement.
+  first checked; these are bounded checks, not atomic filesystem isolation.
 - The `--version` and Codex capability caches keep the 32 most recently used
   launch directories, not just the last one, and are keyed by the directory
   itself as well as its path. A directory made again at the same path, replaced

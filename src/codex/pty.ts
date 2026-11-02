@@ -57,17 +57,27 @@ export async function spawnCodexPty(
   runtime: Pick<SessionRuntime, "socketHome" | "socketPath" | "bridgeScriptPath">,
   options: CodexLaunchOptions,
 ): Promise<CodexLaunch> {
-  const capabilities = await preflight.detectCodexCliCapabilities(record.cwd);
+  const capabilities = await preflight.detectCodexCliCapabilities(
+    options.launchDirectory.cwd,
+    options.launchDirectory.identity,
+  );
   const reportPath = codexHomeReportPath(runtime);
-  const launch = buildCodexShellCommand(record, runtime.bridgeScriptPath, options, capabilities);
-  // After the capability probe, the launch's last await: the agent runs in the directory checked.
+  const launch = buildCodexShellCommand(
+    { ...record, cwd: options.launchDirectory.cwd },
+    runtime.bridgeScriptPath,
+    options,
+    capabilities,
+  );
+  // Last host check of the initial cwd; the child checks before/after profiles (§4.2).
+  // Profiles may cd, and validation does not make execution atomic.
   assertLaunchDirectoryUnchanged(options.launchDirectory);
   let pty: PtyProcess;
   try {
     pty = currentPtyFactory()({
       command: userShell(),
       args: loginShellCommand(`${reportCodexHomeCommand(reportPath)}; ${launch}`),
-      cwd: record.cwd,
+      cwd: options.launchDirectory.cwd,
+      directoryIdentity: options.launchDirectory.identity,
       env: { ...process.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
       size: options.initialSize ?? defaultTerminalSize,
     });

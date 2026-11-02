@@ -20,6 +20,7 @@ import {
 } from "../../src/codex/session/bridge.ts";
 import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
+import { probedDirectoryChanged } from "../../src/runtime/probe/directory-key.ts";
 import {
   changeAfterProbe,
   changeDirectory,
@@ -95,14 +96,17 @@ describe.each(launchers)("a %s of %s", (_kind, agent, launch) => {
   describe.each(changes)("whose directory is $how", (change) => {
     test.each(
       moments(agent),
-    )("C-API-61 C-PTY-08 %s spawns no agent and fails as that", async (_when, changeAt) => {
+    )("C-API-61 C-PTY-08 %s spawns no agent and fails as that", async (when, changeAt) => {
       const cwd = project(agent, versions[agent]);
       changeAt(cwd, change.how === "replaced" ? project(agent, versions[agent]) : undefined);
       await expect(launch(cwd)).rejects.toEqual(
         expect.objectContaining({
           code: `${agent}_start_failed`,
           message: change.message,
-          details: change.details(cwd),
+          details:
+            agent === "codex" && when.startsWith("as its hook bridge") && change.how === "replaced"
+              ? { cwd, cause: probedDirectoryChanged, stderr: "" }
+              : change.details(cwd),
         }),
       );
       expect(launches).toEqual([]);
@@ -110,7 +114,7 @@ describe.each(launchers)("a %s of %s", (_kind, agent, launch) => {
     });
   });
 
-  test("C-PTY-08 whose directory stays the one it checked spawns its agent there", async () => {
+  test("C-PTY-08 whose directory stays unchanged passes that checked cwd to the PTY factory", async () => {
     const cwd = project(agent, versions[agent]);
     await expect(launch(cwd)).rejects.toMatchObject({ code: "pty_start_failed" }); // no PTY here
     expect(launches.map((spawned) => spawned.cwd)).toEqual([cwd]);

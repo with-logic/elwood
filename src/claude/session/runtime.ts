@@ -3,7 +3,6 @@
  * Implements PRD §4, §6, and §9.
  */
 
-import { resolve } from "node:path";
 import { bridgeScriptSource } from "../../bridge/script.ts";
 import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
@@ -103,13 +102,15 @@ export function spawnClaudePty(
     userShell(),
     buildClaudeShellCommand(settingsPath, options, record.claude.resumeId),
   );
-  // Last, after everything else the launch awaited: the agent runs in the directory checked.
+  // Last host check of the initial cwd; the child checks before/after profiles (§4.2).
+  // Profiles may cd, and validation does not make execution atomic.
   assertLaunchDirectoryUnchanged(options.launchDirectory);
   try {
     return currentPtyFactory()({
       command: launch.command,
       args: launch.args,
-      cwd: resolve(options.cwd),
+      cwd: options.launchDirectory.cwd,
+      directoryIdentity: options.launchDirectory.identity,
       env: {
         ...process.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,

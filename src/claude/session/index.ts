@@ -68,7 +68,7 @@ export async function startClaudeWithId(
   const strict = options.strictVersionCheck ?? false;
   // A probe that fails because `cwd` went or was replaced fails as that, not a missing CLI.
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-    preflightClaude(options.cwd, strict, options.autoupdate ?? false),
+    preflightClaude(options.cwd, strict, options.autoupdate ?? false, directory.identity),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareStateDir(stateDir, {

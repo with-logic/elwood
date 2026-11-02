@@ -13,6 +13,7 @@ import { describe, expect, test, vi } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
+import { directoryGuardExitCode } from "../../src/runtime/checked-command.ts";
 import * as shell from "../../src/runtime/shell.ts";
 import {
   bypassByDirectory,
@@ -59,8 +60,12 @@ test.each(
 )("C-PTY-08 C-API-61 a %s start whose directory goes after its probe's shell started fails as that, with the probe's cause", async (agent, start, _preflight, version) => {
   const cwd = project(agent, version);
   writeFileSync(join(cwd, "gone-on-login"), "");
-  const cause = `The login shell found no \`${agent}\` (status 127).`;
-  const lost = lostDirectoryFailure(agent, cwd, directoryLossCases[0], cause);
+  const cause = `login shell exited with status ${directoryGuardExitCode} before starting the probe command`;
+  const lost = lostDirectoryFailure(agent, cwd, directoryLossCases[0], {
+    cause,
+    phase: "login_shell",
+    stderr: "",
+  });
   await expect(start({ cwd })).rejects.toEqual(lost);
 });
 

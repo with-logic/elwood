@@ -10,6 +10,7 @@ import {
   ProbeStart,
   ProbeStartWatcher,
   probeCommandStartLine,
+  probeDirectoryRefusalLine,
   probeScript,
 } from "../../src/runtime/probe/start.ts";
 import { probeShellStatus } from "../../src/runtime/shell.ts";
@@ -59,4 +60,17 @@ test("C-PERF-05 the first channel to carry the start line starts the command, on
   expect(viaStdout.feed("stdout", Buffer.from(`noise ${line}`))).toBe(true);
   expect(viaStdout.started).toBe(true);
   expect(viaStdout.feed("control", Buffer.from(line))).toBe(false);
+});
+
+test.each([
+  "control",
+  "stdout",
+] as const)("C-PERF-05 a split private guard refusal on %s never starts the command", (channel) => {
+  const start = new ProbeStart([]);
+  expect(start.directoryRefused).toBe(false);
+  for (const byte of Buffer.from(`${probeDirectoryRefusalLine}\n`))
+    expect(start.feed(channel, Buffer.from([byte]))).toBe(false);
+  expect(start.directoryRefused).toBe(true);
+  expect(start.started).toBe(false);
+  expect(start.feed(channel, Buffer.from(`${probeDirectoryRefusalLine}\n`))).toBe(false);
 });

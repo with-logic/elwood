@@ -31,8 +31,9 @@ Useful CLI capabilities for Elwood:
   versions reject unknown flags. Detection runs `codex --help` in the directory
   the session launches in, since a per-directory tool manager can resolve a
   different build there, and keeps the answer per directory like the version
-  check (PRD §9.2): the 32 most recently used directories, a directory deleted
-  and made again probed again, and every answer dropped after an update attempt.
+  check (PRD §9.2). It retains answers for the 32 most recently used directories.
+  Replacing a directory causes a fresh probe, and any update attempt invalidates
+  every cached answer.
 - Codex can also render interactive trust and update prompts before the session
   is usable. Elwood should select `Trust all and continue` for hook prompts, and
   skip TUI update prompts because API-level `autoupdate` runs `codex update`

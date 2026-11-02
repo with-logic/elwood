@@ -8,13 +8,21 @@ import { dirname, join } from "node:path";
 import { spawn } from "node-pty";
 import { moduleRequire } from "../core/module-require.ts";
 import type { TerminalSize } from "../core/types.ts";
+import { checkedCommand } from "../runtime/checked-command.ts";
 import type { PtyFactory, PtyProcess, PtySpawnOptions } from "./types.ts";
 
 const require = moduleRequire(import.meta.url);
 
 export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess => {
   ensureNodePtySpawnHelperExecutable();
-  const pty = spawn(options.command, [...options.args], {
+  const launch = checkedCommand(
+    options.command,
+    options.args,
+    options.cwd,
+    options.directoryIdentity,
+    true,
+  );
+  const pty = spawn(launch.command, [...launch.args], {
     name: "xterm-256color",
     cols: options.size.cols,
     rows: options.size.rows,
