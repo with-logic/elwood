@@ -10,7 +10,6 @@
  */
 
 import { randomBytes } from "node:crypto";
-import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { isStringArray } from "../../core/predicates.ts";
 import { StreamMarkerWatcher } from "../stream-marker.ts";
 
@@ -28,17 +27,14 @@ export const homeGuardStopMarker = `elwood-home-guard-stopped-${randomBytes(8).t
 
 /** Why a launch the e2e home guard stopped failed, for its start or probe error. */
 export const homeGuardStoppedReason =
-  "the e2e home guard stopped its login shell: a startup file left CODEX_HOME or " +
-  "CLAUDE_CONFIG_DIR unexported or not one of the suite's private homes, or " +
+  "the e2e home guard stopped its login shell: a startup file left CODEX_HOME, " +
+  "CLAUDE_CONFIG_DIR, or CLAUDE_CODE_TMPDIR unexported or not one of the suite's private homes, or " +
   `${homeGuardHomesKey} is not a JSON array of absolute paths`;
 
-/** The variable naming each adapter's CLI home. */
-const homeVariables = {
-  claude: "CLAUDE_CONFIG_DIR",
-  codex: "CODEX_HOME",
-} as const satisfies Record<ElwoodAgentKind, string>;
+/** The private CLI homes and Claude temp root protected during e2e launches. */
+const homeVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_CODE_TMPDIR"] as const;
 
-export type HomeVariable = (typeof homeVariables)[ElwoodAgentKind];
+export type HomeVariable = (typeof homeVariables)[number];
 
 /** The registered homes, or `undefined` when `raw` is not a JSON array of absolute paths. */
 export function privateHomes(raw: string): readonly string[] | undefined {
@@ -53,7 +49,7 @@ export function privateHomes(raw: string): readonly string[] | undefined {
 
 /** The home variables the guard checks: those Elwood's own environment sets to one of `homes`. */
 export function guardedVariables(homes: readonly string[]): readonly HomeVariable[] {
-  return Object.values(homeVariables).filter((name) => homes.includes(process.env[name] ?? ""));
+  return homeVariables.filter((name) => homes.includes(process.env[name] ?? ""));
 }
 
 /**

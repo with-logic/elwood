@@ -113,9 +113,10 @@ const realHome =
 
 /**
  * The e2e suite's CLI home guard (PRD §12, C-E2E-24). The suite points `CLAUDE_CONFIG_DIR`
- * and `CODEX_HOME` at private homes it creates and lists in `ELWOOD_E2E_PRIVATE_HOMES`, but
+ * and `CODEX_HOME`, plus `CLAUDE_CODE_TMPDIR`, at private roots listed in
+ * `ELWOOD_E2E_PRIVATE_HOMES`, but
  * each CLI starts through the user's login shell, whose startup files run after Elwood hands
- * over its environment and could replace, unset, or unexport either one. Each of the two that
+ * over its environment and could replace, unset, or unexport them. Each variable that
  * Elwood's own environment sets to a listed home is guarded: the login shell, after its
  * startup files, exits `homeGuardExitCode` before the agent or probe command unless the
  * variable is still exported and its real path is a listed home. A list that cannot be read

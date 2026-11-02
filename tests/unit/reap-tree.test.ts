@@ -11,8 +11,9 @@ import {
   rethrowUnlessGroupGone,
   SessionReaper,
 } from "../../src/runtime/shutdown/reap-tree.ts";
+import { FAKE_PID } from "../helpers/fake-pid.ts";
 
-const LEADER = 1000;
+const LEADER = FAKE_PID;
 
 afterEach(() => {
   vi.restoreAllMocks();

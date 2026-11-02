@@ -13,6 +13,7 @@ import {
   SessionReaper,
   setProcessTreeOpsForTests,
 } from "../../src/runtime/shutdown/reap-tree.ts";
+import { FAKE_PID } from "../helpers/fake-pid.ts";
 
 const listing = vi.hoisted(() => ({ calls: 0 }));
 
@@ -24,8 +25,8 @@ vi.mock("../../src/runtime/shutdown/process-table.ts", async (importOriginal) =>
   },
 }));
 
-// Any valid pid works: `process.kill` is replaced, so no group is ever signaled.
-const LEADER = 5000;
+// Never the runner's own pid, which the reaper deliberately excludes.
+const LEADER = FAKE_PID;
 
 afterEach(() => {
   vi.restoreAllMocks();

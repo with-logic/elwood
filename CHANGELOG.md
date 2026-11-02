@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a
@@ -36,6 +43,13 @@ back each entry are listed in `prd/14-conformance.md`.
   read as `*_start_failed`, and whatever it printed reached that error's
   `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
   handlers before running the CLI.
+- A probe whose command dies of a signal now reports the status a shell would,
+  128 plus the signal's number, instead of no status. A login shell that dies
+  before starting the command is still a login-shell failure. `elwood interactive`'s
+  PATH lookup likewise now fails with "login shell exited with status 143" where it
+  said "status null".
+- `*_start_failed` details and the `agent_update_failed` warning now carry a failed
+  probe's exit status as `exitStatus`, as the spec already said the warning would.
 - `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
   detached hook processes ten seconds, up from three, before they reject with
   `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one

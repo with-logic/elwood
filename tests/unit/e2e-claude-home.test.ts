@@ -40,7 +40,9 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
     expect(JSON.parse(seen.config ?? "")).toEqual(seeded);
     expect(seen.catalog).toBe("[]");
     expect(seen.entries).toEqual([".claude.json", ".credentials.json", "cache"]); // no settings
-    expect(readdirSync(tmp)).toEqual([]);
+    expect(seen.claudeTemp.startsWith(join(tmp, "elwood_e2e_ctmp-"))).toBe(true);
+    expect(seen).toMatchObject({ claudeTempEnv: seen.claudeTemp, claudeTempEmpty: true });
+    expect(readdirSync(tmp)).toEqual([]); // both private dirs removed at exit
     expect(tree(user)).toEqual(before);
   });
 
@@ -50,7 +52,9 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
     userConfig(user);
     const runner = tempDir("claude-home-runner-"); // the runner's own private dir
     writeFileSync(join(runner, ".claude.json"), "{}");
-    const env = { TMPDIR: tmp, CLAUDE_CONFIG_DIR: runner };
+    const runnerTemp = tempDir("claude-home-runner-tmp-"); // the runner's own Claude temp root
+    writeFileSync(join(runnerTemp, "kept"), "");
+    const env = { TMPDIR: tmp, CLAUDE_CONFIG_DIR: runner, CLAUDE_CODE_TMPDIR: runnerTemp };
     const custom = childClaudeHome({
       ...env,
       HOME: home(),
@@ -58,6 +62,8 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
     });
     expect(custom).toMatchObject({ user, config: JSON.stringify(seeded) });
     expect(custom.dir).not.toBe(runner);
+    expect(custom.claudeTempEnv).toBe(custom.claudeTemp);
+    expect(custom.claudeTemp).not.toBe(runnerTemp);
     const userHome = home(); // the user had no CLAUDE_CONFIG_DIR: ~/.claude, not the runner's
     userConfig(join(userHome, ".claude"), join(userHome, ".claude.json"));
     const unset = childClaudeHome({
@@ -70,6 +76,7 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
       config: JSON.stringify(seeded),
     });
     expect(tree(runner)).toEqual({ ".claude.json": "{}" });
+    expect(tree(runnerTemp)).toEqual({ kept: "" });
     expect(readdirSync(tmp)).toEqual([]);
   });
 
@@ -160,6 +167,9 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
     config: "{}",
     catalog: null,
     storage: null,
+    claudeTemp: "/t/c",
+    claudeTempEnv: "/t/c",
+    claudeTempEmpty: true,
   } satisfies Seen;
 
   test("C-E2E-23 the harness reads the child's report only in the shape it declares", () => {
@@ -172,6 +182,9 @@ describe("e2e Claude config dir (C-E2E-23)", () => {
       ["credentials", 1],
       ["credentialsMode", "0600"],
       ["storage", 1],
+      ["claudeTemp", null],
+      ["claudeTempEnv", 1],
+      ["claudeTempEmpty", "yes"],
     ] as const)
       expect(() => parseSeen(JSON.stringify({ ...report, [key]: value }))).toThrow(
         `claude-home child reported a malformed ${key}`,
