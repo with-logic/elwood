@@ -21,6 +21,7 @@
 import { errnoCode } from "../../core/errors.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { type SweepOps, sweepDetachedGroups } from "./detached-sweep/index.ts";
+import { UNREAD } from "./process-table.ts";
 import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
 
 /**
@@ -114,7 +115,7 @@ export function quietProcessTree(): Omit<ProcessTreeOps, "killGroup"> {
   };
 }
 
-const QUIET_ROW = { ppid: 1, zombie: false, stopped: true, name: "", shared: false };
+const QUIET_ROW = { ...UNREAD, ppid: 1, stopped: true };
 
 export function resetProcessTreeOpsForTests(): void {
   activeOps = osProcessTreeOps;

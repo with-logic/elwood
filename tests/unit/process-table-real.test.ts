@@ -1,8 +1,8 @@
 /**
  * The process-table read and walk against real processes (PRD §5.3 and §9.4,
  * C-LIFE-10): the host table really lists a setsid grandchild under its parent, reads a
- * SIGSTOPped process as stopped, and the production `ps` options really bound a run's
- * time and output.
+ * process's start time the same in every read and a SIGSTOPped process as stopped, and
+ * the production `ps` options really bound a run's time and output.
  */
 
 import { describe, expect, test } from "vitest";
@@ -19,6 +19,13 @@ describe("C-LIFE-10 real process table", () => {
   test("lists the real host table, including this process under its parent", async () => {
     const table = await listProcessTable(10_000);
     expect(table.find((row) => row.pid === process.pid)).toMatchObject({ ppid: process.ppid });
+  });
+
+  test("reads a real process's start time the same way every time", async () => {
+    const [first, second] = await Promise.all([listProcessTable(10_000), listProcessTable(10_000)]);
+    const startedAt = first.find((row) => row.pid === process.pid)?.startedAt;
+    expect(startedAt).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d \d{4}$/);
+    expect(second.find((row) => row.pid === process.pid)?.startedAt).toBe(startedAt);
   });
 
   test("the production listing reads the real host table", async () => {
