@@ -23,14 +23,17 @@ import {
   type ProcessEntry,
 } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
+import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
 import type { SweepOps } from "./rounds.ts";
 
 /**
- * Each read's bound, the one before the SIGTERM included. One read on a loaded host took
- * up to 644 ms (docs/cli-behavior.md), so this rarely cuts a read short, while a stuck
- * `ps` holds the SIGTERM back by no more than a second.
+ * Each read's bound, the one before the SIGTERM included: the walk's own deadline. A read
+ * cut short records nothing, and on a loaded host one read, with Codex's daemon path
+ * reads, can take over a second (docs/cli-behavior.md), so a one-second bound there
+ * recorded nothing at all and left the leader's tree unknown. Only a `ps` that never
+ * answers holds the SIGTERM back for the whole bound.
  */
-export const RECORD_READ_MS = 1_000;
+export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
 
 /** The detached descendants seen so far, by pid and start time. */
 export class DescendantRecord {
