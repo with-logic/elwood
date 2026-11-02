@@ -7,7 +7,7 @@
  * and nothing links them to the session, so the links are read while it lives: the first
  * read finishes before the SIGTERM is sent, and reads repeat until the leader's exit is
  * observed. A process is recorded by its pid and second-resolution start time
- * (`ProcessEntry.startedAt`). Background retries also refuse an identity first seen
+ * (`ProcessEntry.startedAt`). Survivor reaps also refuse an identity first seen
  * within that start second, because a same-second reuse cannot be distinguished.
  * The leader is held to the same observation: a read that does not show the
  * leader the first such read showed records nothing, because its pid may already belong
@@ -70,8 +70,17 @@ export class DescendantRecord {
     this.known = true;
     const observedGroups =
       groups ?? detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+    this.observeGroups(table, observedGroups, readStartedAtEpochMs);
+  }
+
+  /** Retains only member rows of groups reached from an observed owned survivor. */
+  observeGroups(
+    table: readonly ProcessEntry[],
+    groups: ReadonlyMap<number, ReadonlySet<ProcessEntry>>,
+    readStartedAtEpochMs: number,
+  ): void {
     for (const row of table) {
-      if (row.zombie || !observedGroups.has(row.pgid)) continue;
+      if (row.zombie || !groups.has(row.pgid)) continue;
       const id = identity(row);
       if (!this.identities.has(id)) {
         const startedEpochMs = Date.parse(`${row.startedAt} UTC`);
@@ -101,7 +110,7 @@ export class DescendantRecord {
   }
 
   /** Groups with a recorded member whose second-resolution identity remains ambiguous. */
-  unsafeBackgroundGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
+  unsafeSurvivorGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
     return new Set(
       this.survivors(table)
         .filter((row) => this.ambiguous.has(identity(row)))

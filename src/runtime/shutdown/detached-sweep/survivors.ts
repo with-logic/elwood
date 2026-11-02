@@ -43,8 +43,7 @@ export async function reapRecordedSurvivors(
   record: DescendantRecord,
   ops: SweepOps,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
-  firstTable?: readonly ProcessEntry[],
-  background = false,
+  firstTable?: { readonly table: readonly ProcessEntry[]; readonly readStartedAtEpochMs: number },
 ): Promise<SweepFailure | undefined> {
   const state = newSweepState(new SweepFailures());
   if (!record.known) {
@@ -53,16 +52,8 @@ export async function reapRecordedSurvivors(
   }
   if (record.pids.length === 0) return undefined;
   const deadline = performance.now() + budgetMs;
-  const anchors = new SurvivorAnchors(state, record, ops, background);
-  await stopSurvivorGroups(
-    record,
-    anchors.stoppingOps(),
-    deadline,
-    state,
-    firstTable,
-    anchors,
-    background,
-  );
+  const anchors = new SurvivorAnchors(state, record, ops);
+  await stopSurvivorGroups(record, anchors.stoppingOps(), deadline, state, firstTable, anchors);
   anchors.restoreUnconfirmed();
   await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
@@ -74,9 +65,10 @@ async function stopSurvivorGroups(
   ops: SweepOps,
   deadline: number,
   state: SweepState,
-  firstTable: readonly ProcessEntry[] | undefined,
+  firstTable:
+    | { readonly table: readonly ProcessEntry[]; readonly readStartedAtEpochMs: number }
+    | undefined,
   anchors: SurvivorAnchors,
-  background: boolean,
 ): Promise<void> {
   // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
   // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
@@ -90,16 +82,22 @@ async function stopSurvivorGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const table = initial ?? (await ops.listProcesses(remainingMs, scope));
+      const readStartedAtEpochMs = initial?.readStartedAtEpochMs ?? Date.now();
+      const table = initial?.table ?? (await ops.listProcesses(remainingMs, scope));
       initial = undefined;
       state.latest = table;
       if (!anchors.afterRead(table)) return;
-      const blocked = background ? record.unsafeBackgroundGroups(table) : new Set<number>();
+      const blocked = record.unsafeSurvivorGroups(table);
       const roots = survivorGroups(
         record.survivors(table).filter((row) => !blocked.has(row.pgid)),
         table,
       );
-      state.live = new Map([...liveGroups(table, roots)].filter(([group]) => !blocked.has(group)));
+      const discovered = liveGroups(table, roots);
+      record.observeGroups(table, discovered, readStartedAtEpochMs);
+      const unsafe = record.unsafeSurvivorGroups(table);
+      if (unsafe.size > 0)
+        state.failures.record("a survivor group has an ambiguous identity", undefined, [...unsafe]);
+      state.live = new Map([...discovered].filter(([group]) => !unsafe.has(group)));
       state.unheld = unheldGroups(table, state);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       restopEscapedGroups(table, ops, state);

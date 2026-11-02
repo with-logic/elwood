@@ -11,8 +11,8 @@ test.each([
   { postStopError: errno("EIO") },
   { notStopped: true },
   { differentGroup: true },
-  { elapsedBeforeStop: 10_001 },
-  { elapsedAfterRead: 10_001 },
+  { elapsedBeforeStopMs: 10_001 },
+  { elapsedAfterReadMs: 10_001 },
 ])("C-LIFE-10 an uncertain held leader %j receives no TERM", async (options) => {
   const run = harness(options);
   await expect(run.stop()).rejects.toMatchObject({ code: "termination_failed" });
@@ -21,7 +21,7 @@ test.each([
 });
 
 test("C-LIFE-10 verification spends the first read's remaining deadline", async () => {
-  const run = harness({ elapsedBeforeStop: 4_000 });
+  const run = harness({ elapsedBeforeStopMs: 4_000 });
   await run.stop();
   expect(run.timeouts).toEqual([10_000, 6_000]);
 });

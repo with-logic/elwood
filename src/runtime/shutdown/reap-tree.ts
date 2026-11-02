@@ -18,18 +18,19 @@
  * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
 
+import { toError } from "../../core/errors.ts";
 import { type BackgroundReap, reapInBackground } from "./detached-sweep/background.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { DETACHED_SWEEP_BUDGET_MS, sweepDetachedGroups } from "./detached-sweep/index.ts";
 import { DescendantRecord } from "./detached-sweep/record.ts";
 import { type SurvivorWatch, watchSurvivors } from "./detached-sweep/survivor-watch.ts";
 import { reapRecordedSurvivors } from "./detached-sweep/survivors.ts";
-import {
-  activeProcessTreeOps,
-  type GroupReapOps,
-  type ProcessTreeOps,
-} from "./process-tree-ops.ts";
+import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
+import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
+
 import { SerialReapQueue } from "./reap-queue.ts";
+
+export { reapProcessGroup } from "./leader-group.ts";
 
 export {
   osProcessTreeOps,
@@ -39,42 +40,6 @@ export {
   rethrowUnlessGroupGone,
   setProcessTreeOpsForTests,
 } from "./process-tree-ops.ts";
-
-/**
- * A pgid is reapable when it identifies the KNOWN-OWNED node-pty leader's group
- * rather than a system group or the host itself. Ownership is NOT inferred from a
- * numeric floor — that is an allocation detail, and after PID-space wrap or inside
- * a constrained namespace a legitimate leader can be low (a prior arbitrary `< 100`
- * floor silently no-op'd such leaders and leaked their descendants). We instead
- * accept every valid child pid while refusing the two ids a group SIGKILL must
- * never touch:
- *   - `pgid <= 1` — pid 0 means "our own group" to `kill(2)`, and pid 1 is
- *     `init`/`launchd`; a fake pid 1 in tests once reaped a developer's real apps.
- *   - the host's OWN pid — node-pty gives the leader a fresh session via `setsid()`
- *     so its pgid can never legitimately equal ours, but if a bad pgid ever did we
- *     must not signal `-process.pid` and kill ourselves.
- */
-function isReapableGroupId(pgid: number): boolean {
-  return Number.isInteger(pgid) && pgid > 1 && pgid !== process.pid;
-}
-
-/**
- * SIGKILLs the process group led by `leaderPid`, reaping every descendant still
- * in the group — including one already reparented to PID 1. node-pty starts the
- * leader via `setsid()`, so it heads its own session and its pgid equals its pid;
- * that group is always distinct from the host's own group, so this cannot signal
- * the host process. Refuses only pids the kernel would misroute (see
- * `isReapableGroupId`), never an arbitrary numeric floor. An already-dead group
- * (leader and children exited together) is the normal case and its `ESRCH` is
- * swallowed; a real kill failure such as `EPERM` propagates.
- */
-export function reapProcessGroup(
-  leaderPid: number,
-  ops: GroupReapOps = activeProcessTreeOps(),
-): void {
-  if (!isReapableGroupId(leaderPid)) return;
-  ops.killGroup(leaderPid);
-}
 
 /**
  * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most once:
@@ -88,6 +53,7 @@ export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
+  private leaderSignalFailure: Error | undefined;
   /** One session owns at most one foreground or background descendant reap. */
   private readonly reaping = new SerialReapQueue();
   /** Retained failure: only the leader-rooted walk is never rerun; recorded survivors retry. */
@@ -97,7 +63,17 @@ export class SessionReaper {
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
-    this.ops = ops;
+    this.ops = {
+      ...ops,
+      stopGroup: (group) => {
+        if (group === leaderPid) this.assertLeaderSignalAuthorized();
+        ops.stopGroup(group);
+      },
+      killGroup: (group) => {
+        if (group === leaderPid) this.assertLeaderSignalAuthorized();
+        ops.killGroup(group);
+      },
+    };
   }
 
   /**
@@ -105,7 +81,12 @@ export class SessionReaper {
    * calls no-op (no recycled-pgid double-kill). A failed kill does NOT latch and
    * rethrows, keeping the reap retryable on a later lifecycle call.
    */
+  assertLeaderSignalAuthorized(): void {
+    if (this.leaderSignalFailure) throw this.leaderSignalFailure;
+  }
+
   reap(): void {
+    this.assertLeaderSignalAuthorized();
     if (this.done) return;
     reapProcessGroup(this.leaderPid, this.ops);
     this.done = true;
@@ -145,10 +126,11 @@ export class SessionReaper {
    * as the group reap.
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
+    this.assertLeaderSignalAuthorized();
     if (!isReapableGroupId(this.leaderPid)) return;
     const record = new DescendantRecord();
     const budget = DETACHED_SWEEP_BUDGET_MS;
-    this.keep(
+    this.retainFailureAndStartRecovery(
       await this.reaping.run(() =>
         sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, budget, record),
       ),
@@ -159,20 +141,28 @@ export class SessionReaper {
   /** A graceful stop's watch for survivors (`survivors.ts`); a failure is kept as a sweep's. */
   watchSurvivors(leaderExited: () => boolean): SurvivorWatch {
     const leaderPid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
-    const keep = (failure: SweepFailure | undefined, record: DescendantRecord) =>
-      this.keep(failure, record);
+    const retainFailureAndStartRecovery = (
+      failure: SweepFailure | undefined,
+      record: DescendantRecord,
+    ) => this.retainFailureAndStartRecovery(failure, record);
     return watchSurvivors(
       leaderPid,
       this.ops,
       leaderExited,
-      keep,
+      retainFailureAndStartRecovery,
       (record, ops) => this.reaping.run(() => reapRecordedSurvivors(record, ops)),
       (attempt) => this.reaping.run(attempt),
+      (error) => {
+        this.leaderSignalFailure ??= toError(error);
+      },
     );
   }
 
   /** Keeps `failure`, and reaps the processes `record` holds in the background. */
-  private keep(failure: SweepFailure | undefined, record: DescendantRecord): void {
+  private retainFailureAndStartRecovery(
+    failure: SweepFailure | undefined,
+    record: DescendantRecord,
+  ): void {
     if (failure === undefined) return;
     this.unresolvedSweep ??= failure;
     const unreferenced = this.ops.listProcessesUnreferenced ?? this.ops.listProcesses;

@@ -54,6 +54,7 @@ export function harness(script: Script) {
     },
   };
   const reaper = {
+    assertLeaderSignalAuthorized: () => undefined,
     reap: () => void calls.push("reap"),
     sweepDetached: (leaderExited: () => boolean) => {
       calls.push(`sweep (exited: ${leaderExited()})`);
@@ -66,14 +67,14 @@ export function harness(script: Script) {
     watchSurvivors: (leaderExited: () => boolean) => {
       calls.push("watch");
       return {
-        firstRead: Promise.resolve().then(() => {
+        firstObservation: Promise.resolve().then(() => {
           calls.push("first read");
           if (script.exitDuringFirstRead) onExit?.({ exitCode: 0 });
-          return false;
+          return "leader-observed" as const;
         }),
         sendSignal: (send: () => void) => {
           send();
-          return Promise.resolve(false);
+          return Promise.resolve("signal-sent" as const);
         },
         finish: () => {
           calls.push(`survivors (leader gone: ${leaderExited()})`);

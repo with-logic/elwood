@@ -19,6 +19,13 @@ test.each([
   await expect(run.stop()).rejects.toMatchObject({ code: "termination_failed" });
   expect(run.signals).toEqual([]);
   expect(run.operations).toContain("continue");
+  expect(run.ops.killGroup).not.toHaveBeenCalled();
+  expect(() => run.reaper.reapAndThrowOnDetachedSweepFailure()).toThrow();
+  await expect(run.reaper.sweepDetached(() => false)).rejects.toThrow();
+  await expect(run.stop()).rejects.toMatchObject({ code: "termination_failed" });
+  expect(run.ops.killGroup).not.toHaveBeenCalled();
+  expect(run.signals).toEqual([]);
+  expect(run.operations.filter((op) => op === "stop")).toHaveLength(1);
 });
 
 test("C-LIFE-10 a leader gone during its stop receives no TERM", async () => {

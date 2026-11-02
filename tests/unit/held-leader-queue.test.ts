@@ -20,7 +20,7 @@ test("C-LIFE-14 a held-leader signal waits for the session's earlier background 
   await expect(reaper.sweepDetached(() => false)).rejects.toThrow("process table unreadable");
   await vi.advanceTimersByTimeAsync(0);
   const watch = reaper.watchSurvivors(() => false);
-  await watch.firstRead;
+  await watch.firstObservation;
   const before = fake.calls.filter((call) => call !== "list");
   const signal = vi.fn();
   const pending = watch.sendSignal(signal);
@@ -56,11 +56,11 @@ test("C-LIFE-10 waiting for a signal queue never adopts a later leader after a f
   await expect(reaper.sweepDetached(() => false)).rejects.toThrow("process table unreadable");
   await vi.advanceTimersByTimeAsync(0);
   const watch = reaper.watchSurvivors(() => false);
-  expect(await watch.firstRead).toBe(false);
+  expect(await watch.firstObservation).toBe("read-failed");
   await vi.advanceTimersByTimeAsync(0);
   const signal = vi.fn();
   const pending = watch.sendSignal(signal);
-  const refused = expect(pending).rejects.toThrow("No recorded leader identity");
+  const refused = expect(pending).rejects.toThrow("First leader process-table read failed");
   try {
     expect(reads).toBeGreaterThanOrEqual(4);
     held.resolve([]);

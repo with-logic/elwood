@@ -9,20 +9,19 @@ import type { DescendantRecord } from "./record.ts";
 import type { SweepOps, SweepState } from "./rounds.ts";
 
 export class SurvivorAnchors {
-  private readonly members = new Map<number, ReadonlySet<string>>();
+  private readonly members = new Map<number, ReadonlyMap<string, ProcessEntry>>();
   private readonly readAfterStop = new Set<number>();
   private readonly confirmed = new Set<number>();
 
   private readonly state: SweepState;
   private readonly record: DescendantRecord;
   private readonly ops: SweepOps;
-  private readonly background: boolean;
+  private byGroup = new Map<number, Map<string, ProcessEntry>>();
 
-  constructor(state: SweepState, record: DescendantRecord, ops: SweepOps, background: boolean) {
+  constructor(state: SweepState, record: DescendantRecord, ops: SweepOps) {
     this.state = state;
     this.record = record;
     this.ops = ops;
-    this.background = background;
   }
 
   /** Wraps SIGSTOP so its first successful send retains that table's member identities. */
@@ -30,9 +29,7 @@ export class SurvivorAnchors {
     return {
       ...this.ops,
       stopGroup: (group) => {
-        const members = new Set(
-          this.state.latest.filter((row) => !row.zombie && row.pgid === group).map(processIdentity),
-        );
+        const members = new Map(this.byGroup.get(group));
         this.ops.stopGroup(group);
         if (!this.members.has(group)) this.members.set(group, members);
       },
@@ -41,13 +38,20 @@ export class SurvivorAnchors {
 
   /** Rejects and restores any stopped group whose pre-signal member no longer anchors it. */
   afterRead(table: readonly ProcessEntry[]): boolean {
+    this.byGroup = new Map();
+    for (const row of table) {
+      if (row.zombie) continue;
+      const members = this.byGroup.get(row.pgid) ?? new Map<string, ProcessEntry>();
+      members.set(processIdentity(row), row);
+      this.byGroup.set(row.pgid, members);
+    }
     let matched = true;
-    const blocked = this.background ? this.record.unsafeBackgroundGroups(table) : new Set<number>();
+    const blocked = this.record.unsafeSurvivorGroups(table);
     for (const [group, identities] of this.members) {
       this.readAfterStop.add(group);
-      const anchors = table.filter(
-        (row) => !row.zombie && row.pgid === group && identities.has(processIdentity(row)),
-      );
+      const anchors = [
+        ...(this.byGroup.get(group) ?? new Map<string, ProcessEntry>()).values(),
+      ].filter((row) => identities.has(processIdentity(row)));
       if (anchors.length === 0 || blocked.has(group)) {
         this.restore(group);
         matched = false;
@@ -65,7 +69,11 @@ export class SurvivorAnchors {
   }
 
   private restore(group: number): void {
-    this.state.failures.record("a survivor group lost its identity anchor", undefined, [group]);
+    this.state.failures.record(
+      "a survivor group could not be safely confirmed stopped",
+      undefined,
+      [group],
+    );
     this.members.delete(group);
     this.state.signaledGroupIds.delete(group);
     const index = this.state.signaledDescendantGroupIds.indexOf(group);

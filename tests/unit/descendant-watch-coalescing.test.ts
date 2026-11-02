@@ -13,7 +13,7 @@ test("C-LIFE-10 concurrent survivor watches share a fresh table listing", async 
     return Promise.resolve(table);
   });
   const watches = leaders.map((pid) => watchDescendants(pid, { listProcesses }, () => false));
-  await Promise.all(watches.map((watch) => watch.firstRead));
+  await Promise.all(watches.map((watch) => watch.firstObservation));
   expect(reads).toBe(1);
   const records = await Promise.all(watches.map((watch) => watch.finish()));
   expect(records.every((record) => record.known)).toBe(true);

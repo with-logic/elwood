@@ -5,7 +5,8 @@
  * from it. Recorded pid/start-time pairs are second-resolution observations, and a
  * failure that left them running would leave them running for good: the host is told the
  * shutdown attempt failed and moves on. So each attempt reads the table, and the reap is resolved
- * once no recorded non-daemon survivor remains and any failed daemon resume is resolved;
+ * once the tree is known, no recorded non-daemon survivor remains, every known resume
+ * debt is resolved, and no unidentified restoration remains;
  * a pid now held by a process with another start time is none of them. Until then each
  * attempt reaps them by the survivor reap's rules
  * (`survivors.ts`), and the next follows a second later, for a minute at most. Its timers
@@ -13,7 +14,7 @@
  * resolved: nothing shows what the failure left running.
  */
 
-import { SerialReapQueue } from "../reap-queue.ts";
+import { type ReapQueue, SerialReapQueue } from "../reap-queue.ts";
 import { type DaemonScope, daemonScope } from "../shared-daemon.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import type { DescendantRecord } from "./record.ts";
@@ -27,14 +28,11 @@ export const BACKGROUND_REAP_RETRY_MS = 1_000;
 
 /** A failure's recorded processes being reaped in the background. */
 export type BackgroundReap = {
-  /** Whether no recorded non-daemon survivor or failed daemon resume remains. */
+  /** Whether a known tree has no survivor, known resume debt or unknown restoration left. */
   readonly resolved: () => boolean;
   /** A later explicit shutdown confirms retained evidence after automatic retries expired. */
   readonly confirm: () => Promise<void> | undefined;
 };
-
-/** Serializes a session’s foreground and background signal passes. */
-export type ReapQueue = <T>(attempt: () => Promise<T>) => Promise<T>;
 
 /** Retries this record without holding the host alive, within the bounded lifetime. */
 export function reapInBackground(
@@ -94,13 +92,18 @@ async function attempt(
 ): Promise<boolean> {
   try {
     // Codex's daemon, which a recorded process may have become, is not left to the reap.
+    const readStartedAtEpochMs = Date.now();
     const table = await ops.listProcesses(DETACHED_SWEEP_BUDGET_MS, scope);
-    const resumeDebtResolved = record.resumes.retry(table, ops);
+    const knownResumeDebtResolved = record.resumes.retry(table, ops);
+    const treeKnown = record.known;
+    const noUnknownRestoration = !record.hasUnknownResume;
     const survivors = record.survivors(table);
-    if (survivors.length === 0)
-      return resumeDebtResolved && !record.hasUnknownResume && record.known;
+    if (survivors.length === 0) return knownResumeDebtResolved && noUnknownRestoration && treeKnown;
     if (mayReap && performance.now() < until) {
-      await reapRecordedSurvivors(record, ops, DETACHED_SWEEP_BUDGET_MS, table, true);
+      await reapRecordedSurvivors(record, ops, DETACHED_SWEEP_BUDGET_MS, {
+        table,
+        readStartedAtEpochMs,
+      });
     }
     return false;
   } catch {

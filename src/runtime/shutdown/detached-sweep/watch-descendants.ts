@@ -1,4 +1,5 @@
 /** Records a live leader’s tree until graceful exit, retaining first-read identity (C-LIFE-10). */
+import { errnoCode, isErrnoToken } from "../../../core/errors.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./budget.ts";
 import { DescendantRecord } from "./record.ts";
@@ -12,12 +13,15 @@ import type { SweepOps } from "./rounds.ts";
  * answers holds the SIGTERM back for the whole bound.
  */
 export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
+export type LeaderObservation = "leader-gone" | "leader-observed" | "read-failed";
+
 /** A recording in progress. */
 export type DescendantWatch = {
   readonly record: DescendantRecord;
   readonly leaderIdentity: string | undefined;
-  /** Settles to whether the first read showed the leader gone; false for a failed read. */
-  readonly firstRead: Promise<boolean>;
+  /** Exact first-read observation; later reads never replace its authority or failure. */
+  readonly firstObservation: Promise<LeaderObservation>;
+  readonly firstReadFailure: Error | undefined;
   /** Stops reading once the read in flight settles, and resolves to the record. */
   readonly finish: () => Promise<DescendantRecord>;
 };
@@ -35,21 +39,30 @@ export function watchDescendants(
   const record = new DescendantRecord();
   let watching = true;
   const scope = daemonScope(new Set([leaderPid]));
+  let firstReadFailure: Error | undefined;
   const readOnce = (beforeSignal = false) => {
     const readStartedAtEpochMs = Date.now();
     return ops.listProcesses(RECORD_READ_MS, scope).then(
       (table) => record.observe(table, leaderPid, beforeSignal, undefined, readStartedAtEpochMs),
-      () => undefined,
+      (error: unknown) => {
+        if (beforeSignal) {
+          const code = errnoCode(error);
+          firstReadFailure = Object.assign(
+            new Error("First leader process-table read failed."),
+            isErrnoToken(code) ? { code } : {},
+          );
+        }
+      },
     );
   };
   let firstIdentity: string | undefined;
-  const firstRead = readOnce(true).then(() => {
+  const firstObservation: Promise<LeaderObservation> = readOnce(true).then(() => {
     firstIdentity = record.leaderIdentity;
-    return record.leaderGone;
+    return firstReadFailure ? "read-failed" : record.leaderGone ? "leader-gone" : "leader-observed";
   });
   const finishing = Promise.withResolvers<void>();
   const reading = (async () => {
-    await firstRead;
+    await firstObservation;
     while (!leaderExited()) {
       // Lets the exit be observed between reads; a `finish` ends the wait at once.
       await Promise.race([new Promise((resolve) => setImmediate(resolve)), finishing.promise]);
@@ -62,7 +75,10 @@ export function watchDescendants(
     get leaderIdentity() {
       return firstIdentity;
     },
-    firstRead,
+    firstObservation,
+    get firstReadFailure() {
+      return firstReadFailure;
+    },
     finish: async () => {
       watching = false;
       finishing.resolve();

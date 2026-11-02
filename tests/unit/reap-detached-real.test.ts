@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
@@ -27,6 +27,8 @@ import {
 } from "../helpers/detached-tree.ts";
 import { killGroupsWhoseCommandHas, pollGone, processRows } from "../helpers/process-liveness.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("C-LIFE-10 detached descendants (real processes)", () => {
   test("the sweep, then the group reap, end a setsid child and its own setsid grandchild", async () => {
@@ -51,16 +53,31 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
   });
 
-  test("a graceful stop reaps what the leader leaves running, a process it starts after", async () => {
+  test("a graceful stop reaps old descendants but rejects a newly observed ambiguous child", async () => {
     // The leader answers SIGTERM by starting another detached process, and exits once a
     // read has shown it: one that exits sooner leaves no read to link it (PRD §5.3).
     const tree = startDetachedTree("late-on-term");
-    const [child, grandchild] = await detachedDescendantPids(tree);
-    const ops = { ...osProcessTreeOps, listProcesses: markingLateSeen(tree, () => true) };
-    await terminatePty(tree.pty, "SIGTERM", new SessionReaper(tree.pty.pid, ops));
-    const late = await waitForTreeProcessPid(tree, "late");
-    for (const pid of [child, grandchild, late]) {
-      expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
+    try {
+      const [child, grandchild] = await detachedDescendantPids(tree);
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      vi.spyOn(Date, "now").mockReturnValue(Math.floor(Date.now() / 1_000) * 1_000);
+      const ops = { ...osProcessTreeOps, listProcesses: markingLateSeen(tree, () => true) };
+      await expect(
+        terminatePty(tree.pty, "SIGTERM", new SessionReaper(tree.pty.pid, ops)),
+      ).rejects.toMatchObject({
+        code: "termination_failed",
+        details: { cause: expect.stringContaining("ambiguous identity") },
+      });
+      const late = await waitForTreeProcessPid(tree, "late");
+      expect((await listProcessTable(10_000)).find((row) => row.pid === late)).toMatchObject({
+        zombie: false,
+        stopped: false,
+      });
+      for (const pid of [child, grandchild]) {
+        expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
+      }
+    } finally {
+      await killTreeIn(tree.dir);
     }
   });
 

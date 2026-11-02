@@ -70,7 +70,7 @@ test("C-LIFE-14 foreground survivor cleanup waits for the same session's backgro
   expect(backgroundStarted).toBe(true);
   let exited = false;
   const watch = reaper.watchSurvivors(() => exited);
-  await watch.firstRead;
+  await watch.firstObservation;
   exited = true;
   const before = foregroundReads;
   let finishedYet = false;
@@ -131,7 +131,7 @@ test("C-LIFE-14 a failed survivor watch hands its actual record to background re
     },
   });
   const watch = reaper.watchSurvivors(() => exited);
-  await watch.firstRead;
+  await watch.firstObservation;
   exited = true;
   await expect(watch.finish()).rejects.toThrow("could not stop a live descendant group");
   await vi.advanceTimersByTimeAsync(0);
@@ -161,7 +161,7 @@ test.each([
   const reaper = new SessionReaper(pid, ops);
   await reaper.sweepDetached(leaderNeverExits);
   const watch = reaper.watchSurvivors(() => true);
-  await watch.firstRead;
+  await watch.firstObservation;
   await watch.finish();
   reaper.reapAndThrowOnDetachedSweepFailure();
   expect(calls).toEqual([]);

@@ -24,7 +24,7 @@ afterEach(() => vi.restoreAllMocks());
 test("C-LIFE-10 a recycled PGID after SIGSTOP is resumed, never killed", async () => {
   const { ops, calls } = scripted([[original], [replacement]]);
   const failure = await reapRecordedSurvivors(recorded(), ops);
-  expect(failure?.message).toContain("survivor group lost its identity anchor");
+  expect(failure?.message).toContain("survivor group could not be safely confirmed stopped");
   expect(calls).toEqual(["list", `stop ${CHILD}`, "list", `cont ${CHILD}`]);
 });
 

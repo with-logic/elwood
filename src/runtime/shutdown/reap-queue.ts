@@ -2,6 +2,9 @@
  * Per-session descendant signal passes (PRD §5.3, C-LIFE-10/C-LIFE-13/C-LIFE-14):
  * begin an idle pass in the caller's tick, and serialize every later pass behind it.
  */
+/** Shared contract for one session’s foreground/background signal passes. */
+export type ReapQueue = <T>(attempt: () => Promise<T>) => Promise<T>;
+
 export class SerialReapQueue {
   private tail: Promise<void> | undefined;
 

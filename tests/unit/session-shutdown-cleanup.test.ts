@@ -26,12 +26,13 @@ const untouchedPty: PtyProcess = {
 
 /** A reaper whose reap and detached sweep always succeed. */
 const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
+  assertLeaderSignalAuthorized: () => undefined,
   reap: () => undefined,
   reapAndThrowOnDetachedSweepFailure: () => undefined,
   sweepDetached: async () => {},
   watchSurvivors: () => ({
-    firstRead: Promise.resolve(false),
-    sendSignal: () => Promise.resolve(true),
+    firstObservation: Promise.resolve("leader-observed" as const),
+    sendSignal: () => Promise.resolve("leader-gone" as const),
     finish: async () => {},
   }),
 };

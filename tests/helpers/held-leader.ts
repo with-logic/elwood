@@ -5,6 +5,8 @@ import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { leaderRow } from "./scripted-process-tree.ts";
 
+type LeaderGeneration = "original" | "replacement" | "gone";
+
 const PID = 10_000_001;
 const NEW_START = "Sun Oct 25 22:00:09 2026";
 export function heldLeaderHarness(
@@ -18,43 +20,44 @@ export function heldLeaderHarness(
     readonly resumeError?: Error;
     readonly termError?: Error;
     readonly notStopped?: boolean;
-    readonly elapsedBeforeStop?: number;
+    readonly elapsedBeforeStopMs?: number;
     readonly exitOnStop?: boolean;
     readonly exitAfterRead?: boolean;
     readonly zombieOnStop?: boolean;
     readonly differentGroup?: boolean;
-    readonly elapsedAfterRead?: number;
+    readonly elapsedAfterReadMs?: number;
   } = {},
 ) {
-  let generation = "original";
+  let generation: LeaderGeneration = "original";
   let held = false;
   let reads = 0;
   let exit: ((event: PtyExit) => void) | undefined;
-  const signals: { readonly generation: string; readonly held: boolean }[] = [];
+  const signals: { readonly generation: LeaderGeneration; readonly held: boolean }[] = [];
   const operations: string[] = [];
   const timeouts: number[] = [];
   let clock = 0;
-  if (options.elapsedBeforeStop !== undefined || options.elapsedAfterRead !== undefined)
+  if (options.elapsedBeforeStopMs !== undefined || options.elapsedAfterReadMs !== undefined)
     vi.spyOn(performance, "now").mockImplementation(() => clock);
   const ops = {
     killGroup: vi.fn(),
     stopGroup: () => {
       operations.push("stop");
-      if (options.stopError) throw options.stopError;
       if (options.replaceOnStop) generation = "replacement";
       if (options.goneOnStop) generation = "gone";
-      held = !options.notStopped;
       if (options.exitOnStop) exit?.({ exitCode: 0 });
+      if (options.stopError) throw options.stopError;
+      held = !options.notStopped;
     },
     continueGroup: () => {
       operations.push("continue");
       if (options.resumeError) throw options.resumeError;
       held = false;
     },
-    listProcesses: (timeout: number) => {
+    listProcesses: (timeoutMs: number) => {
       reads += 1;
       operations.push("read");
-      timeouts.push(timeout);
+      timeouts.push(timeoutMs);
+      if (reads > 1 && options.exitAfterRead) queueMicrotask(() => exit?.({ exitCode: 0 }));
       const error = reads === 1 ? options.firstReadError : options.postStopError;
       if (error) return Promise.reject(error);
       const table =
@@ -66,7 +69,7 @@ export function heldLeaderHarness(
                 pid: PID,
                 pgid: options.differentGroup && held ? PID + 1 : PID,
                 stopped: held,
-                zombie: !!options.zombieOnStop && held,
+                zombie: !!options.zombieOnStop && operations.includes("stop"),
                 startedAt: generation === "replacement" ? NEW_START : leaderRow.startedAt,
               },
             ];
@@ -82,11 +85,10 @@ export function heldLeaderHarness(
           queueMicrotask(() => {
             generation = "replacement";
           });
-        clock = options.elapsedBeforeStop ?? 0;
+        clock = options.elapsedBeforeStopMs ?? 0;
       }
       if (reads > 1) {
-        if (options.exitAfterRead) queueMicrotask(() => exit?.({ exitCode: 0 }));
-        if (options.elapsedAfterRead !== undefined) clock = options.elapsedAfterRead;
+        if (options.elapsedAfterReadMs !== undefined) clock = options.elapsedAfterReadMs;
       }
       return Promise.resolve(table);
     },

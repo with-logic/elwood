@@ -16,9 +16,9 @@ test.each([
     exited,
     () => {},
   );
-  await watch.firstRead;
+  await watch.firstObservation;
   const send = vi.fn();
-  expect(await watch.sendSignal(send)).toBe(true);
+  expect(await watch.sendSignal(send)).toBe("leader-gone");
   await watch.finish();
   expect(send).not.toHaveBeenCalled();
   expect(calls.filter((call) => call.startsWith("stop"))).toEqual([]);

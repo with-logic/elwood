@@ -61,7 +61,7 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
     const tree = [leaderRow, hook(5002)];
     const reaped = scripted([tree, [hook(5002, { ppid: 1 })]]);
     const watch = new SessionReaper(LEADER, reaped.ops).watchSurvivors(() => true);
-    await watch.firstRead;
+    await watch.firstObservation;
     await watch.finish();
     expect(reaped.calls).toContain("kill 5002");
     // The record never filled: nothing is known, so the reap fails, and stays failed.

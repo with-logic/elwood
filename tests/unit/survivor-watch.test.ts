@@ -22,7 +22,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     const { ops, calls } = scripted([orphaned]);
     const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(undefined, ops, () => true, keep);
-    await watch.firstRead;
+    await watch.firstObservation;
     await watch.finish();
     expect(calls).toEqual([]);
     expect(keep).not.toHaveBeenCalled();
@@ -32,7 +32,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     const { ops, calls } = scripted([tree]);
     const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(LEADER, ops, () => false, keep);
-    await watch.firstRead;
+    await watch.firstObservation;
     await watch.finish();
     expect(new Set(calls)).toEqual(new Set(["list"]));
     expect(keep).not.toHaveBeenCalled();
@@ -42,7 +42,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     const { ops, calls } = scripted([tree, orphaned]);
     const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(LEADER, ops, () => true, keep);
-    await watch.firstRead;
+    await watch.firstObservation;
     await watch.finish();
     expect(calls.join(", ")).toBe("list, list, stop 5002, list, list, kill 5002");
     expect(keep).toHaveBeenCalledOnce();
@@ -59,7 +59,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     const { ops } = scripted([tree, orphaned], { stopGroup: refusingStop });
     const keep = vi.fn<Parameters<typeof watchSurvivors>[3]>();
     const watch = watchSurvivors(LEADER, ops, () => true, keep);
-    await watch.firstRead;
+    await watch.firstObservation;
     await watch.finish();
     expect(keep).toHaveBeenCalledOnce();
     expect(keep.mock.calls[0]?.[0]).toMatchObject({

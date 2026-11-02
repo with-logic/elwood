@@ -27,7 +27,7 @@ test("C-LIFE-10 a stop's record knows the leader's tree when each read takes ove
     });
   });
   const watch = watchDescendants(tree.pty.pid, slowReads, () => exited);
-  await watch.firstRead;
+  await watch.firstObservation;
   tree.pty.kill("SIGTERM");
   await exit;
   const record = await watch.finish();

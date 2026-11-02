@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Shutdown retains descendants discovered during survivor recovery, rejects ambiguous
+  foreground identities, and suppresses all later leader STOP/TERM/KILL after
+  replacement or uncertain authorization is detected. A descendant first observed
+  within its start second may be left alive with `termination_failed`, rather than
+  treating that ambiguous observation as successful cleanup.
+
 - Graceful SIGTERM now waits for a stopped leader whose original identity is
   confirmed by a fresh process-table read, within the first read's existing deadline.
   Unknown, replaced, or unheld leaders receive no SIGTERM; the temporarily stopped

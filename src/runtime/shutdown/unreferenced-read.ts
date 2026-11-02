@@ -46,8 +46,11 @@ export async function settleUnreferenced<T>(
   }
 }
 
+/** Uses the production coalescing/unref path with an injectable native runner for real-process tests. */
+export function createUnreferencedProcessTableReader(run: PsRunner) {
+  return coalesceUnstarted((timeoutMs) => listProcessTable(timeoutMs, run), { ref: false });
+}
+
 /** The listing for reaps in the background, shared the same way, never keeping the host alive. */
-export const listProcessTableUnreferenced = coalesceUnstarted(
-  (timeoutMs) => listProcessTable(timeoutMs, runFileUnreferenced),
-  { ref: false },
-);
+export const listProcessTableUnreferenced =
+  createUnreferencedProcessTableReader(runFileUnreferenced);
