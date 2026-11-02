@@ -76,7 +76,7 @@ test("C-PERF-02 capabilities read while their directory was replaced are not kep
   });
 });
 
-/** Once the next read is keyed by `cwd`'s directory, moves it to `original` and `replacement` in. */
+/** Swaps cwd after the initial identity/cache-key check, before probing; the post-read check sees it. */
 function swapWhenProbed(cwd: string, original: string, replacement: string): void {
   const probe = currentCommandRunner();
   setCommandRunnerForTests((command, args, options) => {
