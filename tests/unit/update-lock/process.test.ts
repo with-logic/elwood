@@ -55,7 +55,7 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
         staleMs: 30_000,
       }),
     );
-    const outcome = await cachedAutoupdate("codex", { verify: async () => {}, update: async () => {
+    const outcome = await cachedAutoupdate("codex", process.cwd(), { verify: async () => {}, update: async () => {
       await appendFile(process.env.ELWOOD_TEST_ATTEMPTS, process.pid + "\\n");
       await announce();
       const deadline = Date.now() + 60_000;

@@ -10,7 +10,11 @@ import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/upda
 import { createProbeCache } from "../runtime/probe-cache.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
+import {
+  type AutoupdateOutcome,
+  cachedAutoupdate,
+  cachedVersionRead,
+} from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
@@ -37,16 +41,17 @@ export async function preflightCodex(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let updateError: unknown;
+  let failedUpdate: Extract<AutoupdateOutcome, { readonly ok: false }> | undefined;
   if (autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
     // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
     const outcome = await cachedAutoupdate(
       "codex",
+      cwd,
       { verify: () => readCodexVersion(cwd), update: () => runCodexUpdate(cwd) },
       () => capabilityProbe.clear(),
     );
-    if (!outcome.ok) updateError = outcome.error;
+    if (!outcome.ok) failedUpdate = outcome;
   }
   const result = await readCodexVersion(cwd);
   const version = parseVersion(result.stdout);
@@ -64,7 +69,9 @@ export async function preflightCodex(
     );
   }
   // Installed CLI is compatible: a failed best-effort update is a warning, not a start failure.
-  return updateError === undefined ? undefined : buildUpdateWarning("codex", version, updateError);
+  return (
+    failedUpdate && buildUpdateWarning("codex", version, failedUpdate.error, failedUpdate.updateCwd)
+  );
 }
 
 async function runCodexUpdate(cwd: string): Promise<void> {
