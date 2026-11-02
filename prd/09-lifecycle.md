@@ -156,6 +156,8 @@ stderr) writes the line on stdout instead. Not stderr, which a startup file may
 discard or merge into stdout: a startup file that hid stdout would also hide the
 command's own output. Elwood removes the line from captured stdout, so on either
 channel the probe's captured output is exactly the shell's and the command's.
+The private channel stays open past the start line, for the e2e home guard's stop
+line (§12), and closes before the command, which never inherits it.
 After the start line and before the command, the probe script removes the user's
 not-found handlers, zsh's `command_not_found_handler` and bash's
 `command_not_found_handle`, under the command's bound, which starts at the line. A

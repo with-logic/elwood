@@ -99,7 +99,7 @@ export async function buildClaudeSession(
     await cleanupStartupResources({ bridge });
     throw error;
   }
-  const startupOutput = createStartupBuffer();
+  const startupOutput = createStartupBuffer({ source: pty });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
@@ -118,38 +118,33 @@ export async function buildClaudeSession(
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();
-  const terminal = attachPtyTerminal(
-    startupSize,
-    pty,
-    (data, renderedTerminal) => {
-      terminalReplay.push(data);
-      const snapshot = renderedSnapshot(renderedTerminal);
-      latestRenderedText = snapshot.text;
-      const frame = { text: latestRenderedText, title: renderedTerminal.title };
-      const send = (input: string) =>
-        withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
-      const read = () => latestRenderedText;
-      const guarded = guardedClaudeAutomationWrite(
-        renderedTerminal,
-        send,
-        read,
-        () => promptResponder.closing,
-        promptResponder.closingSignal,
-      );
-      const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
-      const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
-      emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
-        emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
-      });
-      frameObserver.observe(frame);
-      warnGate.emitWarnings(
-        loginExpiring.observeFrame(snapshot, record.elwoodSessionId, renderedTerminal),
-      );
-      session?.noteLoginExpiry(frame.text);
-      emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
-    },
-    startupOutput.push,
-  );
+  const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
+    terminalReplay.push(data);
+    const snapshot = renderedSnapshot(renderedTerminal);
+    latestRenderedText = snapshot.text;
+    const frame = { text: latestRenderedText, title: renderedTerminal.title };
+    const send = (input: string) =>
+      withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
+    const read = () => latestRenderedText;
+    const guarded = guardedClaudeAutomationWrite(
+      renderedTerminal,
+      send,
+      read,
+      () => promptResponder.closing,
+      promptResponder.closingSignal,
+    );
+    const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
+    const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
+    emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
+      emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
+    });
+    frameObserver.observe(frame);
+    warnGate.emitWarnings(
+      loginExpiring.observeFrame(snapshot, record.elwoodSessionId, renderedTerminal),
+    );
+    session?.noteLoginExpiry(frame.text);
+    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
+  });
   session = new ClaudeSessionImpl(
     record,
     stateDir,
