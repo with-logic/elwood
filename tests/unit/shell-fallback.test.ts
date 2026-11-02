@@ -28,22 +28,21 @@ describe("user shell", () => {
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    // Same shell and flags; the probe writes its start line on descriptor 3 and closes it, or
-    // writes it on stdout if the shell already closed descriptor 3, then runs the command
-    // (C-PERF-05).
+    // Same shell and flags; the probe writes its start line on descriptor 3, or on stdout if
+    // the shell already closed descriptor 3, closes it, then runs the command (C-PERF-05).
     const line = probeCommandStartLine;
     expect(probeShellCommand("claude --version")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; claude --version`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; exec 3>&-; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; claude --version`,
     ]);
     // A lookup answered by its status alone discards its output.
     expect(probeShellStatus("command -v claude")).toEqual([
       "-l",
       "-i",
       "-c",
-      `if { echo ${line} >&3; } 2>/dev/null; then exec 3>&-; else echo ${line}; fi; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; command -v claude >/dev/null 2>&1`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; exec 3>&-; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

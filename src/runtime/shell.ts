@@ -5,9 +5,20 @@
  */
 
 import { userInfo } from "node:os";
-import { isStringArray } from "../core/predicates.ts";
-import { homeGuardExitCode, homeGuardHomesKey, homeGuardStopMarker } from "./home-guard/index.ts";
-import { probeNotFoundHandlerReset, probeStartScript } from "./probe/start.ts";
+import {
+  guardedVariables,
+  type HomeVariable,
+  homeGuardExitCode,
+  homeGuardHomesKey,
+  homeGuardStopMarker,
+  privateHomes,
+} from "./home-guard/index.ts";
+import {
+  probeControlClose,
+  probeControlFd,
+  probeNotFoundHandlerReset,
+  probeStartScript,
+} from "./probe/start.ts";
 import { shellQuote } from "./shell-quote.ts";
 
 export function userShell(): string {
@@ -43,7 +54,8 @@ export function loginShellCommand(command: string): LoginShellArgs {
 export function probeShellCommand(command: string): LoginShellArgs {
   // The start line comes first, so the runner still tells a shell that never started the
   // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
-  const script = `${probeStartScript}${homeGuardScript("probe")}${probeNotFoundHandlerReset}${command}`;
+  const guard = homeGuardScript("probe");
+  const script = `${probeStartScript}${guard}${probeControlClose}${probeNotFoundHandlerReset}${command}`;
   return loginShellArgs(script);
 }
 
@@ -54,11 +66,6 @@ export function probeShellCommand(command: string): LoginShellArgs {
 export function probeShellStatus(command: string): LoginShellArgs {
   return probeShellCommand(`${command} >/dev/null 2>&1`);
 }
-
-/** The private CLI homes and Claude temp root protected during e2e launches. */
-const homeVariables = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CLAUDE_CODE_TMPDIR"] as const;
-
-type HomeVariable = (typeof homeVariables)[number];
 
 /**
  * Why the guard stops a launch: the list cannot be read, or a guarded variable is no longer an
@@ -82,28 +89,18 @@ type GuardedLaunch = "session" | "probe";
 
 /**
  * Shell code that writes the stop marker with why the guard stopped the launch, and exits
- * `homeGuardExitCode`. Not on stderr, which a startup file can redirect. A session's shell
- * writes to its terminal, `/dev/tty`, which its PTY captures however the startup files
- * redirected stdin, stdout, or stderr, and falls back to stdout only if it cannot open it. A
- * probe runs in a session of its own, with no terminal (`runProbe`), so it writes to the stdout
- * the probe runner captures.
+ * `homeGuardExitCode`. Not on stderr, nor first on stdout, which a startup file can redirect. A
+ * session's shell writes to its terminal, `/dev/tty`, which its PTY captures however the
+ * startup files redirected stdin, stdout, or stderr. A probe runs in a session of its own, with
+ * no terminal (`runProbe`), so it writes on the runner's control descriptor, where its start
+ * line went. Either falls back to stdout only if it cannot write there: a probe shell that
+ * closed the descriptor wrote its start line on stdout too.
  */
 function refuse(refusal: Refusal, launch: GuardedLaunch): string {
   const line = shellQuote(`${homeGuardStopMarker}: ${refusalReason(refusal)}`);
   const write = `printf '%s\\n' ${line}`;
-  const report = launch === "session" ? `{ ${write} >/dev/tty; } 2>/dev/null || ${write}` : write;
-  return `{ ${report}; exit ${homeGuardExitCode}; }; `;
-}
-
-/** The registered homes, or `undefined` when `raw` is not a JSON array of absolute paths. */
-function privateHomes(raw: string): readonly string[] | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  return isStringArray(parsed) && parsed.every((home) => home.startsWith("/")) ? parsed : undefined;
+  const channel = launch === "session" ? "/dev/tty" : `&${probeControlFd}`;
+  return `{ { ${write} >${channel}; } 2>/dev/null || ${write}; exit ${homeGuardExitCode}; }; `;
 }
 
 // The real path of `$elwood_home`, resolved as the CLI will, against the shell's cwd. `builtin`
@@ -132,8 +129,7 @@ export function homeGuardScript(launch: GuardedLaunch): string {
   const homes = privateHomes(raw);
   if (homes === undefined) return refuse({ kind: "unreadable_list" }, launch);
   const listed = homes.map(shellQuote).join("|");
-  return homeVariables
-    .filter((name) => homes.includes(process.env[name] ?? ""))
+  return guardedVariables(homes)
     .map(
       // `printenv` sees only what the shell exports, which is what the CLI inherits.
       (name) =>

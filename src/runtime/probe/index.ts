@@ -10,8 +10,9 @@
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { exitStatus } from "../exit-status.ts";
-import { homeGuardStopped } from "../home-guard/index.ts";
+import { homeGuardStopMarker, homeGuardStopped, watchForStopMarker } from "../home-guard/index.ts";
 import type { CommandResult } from "../seams.ts";
+import type { StreamMarkerWatcher } from "../stream-marker.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
 import {
@@ -118,11 +119,16 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // there, so the user's profile load is never charged to the CLI (C-PERF-05).
     function onStart(channel: ProbeStartChannel, chunk: Buffer): void {
       if (!start.feed(channel, chunk)) return;
-      control.off("data", onControl);
       clearTimeout(timer);
       timer = boundBy(commandTimeoutMs, commandTimedOut);
     }
-    const onControl = (chunk: Buffer): void => onStart("control", chunk);
+    // After the start line, the control descriptor carries only the e2e home guard's stop
+    // line, which no profile's redirection of stdout can hide (PRD §12).
+    const guardStop = watchForStopMarker();
+    const onControl = (chunk: Buffer): void => {
+      guardStop.feed(chunk);
+      onStart("control", chunk);
+    };
     control.on("data", onControl);
     // Spawn failure (e.g. ENOENT) fires `error` and not `close`. Node's spawn
     // `error` always carries a `code`, which preflight maps to `*_not_found`.
@@ -136,7 +142,10 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
       if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
       // The e2e home guard runs after the start line but stops the shell before the command.
-      else if (expectsStartLine && homeGuardStopped(code, stdout))
+      else if (
+        expectsStartLine &&
+        homeGuardStopped(code, () => hasHomeGuardStopMarker(stdout, guardStop))
+      )
         settle(guardStopped(stdout, stderr));
       // A signal death reads as a shell reports it, 128+n.
       else settle({ status: exitStatus(code, signal), stdout, stderr });
@@ -144,4 +153,9 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
     let timer = boundBy(launchTimeoutMs, launchTimedOut);
   });
+}
+
+/** Whether the guard's stop line reached the control descriptor or, from a shell that closed it, stdout. */
+function hasHomeGuardStopMarker(stdout: string, stopWatcher: StreamMarkerWatcher): boolean {
+  return stopWatcher.seen || stdout.includes(homeGuardStopMarker);
 }
