@@ -68,7 +68,8 @@ export async function spawnCodexPty(
     options,
     capabilities,
   );
-  // After the capability probe, the launch's last await: the agent runs in the directory checked.
+  // Last host check of the initial cwd; the child checks before/after profiles (§4.2).
+  // Profiles may cd, and validation does not make execution atomic.
   assertLaunchDirectoryUnchanged(options.launchDirectory);
   let pty: PtyProcess;
   try {

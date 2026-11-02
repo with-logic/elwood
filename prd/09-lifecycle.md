@@ -59,7 +59,10 @@ triggers the update (§9.2 below), no update command runs. That is not an update
 attempt: it records no `agent_update_failed` warning, and each launch that
 shared it tries the update again, in its own launch directory. A directory guard
 that refuses before the update command starts is likewise not an update attempt:
-it has no `updateCwd`, produces no update-failure warning, and is not cached. If the
+it has no `updateCwd`, produces no update-failure warning, and is not cached. The
+lease owner publishes no completion for that refusal; a waiting process retries
+under the lease in its own launch directory. An unrelated login-profile exit,
+including status 96, remains a `login_shell_failed` update warning. If the
 installed agent version is below the minimum after that optional update step,
 startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`

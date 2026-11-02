@@ -84,7 +84,7 @@ async function runClaudeUpdate(
     update,
     identity === undefined ? { cwd } : { cwd, identity },
   );
-  if (result.started === false) return { started: false, result };
+  if (result.started === false) return { started: false };
   if (result.status !== 0) {
     throw elwoodError(
       "claude_update_failed",

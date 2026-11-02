@@ -1,6 +1,6 @@
 /**
- * The probe shell's scripts, and recognition of their start line, which ends the login shell's
- * launch phase and starts the probe command's own bound: on the runner's private control
+ * The probe shell's scripts and private control lines: a refusal identifies its directory
+ * guard; the start line ends login-shell launch and starts the command's bound. On the control
  * descriptor, or on stdout from a shell that closed that descriptor at startup. Implements
  * PRD §9.2 and C-PERF-05.
  */
@@ -16,6 +16,10 @@ import { randomBytes } from "node:crypto";
  * and no profile can print a line it cannot predict.
  */
 export const probeCommandStartLine = `elwood-probe-command-start-${randomBytes(8).toString("hex")}`;
+
+/** Distinguishes our guard's refusal from a profile choosing the same exit status. */
+export const probeDirectoryRefusalLine = `elwood-probe-directory-refused-${randomBytes(8).toString("hex")}`;
+export const probeDirectoryRefusalScript = `{ echo ${probeDirectoryRefusalLine} >&3; } 2>/dev/null || :; { echo ${probeDirectoryRefusalLine}; } 2>/dev/null || :; `;
 
 /**
  * The start line's primary channel: a fourth pipe the runner opens for every probe. Not stdout
@@ -65,14 +69,17 @@ export function announcesStart(args: readonly string[]): boolean {
   return args.at(-1)?.includes(probeStartScript) ?? false;
 }
 
-const startBytes = Buffer.from(`${probeCommandStartLine}\n`);
-
-/** Finds the start line in a stream whose chunks may split it anywhere. */
+/** Finds a private probe control line in a stream whose chunks may split it anywhere. */
 export class ProbeStartWatcher {
   private tail = Buffer.alloc(0);
   private seen = false;
+  private readonly bytes: Buffer;
 
-  /** Whether the start line has been seen: the probe command has begun. */
+  constructor(line = probeCommandStartLine) {
+    this.bytes = Buffer.from(`${line}\n`);
+  }
+
+  /** Whether this watcher's control line has been seen. */
   get started(): boolean {
     return this.seen;
   }
@@ -81,14 +88,14 @@ export class ProbeStartWatcher {
   feed(chunk: Buffer): boolean {
     if (this.seen) return false;
     const window = Buffer.concat([this.tail, chunk]);
-    if (window.includes(startBytes)) {
+    if (window.includes(this.bytes)) {
       this.seen = true;
       this.tail = Buffer.alloc(0);
       return true;
     }
     // Keep a copy of only what could still begin a split start line: a view would pin the
     // whole chunk for as long as an unresolved probe's reaper retains this watcher.
-    this.tail = Buffer.from(window.subarray(Math.max(0, window.length - (startBytes.length - 1))));
+    this.tail = Buffer.from(window.subarray(Math.max(0, window.length - (this.bytes.length - 1))));
     return false;
   }
 }
@@ -111,6 +118,16 @@ export class ProbeStart {
     stdout: new ProbeStartWatcher(),
   };
 
+  private readonly refusals: Readonly<Record<ProbeStartChannel, ProbeStartWatcher>> = {
+    control: new ProbeStartWatcher(probeDirectoryRefusalLine),
+    stdout: new ProbeStartWatcher(probeDirectoryRefusalLine),
+  };
+
+  /** Whether a private guard refusal was observed on either launch channel. */
+  get directoryRefused(): boolean {
+    return Object.values(this.refusals).some((watcher) => watcher.started);
+  }
+
   /** Whether any channel has carried the start line. */
   get started(): boolean {
     return Object.values(this.watchers).some((watcher) => watcher.started);
@@ -119,6 +136,7 @@ export class ProbeStart {
   /** True exactly once across both channels: for the chunk that completes the start line. */
   feed(channel: ProbeStartChannel, chunk: Buffer): boolean {
     if (this.started) return false; // only the first start line starts the command
+    this.refusals[channel].feed(chunk);
     return this.watchers[channel].feed(chunk);
   }
 }

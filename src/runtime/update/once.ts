@@ -9,8 +9,10 @@ import { type DirectoryRead, readInDirectory } from "../probe/directory-key.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
+import type { UpdateOperation, UpdateResult } from "./not-started.ts";
 
-let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
+type UpdateCoordinator = (adapter: UpdateAdapter, update: UpdateOperation) => Promise<UpdateResult>;
+let coordinateUpdate: UpdateCoordinator = coordinatedAutoupdate;
 
 /**
  * The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. It is `ok`
@@ -26,14 +28,13 @@ export type AutoupdateOutcome =
 export type UpdateSteps = {
   /** Rejects when the CLI is missing, or its check fails, in the launch's directory. */
   readonly verify: () => Promise<unknown>;
-  readonly update: (() => Promise<void>) | (() => Promise<UpdateNotStarted | undefined>);
+  readonly update: UpdateOperation;
 };
 
-/** A directory guard refused before the updater ran; preserve that probe's diagnostics. */
-export type UpdateNotStarted = { readonly started: false; readonly result: CommandResult };
+export type { UpdateNotStarted } from "./not-started.ts";
 
-/** A settled attempt; `updated` is false when its check or directory guard prevented it. */
-type Attempt = { readonly updated: boolean; readonly outcome: AutoupdateOutcome };
+/** Whether a settled outcome is reusable, including failed or peer-owned attempts. */
+type Attempt = { readonly canReuseOutcome: boolean; readonly outcome: AutoupdateOutcome };
 
 // The settled autoupdate attempt per adapter. Every `autoupdate: true` caller awaits the SAME
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
@@ -60,7 +61,9 @@ export function cachedAutoupdate(
   const existing = autoupdates.get(adapter);
   if (existing) {
     return existing.then((attempt) =>
-      attempt.updated ? attempt.outcome : cachedAutoupdate(adapter, cwd, steps, afterAttempt),
+      attempt.canReuseOutcome
+        ? attempt.outcome
+        : cachedAutoupdate(adapter, cwd, steps, afterAttempt),
     );
   }
   let stage: "waiting" | "verifying" | "updating" | "not-started" = "waiting";
@@ -71,7 +74,11 @@ export function cachedAutoupdate(
     await steps.verify();
     stage = "updating";
     const update = await steps.update();
-    if (update?.started === false) stage = "not-started";
+    if (update?.started === false) {
+      stage = "not-started";
+      return update;
+    }
+    return undefined;
   };
   const failed = (error: unknown): AutoupdateOutcome =>
     stage === "updating" ? { ok: false, error, updateCwd: cwd } : { ok: false, error };
@@ -81,9 +88,10 @@ export function cachedAutoupdate(
       (error) => finalizeAutoupdate(adapter, failed(error), failed, afterAttempt),
     )
     .then((outcome): Attempt => {
-      if (stage !== "verifying" && stage !== "not-started") return { updated: true, outcome };
+      if (stage !== "verifying" && stage !== "not-started")
+        return { canReuseOutcome: true, outcome };
       autoupdates.delete(adapter); // before any sharer retries
-      return { updated: false, outcome: { ok: true } };
+      return { canReuseOutcome: false, outcome: { ok: true } };
     });
   autoupdates.set(adapter, pending);
   return pending.then((attempt) => attempt.outcome);
@@ -146,9 +154,9 @@ const versionReads: Record<UpdateAdapter, ProbeCache<DirectoryRead<CommandResult
  * again at the same path is read afresh. Concurrent callers share the single in-flight read and
  * its outcome. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
  * error), is not kept, so the next caller after it settles reads again (C-LIFE-11); nor is one
- * whose directory was replaced while it ran, since it may have read the replacement's CLI. A
- * directory evicted from the cache is read again, and so is every directory after an autoupdate
- * invalidates it.
+ * whose directory replacement was detected at a validation boundary. Changes wholly between
+ * checks can escape detection (§4.2). An evicted directory is read again, as is every
+ * directory after an autoupdate invalidates it.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
@@ -168,7 +176,7 @@ export function resetAutoupdateForTests(): void {
   coordinateUpdate = coordinatedAutoupdate;
 }
 
-export function setUpdateCoordinatorForTests(coordinator: typeof coordinatedAutoupdate): void {
+export function setUpdateCoordinatorForTests(coordinator: UpdateCoordinator): void {
   // Unit tests provide in-memory command runners and must never contend with a
   // real desktop host's global update lease. Cross-process coverage calls the
   // production coordinator directly from fresh child processes.

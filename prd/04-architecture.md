@@ -70,7 +70,9 @@ selected by a profile or shim, or prevent later directory changes by those trust
 programs. A replacement made and restored entirely between checks can escape
 detection. Consumers requiring atomic isolation must provide it outside Elwood.
 A child-side checked-directory refusal exits that child with status 96 before the
-requested command starts; this is not an Elwood CLI exit status.
+requested command starts; this is not an Elwood CLI exit status. Probe classification
+also requires the guard's private refusal signal, so a profile's own status 96 is
+not mistaken for a directory refusal.
 
 A probe's shell startup and its command are bounded separately (§9.2), so a slow
 profile is not reported as a failing CLI.

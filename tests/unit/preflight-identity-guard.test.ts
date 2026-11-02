@@ -6,7 +6,11 @@ import * as claude from "../../src/claude/preflight.ts";
 import * as codex from "../../src/codex/preflight.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
-import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import {
+  currentCommandRunner,
+  setCommandRunnerForTests,
+  setPtyFactoryForTests,
+} from "../../src/runtime/seams.ts";
 import { changeDirectory, dir, project, useProbeProjects } from "../helpers/preflight-projects.ts";
 
 useProbeProjects();
@@ -85,7 +89,10 @@ test.each(
     changeDirectory(cwd, replacement);
     return nodePtyFactory(options);
   });
-  await expect(start({ cwd })).rejects.toMatchObject({ code: `${agent}_start_failed` });
+  await expect(start({ cwd })).rejects.toMatchObject({
+    code: `${agent}_start_failed`,
+    details: { cwd },
+  });
   expect(existsSync(marker)).toBe(false);
 });
 
@@ -97,4 +104,27 @@ test.each(
     code: "pty_start_failed",
   });
   expect(readFileSync(join(cwd, "updated-in"), "utf8").trim()).toBe(cwd);
+});
+
+test.each(
+  cases,
+)("C-API-61 %s forwards the pinned identity to an update after verification", async (agent, start, version) => {
+  const cwd = project(agent, version);
+  const replacement = project(agent, version);
+  const probe = currentCommandRunner();
+  let swapped = false;
+  setCommandRunnerForTests((command, args, options) => {
+    if (args.at(-1)?.includes(`exec ${agent} update`)) {
+      setCommandRunnerForTests(probe);
+      swapped = true;
+      changeDirectory(cwd, replacement);
+    }
+    return probe(command, args, options);
+  });
+  await expect(start({ cwd, autoupdate: true })).rejects.toMatchObject({
+    code: `${agent}_start_failed`,
+    details: { cwd },
+  });
+  expect(swapped).toBe(true);
+  expect(existsSync(join(cwd, "updated-in")), "the replacement updater never ran").toBe(false);
 });

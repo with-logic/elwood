@@ -44,7 +44,10 @@ for (const kind of ["start", "resume"] as const) {
         stateDir === undefined
           ? start({ cwd })
           : resume({ stateDir, elwoodSessionId: `${agent}-probe-cwd` });
-      await expect(launch).rejects.toMatchObject({ code: `${agent}_start_failed` });
+      await expect(launch).rejects.toMatchObject({
+        code: `${agent}_start_failed`,
+        details: { cwd },
+      });
       expect(spawned).toBe(true);
       expect(existsSync(original), "the PTY profile ran after the initial guard").toBe(true);
       expect(existsSync(marker), "the replacement CLI never ran").toBe(false);

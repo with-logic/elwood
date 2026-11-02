@@ -152,7 +152,8 @@ async function spawnCaptured(
       // A shell that exits without announcing its command never ran it (an rc file that
       // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
       if (start.expectsStartLine && !start.started) {
-        settle(directoryShellExit(code, shellExited(code, ...captured()), options, command));
+        const result = shellExited(code, ...captured());
+        settle(directoryShellExit(code, result, options, command, start.directoryRefused));
         return;
       }
       // A signal death reads as a shell reports it, 128+n.
@@ -167,9 +168,9 @@ function output([stdout, stderr]: [string, string]) {
   return { stdout, stderr };
 }
 /** A launch preparation or spawn that throws leaves no output capture behind. */
-function releasedOnThrow<T>(capture: ProbeCapture, spawnIt: () => T): T {
+function releasedOnThrow<T>(capture: ProbeCapture, operation: () => T): T {
   try {
-    return spawnIt();
+    return operation();
   } catch (error) {
     capture.release();
     throw error;

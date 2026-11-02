@@ -48,6 +48,15 @@ test("C-API-61 status 96 without a pre-start shell failure remains the CLI's own
   const result = { status: directoryGuardExitCode, stdout: "cli", stderr: "" };
   expect(directoryShellExit(96, result, {}, "/bin/sh")).toBe(result);
   expect(
+    directoryShellExit(
+      96,
+      result,
+      { cwd: "/work", identity: { dev: 1n, ino: 2n } },
+      "/bin/sh",
+      true,
+    ),
+  ).toBe(result);
+  expect(
     directoryShellExit(96, result, { cwd: "/work", identity: { dev: 1n, ino: 2n } }, "/bin/sh"),
   ).toBe(result);
 });
@@ -56,7 +65,13 @@ test("C-API-61 a status-96 pre-start shell failure retains its message and check
   const error = { message: "guard refused", phase: "login_shell" } as const;
   const result: CommandResult = { status: null, stdout: "", stderr: "", error };
   expect(
-    directoryShellExit(96, result, { cwd: "/work", identity: { dev: 1n, ino: 2n } }, "/bin/sh"),
+    directoryShellExit(
+      96,
+      result,
+      { cwd: "/work", identity: { dev: 1n, ino: 2n } },
+      "/bin/sh",
+      true,
+    ),
   ).toEqual({ ...result, started: false, error: { ...error, cwd: "/work" } });
 });
 

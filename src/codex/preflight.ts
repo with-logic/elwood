@@ -36,7 +36,8 @@ export type CodexPreflightWarning = DistributiveOmit<
 // The capability probe per launch directory, bounded like the version reads. It shares one
 // in-flight `codex --help` across concurrent first spawns AND never keeps a rejection, so a
 // transient `--help` failure does not poison every later Codex start (C-LIFE-11). An answer
-// read while its directory was replaced may be the replacement's, so it is not kept either.
+// whose directory replacement is detected at a validation boundary is not kept either;
+// replacements wholly between checks can escape detection (§4.2).
 const capabilityProbe = createProbeCache<DirectoryRead<CodexCliCapabilities>>(
   maxSettledPreflightDirectoryResults,
   (read) => read.sameDirectory,
@@ -100,7 +101,7 @@ async function runCodexUpdate(
     update,
     identity === undefined ? { cwd } : { cwd, identity },
   );
-  if (result.started === false) return { started: false, result };
+  if (result.started === false) return { started: false };
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }

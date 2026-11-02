@@ -33,30 +33,32 @@ export type DirectoryRead<T> = { readonly value: T; readonly sameDirectory: bool
 
 /**
  * `cwd`'s answer from `cache`, else `read()`'s, keyed by `cwd`'s directory. `read` passes its
- * options to the probe, which spawns only while `cwd` is still that directory, so a probe that
- * waited for a slot while `cwd` was replaced reads nothing (`runProbe`). The cache's predicate
- * should refuse a read whose `sameDirectory` is false: its directory was replaced while it ran,
- * so it may describe the replacement, and keeping it under the original's key would answer the
- * original with it if that directory came back.
+ * options to the probe, retaining a launch's pinned `expectedIdentity` even when the fresh
+ * `observedIdentity` differs; the child must refuse that mismatch instead of trusting it anew.
+ * The cache predicate refuses a read whose final boundary saw a different directory, because
+ * keeping a replacement's answer under the original key could answer the restored original
+ * incorrectly. Replacements wholly between checks can escape detection (§4.2).
  */
 export async function readInDirectory<T>(
   cache: ProbeCache<DirectoryRead<T>>,
   cwd: string,
   read: (options: CommandOptions) => Promise<T>,
-  expected?: DirectoryIdentity,
+  expectedIdentity?: DirectoryIdentity,
 ): Promise<T> {
-  const identity = await identityOf(cwd);
+  const observedIdentity = await identityOf(cwd);
   if (
-    expected !== undefined &&
-    (identity === undefined || keyOf(cwd, expected) !== keyOf(cwd, identity))
+    expectedIdentity !== undefined &&
+    (observedIdentity === undefined ||
+      keyOf(cwd, expectedIdentity) !== keyOf(cwd, observedIdentity))
   ) {
-    return read({ cwd, identity: expected });
+    // Retain the launch's pinned identity: adopting the replacement would trust it anew.
+    return read({ cwd, identity: expectedIdentity });
   }
   // A directory that can't be identified is read, but its answer is neither shared nor kept.
-  if (identity === undefined) return read({ cwd });
-  const key = keyOf(cwd, identity);
+  if (observedIdentity === undefined) return read({ cwd });
+  const key = keyOf(cwd, observedIdentity);
   const { value } = await cache.get(key, async () => {
-    const value = await read({ cwd, identity: expected ?? identity });
+    const value = await read({ cwd, identity: expectedIdentity ?? observedIdentity });
     const after = await identityOf(cwd);
     return { value, sameDirectory: after !== undefined && keyOf(cwd, after) === key };
   });
@@ -106,6 +108,7 @@ export function directoryShellExit(
   result: CommandResult,
   options: CommandOptions,
   command: string,
+  guardRefused = false,
 ): CommandResult {
   if (options.identity === undefined) return result;
   // 126/127 can mean the wrapper could not exec the configured shell. If that shell is
@@ -123,8 +126,8 @@ export function directoryShellExit(
       };
     }
   }
-  // Status 96 alone may be the requested CLI's own exit. Only a pre-start shell failure
-  // identifies the guard's refusal; it has a message and no invented host-side errno.
-  if (status !== directoryGuardExitCode || result.error?.phase !== "login_shell") return result;
+  // A profile can choose status 96 too: only our private guard signal identifies refusal.
+  if (status !== directoryGuardExitCode || !guardRefused || result.error?.phase !== "login_shell")
+    return result;
   return { ...result, started: false, error: { ...result.error, cwd: options.cwd } };
 }

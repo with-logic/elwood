@@ -102,7 +102,8 @@ export function spawnClaudePty(
     userShell(),
     buildClaudeShellCommand(settingsPath, options, record.claude.resumeId),
   );
-  // Last, after everything else the launch awaited: the agent runs in the directory checked.
+  // Last host check of the initial cwd; the child checks before/after profiles (§4.2).
+  // Profiles may cd, and validation does not make execution atomic.
   assertLaunchDirectoryUnchanged(options.launchDirectory);
   try {
     return currentPtyFactory()({
