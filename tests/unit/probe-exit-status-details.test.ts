@@ -62,6 +62,7 @@ test.each(
     exitStatus: 3,
   });
   resetAutoupdateForTests();
+  setUpdateCoordinatorForTests((_adapter, update) => update());
   resetPreflightCacheForTests();
   failProbe(`${agent} update`, "kill -INT $$", version);
   await expect(preflight(false, true)).resolves.toMatchObject({ exitStatus: 130 });
