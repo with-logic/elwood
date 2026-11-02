@@ -5,13 +5,13 @@
  * late, `kill` still reaps such a tree within the deadline.
  */
 
-import { setTimeout as sleep } from "node:timers/promises";
 import { expect, test } from "vitest";
 import { osProcessTreeOps, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
 import { pollGone } from "../helpers/process-liveness.ts";
+import { lateRealReads } from "../helpers/table-reads.ts";
 
 /** How late each read starts: about what one read took on a loaded host. */
 const SLOW_READ_MS = 600;
@@ -20,12 +20,12 @@ test("C-LIFE-10 kill reaps a setsid hook and its setsid child when each read tak
   const tree = startDetachedTree();
   const [child, grandchild] = await detachedDescendantPids(tree);
   let reads = 0;
+  const late = lateRealReads(SLOW_READ_MS);
   const slowReads = {
     ...osProcessTreeOps,
-    listProcesses: async (timeoutMs: number, scope?: DaemonScope) => {
+    listProcesses: (timeoutMs: number, scope?: DaemonScope) => {
       reads += 1;
-      await sleep(SLOW_READ_MS);
-      return osProcessTreeOps.listProcesses(Math.max(1, timeoutMs - SLOW_READ_MS), scope);
+      return late(timeoutMs, scope);
     },
   };
   await terminatePty(tree.pty, "SIGKILL", new SessionReaper(tree.pty.pid, slowReads));
