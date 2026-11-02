@@ -166,7 +166,10 @@ and the probe command then has a default timeout of 15 seconds from that line un
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
-Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
+Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
+process dies of a signal Elwood did not send reports the status a shell would, 128 plus
+the signal's number; a login shell that dies before then is a login-shell failure, as
+follows. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
@@ -201,10 +204,11 @@ non-PTY probe — `--version`, `--help` capability detection, and
 otherwise) surfaces through that probe's existing public error name —
 `claude_start_failed` / `codex_start_failed` — with the underlying reason
 preserved in the error `details` as `cause` (and `errno`, e.g. `ETIMEDOUT` on
-timeout or `E2BIG` on overflow) alongside any `stderr`. An UPDATE failure
+timeout or `E2BIG` on overflow) alongside any `stderr`, and the status the probe
+reported, if any, as `exitStatus`. An UPDATE failure
 (`claude update` / `codex update`), being best-effort maintenance, does NOT
 surface as a start-blocking error; it is contained and surfaces as the live
-`agent_update_failed` warning carrying the same bounded diagnostics (exit status,
+`agent_update_failed` warning carrying the same bounded diagnostics (`exitStatus`,
 `errno`, `stderr`), while startup continues through the compatibility gate. A
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.

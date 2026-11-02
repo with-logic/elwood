@@ -8,10 +8,12 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import {
+  quietProcessTree,
   resetProcessTreeOpsForTests,
   SessionReaper,
   setProcessTreeOpsForTests,
 } from "../../src/runtime/shutdown/reap-tree.ts";
+import { FAKE_PID } from "../helpers/fake-pid.ts";
 
 const listing = vi.hoisted(() => ({ calls: 0 }));
 
@@ -23,8 +25,8 @@ vi.mock("../../src/runtime/shutdown/process-table.ts", async (importOriginal) =>
   },
 }));
 
-// Any valid pid works: `process.kill` is replaced, so no group is ever signaled.
-const LEADER = 5000;
+// Never the runner's own pid, which the reaper deliberately excludes.
+const LEADER = FAKE_PID;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -45,4 +47,13 @@ test("C-LIFE-10 ops left out of the seam never reach a real signal or table read
   expect(signals).toEqual([]); // no real SIGSTOP
   expect(listing.calls).toBe(0); // no real `ps`
   expect(killed).toEqual([LEADER]); // only the faked group reap
+});
+
+test("C-LIFE-10 the inert resume sends no real signal and lets go of the group", async () => {
+  const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+  const quiet = quietProcessTree();
+  quiet.stopGroup(LEADER);
+  quiet.continueGroup(LEADER);
+  expect(await quiet.listProcesses(1_000)).toEqual([]);
+  expect(kill).not.toHaveBeenCalled();
 });

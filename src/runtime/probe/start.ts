@@ -36,6 +36,14 @@ export const probeControlFd = 3;
 export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; else echo ${probeCommandStartLine}; fi; `;
 
 /**
+ * The redirection a probe script gives the command it `exec`s: a placeholder that a named-pipe
+ * capture replaces with its two pipes' quoted paths once it has made them (`named-pipes.ts`).
+ * The paths are never in the login shell's environment, so nothing its startup files run is
+ * told where the probe's output goes.
+ */
+export const probeOutputRedirect = ">%elwood-probe-stdout% 2>%elwood-probe-stderr%";
+
+/**
  * Removes the user's not-found handlers before the probe command runs: zsh's
  * `command_not_found_handler` and bash's `command_not_found_handle`. A shell that finds no
  * command runs its handler, so its output would be captured as the command's, and the status

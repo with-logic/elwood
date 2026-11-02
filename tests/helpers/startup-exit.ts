@@ -7,6 +7,7 @@
 import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtySpawnOptions } from "../../src/pty/types.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { FAKE_PID } from "./fake-pid.ts";
 import { FakePty } from "./fake-pty.ts";
 
 export const startupExit = { exitCode: 12, signal: 15 } as const;
@@ -19,7 +20,7 @@ const EXIT_LISTENER_WAIT_MS = 10_000;
 /** A fake CLI that exits during startup, as soon as the session listens for its exit. */
 export function exitingDuringStartup(ptys: FakePty[]): Factory {
   return (options) => {
-    const pty = new FakePty(options, 1000 + ptys.length);
+    const pty = new FakePty(options, FAKE_PID + ptys.length);
     ptys.push(pty);
     const deadline = Date.now() + EXIT_LISTENER_WAIT_MS;
     const timer = setInterval(() => {
@@ -35,7 +36,7 @@ export function exitingDuringStartup(ptys: FakePty[]): Factory {
 /** A fake CLI that keeps running but prints `output` during startup. */
 export function runningWithStartupOutput(ptys: FakePty[], output: string): Factory {
   return (options) => {
-    const pty = new FakePty(options, 1000 + ptys.length);
+    const pty = new FakePty(options, FAKE_PID + ptys.length);
     ptys.push(pty);
     queueMicrotask(() => pty.emitData(output));
     return pty;
