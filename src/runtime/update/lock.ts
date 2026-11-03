@@ -62,7 +62,7 @@ export async function coordinatedAutoupdate(
   options: UpdateLeaseOptions = {},
 ): Promise<void> {
   const root = options.root ?? defaultLeaseRoot();
-  const path = updateLockPath(adapter, root);
+  const leasePath = updateLockPath(adapter, root);
   const pollMs = options.pollMs ?? defaultPollMs;
   const staleMs = options.staleMs ?? defaultStaleMs;
   // Monotonic: the wait is a promised bound, so a backward system-clock adjustment must
@@ -71,17 +71,17 @@ export async function coordinatedAutoupdate(
   await mkdir(root, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
-  const completion = join(root, `${adapter}.completed`);
+  const completionMarkerPath = join(root, `${adapter}.completed`);
   if (
     !(await acquireUpdateLease({
       adapter,
-      path,
+      leasePath,
       owner,
-      completion,
+      completionMarkerPath,
       pollMs,
       staleMs,
       waitUntilMs,
-      claim: () => claimLease(path, owner),
+      claim: () => claimLease(leasePath, owner),
     }))
   )
     return;
@@ -101,11 +101,11 @@ export async function coordinatedAutoupdate(
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
-    await Promise.allSettled([writeFile(completion, owner.token, { mode: 0o600 })]);
-    await releaseLease(path, owner);
+    await Promise.allSettled([writeFile(completionMarkerPath, owner.token, { mode: 0o600 })]);
+    await releaseLease(leasePath, owner);
   } else {
     await retainLease(
-      path,
+      leasePath,
       owner,
       unfinishedGroupIds,
       options.retainRetryMs ?? defaultRetainRetryMs,

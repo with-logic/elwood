@@ -6,33 +6,33 @@ import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
 
 type Acquisition = {
   readonly adapter: UpdateAdapter;
-  readonly path: string;
+  readonly leasePath: string;
   readonly owner: LeaseOwner;
-  readonly completion: string;
+  readonly completionMarkerPath: string;
   readonly pollMs: number;
   readonly staleMs: number;
   readonly waitUntilMs: number;
   readonly claim: () => Promise<boolean>;
 };
 
-/** True grants ownership; false means a peer's completed update already covers this call. */
+/** True grants update ownership; false means no update lease acquired. */
 export async function acquireUpdateLease({
   adapter,
-  path,
+  leasePath,
   owner,
-  completion,
+  completionMarkerPath,
   pollMs,
   staleMs,
   waitUntilMs,
   claim,
 }: Acquisition): Promise<boolean> {
   // Observe the owner before its completion can be sampled and its lease retired.
-  const observedGeneration = (await readOwner(path))?.token;
-  const priorCompletion = await readOptionalText(completion);
+  const observedGeneration = (await readOwner(leasePath))?.token;
+  const priorCompletionGeneration = await readOptionalText(completionMarkerPath);
   let observedActive =
     observedGeneration !== undefined ||
-    (await pathExists(path)) ||
-    (await pathExists(recoveryPath(path)));
+    (await pathExists(leasePath)) ||
+    (await pathExists(recoveryPath(leasePath)));
   let recoveredStale = false;
   while (!(await claim())) {
     // Losing the claim to an existing lease IS an observation of an active owner; a claim
@@ -41,7 +41,7 @@ export async function acquireUpdateLease({
     // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
-    const waited = await waitForOwner(path, pollMs, staleMs, waitUntilMs);
+    const waited = await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs);
     if (waited === "released") return false;
     if (waited === "wait_expired") {
       throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
@@ -55,15 +55,15 @@ export async function acquireUpdateLease({
         { updateReason: "cleanup_pending", cleanupErrorCode: "ETIMEDOUT" },
       );
     }
-    const staleRemoved: "stale_removed" = waited;
-    recoveredStale = staleRemoved === "stale_removed";
+    recoveredStale = true;
   }
+  const currentCompletionGeneration = await readOptionalText(completionMarkerPath);
   if (
-    (observedGeneration !== undefined && priorCompletion === observedGeneration) ||
-    (!recoveredStale &&
-      (observedActive || (await readOptionalText(completion)) !== priorCompletion))
+    (observedGeneration !== undefined && priorCompletionGeneration === observedGeneration) ||
+    currentCompletionGeneration !== priorCompletionGeneration ||
+    (!recoveredStale && observedActive)
   ) {
-    await releaseLease(path, owner);
+    await releaseLease(leasePath, owner);
     return false;
   }
   return true;
