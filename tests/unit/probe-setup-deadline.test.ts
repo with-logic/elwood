@@ -2,6 +2,7 @@
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { NamedPipeCapture, setMkfifoForTests } from "../../src/runtime/probe/named-pipes.ts";
 import { killGroupsWhoseCommandHas } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -23,11 +24,6 @@ vi.mock("node:child_process", async (original) => {
 });
 
 test("C-PERF-05 capture setup timeout reaps its native child and removes its directory", async () => {
-  // The shared preload may have loaded capture before this file's call-through mock.
-  vi.resetModules();
-  const { NamedPipeCapture, setMkfifoForTests } = await import(
-    "../../src/runtime/probe/named-pipes.ts"
-  );
   const root = tempDir("elwood-stalled-setup-");
   const tmp = join(root, "tmp");
   const helper = join(root, "mkfifo");
@@ -40,13 +36,16 @@ test("C-PERF-05 capture setup timeout reaps its native child and removes its dir
   );
   setMkfifoForTests(helper);
   let emergencyKill = false;
-  // This guard only prevents a broken implementation leaking the test's own busy child.
+  const setupTimeoutMs = 750;
+  // Allow three extra setup windows for SIGKILL delivery, reaping, and directory cleanup.
+  // This guard prevents a broken implementation from leaking the test's own busy child.
+  const emergencyKillTimeoutMs = 4 * setupTimeoutMs;
   const safety = setTimeout(() => {
     emergencyKill = true;
     killGroupsWhoseCommandHas(helper);
-  }, 3_000);
+  }, emergencyKillTimeoutMs);
   try {
-    await expect(NamedPipeCapture.create(750)).rejects.toMatchObject({
+    await expect(NamedPipeCapture.create(setupTimeoutMs)).rejects.toMatchObject({
       killed: true,
       signal: "SIGKILL",
     });
