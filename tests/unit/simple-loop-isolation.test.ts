@@ -59,6 +59,18 @@ test.each([
     await expect.poll(() => live.status).toBe("ready");
     const send = vi.spyOn(live, "sendMessage");
     vi.useFakeTimers();
+    // Hold a parser batch to reproduce a busy terminal without a wall-clock sleep.
+    const write = live.terminal.xterm.write.bind(live.terminal.xterm);
+    const pendingWrites: Array<() => void> = [];
+    const parserBatchDelayMs = 200;
+    vi.spyOn(live.terminal.xterm, "write").mockImplementation((data, done) => {
+      pendingWrites.push(() => write(data, done));
+      if (pendingWrites.length === 1) {
+        setTimeout(() => {
+          for (const flush of pendingWrites.splice(0)) flush();
+        }, parserBatchDelayMs);
+      }
+    });
     await facade.createLoop({ mode: "fixed", intervalMs: 60_000, message: "check" });
     let fired = false;
     live.on("loop", (event) => {
@@ -89,7 +101,12 @@ test.each([
           ? `${text}\r\n› `
           : `❯ \r\n  ⏵⏵ bypass permissions · ${text.startsWith("• Working") ? "esc to interrupt · " : ""}← for agents`;
       ptys[0]!.emitData(`\u001b[2J\u001b[H${screen}`);
-      await vi.advanceTimersByTimeAsync(100);
+      // A later clear-screen frame must not overtake this frame's observation.
+      let rendered = false;
+      void live.terminal.settled().then(() => {
+        rendered = true;
+      });
+      await vi.waitFor(() => expect(rendered).toBe(true));
     };
     await paint("• Working (3s • esc to interrupt)");
     await paint("■ Conversation interrupted");
