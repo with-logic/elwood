@@ -49,6 +49,28 @@ test.each([
   expect(probe).not.toHaveBeenCalled();
 });
 
+test.each([
+  "run",
+  "config effective",
+])("C-CLI-21 %s rejects a missing default invocation workspace without probing", async (command) => {
+  const root = tempDir("workspace-default-validation-");
+  const cwd = join(root, "missing");
+  const context = { env: {}, homeDir: root, invocationCwd: cwd };
+  const probe = vi.fn(() => ({ status: 127, stdout: "", stderr: "" }));
+  setCommandRunnerForTests(probe);
+  const parsed = parseCliArgs(["go"]);
+  if (parsed.command !== "run") throw new Error("expected run");
+  const result =
+    command === "run"
+      ? resolveRunSettings(parsed, context)
+      : writeEffectiveConfig([], { ...context, stdout: new AsyncOutputSink(new MemoryWriter()) });
+  await expect(result).rejects.toMatchObject({
+    code: "invalid_arguments",
+    message: `Workspace '${cwd}' does not exist.`,
+  });
+  expect(probe).not.toHaveBeenCalled();
+});
+
 test("C-CLI-03 explicit choices and resumes preserve workspace error precedence", async () => {
   const root = tempDir("workspace-detection-validation-");
   const cwd = join(root, "missing");

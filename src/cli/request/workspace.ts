@@ -1,10 +1,11 @@
 /**
- * Validates a run's effective workspace: an absolute, existing directory the current user owns,
+ * Validates a run's effective workspace: an absolute, existing directory the user owns and can enter,
  * reached through no directory or link the owner and mode-bit checks find another user could use
  * to replace it before launch. Implements PRD §12A.5, C-CLI-03, and C-CLI-15.
  */
 
-import { stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { errnoCode } from "../../core/errors.ts";
 import { PathInspectionError, type PathUser, pathReplacementReason } from "./path-replacement.ts";
@@ -22,6 +23,11 @@ export async function validateWorkspace(cwd: string | undefined): Promise<string
     throw usage(`Workspace '${cwd}' must be owned by the current user.`);
   if (replacementReason !== undefined)
     throw usage(`Workspace '${cwd}' could be replaced by another user: ${replacementReason}.`);
+  try {
+    await access(cwd, constants.X_OK);
+  } catch {
+    throw usage(`Workspace '${cwd}' cannot be entered; check directory search permissions.`);
+  }
   return cwd;
 }
 

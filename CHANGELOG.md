@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Resolve CLI auto-detection and interactive PATH lookup from the effective workspace, including relative and absolute `--cwd` overrides. Invalid workspaces report the path-specific usage error before auto-detection.
+- Resolve CLI auto-detection and interactive PATH lookup from the effective workspace, including relative and absolute `--cwd` overrides. Missing, non-directory or non-searchable workspaces report the path-specific usage error before auto-detection.
 - Run version, capability and update probes in the launch workspace, with bounded directory-identity caches so sessions cannot reuse another workspace's CLI results. A workspace removed or replaced during preflight reports a startup failure instead of a missing CLI.
 
 - Concurrent Elwood processes avoid repeating an automatic agent update that another process has completed.

@@ -30,6 +30,11 @@ new session auto-detects one: Elwood tries `claude` first, then `codex`, and
 uses the first whose command resolves in the user's login shell — the same
 resolution the agent launch itself uses (§4.2), from the effective workspace — without
 running either agent.
+Before this unselected new-session auto-detection, including `config effective`,
+Elwood MUST validate the effective workspace under §12A.5, whether it comes from
+`--cwd` or the invocation directory. A workspace usage error takes precedence over
+`no_agent_found` or a probe failure. Explicit-agent and resume validation order is
+unchanged; resume never probes.
 Both probes run concurrently; the order only decides the winner. The resolved
 agent reports the source `auto-detected`. When neither command resolves, the
 invocation fails before any launch with the stable code `no_agent_found` and
@@ -252,7 +257,10 @@ does not require a stored resume record.
 
 The effective workspace, new or resumed, MUST be an absolute, existing directory
 owned by the current user that no other user can replace before the agent
-launches in it. Resolving its path as given, name by name and through every
+launches in it. An OS directory-search permission check MUST also confirm the
+current user can enter it; refusal is a path-specific `invalid_arguments` usage
+error. This is a bounded check, not an atomic launch guarantee.
+Resolving its path as given, name by name and through every
 symlink, every directory a name is looked up in MUST be owned by root or the
 current user and MUST NOT be writable by group or others unless it is sticky,
 and every directory and symlink passed MUST be owned by root or the current
@@ -260,7 +268,7 @@ user. A group-writable directory is accepted when its group is the user's
 private group: the user's primary group, with the same number as the user, as
 Debian, Ubuntu, and Fedora create it. Root's group 0 is a shared system group and
 never counts as private, even for root. Anything else is a usage error that names
-the directory or link and how to fix it. The check reads owners and mode bits
+the directory or link and how to fix it. The replacement check reads owners and mode bits
 only: an ACL that grants another user write access, or another member added to
 the user's private group, is not detected, and where the platform reports no user
 id neither the ownership nor this check applies. The path is launched and
