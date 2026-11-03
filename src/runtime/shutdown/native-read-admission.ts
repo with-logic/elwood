@@ -1,0 +1,72 @@
+/** Shared native scan/probe admission within each read's existing deadline (C-LIFE-10). */
+
+import type { PsRunner } from "./process-table.ts";
+
+/** Full-table scans and daemon-path probes share these subprocess slots. */
+export const MAX_NATIVE_PROCESS_READS = 2;
+const waiting = new Map<symbol, () => void>();
+let active = 0;
+
+/** Every adapter shares the same admission owner and forwards only its remaining native budget. */
+export function createAdmittedPsRunner(run: PsRunner): PsRunner {
+  return (file, args, options) =>
+    admitNativeProcessRead(options.timeout, (remainingMs) =>
+      run(file, args, { ...options, timeout: remainingMs }),
+    );
+}
+
+/** Queue only the native launch, after coalescing; never release before its runner settles. */
+export function admitNativeProcessRead<T>(
+  timeoutMs: number,
+  launch: (remainingMs: number) => Promise<T>,
+): Promise<T> {
+  const deadline = performance.now() + timeoutMs;
+  return new Promise<T>((resolve, reject) => {
+    const key = Symbol();
+    const timer = setTimeout(() => {
+      waiting.delete(key);
+      reject(timedOut());
+    }, timeoutMs);
+    waiting.set(key, () => {
+      clearTimeout(timer);
+      const remainingMs = Math.ceil(deadline - performance.now());
+      if (remainingMs <= 0) {
+        reject(timedOut());
+        return;
+      }
+      active += 1;
+      try {
+        void launch(remainingMs).then(
+          (value) => {
+            active -= 1;
+            resolve(value);
+            drain();
+          },
+          (error: unknown) => {
+            active -= 1;
+            reject(error);
+            drain();
+          },
+        );
+      } catch (error) {
+        active -= 1;
+        reject(error);
+      }
+    });
+    drain();
+  });
+}
+
+/** FIFO admission; expired entries remove themselves without reserving capacity. */
+function drain(): void {
+  while (active < MAX_NATIVE_PROCESS_READS) {
+    const next = waiting.entries().next().value;
+    if (next === undefined) return;
+    waiting.delete(next[0]);
+    next[1]();
+  }
+}
+
+function timedOut(): Error {
+  return Object.assign(new Error("process read admission timed out"), { code: "ETIMEDOUT" });
+}
