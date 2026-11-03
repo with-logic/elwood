@@ -12,33 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Shutdown retains descendants discovered during survivor recovery, rejects ambiguous
-  foreground identities, and suppresses all later leader STOP/TERM/KILL after
-  replacement or uncertain authorization is detected. A descendant first observed
-  within its start second may be left alive with `termination_failed`, rather than
-  treating that ambiguous observation as successful cleanup.
-
-- Graceful SIGTERM now waits for a stopped leader whose original identity is
-  confirmed by a fresh process-table read, within the first read's existing deadline.
-  Unknown, replaced, or unheld leaders receive no SIGTERM; the temporarily stopped
-  group is resumed on both success and failure, with failed restoration retained.
-
-- A session's first descendant reap still starts in the caller's tick when its
-  signal queue is idle. Concurrent foreground and background passes remain serialized,
-  and a rejected pass no longer prevents queued cleanup from running.
-
-- Graceful shutdown skips SIGTERM when its first process-table read shows the leader
-  already gone, even before the PTY exit callback. Survivor cleanup restores an
-  unconfirmed or identity-mismatched stopped group instead of killing a potentially
-  reused group ID. A throwing PTY signal retains an unresolved survivor failure.
-
-- Background shutdown retries serialize with foreground descendant reaping and retain
-  failed attempts to resume Codex's shared daemon. A stopped daemon no longer makes a
-  failed shutdown appear resolved. A retry leaves an ambiguous same-second process
-  identity unresolved instead of signaling a possible replacement process. That veto
-  applies only to its group, so independent safe groups and owed daemon resumes
-  still recover. After the automatic retry window ends, a later shutdown performs
-  a fresh confirmation and can clear a failure whose recorded survivors have exited.
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
 - The walk that reaps detached hook processes now reads each process's short name,
   which `ps` prints raw, and refuses a table read it cannot trust instead of acting
   on it: one with a line that is not one whole row, such as a line a newline in a
@@ -63,6 +43,13 @@ back each entry are listed in `prd/14-conformance.md`.
   read as `*_start_failed`, and whatever it printed reached that error's
   `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
   handlers before running the CLI.
+- A probe whose command dies of a signal now reports the status a shell would,
+  128 plus the signal's number, instead of no status. A login shell that dies
+  before starting the command is still a login-shell failure. `elwood interactive`'s
+  PATH lookup likewise now fails with "login shell exited with status 143" where it
+  said "status null".
+- `*_start_failed` details and the `agent_update_failed` warning now carry a failed
+  probe's exit status as `exitStatus`, as the spec already said the warning would.
 - `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
   detached hook processes ten seconds, up from three, before they reject with
   `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
@@ -72,15 +59,6 @@ back each entry are listed in `prd/14-conformance.md`.
   whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
   SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
   idle host they take as long as before, because the walk ends as soon as it is done.
-- When `kill()`, `teardown()`, or `stop()` cannot confirm that a session's detached
-  hook processes have been reaped, Elwood now keeps reaping the ones it saw in the
-  background for up to a minute. Before, a walk that missed its deadline left them running for good
-  under PID 1: the call rejected with `termination_failed`, and nothing reaped them
-  after. Elwood knows each one by pid and start time, so it never signals a process
-  that later reused one of those pids, and its background work never keeps your
-  process alive. Once no recorded non-daemon survivor remains and every failed daemon
-  resume has succeeded or become unnecessary, later shutdown calls resolve instead of
-  rejecting again.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
@@ -91,14 +69,6 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
-- `stop()` now reaps the detached processes its watch records before a CLI's graceful
-  exit. A process that loses its ancestry between successful reads can remain running. Codex exits on SIGTERM within a fraction of a second, but
-  leaves the shell it starts to snapshot your shell environment, and whatever
-  your profile started from it, running under PID 1. `stop()` now records the
-  session's detached descendants, by pid and start time, from just before its
-  SIGTERM until the CLI exits, then kills those still running, never Codex's
-  shared app-server daemon. It rejects with `termination_failed` when it can't
-  confirm them gone, as `kill()` already does.
 - `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
   app-server daemon, its updater loop, or what the daemon started, such as plugin
   MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex
@@ -405,7 +375,9 @@ back each entry are listed in `prd/14-conformance.md`.
   keep rejecting. The CLI's cleanup diagnostic names those ids too, for example
   `Cleanup failed (termination_failed EAGAIN process groups 4242).` The walk also
   reaps the shell Codex starts a few seconds after launch to snapshot the user's
-  shell environment, which a slow shell profile keeps running.
+  shell environment, which a slow shell profile keeps running. A `stop()` that
+  Codex exits on gracefully is not walked, so a snapshot shell still running then
+  is left running.
 
 - A failed start or resume (`startClaude`, `startCodex`, `resumeClaude`,
   `resumeCodex`) whose cleanup could not confirm that the CLI's process group was

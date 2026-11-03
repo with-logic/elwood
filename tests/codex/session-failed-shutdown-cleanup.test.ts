@@ -23,8 +23,8 @@ test.each([
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });
-  const pty = ptys.at(-1)!;
   try {
+    const pty = ptys.at(-1)!;
     const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
     const { socketPath } = readBridgeScript(launchArtifactPaths(pty.options, dir).bridge);
     expect(await bridgeAccepts(socketPath)).toBe(true);
@@ -34,23 +34,6 @@ test.each([
     await expect(session[verb]()).rejects.toMatchObject({ code: "termination_failed" });
     expect(await bridgeAccepts(socketPath)).toBe(false); // runtime cleanup still ran
   } finally {
-    if (verb === "stop") {
-      // A throwing TERM never confirmed exit; teardown cleans resources and retains failure.
-      pty.emitExit({ exitCode: 0 });
-      await expect(session.teardown()).rejects.toMatchObject({
-        code: "teardown_failed",
-        details: {
-          failures: expect.arrayContaining([
-            expect.objectContaining({
-              code: "termination_failed",
-              details: expect.objectContaining({
-                processGroupId: pty.pid,
-                cause: expect.stringContaining("the leader's exit was not confirmed"),
-              }),
-            }),
-          ]),
-        },
-      });
-    } else await session.teardown();
+    await session.teardown();
   }
 });

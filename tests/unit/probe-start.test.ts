@@ -7,15 +7,17 @@ import { expect, test } from "vitest";
 import {
   announcesStart,
   ProbeStart,
-  ProbeStartWatcher,
   probeCommandStartLine,
   probeStartScript,
 } from "../../src/runtime/probe/start.ts";
+import { StreamMarkerWatcher } from "../../src/runtime/stream-marker.ts";
 
 const line = `${probeCommandStartLine}\n`;
+/** A watcher for the start line, as the probe runner keeps one per channel. */
+const startWatcher = () => new StreamMarkerWatcher(Buffer.from(line));
 
 test("C-PERF-05 the start line is recognized once, even split into single bytes", () => {
-  const watcher = new ProbeStartWatcher();
+  const watcher = startWatcher();
   const bytes = Buffer.from(`profile noise\n${line}late stderr ${line}`);
   const hits: number[] = [];
   for (let i = 0; i < bytes.length; i += 1)
@@ -24,7 +26,7 @@ test("C-PERF-05 the start line is recognized once, even split into single bytes"
 });
 
 test("C-PERF-05 output without the full start line never ends the launch phase", () => {
-  const watcher = new ProbeStartWatcher();
+  const watcher = startWatcher();
   expect(watcher.feed(Buffer.from(probeCommandStartLine))).toBe(false); // no newline yet
   expect(watcher.feed(Buffer.from(" more\n"))).toBe(false);
   expect(watcher.feed(Buffer.from("x".repeat(100)))).toBe(false);
@@ -37,7 +39,7 @@ test("C-PERF-05 only a script that writes the start line first announces its com
 });
 
 test("C-PERF-03 the watcher keeps a copy of a split line's tail, not a view of the whole chunk", () => {
-  const watcher = new ProbeStartWatcher();
+  const watcher = startWatcher();
   watcher.feed(Buffer.alloc(1_000_000, 0x61));
   const tail: unknown = Reflect.get(watcher, "tail");
   expect(Buffer.isBuffer(tail) && tail.length === probeCommandStartLine.length).toBe(true);

@@ -1,25 +1,19 @@
 /**
- * The process-tree operations shutdown performs, and the test seam that replaces them
- * (PRD §5.3 and §9.4, C-LIFE-10): production signals with `process.kill` and reads with
- * `/bin/ps`; a test injects its own, and every op it leaves out is inert.
+ * System process-group operations and the shared inert test seam.
+ * Implements PRD §5.3 and §9.4 (C-LIFE-10).
  */
 
 import { errnoCode } from "../../core/errors.ts";
 import type { SweepOps } from "./detached-sweep/index.ts";
 import { UNREAD } from "./process-table.ts";
 import { listProcessTableMarkingDaemon } from "./shared-daemon.ts";
-import { listProcessTableUnreferenced, runFileUnreferenced } from "./unreferenced-read.ts";
 
 /**
  * The process-tree operations teardown performs, injectable so tests never signal real
  * processes: the group reap's SIGKILL, and the detached sweep's SIGSTOP, SIGKILL, the
- * SIGCONT that resumes a group holding Codex's daemon, and table read. A reap in the
- * background reads with `listProcessesUnreferenced` where there is one: a read that never
- * keeps the host alive.
+ * SIGCONT that resumes a group holding Codex's daemon, and table read.
  */
-export type ProcessTreeOps = SweepOps & {
-  readonly listProcessesUnreferenced?: SweepOps["listProcesses"];
-};
+export type ProcessTreeOps = SweepOps;
 
 /** The part of the process-tree ops the group reap uses. */
 export type GroupReapOps = Pick<ProcessTreeOps, "killGroup">;
@@ -42,13 +36,6 @@ export const osProcessTreeOps: ProcessTreeOps = {
     process.kill(-pgid, "SIGCONT");
   },
   listProcesses: (timeoutMs, scope) => listProcessTableMarkingDaemon(timeoutMs, scope),
-  listProcessesUnreferenced: (timeoutMs, scope) =>
-    listProcessTableMarkingDaemon(
-      timeoutMs,
-      scope,
-      listProcessTableUnreferenced,
-      runFileUnreferenced,
-    ),
 };
 
 // The ops used when a caller does not inject them. A test seam so session lifecycle
@@ -56,7 +43,7 @@ export const osProcessTreeOps: ProcessTreeOps = {
 // without every session/terminate call site taking an ops param.
 let activeOps: ProcessTreeOps = osProcessTreeOps;
 
-/** The ops in use: production's, or a test's (`setProcessTreeOpsForTests`). */
+/** The operations currently selected by the shared shutdown seam. */
 export function activeProcessTreeOps(): ProcessTreeOps {
   return activeOps;
 }
@@ -91,9 +78,13 @@ export function resetProcessTreeOpsForTests(): void {
 }
 
 /**
- * Swallows the ESRCH of an already-empty group (the leader and its children exited
- * together) and rethrows anything else, such as EPERM, a real failure. `errnoCode`
- * narrows first, so a thrown `null` is rethrown as is (C-ERR-01). Exported for coverage.
+ * Swallows the ESRCH raised when the group is already empty (the normal case:
+ * the leader and its children exited together) and re-throws any other error —
+ * a real failure (e.g. EPERM) that must not be reported as a successful reap.
+ * Reads the errno through `errnoCode`, which narrows object-ness first, so a
+ * thrown `null`/non-Error is preserved and rethrown rather than triggering a
+ * secondary TypeError while inspecting it (C-ERR-01). Exported for focused
+ * coverage of both branches without an unsafe real signal.
  */
 export function rethrowUnlessGroupGone(error: unknown): void {
   if (errnoCode(error) !== "ESRCH") throw error;

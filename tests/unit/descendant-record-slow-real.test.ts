@@ -7,7 +7,7 @@
  */
 
 import { expect, test } from "vitest";
-import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
+import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
 import { lateRealReads } from "../helpers/table-reads.ts";
@@ -27,7 +27,7 @@ test("C-LIFE-10 a stop's record knows the leader's tree when each read takes ove
     });
   });
   const watch = watchDescendants(tree.pty.pid, slowReads, () => exited);
-  await watch.firstObservation;
+  await watch.firstRead;
   tree.pty.kill("SIGTERM");
   await exit;
   const record = await watch.finish();

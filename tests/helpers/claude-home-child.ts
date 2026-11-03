@@ -24,6 +24,11 @@ export type Seen = {
   readonly catalog: string | null;
   /** `CLAUDE_SECURESTORAGE_CONFIG_DIR` as the child's Claudes would inherit it. */
   readonly storage: string | null;
+  /** The private temp root the module made, and `CLAUDE_CODE_TMPDIR` as Claude inherits it. */
+  readonly claudeTemp: string;
+  readonly claudeTempEnv: string | null;
+  /** Whether that temp root existed, empty, while the child ran. */
+  readonly claudeTempEmpty: boolean;
 };
 
 const script = `
@@ -41,6 +46,9 @@ const script = `
     config: read(".claude.json"),
     catalog: read("cache/model-catalog/catalog.json"),
     storage: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? null,
+    claudeTemp: m.defaultClaudeTempDir,
+    claudeTempEnv: process.env.CLAUDE_CODE_TMPDIR ?? null,
+    claudeTempEmpty: existsSync(m.defaultClaudeTempDir) && readdirSync(m.defaultClaudeTempDir).length === 0,
   }));`;
 
 /**
@@ -53,6 +61,7 @@ export function runChild(env: Readonly<Record<string, string>>) {
   delete childEnv["CLAUDE_CONFIG_DIR"];
   delete childEnv["ELWOOD_E2E_USER_CLAUDE_STORAGE_SETTING"];
   delete childEnv["CLAUDE_SECURESTORAGE_CONFIG_DIR"];
+  delete childEnv["CLAUDE_CODE_TMPDIR"];
   const securityBin = env["ELWOOD_E2E_SECURITY_BIN"] ?? fakeKeychain().bin;
   Object.assign(childEnv, env, { ELWOOD_E2E_SECURITY_BIN: securityBin });
   return spawnSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], {
@@ -93,6 +102,12 @@ export function parseSeen(text: string): Seen {
     config: field("config", isStringOrNull),
     catalog: field("catalog", isStringOrNull),
     storage: field("storage", isStringOrNull),
+    claudeTemp: field("claudeTemp", isString),
+    claudeTempEnv: field("claudeTempEnv", isStringOrNull),
+    claudeTempEmpty: field(
+      "claudeTempEmpty",
+      (value): value is boolean => typeof value === "boolean",
+    ),
   };
 }
 

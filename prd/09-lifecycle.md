@@ -156,6 +156,8 @@ stderr) writes the line on stdout instead. Not stderr, which a startup file may
 discard or merge into stdout: a startup file that hid stdout would also hide the
 command's own output. Elwood removes the line from captured stdout, so on either
 channel the probe's captured output is exactly the shell's and the command's.
+The private channel stays open past the start line, for the e2e home guard's stop
+line (§12), and closes before the command, which never inherits it.
 After the start line and before the command, the probe script removes the user's
 not-found handlers, zsh's `command_not_found_handler` and bash's
 `command_not_found_handle`, under the command's bound, which starts at the line. A
@@ -166,7 +168,10 @@ and the probe command then has a default timeout of 15 seconds from that line un
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
-Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
+Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
+process dies of a signal Elwood did not send reports the status a shell would, 128 plus
+the signal's number; a login shell that dies before then is a login-shell failure, as
+follows. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
@@ -201,10 +206,11 @@ non-PTY probe — `--version`, `--help` capability detection, and
 otherwise) surfaces through that probe's existing public error name —
 `claude_start_failed` / `codex_start_failed` — with the underlying reason
 preserved in the error `details` as `cause` (and `errno`, e.g. `ETIMEDOUT` on
-timeout or `E2BIG` on overflow) alongside any `stderr`. An UPDATE failure
+timeout or `E2BIG` on overflow) alongside any `stderr`, and the status the probe
+reported, if any, as `exitStatus`. An UPDATE failure
 (`claude update` / `codex update`), being best-effort maintenance, does NOT
 surface as a start-blocking error; it is contained and surfaces as the live
-`agent_update_failed` warning carrying the same bounded diagnostics (exit status,
+`agent_update_failed` warning carrying the same bounded diagnostics (`exitStatus`,
 `errno`, `stderr`), while startup continues through the compatibility gate. A
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.
@@ -246,8 +252,7 @@ exit is awaited within a bounded window, and the leader's process group is SIGKI
 every path, even if the PTY signal throws. That kill is what stops a CLI-spawned
 descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
 the leader exits. A leader that ignores the SIGTERM has its detached descendants
-reaped before the escalating SIGKILL, and the ones a leader leaves when it exits on the
-SIGTERM are reaped after, as for `stop()` (§5.3). The original startup error is
+reaped before the escalating SIGKILL, as §5.3 specifies. The original startup error is
 preserved; a cleanup or reap failure is secondary and never replaces it. When that PTY termination or group reap cannot be
 confirmed, part of the CLI's process tree may still be running, and a typed startup
 error keeps its code and message and gains two details. `cleanupErrorCode` is
@@ -359,17 +364,6 @@ sticky: because signal ownership is separate from the in-flight promise, a later
 `stop()`/`kill()`/`teardown()` after a failed one runs a fresh attempt that RETRIES
 the reap, runtime cleanup, and file removal — without re-signaling the PTY — rather
 than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
-exception is a detached-descendant walk, or a `stop()`'s reap of the detached
-descendants its leader's exit left, that could not complete (§5.3): with the leader
-gone the walk cannot be retried, so every later call keeps rejecting for it until
-the background reap of the processes it recorded resolves it (C-LIFE-14); one that
-recorded no process, or whose live non-daemon survivors have ambiguous second-resolution
-identities (§5.3), is never resolved from those observations. Foreground and background
-descendant reaps of the session are serialized, and a failed stopped-group resume stays
-pending until resumed or confirmed unnecessary. Ambiguous identities veto only their current
-group, so unrelated safe groups can still recover. After the automatic sixty-second
-window, an explicit shutdown makes a fresh serialized confirmation of the retained
-processes and resume debt without re-signaling the PTY; unreadable or live survivor
-evidence still rejects. A failed restoration whose stopped
-members were never identified by a post-stop read remains unresolved. Each caller still observes its own
-operation's success or typed failure.
+exception is a detached-descendant walk that could not complete (§5.3): with the
+leader gone it cannot be retried, so every later call keeps rejecting for it. Each
+caller still observes its own operation's success or typed failure.

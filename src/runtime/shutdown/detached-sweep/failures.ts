@@ -24,11 +24,7 @@ export type FailureReason =
   | "could not stop a live descendant group"
   | "could not kill a signaled descendant group"
   | "could not resume a group spared for Codex's shared daemon"
-  | "no read showed the leader's tree"
-  | "a survivor group could not be safely confirmed stopped"
-  | "could not resume an unconfirmed survivor group"
-  | "the leader's exit was not confirmed"
-  | "a survivor group has an ambiguous identity";
+  | "no read showed the leader's tree";
 
 /** Collects one sweep's failures: each reason once, the first errno token, the group ids. */
 export class SweepFailures {

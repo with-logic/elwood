@@ -18,20 +18,12 @@
  * `sweepDetachedGroups` in `detached-sweep/index.ts`).
  */
 
-import { toError } from "../../core/errors.ts";
-import { type BackgroundReap, reapInBackground } from "./detached-sweep/background.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import { DETACHED_SWEEP_BUDGET_MS, sweepDetachedGroups } from "./detached-sweep/index.ts";
-import { DescendantRecord } from "./detached-sweep/record.ts";
-import { type SurvivorWatch, watchSurvivors } from "./detached-sweep/survivor-watch.ts";
-import { reapRecordedSurvivors } from "./detached-sweep/survivors.ts";
+import { sweepDetachedGroups } from "./detached-sweep/index.ts";
 import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
 import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
 
-import { SerialReapQueue } from "./reap-queue.ts";
-
 export { reapProcessGroup } from "./leader-group.ts";
-
 export {
   osProcessTreeOps,
   type ProcessTreeOps,
@@ -42,38 +34,25 @@ export {
 } from "./process-tree-ops.ts";
 
 /**
- * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most once:
- * `stop()` then a later `teardown()` both want the group gone, but signaling the same
- * numeric pgid twice is unsafe — once the group is empty the kernel may recycle the
- * pid, and a second `kill(-pgid)` would hit an unrelated group. So the latch is set
- * only AFTER the kill succeeds (an empty group's `ESRCH` counts as success, see
- * `reapProcessGroup`); a real failure (e.g. EPERM) leaves it OPEN for a later retry.
+ * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
+ * once: `stop()` then a later `teardown()` both want to guarantee the group is
+ * gone, but signaling the same numeric pgid twice is unsafe — once the group is
+ * empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit an
+ * unrelated group. So the latch is set only AFTER the kill succeeds (an already
+ * empty group's `ESRCH` is normalized to success by `reapProcessGroup`). A real
+ * failure (e.g. EPERM) leaves the latch OPEN and rethrows, so a later teardown
+ * call can retry rather than leaving the descendant leak permanently unreaped.
  */
 export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
-  private leaderSignalFailure: Error | undefined;
-  /** One session owns at most one foreground or background descendant reap. */
-  private readonly reaping = new SerialReapQueue();
-  /** Retained failure: only the leader-rooted walk is never rerun; recorded survivors retry. */
+  /** A detached sweep that failed; once the leader is gone it can never be confirmed. */
   private unresolvedSweep: SweepFailure | undefined;
-  /** Each failure's recorded processes, reaped in the background (`background.ts`). */
-  private readonly reapsInBackground: BackgroundReap[] = [];
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
-    this.ops = {
-      ...ops,
-      stopGroup: (group) => {
-        if (group === leaderPid) this.assertLeaderSignalAuthorized();
-        ops.stopGroup(group);
-      },
-      killGroup: (group) => {
-        if (group === leaderPid) this.assertLeaderSignalAuthorized();
-        ops.killGroup(group);
-      },
-    };
+    this.ops = ops;
   }
 
   /**
@@ -81,39 +60,22 @@ export class SessionReaper {
    * calls no-op (no recycled-pgid double-kill). A failed kill does NOT latch and
    * rethrows, keeping the reap retryable on a later lifecycle call.
    */
-  assertLeaderSignalAuthorized(): void {
-    if (this.leaderSignalFailure) throw this.leaderSignalFailure;
-  }
-
   reap(): void {
-    this.assertLeaderSignalAuthorized();
     if (this.done) return;
     reapProcessGroup(this.leaderPid, this.ops);
     this.done = true;
   }
 
   /**
-   * The group reap for an explicit shutdown's retry: it keeps failing while an earlier
-   * sweep or survivor reap is unresolved, so no later call reports success for a hook
-   * that may still run, until a read shows no recorded non-daemon survivor remains and
-   * every failed daemon resume has succeeded or become unnecessary.
-   * The caller sweeps before any SIGKILL to a live leader. Explicit retries first await
-   * confirmDetachedSweepFailure when its automatic recovery window expired.
+   * The group reap for an explicit shutdown's retry: it also keeps failing while an
+   * earlier detached sweep is unresolved, so a later `stop()`/`kill()`/`teardown()`
+   * never reports success for a hook that may still be running. It says nothing about
+   * a sweep that never ran: the caller sweeps first, before any SIGKILL it sends to a
+   * live leader.
    */
   reapAndThrowOnDetachedSweepFailure(): void {
     this.reap();
-    const resolved = this.reapsInBackground.every((reap) => reap.resolved());
-    if (resolved) this.unresolvedSweep = undefined;
     if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
-  }
-
-  /** Fresh serialized confirmation only after a retained recovery's automatic window expired. */
-  confirmDetachedSweepFailure(): Promise<void> | undefined {
-    const confirmations = this.reapsInBackground
-      .map((reap) => reap.confirm())
-      .filter((pending) => pending !== undefined);
-    if (confirmations.length === 0) return undefined;
-    return Promise.all(confirmations).then(() => undefined);
   }
 
   /**
@@ -126,54 +88,10 @@ export class SessionReaper {
    * as the group reap.
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
-    this.assertLeaderSignalAuthorized();
     if (!isReapableGroupId(this.leaderPid)) return;
-    const record = new DescendantRecord();
-    const budget = DETACHED_SWEEP_BUDGET_MS;
-    this.retainFailureAndStartRecovery(
-      await this.reaping.run(() =>
-        sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, budget, record),
-      ),
-      record,
-    );
-  }
-
-  /** A graceful stop's watch for survivors (`survivors.ts`); a failure is kept as a sweep's. */
-  watchSurvivors(leaderExited: () => boolean): SurvivorWatch {
-    const leaderPid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
-    const retainFailureAndStartRecovery = (
-      failure: SweepFailure | undefined,
-      record: DescendantRecord,
-    ) => this.retainFailureAndStartRecovery(failure, record);
-    return watchSurvivors(
-      leaderPid,
-      this.ops,
-      leaderExited,
-      retainFailureAndStartRecovery,
-      (record, ops) => this.reaping.run(() => reapRecordedSurvivors(record, ops)),
-      (attempt) => this.reaping.run(attempt),
-      (error) => {
-        this.leaderSignalFailure ??= toError(error);
-      },
-    );
-  }
-
-  /** Keeps `failure`, and reaps the processes `record` holds in the background. */
-  private retainFailureAndStartRecovery(
-    failure: SweepFailure | undefined,
-    record: DescendantRecord,
-  ): void {
+    const failure = await sweepDetachedGroups(this.leaderPid, this.ops, leaderExited);
     if (failure === undefined) return;
-    this.unresolvedSweep ??= failure;
-    const unreferenced = this.ops.listProcessesUnreferenced ?? this.ops.listProcesses;
-    this.reapsInBackground.push(
-      reapInBackground(
-        record,
-        { ...this.ops, listProcesses: unreferenced },
-        (attempt) => this.reaping.run(attempt),
-        this.ops,
-      ),
-    );
+    this.unresolvedSweep = failure;
     throw failure;
   }
 }

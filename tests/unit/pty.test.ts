@@ -1,6 +1,8 @@
 /**
- * Node-pty adapter and shared termination coverage (PRD §4.1/§4.2/§5.3/§9.4,
- * C-PTY-01/02, C-LIFE-02/10). Native PTYs are mocked; zsh startup runs where installed.
+ * Unit coverage for the node-pty adapter and the shared PTY termination helper.
+ * Covers PRD §4.1, §4.2, §5.3, §9.4 (C-PTY-01/02, C-LIFE-02/10). node-pty itself is
+ * mocked here (the real PTY is exercised by the adapter conformance suites); the
+ * zsh startup-file test runs only where `/bin/zsh` exists.
  */
 
 import { spawnSync } from "node:child_process";
@@ -8,10 +10,9 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
-import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
-import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const zsh = "/bin/zsh";
@@ -20,10 +21,7 @@ if (!hasZsh) console.warn(`SKIPPING C-PTY-02: ${zsh} is not installed on this ho
 
 /** A reaper with an injected killer so tests never signal a real process group. */
 function testReaper(reaped: number[], pid = FAKE_PID) {
-  return new SessionReaper(pid, {
-    ...quietPtyTree([{ pid }]),
-    killGroup: (pgid) => reaped.push(pgid),
-  });
+  return new SessionReaper(pid, { ...quietProcessTree(), killGroup: (pgid) => reaped.push(pgid) });
 }
 
 afterEach(() => {
@@ -149,7 +147,8 @@ describe("node PTY adapter", () => {
   });
 
   test("C-LIFE-10 termination reports failure but STILL reaps the group", async () => {
-    // Both timeout branches must attempt the group reap before reporting failure.
+    // Both timeout branches must reap before returning: a termination_failed
+    // outcome that leaks the descendant tree is the exact leak this guards.
     for (const signal of ["SIGTERM", "SIGKILL"] as const) {
       const reaped: number[] = [];
       await expect(

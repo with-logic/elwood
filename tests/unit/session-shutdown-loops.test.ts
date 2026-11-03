@@ -44,15 +44,9 @@ function recordingReap(calls: string[]): ShutdownReapPolicy {
   return {
     orThrow: () => void calls.push("reap"),
     reaper: {
-      assertLeaderSignalAuthorized: () => undefined,
       reap: () => void calls.push("reap"),
       reapAndThrowOnDetachedSweepFailure: () => void calls.push("reap"),
       sweepDetached: async () => {},
-      watchSurvivors: () => ({
-        firstObservation: Promise.resolve("leader-observed" as const),
-        sendSignal: () => Promise.resolve("leader-gone" as const),
-        finish: async () => {},
-      }),
     },
   };
 }
@@ -70,15 +64,9 @@ function host(
     reapPolicy: {
       orThrow: () => undefined,
       reaper: {
-        assertLeaderSignalAuthorized: () => undefined,
         reap: () => undefined,
         reapAndThrowOnDetachedSweepFailure: () => undefined,
         sweepDetached: async () => {},
-        watchSurvivors: () => ({
-          firstObservation: Promise.resolve("leader-observed" as const),
-          sendSignal: () => Promise.resolve("leader-gone" as const),
-          finish: async () => {},
-        }),
       },
     },
     status: () => "exited",

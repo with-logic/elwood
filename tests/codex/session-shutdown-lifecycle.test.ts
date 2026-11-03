@@ -94,8 +94,9 @@ describe("CodexSessionApi guarded startup region", () => {
       code: "codex_not_authenticated",
     });
     // Establish the frame before advancing the short startup window. A real-time
-    // polling timer can lose this race when other test workers saturate the host.
-    await vi.waitFor(() => expect(ptys.at(-1)?.dataHandlers.length).toBe(1), { interval: 1 });
+    // polling timer can lose this race when other test workers saturate the host. The
+    // startup buffer and then the terminal each subscribe to the PTY's output.
+    await vi.waitFor(() => expect(ptys.at(-1)?.dataHandlers.length).toBe(2), { interval: 1 });
     ptys.at(-1)!.emitData("not authenticated");
     await vi.advanceTimersByTimeAsync(50);
     await rejected;

@@ -26,15 +26,9 @@ const untouchedPty: PtyProcess = {
 
 /** A reaper whose reap and detached sweep always succeed. */
 const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
-  assertLeaderSignalAuthorized: () => undefined,
   reap: () => undefined,
   reapAndThrowOnDetachedSweepFailure: () => undefined,
   sweepDetached: async () => {},
-  watchSurvivors: () => ({
-    firstObservation: Promise.resolve("leader-observed" as const),
-    sendSignal: () => Promise.resolve("leader-gone" as const),
-    finish: async () => {},
-  }),
 };
 
 // A host whose runtime cleanup rejects with a raw aggregate Error (as runCleanupSteps

@@ -148,10 +148,8 @@ describe("C-LIFE-10 session reap-failure handling", () => {
         });
         expect(reapedGroups).toContain(pty.pid);
       } finally {
-        ptys.at(-1)!.emitExit({ exitCode: 0 });
-        if (verb === "stop")
-          await expect(session.teardown()).rejects.toMatchObject({ code: "teardown_failed" });
-        else await session.teardown();
+        // Teardown removes the session's files without signaling the PTY again.
+        await session.teardown();
         resetFakes();
       }
     }
@@ -172,10 +170,7 @@ describe("C-LIFE-10 session reap-failure handling", () => {
         await expect(session[verb]()).rejects.toMatchObject({ code: "termination_failed" });
         expect(await bridgeAccepts(socketPath)).toBe(false); // runtime cleanup still ran
       } finally {
-        ptys.at(-1)!.emitExit({ exitCode: 0 });
-        if (verb === "stop")
-          await expect(session.teardown()).rejects.toMatchObject({ code: "teardown_failed" });
-        else await session.teardown();
+        await session.teardown();
         resetFakes();
       }
     }

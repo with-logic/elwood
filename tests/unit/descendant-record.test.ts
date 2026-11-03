@@ -6,11 +6,11 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import {
+  DescendantRecord,
   RECORD_READ_MS,
   watchDescendants,
-} from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
+} from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
 import { hook, LEADER, leaderRow } from "../helpers/scripted-process-tree.ts";
@@ -108,7 +108,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     let exited = false;
     const ops = reads([[leaderRow], tree, [{ ...leaderRow, stopped: true }]]);
     const watch = watchDescendants(LEADER, ops, () => exited);
-    await watch.firstObservation;
+    await watch.firstRead;
     expect(ops.timeouts).toEqual([RECORD_READ_MS]);
     while (ops.timeouts.length < 3) await new Promise((resolve) => setImmediate(resolve));
     exited = true;
@@ -124,24 +124,18 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
   });
 
   test("a failed read records nothing and the next read follows", async () => {
-    const ops = reads([
-      Object.assign(new Error("first"), { code: "EIO" }),
-      tree,
-      new Error("later"),
-      tree,
-    ]);
+    const ops = reads([new Error("ps failed"), tree]);
     const watch = watchDescendants(LEADER, ops, () => false);
-    await watch.firstObservation;
-    while (ops.timeouts.length < 4) await new Promise((resolve) => setImmediate(resolve));
+    await watch.firstRead;
+    while (ops.timeouts.length < 2) await new Promise((resolve) => setImmediate(resolve));
     const record = await watch.finish();
-    expect(watch.firstReadFailure).toMatchObject({ code: "EIO" });
     expect(pids(record.survivors(tree))).toEqual([5002, 5003]);
   });
 
   test("a watch whose every read failed knows nothing", async () => {
     const ops = reads([new Error("ps failed")]);
     const watch = watchDescendants(LEADER, ops, () => false);
-    await watch.firstObservation;
+    await watch.firstRead;
     const record = await watch.finish();
     expect(record.known).toBe(false);
   });
@@ -150,7 +144,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     // The SIGTERM follows the failed read, and the leader exits on it before another shows it.
     const ops = reads([new Error("ps failed"), [hook(5002, { ppid: 1 })]]);
     const watch = watchDescendants(LEADER, ops, () => ops.timeouts.length >= 2);
-    await watch.firstObservation;
+    await watch.firstRead;
     while (ops.timeouts.length < 2) await new Promise((resolve) => setImmediate(resolve));
     expect((await watch.finish()).known).toBe(false);
   });
@@ -165,7 +159,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
       return ops.listProcesses(timeoutMs, scope);
     };
     const watch = watchDescendants(LEADER, { listProcesses: exitDuringRead }, () => exited);
-    await watch.firstObservation;
+    await watch.firstRead;
     for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => setImmediate(resolve));
     expect(ops.timeouts).toEqual([RECORD_READ_MS]);
     expect((await watch.finish()).known).toBe(true);
@@ -175,7 +169,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     vi.useFakeTimers(); // A caller's fake timers would hold that wait forever.
     const ops = reads([tree]);
     const watch = watchDescendants(LEADER, ops, () => false);
-    await watch.firstObservation;
+    await watch.firstRead;
     expect((await watch.finish()).known).toBe(true);
     expect(ops.timeouts).toEqual([RECORD_READ_MS]);
   });

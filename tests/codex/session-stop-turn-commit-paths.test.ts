@@ -4,8 +4,10 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import type { CodexSessionApi } from "../../src/index.ts";
-import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
-import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
+import {
+  quietProcessTree,
+  setProcessTreeOpsForTests,
+} from "../../src/runtime/shutdown/reap-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
@@ -76,28 +78,23 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
   expect(ptys[0]!.killSignals).toEqual(["SIGTERM"]);
 });
 
-/** Records the group SIGSTOPs and table reads shutdown sends, on a quiet fake tree. */
-function groupOperations(): string[] {
-  const quiet = quietPtyTree(ptys);
-  const operations: string[] = [];
+/** Records the process-group SIGSTOPs the detached sweep sends, on a quiet fake tree. */
+function groupStops(): string[] {
+  const quiet = quietProcessTree();
+  const stops: string[] = [];
   setProcessTreeOpsForTests({
     ...quiet,
     stopGroup: (pgid) => {
-      operations.push(`SIGSTOP -${pgid}`);
+      stops.push(`SIGSTOP -${pgid}`);
       quiet.stopGroup(pgid);
-    },
-    listProcesses: (timeoutMs, scope) => {
-      operations.push("read");
-      return quiet.listProcesses(timeoutMs, scope);
     },
     killGroup: (pgid) => void reapedGroups.push(pgid),
   });
-  return operations;
+  return stops;
 }
 
-// Without a wait, shutdown starts in the same tick as the call: for a stop, the table read
-// that records the CLI's descendants, which the SIGTERM follows at once (§5.3); for a
-// kill, the SIGSTOP of the CLI's group that starts the detached sweep, and its first read.
+// Without a wait, the first signal goes out in the same tick as the call: SIGTERM for a
+// stop, and for a kill the SIGSTOP of the CLI's group that starts the detached sweep.
 test.each([
   ["kill forces termination", "kill", true, {}],
   ["a Stop without a transcript path leaves nothing to read", "stop", false, {}],
@@ -109,16 +106,14 @@ test.each([
   ],
 ] as const)("C-LIFE-13 no commit wait: %s", async (_name, verb, withPath, hooks) => {
   installFakes();
-  const operations = groupOperations();
+  const stops = groupStops();
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd, hooks);
   await stopHook(session, cwd, withPath ? path : null);
   const shutdown = tracked(session[verb]());
-  expect([...ptys[0]!.killSignals, ...operations]).toEqual(
-    verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`, "read"] : ["read"],
+  expect([...ptys[0]!.killSignals, ...stops]).toEqual(
+    verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`] : ["SIGTERM"],
   );
-  await new Promise((resolve) => setImmediate(resolve));
-  expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
   await shutdown;
   expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
 });

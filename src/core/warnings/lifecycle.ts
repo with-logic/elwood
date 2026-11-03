@@ -23,6 +23,8 @@ export type AgentUpdateFailedWarning = {
   readonly installedVersion: string;
   readonly errorCode: string;
   readonly raw: string;
+  /** The update command's exit status, 128+n if a signal killed it; absent when it reported none. */
+  readonly exitStatus?: number;
 };
 
 /** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */

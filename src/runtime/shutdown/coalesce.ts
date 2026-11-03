@@ -10,12 +10,10 @@
  * own leader was frozen. The listing starts on the next turn of the event loop and may
  * run for the largest timeout any of its requests asked for, while each request still
  * rejects with `ETIMEDOUT` at its own timeout: one session's nearly spent deadline never
- * cuts short another's read. With `ref` false, a request's timeout never keeps the host
- * alive, for reads whose `run` does not either.
+ * cuts short another's read.
  */
 export function coalesceUnstarted<T>(
   run: (timeoutMs: number) => Promise<T>,
-  { ref = true }: { readonly ref?: boolean } = {},
 ): (timeoutMs: number) => Promise<T> {
   type Batch = { timeoutMs: number; readonly result: Promise<T> };
   let open: Batch | undefined;
@@ -31,18 +29,17 @@ export function coalesceUnstarted<T>(
   return (timeoutMs) => {
     open ??= startBatch(timeoutMs);
     open.timeoutMs = Math.max(open.timeoutMs, timeoutMs);
-    return withinOwnTimeout(open.result, timeoutMs, ref);
+    return withinOwnTimeout(open.result, timeoutMs);
   };
 }
 
 /** `result`, or an `ETIMEDOUT` rejection once `timeoutMs` passes first. */
-function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number, ref: boolean): Promise<T> {
+function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timedOut = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(Object.assign(new Error("process table read timed out"), { code: "ETIMEDOUT" }));
     }, timeoutMs);
-    if (!ref) timer.unref();
   });
   return Promise.race([result, timedOut]).finally(() => clearTimeout(timer));
 }

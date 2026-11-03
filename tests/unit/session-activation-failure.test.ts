@@ -9,7 +9,6 @@ import { writePrivateFileAtomic } from "../../src/state/files.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 import { launchArtifactPaths } from "../helpers/launch-artifacts.ts";
-import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 
 afterEach(() => {
   claude.resetFakes();
@@ -46,7 +45,6 @@ for (const adapter of [
         writePrivateFileAtomic(join(dir, "loops.json"), "not-json");
         if (reapFails)
           setProcessTreeOpsForTests({
-            ...quietPtyTree(adapter.helpers.ptys),
             killGroup: () => {
               throw new Error("reap denied");
             },

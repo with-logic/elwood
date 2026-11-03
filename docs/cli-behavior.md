@@ -1415,31 +1415,10 @@ slowing the PTY's own interactive login shell, and with that profile:
 
 Claude 2.1.310 under the same profile started no shell that sources `.zshrc`
 non-interactively, and nothing survived. So the premise behind the graceful-stop
-exception, that the CLI's own SIGTERM shutdown ends its detached descendants, held
-for Claude's hooks but not for this Codex shell.
-
-## `stop()` reaps what a graceful exit leaves (2026-10-26)
-
-`stop()` no longer relies on that premise. Before its SIGTERM it reads the process
-table, and it reads it again, back to back, until the leader's exit, recording each
-detached descendant those reads observe by pid and start time (`ps` `lstart`, in the C locale and UTC, so
-it reads the same every time). After the exit it SIGSTOPs and SIGKILLs the recorded
-processes still alive, by the walk's rules, never Codex's shared daemon. A process that
-starts and loses its ancestry between reads is not recorded and can survive a
-successful stop; the observed record is not a complete process-tree barrier. Elwood records
-the snapshot shell well before a `stop()` can land: the shell starts seconds after
-launch, and Codex takes about 190 ms to exit after the SIGTERM, a window of several reads.
-
-Measured 2026-10-26 with Codex 0.164.0 and the slow profile above: on `origin/main` the
-snapshot shell was still running 10 s after `stop()` resolved, and its `sleep` with it.
-With the record and the reap, both were gone and nothing from the profile was left. With
-the reap disabled (the watch told the leader never exited), the shell survived again.
-Claude 2.1.310 ends a slow `SessionStart` hook itself on SIGTERM, so on `origin/main` a
-`stop()` during one already left nothing; the record and reap keep it that way.
-
-`tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open this way and checks that
-`teardown()`, `kill()`, and `stop()` each reap it. `tests/e2e/teardown-reap.e2e.ts`
-checks that a Claude `stop()` during a slow `SessionStart` hook leaves nothing.
+exception, that the CLI's own SIGTERM shutdown ends its detached descendants, holds
+for Claude's hooks but not for this Codex shell: a `stop()` during the snapshot
+leaves it running. `tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open
+this way and checks that `teardown()` reaps it.
 
 ## Codex 0.164 starts an app-server daemon per `CODEX_HOME` (2026-10-25)
 
@@ -1829,10 +1808,12 @@ shell exited with status 0 before starting the probe command` although its comma
 and so did `elwood`'s agent detection. Any macOS user whose login shell is bash could not
 start a session. GitHub's `macos-latest` runner user's shell is bash.
 
-The probe script now tests the write: `if { echo L >&3; } 2>/dev/null; then exec 3>&-;
-else echo L; fi`. zsh, ksh, macOS and Debian dash, non-login bash 3.2 and bash 5.2 took
-descriptor 3 when it was open and stdout when it was closed, and none printed the failed
-redirection's error. The fallback is stdout, not stderr. Under real `bash -l -i` with a
+The probe script now tests the write, then keeps descriptor 3 open through the e2e home
+guard (PRD §12), whose stop line takes the same path, and closes it only before the command:
+`{ echo L >&3; } 2>/dev/null || echo L; <guard>; exec 3>&-; <command>`. zsh, ksh, macOS
+and Debian dash, non-login bash 3.2 and bash 5.2 took descriptor 3 when it was open and
+stdout when it was closed, and none printed the failed redirection's error. The fallback
+is stdout, not stderr. Under real `bash -l -i` with a
 `~/.bash_profile` of `exec 2>/dev/null` or `exec 2>&1`, the line arrived on stdout and the
 probe passed. A stderr fallback would have been discarded by the first and moved into
 stdout by the second. A profile that hid stdout would hide the command's own output and
@@ -1895,6 +1876,14 @@ variable names, then removes it from the suite's environment.
 An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
 (`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
 key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.
+
+`ready` does not show that Claude got neither credential variable (Claude 2.1.310,
+2026-10-26). With the copied login, an invalid `ANTHROPIC_API_KEY` from the launch
+shell's startup files keeps the TUI from `ready`, but an invalid `ANTHROPIC_AUTH_TOKEN`
+does not: Claude reaches `ready` with it set. Both variables can also come from the
+developer's own startup files, after Elwood's environment is handed over. So C-E2E-23
+unsets both in the launch shell, and a `SessionStart` project hook records which of the
+two Claude's own environment holds (`tests/e2e/claude-credential-hook.ts`).
 
 The private dir carries none of the user's `settings.json`, so it shows what a fresh
 install does: the bypass-permissions dialog appears unless
@@ -2226,6 +2215,26 @@ and neither ran a model turn. This proves native staged geometry and retry
 bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
 
+
+## Claude's temp root (Claude 2.1.310, 2026-10-26)
+
+Claude keeps its temp files under a root: `CLAUDE_CODE_TMPDIR` when set, else `/tmp`, so
+the macOS `TMPDIR` does not move it. Measured with real sessions started through Elwood:
+
+- Under `<root>/claude-<uid>/`, Claude makes one folder per working directory, named for
+  the directory's real path with each character other than a letter or digit replaced by
+  `-`. It holds a folder per session with that session's `scratchpad/`. The folder is
+  still there after `stop()` and after `teardown()`; nothing in Claude removes it. Every
+  e2e scratch project left one in the shared `/tmp/claude-<uid>` until the suite gave each
+  e2e process a private `CLAUDE_CODE_TMPDIR` (C-E2E-23).
+- Claude's messaging socket is `<root>/cc-socks/<pid>.sock`. The 2.1.310 bundle uses that
+  path only while it is at most 103 bytes, and otherwise falls back to
+  `/tmp/cc-socks-<uid>/<pid>.sock`, so a long root moves the socket back into the shared
+  `/tmp`. The e2e root's prefix is short for that reason.
+- Claude, run directly in a PTY, removes its socket when it exits on SIGTERM, SIGHUP,
+  `/exit`, or Ctrl-C. A SIGKILL leaves it: after `teardown()`, which SIGKILLs a live session,
+  `/tmp/cc-socks/<pid>.sock` remained for the dead pid. After `stop()`, whose SIGTERM
+  Claude exits on, it did not.
 
 ## Codex keeps a temp copy of every pasted image (codex-cli 0.164.0, 2026-10-26)
 
