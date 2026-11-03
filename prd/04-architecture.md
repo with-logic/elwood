@@ -45,16 +45,6 @@ This interactive login form (`-l -i` for zsh) applies to both the **agent PTY**
 and one-shot, non-PTY preflight probes (`--version`, `update`, `--help`). The
 same shell startup files MUST resolve the CLI for every lifecycle operation so
 preflight, update, launch, and resume cannot operate on different installations.
-Each probe's shell therefore starts in the directory the session's PTY launches
-in, not Elwood's own working directory: a per-directory tool
-manager (asdf or mise shims, or a startup file that builds PATH from `$PWD`) can
-resolve a different CLI in each directory. Start and resume check that directory
-before any probe (C-API-61). A probe whose directory is gone by the time it spawns
-(removed after that check) fails the start or resume with `claude_start_failed` or
-`codex_start_failed`, `details.cwd`, and the probe's own failure as
-`details.cause`, never as a missing CLI: when preflight fails, Elwood checks that the
-directory is still the one it checked, and one made again in its place fails as
-replaced.
 A probe's shell startup and its command are bounded separately (§9.2), so a slow
 profile is not reported as a failing CLI.
 

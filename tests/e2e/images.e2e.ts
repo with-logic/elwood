@@ -3,14 +3,17 @@
  * ingestion so an `[Image #N]` chip actually renders in the composer. This is the
  * external-system check the feature needs — the attach mechanisms are
  * version-coupled CLI behavior that only a real CLI can validate.
- * Implements C-E2E-12 (Claude, C-API-45) and C-E2E-13 (Codex, C-API-46).
+ * Implements C-E2E-12 (Claude, C-API-45) and C-E2E-13 (Codex, C-API-46), including the
+ * removal of the temp copy Codex saves of each pasted image.
  */
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { clipboardCopyAt, localImagePathsIn } from "../../src/codex/images/clipboard-copies.ts";
 import {
   type ClaudeSessionApi,
   type CodexSessionApi,
@@ -23,6 +26,7 @@ import {
   observeSession,
   prepareInteractivePrompt,
   skipIf,
+  skipNow,
   skipReason,
   waitFor,
 } from "./helpers.ts";
@@ -64,7 +68,7 @@ const macOnly = process.platform === "darwin" ? false : "Codex image attach is m
 test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real CLI)", {
   skip: skipIf(macOnly, skipReason("codex")),
   timeout: 120_000,
-}, async () => {
+}, async (t) => {
   const project = makeProject("codex");
   const image = join(project.cwd, "shot.png");
   copyFileSync(fixture, image);
@@ -73,8 +77,12 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
   const sentinel = "elwood-e2e-clipboard-sentinel";
   execFileSync("/usr/bin/pbcopy", { input: sentinel });
   let session: CodexSessionApi | undefined;
+  const namedImagePaths: string[] = [];
+  let copy: string | undefined;
+  let removedBySession = false;
   try {
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
+    session.on("codex:transcript", ({ item }) => namedImagePaths.push(...localImagePathsIn(item)));
     await prepareInteractivePrompt(session, observeSession(session), "codex");
     const submitted = session.sendMessage("here is an image", { images: [{ path: image }] });
     await waitFor(
@@ -86,8 +94,27 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
     // Production restored the sentinel — the injected image is no longer the
     // clipboard, proving snapshot-and-restore actually happened (C-API-46).
     assert.equal(execFileSync("/usr/bin/pbpaste").toString(), sentinel);
+    // Codex saved the pasted image to a temp file its transcript names.
+    const named = await waitFor(() => namedImagePaths[0], "the submitted image in the transcript");
+    const elwoodTempDir = resolve(tmpdir());
+    if (resolve(dirname(named)) !== elwoodTempDir) {
+      // Codex's login shell gave it another TMPDIR: the copy is not the session's (§5.3).
+      skipNow(t, `Codex saved the pasted image outside Elwood's temp dir: ${named}`);
+      return;
+    }
+    copy = clipboardCopyAt(named, elwoodTempDir);
+    assert.ok(copy, `the session owns Codex's copy ${named}`);
+    assert.equal(existsSync(copy), true, "Codex saved the pasted image");
   } finally {
     await cleanup(session);
     execFileSync("/usr/bin/pbcopy", { input: priorClipboard }); // restore dev's real clipboard
+    removedBySession = copy !== undefined && !existsSync(copy);
+    // The test's own artifact goes either way: a copy the session left, or one Codex kept
+    // in another temp dir. Only a copy name the transcript gave, directly in its dir.
+    for (const path of namedImagePaths) {
+      const own = clipboardCopyAt(path, resolve(dirname(path)));
+      if (own !== undefined) rmSync(own, { force: true });
+    }
   }
+  assert.ok(removedBySession, "the session removed Codex's copy when it ended");
 });

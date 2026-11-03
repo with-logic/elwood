@@ -33,7 +33,7 @@ describe("CLI autoupdate preflight", () => {
       commands.push(`${command} ${args.join(" ")}`);
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true });
+    await preflightClaude(false, true);
     expect(commands.some((command) => command.includes("claude update"))).toBe(true);
   });
 
@@ -46,10 +46,7 @@ describe("CLI autoupdate preflight", () => {
           : { status: 0, stdout: "2.1.223", stderr: "" }, // installed >= min 2.1.144
     );
     // Best-effort: does NOT reject — returns the warning naming the installed version in use.
-    const warning = await preflightClaude(process.cwd(), {
-      strictVersionCheck: false,
-      autoupdate: true,
-    });
+    const warning = await preflightClaude(false, true);
     expect(warning).toMatchObject({
       code: "agent_update_failed",
       agent: "claude",
@@ -70,10 +67,7 @@ describe("CLI autoupdate preflight", () => {
           }
         : { status: 0, stdout: "2.1.223", stderr: "" },
     );
-    const warning = await preflightClaude(process.cwd(), {
-      strictVersionCheck: false,
-      autoupdate: true,
-    });
+    const warning = await preflightClaude(false, true);
     expect(warning).toMatchObject({ code: "agent_update_failed", errorCode: "ETIMEDOUT" });
   });
 
@@ -85,9 +79,7 @@ describe("CLI autoupdate preflight", () => {
           ? { status: 1, stdout: "", stderr: "failed" }
           : { status: 0, stdout: "2.1.1", stderr: "" }, // below min 2.1.144
     );
-    await expect(
-      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).rejects.toMatchObject({
+    await expect(preflightClaude(false, true)).rejects.toMatchObject({
       code: "claude_version_unsupported",
     });
   });
@@ -100,9 +92,7 @@ describe("CLI autoupdate preflight", () => {
         ? { status: 1, stdout: "", stderr: "partially replaced" }
         : { status: 0, stdout: versions.shift() ?? "2.1.1", stderr: "" },
     );
-    await expect(
-      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).rejects.toMatchObject({
+    await expect(preflightClaude(false, true)).rejects.toMatchObject({
       code: "claude_version_unsupported",
       details: { found: "2.1.1" },
     });
@@ -116,9 +106,7 @@ describe("CLI autoupdate preflight", () => {
       if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 0, stdout: outputs.shift() ?? "2.1.144", stderr: "" };
     });
-    await expect(
-      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).resolves.toBeUndefined();
+    await expect(preflightClaude(false, true)).resolves.toBeUndefined();
     // A missing binary on the post-update read is a real fatal (`claude_not_found`), unrelated
     // to the best-effort update path.
     resetPreflight();
@@ -126,9 +114,7 @@ describe("CLI autoupdate preflight", () => {
       if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 127, stdout: "", stderr: "missing" };
     });
-    await expect(
-      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).rejects.toThrow(ElwoodError);
+    await expect(preflightClaude(false, true)).rejects.toThrow(ElwoodError);
   });
 
   test("C-CLAUDE-04 treats missing or malformed version parts as zero", () => {
@@ -145,10 +131,7 @@ describe("CLI autoupdate preflight", () => {
           ? { status: 1, stdout: "", stderr: "failed" }
           : { status: 0, stdout: "codex-cli 0.132.0", stderr: "" }, // >= min 0.124.0
     );
-    const warning = await preflightCodex(process.cwd(), {
-      strictVersionCheck: false,
-      autoupdate: true,
-    });
+    const warning = await preflightCodex(false, true);
     expect(warning).toMatchObject({
       code: "agent_update_failed",
       agent: "codex",
@@ -163,16 +146,12 @@ describe("CLI autoupdate preflight", () => {
       if (args.join(" ").includes("codex update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 0, stdout: outputs.shift() ?? "codex-cli 0.132.0", stderr: "" };
     });
-    await expect(
-      preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).resolves.toBeUndefined();
+    await expect(preflightCodex(false, true)).resolves.toBeUndefined();
     resetPreflight();
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("codex update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 127, stdout: "", stderr: "missing" };
     });
-    await expect(
-      preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).rejects.toThrow(ElwoodError);
+    await expect(preflightCodex(false, true)).rejects.toThrow(ElwoodError);
   });
 });

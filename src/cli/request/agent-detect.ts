@@ -38,10 +38,9 @@ export const noAgentFoundMessage =
 export async function loginShellResolves(
   agent: CliAgent,
   shell: string = userShell(),
-  cwd: string = process.cwd(),
 ): Promise<boolean> {
   const command = probeShellStatus(`command -v ${shellQuote(agent)}`);
-  const result = await currentCommandRunner()(shell, command, { cwd });
+  const result = await currentCommandRunner()(shell, command);
   if (result.error !== undefined) {
     throw new CliValidationError("no_agent_found", probeFailedMessage(shell, result.error));
   }

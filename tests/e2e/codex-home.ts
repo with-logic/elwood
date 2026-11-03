@@ -14,6 +14,7 @@ import { chmodSync, copyFileSync, existsSync, rmSync, writeSync } from "node:fs"
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { privateTempDir } from "../helpers/private-temp.ts";
+import { registerPrivateHome } from "./home-guard.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
 
 /** Carries the user's own Codex home into `node --test` workers, which inherit the runner's sandbox. */
@@ -59,4 +60,5 @@ process.on("exit", () => {
   }
 });
 if (existsSync(userCodexAuthPath)) copyCodexAuth(defaultCodexHome);
+registerPrivateHome(defaultCodexHome);
 process.env["CODEX_HOME"] = defaultCodexHome;

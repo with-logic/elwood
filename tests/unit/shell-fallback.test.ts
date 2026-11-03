@@ -5,44 +5,44 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import {
-  loginShellCommand,
-  probeShellCommand,
-  probeShellStatus,
-  userShell,
-} from "../../src/runtime/shell.ts";
+import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
+
+const os = vi.hoisted(() => ({ userInfo: vi.fn() }));
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, userInfo: () => ({ ...actual.userInfo(), shell: null }) };
+  os.userInfo.mockImplementation(() => ({ ...actual.userInfo(), shell: null }));
+  return { ...actual, userInfo: os.userInfo };
 });
 
 describe("user shell", () => {
-  test("falls back to /bin/zsh when the platform reports no shell", () => {
-    expect(userShell()).toBe("/bin/zsh");
-    expect(loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
+  test("falls back to /bin/zsh when the platform reports no shell", async () => {
+    // A module the setup file loads may import shell.ts before this file's mock applies, as the
+    // probe runner once did, so take a fresh copy that reads the mocked `userInfo`.
+    vi.resetModules();
+    const shell = await import("../../src/runtime/shell.ts");
+    expect(shell.userShell()).toBe("/bin/zsh");
+    expect(os.userInfo).toHaveBeenCalled();
+    expect(shell.loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
   });
 
   test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    // Same shell and flags; the probe writes its start line on descriptor 3 if the shell kept
-    // it open, then on stdout, and `exec`s the command into its private named pipes
-    // (C-PERF-05, §9.2). A builtin's probe answers by status alone, its output discarded.
-    const start =
-      `if { echo ${probeCommandStartLine} >&3; } 2>/dev/null; then exec 3>&-; fi; ` +
-      `{ echo ${probeCommandStartLine}; } 2>/dev/null || :; `;
+    // Same shell and flags; the probe writes its start line on descriptor 3, or on stdout if
+    // the shell already closed descriptor 3, closes it, then runs the command (C-PERF-05).
+    const line = probeCommandStartLine;
     expect(probeShellCommand("claude --version")).toEqual([
       "-l",
       "-i",
       "-c",
-      `${start}unset -f command_not_found_handler 2>/dev/null || :; ` +
-        `exec claude --version >"$ELWOOD_PROBE_OUTPUT/stdout" 2>"$ELWOOD_PROBE_OUTPUT/stderr"`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; exec 3>&-; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; claude --version`,
     ]);
+    // A lookup answered by its status alone discards its output.
     expect(probeShellStatus("command -v claude")).toEqual([
       "-l",
       "-i",
       "-c",
-      `${start}command -v claude >/dev/null 2>&1`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; exec 3>&-; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

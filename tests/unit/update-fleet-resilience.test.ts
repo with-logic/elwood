@@ -45,9 +45,7 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     });
     // 10 concurrent roster starts share the SINGLE update; none rejects (all compatible).
     const warnings = await Promise.all(
-      Array.from({ length: 10 }, () =>
-        preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-      ),
+      Array.from({ length: 10 }, () => preflightClaude(false, true)),
     );
     expect(updates).toBe(1); // one shared update attempt across the whole burst
     // Every start is usable and observes the SAME best-effort outcome (a warning, not a rejection).
@@ -61,16 +59,12 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
         : { status: 0, stdout: "2.1.223", stderr: "" },
     );
     // First start: update fails but installed is compatible → warns and continues.
-    await expect(
-      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).resolves.toMatchObject({
+    await expect(preflightClaude(false, true)).resolves.toMatchObject({
       code: "agent_update_failed",
     });
     // A LATER start in the SAME process must also succeed (best-effort once-per-process), NOT
     // reject on a retained rejected promise. It does not re-run the update (dedup holds).
-    await expect(
-      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
-    ).resolves.toMatchObject({
+    await expect(preflightClaude(false, true)).resolves.toMatchObject({
       code: "agent_update_failed",
     });
   });
@@ -83,11 +77,9 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
         ? Promise.reject(new Error("transient runner failure"))
         : Promise.resolve({ status: 0, stdout: "ok", stderr: "" });
     };
-    await expect(cachedVersionRead("claude", process.cwd(), read)).rejects.toThrow(/transient/);
+    await expect(cachedVersionRead("claude", read)).rejects.toThrow(/transient/);
     // The rejection was evicted; the next caller re-attempts and succeeds.
-    await expect(cachedVersionRead("claude", process.cwd(), read)).resolves.toMatchObject({
-      stdout: "ok",
-    });
+    await expect(cachedVersionRead("claude", read)).resolves.toMatchObject({ stdout: "ok" });
     expect(attempt).toBe(2); // it genuinely retried, not replayed the corpse
     resetPreflight();
   });
@@ -113,10 +105,8 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
       if (!args.join(" ").includes("--version")) return { status: 0, stdout: "", stderr: "" };
       return ++reads === 1 ? failed : { status: 0, stdout: version, stderr: "" };
     });
-    await expect(preflight(process.cwd(), { strictVersionCheck: false })).rejects.toMatchObject({
-      code: `${agent}_start_failed`,
-    });
-    await expect(preflight(process.cwd(), { strictVersionCheck: false })).resolves.toBeUndefined();
+    await expect(preflight(false)).rejects.toMatchObject({ code: `${agent}_start_failed` });
+    await expect(preflight(false)).resolves.toBeUndefined();
     expect(reads).toBe(2);
   });
 
@@ -131,21 +121,18 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
       }
       return { status: 0, stdout: "", stderr: "" };
     });
-    await expect(detectCodexCliCapabilities(process.cwd())).rejects.toMatchObject({
+    await expect(detectCodexCliCapabilities()).rejects.toMatchObject({
       code: "codex_start_failed",
     });
     // A later start re-probes (the rejected capability promise was evicted), and recovers.
-    await expect(detectCodexCliCapabilities(process.cwd())).resolves.toEqual({
-      supportsHookTrustBypass: true,
-    });
+    await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
   });
 
   test("autoupdate finalization failures are contained as outcomes", async () => {
     await expect(
       cachedAutoupdate(
         "codex",
-        process.cwd(),
-        { verify: () => Promise.resolve(), update: () => Promise.resolve() },
+        () => Promise.resolve(),
         () => {
           throw new Error("cache invalidation failed");
         },

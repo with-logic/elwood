@@ -10,6 +10,9 @@ import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 
 export const LEADER = 5000;
 
+/** The start time every scripted row has unless a test sets another. */
+export const STARTED_AT = "Sun Oct 25 22:00:00 2026";
+
 /** A `leaderExited` predicate that never reports the leader's exit. */
 export const leaderNeverExits = (): boolean => false;
 
@@ -19,11 +22,15 @@ export const leaderRow: ProcessEntry = {
   pgid: LEADER,
   zombie: false,
   stopped: false,
+  startedAt: STARTED_AT,
+  name: "codex",
+  shared: false,
 };
 
 /**
  * A descendant row: by default a setsid hook heading its own group under the leader,
- * running. `pgid`, `ppid`, and the state can each be set to model a multi-process group.
+ * running. `pgid`, `ppid`, and the state can each be set to model a multi-process group,
+ * and the short name, daemon mark and start time to model what it runs and when it started.
  */
 export const hook = (
   pid: number,
@@ -32,13 +39,19 @@ export const hook = (
     ppid = LEADER,
     pgid = pid,
     stopped = false,
+    name = "sh",
+    shared = false,
+    startedAt = STARTED_AT,
   }: {
     readonly zombie?: boolean;
     readonly ppid?: number;
     readonly pgid?: number;
     readonly stopped?: boolean;
+    readonly name?: string;
+    readonly shared?: boolean;
+    readonly startedAt?: string;
   } = {},
-): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped });
+): ProcessEntry => ({ pid, ppid, pgid, zombie, stopped, startedAt, name, shared });
 
 /**
  * `ops` under a fake clock that each listing advances 100 ms, so a sweep that never
@@ -93,6 +106,7 @@ export function scripted(
   let listing = 0;
   const ops: SweepOps = {
     killGroup: (pgid) => void calls.push(`kill ${pgid}`),
+    continueGroup: (pgid) => void calls.push(`cont ${pgid}`),
     listProcesses: (timeoutMs) => {
       timeouts.push(timeoutMs);
       calls.push("list");

@@ -5,11 +5,13 @@
  * `CLAUDE_CONFIG_DIR` at a private directory and removes it when the process exits. What
  * Claude persists while the suite drives it — the global config's entry for each scratch
  * project, transcripts under `projects/`, prompt history, shell snapshots — lands there,
- * never in the user's `~/.claude.json` or `~/.claude/`, which are only read.
+ * never in the user's `~/.claude.json` or `~/.claude/`, which are only read. It also points
+ * `CLAUDE_CODE_TMPDIR`, Claude's temp root, at a second private directory it removes at exit.
  *
  * The private dir starts with three copies:
  * - `.credentials.json` (0600): the user's Claude login, from their own `.credentials.json`
- *   or the macOS keychain, without its refresh token (`claude-login.ts`). It lasts as long
+ *   or, on macOS, the keychain item for their config dir, without its refresh token
+ *   (`claude-login.ts`). It lasts as long
  *   as the access token, so each process copies it afresh.
  * - `.claude.json`: the user's global config without `projects` (one entry per directory
  *   Claude ever ran in), `mcpServers`, or `bypassPermissionsModeAccepted`, so first-run
@@ -19,12 +21,19 @@
  *   racing its first fetch (`claude-compiled-fallback.ts`).
  */
 
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { isRecord } from "../../src/core/predicates.ts";
-import { privateTempDir } from "../helpers/private-temp.ts";
-import { accessOnlyLogin, keychainLogin } from "./claude-login.ts";
+import { privateTempDir, removeAtExit } from "../helpers/private-temp.ts";
+import {
+  accessOnlyLogin,
+  keychainLogin,
+  keychainService,
+  keychainStorageSetting,
+} from "./claude-login.ts";
+import { claudeTempKey } from "./claude-temp.ts";
+import { registerPrivateHome } from "./home-guard.ts";
 
 /**
  * Carries the user's own `CLAUDE_CONFIG_DIR` ("" when unset) into `node --test` workers,
@@ -33,6 +42,19 @@ import { accessOnlyLogin, keychainLogin } from "./claude-login.ts";
 const userSettingKey = "ELWOOD_E2E_USER_CLAUDE_CONFIG_DIR";
 const userSetting = process.env[userSettingKey] ?? process.env["CLAUDE_CONFIG_DIR"] ?? "";
 process.env[userSettingKey] = userSetting;
+
+/**
+ * Carries the setting the user's own Claude names its keychain item for
+ * (`keychainStorageSetting`) into workers. `CLAUDE_SECURESTORAGE_CONFIG_DIR` itself is
+ * removed, so each Claude the suite starts names its item for the private dir, which has
+ * none, and reads the private dir's credentials file, never the user's item.
+ */
+const userStorageKey = "ELWOOD_E2E_USER_CLAUDE_STORAGE_SETTING";
+const userStorageSetting =
+  process.env[userStorageKey] ??
+  keychainStorageSetting(process.env["CLAUDE_SECURESTORAGE_CONFIG_DIR"], userSetting);
+process.env[userStorageKey] = userStorageSetting;
+delete process.env["CLAUDE_SECURESTORAGE_CONFIG_DIR"];
 
 /**
  * Whether the user has `CLAUDE_CONFIG_DIR` set, to any dir. Claude then keeps the global
@@ -50,14 +72,16 @@ export const userGlobalConfig = hasUserConfigDirSetting
   : join(homedir(), ".claude.json");
 
 /**
- * The user's login JSON: their plaintext credentials file, else, on macOS with no
- * `CLAUDE_CONFIG_DIR` set, the default keychain item. Nothing otherwise: a set config dir's
- * keychain item is not the default one, and is not read here.
+ * The user's login JSON, from where the user's own Claude reads it. On macOS that is the
+ * keychain item Claude names for their settings, set or not, and their credentials file only
+ * when there is no such item. Elsewhere it is the credentials file.
  */
 function userCredentials(): string | undefined {
+  const item =
+    platform() === "darwin" ? keychainLogin(keychainService(userStorageSetting)) : undefined;
+  if (item !== undefined) return item;
   const file = join(userConfigDir, ".credentials.json");
-  if (existsSync(file)) return readFileSync(file, "utf8");
-  return platform() !== "darwin" || hasUserConfigDirSetting ? undefined : keychainLogin();
+  return existsSync(file) ? readFileSync(file, "utf8") : undefined;
 }
 
 /** The user's global config without its per-project entries, MCP servers, or bypass acceptance. */
@@ -92,7 +116,7 @@ export const defaultClaudeConfigDir = privateTempDir(
   userConfigDir,
   "Claude config dir",
 );
-process.on("exit", () => rmSync(defaultClaudeConfigDir, { recursive: true, force: true }));
+removeAtExit(defaultClaudeConfigDir, "Claude config dir");
 const login = userCredentials();
 const access = login === undefined ? undefined : accessOnlyLogin(login, "The user's Claude login");
 if (access !== undefined)
@@ -101,4 +125,22 @@ writeFileSync(join(defaultClaudeConfigDir, ".claude.json"), seededGlobalConfig()
 const catalog = join(userConfigDir, "cache", "model-catalog");
 if (existsSync(catalog))
   cpSync(catalog, join(defaultClaudeConfigDir, "cache", "model-catalog"), { recursive: true });
+registerPrivateHome(defaultClaudeConfigDir);
 process.env["CLAUDE_CONFIG_DIR"] = defaultClaudeConfigDir;
+
+/**
+ * This process's `CLAUDE_CODE_TMPDIR`, removed when it exits. Claude keeps a directory per
+ * working directory under its temp root, holding each session's scratchpad, and that
+ * directory outlives the session; under the shared `/tmp`, each scratch project would leave
+ * one behind. The prefix is short because Claude puts its messaging socket at
+ * `<root>/cc-socks/<pid>.sock` only while that path fits a socket address
+ * (`docs/cli-behavior.md`, "Claude's temp root").
+ */
+export const defaultClaudeTempDir = privateTempDir(
+  "elwood_e2e_ctmp-",
+  userConfigDir,
+  "Claude config dir",
+);
+removeAtExit(defaultClaudeTempDir, "Claude temp root");
+registerPrivateHome(defaultClaudeTempDir);
+process.env[claudeTempKey] = defaultClaudeTempDir;

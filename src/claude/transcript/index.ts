@@ -6,9 +6,9 @@
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
+import type { ChunkBudget, DrainContext } from "../../core/transcript/drain.ts";
+import { drainToBudget, newTerminalBudget } from "../../core/transcript/drain.ts";
 import { TranscriptCursor } from "./cursor.ts";
-import type { ChunkBudget, DrainContext } from "./drain.ts";
-import { drainToBudget, newTerminalBudget } from "./drain.ts";
 import { buildDrainContext } from "./drain-context.ts";
 import {
   DropReporter,
@@ -41,7 +41,7 @@ export class ClaudeTranscriptWatcher {
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
-  private readonly drain: DrainContext;
+  private readonly drain: DrainContext<TranscriptCursor>;
   // Test seam: run after each cursor's scan within a poll pass, so a test can drive the
   // exact race where an earlier cursor's drop is pending when finish() lands mid-pass.
   private afterScanForTests: (() => void) | undefined;
