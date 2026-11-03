@@ -1,10 +1,10 @@
 /**
- * Per-directory probe answers: the key an answer is cached under, and a read that is kept only
- * for the directory it ran in. Implements the per-directory caches of PRD §9.2 (C-PERF-02).
+ * Internal directory-keyed probe caching, with identity compared at read boundaries.
+ * Supports the probe implementation of PRD §9.2; directory keys are an implementation detail.
  */
 
 import { stat } from "node:fs/promises";
-import type { ProbeCache } from "../probe-cache.ts";
+import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
 
 /**
  * `cwd` and which directory it names (device and inode), so a directory deleted and made again
@@ -20,17 +20,38 @@ async function directoryKey(cwd: string): Promise<string | undefined> {
   }
 }
 
-/** A probe answer, and whether its directory was still the one it was keyed by. */
+/** A probe answer, and whether its before/after directory identities matched. */
 export type DirectoryRead<T> = { readonly value: T; readonly sameDirectory: boolean };
 
+const directoryCacheBrand = Symbol("DirectoryProbeCache");
+
+/** Only the factory can supply the cache's required boundary-identity admission rule. */
+export type DirectoryProbeCache<T> = ProbeCache<DirectoryRead<T>> & {
+  readonly [directoryCacheBrand]: true;
+};
+
+/** Keeps matching-boundary results only; a caller may further restrict successful values. */
+export function createDirectoryProbeCache<T>(
+  maxSettledSuccesses: number,
+  succeeded: (value: T) => boolean = () => true,
+): DirectoryProbeCache<T> {
+  return {
+    ...createProbeCache<DirectoryRead<T>>(
+      maxSettledSuccesses,
+      (read) => read.sameDirectory && succeeded(read.value),
+    ),
+    [directoryCacheBrand]: true,
+  };
+}
+
 /**
- * `cwd`'s answer from `cache`, else `read()`'s, keyed by `cwd`'s directory. The cache's
- * predicate should refuse a read whose `sameDirectory` is false: its directory was replaced
- * while it ran, so it may describe the replacement, and keeping it under the original's key
- * would answer the original with it if that directory came back.
+ * `cwd`'s answer from `cache`, else `read()`'s, keyed by path and filesystem identity.
+ * The factory refuses retention when identities observed before and after the read differ.
+ * The checks compare two snapshots; a replacement restored before the final snapshot
+ * can escape detection.
  */
 export async function readInDirectory<T>(
-  cache: ProbeCache<DirectoryRead<T>>,
+  cache: DirectoryProbeCache<T>,
   cwd: string,
   read: () => Promise<T>,
 ): Promise<T> {
