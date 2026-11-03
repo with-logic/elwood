@@ -4,28 +4,21 @@
  * no real group is signaled here.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { sweepDetachedGroups } from "../../src/runtime/shutdown/detached-sweep/index.ts";
-import { FAKE_PID } from "../helpers/fake-pid.ts";
 import {
   errno,
   hook,
   LEADER,
   leaderNeverExits,
+  leaderRow,
   scripted,
-  leaderRow as sharedLeaderRow,
+  useScriptedHost,
 } from "../helpers/scripted-process-tree.ts";
 
-// These injected rows model a virtual host, never the worker's OS-assigned PID.
-const hostPidDescriptor = { ...Object.getOwnPropertyDescriptor(process, "pid") };
-const leaderRow = { ...sharedLeaderRow, ppid: FAKE_PID } as const;
-
-beforeEach(() => {
-  Object.defineProperty(process, "pid", { value: FAKE_PID });
-});
+useScriptedHost();
 
 afterEach(() => {
-  Object.defineProperty(process, "pid", hostPidDescriptor);
   vi.restoreAllMocks();
 });
 

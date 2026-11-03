@@ -8,7 +8,10 @@ import {
   leaderNeverExits,
   leaderRow,
   scripted,
+  useScriptedHost,
 } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 test("C-LIFE-10 overlapping detached sweeps start immediately only when idle", async () => {
   const firstRead = Promise.withResolvers<void>();

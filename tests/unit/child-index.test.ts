@@ -6,7 +6,9 @@
 
 import { describe, expect, test } from "vitest";
 import { childrenByParent } from "../../src/runtime/shutdown/process-table.ts";
-import { hook, leaderRow } from "../helpers/scripted-process-tree.ts";
+import { hook, leaderRow, useScriptedHost } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 describe("C-LIFE-10 the index of children by parent", () => {
   test("is built once per read, and never shared with another read", () => {

@@ -4,11 +4,23 @@
  * listing is logged, so no test signals or reads a real process.
  */
 
-import { vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
+import { FAKE_PID } from "./fake-pid.ts";
 
 export const LEADER = 5000;
+
+/** Opt purely injected suites into a virtual host; mixed native suites keep their real PID. */
+export function useScriptedHost(): void {
+  const hostPidDescriptor = { ...Object.getOwnPropertyDescriptor(process, "pid") };
+  beforeEach(() => {
+    Object.defineProperty(process, "pid", { value: FAKE_PID });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, "pid", hostPidDescriptor);
+  });
+}
 
 /** The start time every scripted row has unless a test sets another. */
 export const STARTED_AT = "Sun Oct 25 22:00:00 2026";
@@ -18,7 +30,7 @@ export const leaderNeverExits = (): boolean => false;
 
 export const leaderRow: ProcessEntry = {
   pid: LEADER,
-  ppid: process.pid,
+  ppid: FAKE_PID,
   pgid: LEADER,
   zombie: false,
   stopped: false,
