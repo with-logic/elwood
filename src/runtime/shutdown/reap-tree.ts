@@ -34,6 +34,8 @@ export {
   setProcessTreeOpsForTests,
 } from "./process-tree-ops.ts";
 
+export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
+
 /**
  * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
  * once: `stop()` then a later `teardown()` both want to guarantee the group is
@@ -48,6 +50,9 @@ export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
+  private pendingSweeps = 0;
+  /** Terminal evidence about the entire group, never inferred merely from leader exit. */
+  private leaderGroupGone = false;
   private readonly detachedSweepQueue = new SerialDetachedSweepQueue();
   /** A detached sweep that failed; once the leader is gone it can never be confirmed. */
   private unresolvedSweep: SweepFailure | undefined;
@@ -63,9 +68,20 @@ export class SessionReaper {
    * rethrows, keeping the reap retryable on a later lifecycle call.
    */
   reap(): void {
-    if (this.done) return;
+    // The active shutdown owner reaps after its sweep, including any pending confirmation.
+    if (this.done || this.leaderGroupGone || this.pendingSweeps > 0) return;
     reapProcessGroup(this.leaderPid, this.ops);
     this.done = true;
+  }
+
+  /** Dispatch a PTY signal only while this session has not confirmed its group gone. */
+  signalLeaderPty(send: () => void): LeaderPtySignalOutcome {
+    if (this.leaderGroupGone) {
+      this.reapAndThrowOnDetachedSweepFailure();
+      return "leader-group-gone";
+    }
+    send();
+    return "signal-sent";
   }
 
   /**
@@ -91,11 +107,20 @@ export class SessionReaper {
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
     if (!isReapableGroupId(this.leaderPid)) return;
-    const failure = await this.detachedSweepQueue.run(() =>
-      sweepDetachedGroups(this.leaderPid, this.ops, leaderExited),
-    );
-    if (failure === undefined) return;
-    this.unresolvedSweep = failure;
-    throw failure;
+    this.pendingSweeps += 1;
+    try {
+      const failure = await this.detachedSweepQueue.run(() => {
+        // A queued request must recheck after the preceding pass has confirmed exit.
+        if (this.leaderGroupGone) return Promise.resolve(undefined);
+        return sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, undefined, () => {
+          this.leaderGroupGone = true;
+        });
+      });
+      if (failure === undefined) return;
+      this.unresolvedSweep = failure;
+      throw failure;
+    } finally {
+      this.pendingSweeps -= 1;
+    }
   }
 }

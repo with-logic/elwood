@@ -260,13 +260,16 @@ watcher and disposes the terminal on every path, but a CLI process it could not 
 reaped may remain (see below). (The one-shot version/preflight warning is NOT part of
 this boundary — it is scheduled for delivery AFTER start resolves, per C-API-14.)
 The session ends the PTY with the same one-shot process-group reaper its exit path
-uses (§9.4, C-LIFE-10), so the leader's group is SIGKILLed once, not once per path.
+uses (§9.4, C-LIFE-10), so any successful group SIGKILL occurs at most once across paths.
 If the session has already seen the PTY exit (for example, the CLI exited during
 startup), the PTY is not signaled again: the leader's pid may already belong to an
 unrelated process, so only that shared reaper runs. That reaper does nothing if the
 exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled, its
-exit is awaited within a bounded window, and the leader's process group is SIGKILLed on
-every path, even if the PTY signal throws. That kill is what stops a CLI-spawned
+exit is awaited within a bounded window, and the leader's process-group reap is attempted
+on every path, even if the PTY signal throws. If the detached sweep confirms the entire
+group gone, the final group SIGKILL is skipped, avoiding a signal to a possibly reused
+numeric id; an earlier unresolved descendant-sweep failure still rejects. An eligible
+group kill stops a CLI-spawned
 descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
 the leader exits. A leader that ignores the SIGTERM has its detached descendants
 reaped before the escalating SIGKILL, as §5.3 specifies. The original startup error is

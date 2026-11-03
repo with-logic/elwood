@@ -44,6 +44,10 @@ function recordingReap(calls: string[]): ShutdownReapPolicy {
   return {
     orThrow: () => void calls.push("reap"),
     reaper: {
+      signalLeaderPty: (send: () => void) => {
+        send();
+        return "signal-sent" as const;
+      },
       reap: () => void calls.push("reap"),
       reapAndThrowOnDetachedSweepFailure: () => void calls.push("reap"),
       sweepDetached: async () => {},
@@ -64,6 +68,10 @@ function host(
     reapPolicy: {
       orThrow: () => undefined,
       reaper: {
+        signalLeaderPty: (send: () => void) => {
+          send();
+          return "signal-sent" as const;
+        },
         reap: () => undefined,
         reapAndThrowOnDetachedSweepFailure: () => undefined,
         sweepDetached: async () => {},
