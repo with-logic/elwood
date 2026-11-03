@@ -267,8 +267,9 @@ unrelated process, so only that shared reaper runs. That reaper does nothing if 
 exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled, its
 exit is awaited within a bounded window, and the leader's process-group reap is attempted
 on every path, even if the PTY signal throws. If the detached sweep confirms the entire
-group gone, the final group SIGKILL is skipped so its numeric id cannot be reused;
-an earlier unresolved descendant-sweep failure still rejects. An eligible group kill stops a CLI-spawned
+group gone, the final group SIGKILL is skipped, avoiding a signal to a possibly reused
+numeric id; an earlier unresolved descendant-sweep failure still rejects. An eligible
+group kill stops a CLI-spawned
 descendant such as a hook-bridge grandchild, which POSIX reparents to PID 1 the instant
 the leader exits. A leader that ignores the SIGTERM has its detached descendants
 reaped before the escalating SIGKILL, as §5.3 specifies. The original startup error is
