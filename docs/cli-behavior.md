@@ -1335,7 +1335,10 @@ returns `EPERM`, not `ESRCH`. `src/runtime/shutdown/process-table.ts` reads the
 table and finds these groups by walking parent pids from the leader.
 
 Elwood therefore walks the tree only before a SIGKILL it sends to a live leader. It
-SIGSTOPs the leader's group and lists `/bin/ps -A -o pid=,ppid=,pgid=,stat=`. A
+SIGSTOPs the leader's group and lists
+`/bin/ps -A -o pid=,ppid=,pgid=,stat=,lstart=,ucomm=,pid=` (the start time tells a reused
+pid from the process that had it; the short name and the pid again are for Codex's
+daemon, below). A
 group id from `ps` is only a snapshot, `kill()` returning means the SIGSTOP was sent,
 not delivered, and `ps` reads each process's state at its own moment (on macOS it
 takes the set of pids first and each row's state afterwards). So Elwood relies only
@@ -1347,8 +1350,8 @@ listing that shows the leader live, leaves no live group unreached, and holds ev
 live process in every stopped group that way, the leader's included, so none of them
 can have started a process the listing missed; a leader exit observed first fails it,
 because the leader's detached children are then out of reach. Then the stopped groups
-are SIGKILLed deepest first
-(`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
+are SIGKILLed deepest first, except one that holds Codex's daemon, which is resumed
+(below) (`src/runtime/shutdown/detached-sweep/`). That is two listings with no hook in
 flight, and two more per level of nesting. A process whose own parent exited before
 the walk is already under PID 1 and out of reach. macOS refuses a stop or a kill of
 a group whose members are all unreaped zombies with `EPERM`, so either counts as a
@@ -1379,6 +1382,17 @@ ms and 7–18 ms with the walk disabled, where the in-flight hook survived every
 real CLIs: Claude `teardown()` with a hook in its own group, a `stop()` whose
 `SessionEnd` hook outlasts the graceful window, and Codex `teardown()` with a hook.
 With the walk disabled all three fail with the hook still running.
+
+On a loaded host the walk outgrew its first three-second deadline (measured
+2026-10-26, macOS Darwin 25.5, about 3,700 processes on the host). A `kill()` of a
+setsid hook with a setsid child of its own takes six reads. That is two to hold the
+leader's group, and two more for each level of nesting. At a 1-minute load of 70 to
+92, those reads took 78–644 ms each, and the walk took 1.1–2.6 s. Under the
+repository's own parallel test run on that host, reads passed half a second, and so
+six of them passed three seconds. `kill()` then rejected with `termination_failed`,
+though each read was making progress. The deadline is now ten seconds.
+`tests/unit/sweep-deadline-real.test.ts` slows each real read by 600 ms and checks
+that `kill()` still reaps such a tree.
 
 Codex also starts a shell of its own, not a hook, that the walk has to reach
 (measured 2026-10-25, Codex 0.164, macOS Darwin 25.5). A few seconds after launch
@@ -1448,6 +1462,75 @@ names a path inside the home, plus its descendants: SIGTERM first, then SIGKILL 
 later. A sandbox where something will not stop is kept.
 `tests/e2e/scratch-processes.e2e.ts` starts a daemon with `daemon start` and checks that
 removing the sandbox, and exiting the run, stop it.
+
+## Elwood's teardown never kills that daemon (2026-10-26)
+
+While the TUI that started them runs, the daemon and its updater loop are setsid
+children of it, the shape of a hook in flight. So when a session's own TUI had started
+them, the detached walk that `kill()`, `teardown()`, and a `stop()` escalation run killed
+the daemon, its updater loop, and everything the daemon had started, though the daemon
+serves every Codex on the home, the user's own included. The walk now never descends into
+one (PRD §5.3, C-LIFE-10): a process whose `ucomm` (short name) is `codex`, that leads its
+own group, whose parent is named `codex` or is PID 1, and whose `comm` has
+`/packages/app-server-daemon/` in it. On macOS `comm` is `argv[0]`, which Codex sets to
+the full path; it reads that way even after the home is removed.
+
+`comm` is read, one `ps -o comm= -p <pid>` per process and at most four at once, only for
+the processes that pass the other tests and that the walk can reach: the session's TUI and
+its descendants. None starts past the table read's deadline; the read then fails as a timed
+out one does. Every extra read costs a walk whose deadline, three seconds when these were
+measured, must hold on a loaded host:
+
+- `comm` in every table read doubled its cost (94 to 200 ms at a load of about 220): 4 of
+  9 real-process reap tests failed with `ETIMEDOUT`, none on `origin/main`.
+- Given several pids, macOS `ps` reads every process on the host (230 to 370 ms at a
+  load of about 25): with one `ps -p` for all candidates, a real Codex `teardown()`
+  failed in 5 of 7 runs, none of 2 on `origin/main`.
+- One `ps` per candidate anywhere on the host took 4 to 9 ms from a shell, but 120 to
+  870 ms when spawned by the process tearing the session down. The user's own daemon was
+  always a candidate, so every read paid that again: a real Codex `teardown()` failed in
+  2 of 5 runs, none of 5 on `origin/main`.
+
+A walk remembers each daemon it found, by pid, parent, and group, so when the session's
+TUI started one, the walk's first read pays its path reads, and no later read does unless
+its parent changed. A candidate no read has confirmed, such as the TUI's fork before its
+`exec`, is read again on every read until one does or it is gone. A walk with no
+candidate under its TUI runs the same single `ps` per read as before. In 3
+real Codex `teardown()`s, alternated with 3 on `origin/main`, it ran no path read. One run
+on each side failed at the deadline, when the host's 3,700 processes made a single table
+read take 1.6 to 2.1 s; the other reads took 350 to 540 ms.
+
+No real-Codex e2e proves this: in 8 runs of Codex 0.164.0 under Elwood, from fresh
+homes, with and without the hook-trust bypass and the update check, with holds of up to
+40 s, none started the daemon. `tests/unit/reap-detached-real.test.ts` builds the
+measured shape from real processes instead, with its install in place and removed.
+
+The TUI forks the daemon as a `codex` group leader of its own and then `exec`s it, so a
+path read can come between the two, and the walk can then stop the group after the
+`exec`. A stopped process cannot `exec`, so the kill pass goes by the latest read: a group
+it shows holding the daemon, or a process not stopped that could still become it, gets
+SIGCONT, not SIGKILL. A leader killed by something else while the walk holds it leaves
+that stopped daemon under PID 1, out of the leader's reach, so each group the walk stopped
+is a root of its own for the path reads. `tests/unit/shared-daemon-real.test.ts`
+reproduces both with a real process: Node cannot `exec`, but setting `process.title`
+changes what macOS `ps` reads as `comm` (`ucomm` stays the executable's name).
+
+A descendant can set its `comm` to the daemon's path (Node does by setting
+`process.title`), and a binary named `codex` that leads its own group is then spared as
+the daemon would be. That gives it nothing it lacks: the walk follows parent pids from the
+leader, so a descendant whose parent exits first is out of its reach. Measured on
+`origin/main` (2026-10-26): a setsid hook that backgrounds `/bin/sleep 300` and exits
+leaves the sleep under PID 1 before `kill()`, which resolves with the sleep still running.
+
+## `ps` prints a process's short name raw (2026-10-26)
+
+To recognize Codex's daemon (above), each table read also lists every process's short
+name (`ucomm`), and `ps` prints it raw. A process whose name is `a`, a newline, and
+`1 5000 1 S    ` reads as two rows, the second a forged process 1 whose parent is 5000
+(measured on macOS 26). `comm` and `ps -c` escape it as `\012`, but `comm` in every table
+read doubled its cost (94 to 200 ms at a load of about 220). So each row ends with its pid
+again (`-o pid=,ppid=,pgid=,stat=,lstart=,ucomm=,pid=`), and a read with any line that
+is not one whole row, or one pid twice, is unreadable: the walk fails rather than act on it.
 
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
@@ -1725,10 +1808,12 @@ shell exited with status 0 before starting the probe command` although its comma
 and so did `elwood`'s agent detection. Any macOS user whose login shell is bash could not
 start a session. GitHub's `macos-latest` runner user's shell is bash.
 
-The probe script now tests the write: `if { echo L >&3; } 2>/dev/null; then exec 3>&-;
-else echo L; fi`. zsh, ksh, macOS and Debian dash, non-login bash 3.2 and bash 5.2 took
-descriptor 3 when it was open and stdout when it was closed, and none printed the failed
-redirection's error. The fallback is stdout, not stderr. Under real `bash -l -i` with a
+The probe script now tests the write, then keeps descriptor 3 open through the e2e home
+guard (PRD §12), whose stop line takes the same path, and closes it only before the command:
+`{ echo L >&3; } 2>/dev/null || echo L; <guard>; exec 3>&-; <command>`. zsh, ksh, macOS
+and Debian dash, non-login bash 3.2 and bash 5.2 took descriptor 3 when it was open and
+stdout when it was closed, and none printed the failed redirection's error. The fallback
+is stdout, not stderr. Under real `bash -l -i` with a
 `~/.bash_profile` of `exec 2>/dev/null` or `exec 2>&1`, the line arrived on stdout and the
 probe passed. A stderr fallback would have been discarded by the first and moved into
 stdout by the second. A profile that hid stdout would hide the command's own output and
@@ -1761,20 +1846,28 @@ bash 3.2.57, using a private `ZDOTDIR` or `HOME`:
   background helper the profile started (`( … ) &!`) writes to the shell's streams
   whenever it likes.
 
-So markers around the command cannot separate its output: they delimit a time window,
-not an author. The probe script now `exec`s the command with `>"$ELWOOD_PROBE_OUTPUT/stdout"
-2>"$ELWOOD_PROBE_OUTPUT/stderr"`, into two named pipes in a directory the runner makes for
-that probe alone.
-With the redirection on the `exec` itself, zsh and bash both print a DEBUG trap's output
-on the shell's own streams before the `exec`, and nothing runs after it: no trap, no
-EXIT trap, no `.zlogout`. A failed `exec` ends the probe with 127 (not found) or 126
-(not executable), and the pipe carries the shell's own message about it; bash 3.2 adds its
-`no job control` notice. Except for one case, neither comes from a startup file: zsh 5.9 runs
-a startup file's `command_not_found_handler` when `exec` finds no command, with the `exec`'s
-redirections applied, and the probe's status is then whatever the handler returns. bash's
-`exec` runs no `command_not_found_handle`. The probe script therefore runs
-`unset -f command_not_found_handler 2>/dev/null || :` before its `exec`; zsh's `unset -f`
-fails when no such function exists, so the `|| :` keeps `errexit` from ending the shell.
+Markers around the command delimit a time window, not an author. The probe now sends
+only the command's output through two private named pipes, substituting their quoted
+paths into the post-profile script. The paths are absent from the startup environment.
+The original login shell expands the command arguments and then execs a clean,
+noninteractive `/bin/sh` helper that execs the program under the FIFO redirections.
+A failed exec therefore cannot run the original interactive shell's EXIT/DEBUG/ZERR
+hooks with those descriptors. The clean helper's own failed-exec diagnostic is
+intentionally retained (127 for absent programs, 126 for nonexecutable ones); it is
+shell-generated text, not output from a CLI that successfully started. Real zsh 5.9
+and bash 3.2 private-profile tests cover failed exec with EXIT and DEBUG hooks, profile
+PATH shims and deliberate profile `cd`. The command receives EOF on stdin.
+
+The runner starts the normal login shell under a lightweight `/bin/sh` supervisor.
+That supervisor owns the detached process group, reports the command's exact exit
+status on a separate fd4 (closed in the login child), then waits for the parent to
+acknowledge capture completion. It remains alive while inherited FIFO writers drain;
+the bound can therefore safely kill its still-owned group even when a descendant is
+silent. Real zsh and bash tests inspect that live PGID owner and confirm the unique
+silent holder has disappeared after timeout. An idle Node-host fixture verifies that
+the awaited result and delayed output are delivered. Active capture polling and
+bounded abort cleanup keep the host alive; only later retained cleanup is unreferenced.
+
 bash `exec`s only programs (`exec command -v x` fails on Linux, which has no
 `/usr/bin/command`), so `command -v` runs as a status-only probe with its output sent to
 `/dev/null`. `elwood interactive`'s PATH read runs `/bin/sh -c 'printf …' sh "$PATH"`:
@@ -1788,10 +1881,11 @@ a test, a child that inherited the file from a command that then exited kept wri
 unsupervised, into a file Elwood had already removed, and an update probe would have
 released its lease while such a child ran. A named pipe behaves as the command's own pipe did: the probe waits for
 every holder, a full pipe blocks its writer at the cap, and closing Elwood's read end
-stops a writer left over with `SIGPIPE`. Node reads a named pipe as a `net.Socket`, but
+delivers `SIGPIPE` to a writer on its next write. Silent holders require the supervisor
+and command bound described above. Node reads a named pipe as a `net.Socket`, but
 on macOS kqueue reports its data and never its end: with every writer gone, the
 socket's `end` did not fire within 5 s. The runner therefore opens each pipe
-non-blocking and reads it every 25 ms, where `read` returns 0 once no writer holds it.
+non-blocking and reads it at a nominal 25 ms cadence (event-loop scheduling can delay reads), where `read` returns 0 once no writer holds it.
 Without a writer a pipe reads as ended, so the runner holds one of its own until the
 probe's process exits; the command's `exec` then opens its write end without waiting.
 Node has no `mkfifo`, so `/usr/bin/mkfifo` makes them. `ulimit -f` would not have been
@@ -1828,9 +1922,34 @@ default `Claude Code-credentials` keychain item for it. It does read a
 rotate the user's own refresh token. It works until the access token's `expiresAt`,
 which is why `tests/e2e/claude-home.ts` copies it afresh in each process.
 
+A set config dir has a keychain item of its own (claude 2.1.310, 2026-10-26):
+`Claude Code-credentials-` followed by the first eight hex digits of the SHA-256 of
+the `CLAUDE_CONFIG_DIR` value as written, NFC-normalized, even when it names
+`~/.claude`. An empty value counts as unset. With `CLAUDE_CONFIG_DIR` set to a fresh
+dir, `claude auth status` reported `loggedIn: true` exactly while an item of that
+name existed. The item wins over a `.credentials.json` in the same dir: with both
+holding different logins, Claude reported the item's. So a user with the variable
+set may have their login only in that item, and `tests/e2e/claude-home.ts` reads it
+from there first. The 2.1.310 binary also lets `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+replace the setting the item is named for (read from the code, not exercised). When
+it is set, even to an empty value, it decides the name: empty means the default item,
+anything else that value's hash. Only when it is unset does `CLAUDE_CONFIG_DIR` decide.
+Claude also passes the variable on to the teammates it spawns. So a Claude started with
+a private `CLAUDE_CONFIG_DIR` would still use the user's item while the variable is
+inherited. `tests/e2e/claude-home.ts` reads the user's login from the item that
+variable names, then removes it from the suite's environment.
+
 An `ANTHROPIC_API_KEY` in the environment logs any config dir in on its own
 (`authMethod: "api_key"`), so check a login with it unset. In the TUI, whether that
 key is used is the global config's `customApiKeyResponses`, which the e2e copy keeps.
+
+`ready` does not show that Claude got neither credential variable (Claude 2.1.310,
+2026-10-26). With the copied login, an invalid `ANTHROPIC_API_KEY` from the launch
+shell's startup files keeps the TUI from `ready`, but an invalid `ANTHROPIC_AUTH_TOKEN`
+does not: Claude reaches `ready` with it set. Both variables can also come from the
+developer's own startup files, after Elwood's environment is handed over. So C-E2E-23
+unsets both in the launch shell, and a `SessionStart` project hook records which of the
+two Claude's own environment holds (`tests/e2e/claude-credential-hook.ts`).
 
 The private dir carries none of the user's `settings.json`, so it shows what a fresh
 install does: the bypass-permissions dialog appears unless
@@ -2163,6 +2282,41 @@ bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
 
 
+## Claude's temp root (Claude 2.1.310, 2026-10-26)
+
+Claude keeps its temp files under a root: `CLAUDE_CODE_TMPDIR` when set, else `/tmp`, so
+the macOS `TMPDIR` does not move it. Measured with real sessions started through Elwood:
+
+- Under `<root>/claude-<uid>/`, Claude makes one folder per working directory, named for
+  the directory's real path with each character other than a letter or digit replaced by
+  `-`. It holds a folder per session with that session's `scratchpad/`. The folder is
+  still there after `stop()` and after `teardown()`; nothing in Claude removes it. Every
+  e2e scratch project left one in the shared `/tmp/claude-<uid>` until the suite gave each
+  e2e process a private `CLAUDE_CODE_TMPDIR` (C-E2E-23).
+- Claude's messaging socket is `<root>/cc-socks/<pid>.sock`. The 2.1.310 bundle uses that
+  path only while it is at most 103 bytes, and otherwise falls back to
+  `/tmp/cc-socks-<uid>/<pid>.sock`, so a long root moves the socket back into the shared
+  `/tmp`. The e2e root's prefix is short for that reason.
+- Claude, run directly in a PTY, removes its socket when it exits on SIGTERM, SIGHUP,
+  `/exit`, or Ctrl-C. A SIGKILL leaves it: after `teardown()`, which SIGKILLs a live session,
+  `/tmp/cc-socks/<pid>.sock` remained for the dead pid. After `stop()`, whose SIGTERM
+  Claude exits on, it did not.
+
+## Codex keeps a temp copy of every pasted image (codex-cli 0.164.0, 2026-10-26)
+
+On Ctrl+V with an image on the clipboard, Codex writes the image to
+`$TMPDIR/codex-clipboard-<suffix>.png` before the `[Image #N]` chip appears, and nothing
+in Codex ever removes it: a real attach left the file in place after the turn finished
+and after `teardown()`. The suffix is six random characters on 0.164.0; an earlier
+rollout on the same machine names a UUID form (`codex-clipboard-<uuid>.png`). When the message is submitted,
+the rollout records the path twice: as `{"type":"local_image","path":...}` in the
+content of an `event_msg` `item_completed` `UserMessage`, and as
+`<image name=[Image #1] path="...">` text beside the inline `input_image` data in the
+`response_item` message. The image itself travels inline, so nothing reads the file
+after submission. Once the CLI exits, Elwood removes the copies the session's transcript
+names directly in Elwood's own temp directory (C-API-46). A Codex whose login shell sets
+another `TMPDIR` keeps its copies there, and Elwood does not remove them.
+
 ## Cached image recovery frames (2026-10-01)
 
 The existing captured image-chip and staged-text layouts establish live composer
@@ -2475,3 +2629,19 @@ Queued editors after the first use `⇧→ prev question`; only the first uses
 frames. If a local skip and Esc collapse coalesce into one output render, the
 smaller badge does not identify the removed question. Preserve the prior focused
 editor count until a matching remaining editor confirms that removal.
+
+## Login-shell not-found handlers (2026-10-26)
+
+A probe runs its CLI through the user's interactive login shell, so a CLI missing
+from PATH meets whatever not-found handler the startup files define. zsh 5.9 runs
+`command_not_found_handler` and bash 4.0 and later run `command_not_found_handle`.
+Ubuntu's `/etc/bash.bashrc` defines the bash one when the `command-not-found`
+package is installed, to suggest a package. The handler's
+output goes to the shell's stdout and stderr, which a probe captures, and the
+handler's return status becomes the probe's. One that returns 1 turns "not found"
+(127) into an ordinary failure. Measured with a handler printing a marker: zsh 5.9
+on macOS, and bash 5.2.37 in a Debian trixie container, both captured the marker
+and reported the handler's status. macOS's bash 3.2 predates the hook. The probe
+script now runs `unset -f command_not_found_handler command_not_found_handle
+2>/dev/null || :` before its command. Each shell ignores the other's name. With it,
+both shells exit 127 and capture no marker.

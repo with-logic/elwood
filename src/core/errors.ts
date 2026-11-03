@@ -93,12 +93,17 @@ export function errnoCode(error: unknown): string | undefined {
 const MAX_ERRNO_SUFFIX_LENGTH = 40;
 const ERRNO_TOKEN = new RegExp(`^E[A-Z0-9_]{1,${MAX_ERRNO_SUFFIX_LENGTH}}$`);
 
+declare const errnoTokenBrand: unique symbol;
+
+/** A string `isErrnoToken` accepted, so a producer cannot pass unchecked text where one goes. */
+export type ErrnoToken = string & { readonly [errnoTokenBrand]: true };
+
 /**
  * True for an errno-shaped token (`EPERM`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`): fixed by
  * the platform or Node, never process or user content, so it can travel in a public
  * message or a CLI diagnostic.
  */
-export function isErrnoToken(value: unknown): value is string {
+export function isErrnoToken(value: unknown): value is ErrnoToken {
   return typeof value === "string" && ERRNO_TOKEN.test(value);
 }
 
@@ -132,14 +137,16 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
 /**
  * Diagnosable details for a failed CLI probe (C-ERR-08): stderr plus the
  * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
- * output overflow) so a start failure never drops the underlying reason.
- * A login-shell failure (`phase: "login_shell"`) never ran the command, so its stderr is
- * only the user's startup output, which can carry expanded secrets: it is withheld.
+ * output overflow) so a start failure never drops the underlying reason. `exitStatus` is the
+ * status the probe reported, 128+n for a signal death, and is absent when it reported none.
+ * A login-shell failure (`phase: "login_shell"`) may have no observed command start line;
+ * its stderr can be startup output carrying expanded secrets, so it is withheld.
  * `cleanupErrorCode` and `cleanupProcessGroupId` appear only when an aborted probe's cleanup
  * stayed unconfirmed. The group id is diagnostic: it may already be reissued to an unrelated
  * group, so it must never be signaled.
  */
 export function probeFailureDetails(result: {
+  readonly status?: number | null;
   readonly stderr: string;
   readonly error?: {
     readonly code?: string | undefined;
@@ -156,6 +163,7 @@ export function probeFailureDetails(result: {
 }): Readonly<Record<string, string | number>> {
   const loginShell = result.error?.phase === "login_shell";
   const details: Record<string, string | number> = { stderr: loginShell ? "" : result.stderr };
+  if (typeof result.status === "number") details["exitStatus"] = result.status;
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;

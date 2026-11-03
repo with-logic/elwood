@@ -11,6 +11,7 @@ import { startCodex } from "../../src/index.ts";
 import type { PtySpawnOptions } from "../../src/pty/types.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { codexHomeReportPath } from "../helpers/codex-home.ts";
+import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { FakePty } from "../helpers/fake-pty.ts";
 import { exitingDuringStartup, rejection, startupExit } from "../helpers/startup-exit.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -79,7 +80,7 @@ test("C-CODEX-24 a start that fails after the report was written removes it", as
 /** A launch shell that exits with status 73 during startup, with or without its report. */
 function exitingWith73(reported: boolean) {
   return (options: PtySpawnOptions) => {
-    const pty = new FakePty(options, 1000 + ptys.length);
+    const pty = new FakePty(options, FAKE_PID + ptys.length);
     ptys.push(pty);
     if (!reported) rmSync(firstReport()); // the launch shell could not write it
     const timer = setInterval(() => {

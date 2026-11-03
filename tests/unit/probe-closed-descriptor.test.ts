@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
+import { homeGuardHomesKey } from "../../src/runtime/home-guard/index.ts";
 import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
 import { setPlatformForTests } from "../../src/runtime/seams.ts";
@@ -74,6 +75,16 @@ test.each([
     ? runProbe(closingShell(profile), ["-l", "-i", "-c", script])
     : runProbe("/bin/sh", ["-c", `${profile}; ${script}`]));
   expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
+});
+
+test("C-PERF-05 the probe command does not inherit the control descriptor", async () => {
+  // The descriptor stays open past the start line, for the e2e home guard, then closes.
+  vi.stubEnv(homeGuardHomesKey, undefined);
+  const [, , , script] = shell.probeShellCommand(
+    `/bin/sh -c ${shell.shellQuote("{ echo leaked >&3; } 2>/dev/null || echo closed")}`,
+  );
+  const result = await runProbe("/bin/sh", ["-c", script]);
+  expect(result).toEqual({ status: 0, stdout: "closed\n", stderr: "" });
 });
 
 // Pinned to the bash 3.2 that macOS ships as /bin/bash. Linux's bash 5.2 keeps descriptor 3 as

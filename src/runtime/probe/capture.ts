@@ -25,21 +25,33 @@ export type ProbeChild = {
 export type CaptureEvents = {
   /** A stream passed the cap. */
   readonly overflowed: () => void;
-  /** Every stream has ended: nothing holds its write end. */
+  /**
+   * Every named pipe has ended after the probe exited: nothing holds its write end. Only named
+   * pipes send it. A process's own pipes end before its `close`, so a capture of them is
+   * complete by then.
+   */
   readonly ended: () => void;
 };
 
 /** One probe's output capture. */
 export type ProbeCapture = {
-  /** The probe process's environment, when it differs from Elwood's own. */
-  readonly env: NodeJS.ProcessEnv | undefined;
+  /** The probe's arguments as the capture runs them: a probe script's output pointed at it. */
+  args(args: readonly string[]): readonly string[];
   /** Captures `child`'s output. */
   watch(child: ProbeChild, events: CaptureEvents): void;
-  /** Whether every stream has ended, so the capture is complete. */
+  /**
+   * Whether the capture is complete, once the probe's process has closed. A capture of the
+   * process's own pipes always is. Named pipes are complete once nothing holds their write ends,
+   * which a process the command started can delay past the `close`.
+   */
   ended(): boolean;
   /** Each stream's capture, stdout then stderr, at most the cap. */
   text(): [string, string];
-  /** Drops the capture and closes and removes anything it opened. Safe to call twice. */
+  /**
+   * Drops the capture, closes what it opened, and removes it. Named pipes' directory is removed
+   * at once, unless the command changed it: then the removal runs off the event loop and can
+   * finish after this returns. Safe to call twice.
+   */
   release(): void;
 };
 
@@ -54,16 +66,22 @@ export function probeCapture(args: readonly string[]): Promise<ProbeCapture> {
 
 /** A directly spawned command's own stdout and stderr pipes. */
 class PipeCapture implements ProbeCapture {
-  readonly env = undefined;
   private readonly buffers = [new CappedBuffer(), new CappedBuffer()] as const;
+  private readonly detach: (() => void)[] = [];
+
+  args(args: readonly string[]): readonly string[] {
+    return args;
+  }
 
   watch(child: ProbeChild, events: CaptureEvents): void {
     [child.stdout, child.stderr].forEach((stream, index) => {
       const buffer = this.buffers[index] as CappedBuffer;
-      stream.on("data", (chunk: Buffer) => {
+      const data = (chunk: Buffer) => {
         buffer.append(chunk);
         if (buffer.overflowed) events.overflowed();
-      });
+      };
+      stream.on("data", data);
+      this.detach.push(() => stream.off("data", data));
     });
   }
 
@@ -78,13 +96,16 @@ class PipeCapture implements ProbeCapture {
   release(): void {
     // An unresolved probe's reaper retains the child and its listeners, and through them
     // these chunks, so they are dropped here rather than left for the reaper to outlive.
+    for (const detach of this.detach.splice(0)) detach();
     for (const buffer of this.buffers) buffer.release();
   }
 }
 
 /** A login shell whose command's output went to `/dev/null`: its own pipes are drained. */
 class DiscardedCapture implements ProbeCapture {
-  readonly env = undefined;
+  args(args: readonly string[]): readonly string[] {
+    return args;
+  }
 
   watch(child: ProbeChild): void {
     child.stdout.resume();

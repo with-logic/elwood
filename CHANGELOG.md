@@ -12,6 +12,61 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep probe diagnostics separate from login-shell profile, trap, and logout output,
+  including failed CLI execs. The clean exec helper's own failure message is retained.
+  Probe FIFO paths are absent from the startup environment and probe stdin is EOF.
+  Inherited output writers
+  remain owned through capture completion, so silent holders are killed at the command
+  bound and an idle host still delivers the result. Capture setup errors preserve their
+  cause and errno as startup failures instead of falsely reporting a missing CLI.
+
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
+- The walk that reaps detached hook processes now reads each process's short name,
+  which `ps` prints raw, and refuses a table read it cannot trust instead of acting
+  on it: one with a line that is not one whole row, such as a line a newline in a
+  process's name starts, or with a pid listed twice. A refused read fails as an
+  unreadable table does, so while a process on the host has a newline in its name,
+  `kill()`, `teardown()`, and a `stop()` that escalates reject with
+  `termination_failed` (`teardown_failed` from `teardown()`).
+- A Codex session now removes the `codex-clipboard-*.png` file Codex saves in the
+  temp directory for each image Elwood pastes into it, once the session's CLI has
+  exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image
+  attach left one such file behind for good. Only files the session's own transcript
+  names directly in Elwood's temp directory are removed; a Codex whose login shell sets
+  another `TMPDIR` keeps its copies there.
+- A Codex session that cannot remove one of those copies now emits one
+  `image_copy_removal_failed` warning before `terminal:exit`. Its `errorCode` is the
+  first failure's errno token, or `UnknownError` when it has none. The copy is left
+  for the OS to reap. A copy that was already gone is not a failure.
+- A CLI missing from the login shell's PATH is reported as `claude_not_found` or
+  `codex_not_found` even when the user's startup files define a not-found handler
+  (zsh's `command_not_found_handler`, bash's `command_not_found_handle`). The probe
+  ran the handler, so a handler that returned another status made a missing CLI
+  read as `*_start_failed`, and whatever it printed reached that error's
+  `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
+  handlers before running the CLI.
+- A probe whose command dies of a signal now reports the status a shell would,
+  128 plus the signal's number, instead of no status. A login shell that dies
+  before starting the command is still a login-shell failure. `elwood interactive`'s
+  PATH lookup likewise now fails with "login shell exited with status 143" where it
+  said "status null".
+- `*_start_failed` details and the `agent_update_failed` warning now carry a failed
+  probe's exit status as `exitStatus`, as the spec already said the warning would.
+- `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
+  detached hook processes ten seconds, up from three, before they reject with
+  `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
+  process-table read can take over half a second, and a hook that started a detached
+  child of its own takes six reads. So these calls rejected, and kept rejecting,
+  while the walk was still making progress. The ten seconds bound the walk, not the
+  whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
+  SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
+  idle host they take as long as before, because the walk ends as soon as it is done.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
@@ -32,6 +87,11 @@ back each entry are listed in `prd/14-conformance.md`.
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
+- `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
+  app-server daemon, its updater loop, or what the daemon started, such as plugin
+  MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex
+  on that home, yours included, as a detached child of the TUI: when the session's
+  own TUI had started it, the walk that reaps detached hooks SIGKILLed it.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed

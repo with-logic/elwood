@@ -10,7 +10,12 @@ import {
   preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
-import { probeScript } from "../../src/runtime/probe/start.ts";
+import {
+  probeControlClose,
+  probeNotFoundHandlerReset,
+  probeOutputRedirect,
+  probeStartScript,
+} from "../../src/runtime/probe/start.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   resetAutoupdateForTests,
@@ -36,16 +41,16 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
   await preflightCodex(false, true);
   await detectCodexCliCapabilities();
   expect(scripts).toEqual([
-    probeScript("codex --version"),
-    probeScript("codex update"),
-    probeScript("codex --version"),
-    probeScript("codex --help"),
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}exec /bin/sh -c 'exec "$@"' elwood-probe-exec codex --version ${probeOutputRedirect}`,
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}exec /bin/sh -c 'exec "$@"' elwood-probe-exec codex update ${probeOutputRedirect}`,
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}exec /bin/sh -c 'exec "$@"' elwood-probe-exec codex --version ${probeOutputRedirect}`,
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}exec /bin/sh -c 'exec "$@"' elwood-probe-exec codex --help ${probeOutputRedirect}`,
   ]);
 });
 
 test("C-PERF-05 a login shell that fails before `codex update` reports login_shell_failed", async () => {
   setCommandRunnerForTests((_command, args) =>
-    args.at(-1) === probeScript("codex update")
+    args.at(-1)?.includes("codex update")
       ? {
           status: null,
           stdout: "",

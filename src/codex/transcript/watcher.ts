@@ -10,9 +10,13 @@
 
 import { outsideStopInput } from "../../core/stop-input.ts";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
+import {
+  type ChunkBudget,
+  type DrainContext,
+  drainToBudget,
+  newTerminalBudget,
+} from "../../core/transcript/drain.ts";
 import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
-import type { ChunkBudget, DrainContext } from "./drain.ts";
-import { drainToBudget, newTerminalBudget } from "./drain.ts";
 import { CodexLineEmitter } from "./emit.ts";
 import { CodexTranscriptFsGuard } from "./fs-guard.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
@@ -108,7 +112,7 @@ export class CodexTranscriptWatcher {
   // second finish() (PTY-exit path + runtime cleanup) cannot re-drain the backlog.
   flush(): void {
     if (this.finished || !this.cursor) return;
-    drainToBudget(this.drainContext(), this.cursor, this.terminalBudget);
+    drainToBudget(this.drainContext(), [this.cursor], this.terminalBudget);
   }
 
   // Flush trailing partials, then permanently stop. Idempotent (`finished` gates a
@@ -142,7 +146,7 @@ export class CodexTranscriptWatcher {
     } catch {} // a diagnostic listener bug must not resurrect the failure
   }
 
-  private drainContext(): DrainContext {
+  private drainContext(): DrainContext<BoundedTranscriptCursor> {
     return {
       readFs: this.guard.read.bind(this.guard),
       lines: this.lines,

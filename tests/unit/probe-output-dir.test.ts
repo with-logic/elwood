@@ -2,12 +2,12 @@
  * A probe script's command writes into two named pipes in a private directory, mode 0700 under
  * the temp directory, removed however the probe settles. The pipes read as ordinary pipes do:
  * the probe waits for anything the command started that still holds them, the cap stops a
- * writer at exactly its bytes, and a writer left once the probe ends is stopped by `SIGPIPE`
+ * writer at exactly its bytes, and the command bound terminates remaining owned writers
  * (PRD §9.2, C-PERF-03, C-PERF-05). Each test points TMPDIR at a directory of its own and
  * checks that the probe left it empty.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import {
@@ -18,6 +18,7 @@ import {
 import { setMkfifoForTests } from "../../src/runtime/probe/named-pipes.ts";
 import { probeScript } from "../../src/runtime/probe/start.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
+import { killGroupsWhoseCommandHas, pollGone } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => {
@@ -43,13 +44,13 @@ const sh = (script: string) => `/bin/sh -c ${shellQuote(script)}`;
 
 test("C-PERF-05 the command writes into private named pipes, in a 0700 directory removed after", async () => {
   const tmp = privateTmp();
-  const result = await probe(sh('ls -ld "$ELWOOD_PROBE_OUTPUT" "$ELWOOD_PROBE_OUTPUT"/*'));
+  const result = await probe(sh(`ls -ld ${ownDirectory} ${ownDirectory}/*`));
   expect(result).toMatchObject({ status: 0, stderr: "" });
   const [dir, stderr, stdout] = result.stdout.trim().split("\n");
   expect(dir).toMatch(/^drwx------/);
   expect(dir).toContain(` ${join(tmp, "elwood-probe-")}`);
   for (const pipe of [stderr, stdout]) expect(pipe).toMatch(/^prw-------/);
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
 });
 
 test.each([
@@ -62,12 +63,12 @@ test.each([
 ])("C-PERF-05 the private directory is removed after %s", async (_, run, expected) => {
   const tmp = privateTmp();
   expect(await run()).toMatchObject(expected);
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
 });
 
-const lockOwnDirectory =
-  'mkdir "$ELWOOD_PROBE_OUTPUT/inner" && chmod 000 "$ELWOOD_PROBE_OUTPUT/inner" "$ELWOOD_PROBE_OUTPUT"';
-const removeOwnDirectory = 'rm -rf "$ELWOOD_PROBE_OUTPUT"';
+const ownDirectory = '"$TMPDIR"/elwood-probe-*';
+const lockOwnDirectory = `d=$(echo ${ownDirectory}) && mkdir "$d/inner" && chmod 000 "$d/inner" "$d"`;
+const removeOwnDirectory = `rm -rf ${ownDirectory}`;
 
 test.each([
   ["launch", { commandMs: 10_000, launchMs: 150 }, "sleep 30"],
@@ -77,7 +78,7 @@ test.each([
   setProbeTimeoutsForTests(bounds);
   const result = await probe("sleep 30", profile);
   expect(result.error?.code).toBe("ETIMEDOUT");
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
 });
 
 test.each([
@@ -89,34 +90,42 @@ test.each([
   const result = await probe(command);
   expect(result.error).toMatchObject({ code: "E2BIG" });
   expect(result[stream]).toHaveLength(1_000_000);
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
 });
 
 test("C-PERF-03 the probe waits for what its command started that still holds its output", async () => {
   const tmp = privateTmp();
   const result = await probe(sh("(sleep 0.3; echo late; echo late >&2) & echo early"));
   expect(result).toEqual({ status: 0, stdout: "early\nlate\n", stderr: "late\n" });
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
 });
 
-test("C-PERF-03 a writer left when the probe's bound ends it is stopped by SIGPIPE", async () => {
+test("C-PERF-03 bound cleanup confirms a writing descendant has terminated", async () => {
   privateTmp();
-  const beats = join(tempDir("elwood-probe-writer-"), "beats");
-  // A helper the command leaves behind keeps writing, counting each line, for at most 3 s.
-  const writer = `i=0; while [ $i -lt 60 ] && echo x; do i=$((i+1)); echo $i > ${beats}; sleep 0.05; done`;
-  setProbeTimeoutsForTests({ commandMs: 300, launchMs: 10_000 });
-  const result = await probe(sh(`(${writer}) & exit 0`));
-  expect(result.error).toMatchObject({ code: "ETIMEDOUT" });
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const stopped = readFileSync(beats, "utf8");
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  expect(readFileSync(beats, "utf8")).toBe(stopped);
+  const root = tempDir("elwood-probe-writer-");
+  const pidPath = join(root, "pid");
+  const writer = join(root, "writer");
+  writeFileSync(
+    writer,
+    `#!/bin/sh\necho $$ > ${shellQuote(pidPath)}\nwhile :; do echo x; sleep 0.05; done\n`,
+    { mode: 0o700 },
+  );
+  setProbeTimeoutsForTests({ commandMs: 500, launchMs: 10_000 });
+  try {
+    const result = await probe(sh(`${shellQuote(writer)} & exit 0`));
+    expect(result.error).toMatchObject({ code: "ETIMEDOUT" });
+    const pid = Number(readFileSync(pidPath, "utf8"));
+    expect(pid).toBeGreaterThan(0);
+    expect(await pollGone({ pid, timeoutMs: 3_000 })).toBe(true);
+  } finally {
+    killGroupsWhoseCommandHas(root);
+  }
 });
 
 test("C-PERF-05 a spawn that throws leaves no private directory", async () => {
   const tmp = privateTmp();
   await expect(probe("true", "true", "/bin/sh\0")).rejects.toThrow(/null bytes/);
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
 });
 
 test.each([
@@ -136,8 +145,9 @@ test.each([
     error: {
       message: expect.stringMatching(/^could not create the probe's private output pipes: /),
       ...errno,
+      origin: "probe_setup",
     },
   });
-  expect(readdirSync(tmp)).toEqual([]);
+  await vi.waitFor(() => expect(readdirSync(tmp)).toEqual([]));
   expect(() => readFileSync(ran)).toThrow(/ENOENT/);
 });

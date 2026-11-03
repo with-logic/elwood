@@ -82,7 +82,7 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
   expect(result.status).toBeNull();
   expect(result.stdout).toBe("");
   expect(result.error).toEqual({
-    message: "login shell exited with status 0 before starting the probe command",
+    message: "login shell exited with status 0 without an observed probe start line",
     phase: "login_shell",
     shellStatus: 0,
   });

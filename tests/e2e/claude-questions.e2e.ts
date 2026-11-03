@@ -1,7 +1,7 @@
 /** Native Claude grouped and multiline answers through the public API (PRD §5.10). */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import test from "node:test";
 import {
   ClaudeSession,
@@ -9,6 +9,8 @@ import {
   type ElwoodQuestionEvent,
   type ElwoodQuestionRequest,
 } from "../../src/index.ts";
+import { defaultClaudeTempDir } from "./claude-home.ts";
+import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
 import { claudeQuestionArtifacts } from "./questions/claude-artifacts.ts";
 import {
   claudeProofTimeoutMs,
@@ -130,6 +132,10 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
     assertQuestionAnswerPrivacy(sandbox.stateDir, [...events, ...normalized], privateAnswers);
     assert.equal(unexpectedTools, 0);
     assert.equal(live.status, "ready");
+    // The sandbox keeps the suite's private temp root (C-E2E-23), not the shared /tmp.
+    const tempFolder = claudeTempFolder(realpathSync(sandbox.cwd));
+    assert.deepEqual(claudeTempFoldersNamed(defaultClaudeTempDir, tempFolder), [tempFolder]);
+    assert.deepEqual(claudeTempFoldersNamed("/tmp", tempFolder), []);
     t.diagnostic(
       `${claudeQuestionLabel}: grouped single/multiple choices + multiline alternative text; native PostToolUse accepted both; original send returned final only.`,
     );

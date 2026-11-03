@@ -3,18 +3,30 @@
  * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05,
  * C-PERF-07): a misbehaving CLI on PATH must not hang or flood memory during a `--version`,
  * `update`, or `--help` probe, a slow login-shell profile is bounded separately from the CLI
- * it launches, and only a few probes run at once.
+ * it launches, and only a few probes run at once. A probe the e2e home guard stops (PRD §12,
+ * C-E2E-24) is a login-shell failure carrying only the guard's fixed reason.
  */
 
-import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { exitStatus } from "../exit-status.ts";
+import { homeGuardStopMarker, homeGuardStopped, watchForStopMarker } from "../home-guard/index.ts";
 import type { CommandResult } from "../seams.ts";
-import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
+import type { StreamMarkerWatcher } from "../stream-marker.ts";
 import { type ProbeCapture, probeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
+import { NamedPipeCapture } from "./named-pipes.ts";
+import { ProbeProcess } from "./process.ts";
+import {
+  commandTimedOut,
+  guardStopped,
+  launchTimedOut,
+  mapError,
+  outputUnavailable,
+  overflow,
+  shellExited,
+} from "./results.ts";
 import { withProbeSlot } from "./slots.ts";
-import { ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
+import { announcesStart, ProbeStart, type ProbeStartChannel, probeControlFd } from "./start.ts";
 
 /** The probe command's own default bound, from the shell's start line (C-PERF-03). */
 export const probeCommandTimeoutMs = 15_000;
@@ -45,11 +57,14 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
   return withProbeSlot(() => spawnProbe(command, args));
 }
 
-function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
-  return probeCapture(args).then(
-    (capture) => spawnCaptured(command, args, capture),
-    (error: Error) => outputUnavailable(error),
-  );
+async function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
+  let capture: ProbeCapture;
+  try {
+    capture = await probeCapture(args);
+  } catch (error) {
+    return outputUnavailable(error);
+  }
+  return spawnCaptured(command, args, capture);
 }
 
 function spawnCaptured(
@@ -58,60 +73,66 @@ function spawnCaptured(
   capture: ProbeCapture,
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
-    const start = new ProbeStart(args);
-    // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
-    // them a fresh session: an interactive shell otherwise enables job control on Elwood's
-    // controlling terminal and can leave its short-lived command's process group in the
-    // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
-    // A fourth pipe carries only the probe shell's start line, unless the shell closed it.
-    const child = releasedOnThrow(capture, () =>
-      spawn(command, [...args], {
-        detached: true,
-        stdio: ["pipe", "pipe", "pipe", "pipe"],
-        env: capture.env,
-      }),
-    );
+    let process: ProbeProcess;
+    try {
+      process = new ProbeProcess(command, capture.args(args), capture instanceof NamedPipeCapture);
+    } catch (error) {
+      capture.release();
+      throw error;
+    }
+    const child = process.child;
     // Node exposes the extra `pipe` in `stdio` as a Readable.
     const control = child.stdio[probeControlFd] as Readable;
-    let settled = false;
     // Kill only when WE abort the probe (timeout/overflow); a normal exit or
     // spawn failure needs no signal (C-PERF-03).
     const settle = (result: CommandResult, kill = false): void => {
-      if (settled) return;
-      settled = true;
       clearTimeout(timer);
       control.off("data", onControl); // a settled probe arms no command bound
-      // The result already owns the decoded text; every settle path drops the capture. The
-      // listeners stay: a late `close` still has to find `settled` already true.
+      child.stdout.off("data", onStdout);
+      child.off("error", onError);
+      process.detach();
+      // Retained cleanup keeps liveness only: detach callbacks and release captured bytes
+      // before it can outlive delivery of this result.
       capture.release();
       if (!kill) {
+        process.release();
         resolve(result);
         return;
       }
-      void abortProbe(child).then((cleanup) =>
+      void abortProbe(child, true).then((cleanup) =>
         resolve({
           ...result,
           error: { ...result.error!, ...cleanup },
         }),
       );
     };
-    // Read when a bound fires, before its signal: nothing written after it is kept.
-    const captured = (): [string, string] => capture.text();
-    // Each phase's bound aborts the probe with its own typed timeout when it expires.
-    const boundBy = (ms: number, result: () => CommandResult) => {
-      const bound = setTimeout(() => settle(result(), true), ms);
+    const captured = (): [string, string] => {
+      const [stdout, stderr] = capture.text();
+      return [start.stripFromStdout(stdout), stderr];
+    };
+    // Each phase's bound aborts the probe with its own typed timeout, for its length, when it
+    // expires.
+    const boundBy = (ms: number, timedOut: typeof commandTimedOut) => {
+      const bound = setTimeout(() => settle(timedOut(ms, ...captured()), true), ms);
       bound.unref?.();
       return bound;
     };
+    const start = new ProbeStart();
+    // Describes the script; start.started records whether its line was observed.
+    const expectsStartLine = announcesStart(args);
     // A shell that closed the control descriptor writes the start line on stdout (start.ts).
-    // Watched before a direct command's capture, so a chunk that both starts the command and
-    // overflows the cap has its bound cleared by the overflow's settle, not armed after it.
-    child.stdout.on("data", (chunk: Buffer) => onStart("stdout", chunk));
-    // The probe ends once its process has closed and its capture has ended, in either order:
-    // a command's heirs can hold its output open after it exits, as they can a pipe.
+    // Watched before capture, so a chunk that both starts the command and overflows the cap
+    // has its bound cleared by the overflow's settle rather than armed after it.
+    const onStdout = (chunk: Buffer) => {
+      guardStop.feed(chunk);
+      onStart("stdout", chunk);
+    };
+    child.stdout.on("data", onStdout);
     let exited: (() => CommandResult) | undefined;
-    const finish = () => exited && capture.ended() && settle(exited());
-    capture.watch(child, {
+    const finish = () => {
+      if (exited && capture.ended()) settle(exited());
+    };
+    capture.watch(process.output, {
       overflowed: () => settle(overflow(...captured()), true),
       ended: finish,
     });
@@ -119,79 +140,50 @@ function spawnCaptured(
     // there, so the user's profile load is never charged to the CLI (C-PERF-05).
     function onStart(channel: ProbeStartChannel, chunk: Buffer): void {
       if (!start.feed(channel, chunk)) return;
-      control.off("data", onControl);
       clearTimeout(timer);
-      timer = boundBy(commandTimeoutMs, () => commandTimedOut(...captured()));
+      timer = boundBy(commandTimeoutMs, commandTimedOut);
     }
-    const onControl = (chunk: Buffer): void => onStart("control", chunk);
+    // After the start line, the control descriptor carries only the e2e home guard's stop
+    // line, which no profile's redirection of stdout can hide (PRD §12).
+    const guardStop = watchForStopMarker();
+    const onControl = (chunk: Buffer): void => {
+      guardStop.feed(chunk);
+      onStart("control", chunk);
+    };
     control.on("data", onControl);
     // Spawn failure (e.g. ENOENT) fires `error` and not `close`. Node's spawn
     // `error` always carries a `code`, which preflight maps to `*_not_found`.
-    child.on("error", (e: NodeJS.ErrnoException) => {
+    function onError(e: NodeJS.ErrnoException): void {
       const [stdout, stderr] = captured();
       settle({ status: null, stdout, stderr, error: mapError(e) });
-    });
-    child.on("close", (code, signal) => {
-      // A shell that exits without announcing its command never ran it (an rc file that
-      // `exec`s another program, say): its status says nothing about the CLI (C-PERF-05).
-      if (start.expectsStartLine && !start.started) {
-        settle(shellExited(code, ...captured()));
-        return;
-      }
+    }
+    child.on("error", onError);
+    process.onExit((code, signal) => {
+      const [stdout, stderr] = captured();
+      // A missing start line cannot establish which phase exited: a profile can close its
+      // channels or exec another program. Do not report that status as the CLI's (C-PERF-05).
+      if (expectsStartLine && !start.started) settle(shellExited(code, stdout, stderr));
+      // The e2e home guard runs after the start line but stops the shell before the command.
+      else if (
+        expectsStartLine &&
+        homeGuardStopped(code, () => hasHomeGuardStopMarker(stdout, guardStop))
+      )
+        settle(guardStopped(stdout, stderr));
       // A signal death reads as a shell reports it, 128+n.
-      exited = () => ({ status: exitStatus(code, signal), ...output(captured()) });
-      finish();
+      else {
+        exited = () => {
+          const [stdout, stderr] = captured();
+          return { status: exitStatus(code, signal), stdout, stderr };
+        };
+        finish();
+      }
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
-    let timer = boundBy(launchTimeoutMs, () => launchTimedOut(...captured()));
+    let timer = boundBy(launchTimeoutMs, launchTimedOut);
   });
 }
 
-function output([stdout, stderr]: [string, string]) {
-  return { stdout, stderr };
-}
-
-/** Runs `spawnIt`; a spawn that throws leaves no output directory behind. */
-function releasedOnThrow<T>(capture: ProbeCapture, spawnIt: () => T): T {
-  try {
-    return spawnIt();
-  } catch (error) {
-    capture.release();
-    throw error;
-  }
-}
-
-function mapError(error: NodeJS.ErrnoException): {
-  readonly code?: string | undefined;
-  readonly message: string;
-} {
-  return { code: error.code, message: error.message };
-}
-
-function commandTimedOut(stdout: string, stderr: string): CommandResult {
-  const message = `probe timed out after ${commandTimeoutMs} ms`;
-  return { status: null, stdout, stderr, error: { code: "ETIMEDOUT", message } };
-}
-
-function launchTimedOut(stdout: string, stderr: string): CommandResult {
-  const message = `login shell did not start the probe command within ${launchTimeoutMs} ms`;
-  const error = { code: "ETIMEDOUT", message, phase: "login_shell" } as const;
-  return { status: null, stdout, stderr, error };
-}
-
-function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
-  const message = `login shell exited with status ${status} before starting the probe command`;
-  const error = { message, phase: "login_shell", shellStatus: status } as const;
-  return { status: null, stdout, stderr, error };
-}
-
-function outputUnavailable(error: NodeJS.ErrnoException): CommandResult {
-  const message = `could not create the probe's private output pipes: ${error.message}`;
-  const code = typeof error.code === "string" ? { code: error.code } : {};
-  return { status: null, stdout: "", stderr: "", error: { message, ...code } };
-}
-
-function overflow(stdout: string, stderr: string): CommandResult {
-  const message = `a probe output stream exceeded ${maxProbeStreamOutputBytes} bytes`;
-  return { status: null, stdout, stderr, error: { code: "E2BIG", message } };
+/** Whether the guard's stop line reached the control descriptor or, from a shell that closed it, stdout. */
+function hasHomeGuardStopMarker(stdout: string, stopWatcher: StreamMarkerWatcher): boolean {
+  return stopWatcher.seen || stdout.includes(homeGuardStopMarker);
 }

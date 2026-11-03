@@ -38,6 +38,7 @@ export async function preflightCodex(
   if (autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
     // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
+    // Only a test that reset the update module without setting a coordinator sees a throw here.
     const outcome = await cachedAutoupdate(
       "codex",
       async () => {
@@ -80,7 +81,10 @@ async function readCodexVersion(): Promise<CommandResult> {
   const result = await cachedVersionRead("codex", () =>
     Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
   );
-  if (result.error?.code === "ENOENT" || result.status === 127) {
+  if (
+    (result.error?.code === "ENOENT" && result.error.origin !== "probe_setup") ||
+    result.status === 127
+  ) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
   if (result.status !== 0) {
