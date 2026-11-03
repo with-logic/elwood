@@ -3,6 +3,8 @@
  * together (PRD §5.3 and §9.4, C-LIFE-10). Each still gets its own timeout.
  */
 
+import { processReadTimeout } from "./read-timeout.ts";
+
 /**
  * Joins every request made before a listing starts into that one listing, so a fleet
  * shutting down together runs one `ps` instead of one per session. A request never
@@ -38,7 +40,7 @@ function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> 
   let timer: NodeJS.Timeout | undefined;
   const timedOut = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      reject(Object.assign(new Error("process table read timed out"), { code: "ETIMEDOUT" }));
+      reject(processReadTimeout("process table read timed out"));
     }, timeoutMs);
   });
   return Promise.race([result, timedOut]).finally(() => clearTimeout(timer));

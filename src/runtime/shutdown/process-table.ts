@@ -12,6 +12,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { coalesceUnstarted } from "./coalesce.ts";
+import { createAdmittedPsRunner } from "./native-read-admission.ts";
 
 /** One row of the host process table. */
 export type ProcessEntry = {
@@ -73,7 +74,8 @@ export type PsRunner = (
   options: PsRunOptions,
 ) => Promise<{ readonly stdout: string }>;
 
-export const runFile: PsRunner = promisify(execFile);
+/** Full scans and daemon probes share admission without changing request coalescing. */
+export const runFile: PsRunner = createAdmittedPsRunner(promisify(execFile));
 
 /** The bounds every `ps` run gets: `timeoutMs`, the output cap, SIGKILL, and `PS_ENV`. */
 export function psRunOptions(timeoutMs: number): PsRunOptions {

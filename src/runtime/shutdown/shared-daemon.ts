@@ -32,6 +32,7 @@ import {
   psRunOptions,
   runFile,
 } from "./process-table.ts";
+import { processReadTimeout } from "./read-timeout.ts";
 
 /** The directory Codex installs its daemon's copy of the CLI in, inside `CODEX_HOME`. */
 const DAEMON_INSTALL_DIR = "/packages/app-server-daemon/";
@@ -164,9 +165,7 @@ function pathOf(pid: number, run: PsRunner, deadline: number): Promise<string> {
 }
 
 function timedOut(where: string): Error {
-  return Object.assign(new Error(`process table read timed out ${where}`), {
-    code: "ETIMEDOUT",
-  });
+  return processReadTimeout(`process table read timed out ${where}`);
 }
 
 /** `ps -p` found no such process: it exits 1 and prints nothing. */
