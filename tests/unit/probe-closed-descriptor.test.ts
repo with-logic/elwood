@@ -20,6 +20,9 @@ import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const realSetTimeout = setTimeout;
+const phasePollMs = 20;
+// Allow slow native startup while leaving five seconds of the test's limit for cleanup.
+const nativeStartWatchdogMs = 10_000;
 
 beforeEach(() => resetPreflightCacheForTests());
 afterEach(() => {
@@ -61,21 +64,26 @@ test.each([
 test("C-PERF-05 a start line on stdout ends the launch phase while the command still runs", async () => {
   // Wait for native I/O before advancing the launch clock; CPU load can delay shell startup.
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 1_500 });
+  const launchMs = 1_500;
+  setProbeTimeoutsForTests({ commandMs: 10_000, launchMs });
   const seen = vi.spyOn(ProbeStart.prototype, "feed");
   const gate = join(tempDir("elwood-probe-phase-gate-"), "finish");
   const command = shell.probeShellCommand(
-    `while [ ! -f ${shell.shellQuote(gate)} ]; do sleep 0.02; done; echo 2.1.310`,
+    `while [ ! -f ${shell.shellQuote(gate)} ]; do sleep ${phasePollMs / 1_000}; done; echo 2.1.310`,
   );
   const running = runProbe(closingShell(), command);
   try {
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + nativeStartWatchdogMs;
     while (!seen.mock.results.some((result) => result.value === true)) {
-      if (Date.now() >= deadline) throw new Error("Probe did not announce its start line.");
-      await new Promise<void>((resolve) => realSetTimeout(resolve, 20));
+      if (Date.now() >= deadline) {
+        // Fire the still-frozen launch bound before uninstalling its fake clock.
+        await vi.advanceTimersByTimeAsync(launchMs + 1);
+        throw new Error("Probe did not announce its start line.");
+      }
+      await new Promise<void>((resolve) => realSetTimeout(resolve, phasePollMs));
     }
     // The command stays open: without the handoff, its old launch deadline kills it here.
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(launchMs + 1);
   } finally {
     writeFileSync(gate, "finish");
     vi.useRealTimers();
