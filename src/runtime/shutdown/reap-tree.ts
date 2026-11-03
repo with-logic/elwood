@@ -22,7 +22,7 @@ import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { sweepDetachedGroups } from "./detached-sweep/index.ts";
 import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
 import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
-import { SerialReapQueue } from "./reap-queue.ts";
+import { SerialDetachedSweepQueue } from "./reap-queue.ts";
 
 export { reapProcessGroup } from "./leader-group.ts";
 export {
@@ -48,7 +48,7 @@ export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
-  private readonly queue = new SerialReapQueue();
+  private readonly detachedSweepQueue = new SerialDetachedSweepQueue();
   /** A detached sweep that failed; once the leader is gone it can never be confirmed. */
   private unresolvedSweep: SweepFailure | undefined;
 
@@ -91,7 +91,7 @@ export class SessionReaper {
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
     if (!isReapableGroupId(this.leaderPid)) return;
-    const failure = await this.queue.run(() =>
+    const failure = await this.detachedSweepQueue.run(() =>
       sweepDetachedGroups(this.leaderPid, this.ops, leaderExited),
     );
     if (failure === undefined) return;

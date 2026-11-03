@@ -1,9 +1,9 @@
 /** Idle signal passes start immediately; busy and failed passes keep serialization (PRD §9.4, C-LIFE-10). */
 import { expect, test, vi } from "vitest";
-import { SerialReapQueue } from "../../src/runtime/shutdown/reap-queue.ts";
+import { SerialDetachedSweepQueue } from "../../src/runtime/shutdown/reap-queue.ts";
 
 test("C-LIFE-10 an idle pass starts in this tick and a later idle pass does too", async () => {
-  const queue = new SerialReapQueue();
+  const queue = new SerialDetachedSweepQueue();
   const first = vi.fn(() => Promise.resolve(1));
   const pending = queue.run(first);
   expect(first).toHaveBeenCalledOnce();
@@ -15,9 +15,9 @@ test("C-LIFE-10 an idle pass starts in this tick and a later idle pass does too"
 });
 
 test("C-LIFE-10 a queued pass waits for the earlier pass, even if it rejected", async () => {
-  const queue = new SerialReapQueue();
+  const queue = new SerialDetachedSweepQueue();
   const first = Promise.withResolvers<void>();
-  const second = Promise.withResolvers<void>();
+  const second = Promise.withResolvers<number>();
   const order: string[] = [];
   const pendingFirst = queue.run(() => first.promise);
   const failed = expect(pendingFirst).rejects.toThrow("failed");
@@ -33,13 +33,14 @@ test("C-LIFE-10 a queued pass waits for the earlier pass, even if it rejected", 
     return Promise.resolve();
   });
   expect(order).toEqual(["second"]);
-  second.resolve();
-  await Promise.all([pendingSecond, pendingThird]);
+  second.resolve(42);
+  expect(await pendingSecond).toBe(42);
+  await pendingThird;
   expect(order).toEqual(["second", "third"]);
 });
 
 test("C-LIFE-10 a synchronously throwing pass releases its queue", async () => {
-  const queue = new SerialReapQueue();
+  const queue = new SerialDetachedSweepQueue();
   await expect(
     queue.run(() => {
       throw new Error("thrown");

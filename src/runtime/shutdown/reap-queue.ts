@@ -2,9 +2,10 @@
  * Per-session descendant signal passes (PRD §5.3 and §9.4, C-LIFE-10):
  * begin an idle pass in the caller's tick, and serialize every later pass behind it.
  */
-export class SerialReapQueue {
+export class SerialDetachedSweepQueue {
   private tail: Promise<void> | undefined;
 
+  /** Return this attempt’s outcome; release the next pass after either success or failure. */
   run<T>(attempt: () => Promise<T>): Promise<T> {
     const previous = this.tail;
     const { promise: held, resolve } = Promise.withResolvers<void>();
