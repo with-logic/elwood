@@ -13,14 +13,17 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { homeGuardHomesKey } from "../../src/runtime/home-guard/index.ts";
 import { runProbe, setProbeTimeoutsForTests } from "../../src/runtime/probe/index.ts";
-import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
+import { ProbeStart, probeCommandStartLine } from "../../src/runtime/probe/start.ts";
 import { setPlatformForTests } from "../../src/runtime/seams.ts";
 import * as shell from "../../src/runtime/shell.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
+const realSetTimeout = setTimeout;
+
 beforeEach(() => resetPreflightCacheForTests());
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
@@ -56,11 +59,29 @@ test.each([
 });
 
 test("C-PERF-05 a start line on stdout ends the launch phase while the command still runs", async () => {
-  // The launch bound would kill the probe mid-`sleep`; only the line hands it the command bound.
+  // Wait for native I/O before advancing the launch clock; CPU load can delay shell startup.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   setProbeTimeoutsForTests({ commandMs: 10_000, launchMs: 1_500 });
-  const command = shell.probeShellCommand("sleep 2; echo 2.1.310");
-  const result = await runProbe(closingShell(), command);
-  expect(result).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
+  const seen = vi.spyOn(ProbeStart.prototype, "feed");
+  const gate = join(tempDir("elwood-probe-phase-gate-"), "finish");
+  const command = shell.probeShellCommand(
+    `while [ ! -f ${shell.shellQuote(gate)} ]; do sleep 0.02; done; echo 2.1.310`,
+  );
+  const running = runProbe(closingShell(), command);
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!seen.mock.results.some((result) => result.value === true)) {
+      if (Date.now() >= deadline) throw new Error("Probe did not announce its start line.");
+      await new Promise<void>((resolve) => realSetTimeout(resolve, 20));
+    }
+    // The command stays open: without the handoff, its old launch deadline kills it here.
+    await vi.advanceTimersByTimeAsync(1_501);
+  } finally {
+    writeFileSync(gate, "finish");
+    vi.useRealTimers();
+    await running;
+  }
+  expect(await running).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
 });
 
 test.each([
