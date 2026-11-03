@@ -22,7 +22,7 @@ export type InteractiveLaunch = {
 export type InteractiveSpawner = (launch: InteractiveLaunch) => Promise<number>;
 
 export const spawnInteractiveAgent: InteractiveSpawner = async (launch) => {
-  const path = await loginShellPath().catch((error: unknown) => {
+  const path = await loginShellPath(launch.cwd).catch((error: unknown) => {
     throw spawnFailure(launch, error);
   });
   return new Promise((resolve, reject) => {
@@ -53,13 +53,13 @@ function spawnFailure(launch: InteractiveLaunch, error: unknown) {
  * lookup is a probe like detection's, so the user's profile gets the login shell's own bound
  * and the `printf` the command's (§9.2, C-PERF-05).
  */
-async function loginShellPath(): Promise<string | undefined> {
+async function loginShellPath(cwd: string): Promise<string | undefined> {
   // The login shell expands its own `$PATH` into the argument, and `/bin/sh`, which loads no
   // startup file, prints it with its builtin `printf`. A `printf` function or alias in the
   // user's startup files therefore cannot print something else, and an empty PATH still
   // prints. The NUL frame tells an empty PATH from a lookup that printed nothing.
   const command = probeShellCommand(`/bin/sh -c 'printf "\\0%s\\0" "$1"' sh "$PATH"`);
-  const result = await currentCommandRunner()(userShell(), command);
+  const result = await currentCommandRunner()(userShell(), command, { cwd });
   // A shell that exited on its own, successfully, may never have run the lookup (§12A.9).
   const status = result.error === undefined ? result.status : result.error.shellStatus;
   if (status !== 0) throw lookupFailure(result);

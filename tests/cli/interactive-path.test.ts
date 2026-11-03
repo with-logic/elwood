@@ -43,7 +43,7 @@ test("C-CLI-25 shell-only executable resolves and receives literal arguments wit
     `#!/bin/sh\nprintf '%s\\n' "$@" > ${shell.shellQuote(output)}\nexit 127\n`,
     { mode: 0o700 },
   );
-  expect(await loginShellResolves(name, f.startup)).toBe(true);
+  expect(await loginShellResolves(name, { shell: f.startup })).toBe(true);
   expect(
     await spawnInteractiveAgent({
       agent: "claude",

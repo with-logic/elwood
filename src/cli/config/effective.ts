@@ -7,7 +7,7 @@ import { claudeLaunchPosture, effectivePosture } from "../../state/launch-postur
 import { readPrivateSessionRecord } from "../../state/private-session.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { parseCliArgs } from "../args/index.ts";
-import { type AgentDetector, detectAvailableAgent } from "../request/agent-detect.ts";
+import type { AgentDetector } from "../request/agent-detect.ts";
 import { finalizeRunRequest } from "../request/finalize.ts";
 import { resolveRunSettings } from "../request/index.ts";
 import { usage } from "../request/values.ts";
@@ -24,12 +24,11 @@ export type EffectiveConfigContext = {
 export type EffectiveConfigDependencies = {
   readonly readRecord: (stateDir: string, id: string) => SessionRecord;
   /** Login-shell command probe for an unselected agent; never starts an agent (C-CLI-21). */
-  readonly detectAgent: AgentDetector;
+  readonly detectAgent?: AgentDetector;
 };
 
 const defaults: EffectiveConfigDependencies = {
   readRecord: readPrivateSessionRecord,
-  detectAgent: detectAvailableAgent,
 };
 
 export async function writeEffectiveConfig(

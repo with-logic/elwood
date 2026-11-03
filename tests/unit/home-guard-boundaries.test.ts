@@ -99,7 +99,7 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
 
   test("stops auto-detection, after a startup file hid stdout, as a failed check", async () => {
     guardWith('exec >/dev/null; export CODEX_HOME="$HOME"');
-    await expect(loginShellResolves("codex", shell)).rejects.toMatchObject({
+    await expect(loginShellResolves("codex", { shell })).rejects.toMatchObject({
       code: "no_agent_found",
       message: expect.stringContaining(hiddenStdoutStop(shell).message),
     });
