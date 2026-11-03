@@ -38,6 +38,7 @@ export async function preflightCodex(
   if (autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
     // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
+    // Only a test that reset the update module without setting a coordinator sees a throw here.
     const outcome = await cachedAutoupdate(
       "codex",
       async () => {

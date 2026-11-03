@@ -1,7 +1,6 @@
 /**
- * The process-tree operations shutdown performs, and the test seam that replaces them
- * (PRD §5.3 and §9.4, C-LIFE-10): production signals with `process.kill` and reads with
- * `/bin/ps`; a test injects its own, and every op it leaves out is inert.
+ * System process-group operations and the shared inert test seam.
+ * Implements PRD §5.3 and §9.4 (C-LIFE-10).
  */
 
 import { errnoCode } from "../../core/errors.ts";
@@ -44,7 +43,7 @@ export const osProcessTreeOps: ProcessTreeOps = {
 // without every session/terminate call site taking an ops param.
 let activeOps: ProcessTreeOps = osProcessTreeOps;
 
-/** The ops in use: production's, or a test's (`setProcessTreeOpsForTests`). */
+/** The operations currently selected by the shared shutdown seam. */
 export function activeProcessTreeOps(): ProcessTreeOps {
   return activeOps;
 }
@@ -79,9 +78,13 @@ export function resetProcessTreeOpsForTests(): void {
 }
 
 /**
- * Swallows the ESRCH of an already-empty group (the leader and its children exited
- * together) and rethrows anything else, such as EPERM, a real failure. `errnoCode`
- * narrows first, so a thrown `null` is rethrown as is (C-ERR-01). Exported for coverage.
+ * Swallows the ESRCH raised when the group is already empty (the normal case:
+ * the leader and its children exited together) and re-throws any other error —
+ * a real failure (e.g. EPERM) that must not be reported as a successful reap.
+ * Reads the errno through `errnoCode`, which narrows object-ness first, so a
+ * thrown `null`/non-Error is preserved and rethrown rather than triggering a
+ * secondary TypeError while inspecting it (C-ERR-01). Exported for focused
+ * coverage of both branches without an unsafe real signal.
  */
 export function rethrowUnlessGroupGone(error: unknown): void {
   if (errnoCode(error) !== "ESRCH") throw error;

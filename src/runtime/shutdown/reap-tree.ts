@@ -20,13 +20,11 @@
 
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { sweepDetachedGroups } from "./detached-sweep/index.ts";
-import { type SurvivorWatch, watchSurvivors } from "./detached-sweep/survivors.ts";
-import {
-  activeProcessTreeOps,
-  type GroupReapOps,
-  type ProcessTreeOps,
-} from "./process-tree-ops.ts";
+import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
+import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
+import { SerialReapQueue } from "./reap-queue.ts";
 
+export { reapProcessGroup } from "./leader-group.ts";
 export {
   osProcessTreeOps,
   type ProcessTreeOps,
@@ -37,54 +35,21 @@ export {
 } from "./process-tree-ops.ts";
 
 /**
- * A pgid is reapable when it identifies the KNOWN-OWNED node-pty leader's group
- * rather than a system group or the host itself. Ownership is NOT inferred from a
- * numeric floor — that is an allocation detail, and after PID-space wrap or inside
- * a constrained namespace a legitimate leader can be low (a prior arbitrary `< 100`
- * floor silently no-op'd such leaders and leaked their descendants). We instead
- * accept every valid child pid while refusing the two ids a group SIGKILL must
- * never touch:
- *   - `pgid <= 1` — pid 0 means "our own group" to `kill(2)`, and pid 1 is
- *     `init`/`launchd`; a fake pid 1 in tests once reaped a developer's real apps.
- *   - the host's OWN pid — node-pty gives the leader a fresh session via `setsid()`
- *     so its pgid can never legitimately equal ours, but if a bad pgid ever did we
- *     must not signal `-process.pid` and kill ourselves.
- */
-function isReapableGroupId(pgid: number): boolean {
-  return Number.isInteger(pgid) && pgid > 1 && pgid !== process.pid;
-}
-
-/**
- * SIGKILLs the process group led by `leaderPid`, reaping every descendant still
- * in the group — including one already reparented to PID 1. node-pty starts the
- * leader via `setsid()`, so it heads its own session and its pgid equals its pid;
- * that group is always distinct from the host's own group, so this cannot signal
- * the host process. Refuses only pids the kernel would misroute (see
- * `isReapableGroupId`), never an arbitrary numeric floor. An already-dead group
- * (leader and children exited together) is the normal case and its `ESRCH` is
- * swallowed; a real kill failure such as `EPERM` propagates.
- */
-export function reapProcessGroup(
-  leaderPid: number,
-  ops: GroupReapOps = activeProcessTreeOps(),
-): void {
-  if (!isReapableGroupId(leaderPid)) return;
-  ops.killGroup(leaderPid);
-}
-
-/**
- * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most once:
- * `stop()` then a later `teardown()` both want the group gone, but signaling the same
- * numeric pgid twice is unsafe — once the group is empty the kernel may recycle the
- * pid, and a second `kill(-pgid)` would hit an unrelated group. So the latch is set
- * only AFTER the kill succeeds (an empty group's `ESRCH` counts as success, see
- * `reapProcessGroup`); a real failure (e.g. EPERM) leaves it OPEN for a later retry.
+ * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
+ * once: `stop()` then a later `teardown()` both want to guarantee the group is
+ * gone, but signaling the same numeric pgid twice is unsafe — once the group is
+ * empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit an
+ * unrelated group. So the latch is set only AFTER the kill succeeds (an already
+ * empty group's `ESRCH` is normalized to success by `reapProcessGroup`). A real
+ * failure (e.g. EPERM) leaves the latch OPEN and rethrows, so a later teardown
+ * call can retry rather than leaving the descendant leak permanently unreaped.
  */
 export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
-  /** The first sweep or survivor reap that failed; with the leader gone it can't be retried. */
+  private readonly queue = new SerialReapQueue();
+  /** A detached sweep that failed; once the leader is gone it can never be confirmed. */
   private unresolvedSweep: SweepFailure | undefined;
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
@@ -104,9 +69,11 @@ export class SessionReaper {
   }
 
   /**
-   * The group reap for an explicit shutdown's retry: it keeps failing while an earlier
-   * sweep or survivor reap is unresolved, so no later call reports success for a hook
-   * that may still run. The caller sweeps first, before any SIGKILL to a live leader.
+   * The group reap for an explicit shutdown's retry: it also keeps failing while an
+   * earlier detached sweep is unresolved, so a later `stop()`/`kill()`/`teardown()`
+   * never reports success for a hook that may still be running. It says nothing about
+   * a sweep that never ran: the caller sweeps first, before any SIGKILL it sends to a
+   * live leader.
    */
   reapAndThrowOnDetachedSweepFailure(): void {
     this.reap();
@@ -124,18 +91,11 @@ export class SessionReaper {
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
     if (!isReapableGroupId(this.leaderPid)) return;
-    this.keep(await sweepDetachedGroups(this.leaderPid, this.ops, leaderExited));
-  }
-
-  /** A graceful stop's watch for survivors (`survivors.ts`); a failure is kept as a sweep's. */
-  watchSurvivors(leaderExited: () => boolean): SurvivorWatch {
-    const leaderPid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
-    return watchSurvivors(leaderPid, this.ops, leaderExited, (failure) => this.keep(failure));
-  }
-
-  private keep(failure: SweepFailure | undefined): void {
+    const failure = await this.queue.run(() =>
+      sweepDetachedGroups(this.leaderPid, this.ops, leaderExited),
+    );
     if (failure === undefined) return;
-    this.unresolvedSweep ??= failure;
+    this.unresolvedSweep = failure;
     throw failure;
   }
 }

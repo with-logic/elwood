@@ -5,8 +5,7 @@
  * sources the user's `.zshrc`, so a slow profile keeps that shell running. A shutdown
  * in that window used to leave it, and whatever the profile started, running under
  * PID 1: the leader-group SIGKILL cannot reach another session. The detached walk
- * reaps it. A graceful `stop()` reaps it too, though Codex exits on SIGTERM within the
- * graceful window: it records the shell while Codex runs and reaps it after.
+ * reaps it. (A graceful `stop()` is not walked; see docs/cli-behavior.md.)
  */
 
 import assert from "node:assert/strict";
@@ -54,7 +53,7 @@ function snapshotShell(marker: string, leaders: readonly number[]) {
  * Shuts Codex down with `verb` while its snapshot shell runs, waits for the shell and its
  * child to be gone, and resolves to how many processes from the slow profile survived.
  */
-async function shutDownDuringSnapshot(verb: "kill" | "stop" | "teardown"): Promise<number> {
+async function shutDownDuringSnapshot(verb: "kill" | "teardown"): Promise<number> {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
   const previousZdotdir = process.env["ZDOTDIR"];
@@ -88,7 +87,7 @@ async function shutDownDuringSnapshot(verb: "kill" | "stop" | "teardown"): Promi
   }
 }
 
-for (const verb of ["teardown", "kill", "stop"] as const) {
+for (const verb of ["teardown", "kill"] as const) {
   test(`C-LIFE-10 ${verb} reaps Codex's shell-snapshot shell while it still runs`, {
     skip: skipIf(skipReason("codex"), codexAuthMissing()),
     timeout: 180_000,

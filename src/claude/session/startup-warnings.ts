@@ -5,6 +5,7 @@ import { createSessionStartupWarningGate } from "../../core/startup/warnings.ts"
 export function createClaudeStartupWarningGate(
   session: () => FrameWarningSink | undefined,
   closing: () => boolean,
+  duringDelivery: (deliver: () => void) => void,
 ): ReturnType<typeof createSessionStartupWarningGate> {
   return createSessionStartupWarningGate(
     session,
@@ -12,5 +13,6 @@ export function createClaudeStartupWarningGate(
       warning.code === "startup_prompt_write_failed" &&
       warning.label === "browser_tools" &&
       closing(),
+    duringDelivery,
   );
 }

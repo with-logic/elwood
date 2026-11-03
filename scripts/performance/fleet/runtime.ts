@@ -13,6 +13,7 @@ import {
 } from "../../../src/runtime/seams.ts";
 import { setProcessTreeOpsForTests } from "../../../src/runtime/shutdown/reap-tree.ts";
 import { setStartupWaitMsForTests } from "../../../src/runtime/startup/index.ts";
+import { FAKE_PID } from "../../../tests/helpers/fake-pid.ts";
 import { FakePty } from "../../../tests/helpers/fake-pty.ts";
 
 /** Installs standalone-process test seams and returns sessions/producers in an owned temp root.
@@ -37,7 +38,7 @@ export async function createFleet(count: number) {
     stderr: "",
   }));
   setPtyFactoryForTests((options) => {
-    const pty = new FakePty(options, 900_000 + ptys.size);
+    const pty = new FakePty(options, FAKE_PID + ptys.size);
     ptys.set(options.cwd, pty);
     return pty;
   });

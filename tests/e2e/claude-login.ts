@@ -12,6 +12,9 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { isRecord } from "../../src/core/predicates.ts";
 
+/** The variables that log Claude in on their own, whatever its config dir holds. */
+export const anthropicCredentialVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] as const;
+
 /** How long a keychain read may take before the e2e setup gives up on it. */
 export const keychainTimeoutMs = 5_000;
 
