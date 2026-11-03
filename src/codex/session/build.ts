@@ -22,7 +22,7 @@ import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import type { CodexPreflightWarning } from "../preflight.ts";
-import { type CodexLaunchOptions, spawnCodexPty } from "../pty.ts";
+import { spawnCodexPty } from "../pty.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
@@ -35,13 +35,13 @@ import { createCodexReadinessGate } from "./readiness.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
 import * as transcript from "./transcript.ts";
-import type { CodexEventMap } from "./types.ts";
+import type { CodexEventMap, StartCodexOptions } from "./types.ts";
 import { emitUpdateAttention } from "./update-attention.ts";
 export type BuildCodexSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
-  readonly options: CodexLaunchOptions;
+  readonly options: StartCodexOptions;
   readonly resumed: boolean;
   readonly activate: () => void;
   readonly preflightWarning: CodexPreflightWarning | undefined;
@@ -88,7 +88,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       throw error;
     },
   );
-  const startupOutput = createStartupBuffer();
+  const startupOutput = createStartupBuffer({ source: pty });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
@@ -147,7 +147,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       emitUpdateAttention(emitter, record.elwoodSessionId, result.updateGeneration);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
-    startupOutput.push,
   );
   const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup(), resumed);
   session = new CodexSessionImpl(

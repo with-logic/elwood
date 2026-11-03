@@ -4,7 +4,8 @@
  * test-injectable drain clock are assembled in exactly one place.
  */
 
-import type { DrainContext } from "./drain.ts";
+import type { DrainContext } from "../../core/transcript/drain.ts";
+import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
 import type { LineEmitter } from "./emit.ts";
 import type { TranscriptFsGuard } from "./fs-guard.ts";
@@ -13,7 +14,7 @@ export type DrainCollaborators = {
   readonly guard: TranscriptFsGuard;
   readonly lines: LineEmitter;
   readonly drops: DropReporter;
-  /** Undefined in production; drain.ts then uses `Date.now`. */
+  /** Undefined in production; the drain then uses `Date.now`. */
   readonly now: (() => number) | undefined;
 };
 
@@ -21,7 +22,7 @@ export type DrainCollaborators = {
  * The guard's `read` is bound so the shared fs guard still contains a read
  * failure mid-drain (the drain's `readFs` seam maps to it).
  */
-export function buildDrainContext(parts: DrainCollaborators): DrainContext {
+export function buildDrainContext(parts: DrainCollaborators): DrainContext<TranscriptCursor> {
   return {
     readFs: parts.guard.read.bind(parts.guard),
     lines: parts.lines,

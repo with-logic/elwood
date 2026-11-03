@@ -2,8 +2,8 @@
  * Builds the best-effort `agent_update_failed` warning (PRD §9.2, C-LIFE-11) shared by both
  * adapter preflights. A `claude update` / `codex update` that fails is contained (never fatal
  * when the installed CLI is compatible) and surfaced as this live warning with the diagnostics
- * the PRD allows — the installed version in use, the update probe's errno, and the updater's own
- * stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
+ * the PRD allows — the installed version in use, the update probe's exit status and errno, and
+ * the updater's own stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
  * prompts). Contention is not a failed update and reports differently: an error carrying
  * `updateReason: "active_owner"` — another process held the update lease until this caller's
  * wait expired — becomes `errorCode: "update_active"` with a message saying the update was
@@ -54,22 +54,17 @@ const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
  * yields `errorCode: "update_active"` and a message saying the update was skipped, with empty
  * diagnostics — there is no errno or updater stderr to report, and retrying is the caller's
  * next startup, not something to drive off this warning.
- *
- * `updateCwd` is the directory this process's update command ran in, given only when one ran: a
- * launch in another directory shares that attempt's outcome (§9.2). A login shell that failed
- * before running the command ran none, so its warning names no directory.
  */
 export function buildUpdateWarning(
   agent: ElwoodAgentKind,
   installedVersion: string,
   error: unknown,
-  updateCwd?: string,
 ): UpdateFailedWarning {
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
+  const exitStatus = typeof details["exitStatus"] === "number" ? details["exitStatus"] : undefined;
   const skipped = skippedUpdates.get(details["updateReason"]);
-  const ran = updateCwd !== undefined && details["phase"] !== "login_shell";
   return {
     agent,
     source: "lifecycle",
@@ -82,7 +77,7 @@ export function buildUpdateWarning(
     installedVersion,
     errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),
-    ...(ran ? { updateCwd } : {}),
+    ...(exitStatus === undefined ? {} : { exitStatus }),
   };
 }
 

@@ -1,15 +1,16 @@
 /**
- * The probe shell's scripts and private control lines: a refusal identifies its directory
- * guard; the start line ends login-shell launch and starts the command's bound. On the control
- * descriptor, or on stdout from a shell that closed that descriptor at startup. Implements
- * PRD §9.2 and C-PERF-05.
+ * Recognizes the probe shell's start line, which ends the login shell's launch phase and starts
+ * the probe command's own bound: on the runner's private control descriptor, or on stdout from a
+ * shell that closed that descriptor at startup. Implements PRD §9.2 and C-PERF-05.
  */
 
 import { randomBytes } from "node:crypto";
+import { StreamMarkerWatcher } from "../stream-marker.ts";
 
 /**
- * The line a probe shell writes once the user's startup files have loaded, immediately before
- * the probe command runs. It separates the profile's launch time from the command's own bound
+ * The line a probe shell writes once the user's startup files have loaded, before the probe
+ * command runs. It separates the profile's launch time from the command's own bound, which
+ * covers everything after the line: the not-found handlers' removal, then the command
  * (PRD §9.2, C-PERF-05). Owned here, by the reader, so the runner never loads the shell
  * helpers that the writer, `probeShellCommand`, lives in. It ends in a token drawn once per
  * parent process: stdout, which the runner also watches, carries the profile's own output,
@@ -17,126 +18,78 @@ import { randomBytes } from "node:crypto";
  */
 export const probeCommandStartLine = `elwood-probe-command-start-${randomBytes(8).toString("hex")}`;
 
-/** Distinguishes our guard's refusal from a profile choosing the same exit status. */
-export const probeDirectoryRefusalLine = `elwood-probe-directory-refused-${randomBytes(8).toString("hex")}`;
-export const probeDirectoryRefusalScript = `{ echo ${probeDirectoryRefusalLine} >&3; } 2>/dev/null || :; { echo ${probeDirectoryRefusalLine}; } 2>/dev/null || :; `;
-
 /**
  * The start line's primary channel: a fourth pipe the runner opens for every probe. Not stdout
  * or stderr, so a profile that redirects those (`exec 2>&1`, `exec 2>/dev/null`) cannot hide
- * the line. A shell that closed it at startup is started by the line's stdout copy instead
- * (`probeStartScript`). Neither channel carries the command's output (`probeScript`).
+ * the line, and captured output stays exactly the profile's and the command's. A shell that
+ * closed it at startup writes the line on stdout instead (`probeStartScript`).
  */
 export const probeControlFd = 3;
 
 /**
- * The probe shell's script prefix: it writes the start line on the control descriptor and
- * closes it, so the command does not inherit it, then writes the line on stdout. macOS's bash
- * 3.2 started with both `-l` and `-i` closes every inherited descriptor above stderr before
- * running the script, so there the first write fails, silently, and the stdout copy starts the
- * command's bound instead. Not stderr: a profile is likelier to send that to `/dev/null` or
- * into stdout. Each write tolerates a closed stream, so a startup file's `errexit` cannot end
- * the shell before its command.
+ * The probe shell's script prefix: it writes the start line on the control descriptor. macOS's
+ * bash 3.2 started with both `-l` and `-i` closes every inherited descriptor above stderr before
+ * running the script, so there the write fails, silently, and the line goes to stdout. Not
+ * stderr: a profile may send that to `/dev/null` or into stdout, while a profile that hid stdout
+ * would hide the line, and so fail the probe as the login shell's. The runner removes the line
+ * from captured stdout. The descriptor stays open for the e2e home guard, which writes its stop
+ * line where the start line went (PRD §12), until `probeControlClose`.
  */
-export const probeStartScript = `if { echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null; then exec ${probeControlFd}>&-; fi; { echo ${probeCommandStartLine}; } 2>/dev/null || :; `;
+export const probeStartScript = `{ echo ${probeCommandStartLine} >&${probeControlFd}; } 2>/dev/null || echo ${probeCommandStartLine}; `;
 
-/** The environment variable that names a probe script's private output directory. */
-export const probeOutputEnv = "ELWOOD_PROBE_OUTPUT";
-
-/** The redirection a probe script gives the command it `exec`s: the runner's named pipes. */
-export const probeOutputRedirect = `>"$${probeOutputEnv}/stdout" 2>"$${probeOutputEnv}/stderr"`;
+/** Closes the control descriptor before the probe command, so the command does not inherit it. */
+export const probeControlClose = `exec ${probeControlFd}>&-; `;
 
 /**
- * A probe's whole script: the start line, then `exec` of the command with its stdout and stderr
- * redirected into the runner's private named pipes (`named-pipes.ts`). After `exec` no shell
- * code runs (no trap, no EXIT trap, no `.zlogout`), and nothing the startup files started holds
- * those pipes, so they carry only the command's output. The probe's process is the command
- * itself, so its exit status is the command's and a bound's signal reaches it directly.
- * `command` is one simple command the shell can `exec`: a program and its arguments.
- *
- * zsh runs a startup file's `command_not_found_handler` when `exec` finds no command, under the
- * command's redirections, so the handler's output would reach the pipes as the command's: the
- * script removes it first. bash's `exec` runs no handler.
+ * The redirection a probe script gives the command it `exec`s: a placeholder that a named-pipe
+ * capture replaces with its two pipes' quoted paths once it has made them (`named-pipes.ts`).
+ * The paths are never in the login shell's environment, so nothing its startup files run is
+ * told where the probe's output goes.
  */
-export function probeScript(command: string): string {
-  return `${probeStartScript}${dropNotFoundHandler}exec ${command} ${probeOutputRedirect}`;
-}
+export const probeOutputRedirect = ">%elwood-probe-stdout% 2>%elwood-probe-stderr%";
 
-const dropNotFoundHandler = "unset -f command_not_found_handler 2>/dev/null || :; ";
+/**
+ * Removes the user's not-found handlers before the probe command runs: zsh's
+ * `command_not_found_handler` and bash's `command_not_found_handle`. A shell that finds no
+ * command runs its handler, so its output would be captured as the command's, and the status
+ * the handler returns would replace the 127 that tells preflight the CLI is missing. Each
+ * shell ignores the other's name, and a failed `unset` cannot end the shell under `errexit`.
+ */
+export const probeNotFoundHandlerReset =
+  "unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; ";
 
 /** Whether a probe runs a script that announces its command with the start line. */
 export function announcesStart(args: readonly string[]): boolean {
-  return args.at(-1)?.includes(probeStartScript) ?? false;
+  return args.at(-1)?.startsWith(probeStartScript) ?? false;
 }
 
-/** Finds a private probe control line in a stream whose chunks may split it anywhere. */
-export class ProbeStartWatcher {
-  private tail = Buffer.alloc(0);
-  private seen = false;
-  private readonly bytes: Buffer;
+const startText = `${probeCommandStartLine}\n`;
+const startBytes = Buffer.from(startText);
 
-  constructor(line = probeCommandStartLine) {
-    this.bytes = Buffer.from(`${line}\n`);
-  }
-
-  /** Whether this watcher's control line has been seen. */
-  get started(): boolean {
-    return this.seen;
-  }
-
-  /** True exactly once: for the chunk that completes the start line. */
-  feed(chunk: Buffer): boolean {
-    if (this.seen) return false;
-    const window = Buffer.concat([this.tail, chunk]);
-    if (window.includes(this.bytes)) {
-      this.seen = true;
-      this.tail = Buffer.alloc(0);
-      return true;
-    }
-    // Keep a copy of only what could still begin a split start line: a view would pin the
-    // whole chunk for as long as an unresolved probe's reaper retains this watcher.
-    this.tail = Buffer.from(window.subarray(Math.max(0, window.length - (this.bytes.length - 1))));
-    return false;
-  }
-}
-
-/** The two streams watched for a probe's start line: the control descriptor and stdout. */
+/** The two streams a probe's start line can arrive on. */
 export type ProbeStartChannel = "control" | "stdout";
 
 /** Watches both channels; the first to carry the start line starts the command. */
 export class ProbeStart {
-  /** Whether the probe's script will write the start line; whether it has is `started`. */
-  readonly expectsStartLine: boolean;
-
-  constructor(args: readonly string[]) {
-    this.expectsStartLine = announcesStart(args);
-  }
-
   // One watcher per channel: a channel added to `ProbeStartChannel` must be given its own.
-  private readonly watchers: Readonly<Record<ProbeStartChannel, ProbeStartWatcher>> = {
-    control: new ProbeStartWatcher(),
-    stdout: new ProbeStartWatcher(),
+  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarkerWatcher>> = {
+    control: new StreamMarkerWatcher(startBytes),
+    stdout: new StreamMarkerWatcher(startBytes),
   };
-
-  private readonly refusals: Readonly<Record<ProbeStartChannel, ProbeStartWatcher>> = {
-    control: new ProbeStartWatcher(probeDirectoryRefusalLine),
-    stdout: new ProbeStartWatcher(probeDirectoryRefusalLine),
-  };
-
-  /** Whether a private guard refusal was observed on either launch channel. */
-  get directoryRefused(): boolean {
-    return Object.values(this.refusals).some((watcher) => watcher.started);
-  }
 
   /** Whether any channel has carried the start line. */
   get started(): boolean {
-    return Object.values(this.watchers).some((watcher) => watcher.started);
+    return Object.values(this.watchers).some((watcher) => watcher.seen);
   }
 
   /** True exactly once across both channels: for the chunk that completes the start line. */
   feed(channel: ProbeStartChannel, chunk: Buffer): boolean {
-    if (this.started) return false; // only the first start line starts the command
-    this.refusals[channel].feed(chunk);
+    if (this.started) return false; // later copies are the command's own output
     return this.watchers[channel].feed(chunk);
+  }
+
+  /** Removes the start line from captured stdout if the shell wrote it there (C-PERF-05). */
+  stripFromStdout(captured: string): string {
+    return this.watchers.stdout.seen ? captured.replace(startText, "") : captured;
   }
 }

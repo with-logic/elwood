@@ -3,7 +3,6 @@
  * Implements PRD §4.1 and §5.3.
  */
 
-import type { DirectoryIdentity } from "../core/directory-identity.ts";
 import type { TerminalSize } from "../core/types.ts";
 
 export type PtyExit = {
@@ -15,8 +14,6 @@ export type PtySpawnOptions = {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
-  /** Expected initial directory; the native factory checks before any login profile. */
-  readonly directoryIdentity?: DirectoryIdentity | undefined;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly size: TerminalSize;
 };

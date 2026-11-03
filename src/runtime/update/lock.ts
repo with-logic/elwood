@@ -8,10 +8,8 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { errnoCode } from "../../core/errors.ts";
+import { elwoodError } from "../../core/errors.ts";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
-import { acquireUpdateLease } from "./acquire.ts";
-import type { UpdateOperation } from "./not-started.ts";
 import {
   type LeaseOwner,
   ownerFile,
@@ -22,7 +20,7 @@ import {
   unresolvedProbeGroup,
 } from "./owner.ts";
 import { retainLease } from "./retained-lease.ts";
-import { defaultWaitMs, pathExists, recoveryPath } from "./waiting.ts";
+import { defaultWaitMs, pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
 
 export type UpdateAdapter = "claude" | "codex";
 
@@ -39,7 +37,6 @@ const defaultStaleMs = 30_000;
 const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
 const defaultRetainRetryMs = 1_000;
-const leaseConflictCodes = new Set<string | undefined>(["EEXIST", "ENOTEMPTY"]);
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -52,9 +49,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
 
 /**
  * Runs `update` only for the lease owner. A contender waits until that owner
- * completes an attempt and returns without a duplicate update. A pre-start refusal
- * publishes no completion, so a waiter acquires the lease for its own update. Waiting
- * uses timers, never a blocking filesystem loop.
+ * settles and then returns without a duplicate update; callers re-read version
+ * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
  * After 165 seconds by default, a still-active owner rejects with the adapter's
  * update_failed error and updateReason active_owner; preflight warns and continues.
  * A lease held by a surviving updater group skips that wait and rejects immediately with
@@ -63,7 +59,7 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  */
 export async function coordinatedAutoupdate(
   adapter: UpdateAdapter,
-  update: UpdateOperation,
+  update: () => Promise<void>,
   options: UpdateLeaseOptions = {},
 ): Promise<void> {
   const root = options.root ?? defaultLeaseRoot();
@@ -78,20 +74,38 @@ export async function coordinatedAutoupdate(
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completion = join(root, `${adapter}.completed`);
   const priorCompletion = await readOptionalText(completion);
+  let observedActive = (await pathExists(path)) || (await pathExists(recoveryPath(path)));
+  let recoveredStale = false;
+  while (!(await claimLease(path, owner))) {
+    // Losing the claim to an existing lease IS an observation of an active owner; a claim
+    // that failed on its own staging finds no lease below and returns as released. Sampling
+    // only before the loop misses a peer that claimed in the interim, and that contender
+    // would then treat its own later claim as the first attempt and run a duplicate
+    // update (PRD §9.2: a contender skips its duplicate attempt).
+    observedActive = true;
+    const waited = await waitForOwner(path, pollMs, staleMs, waitUntilMs);
+    if (waited === "released") return;
+    if (waited === "wait_expired") {
+      throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
+        updateReason: "active_owner",
+      });
+    }
+    if (waited === "cleanup_pending") {
+      throw elwoodError(
+        `${adapter}_update_failed`,
+        "Another updater's process group has not exited.",
+        { updateReason: "cleanup_pending", cleanupErrorCode: "ETIMEDOUT" },
+      );
+    }
+    recoveredStale = true;
+  }
   if (
-    !(await acquireUpdateLease({
-      adapter,
-      path,
-      owner,
-      completion,
-      priorCompletion,
-      pollMs,
-      staleMs,
-      waitUntilMs,
-      claim: () => claimLease(path, owner),
-    }))
-  )
+    !recoveredStale &&
+    (observedActive || (await readOptionalText(completion)) !== priorCompletion)
+  ) {
+    await releaseLease(path, owner);
     return;
+  }
   // Started through `Promise.resolve().then` so an updater that throws SYNCHRONOUSLY is a
   // rejection like any other. Calling `update()` bare would let such a throw escape past
   // the release below with the lease still held, which is the one failure the lease cannot
@@ -99,17 +113,12 @@ export async function coordinatedAutoupdate(
   const outcome = await Promise.resolve()
     .then(update)
     .then(
-      (result) => ({ result }),
+      () => undefined,
       (error: unknown) => ({ error }),
     );
-  if ("result" in outcome && outcome.result?.started === false) {
-    await releaseLease(path, owner);
-    return; // No completion marker: waiters must run their own update.
-  }
-  const failure = "error" in outcome ? outcome.error : undefined;
   // An aborted probe's unresolved group is observed once more: only a group still live
   // after that window keeps the lease, and then the lease outlives this process.
-  const abortedGroupId = unresolvedProbeGroup(failure);
+  const abortedGroupId = unresolvedProbeGroup(outcome?.error);
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
@@ -123,7 +132,7 @@ export async function coordinatedAutoupdate(
       options.retainRetryMs ?? defaultRetainRetryMs,
     );
   }
-  if ("error" in outcome) throw outcome.error;
+  if (outcome !== undefined) throw outcome.error;
 }
 
 /**
@@ -134,28 +143,25 @@ export async function coordinatedAutoupdate(
  * recovery removes. `rename` refuses a non-empty destination, which is exactly an
  * existing lease.
  */
-async function claimLease(
-  path: string,
-  owner: LeaseOwner,
-): Promise<"claimed" | "contended" | "unavailable"> {
+async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
   // An existing lease, even an ownerless one left by an older version, is a wait condition:
   // `rename` would silently replace an empty directory instead of recovering it as stale.
-  if ((await pathExists(recoveryPath(path))) || (await pathExists(path))) return "contended";
+  if ((await pathExists(recoveryPath(path))) || (await pathExists(path))) return false;
   const staging = `${path}.claim.${randomUUID()}`;
   try {
     await mkdir(staging, { mode: 0o700 });
     await writeFile(join(staging, ownerFile), serializeOwner(owner), { flag: "wx", mode: 0o600 });
     await rename(staging, path);
-  } catch (error) {
+  } catch {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
-    return leaseConflictCodes.has(errnoCode(error)) ? "contended" : "unavailable";
+    return false;
   }
   if (await pathExists(recoveryPath(path))) {
     await releaseLease(path, owner);
-    return "contended";
+    return false;
   }
   await sweepLeaseLeftovers(path);
-  return "claimed";
+  return true;
 }
 
 /**

@@ -15,10 +15,7 @@ import {
   setPlatformForTests,
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
-import {
-  checkLaunchDirectory,
-  recheckLaunchDirectoryOnFailure,
-} from "../../src/runtime/session/launch-directory.ts";
+import { recheckLaunchDirectoryOnFailure } from "../../src/runtime/session/launch-directory.ts";
 import { replaceDirectory } from "../helpers/replace-directory.ts";
 import {
   resumableStateDir as resumable,
@@ -152,13 +149,10 @@ describe("C-API-61 a launch that fails after its cwd has gone", () => {
     setPlatformForTests("darwin");
     const cwd = join(tempDir("elwood-launch-dir-"), "worktree");
     mkdirSync(cwd);
-    const launching = recheckLaunchDirectoryOnFailure(
-      await checkLaunchDirectory("codex", cwd),
-      () => {
-        rmSync(cwd, { recursive: true });
-        return Promise.reject(failure.error);
-      },
-    );
+    const launching = recheckLaunchDirectoryOnFailure("codex", cwd, () => {
+      rmSync(cwd, { recursive: true });
+      return Promise.reject(failure.error);
+    });
     await expect(launching).rejects.toMatchObject({
       code: "codex_start_failed",
       details: { ...failure.kept, cwd, errno: "ENOENT" },
@@ -169,13 +163,10 @@ describe("C-API-61 a launch that fails after its cwd has gone", () => {
     setPlatformForTests("darwin");
     const cwd = join(tempDir("elwood-launch-dir-"), "worktree");
     mkdirSync(cwd);
-    const launching = recheckLaunchDirectoryOnFailure(
-      await checkLaunchDirectory("codex", cwd),
-      () => {
-        replaceDirectory(cwd);
-        return Promise.reject(Object.assign(new Error("spawn failed"), { code: "EACCES" }));
-      },
-    );
+    const launching = recheckLaunchDirectoryOnFailure("codex", cwd, () => {
+      replaceDirectory(cwd);
+      return Promise.reject(Object.assign(new Error("spawn failed"), { code: "EACCES" }));
+    });
     const failure = await launching.catch((error: unknown) => error);
     expect(failure).toMatchObject({
       code: "codex_start_failed",

@@ -40,10 +40,10 @@ describe("Codex capability detection", () => {
         ? { status: 0, stdout: "--dangerously-bypass-hook-trust", stderr: "" }
         : { status: 0, stdout: "codex-cli 0.133.0", stderr: "" },
     );
-    expect((await detectCodexCliCapabilities(process.cwd())).supportsHookTrustBypass).toBe(true);
+    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(true);
     resetCodexPreflightCacheForTests();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "codex help", stderr: "" }));
-    expect((await detectCodexCliCapabilities(process.cwd())).supportsHookTrustBypass).toBe(false);
+    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(false);
   });
 
   test("C-PERF-02 concurrent first capability probes share one subprocess", async () => {
@@ -57,9 +57,9 @@ describe("Codex capability detection", () => {
         }),
     );
     await Promise.all([
-      detectCodexCliCapabilities(process.cwd()),
-      detectCodexCliCapabilities(process.cwd()),
-      detectCodexCliCapabilities(process.cwd()),
+      detectCodexCliCapabilities(),
+      detectCodexCliCapabilities(),
+      detectCodexCliCapabilities(),
     ]);
     expect(helpReads).toBe(1);
   });
@@ -77,11 +77,11 @@ describe("Codex capability detection", () => {
       if (command.includes("codex update")) updates += 1;
       return { status: 0, stdout: "codex-cli 0.132.0", stderr: "" };
     });
-    await detectCodexCliCapabilities(process.cwd());
-    await preflightCodex(process.cwd(), false, true);
-    await detectCodexCliCapabilities(process.cwd());
-    await preflightCodex(process.cwd(), false, true);
-    await detectCodexCliCapabilities(process.cwd());
+    await detectCodexCliCapabilities();
+    await preflightCodex(false, true);
+    await detectCodexCliCapabilities();
+    await preflightCodex(false, true);
+    await detectCodexCliCapabilities();
     expect({ helpReads, updates }).toEqual({ helpReads: 2, updates: 1 });
   });
 
@@ -98,11 +98,11 @@ describe("Codex capability detection", () => {
         ? { status: 1, stdout: "", stderr: "partially replaced" }
         : { status: 0, stdout: "codex-cli 0.132.0", stderr: "" };
     });
-    await detectCodexCliCapabilities(process.cwd());
-    await expect(preflightCodex(process.cwd(), false, true)).resolves.toMatchObject({
+    await detectCodexCliCapabilities();
+    await expect(preflightCodex(false, true)).resolves.toMatchObject({
       code: "agent_update_failed",
     });
-    await detectCodexCliCapabilities(process.cwd());
+    await detectCodexCliCapabilities();
     expect(helpReads).toBe(2);
   });
 
@@ -116,7 +116,7 @@ describe("Codex capability detection", () => {
     ]) {
       resetCodexPreflightCacheForTests();
       setCommandRunnerForTests(() => ({ status: null, stdout: "", stderr: "", error }));
-      await expect(detectCodexCliCapabilities(process.cwd())).rejects.toMatchObject({
+      await expect(detectCodexCliCapabilities()).rejects.toMatchObject({
         code: "codex_start_failed",
         details: { cause: error.message, errno: error.code },
       });
@@ -137,7 +137,7 @@ describe("Codex capability detection", () => {
     );
     // The bounded update is contained: the installed 0.132.0 is compatible, so preflight resolves
     // with the `agent_update_failed` warning carrying the timeout errno — never a start failure.
-    await expect(preflightCodex(process.cwd(), false, true)).resolves.toMatchObject({
+    await expect(preflightCodex(false, true)).resolves.toMatchObject({
       code: "agent_update_failed",
       errorCode: "ETIMEDOUT",
       installedVersion: "0.132.0",

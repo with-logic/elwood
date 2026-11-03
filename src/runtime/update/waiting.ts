@@ -21,7 +21,7 @@ export async function waitForOwner(
   pollMs: number,
   staleMs: number,
   waitUntilMs: number,
-): Promise<"released" | "stale_removed" | "wait_expired" | "cleanup_pending" | "unrecoverable"> {
+): Promise<"released" | "stale_removed" | "wait_expired" | "cleanup_pending"> {
   for (;;) {
     if (performance.now() >= waitUntilMs) return "wait_expired";
     let lease: Awaited<ReturnType<typeof stat>>;
@@ -44,7 +44,7 @@ export async function waitForOwner(
     if (hasRecordedProcessGroups || Date.now() - lease.mtimeMs >= staleMs) {
       const recovered = await recoverStaleLease(path);
       if (recovered === "removed") return "stale_removed";
-      if (recovered === "unrecoverable") return "unrecoverable";
+      if (recovered === "unrecoverable") return "released";
     }
     await delay(pollMs);
   }

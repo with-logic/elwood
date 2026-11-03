@@ -7,7 +7,7 @@ import { elwoodError } from "../../core/errors.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
 import {
-  checkLaunchDirectory,
+  assertLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -48,28 +48,22 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   // before it decides which shared state to remove (C-API-20).
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
-    // `cwd` is checked before any probe; a probe that fails because it went or was replaced fails as that.
-    const directory = await checkLaunchDirectory("claude", cwd);
-    const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-      preflightClaude(
-        cwd,
-        options.strictVersionCheck ?? false,
-        options.autoupdate ?? false,
-        directory.identity,
-      ),
+    await assertLaunchDirectory("claude", cwd);
+    const warning = await preflightClaude(
+      options.strictVersionCheck ?? false,
+      options.autoupdate ?? false,
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.claude.launch, claudeLaunchPosture(options));
     const resumedRecord = withClaudeLaunch(record, launch);
-    const session = await recheckLaunchDirectoryOnFailure(directory, () =>
+    const session = await recheckLaunchDirectoryOnFailure("claude", cwd, () =>
       startClaudeFromRecord(
         resumedRecord,
         stateDir,
         {
           cwd,
-          launchDirectory: directory,
           stateDir,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),

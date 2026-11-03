@@ -10,7 +10,6 @@
  */
 
 import type { Readable } from "node:stream";
-import type { CommandResult } from "../seams.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
 import { NamedPipeCapture } from "./named-pipes.ts";
 import { announcesStart, probeOutputRedirect } from "./start.ts";
@@ -26,21 +25,33 @@ export type ProbeChild = {
 export type CaptureEvents = {
   /** A stream passed the cap. */
   readonly overflowed: () => void;
-  /** Every stream has ended: nothing holds its write end. */
+  /**
+   * Every named pipe has ended after the probe exited: nothing holds its write end. Only named
+   * pipes send it. A process's own pipes end before its `close`, so a capture of them is
+   * complete by then.
+   */
   readonly ended: () => void;
 };
 
 /** One probe's output capture. */
 export type ProbeCapture = {
-  /** The probe process's environment, when it differs from Elwood's own. */
-  readonly env: NodeJS.ProcessEnv | undefined;
+  /** The probe's arguments as the capture runs them: a probe script's output pointed at it. */
+  args(args: readonly string[]): readonly string[];
   /** Captures `child`'s output. */
   watch(child: ProbeChild, events: CaptureEvents): void;
-  /** Whether every stream has ended, so the capture is complete. */
+  /**
+   * Whether the capture is complete, once the probe's process has closed. A capture of the
+   * process's own pipes always is. Named pipes are complete once nothing holds their write ends,
+   * which a process the command started can delay past the `close`.
+   */
   ended(): boolean;
   /** Each stream's capture, stdout then stderr, at most the cap. */
   text(): [string, string];
-  /** Drops the capture and closes and removes anything it opened. Safe to call twice. */
+  /**
+   * Drops the capture, closes what it opened, and removes it. Named pipes' directory is removed
+   * at once, unless the command changed it: then the removal runs off the event loop and can
+   * finish after this returns. Safe to call twice.
+   */
   release(): void;
 };
 
@@ -55,8 +66,11 @@ export function probeCapture(args: readonly string[]): Promise<ProbeCapture> {
 
 /** A directly spawned command's own stdout and stderr pipes. */
 class PipeCapture implements ProbeCapture {
-  readonly env = undefined;
   private readonly buffers = [new CappedBuffer(), new CappedBuffer()] as const;
+
+  args(args: readonly string[]): readonly string[] {
+    return args;
+  }
 
   watch(child: ProbeChild, events: CaptureEvents): void {
     [child.stdout, child.stderr].forEach((stream, index) => {
@@ -85,7 +99,9 @@ class PipeCapture implements ProbeCapture {
 
 /** A login shell whose command's output went to `/dev/null`: its own pipes are drained. */
 class DiscardedCapture implements ProbeCapture {
-  readonly env = undefined;
+  args(args: readonly string[]): readonly string[] {
+    return args;
+  }
 
   watch(child: ProbeChild): void {
     child.stdout.resume();
@@ -103,11 +119,4 @@ class DiscardedCapture implements ProbeCapture {
   release(): void {
     // Nothing was kept.
   }
-}
-
-/** A private capture that could not be created fails before the probe spawns. */
-export function outputUnavailable(error: NodeJS.ErrnoException): CommandResult {
-  const message = `could not create the probe's private output pipes: ${error.message}`;
-  const code = typeof error.code === "string" ? { code: error.code } : {};
-  return { status: null, stdout: "", stderr: "", error: { message, ...code } };
 }

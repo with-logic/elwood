@@ -45,35 +45,6 @@ This interactive login form (`-l -i` for zsh) applies to both the **agent PTY**
 and one-shot, non-PTY preflight probes (`--version`, `update`, `--help`). The
 same shell startup files MUST resolve the CLI for every lifecycle operation so
 preflight, update, launch, and resume cannot operate on different installations.
-Each probe's shell therefore starts in the directory the session's PTY launches
-in, not Elwood's own working directory: a per-directory tool
-manager (asdf or mise shims, or a startup file that builds PATH from `$PWD`) can
-resolve a different CLI in each directory. Start and resume check that directory
-before any probe (C-API-61). A version or capability probe carries that initial
-identity through its slot wait and child launch (§9.2). A missing or replaced
-directory detected at a validation boundary fails start or resume with
-`claude_start_failed` or `codex_start_failed`, `details.cwd`, and the probe's own
-failure as `details.cause`, never as a missing CLI. A failed host-side stat
-preserves its errno.
-
-The identity captured by the initial start/resume check MUST be carried through
-preflight, cache lookup, updates, and capability probes. The child verifies its
-actual initial working directory before loading user startup files. After startup
-files load, it checks whether the original launch path still names that directory
-before returning to the login shell to run the requested command. A mismatch at
-either child check refuses the command. A startup file's deliberate `cd` continues
-to affect its environment and command.
-
-These are bounded validation checks, not atomic executable selection. Elwood does
-not freeze the filesystem between a check and command execution, pin the executable
-selected by a profile or shim, or prevent later directory changes by those trusted
-programs. A replacement made and restored entirely between checks can escape
-detection. Consumers requiring atomic isolation must provide it outside Elwood.
-A child-side checked-directory refusal exits that child with status 96 before the
-requested command starts; this is not an Elwood CLI exit status. Probe classification
-also requires the guard's private refusal signal, so a profile's own status 96 is
-not mistaken for a directory refusal.
-
 A probe's shell startup and its command are bounded separately (§9.2), so a slow
 profile is not reported as a failing CLI.
 

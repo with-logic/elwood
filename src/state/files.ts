@@ -19,12 +19,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
-import {
-  assertStatePath,
-  PRIVATE_STATE_MODE,
-  prepareStateDirectory,
-  SHARED_STATE_MODE,
-} from "./directories.ts";
+import { assertStatePath, PRIVATE_STATE_MODE, prepareStateDirectory } from "./directories.ts";
 
 export function newBridgeToken(): string {
   return randomUUID();
@@ -45,16 +40,6 @@ export function safeSessionDir(stateDir: string, id: string): string {
 /** Makes the private directory `path` inside its parent; a missing parent fails with `ENOENT`. */
 export function secureMkdir(path: string): void {
   prepareStateDirectory(path, PRIVATE_STATE_MODE, "inside-parent");
-}
-
-/** Makes `path` itself, readable by others; a missing parent fails with `ENOENT`. */
-export function sharedMkdir(path: string): void {
-  prepareStateDirectory(path, SHARED_STATE_MODE, "inside-parent");
-}
-
-export function writeSharedFile(path: string, content: string): void {
-  sharedMkdir(dirname(path));
-  writeStateFile(path, content, 0o644);
 }
 
 export function writePrivateFile(path: string, content: string): void {

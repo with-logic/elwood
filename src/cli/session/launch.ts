@@ -10,10 +10,7 @@ import { startCodexWithId } from "../../codex/session/index.ts";
 import { resumeCodex } from "../../codex/session/resume.ts";
 import type { CodexSessionApi } from "../../codex/session/types.ts";
 import type { ElwoodAgentSession } from "../../core/agent-session.ts";
-import {
-  checkLaunchDirectory,
-  recheckLaunchDirectoryOnFailure,
-} from "../../runtime/session/launch-directory.ts";
+import { recheckLaunchDirectoryOnFailure } from "../../runtime/session/launch-directory.ts";
 import { ensurePrivateStateRoot } from "../../state/private-session.ts";
 import { optional } from "../request/values.ts";
 import type { EffectiveRunRequest } from "../types.ts";
@@ -104,12 +101,11 @@ function codexLaunch(
  * workspace removed since it was validated fails the launch as the adapter's start failure
  * (C-API-61), not as a state error.
  */
-async function prepareStateRoot(
+function prepareStateRoot(
   request: EffectiveRunRequest,
   dependencies: CliLaunchDependencies,
 ): Promise<void> {
-  const directory = await checkLaunchDirectory(request.agent, request.cwd);
-  return recheckLaunchDirectoryOnFailure(directory, async () =>
+  return recheckLaunchDirectoryOnFailure(request.agent, request.cwd, async () =>
     dependencies.prepareStateRoot(request.stateDir, request.cwd),
   );
 }

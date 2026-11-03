@@ -1,9 +1,11 @@
 /**
  * Real Codex started from a symlinked directory, through a login shell whose startup files
- * export a RELATIVE `CODEX_HOME` with `..` in it. The kernel follows the link before `..`, so
- * Codex runs with the home beside the link's target, not the one the link's name suggests.
- * Elwood must read the configured default from, and restore, that home. Implements PRD §4.2
- * and C-CODEX-24 (with C-API-23 and C-CODEX-14).
+ * export a RELATIVE `CODEX_HOME` with `..` in it, in a session's shell only (`inSession`). The
+ * kernel follows the link before `..`, so Codex runs with the home beside the link's target, not
+ * the one the link's name suggests. Elwood must read the configured default from, and restore,
+ * that home. A probe shell starts in Elwood's own directory and keeps Elwood's home, as the
+ * suite's home guard requires (C-E2E-24). Implements PRD §4.2 and C-CODEX-24 (with C-API-23
+ * and C-CODEX-14).
  *
  * Every home lives under the project and holds a copy of `auth.json`. A private `ZDOTDIR`
  * sources the user's own zsh startup files, so `codex` resolves as usual. The real `~/.codex`
@@ -18,6 +20,7 @@ import type { CodexSessionApi } from "../../src/index.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
 import {
   baseConfig,
+  inSession,
   loginShellSkip,
   loginShellTestTimeoutMs,
   runLoginShellTest,
@@ -44,7 +47,8 @@ test("C-CODEX-24 real Codex in a symlinked cwd runs with, and Elwood restores, t
   const launches = codexLaunches();
   const started: CodexSessionApi[] = [];
   const scope = { sessions: () => started, sandbox, launches };
-  await runLoginShellTest(scope, "export CODEX_HOME=../codex-home", async () => {
+  const exportLine = `${inSession} && export CODEX_HOME=../codex-home`;
+  await runLoginShellTest(scope, exportLine, async () => {
     const session = await startReadyCodex(
       { ...project, cwd: link },
       { launches, onStarted: (launched) => started.push(launched) },

@@ -14,6 +14,7 @@ import {
   type TranscriptWarningSink,
 } from "../../core/transcript/warning-router.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
+import { CodexClipboardCopies } from "../images/clipboard-copies.ts";
 import {
   CodexTranscriptWatcher,
   codexDropWarning,
@@ -21,6 +22,7 @@ import {
   codexReadErrorWarning,
 } from "../transcript/index.ts";
 import type { CodexEventMap } from "./types.ts";
+import { imageCopyRemovalFailedWarning } from "./warnings.ts";
 
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 type WiredCodexTranscriptWatcher = {
@@ -85,10 +87,12 @@ export function createCodexTranscriptWatcher(
       );
     }
   }
+  const clipboardCopies = new CodexClipboardCopies();
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) =>
       duringDelivery(() => {
+        clipboardCopies.observe(event.item);
         deliver("codex:transcript", event);
         deliver("activity", activity.activityFromCodexTranscript(event));
       }),
@@ -117,7 +121,13 @@ export function createCodexTranscriptWatcher(
         route(codexPollStoppedWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
-      afterFlush();
+      // The CLI has exited and the flush has read its last records: remove the image
+      // copies they named, and report one that stays, before finishing the exit (C-API-46).
+      clipboardCopies.removeAll((failure) => {
+        // `route` contains a throwing listener, so the exit always finishes.
+        if (failure !== undefined) route(imageCopyRemovalFailedWarning(elwoodSessionId, failure));
+        afterFlush();
+      });
     }
   };
   return { watcher, duringDelivery, flushPendingWarnings, finishSafely };

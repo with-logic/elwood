@@ -1,7 +1,7 @@
 /** Offline private-home, bounded subprocess and process-seam guards (PRD §12). */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   currentCommandRunner,
   currentPtyFactory,
@@ -30,9 +30,65 @@ test("malformed Keychain output never appears in parse errors", async () => {
   const failure: unknown = await nativeClaudeQuestionSandbox().catch((error: unknown) => error);
   expect(failure instanceof Error).toBe(true);
   if (!(failure instanceof Error)) throw new Error("Expected sanitized authentication error");
-  expect(failure.message).toBe("Private Claude authentication is malformed");
+  expect(failure.message).toBe("Private Claude authentication is not JSON");
   expect(String(failure).includes(canary)).toBe(false);
   expect("cause" in failure).toBe(false);
+});
+
+/** Points `TMPDIR` at a fresh dir under the parent for one test. */
+function privateTmp(...segments: readonly string[]): string {
+  const dir = join(mocks.parent, ...segments);
+  mkdirSync(dir, { recursive: true });
+  vi.stubEnv("TMPDIR", dir); // the fixture's `afterEach` unstubs it
+  return dir;
+}
+
+test.each([
+  '{"mcpOAuth":{}}',
+  '{"claudeAiOauth":{}}',
+  '{"claudeAiOauth":{"accessToken":""}}',
+  '{"claudeAiOauth":{"refreshToken":"rotating"}}',
+])("a Keychain item without a Claude login (%s) stops setup before any private file", async (stdout) => {
+  const tmp = privateTmp("tmp");
+  mocks.keychain.mockReturnValueOnce({
+    pid: 1,
+    status: 0,
+    signal: null,
+    output: [],
+    stdout,
+    stderr: "",
+  });
+  await expect(nativeClaudeQuestionSandbox()).rejects.toThrow(
+    "Private Claude authentication holds no Claude login",
+  );
+  expect(readdirSync(tmp)).toEqual([]);
+  expect(mocks.remove).not.toHaveBeenCalled(); // no private root was made to clean up
+});
+
+test("a Keychain without the Claude login item stops setup before any private file", async () => {
+  const tmp = privateTmp("tmp");
+  mocks.keychain.mockReturnValueOnce({
+    pid: 1,
+    status: 44,
+    signal: null,
+    output: [],
+    stdout: "",
+    stderr: "",
+  });
+  await expect(nativeClaudeQuestionSandbox()).rejects.toThrow(
+    "Private Claude authentication unavailable",
+  );
+  expect(readdirSync(tmp)).toEqual([]);
+  expect(mocks.remove).not.toHaveBeenCalled(); // no private root was made to clean up
+});
+
+test("a temp dir inside the parent's Claude config dir is refused", async () => {
+  const tmp = privateTmp(".claude", "tmp");
+  await expect(nativeClaudeQuestionSandbox()).rejects.toThrow(
+    "TMPDIR is inside the user's Claude config dir",
+  );
+  expect(mocks.probe).not.toHaveBeenCalled();
+  expect(readdirSync(tmp)).toEqual([]);
 });
 
 test.each([
@@ -92,6 +148,11 @@ test("pinned-only setup reuses one credential and writes minimal config", async 
     const config: unknown = JSON.parse(readFileSync(join(sandbox.home, ".claude.json"), "utf8"));
     expect(config).toMatchObject({ lastOnboardingVersion: claudeQuestionVersion });
     expect(config).not.toHaveProperty("parentOnly");
+    // The copy cannot refresh, so it never rotates the parent's login (C-E2E-23).
+    const login: unknown = JSON.parse(
+      readFileSync(join(sandbox.home, ".credentials.json"), "utf8"),
+    );
+    expect(login).toEqual({ claudeAiOauth: { accessToken: "synthetic" } });
   } finally {
     sandbox.dispose();
   }

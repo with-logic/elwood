@@ -12,80 +12,70 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Update lease waiters retry in their own directory when the previous owner's
-  directory guard refused before its updater ran. A profile's own exit 96 keeps
-  its login-shell warning instead of being mistaken for that guard refusal.
-- Undo newly created state scaffolding when a start observes that its working
-  directory was replaced during setup, preserving existing files and other sessions.
+- Install the default `.elwood/.gitignore` atomically without overwriting a competing writer or leaving partial contents after a failed write.
 
-- Starts and resumes carry the initially checked working-directory identity through
-  preflight and cached probes. The child checks its initial directory before shell
-  startup and the original path again after profiles; a mismatch refuses the
-  command. These bounded checks do not make executable selection atomic or detect
-  replacements wholly between checks. A profile's deliberate `cd` remains supported.
-  Host-side stat failures retain their path and errno in the start failure; child-side refusals have no host errno.
-  An update refused before its command starts is neither cached nor reported as a
-  failed update attempt.
-
+- A session's final transcript flush, and a Claude subagent's retirement, now read
+  the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
+  transcripts, before their 50 ms time limit can stop them. Before, a host too loaded
+  to begin the flush within that limit read nothing: the session's last records never
+  arrived as activity, and a `transcript_records_dropped` warning with cause
+  `unread_backlog` reported them instead. A record the flush cuts off is now part of
+  that `unread_backlog` warning instead of a second warning with cause `unparseable`.
+- The walk that reaps detached hook processes now reads each process's short name,
+  which `ps` prints raw, and refuses a table read it cannot trust instead of acting
+  on it: one with a line that is not one whole row, such as a line a newline in a
+  process's name starts, or with a pid listed twice. A refused read fails as an
+  unreadable table does, so while a process on the host has a newline in its name,
+  `kill()`, `teardown()`, and a `stop()` that escalates reject with
+  `termination_failed` (`teardown_failed` from `teardown()`).
+- A Codex session now removes the `codex-clipboard-*.png` file Codex saves in the
+  temp directory for each image Elwood pastes into it, once the session's CLI has
+  exited by `stop()`, `kill()`, `teardown()`, or on its own. Before, every Codex image
+  attach left one such file behind for good. Only files the session's own transcript
+  names directly in Elwood's temp directory are removed; a Codex whose login shell sets
+  another `TMPDIR` keeps its copies there.
+- A Codex session that cannot remove one of those copies now emits one
+  `image_copy_removal_failed` warning before `terminal:exit`. Its `errorCode` is the
+  first failure's errno token, or `UnknownError` when it has none. The copy is left
+  for the OS to reap. A copy that was already gone is not a failure.
+- A CLI missing from the login shell's PATH is reported as `claude_not_found` or
+  `codex_not_found` even when the user's startup files define a not-found handler
+  (zsh's `command_not_found_handler`, bash's `command_not_found_handle`). The probe
+  ran the handler, so a handler that returned another status made a missing CLI
+  read as `*_start_failed`, and whatever it printed reached that error's
+  `details.stderr` or `agent_update_failed`'s `raw`. Probes now remove both
+  handlers before running the CLI.
+- A probe whose command dies of a signal now reports the status a shell would,
+  128 plus the signal's number, instead of no status. A login shell that dies
+  before starting the command is still a login-shell failure. `elwood interactive`'s
+  PATH lookup likewise now fails with "login shell exited with status 143" where it
+  said "status null".
+- `*_start_failed` details and the `agent_update_failed` warning now carry a failed
+  probe's exit status as `exitStatus`, as the spec already said the warning would.
+- `kill()`, `teardown()`, and a `stop()` that escalates now give the walk that reaps
+  detached hook processes ten seconds, up from three, before they reject with
+  `termination_failed` (`teardown_failed` from `teardown()`). On a loaded host, one
+  process-table read can take over half a second, and a hook that started a detached
+  child of its own takes six reads. So these calls rejected, and kept rejecting,
+  while the walk was still making progress. The ten seconds bound the walk, not the
+  whole call: `kill()` and `teardown()` also wait for the PTY to exit after their
+  SIGKILL, and a `stop()` that escalates waits out its graceful window first. On an
+  idle host they take as long as before, because the walk ends as soon as it is done.
 - `stop()`, `kill()`, and `teardown()` during an in-flight image attach now remove
   the attach's `elwood-image-*` temp directory before they resolve, even while its
   image is still being written. Before, the attach removed it only after it unwound,
   which could come after shutdown resolved, so a host that exited right away left
   the directory in the OS temp dir. Removal stays best-effort: one that fails at
   shutdown is retried when the attach unwinds.
-- A `--version` or Codex `--help` probe now starts only while its launch
-  directory matches at its child-side validation boundaries. A missing or replaced
-  directory detected there refuses the command and fails start or resume with
-  that as its `details.cause`; replacement wholly between checks is not detected.
-- A session validates the directory its start or resume checked first at defined
-  launch boundaries. A removal or replacement detected after preflight or before
-  PTY spawn (including after Codex's capability probe) fails start or resume with
-  `*_start_failed` and
-  `details.cwd`, and no PTY is spawned, where the agent used to start in the
-  replacement. The check after preflight compares the directory with the one
-  first checked; these are bounded checks, not atomic filesystem isolation.
-- The `--version` and Codex capability caches keep the 32 most recently used
-  launch directories, not just the last one, and are keyed by the directory
-  itself as well as its path. A directory made again at the same path, replaced
-  while its CLI was probed, or that can't be identified, is read again, and so is
-  a `--version` read with a stream longer than 65,536 UTF-16 code units.
-- `agent_update_failed` now names `updateCwd`, the directory the failed update
-  command ran in, when it ran in this process. Every launch in a process shares
-  one update attempt, which runs in the launch directory of whichever start or
-  resume triggered it, so a session's warning can name another session's
-  directory.
-- `claude_not_found` and `codex_not_found` now say why in `details.cause`: the
-  login shell could not be started (with its `errno`, and a message naming the
-  shell rather than PATH), or it found no CLI (status 127). They carry none of the
-  shell's stderr, which no CLI wrote. A start or
-  resume whose launch directory goes while its CLI is probed reports that probe
-  failure as its cause, where it used to report "not found on PATH".
-- Preflight now checks the CLI the session will actually run. The `--version`,
-  `update`, and Codex `--help` probes start their login shell in the session's
-  launch directory (the PTY's directory, on start and on resume), not Elwood's
-  own, so a per-directory tool manager (asdf or mise shims, a profile that builds
-  PATH from `$PWD`) resolves the same CLI as the session. Codex therefore no
-  longer launches with a `--dangerously-bypass-hook-trust` its own `codex`
-  rejects, or without one it supports. A launch directory removed while
-  preflight runs fails the start or resume with `*_start_failed` and
-  `details.cwd`, not `*_not_found`. The one best-effort update per process runs
-  in the launch directory of the start or resume that triggers it; if that
-  directory has no CLI, no update runs and no `agent_update_failed` warning is
-  sent, and the launches that shared it try again in their own directories.
-- Probe diagnostics no longer carry the login shell's own output.
-  `agent_update_failed`'s `raw`, `version_unparseable`'s `raw`, and a failed
-  `--version` or `--help` probe's `details.stderr` now hold only the CLI's own
-  output. They used to include anything the user's startup files printed, which
-  can include expanded secrets: output before the command, a DEBUG or ZERR trap or
-  a background helper while it ran, under zsh an EXIT trap or `.zlogout` after
-  it, and zsh's `command_not_found_handler` when the CLI was missing. The probe
-  shell now `exec`s the CLI with its output redirected into named pipes in a
-  private temporary directory that is removed when the probe ends. A probe
-  command that dies of a signal now reports status 128+n instead of `null`.
 - `elwood interactive` hands the agent the login shell's own PATH even when the
   user's startup files define a `printf` function or alias. The PATH lookup ran
   the login shell's `printf`, which such a function or alias replaced, so the
   agent could get another PATH, or Elwood's own when nothing framed was printed.
+- `teardown()`, `kill()`, or a `stop()` that escalates no longer end Codex's shared
+  app-server daemon, its updater loop, or what the daemon started, such as plugin
+  MCP servers. Codex 0.158+ can start the daemon for its `CODEX_HOME`, for every Codex
+  on that home, yours included, as a detached child of the TUI: when the session's
+  own TUI had started it, the walk that reaps detached hooks SIGKILLed it.
 - A Claude session resumed under `autotrust` now reaches `ready` after Elwood answers
   a startup trust gate, such as the bypass-permissions dialog when a resume adds
   `highTrust` in a config that never accepted bypass mode. Before, it stayed

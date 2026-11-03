@@ -6,7 +6,7 @@
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import {
-  checkLaunchDirectory,
+  assertLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
 } from "../../runtime/session/launch-directory.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
@@ -40,28 +40,22 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
     // Codex relaunches where the session started (`--cd`); `cwd` only locates the state.
-    // It is checked before any probe; a probe that fails because it went or was replaced fails as that.
-    const directory = await checkLaunchDirectory("codex", record.cwd);
-    const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-      preflight.preflightCodex(
-        record.cwd,
-        options.strictVersionCheck ?? false,
-        options.autoupdate ?? false,
-        directory.identity,
-      ),
+    await assertLaunchDirectory("codex", record.cwd);
+    const warning = await preflight.preflightCodex(
+      options.strictVersionCheck ?? false,
+      options.autoupdate ?? false,
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.codex.launch, codexLaunchPosture(options));
     const resumedRecord = withCodexLaunch(record, launch);
-    const session = await recheckLaunchDirectoryOnFailure(directory, () =>
+    const session = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
       startCodexFromRecord(
         resumedRecord,
         stateDir,
         {
           cwd: record.cwd, // where Codex relaunches; `options.cwd` only located the state
-          launchDirectory: directory,
           stateDir,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),

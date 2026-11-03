@@ -10,7 +10,11 @@ import {
   preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
-import { probeScript } from "../../src/runtime/probe/start.ts";
+import {
+  probeControlClose,
+  probeNotFoundHandlerReset,
+  probeStartScript,
+} from "../../src/runtime/probe/start.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   resetAutoupdateForTests,
@@ -33,19 +37,19 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
     scripts.push(args.at(-1) ?? "");
     return { status: 0, stdout: "codex-cli 0.164.0", stderr: "" };
   });
-  await preflightCodex(process.cwd(), false, true);
-  await detectCodexCliCapabilities(process.cwd());
+  await preflightCodex(false, true);
+  await detectCodexCliCapabilities();
   expect(scripts).toEqual([
-    probeScript("codex --version"),
-    probeScript("codex update"),
-    probeScript("codex --version"),
-    probeScript("codex --help"),
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex --version`,
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex update`,
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex --version`,
+    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex --help`,
   ]);
 });
 
 test("C-PERF-05 a login shell that fails before `codex update` reports login_shell_failed", async () => {
   setCommandRunnerForTests((_command, args) =>
-    args.at(-1) === probeScript("codex update")
+    args.at(-1)?.endsWith("codex update")
       ? {
           status: null,
           stdout: "",
@@ -58,7 +62,7 @@ test("C-PERF-05 a login shell that fails before `codex update` reports login_she
         }
       : { status: 0, stdout: "codex-cli 0.164.0", stderr: "" },
   );
-  const warning = await preflightCodex(process.cwd(), false, true);
+  const warning = await preflightCodex(false, true);
   expect(warning).toMatchObject({
     code: "agent_update_failed",
     agent: "codex",

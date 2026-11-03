@@ -14,6 +14,7 @@ import { after } from "node:test";
 import type { AgentName } from "./availability.ts";
 import "./claude-home.ts";
 import { copyCodexAuth, userCodexAuthPath } from "./codex-home.ts";
+import { registerPrivateHome } from "./home-guard.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
 
 export type E2eProject = {
@@ -40,11 +41,26 @@ export type CodexSandbox = {
 
 const scratchRoots: string[] = [];
 
-// Sweep every project root once the file's tests are done. The prefix deliberately
-// does not start with `elwood-` (the socket-home prefix, `src/state/socket-home.ts`),
-// so tests that enumerate `elwood-<16hex>` homes under tmpdir never see scratch dirs.
+// Sweep every project root once the file's tests are done, after stopping what still runs
+// from it: a test that failed before its `dispose()` can leave an agent, or the daemon
+// Codex starts for a home. A root that will not stop is kept, and the sweep reports it
+// after processing the rest; directory-removal errors are reported separately.
+// The prefix deliberately does not start with `elwood-` (the
+// socket-home prefix, `src/state/socket-home.ts`), so tests that enumerate
+// `elwood-<16hex>` homes under tmpdir never see scratch dirs.
 after(() => {
-  for (const root of scratchRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  const errors: unknown[] = [];
+  for (const root of scratchRoots.splice(0)) {
+    let operation = "stop processes";
+    try {
+      if (existsSync(root)) stopProcessesUnder(root);
+      operation = "remove directory";
+      rmSync(root, { recursive: true, force: true });
+    } catch (error) {
+      errors.push(new Error(`Scratch sweep could not ${operation} at ${root}`, { cause: error }));
+    }
+  }
+  if (errors.length > 0) throw new AggregateError(errors, "Scratch sweep failed");
 });
 
 export function makeProject(agent: AgentName): E2eProject {
@@ -77,11 +93,13 @@ export function codexAuthMissing(): string | undefined {
 
 /**
  * Creates the private Codex home `home`: a 0600 copy of the user's `auth.json` and the given
- * `config.toml`, whose path it returns. Filesystem only; callers decide who names the home.
+ * `config.toml`, whose path it returns, registered with the CLI home guard (`home-guard.ts`).
+ * Callers decide who names the home.
  */
 export function seedCodexHome(home: string, config: string): string {
   if (!existsSync(userCodexAuthPath)) throw new Error(codexAuthMissing());
   mkdirSync(home, { recursive: true, mode: 0o700 });
+  registerPrivateHome(home);
   copyCodexAuth(home);
   const configPath = join(home, "config.toml");
   writeFileSync(configPath, config);

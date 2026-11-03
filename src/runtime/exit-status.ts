@@ -1,6 +1,6 @@
 /**
  * A process's exit as a shell reports it, shared by `elwood interactive` (PRD §12A.9,
- * C-CLI-25) and the probe runner (§9.2, C-PERF-05).
+ * C-CLI-25) and the probe runner (§9.2, C-PERF-03).
  */
 
 import { constants } from "node:os";

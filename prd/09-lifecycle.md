@@ -53,16 +53,7 @@ starts the session normally from the installed binary; only if the installed
 version is below the minimum does startup fail (with the same typed
 compatibility error below). A failed update is attempted at most once per parent
 process and MUST NOT be retried per start, nor may one failed shared update
-reject or poison any other otherwise-compatible start in the roster. When the
-existence check fails in the launch directory of the start or resume that
-triggers the update (§9.2 below), no update command runs. That is not an update
-attempt: it records no `agent_update_failed` warning, and each launch that
-shared it tries the update again, in its own launch directory. A directory guard
-that refuses before the update command starts is likewise not an update attempt:
-it has no `updateCwd`, produces no update-failure warning, and is not cached. The
-lease owner publishes no completion for that refusal; a waiting process retries
-under the lease in its own launch directory. An unrelated login-profile exit,
-including status 96, remains a `login_shell_failed` update warning. If the
+reject or poison any other otherwise-compatible start in the roster. If the
 installed agent version is below the minimum after that optional update step,
 startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`
@@ -70,15 +61,8 @@ warning and continues by default, with an option for callers to make this fatal.
 
 The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
-allowlisted error code (e.g. a timeout/`errno`), and the update command's own
-stderr, bounded — never the login shell's startup or exit output (§9.2 below),
-terminal transcripts, prompts, tokens, or environment secrets. When this process
-ran the update command, the warning also names `updateCwd`, the directory it ran
-in: the launch directory of the start or resume that triggered the one attempt the
-process shares, which may be another session's. A warning for an attempt whose
-command did not run here (a peer's update was awaited, it was skipped while another
-process held the update, or the login shell failed before running it) has no
-`updateCwd`. Like all
+allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
+never terminal transcripts, prompts, tokens, or environment secrets. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
 `ready`.
@@ -91,27 +75,15 @@ an inherited `SHELL` environment override from the parent process.
 
 These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
-preflights on a single thread. Each probe runs in the session's launch directory
-(§4.2). Elwood reads each adapter's `--version`, and Codex's `--help`, there and
-keeps the successful reads of the 32 most recently used launch directories —
-concurrent reads in one directory share a single subprocess — mirroring the
-once-per-process autoupdate dedupe (C-LIFE-09). A read is keyed by the launch
-directory (its device and inode) as well as its path: a directory deleted and made
-again at the same path is read again, a symlink to a read directory is read as its
-own path, and a read whose directory replacement was detected at a validation
-boundary, or could not be identified, is not kept. Nor is a `--version` read with a
-stream longer than 65,536
-UTF-16 code units. A probe checks its actual initial directory before profiles and
-the original path after profiles (§4.2); a mismatch refuses the command and prevents
-cache retention. These checks do not make executable selection atomic or detect
-replacements wholly between checks. All cached version and capability reads, in
-every directory, are invalidated after every coordinated update attempt, including
-a failed or peer-owned attempt, because
-a failed installer may still have partially changed the binary. When `autoupdate`
-is set, concurrent callers share one update, which runs in the launch directory of
-the launch (start or resume) that triggers it; each caller then validates the
-post-attempt version its own launch directory resolves, so no caller proceeds on a
-stale pre-update version or races a second update. This mutual exclusion also applies across separate Elwood parent
+preflights on a single thread. Elwood reads each adapter's `--version` at most
+once per parent process — concurrent first reads share a single subprocess, and
+later reads reuse the cached result — mirroring the once-per-process autoupdate
+dedupe (C-LIFE-09). The cached version and adapter-capability reads are invalidated
+after every coordinated update attempt, including a failed or peer-owned attempt,
+because a failed installer may still have partially changed the binary. When
+`autoupdate` is set, concurrent callers share one update and all validate the same
+post-attempt version, so no caller proceeds on a stale pre-update version or races
+a second update. This mutual exclusion also applies across separate Elwood parent
 processes for the same macOS user and adapter: an atomic lease names the adapter in
 a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
@@ -174,47 +146,38 @@ the host. A probe runs through the user's interactive login shell (§4.2), and
 loading that shell's startup files is the user's profile, not the CLI: under
 concurrent launches on a loaded machine the profile alone can outlast the CLI's
 bound while the CLI itself answers in milliseconds. The two phases are therefore
-bounded separately. After the startup files load, and immediately before the probe
+bounded separately. After the startup files load, and before the probe
 command runs, the probe shell writes a start line of Elwood's own, ending in a random
 token chosen once per parent process so that no startup file's output can pass for it,
 on a private channel that is neither stdout nor stderr, so a startup file that
-redirects either cannot hide the line, and then writes the same line on stdout. A
-shell that closed that channel at startup (macOS's bash 3.2,
+redirects either cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
 started as an interactive login shell, closes every inherited descriptor above
-stderr) is started by the stdout copy instead. Not stderr, which a startup file is
-likelier to discard or merge into stdout. Neither write can end the shell under a
-startup file's `errexit`. The shell then `exec`s the probe command with its stdout
-and stderr redirected into two named pipes in a directory Elwood creates for that
-probe alone (mode 0700, in the system temp directory, removed however the probe
-ends). The login shell's own stdout and stderr are never captured: they are shared
-with everything the user's startup files run, which prints before the command,
-while it runs (a DEBUG or ZERR trap, a background helper), and after it (an EXIT
-trap, `.zlogout`), and that output can hold expanded secrets. Nothing the shell
-started holds the named pipes, and after `exec` no shell code runs, so the captured
-output is the command's own. zsh runs a startup file's `command_not_found_handler`
-under the redirections of an `exec` that finds no command, so the script removes that
-handler before its `exec`. The named pipes are read as the command's own pipes
-would be: a process the command starts that keeps its output open keeps the probe
-open until it closes them or the command's bound ends the probe, and a writer still
-holding one once the probe ends is stopped by `SIGPIPE`. The probe's exit status is the command's; a command killed by a signal reports
-128+n. A probe command is one program and its arguments. A lookup answered by a
-shell builtin's status alone (`command -v`) runs without `exec`, its output
-discarded, and captures nothing. A probe that cannot create its directory or named
-pipes fails without running, and its cause says so.
+stderr) writes the line on stdout instead. Not stderr, which a startup file may
+discard or merge into stdout: a startup file that hid stdout would also hide the
+command's own output. Elwood removes the line from captured stdout, so on either
+channel the probe's captured output is exactly the shell's and the command's.
+The private channel stays open past the start line, for the e2e home guard's stop
+line (§12), and closes before the command, which never inherits it.
+After the start line and before the command, the probe script removes the user's
+not-found handlers, zsh's `command_not_found_handler` and bash's
+`command_not_found_handle`, under the command's bound, which starts at the line. A
+CLI missing from the login shell's PATH therefore exits 127 and is reported as not
+found, and nothing a handler would print is captured.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
-(1,000,000 bytes), is killed, and its captured output is truncated to the cap. A
-stream is read only up to the cap, so a command writing past it is held by its full
-pipe until it is killed.
-Either timeout reports `ETIMEDOUT`. A login shell that misses the launch bound, or
+(1,000,000 bytes), is killed, and its captured output is truncated to the cap.
+Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
+process dies of a signal Elwood did not send reports the status a shell would, 128 plus
+the signal's number; a login shell that dies before then is a login-shell failure, as
+follows. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
 say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
-login shell, and its typed error details carry `phase: "login_shell"`. The command
-never ran and the shell's own output is never captured, so `details.stderr` is
-empty. A best-effort update probe that fails this way
+login shell, and its typed error details carry `phase: "login_shell"`. Its captured
+stderr is only the user's startup output, which can hold expanded secrets, so it is
+withheld: `details.stderr` is empty. A best-effort update probe that fails this way
 surfaces the `agent_update_failed` warning with `errorCode: "login_shell_failed"` and
 an empty `raw`. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,
@@ -243,10 +206,11 @@ non-PTY probe — `--version`, `--help` capability detection, and
 otherwise) surfaces through that probe's existing public error name —
 `claude_start_failed` / `codex_start_failed` — with the underlying reason
 preserved in the error `details` as `cause` (and `errno`, e.g. `ETIMEDOUT` on
-timeout or `E2BIG` on overflow) alongside the command's own `stderr`. An UPDATE failure
+timeout or `E2BIG` on overflow) alongside any `stderr`, and the status the probe
+reported, if any, as `exitStatus`. An UPDATE failure
 (`claude update` / `codex update`), being best-effort maintenance, does NOT
 surface as a start-blocking error; it is contained and surfaces as the live
-`agent_update_failed` warning carrying the same bounded diagnostics (exit status,
+`agent_update_failed` warning carrying the same bounded diagnostics (`exitStatus`,
 `errno`, `stderr`), while startup continues through the compatibility gate. A
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.

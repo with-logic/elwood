@@ -23,11 +23,8 @@ export type AgentUpdateFailedWarning = {
   readonly installedVersion: string;
   readonly errorCode: string;
   readonly raw: string;
-  /**
-   * The directory the update command ran in: the launch directory of the start or resume that
-   * triggered this process's one update attempt. Absent when no update command ran here (§9.2).
-   */
-  readonly updateCwd?: string;
+  /** The update command's exit status, 128+n if a signal killed it; absent when it reported none. */
+  readonly exitStatus?: number;
 };
 
 /** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */

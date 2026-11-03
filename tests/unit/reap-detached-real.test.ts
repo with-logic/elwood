@@ -9,7 +9,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
@@ -22,8 +22,9 @@ import {
   killTreeIn,
   observedProcessShape,
   startDetachedTree,
+  waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
-import { killGroupsWhoseCommandHas, pollGone } from "../helpers/process-liveness.ts";
+import { killGroupsWhoseCommandHas, pollGone, processRows } from "../helpers/process-liveness.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
 
 describe("C-LIFE-10 detached descendants (real processes)", () => {
@@ -62,6 +63,40 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
     expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
   });
+
+  // Linux `ps` shows the executable's name as the command name, not argv[0]. The install
+  // removed is the e2e suite's case: it removed homes whose daemons kept running.
+  for (const install of ["in place", "removed"] as const) {
+    test.skipIf(process.platform !== "darwin")(
+      `kill never signals Codex's app-server daemon or its updater loop, its install ${install}`,
+      async () => {
+        const tree = startDetachedTree("with-daemon");
+        const [child, grandchild] = await detachedDescendantPids(tree);
+        const [daemon, updater, mcp] = await Promise.all([
+          waitForTreeProcessPid(tree, "daemon"),
+          waitForTreeProcessPid(tree, "updater"),
+          waitForTreeProcessPid(tree, "mcp"),
+        ]);
+        // As the Codex 0.164 TUI starts them: setsid children of its own, from its install.
+        expect(await observedProcessShape([daemon, updater, mcp])).toEqual({
+          [daemon]: `ppid=${tree.pty.pid} pgid=${daemon}`,
+          [updater]: `ppid=${tree.pty.pid} pgid=${updater}`,
+          [mcp]: `ppid=${daemon} pgid=${mcp}`,
+        });
+        if (install === "removed") rmSync(join(tree.dir, "packages"), { recursive: true });
+        await terminatePty(tree.pty, "SIGKILL", new SessionReaper(tree.pty.pid));
+        expect(await pollGone({ pid: child, timeoutMs: 5_000 })).toBe(true);
+        expect(await pollGone({ pid: grandchild, timeoutMs: 5_000 })).toBe(true);
+        const rows = processRows(10_000);
+        for (const pid of [daemon, updater, mcp]) {
+          // Running, and still this tree's process, not a reuse of its pid.
+          const row = rows.find((entry) => entry.pid === pid);
+          expect(row?.command).toContain(tree.dir);
+          expect(row?.stat).toMatch(/^[^TZ]/);
+        }
+      },
+    );
+  }
 
   test("a detached process that is NOT a descendant of the leader is left alone", async () => {
     const tree = startDetachedTree();
@@ -112,6 +147,7 @@ describe("C-LIFE-10 a failed real-process test leaves no detached tree behind", 
     const reaper = new SessionReaper(tree.pty.pid, {
       stopGroup: () => undefined,
       killGroup: () => undefined,
+      continueGroup: () => undefined,
       listProcesses: () => Promise.reject(unreadable),
     });
     await expect(reaper.sweepDetached(() => false)).rejects.toThrow("process table unreadable");

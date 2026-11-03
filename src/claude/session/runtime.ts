@@ -3,6 +3,7 @@
  * Implements PRD §4, §6, and §9.
  */
 
+import { resolve } from "node:path";
 import { bridgeScriptSource } from "../../bridge/script.ts";
 import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
@@ -20,10 +21,6 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { currentPtyFactory } from "../../runtime/seams.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
-import {
-  assertLaunchDirectoryUnchanged,
-  type CheckedLaunchDirectory,
-} from "../../runtime/session/launch-directory.ts";
 import { userShell } from "../../runtime/shell.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -32,16 +29,11 @@ import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
 
-/** A launch's options, with the directory it checked first: its PTY is spawned only there. */
-export type ClaudeLaunchOptions = StartClaudeOptions & {
-  readonly launchDirectory: CheckedLaunchDirectory;
-};
-
 export type BuildClaudeSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
-  readonly options: ClaudeLaunchOptions;
+  readonly options: StartClaudeOptions;
   readonly resumed: boolean;
   readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
@@ -96,21 +88,17 @@ export function cliHookTimeoutSeconds(hookTimeoutMs: number): number {
 export function spawnClaudePty(
   record: SessionRecord,
   settingsPath: string,
-  options: ClaudeLaunchOptions & { readonly initialSize: TerminalSize },
+  options: StartClaudeOptions & { readonly initialSize: TerminalSize },
 ): PtyProcess {
   const launch = shellLaunch(
     userShell(),
     buildClaudeShellCommand(settingsPath, options, record.claude.resumeId),
   );
-  // Last host check of the initial cwd; the child checks before/after profiles (§4.2).
-  // Profiles may cd, and validation does not make execution atomic.
-  assertLaunchDirectoryUnchanged(options.launchDirectory);
   try {
     return currentPtyFactory()({
       command: launch.command,
       args: launch.args,
-      cwd: options.launchDirectory.cwd,
-      directoryIdentity: options.launchDirectory.identity,
+      cwd: resolve(options.cwd),
       env: {
         ...process.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,
