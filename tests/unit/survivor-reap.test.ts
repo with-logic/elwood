@@ -17,7 +17,10 @@ import {
   leaderRow,
   scripted,
   ticking,
+  useScriptedHost,
 } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 afterEach(() => {
   vi.restoreAllMocks();

@@ -15,7 +15,10 @@ import {
   leaderNeverExits,
   leaderRow,
   scripted,
+  useScriptedHost,
 } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 describe("C-LIFE-10 the walk and Codex's shared daemon", () => {
   test("never follows a daemon, nor anything it started", () => {

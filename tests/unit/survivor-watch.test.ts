@@ -8,7 +8,16 @@
 import { describe, expect, test, vi } from "vitest";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
-import { errno, hook, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
+import {
+  errno,
+  hook,
+  LEADER,
+  leaderRow,
+  scripted,
+  useScriptedHost,
+} from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 /** The leader's tree as the read before the SIGTERM shows it, then as its exit leaves it. */
 const tree = [leaderRow, hook(5002), hook(5003, { ppid: 5002, pgid: 5002 })];

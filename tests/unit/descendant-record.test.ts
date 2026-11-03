@@ -13,7 +13,9 @@ import {
 } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
-import { hook, LEADER, leaderRow } from "../helpers/scripted-process-tree.ts";
+import { hook, LEADER, leaderRow, useScriptedHost } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 afterEach(() => {
   vi.useRealTimers();
