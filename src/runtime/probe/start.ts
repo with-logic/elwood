@@ -58,23 +58,9 @@ export const probeOutputRedirect = ">%elwood-probe-stdout% 2>%elwood-probe-stder
 export const probeNotFoundHandlerReset =
   "unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; ";
 
-/**
- * Post-profile handoff to a clean exec helper: failed exec diagnostics are captured, while
- * the interactive shell's hooks keep their original descriptors (C-PERF-05). The helper's
- * noninteractive POSIX shell reads no login/interactive startup files.
- */
-export function probeScript(command: string): string {
-  return `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}${probeExec(command)}`;
-}
-
-/** One simple program and its arguments, expanded by the user's shell before the handoff. */
-export function probeExec(command: string): string {
-  return `exec /bin/sh -c 'exec "$@"' elwood-probe-exec ${command} ${probeOutputRedirect}`;
-}
-
 /** Whether a probe runs a script that announces its command with the start line. */
 export function announcesStart(args: readonly string[]): boolean {
-  return args.at(-1)?.includes(probeStartScript) ?? false;
+  return args.at(-1)?.startsWith(probeStartScript) ?? false;
 }
 
 const startText = `${probeCommandStartLine}\n`;

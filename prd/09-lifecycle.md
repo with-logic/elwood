@@ -152,19 +152,10 @@ token chosen once per parent process so that no startup file's output can pass f
 on a private channel that is neither stdout nor stderr, so a startup file that
 redirects either cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
 started as an interactive login shell, closes every inherited descriptor above
-stderr) writes the line on stdout instead. A profile that also hides stdout can
-hide that fallback line even when the command runs; an unobserved line does not
-prove that the command never ran. Command output remains separately captured.
-Elwood removes the start line from any
-captured stdout. Only the command's stdout/stderr and a clean exec helper's failed-exec
-diagnostic are retained, never login-shell profile, trap, or logout output. FIFO paths
-are absent from the startup environment and supplied only in the post-profile script.
-The command receives EOF on stdin. A lightweight shell supervisor holds the detached
-process-group identity until the command and its inherited FIFO writers have finished;
-it reports the command's exact status on a descriptor the login shell never inherits,
-and awaits the parent's acknowledgement. If a writer stays silent, the command bound
-still terminates its owned group. Pending capture keeps an otherwise idle host alive.
-Capture setup errors preserve their cause/errno and fail startup, never diagnose an absent CLI.
+stderr) writes the line on stdout instead. Not stderr, which a startup file may
+discard or merge into stdout: a startup file that hid stdout would also hide the
+command's own output. Elwood removes the line from captured stdout, so on either
+channel the probe's captured output is exactly the shell's and the command's.
 The private channel stays open past the start line, for the e2e home guard's stop
 line (§12), and closes before the command, which never inherits it.
 After the start line and before the command, the probe script removes the user's
@@ -174,7 +165,7 @@ CLI missing from the login shell's PATH therefore exits 127 and is reported as n
 found, and nothing a handler would print is captured.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
-its output, including inherited writers, finishes. A probe that
+it exits. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
 Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
@@ -182,9 +173,11 @@ process dies of a signal Elwood did not send reports the status a shell would, 1
 the signal's number; a login shell that dies before then is a login-shell failure, as
 follows. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
-say), cannot establish the command start, so the probe fails as a login-shell failure
+say), never ran the probe command, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
-login shell, and its typed error details carry `phase: "login_shell"`. Its stderr is withheld: `details.stderr` is empty. A best-effort update probe that fails this way
+login shell, and its typed error details carry `phase: "login_shell"`. Its captured
+stderr is only the user's startup output, which can hold expanded secrets, so it is
+withheld: `details.stderr` is empty. A best-effort update probe that fails this way
 surfaces the `agent_update_failed` warning with `errorCode: "login_shell_failed"` and
 an empty `raw`. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,

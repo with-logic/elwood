@@ -80,10 +80,7 @@ async function readClaudeVersion(): Promise<CommandResult> {
   const result = await cachedVersionRead("claude", () =>
     Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("claude --version"))),
   );
-  if (
-    (result.error?.code === "ENOENT" && result.error.origin !== "probe_setup") ||
-    result.status === 127
-  ) {
+  if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
   }
   if (result.status !== 0) {

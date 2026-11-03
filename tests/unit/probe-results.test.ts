@@ -46,7 +46,7 @@ test.each([
     "a login shell that exited before the command",
     shellExited(2, "out", "err"),
     {
-      message: "login shell exited with status 2 without an observed probe start line",
+      message: "login shell exited with status 2 before starting the probe command",
       phase: "login_shell",
       shellStatus: 2,
     },

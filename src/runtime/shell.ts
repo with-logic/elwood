@@ -16,7 +16,6 @@ import {
 import {
   probeControlClose,
   probeControlFd,
-  probeExec,
   probeNotFoundHandlerReset,
   probeStartScript,
 } from "./probe/start.ts";
@@ -53,10 +52,10 @@ export function loginShellCommand(command: string): LoginShellArgs {
  * between the line and the CLI too: a few builtins.
  */
 export function probeShellCommand(command: string): LoginShellArgs {
-  // The guard announces its refusal after the start line, preserving its distinct
-  // result classification when that line is observed (`homeGuardStopped`).
+  // The start line comes first, so the runner still tells a shell that never started the
+  // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
   const guard = homeGuardScript("probe");
-  const script = `${probeStartScript}${guard}${probeControlClose}${probeNotFoundHandlerReset}${probeExec(command)}`;
+  const script = `${probeStartScript}${guard}${probeControlClose}${probeNotFoundHandlerReset}${command}`;
   return loginShellArgs(script);
 }
 
@@ -65,10 +64,7 @@ export function probeShellCommand(command: string): LoginShellArgs {
  * command's output goes to `/dev/null`, so the probe captures none of it.
  */
 export function probeShellStatus(command: string): LoginShellArgs {
-  const guard = homeGuardScript("probe");
-  return loginShellArgs(
-    `${probeStartScript}${guard}${probeControlClose}${probeNotFoundHandlerReset}${command} >/dev/null 2>&1`,
-  );
+  return probeShellCommand(`${command} >/dev/null 2>&1`);
 }
 
 /**

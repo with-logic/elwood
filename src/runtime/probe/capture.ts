@@ -67,7 +67,6 @@ export function probeCapture(args: readonly string[]): Promise<ProbeCapture> {
 /** A directly spawned command's own stdout and stderr pipes. */
 class PipeCapture implements ProbeCapture {
   private readonly buffers = [new CappedBuffer(), new CappedBuffer()] as const;
-  private readonly detach: (() => void)[] = [];
 
   args(args: readonly string[]): readonly string[] {
     return args;
@@ -76,12 +75,10 @@ class PipeCapture implements ProbeCapture {
   watch(child: ProbeChild, events: CaptureEvents): void {
     [child.stdout, child.stderr].forEach((stream, index) => {
       const buffer = this.buffers[index] as CappedBuffer;
-      const data = (chunk: Buffer) => {
+      stream.on("data", (chunk: Buffer) => {
         buffer.append(chunk);
         if (buffer.overflowed) events.overflowed();
-      };
-      stream.on("data", data);
-      this.detach.push(() => stream.off("data", data));
+      });
     });
   }
 
@@ -96,7 +93,6 @@ class PipeCapture implements ProbeCapture {
   release(): void {
     // An unresolved probe's reaper retains the child and its listeners, and through them
     // these chunks, so they are dropped here rather than left for the reaper to outlive.
-    for (const detach of this.detach.splice(0)) detach();
     for (const buffer of this.buffers) buffer.release();
   }
 }

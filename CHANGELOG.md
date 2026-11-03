@@ -12,14 +12,6 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Keep probe diagnostics separate from login-shell profile, trap, and logout output,
-  including failed CLI execs. The clean exec helper's own failure message is retained.
-  Probe FIFO paths are absent from the startup environment and probe stdin is EOF.
-  Inherited output writers
-  remain owned through capture completion, so silent holders are killed at the command
-  bound and an idle host still delivers the result. Capture setup errors preserve their
-  cause and errno as startup failures instead of falsely reporting a missing CLI.
-
 - A session's final transcript flush, and a Claude subagent's retirement, now read
   the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
   transcripts, before their 50 ms time limit can stop them. Before, a host too loaded

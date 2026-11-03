@@ -38,6 +38,9 @@ const pipeNames = ["stdout", "stderr"] as const;
 const systemMkfifo = "/usr/bin/mkfifo";
 let mkfifo = systemMkfifo;
 
+/** Setup gets its own bound before a probe's shell and command timers can start. */
+export const probeOutputSetupTimeoutMs = 60_000;
+
 /** Points the capture at another `mkfifo`, so a test can make one fail; with none, the system's. */
 export function setMkfifoForTests(path: string = systemMkfifo): void {
   mkfifo = path;
@@ -99,9 +102,8 @@ class NamedPipe {
  * Two named pipes in a directory made for one probe, mode 0700, removed on release. They read
  * as an ordinary pipe does: anything the command starts that keeps its output open keeps the
  * probe open, a full pipe blocks its writer, and once Elwood's read ends close, a writer that
- * remains sees `SIGPIPE` when it next writes. The runner retains a live process-group owner
- * through completion, so its command bound can also terminate silent inherited writers.
- * Node has no `mkfifo`, so the system's makes them.
+ * remains is stopped by `SIGPIPE` when it next writes; one that stays silent lives on, as it
+ * would on an ordinary pipe. Node has no `mkfifo`, so the system's makes them.
  */
 export class NamedPipeCapture implements ProbeCapture {
   private readonly dir: string;
@@ -124,10 +126,13 @@ export class NamedPipeCapture implements ProbeCapture {
     );
   }
 
-  static async create(): Promise<NamedPipeCapture> {
+  static async create(setupTimeoutMs = probeOutputSetupTimeoutMs): Promise<NamedPipeCapture> {
     const capture = new NamedPipeCapture(makePrivateDirectory());
     try {
-      await run(mkfifo, ["-m", pipeMode, ...capture.pipes.map((pipe) => pipe.path)]);
+      await run(mkfifo, ["-m", pipeMode, ...capture.pipes.map((pipe) => pipe.path)], {
+        timeout: setupTimeoutMs,
+        killSignal: "SIGKILL",
+      });
       for (const pipe of capture.pipes) pipe.open();
       return capture;
     } catch (error) {

@@ -27,7 +27,7 @@ export function launchTimedOut(ms: number, stdout: string, stderr: string): Comm
 }
 
 export function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
-  const message = `login shell exited with status ${status} without an observed probe start line`;
+  const message = `login shell exited with status ${status} before starting the probe command`;
   const error = { message, phase: "login_shell", shellStatus: status } as const;
   return { status: null, stdout, stderr, error };
 }
@@ -45,17 +45,4 @@ export function guardStopped(stdout: string, stderr: string): CommandResult {
 export function overflow(stdout: string, stderr: string): CommandResult {
   const message = `a probe output stream exceeded ${maxProbeStreamOutputBytes} bytes`;
   return { status: null, stdout, stderr, error: { code: "E2BIG", message } };
-}
-
-/** Setup never diagnoses an absent CLI; execFile may use numeric/null exit codes. */
-export function outputUnavailable(error: unknown): CommandResult {
-  const details = error instanceof Error ? error : new Error(String(error));
-  const code = "code" in details && typeof details.code === "string" ? { code: details.code } : {};
-  const message = `could not create the probe's private output pipes: ${details.message}`;
-  return {
-    status: null,
-    stdout: "",
-    stderr: "",
-    error: { message, ...code, origin: "probe_setup" },
-  };
 }

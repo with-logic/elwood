@@ -139,8 +139,8 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
  * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
  * output overflow) so a start failure never drops the underlying reason. `exitStatus` is the
  * status the probe reported, 128+n for a signal death, and is absent when it reported none.
- * A login-shell failure (`phase: "login_shell"`) may have no observed command start line;
- * its stderr can be startup output carrying expanded secrets, so it is withheld.
+ * A login-shell failure (`phase: "login_shell"`) never ran the command, so its stderr is
+ * only the user's startup output, which can carry expanded secrets: it is withheld.
  * `cleanupErrorCode` and `cleanupProcessGroupId` appear only when an aborted probe's cleanup
  * stayed unconfirmed. The group id is diagnostic: it may already be reissued to an unrelated
  * group, so it must never be signaled.

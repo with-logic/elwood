@@ -17,8 +17,6 @@ export type CommandResult = {
     readonly message: string;
     /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
     readonly phase?: "login_shell";
-    /** Capture setup failed before a login shell could start. */
-    readonly origin?: "probe_setup";
     /** The login shell's own status when it exited before starting the command. */
     readonly shellStatus?: number | null;
   } & ProbeCleanup;

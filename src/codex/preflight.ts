@@ -81,10 +81,7 @@ async function readCodexVersion(): Promise<CommandResult> {
   const result = await cachedVersionRead("codex", () =>
     Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
   );
-  if (
-    (result.error?.code === "ENOENT" && result.error.origin !== "probe_setup") ||
-    result.status === 127
-  ) {
+  if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
   if (result.status !== 0) {
