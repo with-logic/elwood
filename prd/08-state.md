@@ -14,7 +14,12 @@ spellings address the same session store. When Elwood initializes the default
 project-local state directory, it should create `.elwood/.gitignore` when that
 file does not already exist. Elwood MUST NOT overwrite an existing gitignore
 file and MUST NOT create gitignore files in caller-provided custom state
-directories unless a future explicit option asks it to.
+directories unless a future explicit option asks it to. The default ignore file is
+fully written before installation, which must preserve a concurrently created
+file. Failed installation must not leave an empty or partial default ignore. A complete
+published ignore is retained if later installation cleanup or directory syncing
+fails, since another start may already rely on it. Existing entries must be
+regular files, never symlinks, and their directory is synced before setup accepts them.
 The default `.elwood/` directory and generated `.elwood/.gitignore` should be
 readable by normal local tooling, while session-specific subdirectories remain
 private.
