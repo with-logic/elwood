@@ -34,7 +34,7 @@ export {
   setProcessTreeOpsForTests,
 } from "./process-tree-ops.ts";
 
-export type SweepSignalOutcome = "signal-sent" | "leader-group-gone";
+export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
 
 /**
  * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
@@ -75,7 +75,7 @@ export class SessionReaper {
   }
 
   /** Dispatch a PTY signal only while this session has not confirmed its group gone. */
-  signalLeaderPty(send: () => void): SweepSignalOutcome {
+  signalLeaderPty(send: () => void): LeaderPtySignalOutcome {
     if (this.leaderGroupGone) {
       this.reapAndThrowOnDetachedSweepFailure();
       return "leader-group-gone";

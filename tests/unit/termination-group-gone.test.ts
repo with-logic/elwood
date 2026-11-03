@@ -6,6 +6,7 @@ import { runTeardownSteps } from "../../src/runtime/shutdown/teardown.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import {
   errno,
+  hook,
   LEADER,
   leaderRow,
   scripted,
@@ -62,6 +63,7 @@ test("C-LIFE-10 confirmed group exit does not clear an earlier unresolved descen
   const send = vi.fn();
   await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
     code: "termination_failed",
+    message: "PTY exited but its detached descendants could not be confirmed reaped.",
     details: {
       cause: expect.stringContaining("could not stop the leader's group"),
       unconfirmedProcessGroupIds: [LEADER],
@@ -75,6 +77,7 @@ test("C-LIFE-10 confirmed group exit does not clear an earlier unresolved descen
       failures: [
         {
           code: "termination_failed",
+          message: "PTY exited but its detached descendants could not be confirmed reaped.",
           details: { unconfirmedProcessGroupIds: [LEADER] },
         },
       ],
@@ -104,8 +107,15 @@ test("C-LIFE-10 a queued sweep rechecks group-gone evidence before dispatch", as
   expect(fake.calls).toEqual([]);
 });
 
-test("C-LIFE-10 EPERM with a live leader still sends SIGKILL and retains its failure", async () => {
-  const fake = scripted([[leaderRow]], {
+test.each([
+  "live leader",
+  "zombie leader with live group child",
+] as const)("C-LIFE-10 EPERM with a %s still sends SIGKILL and retains its failure", async (kind) => {
+  const rows =
+    kind === "live leader"
+      ? [leaderRow]
+      : [{ ...leaderRow, zombie: true }, hook(5002, { pgid: LEADER })];
+  const fake = scripted([rows], {
     stopGroup: () => {
       throw errno("EPERM");
     },
