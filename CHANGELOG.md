@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Avoid a duplicate automatic agent update when a contender reads its owner’s completion just before the update lease is released.
+- Concurrent Elwood processes avoid repeating an automatic agent update that another process has completed.
 
 - Preserve native cause, `syscall`, and `path` diagnostics for probe failures surfaced as startup errors, including missing login shells; missing-command diagnostics withhold shell output.
 - Preserve a resolved CLI's diagnostic when it exits with status 127 instead of reporting it missing from PATH. A command lookup must fail before Elwood uses the fixed not-found diagnostic.

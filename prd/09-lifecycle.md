@@ -94,7 +94,12 @@ rest covers their abort cleanup. An owner that has not finished by then causes t
 contender to skip its update and warn, without deleting the owner's lease. This warning uses `errorCode: "update_active"`
 and a canonical message explaining that the update was skipped because another
 updater is still active; no local update command ran, so it carries no exit status
-or stderr. The lease records the owner's process id and a unique
+or stderr. Completion publication atomically replaces the marker's token file. A contender
+pins its baseline file before observing the owner, then compares the pinned token
+with the current pathname after acquisition; recovered owner generations remain
+completion evidence. Concurrent older Elwood writers that modify a marker inode
+in place retain the earlier snapshot race; its token payload remains compatible.
+The lease records the owner's process id and a unique
 generation. Cleanup removes only the generation it owns, a live owner is never
 evicted solely because the stale bound elapsed, and recovery of a dead owner's
 lease is itself serialized before removal, so neither cleanup nor concurrent stale

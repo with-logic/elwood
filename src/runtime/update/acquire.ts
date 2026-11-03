@@ -1,8 +1,9 @@
 /** Completion-aware acquisition of the global update lease (PRD §9.2, C-PERF-04). */
 import { elwoodError } from "../../core/errors.ts";
+import { completionSnapshot, readCompletionGeneration } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
-import { type LeaseOwner, readOptionalText, readOwner, releaseLease } from "./owner.ts";
-import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
+import { type LeaseOwner, releaseLease } from "./owner.ts";
+import { pathExists, recoveryPath, type UpdateWaitResult, waitForOwner } from "./waiting.ts";
 
 type Acquisition = {
   readonly adapter: UpdateAdapter;
@@ -26,9 +27,12 @@ export async function acquireUpdateLease({
   waitUntilMs,
   claim,
 }: Acquisition): Promise<boolean> {
-  // Observe the owner before its completion can be sampled and its lease retired.
-  const observedGeneration = (await readOwner(leasePath))?.token;
-  const priorCompletionGeneration = await readOptionalText(completionMarkerPath);
+  const {
+    ownerGeneration: observedGeneration,
+    priorCompletionGeneration,
+    ownerAlreadyCompleted,
+  } = await completionSnapshot(leasePath, completionMarkerPath);
+  const observedGenerations = new Set(observedGeneration === undefined ? [] : [observedGeneration]);
   let observedActive =
     observedGeneration !== undefined ||
     (await pathExists(leasePath)) ||
@@ -41,30 +45,53 @@ export async function acquireUpdateLease({
     // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
-    const waited = await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs);
-    if (waited === "released") return false;
-    if (waited === "wait_expired") {
+    const waited = recoveredWait(
+      adapter,
+      await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs),
+    );
+    if (waited === false) return false;
+    if (waited.generation !== undefined) observedGenerations.add(waited.generation);
+    recoveredStale = true;
+  }
+  let currentCompletionGeneration: string | undefined;
+  try {
+    currentCompletionGeneration = await readCompletionGeneration(completionMarkerPath);
+  } catch (error) {
+    await releaseLease(leasePath, owner);
+    throw error;
+  }
+  const observedOwnerCompleted =
+    ownerAlreadyCompleted ||
+    (currentCompletionGeneration !== undefined &&
+      observedGenerations.has(currentCompletionGeneration));
+  const completionAdvanced = currentCompletionGeneration !== priorCompletionGeneration;
+  const unrecoveredContention = !recoveredStale && observedActive;
+  if (observedOwnerCompleted || completionAdvanced || unrecoveredContention) {
+    await releaseLease(leasePath, owner);
+    return false;
+  }
+  return true;
+}
+
+/** A nonoptional return and no default make future wait variants a compile-time error. */
+function recoveredWait(
+  adapter: UpdateAdapter,
+  result: UpdateWaitResult,
+): false | Extract<UpdateWaitResult, { readonly status: "stale_removed" }> {
+  switch (result.status) {
+    case "released":
+      return false;
+    case "wait_expired":
       throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
         updateReason: "active_owner",
       });
-    }
-    if (waited === "cleanup_pending") {
+    case "cleanup_pending":
       throw elwoodError(
         `${adapter}_update_failed`,
         "Another updater's process group has not exited.",
         { updateReason: "cleanup_pending", cleanupErrorCode: "ETIMEDOUT" },
       );
-    }
-    recoveredStale = true;
+    case "stale_removed":
+      return result;
   }
-  const currentCompletionGeneration = await readOptionalText(completionMarkerPath);
-  if (
-    (observedGeneration !== undefined && priorCompletionGeneration === observedGeneration) ||
-    currentCompletionGeneration !== priorCompletionGeneration ||
-    (!recoveredStale && observedActive)
-  ) {
-    await releaseLease(leasePath, owner);
-    return false;
-  }
-  return true;
 }

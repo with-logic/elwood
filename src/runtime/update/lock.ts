@@ -10,6 +10,7 @@ import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
 import { acquireUpdateLease } from "./acquire.ts";
+import { publishCompletionGeneration } from "./completion.ts";
 import {
   type LeaseOwner,
   ownerFile,
@@ -101,7 +102,7 @@ export async function coordinatedAutoupdate(
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
-    await Promise.allSettled([writeFile(completionMarkerPath, owner.token, { mode: 0o600 })]);
+    await Promise.allSettled([publishCompletionGeneration(leasePath, completionMarkerPath, owner)]);
     await releaseLease(leasePath, owner);
   } else {
     await retainLease(

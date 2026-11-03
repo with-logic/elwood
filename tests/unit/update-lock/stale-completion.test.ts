@@ -36,10 +36,13 @@ vi.mock("node:fs/promises", async (original) => {
 });
 
 test.each([
-  "owner-completed",
-  "peer-after-recovery",
-  "abandoned",
-])("C-PERF-04 stale recovery respects %s completion state", async (scenario) => {
+  { scenario: "owner-completed", expected: [] },
+  { scenario: "peer-after-recovery", expected: ["peer"] },
+  { scenario: "abandoned", expected: ["contender"] },
+] as const)("C-PERF-04 stale recovery respects $scenario completion state", async ({
+  scenario,
+  expected,
+}) => {
   const root = tempDir("elwood-stale-completion-");
   const leasePath = updateLockPath("codex", root);
   window.marker = join(root, "codex.completed");
@@ -65,9 +68,7 @@ test.each([
       () => Promise.resolve(void attempts.push("contender")),
       options,
     );
-    expect(attempts).toEqual(
-      scenario === "abandoned" ? ["contender"] : scenario === "peer-after-recovery" ? ["peer"] : [],
-    );
+    expect(attempts).toEqual(expected);
     expect(readFileSync(window.marker, "utf8")).not.toBe("before");
     expect(existsSync(leasePath)).toBe(false);
   } finally {
