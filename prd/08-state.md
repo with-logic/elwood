@@ -47,7 +47,14 @@ removed state directory, is never recreated by a start, a resume, or a running
 session's later writes. A start fails instead, before its agent is spawned, and
 so does a write whose state directory is gone, as when it was in the removed
 worktree; a running session whose state directory is elsewhere keeps writing
-there (C-STATE-14).
+there (C-STATE-14). If state preparation fails, its empty owned scaffolding is removed.
+The default shared state root and `sessions` directory are retained: another setup,
+including one without a session ID yet, may already rely on them. Only the failed
+attempt's empty named session directory is removed there. A complete published
+default ignore is shared configuration and is never rolled back by that attempt.
+Custom-state empty scaffolding remains eligible for removal. Cleanup attempts every
+eligible directory and preserves the primary setup failure with its first cleanup
+code, including inside typed error details.
 
 Before creating or changing state, Elwood MUST reject a symlink at the state
 root, sessions directory, or session directory, and reject user-owned symlink

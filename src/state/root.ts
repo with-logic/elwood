@@ -78,25 +78,34 @@ const maxStateTreeAttempts = 3;
  * then requires `cwd` to exist still. A `cwd` removed meanwhile fails with ENOENT, and the
  * directories `makeTree` made are removed again, deepest first, so a root elsewhere does not
  * outlive the start that failed for it (C-STATE-14). One another start has put its session in
- * meanwhile is left to it, and so is one already gone.
+ * meanwhile is left to it, and so is one already gone. The caller may retain shared
+ * directories: another setup can already rely on them, even without a named session.
  */
-export function makeStateTree(cwd: string, deepest: string, makeTree: () => void): void {
+export function makeStateTree(
+  cwd: string,
+  deepest: string,
+  makeTree: () => void,
+  retainedDirectories: ReadonlySet<string> = new Set(),
+): void {
   const made = new Set<string>();
-  for (let attempt = 1; ; attempt += 1) {
-    for (let path = deepest; !existsSync(path); path = dirname(path)) made.add(path);
-    try {
-      makeTree();
-      break;
-    } catch (error) {
-      const retry = errnoCode(error) === "ENOENT" && existsSync(cwd);
-      if (!retry || attempt === maxStateTreeAttempts) throw error;
-    }
-  }
   try {
+    for (let attempt = 1; ; attempt += 1) {
+      for (let path = deepest; !existsSync(path); path = dirname(path)) made.add(path);
+      try {
+        makeTree();
+        break;
+      } catch (error) {
+        const retry = errnoCode(error) === "ENOENT" && existsSync(cwd);
+        if (!retry || attempt === maxStateTreeAttempts) throw error;
+      }
+    }
     realpathSync.native(cwd);
   } catch (error) {
     // Deepest first: each path is a parent of the ones before it.
-    const cleanupErrorCode = removeMade([...made].sort((a, b) => b.length - a.length));
+    const cleanupErrorCode = removeMade(
+      [...made].sort((a, b) => b.length - a.length),
+      retainedDirectories,
+    );
     throw stateCleanupFailure(error, cleanupErrorCode);
   }
 }
@@ -105,9 +114,13 @@ export function makeStateTree(cwd: string, deepest: string, makeTree: () => void
  * Removes each of `directories` that is still empty, and returns the code of the first removal
  * that failed for another reason. An undo never replaces the failure that caused it.
  */
-function removeMade(directories: readonly string[]): string | undefined {
+function removeMade(
+  directories: readonly string[],
+  retainedDirectories: ReadonlySet<string>,
+): string | undefined {
   let failed: string | undefined;
   for (const directory of directories) {
+    if (retainedDirectories.has(directory)) continue;
     try {
       rmdirSync(directory);
     } catch (error) {

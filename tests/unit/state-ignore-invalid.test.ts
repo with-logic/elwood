@@ -63,7 +63,7 @@ describe.each([
       expect(fs.readFileSync(fault.target, "utf8")).toBe("keep");
       expect(fs.statSync(fault.target).mode & 0o777).toBe(0o600);
     }
-    expect(fs.existsSync(join(root, "sessions"))).toBe(false);
+    expect(fs.existsSync(join(root, "sessions"))).toBe(true); // shared setup scaffolding is retained
   });
 });
 

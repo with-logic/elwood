@@ -28,6 +28,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Preserve native cause, `syscall`, and `path` diagnostics for probe failures surfaced as startup errors, including missing login shells; missing-command diagnostics withhold shell output.
 - Preserve a resolved CLI's diagnostic when it exits with status 127 instead of reporting it missing from PATH. A command lookup must fail before Elwood uses the fixed not-found diagnostic.
+- Clean up eligible empty state scaffolding after setup fails while retaining shared default directories and complete ignores that another setup may already use; report cleanup failures with the original error.
 
 - Install the default `.elwood/.gitignore` atomically without overwriting a competing writer or leaving partial contents after a failed write.
 
