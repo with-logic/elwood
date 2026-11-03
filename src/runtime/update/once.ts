@@ -4,7 +4,11 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
-import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
+import {
+  createDirectoryProbeCache,
+  type DirectoryProbeCache,
+  readInDirectory,
+} from "../probe/directory-key.ts";
 import type { CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 
@@ -60,19 +64,25 @@ function finalizeAutoupdate(
   }
 }
 
+/** Settled directory results and retained version-text bounds (C-PERF-02). */
+export const maxSettledPreflightDirectoryResults = 32;
+export const maxKeptVersionStreamCodeUnits = 64 * 1024;
+
 /** A `--version` read that ran and exited 0; a killed, unspawnable, or failing one is not kept. */
 const readSucceeded = (result: CommandResult): boolean =>
-  result.status === 0 && result.error === undefined;
+  result.status === 0 &&
+  result.error === undefined &&
+  result.stdout.length <= maxKeptVersionStreamCodeUnits &&
+  result.stderr.length <= maxKeptVersionStreamCodeUnits;
 
-// The `--version` read per adapter. Concurrent first spawns share the in-flight PROMISE, so N of
-// them start ONE subprocess; once it settles, only a successful read is kept, as a value.
-const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
-  claude: createProbeCache(1, readSucceeded),
-  codex: createProbeCache(1, readSucceeded),
+// Matching directory reads share a run; only bounded successful answers remain cached.
+const versionReads: Record<UpdateAdapter, DirectoryProbeCache<CommandResult>> = {
+  claude: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, readSucceeded),
+  codex: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, readSucceeded),
 };
 
 /**
- * Reads the adapter's `--version` once per process for as long as a read succeeds. Concurrent
+ * Reads the adapter's `--version` per observed directory while a read succeeds. Concurrent
  * callers share the single in-flight read and its outcome; later callers reuse a successful
  * result. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
  * error), is not retained, so the next caller after it settles reads again (C-LIFE-11).
@@ -81,8 +91,9 @@ const versionReads: Record<UpdateAdapter, ProbeCache<CommandResult>> = {
 export function cachedVersionRead(
   adapter: UpdateAdapter,
   read: () => Promise<CommandResult>,
+  cwd: string = process.cwd(),
 ): Promise<CommandResult> {
-  return versionReads[adapter].get(adapter, read);
+  return readInDirectory(versionReads[adapter], cwd, read);
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {

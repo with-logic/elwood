@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
+import { type CommandOptions, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { fakeLaunch, resetFakeLaunch, resetPreflightCaches } from "../helpers/fake-launch.ts";
 import { replaceDirectory } from "../helpers/replace-directory.ts";
 import {
@@ -49,6 +50,24 @@ describe.each([
     resumeRepostured: (options: ResumeOptions) => resumeCodex({ ...options, sandbox: "read-only" }),
   },
 ] as const)("$agent", ({ agent, start, resume, resumeRepostured }) => {
+  test(`C-PERF-02 ${agent} start and resume probe their validated workspace`, async () => {
+    const cwd = worktree();
+    const stateDir = resumableStateDir(agent, cwd);
+    fakeLaunch();
+    const seen: (CommandOptions | undefined)[] = [];
+    setCommandRunnerForTests((_command, _args, options) => {
+      seen.push(options);
+      return { status: 0, stdout: "2.1.144", stderr: "" };
+    });
+    await expect(start({ cwd })).rejects.toMatchObject({ code: "pty_start_failed" });
+    resetPreflightCaches();
+    await expect(resume({ elwoodSessionId: `${agent}-preflight`, stateDir })).rejects.toMatchObject(
+      { code: "pty_start_failed" },
+    );
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(seen.every((options) => options?.cwd === cwd)).toBe(true);
+  });
+
   test(`C-API-61 ${agent} start whose directory is removed during preflight fails without recreating it`, async () => {
     const cwd = worktree();
     const launchedIn = fakeLaunch(() => rmSync(cwd, { recursive: true }));

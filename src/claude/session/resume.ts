@@ -52,6 +52,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
     const warning = await preflightClaude(
       options.strictVersionCheck ?? false,
       options.autoupdate ?? false,
+      cwd,
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
