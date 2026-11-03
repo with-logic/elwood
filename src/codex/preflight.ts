@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and §10.
  */
 
-import { elwoodError, probeFailureDetails } from "../core/errors.ts";
+import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
@@ -82,7 +82,11 @@ async function readCodexVersion(): Promise<CommandResult> {
     Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
+    throw elwoodError(
+      "codex_not_found",
+      "Could not find `codex` on PATH.",
+      notFoundDetails(result, "codex"),
+    );
   }
   if (result.status !== 0) {
     throw elwoodError(

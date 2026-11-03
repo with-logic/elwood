@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve native cause, `syscall`, and `path` diagnostics for failed preflight probes, including missing login shells; missing-command diagnostics withhold shell output.
+
 - Install the default `.elwood/.gitignore` atomically without overwriting a competing writer or leaving partial contents after a failed write.
 
 - A session's final transcript flush, and a Claude subagent's retirement, now read

@@ -3,6 +3,8 @@
  * Implements PRD §10.
  */
 
+import type { ElwoodAgentKind } from "./activity/index.ts";
+
 export type ElwoodErrorName =
   | "unsupported_platform"
   | "claude_not_found"
@@ -150,6 +152,8 @@ export function probeFailureDetails(result: {
   readonly stderr: string;
   readonly error?: {
     readonly code?: string | undefined;
+    readonly syscall?: string | undefined;
+    readonly path?: string | undefined;
     readonly message: string;
     // Structurally narrower than `string`: the only producer is `abortProbe`, whose
     // `ProbeCleanup` type pins this to the bounded allowlist plus `ETIMEDOUT`. Importing
@@ -167,6 +171,8 @@ export function probeFailureDetails(result: {
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;
+    if (typeof result.error.syscall === "string") details["syscall"] = result.error.syscall;
+    if (typeof result.error.path === "string") details["path"] = result.error.path;
     if (result.error.phase !== undefined) details["phase"] = result.error.phase;
     if (result.error.cleanupErrorCode !== undefined)
       details["cleanupErrorCode"] = result.error.cleanupErrorCode;
@@ -174,4 +180,15 @@ export function probeFailureDetails(result: {
       details["cleanupProcessGroupId"] = result.error.cleanupProcessGroupId;
   }
   return details;
+}
+
+/** Missing CLI diagnostics retain native causes, withholding shell output (PRD §10, C-ERR-08). */
+export function notFoundDetails(
+  result: Parameters<typeof probeFailureDetails>[0],
+  command: ElwoodAgentKind,
+): Readonly<Record<string, string | number>> {
+  const { stderr: _shellOutput, ...details } = probeFailureDetails(result);
+  return result.error
+    ? details
+    : { ...details, cause: `The login shell found no \`${command}\` (status 127).` };
 }

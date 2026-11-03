@@ -14,6 +14,8 @@ export type CommandResult = {
   readonly stderr: string;
   readonly error?: {
     readonly code?: string | undefined;
+    readonly syscall?: string | undefined;
+    readonly path?: string | undefined;
     readonly message: string;
     /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
     readonly phase?: "login_shell";
