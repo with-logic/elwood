@@ -1,6 +1,7 @@
 /** Preserve setup causes and owned-state rollback failures (PRD §8.1, C-STATE-14). */
 import { causeDetails, ElwoodError, elwoodError, toError } from "../core/errors.ts";
 
+/** Keep the primary failure and first cleanup code; without a cleanup code, return it unchanged. */
 export function stateCleanupFailure(error: unknown, cleanupErrorCode: string | undefined): unknown {
   if (cleanupErrorCode === undefined) return error;
   return error instanceof ElwoodError

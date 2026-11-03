@@ -17,6 +17,8 @@ import { dirname } from "node:path";
 import { elwoodError, errnoCode, toError } from "../../core/errors.ts";
 import { fsyncDir } from "../files.ts";
 import { stateCleanupFailure } from "../setup-failure.ts";
+import { syncIgnoreDirectory } from "./ignore-sync.ts";
+import { assertTrustedIgnoreParent } from "./root-trust.ts";
 
 /** Remove only the path still naming the inode this operation opened. */
 export function unlinkOwnedIgnore(path: string, owned: Stats): void {
@@ -34,7 +36,7 @@ function existingIgnore(path: string): boolean {
     const info = lstatSync(path);
     if (!info.isFile())
       throw elwoodError("state_corrupt", `Default ignore must be a regular file: ${path}`);
-    fsyncDir(dirname(path));
+    syncIgnoreDirectory(path, info);
     return true;
   } catch (error) {
     if (errnoCode(error) !== "ENOENT") throw error;
@@ -44,6 +46,7 @@ function existingIgnore(path: string): boolean {
 
 /** Publish complete contents; a published ignore may already belong to another start. */
 export function installDefaultIgnore(gitignorePath: string): Stats | undefined {
+  assertTrustedIgnoreParent(dirname(gitignorePath));
   if (existingIgnore(gitignorePath)) return undefined;
   const staging = `${gitignorePath}.${randomUUID()}.pending`;
   const fd = openSync(

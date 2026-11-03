@@ -13,12 +13,11 @@
  */
 
 import { isUtf8 } from "node:buffer";
-import type { Stats } from "node:fs";
 import { lstat, readlink } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
+import { lookupFault, ownerFault, type PathUser } from "../../core/path-trust.ts";
 
-/** The user whose launch the path must be safe for. */
-export type PathUser = { readonly uid: number; readonly gid: number };
+export { lookupFault, type PathUser } from "../../core/path-trust.ts";
 
 /** The path's links cannot be followed safely; the message names the link and the fix. */
 export class PathInspectionError extends Error {
@@ -27,9 +26,6 @@ export class PathInspectionError extends Error {
 
 /** As many symlinks as Linux follows in one path; a loop fails as uninspectable. */
 const MAX_LINKS = 40;
-const STICKY = 0o1000;
-const GROUP_WRITE = 0o020;
-const OTHER_WRITE = 0o002;
 
 /**
  * The first reason another user could redirect `path`, naming the directory or link that lets
@@ -70,37 +66,6 @@ export async function pathReplacementReason(
     current = next;
   }
   return fault;
-}
-
-/**
- * Why another user could replace an entry of `directory`, or `undefined` if they can't. A
- * group-writable directory is safe only when its group is the user's private group: the user's
- * primary group, numbered like the user, as Debian, Ubuntu and Fedora make them. Root's group 0
- * is a shared system group, never a private one. Another member added to a private group is
- * not seen.
- */
-export function lookupFault(
-  info: Pick<Stats, "uid" | "gid" | "mode">,
-  user: PathUser,
-  directory: string,
-): string | undefined {
-  const owner = ownerFault(info, user, directory, "directory");
-  if (owner !== undefined) return owner;
-  const privateGroup = user.uid !== 0 && info.gid === user.gid && user.gid === user.uid;
-  const writable =
-    (info.mode & OTHER_WRITE) !== 0 || ((info.mode & GROUP_WRITE) !== 0 && !privateGroup);
-  if (!writable || (info.mode & STICKY) !== 0) return undefined;
-  return `directory '${directory}' is writable by other users; remove that with 'chmod go-w', or choose a workspace elsewhere`;
-}
-
-function ownerFault(
-  info: Pick<Stats, "uid">,
-  user: PathUser,
-  path: string,
-  kind: "directory" | "link",
-): string | undefined {
-  if (info.uid === 0 || info.uid === user.uid) return undefined;
-  return `${kind} '${path}' is owned by another user; choose a workspace reached only through your own or root's directories`;
 }
 
 /**

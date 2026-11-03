@@ -7,7 +7,7 @@
 
 import { existsSync, realpathSync, rmdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
-import { errnoCode, toError } from "../core/errors.ts";
+import { errnoCode } from "../core/errors.ts";
 import { withRealAncestor } from "./canonical-path.ts";
 import {
   assertStatePath,
@@ -17,6 +17,7 @@ import {
   type StateDirectoryMode,
   type StateDirectoryPolicy,
 } from "./directories.ts";
+import { stateCleanupFailure } from "./setup-failure.ts";
 
 /** What makes the root itself once its parents are in place. */
 export type MakeRootDirectory = (
@@ -96,9 +97,7 @@ export function makeStateTree(cwd: string, deepest: string, makeTree: () => void
   } catch (error) {
     // Deepest first: each path is a parent of the ones before it.
     const cleanupErrorCode = removeMade([...made].sort((a, b) => b.length - a.length));
-    throw cleanupErrorCode === undefined
-      ? error
-      : Object.assign(toError(error), { cleanupErrorCode });
+    throw stateCleanupFailure(error, cleanupErrorCode);
   }
 }
 

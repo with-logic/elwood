@@ -139,7 +139,9 @@ test("C-STATE-11 a failed staging rollback preserves the primary error and repor
 test("C-STATE-11 a post-install failure retains the complete shared ignore", () => {
   const root = tempDir("elwood-ignore-after-link-");
   fault.at = "after-link";
-  expect(() => installDefaultIgnore(join(root, ".gitignore"))).toThrow("after link");
+  expect(() => installDefaultIgnore(join(root, ".gitignore"))).toThrow(
+    expect.objectContaining({ message: "after link", code: "EACCES" }),
+  );
   expect(fs.readdirSync(root)).toEqual([".gitignore"]);
   expect(fs.readFileSync(join(root, ".gitignore"), "utf8")).toBe("*\n");
 });

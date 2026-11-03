@@ -12,6 +12,7 @@ import {
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
+import { prepareLaunchState } from "../../runtime/session/prepare-state.ts";
 import { withSocketHomeCleanup } from "../../runtime/startup/cleanup.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { safeSessionDir } from "../../state/files.ts";
@@ -21,7 +22,7 @@ import { sessionRuntime } from "../../state/runtime-paths.ts";
 import { releaseLaunchSocket } from "../../state/socket-home.ts";
 import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import type { SessionRecord } from "../../state/store.ts";
-import { createSessionRecord, defaultStateDir, prepareStateDir } from "../../state/store.ts";
+import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { preflightClaude } from "../preflight.ts";
 import { resetClaudeHookBridgeFactoryForTests, setHookBridgeFactoryForTests } from "./bridge.ts";
@@ -67,7 +68,7 @@ export async function startClaudeWithId(
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
   const session = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () => {
-    prepareStateDir(stateDir, {
+    prepareLaunchState("claude", stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,

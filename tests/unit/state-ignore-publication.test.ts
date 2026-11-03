@@ -5,13 +5,25 @@ import { afterEach, expect, test, vi } from "vitest";
 import { prepareStateDir } from "../../src/state/store.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
-const fault = vi.hoisted(() => ({ destination: "", compete: false, failWrite: false }));
+const fault = vi.hoisted(() => ({
+  destination: "",
+  compete: false,
+  failWrite: false,
+  swapRoot: "",
+  outside: "",
+}));
 vi.mock("node:fs", async (original) => {
   const actual = await original<typeof import("node:fs")>();
   return {
     ...actual,
     openSync: (...args: Parameters<typeof actual.openSync>) => {
       const path = String(args[0]);
+      if (fault.swapRoot !== "" && path.endsWith(".pending")) {
+        const root = fault.swapRoot;
+        fault.swapRoot = "";
+        actual.renameSync(root, `${root}.saved`);
+        actual.symlinkSync(fault.outside, root);
+      }
       if (
         fault.compete &&
         (path === fault.destination || path.startsWith(`${fault.destination}.`))
@@ -31,7 +43,15 @@ vi.mock("node:fs", async (original) => {
     },
   };
 });
-afterEach(() => Object.assign(fault, { destination: "", compete: false, failWrite: false }));
+afterEach(() =>
+  Object.assign(fault, {
+    destination: "",
+    compete: false,
+    failWrite: false,
+    swapRoot: "",
+    outside: "",
+  }),
+);
 
 test("C-STATE-11 setup preserves a competing default ignore writer", () => {
   const cwd = tempDir("elwood-ignore-compete-");
@@ -54,4 +74,23 @@ test("C-STATE-11 setup can retry after a partial default ignore write", () => {
   expect(fs.existsSync(join(stateDir, ".gitignore"))).toBe(false);
   prepareStateDir(stateDir, { cwd, isImplicitDefaultStateDir: true });
   expect(fs.readFileSync(join(stateDir, ".gitignore"), "utf8")).toBe("*\n");
+});
+
+test("C-STATE-01 setup rejects a replaceable parent before publishing outside its root", () => {
+  const cwd = tempDir("elwood-ignore-shared-parent-");
+  const root = join(cwd, ".elwood");
+  const outside = tempDir("elwood-ignore-outside-");
+  fs.mkdirSync(root);
+  fs.chmodSync(cwd, 0o777);
+  fault.swapRoot = root;
+  fault.outside = outside;
+  try {
+    expect(() => prepareStateDir(root, { cwd, isImplicitDefaultStateDir: true })).toThrow(
+      expect.objectContaining({ code: "state_corrupt" }),
+    );
+    expect(fs.existsSync(join(outside, ".gitignore"))).toBe(false);
+    expect(fault.swapRoot).toBe(root);
+  } finally {
+    fs.chmodSync(cwd, 0o700);
+  }
 });

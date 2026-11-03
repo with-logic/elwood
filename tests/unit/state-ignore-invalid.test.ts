@@ -5,7 +5,14 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { prepareStateDir } from "../../src/state/store.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
-const fault = vi.hoisted(() => ({ kind: "", target: "", close: false, fd: -1 }));
+type IgnoreKind = "" | "symlink" | "dangling" | "directory";
+type EntryTiming = "existing" | "racing";
+const fault = vi.hoisted((): { kind: IgnoreKind; target: string; close: boolean; fd: number } => ({
+  kind: "",
+  target: "",
+  close: false,
+  fd: -1,
+}));
 vi.mock("node:fs", async (original) => {
   const actual = await original<typeof import("node:fs")>();
   return {
@@ -31,14 +38,20 @@ vi.mock("node:fs", async (original) => {
 });
 afterEach(() => Object.assign(fault, { kind: "", target: "", close: false, fd: -1 }));
 
-describe.each(["existing", "racing"])("%s ignore entries", (when) => {
-  test.each(["symlink", "dangling", "directory"])("C-STATE-01 rejects %s", (kind) => {
+describe.each([
+  "existing",
+  "racing",
+] satisfies readonly EntryTiming[])("%s ignore entries", (when) => {
+  test.each(["symlink", "dangling", "directory"] satisfies readonly Exclude<
+    IgnoreKind,
+    ""
+  >[])("C-STATE-01 rejects %s", (kind) => {
     const cwd = tempDir("elwood-ignore-invalid-");
     const root = join(cwd, ".elwood");
     const path = join(root, ".gitignore");
     fs.mkdirSync(root);
     fault.target = join(cwd, "target");
-    if (kind !== "dangling") fs.writeFileSync(fault.target, "keep");
+    if (kind !== "dangling") fs.writeFileSync(fault.target, "keep", { mode: 0o600 });
     if (when === "racing") fault.kind = kind;
     else if (kind === "directory") fs.mkdirSync(path);
     else fs.symlinkSync(fault.target, path);
@@ -46,7 +59,10 @@ describe.each(["existing", "racing"])("%s ignore entries", (when) => {
       expect.objectContaining({ code: "state_corrupt" }),
     );
     if (kind === "dangling") expect(fs.existsSync(fault.target)).toBe(false);
-    else expect(fs.readFileSync(fault.target, "utf8")).toBe("keep");
+    else {
+      expect(fs.readFileSync(fault.target, "utf8")).toBe("keep");
+      expect(fs.statSync(fault.target).mode & 0o777).toBe(0o600);
+    }
     expect(fs.existsSync(join(root, "sessions"))).toBe(false);
   });
 });

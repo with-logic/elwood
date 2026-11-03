@@ -10,7 +10,13 @@ const fault = vi.hoisted(
     onDirectorySync: (() => void) | undefined;
     onWrite: (() => void) | undefined;
     onPublished: (() => void) | undefined;
-  } => ({ onDirectorySync: undefined, onWrite: undefined, onPublished: undefined }),
+    directorySyncs: number;
+  } => ({
+    onDirectorySync: undefined,
+    onWrite: undefined,
+    onPublished: undefined,
+    directorySyncs: 0,
+  }),
 );
 vi.mock("node:fs", async (original) => {
   const actual = await original<typeof import("node:fs")>();
@@ -24,7 +30,9 @@ vi.mock("node:fs", async (original) => {
       return linked;
     },
     fsyncSync: (fd: number) => {
-      const callback = actual.fstatSync(fd).isDirectory() ? fault.onDirectorySync : undefined;
+      const directory = actual.fstatSync(fd).isDirectory();
+      if (directory) fault.directorySyncs += 1;
+      const callback = directory ? fault.onDirectorySync : undefined;
       if (callback !== undefined) {
         fault.onDirectorySync = undefined;
         callback();
@@ -45,7 +53,12 @@ vi.mock("node:fs", async (original) => {
   };
 });
 afterEach(() =>
-  Object.assign(fault, { onDirectorySync: undefined, onWrite: undefined, onPublished: undefined }),
+  Object.assign(fault, {
+    onDirectorySync: undefined,
+    onWrite: undefined,
+    onPublished: undefined,
+    directorySyncs: 0,
+  }),
 );
 
 test.each([
@@ -91,4 +104,15 @@ test("C-STATE-11 a second setup accepts a complete ignore before staging is unli
   prepareStateDir(stateDir, { cwd, isImplicitDefaultStateDir: true, elwoodSessionId: "a" });
   expect(fs.readdirSync(join(stateDir, "sessions")).sort()).toEqual(["a", "b"]);
   expect(fs.readFileSync(join(stateDir, ".gitignore"), "utf8")).toBe("*\n");
+});
+
+test("C-STATE-11 repeated real setups reuse unchanged ignore-directory durability", () => {
+  const cwd = tempDir("elwood-ignore-warm-setups-");
+  const root = join(cwd, ".elwood");
+  fs.mkdirSync(root);
+  fs.mkdirSync(join(root, "sessions"), { mode: 0o700 });
+  fs.writeFileSync(join(root, ".gitignore"), "keep");
+  for (const id of ["a", "b", "c"])
+    prepareStateDir(root, { cwd, isImplicitDefaultStateDir: true, elwoodSessionId: id });
+  expect(fault.directorySyncs).toBe(1);
 });
