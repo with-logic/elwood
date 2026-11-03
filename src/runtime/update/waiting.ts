@@ -16,20 +16,27 @@ import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.
  */
 export const defaultWaitMs = 2 * (probeLaunchTimeoutMs + probeCommandTimeoutMs) + 15_000;
 
+export type UpdateWaitResult =
+  | { readonly status: "released" | "wait_expired" | "cleanup_pending" }
+  | { readonly status: "stale_removed"; readonly generation: string | undefined };
+type RecoveryResult =
+  | { readonly status: "alive" | "unrecoverable" }
+  | { readonly status: "removed"; readonly generation: string | undefined };
+
 export async function waitForOwner(
   path: string,
   pollMs: number,
   staleMs: number,
   waitUntilMs: number,
-): Promise<"released" | "stale_removed" | "wait_expired" | "cleanup_pending"> {
+): Promise<UpdateWaitResult> {
   for (;;) {
-    if (performance.now() >= waitUntilMs) return "wait_expired";
+    if (performance.now() >= waitUntilMs) return { status: "wait_expired" };
     let lease: Awaited<ReturnType<typeof stat>>;
     try {
       lease = await stat(path);
     } catch {
       if (await restoreRecovery(path)) continue;
-      return "released";
+      return { status: "released" };
     }
     const current = await readOwner(path);
     // Presence of the record only, not proof that any of those groups still runs; the
@@ -38,30 +45,31 @@ export async function waitForOwner(
     // A lease held by a surviving updater group is not worth waiting out: those groups may
     // outlive any bound this contender could set, so it says so and moves on.
     if (hasRecordedProcessGroups && current !== undefined && leaseIsAlive(current))
-      return "cleanup_pending";
+      return { status: "cleanup_pending" };
     // Groups, unlike a parent process, are confirmed gone rather than merely quiet, so a
     // lease whose every group has exited is dead whatever its age says.
     if (hasRecordedProcessGroups || Date.now() - lease.mtimeMs >= staleMs) {
       const recovered = await recoverStaleLease(path);
-      if (recovered === "removed") return "stale_removed";
-      if (recovered === "unrecoverable") return "released";
+      if (recovered.status === "removed")
+        return { status: "stale_removed", generation: recovered.generation };
+      if (recovered.status === "unrecoverable") return { status: "released" };
     }
     await delay(pollMs);
   }
 }
 
-async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "unrecoverable"> {
+async function recoverStaleLease(path: string): Promise<RecoveryResult> {
   const expected = await readOwner(path);
-  if (expected !== undefined && leaseIsAlive(expected)) return "alive";
+  if (expected !== undefined && leaseIsAlive(expected)) return { status: "alive" };
   const recovery = recoveryPath(path);
   try {
     await rename(path, recovery);
   } catch {
-    return (await pathExists(recovery)) ? "alive" : "unrecoverable";
+    return { status: (await pathExists(recovery)) ? "alive" : "unrecoverable" };
   }
   const moved = await readOwner(recovery);
   if (expected?.token !== moved?.token || (moved !== undefined && leaseIsAlive(moved))) {
-    return "unrecoverable";
+    return { status: "unrecoverable" };
   }
   try {
     if (moved !== undefined) await unlink(join(recovery, ownerFile));
@@ -72,9 +80,9 @@ async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "u
     for await (const entry of await opendir(recovery))
       if (entry.name.startsWith(pendingOwnerPrefix)) await unlink(join(recovery, entry.name));
     await rmdir(recovery);
-    return "removed";
+    return { status: "removed", generation: moved?.token };
   } catch {
-    return "unrecoverable";
+    return { status: "unrecoverable" };
   }
 }
 
