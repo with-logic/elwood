@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { NamedPipeCapture, setMkfifoForTests } from "../../src/runtime/probe/named-pipes.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
-import { processRows } from "../helpers/process-liveness.ts";
+import { killGroupsWhoseCommandHas } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => {
@@ -30,8 +30,7 @@ test("C-PERF-05 stalled capture setup reaps a TERM-ignoring creator and removes 
   // This guard only prevents a broken implementation leaking the test's own busy child.
   const safety = setTimeout(() => {
     emergencyKill = true;
-    const row = processRows().find((row) => row.command.includes(helper));
-    if (row) process.kill(row.pid, "SIGKILL");
+    killGroupsWhoseCommandHas(helper);
   }, 3_000);
   try {
     await expect(NamedPipeCapture.create(750)).rejects.toMatchObject({
@@ -45,7 +44,6 @@ test("C-PERF-05 stalled capture setup reaps a TERM-ignoring creator and removes 
     expect(readdirSync(tmp)).toEqual([]);
   } finally {
     clearTimeout(safety);
-    const row = processRows().find((row) => row.command.includes(helper));
-    if (row) process.kill(row.pid, "SIGKILL");
+    killGroupsWhoseCommandHas(helper);
   }
 });

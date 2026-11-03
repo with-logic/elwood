@@ -126,6 +126,10 @@ export class NamedPipeCapture implements ProbeCapture {
     );
   }
 
+  /**
+   * Bounds the `mkfifo` child, killing and reaping it on expiry. Filesystem operations
+   * outside that child are not timed; setup failures release partial pipes and the directory.
+   */
   static async create(setupTimeoutMs = probeOutputSetupTimeoutMs): Promise<NamedPipeCapture> {
     const capture = new NamedPipeCapture(makePrivateDirectory());
     try {
