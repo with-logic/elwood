@@ -7,6 +7,7 @@ import { main } from "../../src/cli/main.ts";
 import { resolveRunRequest } from "../../src/cli/request/index.ts";
 import { CliValidationError } from "../../src/cli/types.ts";
 import { elwoodError } from "../../src/core/errors.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectCodex } from "./agent-fakes.ts";
 import { mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
 
@@ -24,7 +25,8 @@ describe("CLI main failures", () => {
 
   test("C-CLI-02/C-CLI-17 explicit run with empty terminal input is a usage error", async () => {
     const h = mainHarness();
-    expect(await main(["run"], h.context, mainDependencies({ resolve: resolveDetected }))).toBe(2);
+    const context = { ...h.context, invocationCwd: tempDir("main-errors-") };
+    expect(await main(["run"], context, mainDependencies({ resolve: resolveDetected }))).toBe(2);
     expect(h.stdout.value).toBe("");
     expect(h.stderr.value).toBe("elwood: A non-empty prompt is required.\n");
   });

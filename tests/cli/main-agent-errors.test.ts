@@ -9,6 +9,7 @@ import { main } from "../../src/cli/main.ts";
 import { noAgentFoundMessage } from "../../src/cli/request/agent-detect.ts";
 import { resolveRunRequest } from "../../src/cli/request/index.ts";
 import { resetRuntimeSeamsForTests, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { tempDir } from "../helpers/tmp.ts";
 import { detectNothing } from "./agent-fakes.ts";
 import { mainDependencies, mainHarness } from "./main-fakes.ts";
 
@@ -18,15 +19,22 @@ describe("CLI main agent-selection failures", () => {
   });
 
   test("C-CLI-17/C-CLI-21 no installed agent is a status-2 configuration failure", async () => {
+    const invocationCwd = tempDir("main-agent-errors-");
     const text = mainHarness();
     const resolve: typeof resolveRunRequest = (parsed, context) =>
       resolveRunRequest(parsed, context, detectNothing);
-    expect(await main(["go"], text.context, mainDependencies({ resolve }))).toBe(2);
+    expect(
+      await main(["go"], { ...text.context, invocationCwd }, mainDependencies({ resolve })),
+    ).toBe(2);
     expect(text.stdout.value).toBe("");
     expect(text.stderr.value).toBe("elwood: no agent (test)\n");
     const json = mainHarness();
     expect(
-      await main(["--output", "json", "go"], json.context, mainDependencies({ resolve })),
+      await main(
+        ["--output", "json", "go"],
+        { ...json.context, invocationCwd },
+        mainDependencies({ resolve }),
+      ),
     ).toBe(2);
     expect(JSON.parse(json.stdout.value)).toMatchObject({
       type: "error",
@@ -34,9 +42,13 @@ describe("CLI main agent-selection failures", () => {
       error: { code: "no_agent_found", message: "no agent (test)" },
     });
     const jsonl = mainHarness();
-    expect(await main(["--output=jsonl", "go"], jsonl.context, mainDependencies({ resolve }))).toBe(
-      2,
-    );
+    expect(
+      await main(
+        ["--output=jsonl", "go"],
+        { ...jsonl.context, invocationCwd },
+        mainDependencies({ resolve }),
+      ),
+    ).toBe(2);
     expect(JSON.parse(jsonl.stdout.value)).toMatchObject({
       sequence: 1,
       type: "error",
@@ -48,7 +60,8 @@ describe("CLI main agent-selection failures", () => {
   test("C-CLI-17/C-CLI-21 the real detector's failure reaches the CLI boundary", async () => {
     setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "" }));
     const h = mainHarness();
-    expect(await main(["go"], h.context, mainDependencies({ resolve: resolveRunRequest }))).toBe(2);
+    const context = { ...h.context, invocationCwd: tempDir("main-agent-errors-") };
+    expect(await main(["go"], context, mainDependencies({ resolve: resolveRunRequest }))).toBe(2);
     expect(h.stdout.value).toBe("");
     expect(h.stderr.value).toBe(`elwood: ${noAgentFoundMessage}\n`);
   });
