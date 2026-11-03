@@ -105,3 +105,19 @@ test("C-PERF-05 probe command stdin is EOF rather than an unfulfilled input pipe
     stderr: "",
   });
 });
+
+test.skipIf(!existsSync("/bin/bash"))(
+  "C-PERF-05 supervisor protocol ignores exported shell functions",
+  async () => {
+    const home = tempDir("elwood-probe-private-supervisor-");
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("ZDOTDIR", home);
+    vi.stubEnv("TERM_PROGRAM", "");
+    vi.stubEnv("BASH_FUNC_printf%%", "() { echo PRIVATE-SUPERVISOR-OVERRIDE; }");
+    expect(await runProbe("/bin/bash", probeShellCommand("/usr/bin/printf wanted"))).toEqual({
+      status: 0,
+      stdout: "wanted",
+      stderr: "",
+    });
+  },
+);

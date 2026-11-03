@@ -22,7 +22,9 @@ export class ProbeProcess {
   constructor(command: string, args: readonly string[], supervised: boolean) {
     this.child = spawn(
       supervised ? "/bin/sh" : command,
-      supervised ? ["-c", supervisor, "elwood-probe-supervisor", command, ...args] : [...args],
+      supervised
+        ? ["-p", "-c", supervisor, "elwood-probe-supervisor", command, ...args]
+        : [...args],
       {
         detached: true,
         stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
