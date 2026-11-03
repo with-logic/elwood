@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { exitStatus } from "../exit-status.ts";
 import { homeGuardStopMarker, homeGuardStopped, watchForStopMarker } from "../home-guard/index.ts";
-import type { CommandResult } from "../seams.ts";
+import type { CommandOptions, CommandResult } from "../seams.ts";
 import type { StreamMarkerWatcher } from "../stream-marker.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
@@ -52,11 +52,19 @@ export function resetProbeTimeoutsForTests(): void {
 }
 
 /** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
-export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
-  return withProbeSlot(() => spawnProbe(command, args));
+export function runProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions = {},
+): Promise<CommandResult> {
+  return withProbeSlot(() => spawnProbe(command, args, options));
 }
 
-function spawnProbe(command: string, args: readonly string[]): Promise<CommandResult> {
+function spawnProbe(
+  command: string,
+  args: readonly string[],
+  options: CommandOptions,
+): Promise<CommandResult> {
   return new Promise((resolve) => {
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
@@ -64,6 +72,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
     // A fourth pipe carries only the probe shell's start line, unless the shell closed it.
     const child = spawn(command, [...args], {
+      cwd: options.cwd,
       detached: true,
       stdio: ["pipe", "pipe", "pipe", "pipe"],
     });

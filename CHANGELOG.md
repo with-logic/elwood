@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Run version, capability and update probes in the launch workspace, with bounded directory-identity caches so sessions cannot reuse another workspace's CLI results. A workspace removed or replaced during preflight reports a startup failure instead of a missing CLI.
+
 - Concurrent Elwood processes avoid repeating an automatic agent update that another process has completed.
 
 - Preserve native cause, `syscall`, and `path` diagnostics for probe failures surfaced as startup errors, including missing login shells; missing-command diagnostics withhold shell output.
