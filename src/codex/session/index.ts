@@ -68,11 +68,10 @@ export async function startCodexWithId(
   const stateDir = canonicalStatePath(stateDirPath);
   // A probe that fails because `cwd` went or was replaced fails as that, not a missing CLI.
   const warning = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () =>
-    preflight.preflightCodex(
-      options.cwd,
-      options.strictVersionCheck ?? false,
-      options.autoupdate ?? false,
-    ),
+    preflight.preflightCodex(options.cwd, {
+      strictVersionCheck: options.strictVersionCheck ?? false,
+      autoupdate: options.autoupdate ?? false,
+    }),
   );
   const session = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () => {
     prepareStateDir(stateDir, {

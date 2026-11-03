@@ -49,7 +49,10 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   try {
     // `cwd` is checked before any probe; a probe that fails because it went or was replaced fails as that.
     const warning = await recheckLaunchDirectoryOnFailure("claude", cwd, () =>
-      preflightClaude(cwd, options.strictVersionCheck ?? false, options.autoupdate ?? false),
+      preflightClaude(cwd, {
+        strictVersionCheck: options.strictVersionCheck ?? false,
+        autoupdate: options.autoupdate ?? false,
+      }),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,

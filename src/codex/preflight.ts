@@ -38,8 +38,13 @@ const capabilityProbe = createProbeCache<DirectoryRead<CodexCliCapabilities>>(
 /** Checks the `codex` that a session launched in `cwd` would run (C-PTY-08). */
 export async function preflightCodex(
   cwd: string,
-  strictVersionCheck: boolean,
-  autoupdate = false,
+  {
+    strictVersionCheck,
+    autoupdate = false,
+  }: {
+    readonly strictVersionCheck: boolean;
+    readonly autoupdate?: boolean;
+  },
 ): Promise<CodexPreflightWarning | undefined> {
   // Platform check is synchronous and first: unsupported hosts throw before
   // any subprocess is spawned.

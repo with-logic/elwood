@@ -111,11 +111,11 @@ test.each([
     // Prime the version cache with the pre-update version, as a first preflight would. The
     // contended attempt must still re-read it (C-PERF-02: invalidate after every attempt,
     // including a peer-owned one), or it would report this stale version instead.
-    await preflight(process.cwd(), false, false);
+    await preflight(process.cwd(), { strictVersionCheck: false, autoupdate: false });
     const primingReads = commands.length;
     expect(primingReads).toBeGreaterThan(0);
     versionReply = versionOutput;
-    const warning = await preflight(process.cwd(), false, true);
+    const warning = await preflight(process.cwd(), { strictVersionCheck: false, autoupdate: true });
     expect(warning).toMatchObject({
       code: "agent_update_failed",
       errorCode: "update_active",

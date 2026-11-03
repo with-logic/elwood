@@ -41,8 +41,8 @@ describe("version-read cache", () => {
       });
     });
     await Promise.all([
-      preflightClaude(process.cwd(), false),
-      preflightCodex(process.cwd(), false),
+      preflightClaude(process.cwd(), { strictVersionCheck: false }),
+      preflightCodex(process.cwd(), { strictVersionCheck: false }),
     ]);
     expect(maxInFlight).toBe(2);
   });
@@ -54,8 +54,8 @@ describe("version-read cache", () => {
       reads += 1;
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(process.cwd(), false);
-    await preflightClaude(process.cwd(), true);
+    await preflightClaude(process.cwd(), { strictVersionCheck: false });
+    await preflightClaude(process.cwd(), { strictVersionCheck: true });
     expect(reads).toBe(1);
   });
 
@@ -70,9 +70,9 @@ describe("version-read cache", () => {
         }),
     );
     await Promise.all([
-      preflightClaude(process.cwd(), false),
-      preflightClaude(process.cwd(), false),
-      preflightClaude(process.cwd(), false),
+      preflightClaude(process.cwd(), { strictVersionCheck: false }),
+      preflightClaude(process.cwd(), { strictVersionCheck: false }),
+      preflightClaude(process.cwd(), { strictVersionCheck: false }),
     ]);
     expect(reads).toBe(1);
   });
@@ -85,7 +85,7 @@ describe("version-read cache", () => {
       versions.push("read");
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(process.cwd(), false, true);
+    await preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true });
     // One read before the update, one after the invalidate.
     expect(versions).toHaveLength(2);
   });
@@ -101,10 +101,10 @@ describe("autoupdate dedupe", () => {
       commands.push(args.join(" "));
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(process.cwd(), false, true);
-    await preflightClaude(process.cwd(), false, true);
-    await preflightCodex(process.cwd(), false, true);
-    await preflightCodex(process.cwd(), false, true);
+    await preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true });
+    await preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true });
+    await preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true });
+    await preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true });
     const updates = commands.filter((command) => command.includes(" update"));
     expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
     expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
@@ -127,9 +127,9 @@ describe("autoupdate dedupe", () => {
     // Three concurrent autoupdate callers: one update, all resolve (none
     // rejects on the stale 2.1.1 pre-update read).
     await Promise.all([
-      preflightClaude(process.cwd(), false, true),
-      preflightClaude(process.cwd(), false, true),
-      preflightClaude(process.cwd(), false, true),
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
     ]);
     expect(updates).toBe(1);
   });
@@ -148,9 +148,9 @@ describe("autoupdate dedupe", () => {
       return { status: 0, stdout: versions.shift() ?? "codex-cli 0.132.0", stderr: "" };
     });
     await Promise.all([
-      preflightCodex(process.cwd(), false, true),
-      preflightCodex(process.cwd(), false, true),
-      preflightCodex(process.cwd(), false, true),
+      preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+      preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+      preflightCodex(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
     ]);
     expect(updates).toBe(1);
   });
@@ -166,8 +166,8 @@ describe("autoupdate dedupe", () => {
       return { status: 0, stdout: "2.1.144", stderr: "" }; // installed == min → compatible
     });
     const results = await Promise.allSettled([
-      preflightClaude(process.cwd(), false, true),
-      preflightClaude(process.cwd(), false, true),
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
     ]);
     // Best-effort: the shared update fails ONCE, but neither caller rejects — both warn and
     // continue (the installed CLI meets the minimum). This is the fleet-death regression fixed.

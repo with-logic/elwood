@@ -48,8 +48,8 @@ test.each(
   agents,
 )("C-LIFE-11 a failed shared %s update names its directory, and each launch checks its own version", async (agent, preflight, versions) => {
   const probes = recordProbes(versions);
-  const one = await preflight("/one", false, true);
-  const two = await preflight("/two", false, true);
+  const one = await preflight("/one", { strictVersionCheck: false, autoupdate: true });
+  const two = await preflight("/two", { strictVersionCheck: false, autoupdate: true });
   expect(probes.filter((probe) => probe.includes(" update "))).toEqual([`${agent} update in /one`]);
   expect(one).toMatchObject({ raw: "offline\n", updateCwd: "/one" });
   // `/two` shares `/one`'s failed attempt but runs, and reports, the CLI its own directory has.
@@ -68,7 +68,9 @@ test.each(
     probes.push(`${agent} --version in /one`);
     return { status: 1, stdout: "", stderr: "busy\n" };
   });
-  await expect(preflight("/one", false, true)).resolves.toBeUndefined();
+  await expect(
+    preflight("/one", { strictVersionCheck: false, autoupdate: true }),
+  ).resolves.toBeUndefined();
   // The failed check, then the launch's own version read: no update between them.
   expect(probes).toEqual([`${agent} --version in /one`, `${agent} --version in /one`]);
 });
@@ -84,7 +86,7 @@ test.each(
     const error = { message: "the login shell did not start", code: "ETIMEDOUT" } as const;
     return { status: null, stdout: "", stderr: "", error: { ...error, phase: "login_shell" } };
   });
-  const warning = await preflight("/one", false, true);
+  const warning = await preflight("/one", { strictVersionCheck: false, autoupdate: true });
   expect(warning).toMatchObject({ errorCode: "login_shell_failed" });
   expect(warning).not.toHaveProperty("updateCwd");
   expect(probes.filter((probe) => probe.includes(" update "))).toEqual([`${agent} update in /one`]);

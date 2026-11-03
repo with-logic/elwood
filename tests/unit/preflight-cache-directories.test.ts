@@ -64,9 +64,12 @@ test("C-PERF-02 the caches keep 32 directories, and version reads of 65,536 code
 test("C-PERF-02 each directory's --version and --help are probed once, in that directory", async () => {
   const probes = recordProbes();
   const [one, two] = [directory("one"), directory("two")];
-  await Promise.all([preflightClaude(one, false), preflightClaude(one, false)]);
-  await preflightClaude(two, false);
-  await preflightClaude(one, true);
+  await Promise.all([
+    preflightClaude(one, { strictVersionCheck: false }),
+    preflightClaude(one, { strictVersionCheck: false }),
+  ]);
+  await preflightClaude(two, { strictVersionCheck: false });
+  await preflightClaude(one, { strictVersionCheck: true });
   await Promise.all([detectCodexCliCapabilities(one), detectCodexCliCapabilities(one)]);
   await detectCodexCliCapabilities(two);
   await detectCodexCliCapabilities(one);
@@ -79,8 +82,8 @@ test("C-PERF-02 each directory's --version and --help are probed once, in that d
 });
 
 test.each([
-  ["claude --version", (cwd: string) => preflightClaude(cwd, false)],
-  ["codex --version", (cwd: string) => preflightCodex(cwd, false)],
+  ["claude --version", (cwd: string) => preflightClaude(cwd, { strictVersionCheck: false })],
+  ["codex --version", (cwd: string) => preflightCodex(cwd, { strictVersionCheck: false })],
   ["codex --help", detectCodexCliCapabilities],
 ] as const)("C-PERF-02 only the most recently used directories' %s answers are kept", async (probe, read) => {
   const probes = recordProbes();
@@ -100,8 +103,10 @@ test("C-PERF-02 a symlink to a probed directory is probed as its own path", asyn
   const alias = join(directory("parent"), "alias");
   symlinkSync(real, alias);
   const probes = recordProbes(0, { [alias]: "2.1.100" });
-  await expect(preflightClaude(real, true)).resolves.toBeUndefined();
-  await expect(preflightClaude(alias, true)).rejects.toMatchObject(oldClaude);
+  await expect(preflightClaude(real, { strictVersionCheck: true })).resolves.toBeUndefined();
+  await expect(preflightClaude(alias, { strictVersionCheck: true })).rejects.toMatchObject(
+    oldClaude,
+  );
   expect(probes).toEqual(["claude --version in real", `claude --version in ${alias}`]);
 });
 
@@ -168,14 +173,14 @@ const everyDirectoryReadAgain = [
 async function readsAroundAnUpdate(probes: string[]): Promise<string[]> {
   const [one, two] = [directory("one"), directory("two")];
   for (const cwd of [one, two]) {
-    await preflightClaude(cwd, false);
-    await preflightCodex(cwd, false);
+    await preflightClaude(cwd, { strictVersionCheck: false });
+    await preflightCodex(cwd, { strictVersionCheck: false });
     await detectCodexCliCapabilities(cwd);
   }
   probes.length = 0;
   for (const cwd of [one, two]) {
-    await preflightClaude(cwd, false, cwd === one);
-    await preflightCodex(cwd, false, cwd === one);
+    await preflightClaude(cwd, { strictVersionCheck: false, autoupdate: cwd === one });
+    await preflightCodex(cwd, { strictVersionCheck: false, autoupdate: cwd === one });
     await detectCodexCliCapabilities(cwd);
   }
   return probes.filter((probe) => !probe.includes("update"));

@@ -33,7 +33,7 @@ test.each(
   agents,
 )("C-PERF-02 a %s directory replaced after its answer was kept is probed again", async (agent, start, preflight, version, old, oldVersion) => {
   const cwd = project(agent, version);
-  await preflight(cwd, false); // keeps this directory's answer
+  await preflight(cwd, { strictVersionCheck: false }); // keeps this directory's answer
   const replacement = project(agent, oldVersion); // made while `cwd` exists: a new directory
   rmSync(cwd, { recursive: true });
   renameSync(replacement, cwd);
@@ -57,10 +57,10 @@ test.each(
   const original = join(dir("elwood-preflight-original-"), "original");
   const replacement = project(agent, version);
   swapWhenProbed(cwd, original, replacement);
-  await expect(preflight(cwd, true)).resolves.toBeUndefined(); // the replacement's CLI
+  await expect(preflight(cwd, { strictVersionCheck: true })).resolves.toBeUndefined(); // the replacement's CLI
   renameSync(cwd, replacement);
   renameSync(original, cwd); // the original is back, with its own, older CLI
-  await expect(preflight(cwd, true)).rejects.toMatchObject(old);
+  await expect(preflight(cwd, { strictVersionCheck: true })).rejects.toMatchObject(old);
 });
 
 test("C-PERF-02 capabilities read while their directory was replaced are not kept for the original", async () => {

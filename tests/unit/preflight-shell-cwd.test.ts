@@ -67,7 +67,9 @@ test.each(
 test.each(
   agents,
 )("C-ERR-08 a %s probe whose login shell finds no CLI says so, and keeps none of the shell's stderr", async (agent, _start, preflight) => {
-  const failure = await preflight(dir("elwood-preflight-session-"), false).catch((e: unknown) => e);
+  const failure = await preflight(dir("elwood-preflight-session-"), {
+    strictVersionCheck: false,
+  }).catch((e: unknown) => e);
   expect(failure).toMatchObject({ code: `${agent}_not_found` });
   expect(failure).toHaveProperty("details", {
     cause: `The login shell found no \`${agent}\` (status 127).`,
@@ -78,7 +80,9 @@ test.each(
   agents,
 )("C-PTY-08 C-ERR-08 a %s login shell that cannot start, in a directory that exists, is a missing CLI that names the shell", async (agent, _start, preflight) => {
   vi.spyOn(shell, "userShell").mockReturnValue(join(dir("elwood-preflight-noshell-"), "absent"));
-  const failure = await preflight(dir("elwood-preflight-session-"), false).catch((e: unknown) => e);
+  const failure = await preflight(dir("elwood-preflight-session-"), {
+    strictVersionCheck: false,
+  }).catch((e: unknown) => e);
   expect(failure).toMatchObject({
     code: `${agent}_not_found`,
     message: `The login shell could not be started to find \`${agent}\`.`,
@@ -93,7 +97,7 @@ test.each(
   agents,
 )("C-API-61 a %s start in a directory removed after its answer was cached fails without recreating it", async (agent, start, preflight, version) => {
   const cwd = project(agent, version);
-  await preflight(cwd, false); // keeps this directory's answer
+  await preflight(cwd, { strictVersionCheck: false }); // keeps this directory's answer
   rmSync(cwd, { recursive: true });
   await expect(start({ cwd })).rejects.toMatchObject({
     code: `${agent}_start_failed`,
@@ -134,8 +138,8 @@ test.each(
 )("C-PTY-08 C-PERF-04 concurrent %s launches in two directories share one update, run in the first, and each check their own CLI", async (agent, preflight, current, outdated, old) => {
   const [first, second] = [project(agent, current), project(agent, outdated)];
   const checked = await Promise.allSettled([
-    preflight(first, true, true),
-    preflight(second, true, true),
+    preflight(first, { strictVersionCheck: true, autoupdate: true }),
+    preflight(second, { strictVersionCheck: true, autoupdate: true }),
   ]);
   expect(checked).toMatchObject([
     { status: "fulfilled", value: undefined },
@@ -150,8 +154,8 @@ test.each(
 )("C-PTY-08 C-LIFE-11 a %s launch whose directory has no CLI runs no update; a launch that shared it updates in its own, without a warning", async (agent, preflight, current) => {
   const [bare, other] = [dir("elwood-preflight-session-"), project(agent, current)];
   const checked = await Promise.allSettled([
-    preflight(bare, false, true),
-    preflight(other, false, true),
+    preflight(bare, { strictVersionCheck: false, autoupdate: true }),
+    preflight(other, { strictVersionCheck: false, autoupdate: true }),
   ]);
   expect(checked).toMatchObject([
     { status: "rejected", reason: { code: `${agent}_not_found` } },

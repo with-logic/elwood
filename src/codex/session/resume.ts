@@ -39,11 +39,10 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     // Codex relaunches where the session started (`--cd`); `cwd` only locates the state.
     // It is checked before any probe; a probe that fails because it went or was replaced fails as that.
     const warning = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
-      preflight.preflightCodex(
-        record.cwd,
-        options.strictVersionCheck ?? false,
-        options.autoupdate ?? false,
-      ),
+      preflight.preflightCodex(record.cwd, {
+        strictVersionCheck: options.strictVersionCheck ?? false,
+        autoupdate: options.autoupdate ?? false,
+      }),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,

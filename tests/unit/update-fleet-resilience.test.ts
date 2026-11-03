@@ -45,7 +45,9 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     });
     // 10 concurrent roster starts share the SINGLE update; none rejects (all compatible).
     const warnings = await Promise.all(
-      Array.from({ length: 10 }, () => preflightClaude(process.cwd(), false, true)),
+      Array.from({ length: 10 }, () =>
+        preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+      ),
     );
     expect(updates).toBe(1); // one shared update attempt across the whole burst
     // Every start is usable and observes the SAME best-effort outcome (a warning, not a rejection).
@@ -59,12 +61,16 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
         : { status: 0, stdout: "2.1.223", stderr: "" },
     );
     // First start: update fails but installed is compatible → warns and continues.
-    await expect(preflightClaude(process.cwd(), false, true)).resolves.toMatchObject({
+    await expect(
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+    ).resolves.toMatchObject({
       code: "agent_update_failed",
     });
     // A LATER start in the SAME process must also succeed (best-effort once-per-process), NOT
     // reject on a retained rejected promise. It does not re-run the update (dedup holds).
-    await expect(preflightClaude(process.cwd(), false, true)).resolves.toMatchObject({
+    await expect(
+      preflightClaude(process.cwd(), { strictVersionCheck: false, autoupdate: true }),
+    ).resolves.toMatchObject({
       code: "agent_update_failed",
     });
   });
@@ -107,10 +113,10 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
       if (!args.join(" ").includes("--version")) return { status: 0, stdout: "", stderr: "" };
       return ++reads === 1 ? failed : { status: 0, stdout: version, stderr: "" };
     });
-    await expect(preflight(process.cwd(), false)).rejects.toMatchObject({
+    await expect(preflight(process.cwd(), { strictVersionCheck: false })).rejects.toMatchObject({
       code: `${agent}_start_failed`,
     });
-    await expect(preflight(process.cwd(), false)).resolves.toBeUndefined();
+    await expect(preflight(process.cwd(), { strictVersionCheck: false })).resolves.toBeUndefined();
     expect(reads).toBe(2);
   });
 
