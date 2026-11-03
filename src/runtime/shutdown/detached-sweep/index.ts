@@ -66,7 +66,9 @@ export const DETACHED_SWEEP_BUDGET_MS = 10_000;
  * a read that converges ends the walk before that check. Once the leader has exited its
  * pid may be reused, so the sweep stops no further group and never signals the leader's
  * group again, though it still SIGKILLs the groups it already signaled (resuming any
- * that hold Codex's daemon). These are
+ * that hold Codex's daemon).
+ * `onLeaderGroupGone` publishes only whole-group ESRCH or fresh empty-group evidence,
+ * never merely a leader exit notification. These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;
  * an unreadable table; the deadline passing, or the leader exiting, before a read
  * converged; a live group that could not be stopped or killed; and a group spared for
@@ -77,6 +79,7 @@ export async function sweepDetachedGroups(
   ops: SweepOps,
   leaderExited: () => boolean,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
+  onLeaderGroupGone: () => void = () => undefined,
 ): Promise<SweepFailure | undefined> {
   if (leaderExited()) return undefined;
   const deadline = performance.now() + budgetMs;
@@ -84,7 +87,7 @@ export async function sweepDetachedGroups(
   try {
     ops.stopGroup(leaderPid);
   } catch (error) {
-    return leaderStopFailure(error, leaderPid, ops, deadline, state);
+    return leaderStopFailure(error, leaderPid, ops, deadline, state, onLeaderGroupGone);
   }
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
@@ -146,11 +149,18 @@ async function leaderStopFailure(
   ops: SweepOps,
   deadline: number,
   state: SweepState,
+  onLeaderGroupGone: () => void,
 ): Promise<SweepFailure | undefined> {
   const code = errnoCode(error);
-  if (code === "ESRCH") return undefined;
+  if (code === "ESRCH") {
+    onLeaderGroupGone();
+    return undefined;
+  }
   const confirmation = code === "EPERM" ? await confirmLiveGroups(ops, deadline) : undefined;
-  if (confirmation !== undefined && confirmedGone(confirmation, leaderPid)) return undefined;
+  if (confirmation !== undefined && confirmedGone(confirmation, leaderPid)) {
+    onLeaderGroupGone();
+    return undefined;
+  }
   state.failures.record("could not stop the leader's group", error, [leaderPid]);
   if (confirmation !== undefined) recordFailedRead(confirmation, state, [leaderPid]);
   return state.failures.result();

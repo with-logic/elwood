@@ -50,6 +50,10 @@ export function harness(script: Script) {
     },
   };
   const reaper = {
+    signalLeaderPty: (send: () => void) => {
+      send();
+      return "signal-sent" as const;
+    },
     reap: () => void calls.push("reap"),
     sweepDetached: (leaderExited: () => boolean) => {
       calls.push(`sweep (exited: ${leaderExited()})`);
