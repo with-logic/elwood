@@ -35,6 +35,7 @@ import {
   reasoning,
   requiredChoice,
 } from "./values.ts";
+import { validateWorkspace } from "./workspace.ts";
 
 export { finalizeRunRequest } from "./finalize.ts";
 
@@ -77,8 +78,13 @@ export async function resolveRunSettings(
       config: sourced(config.agent, configKey(configLocation.path, "agent")),
       resuming,
     },
-    detectAgent ??
-      (() => detectAvailableAgent((agent) => loginShellResolves(agent, undefined, cwd))),
+    async () => {
+      const validatedCwd = await validateWorkspace(cwd);
+      return (
+        detectAgent?.() ??
+        detectAvailableAgent((agent) => loginShellResolves(agent, { cwd: validatedCwd }))
+      );
+    },
   );
   const agent = requiredChoice(agentSetting.value!, cliAgents, "agent");
   // High trust is rejected against explicit posture BEFORE the adapter check, so

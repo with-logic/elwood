@@ -63,8 +63,8 @@ describe("agent auto-detection", () => {
     const bin = emptyBin();
     const stub = stubShell(bin);
     stub.install("claude");
-    await expect(loginShellResolves("claude", stub.shell)).resolves.toBe(true);
-    await expect(loginShellResolves("codex", stub.shell)).resolves.toBe(false);
+    await expect(loginShellResolves("claude", { shell: stub.shell })).resolves.toBe(true);
+    await expect(loginShellResolves("codex", { shell: stub.shell })).resolves.toBe(false);
   });
 
   test("C-CLI-21 picks claude before codex when both resolve", async () => {
@@ -73,7 +73,7 @@ describe("agent auto-detection", () => {
     stub.install("claude");
     stub.install("codex");
     await expect(
-      detectAvailableAgent((agent) => loginShellResolves(agent, stub.shell)),
+      detectAvailableAgent((agent) => loginShellResolves(agent, { shell: stub.shell })),
     ).resolves.toBe("claude");
   });
 
@@ -82,13 +82,15 @@ describe("agent auto-detection", () => {
     const stub = stubShell(bin);
     stub.install("codex");
     await expect(
-      detectAvailableAgent((agent) => loginShellResolves(agent, stub.shell)),
+      detectAvailableAgent((agent) => loginShellResolves(agent, { shell: stub.shell })),
     ).resolves.toBe("codex");
   });
 
   test("C-CLI-21 fails with an actionable no_agent_found when neither resolves", async () => {
     const stub = stubShell(emptyBin());
-    const failure = detectAvailableAgent((agent) => loginShellResolves(agent, stub.shell));
+    const failure = detectAvailableAgent((agent) =>
+      loginShellResolves(agent, { shell: stub.shell }),
+    );
     await expect(failure).rejects.toMatchObject({
       name: "CliValidationError",
       code: "no_agent_found",
@@ -142,7 +144,7 @@ describe("agent auto-detection", () => {
     const stub = stubShell(emptyBin());
     const missingShell = `${stub.shell}-missing`;
     const error = await detectAvailableAgent((agent) =>
-      loginShellResolves(agent, missingShell),
+      loginShellResolves(agent, { shell: missingShell }),
     ).then(
       () => undefined,
       (failure: unknown) => failure as Error & { readonly code: string },

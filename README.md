@@ -122,8 +122,10 @@ elwood --resume <sessionId> "What is the release color?"
 
 When nothing selects an agent, Elwood tries `claude` and then `codex` in your
 login shell and uses the first that resolves; if neither does, the run fails
-with `no_agent_found`. See [docs/cli.md](docs/cli.md) for configuration,
-output protocols, head mode, and continuation.
+with `no_agent_found`. Detection runs from the effective workspace, so
+`-C`/`--cwd` changes where the shell looks for those commands. See
+[docs/cli.md](docs/cli.md) for configuration, output protocols, head mode, and
+continuation.
 
 ## Core concepts
 

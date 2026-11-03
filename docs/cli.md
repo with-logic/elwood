@@ -33,6 +33,8 @@ Pick an agent with `--agent`, `ELWOOD_AGENT`, or the config `agent` key. When
 nothing selects one, a new run auto-detects: Elwood tries `claude` first, then
 `codex`, and uses the first whose command resolves in your login shell. It only
 asks the shell `command -v`, so neither agent starts during detection.
+Detection runs from the effective workspace, so `-C`/`--cwd` changes the command
+lookup directory, including for `config effective`.
 `config effective` reports that choice with source `auto-detected`. If neither
 resolves, the run fails before launch with `no_agent_found` (status 2) and a
 message naming both agents and how to install or select one. Once an agent is
