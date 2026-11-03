@@ -78,9 +78,11 @@ async function readClaudeVersion(): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const result = await cachedVersionRead("claude", () =>
-    Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("claude --version"))),
+    Promise.resolve(
+      currentCommandRunner()(userShell(), probeShellCommand("claude --version", "claude")),
+    ),
   );
-  if (result.error?.code === "ENOENT" || result.status === 127) {
+  if (result.error?.code === "ENOENT" || result.commandLookupFailed === true) {
     throw elwoodError(
       "claude_not_found",
       "`claude` was not found on PATH.",

@@ -33,7 +33,12 @@ test.each([
     const failure = preflight(false);
     await expect(failure).rejects.toMatchObject({
       code: `${adapter}_${errno === "ENOENT" ? "not_found" : "start_failed"}`,
-      details: { errno, syscall: `spawn ${shell}`, path: shell },
+      details: {
+        cause: expect.stringContaining(errno),
+        errno,
+        syscall: `spawn ${shell}`,
+        path: shell,
+      },
     });
     await expect(failure).rejects.toHaveProperty(
       "details",

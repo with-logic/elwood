@@ -47,6 +47,12 @@ Initial required error names:
 | `loop_persistence_failed` | A loop-sidecar write required by creation, cancellation, kill, expiry, or teardown did not complete safely. |
 | `loop_submission_failed` | Live loop scheduling or readiness-safe prompt submission failed; details identify only the loop ID. |
 
+A confirmed command lookup failure reports `*_not_found` with `exitStatus: 127`,
+the fixed cause ``The login shell found no `<command>` (status 127).``, and no
+`stderr` field. Native `ENOENT` retains its native cause and diagnostic fields. A
+resolved CLI returning 127 is `*_start_failed`, preserving its stderr and status;
+a numeric exit status alone is never proof of failed command lookup.
+
 Hook handler failures are normally surfaced as `hookError` events, not thrown
 from the hook bridge path.
 

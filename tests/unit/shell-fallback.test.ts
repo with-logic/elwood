@@ -35,14 +35,14 @@ describe("user shell", () => {
       "-l",
       "-i",
       "-c",
-      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; exec 3>&-; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; claude --version`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; exec 3>&-; claude --version`,
     ]);
     // A lookup answered by its status alone discards its output.
     expect(probeShellStatus("command -v claude")).toEqual([
       "-l",
       "-i",
       "-c",
-      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; exec 3>&-; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; command -v claude >/dev/null 2>&1`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; exec 3>&-; command -v claude >/dev/null 2>&1`,
     ]);
   });
 });

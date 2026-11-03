@@ -9,6 +9,8 @@ import type { ProbeCleanup } from "./probe/cleanup.ts";
 import { resetProbeTimeoutsForTests, runProbe } from "./probe/index.ts";
 
 export type CommandResult = {
+  /** A private lookup marker and status 127 conclusively identified a missing command. */
+  readonly commandLookupFailed?: true;
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
