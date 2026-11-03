@@ -1,8 +1,13 @@
 /** Shared native scan/probe admission within each read's existing deadline (C-LIFE-10). */
 
 import type { PsRunner } from "./process-table.ts";
+import { processReadTimeout } from "./read-timeout.ts";
 
-/** Full-table scans and daemon-path probes share these subprocess slots. */
+/**
+ * Two lets native reads overlap while bounding subprocess load across sessions.
+ * PATH_READS_AT_ONCE separately batches one walk's logical requests; those requests
+ * compete for these shared slots, so the independent bounds need not match.
+ */
 export const MAX_NATIVE_PROCESS_READS = 2;
 const waiting = new Map<symbol, () => void>();
 let active = 0;
@@ -68,5 +73,5 @@ function drain(): void {
 }
 
 function timedOut(): Error {
-  return Object.assign(new Error("process read admission timed out"), { code: "ETIMEDOUT" });
+  return processReadTimeout("process read admission timed out");
 }
