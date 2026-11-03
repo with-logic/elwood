@@ -62,12 +62,17 @@ describe("CLI main failures", () => {
   test("C-CLI-11 explicit inline JSONL emits one sequenced validation error", async () => {
     const h = mainHarness();
     const deps = mainDependencies({ resolve: resolveDetected });
-    expect(await main(["--output=jsonl", "--stream", "go"], h.context, deps)).toBe(2);
+    const context = { ...h.context, invocationCwd: tempDir("main-errors-") };
+    expect(await main(["--output=jsonl", "--stream", "go"], context, deps)).toBe(2);
     expect(JSON.parse(h.stdout.value)).toMatchObject({
       schemaVersion: 1,
       sequence: 1,
       type: "error",
-      error: { code: "invalid_arguments" },
+      error: {
+        code: "invalid_arguments",
+        message:
+          "Streaming is enabled by --stream; JSONL output requires streaming to be disabled. Use --no-stream.",
+      },
     });
   });
 
