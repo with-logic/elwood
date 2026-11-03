@@ -17,7 +17,10 @@ import {
   leaderNeverExits,
   leaderRow,
   scripted,
+  useScriptedHost,
 } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 afterEach(() => {
   vi.restoreAllMocks();

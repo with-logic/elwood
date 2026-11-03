@@ -12,7 +12,15 @@ import {
   sweepDetachedGroups,
 } from "../../src/runtime/shutdown/detached-sweep/index.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
-import { hook, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
+import {
+  hook,
+  LEADER,
+  leaderRow,
+  scripted,
+  useScriptedHost,
+} from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 const EXITED =
   "Could not reap detached descendants: the leader exited before every group was confirmed stopped";

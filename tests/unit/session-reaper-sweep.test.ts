@@ -14,7 +14,10 @@ import {
   leaderNeverExits,
   leaderRow,
   scripted,
+  useScriptedHost,
 } from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 describe("C-LIFE-10 SessionReaper detached sweep", () => {
   test("sweeps through its injected ops and refuses misrouted leader ids", async () => {
