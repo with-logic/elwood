@@ -8,19 +8,18 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { elwoodError } from "../../core/errors.ts";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
+import { acquireUpdateLease } from "./acquire.ts";
 import {
   type LeaseOwner,
   ownerFile,
-  readOptionalText,
   releaseLease,
   retiredLeaseInfix,
   serializeOwner,
   unresolvedProbeGroup,
 } from "./owner.ts";
 import { retainLease } from "./retained-lease.ts";
-import { defaultWaitMs, pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
+import { defaultWaitMs, pathExists, recoveryPath } from "./waiting.ts";
 
 export type UpdateAdapter = "claude" | "codex";
 
@@ -73,39 +72,19 @@ export async function coordinatedAutoupdate(
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completion = join(root, `${adapter}.completed`);
-  const priorCompletion = await readOptionalText(completion);
-  let observedActive = (await pathExists(path)) || (await pathExists(recoveryPath(path)));
-  let recoveredStale = false;
-  while (!(await claimLease(path, owner))) {
-    // Losing the claim to an existing lease IS an observation of an active owner; a claim
-    // that failed on its own staging finds no lease below and returns as released. Sampling
-    // only before the loop misses a peer that claimed in the interim, and that contender
-    // would then treat its own later claim as the first attempt and run a duplicate
-    // update (PRD §9.2: a contender skips its duplicate attempt).
-    observedActive = true;
-    const waited = await waitForOwner(path, pollMs, staleMs, waitUntilMs);
-    if (waited === "released") return;
-    if (waited === "wait_expired") {
-      throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
-        updateReason: "active_owner",
-      });
-    }
-    if (waited === "cleanup_pending") {
-      throw elwoodError(
-        `${adapter}_update_failed`,
-        "Another updater's process group has not exited.",
-        { updateReason: "cleanup_pending", cleanupErrorCode: "ETIMEDOUT" },
-      );
-    }
-    recoveredStale = true;
-  }
   if (
-    !recoveredStale &&
-    (observedActive || (await readOptionalText(completion)) !== priorCompletion)
-  ) {
-    await releaseLease(path, owner);
+    !(await acquireUpdateLease({
+      adapter,
+      path,
+      owner,
+      completion,
+      pollMs,
+      staleMs,
+      waitUntilMs,
+      claim: () => claimLease(path, owner),
+    }))
+  )
     return;
-  }
   // Started through `Promise.resolve().then` so an updater that throws SYNCHRONOUSLY is a
   // rejection like any other. Calling `update()` bare would let such a throw escape past
   // the release below with the lease still held, which is the one failure the lease cannot
