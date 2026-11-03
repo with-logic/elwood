@@ -32,7 +32,11 @@ function worktree(): string {
 
 afterEach(resetFakeLaunch);
 
-type ResumeOptions = { readonly elwoodSessionId: string; readonly stateDir: string };
+type ResumeOptions = {
+  readonly elwoodSessionId: string;
+  readonly stateDir: string;
+  readonly cwd?: string;
+};
 
 describe.each([
   {
@@ -60,12 +64,18 @@ describe.each([
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
     await expect(start({ cwd })).rejects.toMatchObject({ code: "pty_start_failed" });
-    resetPreflightCaches();
-    await expect(resume({ elwoodSessionId: `${agent}-preflight`, stateDir })).rejects.toMatchObject(
-      { code: "pty_start_failed" },
-    );
-    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(seen.length).toBeGreaterThanOrEqual(1);
     expect(seen.every((options) => options?.cwd === cwd)).toBe(true);
+    resetPreflightCaches();
+    seen.length = 0;
+    const supplied = worktree();
+    await expect(
+      resume({ elwoodSessionId: `${agent}-preflight`, stateDir, cwd: supplied }),
+    ).rejects.toMatchObject({ code: "pty_start_failed" });
+    expect(seen.length).toBeGreaterThanOrEqual(1);
+    expect(seen.every((options) => options?.cwd === (agent === "claude" ? supplied : cwd))).toBe(
+      true,
+    );
   });
 
   test(`C-API-61 ${agent} start whose directory is removed during preflight fails without recreating it`, async () => {

@@ -68,25 +68,27 @@ function finalizeAutoupdate(
 export const maxSettledPreflightDirectoryResults = 32;
 export const maxKeptVersionStreamCodeUnits = 64 * 1024;
 
-/** A `--version` read that ran and exited 0; a killed, unspawnable, or failing one is not kept. */
-const readSucceeded = (result: CommandResult): boolean =>
+/** Retain only successful version results with at most 65,536 UTF-16 units per stream. */
+const isCacheableVersionResult = (result: CommandResult): boolean =>
   result.status === 0 &&
   result.error === undefined &&
   result.stdout.length <= maxKeptVersionStreamCodeUnits &&
   result.stderr.length <= maxKeptVersionStreamCodeUnits;
 
-// Matching directory reads share a run; only bounded successful answers remain cached.
+// Matching directory reads share a run; retain at most 32 successful directory identities
+// per adapter. Every update attempt invalidates all of that adapter's directory entries.
 const versionReads: Record<UpdateAdapter, DirectoryProbeCache<CommandResult>> = {
-  claude: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, readSucceeded),
-  codex: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, readSucceeded),
+  claude: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, isCacheableVersionResult),
+  codex: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, isCacheableVersionResult),
 };
 
 /**
- * Reads the adapter's `--version` per observed directory while a read succeeds. Concurrent
- * callers share the single in-flight read and its outcome; later callers reuse a successful
- * result. A read that rejects, or resolves with a failed probe (nonzero exit, timeout, spawn
- * error), is not retained, so the next caller after it settles reads again (C-LIFE-11).
- * Invalidated after an autoupdate so the post-update version is re-read.
+ * Reads the adapter's `--version` per observed directory. Concurrent callers share the
+ * in-flight read and its outcome. Retain up to 32 successful directory results whose stdout
+ * and stderr each contain at most 65,536 UTF-16 units. Oversized successes are returned
+ * without retention. Rejections and failed probes (nonzero exit, timeout, spawn error) are
+ * not retained, so the next caller after settlement reads again (C-LIFE-11). Every update
+ * attempt invalidates all directory results before callers validate their installed version.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,
