@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Resolve CLI auto-detection and interactive PATH lookup from the effective workspace, including relative and absolute `--cwd` overrides.
+
 - Concurrent Elwood processes avoid repeating an automatic agent update that another process has completed.
 
 - Preserve native cause, `syscall`, and `path` diagnostics for probe failures surfaced as startup errors, including missing login shells; missing-command diagnostics withhold shell output.
