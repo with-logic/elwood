@@ -13,6 +13,7 @@ import {
   homeGuardStopMarker,
   privateHomes,
 } from "./home-guard/index.ts";
+import { commandLookupScript } from "./probe/lookup.ts";
 import {
   probeControlClose,
   probeControlFd,
@@ -51,11 +52,12 @@ export function loginShellCommand(command: string): LoginShellArgs {
  * missing (C-PERF-05). The command's bound starts at the start line, so it covers what runs
  * between the line and the CLI too: a few builtins.
  */
-export function probeShellCommand(command: string): LoginShellArgs {
+export function probeShellCommand(command: string, lookupCommand?: string): LoginShellArgs {
   // The start line comes first, so the runner still tells a shell that never started the
   // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
   const guard = homeGuardScript("probe");
-  const script = `${probeStartScript}${guard}${probeControlClose}${probeNotFoundHandlerReset}${command}`;
+  const lookup = lookupCommand === undefined ? "" : commandLookupScript(lookupCommand);
+  const script = `${probeStartScript}${guard}${probeNotFoundHandlerReset}${lookup}${probeControlClose}${command}`;
   return loginShellArgs(script);
 }
 

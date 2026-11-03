@@ -8,6 +8,7 @@ import {
   causeDetails,
   elwoodError,
   errnoCode,
+  notFoundDetails,
   probeFailureDetails,
   underlyingErrno,
 } from "../../src/core/errors.ts";
@@ -112,5 +113,15 @@ describe("underlyingErrno", () => {
     expect(underlyingErrno(elwoodError("termination_failed", "x"))).toBeUndefined();
     expect(underlyingErrno(Object.assign(new Error("x"), { code: "ESRCH" }))).toBe("ESRCH");
     expect(underlyingErrno(null)).toBeUndefined();
+  });
+});
+
+test.each([
+  "claude",
+  "codex",
+] as const)("C-ERR-08 a missing %s names its command and status without shell output", (command) => {
+  expect(notFoundDetails({ status: 127, stderr: "profile secret" }, command)).toEqual({
+    exitStatus: 127,
+    cause: `The login shell found no \`${command}\` (status 127).`,
   });
 });

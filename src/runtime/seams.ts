@@ -9,11 +9,15 @@ import type { ProbeCleanup } from "./probe/cleanup.ts";
 import { resetProbeTimeoutsForTests, runProbe } from "./probe/index.ts";
 
 export type CommandResult = {
+  /** A private lookup marker and status 127 conclusively identified a missing command. */
+  readonly commandLookupFailed?: true;
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
   readonly error?: {
     readonly code?: string | undefined;
+    readonly syscall?: string | undefined;
+    readonly path?: string | undefined;
     readonly message: string;
     /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
     readonly phase?: "login_shell";

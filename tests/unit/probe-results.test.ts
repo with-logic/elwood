@@ -16,13 +16,19 @@ import {
   shellExited,
 } from "../../src/runtime/probe/results.ts";
 
-test("a spawn error keeps its code and message, and only those", () => {
+test("C-ERR-08 a spawn error keeps its native code, syscall, path and message", () => {
   const error = Object.assign(new Error("spawn /no/such/shell ENOENT"), {
     code: "ENOENT",
     errno: -2,
+    syscall: "spawn /no/such/shell",
     path: "/no/such/shell",
   });
-  expect(mapError(error)).toStrictEqual({ code: "ENOENT", message: "spawn /no/such/shell ENOENT" });
+  expect(mapError(error)).toStrictEqual({
+    code: "ENOENT",
+    syscall: "spawn /no/such/shell",
+    path: "/no/such/shell",
+    message: "spawn /no/such/shell ENOENT",
+  });
 });
 
 const output = { stdout: "out", stderr: "err" };

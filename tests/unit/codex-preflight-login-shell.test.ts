@@ -10,6 +10,7 @@ import {
   preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
+import { commandLookupScript } from "../../src/runtime/probe/lookup.ts";
 import {
   probeControlClose,
   probeNotFoundHandlerReset,
@@ -39,11 +40,13 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
   });
   await preflightCodex(false, true);
   await detectCodexCliCapabilities();
+  const prefix = `${probeStartScript}${probeNotFoundHandlerReset}`;
+  const version = `${prefix}${commandLookupScript("codex")}${probeControlClose}codex --version`;
   expect(scripts).toEqual([
-    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex --version`,
-    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex update`,
-    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex --version`,
-    `${probeStartScript}${probeControlClose}${probeNotFoundHandlerReset}codex --help`,
+    version,
+    `${prefix}${probeControlClose}codex update`,
+    version,
+    `${prefix}${probeControlClose}codex --help`,
   ]);
 });
 

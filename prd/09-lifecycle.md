@@ -161,8 +161,12 @@ line (§12), and closes before the command, which never inherits it.
 After the start line and before the command, the probe script removes the user's
 not-found handlers, zsh's `command_not_found_handler` and bash's
 `command_not_found_handle`, under the command's bound, which starts at the line. A
-CLI missing from the login shell's PATH therefore exits 127 and is reported as not
-found, and nothing a handler would print is captured.
+Version probes explicitly check command lookup after removing those handlers. A
+failed lookup emits a private random marker over the existing control channel
+(or stdout fallback) and exits 127. Only that conclusive lookup signal or native
+`ENOENT` reports a CLI as not found; numeric status 127 alone is insufficient. A
+resolved CLI exiting 127 reports `*_start_failed` with its stderr and exit status.
+Lookup markers are removed from captured output, and no handler output is captured.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
 it exits. A probe that

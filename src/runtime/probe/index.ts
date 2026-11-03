@@ -15,6 +15,7 @@ import type { CommandResult } from "../seams.ts";
 import type { StreamMarkerWatcher } from "../stream-marker.ts";
 import { CappedBuffer } from "./capped-buffer.ts";
 import { abortProbe } from "./cleanup.ts";
+import { ProbeCommandLookup } from "./lookup.ts";
 import {
   commandTimedOut,
   guardStopped,
@@ -95,7 +96,10 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
         }),
       );
     };
-    const captured = (): [string, string] => [start.stripFromStdout(out.text()), err.text()];
+    const captured = (): [string, string] => [
+      lookup.stripFromStdout(start.stripFromStdout(out.text())),
+      err.text(),
+    ];
     // Each phase's bound aborts the probe with its own typed timeout, for its length, when it
     // expires.
     const boundBy = (ms: number, timedOut: typeof commandTimedOut) => {
@@ -108,11 +112,15 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       if (out.overflowed || err.overflowed) settle(overflow(...captured()), true);
     };
     const start = new ProbeStart();
+    const lookup = new ProbeCommandLookup();
     const expectsStartLine = announcesStart(args);
     // A shell that closed the control descriptor writes the start line on stdout (start.ts).
     // Watched before capture, so a chunk that both starts the command and overflows the cap
     // has its bound cleared by the overflow's settle rather than armed after it.
-    child.stdout.on("data", (chunk: Buffer) => onStart("stdout", chunk));
+    child.stdout.on("data", (chunk: Buffer) => {
+      lookup.feed("stdout", chunk);
+      onStart("stdout", chunk);
+    });
     child.stdout.on("data", onData(out));
     child.stderr.on("data", onData(err));
     // The start line ends the login shell's launch phase: the command's own bound begins
@@ -126,6 +134,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
     // line, which no profile's redirection of stdout can hide (PRD §12).
     const guardStop = watchForStopMarker();
     const onControl = (chunk: Buffer): void => {
+      lookup.feed("control", chunk);
       guardStop.feed(chunk);
       onStart("control", chunk);
     };
@@ -148,7 +157,7 @@ function spawnProbe(command: string, args: readonly string[]): Promise<CommandRe
       )
         settle(guardStopped(stdout, stderr));
       // A signal death reads as a shell reports it, 128+n.
-      else settle({ status: exitStatus(code, signal), stdout, stderr });
+      else settle({ status: exitStatus(code, signal), stdout, stderr, ...lookup.result(code) });
     });
     // The launch phase runs from spawn until the shell's start line (C-PERF-05).
     let timer = boundBy(launchTimeoutMs, launchTimedOut);

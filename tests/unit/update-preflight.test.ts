@@ -112,7 +112,7 @@ describe("CLI autoupdate preflight", () => {
     resetPreflight();
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
-      return { status: 127, stdout: "", stderr: "missing" };
+      return { status: 127, commandLookupFailed: true, stdout: "", stderr: "missing" };
     });
     await expect(preflightClaude(false, true)).rejects.toThrow(ElwoodError);
   });
@@ -150,7 +150,7 @@ describe("CLI autoupdate preflight", () => {
     resetPreflight();
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("codex update")) return { status: 0, stdout: "", stderr: "" };
-      return { status: 127, stdout: "", stderr: "missing" };
+      return { status: 127, commandLookupFailed: true, stdout: "", stderr: "missing" };
     });
     await expect(preflightCodex(false, true)).rejects.toThrow(ElwoodError);
   });

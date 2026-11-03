@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and §10.
  */
 
-import { elwoodError, probeFailureDetails } from "../core/errors.ts";
+import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
@@ -79,10 +79,16 @@ async function readCodexVersion(): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const result = await cachedVersionRead("codex", () =>
-    Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
+    Promise.resolve(
+      currentCommandRunner()(userShell(), probeShellCommand("codex --version", "codex")),
+    ),
   );
-  if (result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
+  if (result.error?.code === "ENOENT" || result.commandLookupFailed === true) {
+    throw elwoodError(
+      "codex_not_found",
+      "Could not find `codex` on PATH.",
+      notFoundDetails(result, "codex"),
+    );
   }
   if (result.status !== 0) {
     throw elwoodError(

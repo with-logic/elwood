@@ -3,6 +3,8 @@
  * Implements PRD §10.
  */
 
+import type { ElwoodAgentKind } from "./activity/index.ts";
+
 export type ElwoodErrorName =
   | "unsupported_platform"
   | "claude_not_found"
@@ -124,19 +126,27 @@ export function underlyingErrno(error: unknown): string | undefined {
  */
 export function causeDetails(error: unknown): Readonly<Record<string, string>> {
   if (!(error instanceof Error)) return { cause: String(error) };
-  const details: Record<string, string> = { cause: error.message };
-  const { code, syscall, path } = error as NodeJS.ErrnoException;
+  const details = nativeFailureDetails(error);
   const { cleanupErrorCode } = error as { cleanupErrorCode?: unknown };
+  if (typeof cleanupErrorCode === "string") details["cleanupErrorCode"] = cleanupErrorCode;
+  return details;
+}
+
+/** The native diagnostic fields shared by thrown failures and structured probe errors. */
+function nativeFailureDetails(
+  error: Pick<NodeJS.ErrnoException, "message" | "code" | "syscall" | "path">,
+): Record<string, string> {
+  const details: Record<string, string> = { cause: error.message };
+  const { code, syscall, path } = error;
   if (typeof code === "string") details["errno"] = code;
   if (typeof syscall === "string") details["syscall"] = syscall;
   if (typeof path === "string") details["path"] = path;
-  if (typeof cleanupErrorCode === "string") details["cleanupErrorCode"] = cleanupErrorCode;
   return details;
 }
 
 /**
  * Diagnosable details for a failed CLI probe (C-ERR-08): stderr plus the
- * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
+ * runner's cause/errno/syscall/path when present (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
  * output overflow) so a start failure never drops the underlying reason. `exitStatus` is the
  * status the probe reported, 128+n for a signal death, and is absent when it reported none.
  * A login-shell failure (`phase: "login_shell"`) never ran the command, so its stderr is
@@ -150,6 +160,8 @@ export function probeFailureDetails(result: {
   readonly stderr: string;
   readonly error?: {
     readonly code?: string | undefined;
+    readonly syscall?: string | undefined;
+    readonly path?: string | undefined;
     readonly message: string;
     // Structurally narrower than `string`: the only producer is `abortProbe`, whose
     // `ProbeCleanup` type pins this to the bounded allowlist plus `ETIMEDOUT`. Importing
@@ -165,8 +177,7 @@ export function probeFailureDetails(result: {
   const details: Record<string, string | number> = { stderr: loginShell ? "" : result.stderr };
   if (typeof result.status === "number") details["exitStatus"] = result.status;
   if (result.error) {
-    details["cause"] = result.error.message;
-    if (typeof result.error.code === "string") details["errno"] = result.error.code;
+    Object.assign(details, nativeFailureDetails(result.error));
     if (result.error.phase !== undefined) details["phase"] = result.error.phase;
     if (result.error.cleanupErrorCode !== undefined)
       details["cleanupErrorCode"] = result.error.cleanupErrorCode;
@@ -174,4 +185,15 @@ export function probeFailureDetails(result: {
       details["cleanupProcessGroupId"] = result.error.cleanupProcessGroupId;
   }
   return details;
+}
+
+/** Missing CLI diagnostics retain native causes, withholding shell output (PRD §10, C-ERR-08). */
+export function notFoundDetails(
+  result: Parameters<typeof probeFailureDetails>[0],
+  command: ElwoodAgentKind,
+): Readonly<Record<string, string | number>> {
+  const { stderr: _shellOutput, ...details } = probeFailureDetails(result);
+  return result.error
+    ? details
+    : { ...details, cause: `The login shell found no \`${command}\` (status 127).` };
 }
