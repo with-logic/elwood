@@ -2,8 +2,17 @@
 import { expect, test, vi } from "vitest";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { runTeardownSteps } from "../../src/runtime/shutdown/teardown.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
-import { errno, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
+import {
+  errno,
+  LEADER,
+  leaderRow,
+  scripted,
+  useScriptedHost,
+} from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 const timeouts = { gracefulMs: 0, forceMs: 0 };
 const pty = (kill: () => void) => ({
@@ -53,7 +62,23 @@ test("C-LIFE-10 confirmed group exit does not clear an earlier unresolved descen
   const send = vi.fn();
   await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
     code: "termination_failed",
-    details: { cause: expect.stringContaining("could not stop the leader's group") },
+    details: {
+      cause: expect.stringContaining("could not stop the leader's group"),
+      unconfirmedProcessGroupIds: [LEADER],
+    },
+  });
+  await expect(
+    runTeardownSteps([() => terminatePty(pty(send), "SIGKILL", reaper, timeouts)]),
+  ).rejects.toMatchObject({
+    code: "teardown_failed",
+    details: {
+      failures: [
+        {
+          code: "termination_failed",
+          details: { unconfirmedProcessGroupIds: [LEADER] },
+        },
+      ],
+    },
   });
   expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(
     "could not stop the leader's group",
@@ -77,4 +102,26 @@ test("C-LIFE-10 a queued sweep rechecks group-gone evidence before dispatch", as
   expect(stop).toHaveBeenCalledOnce();
   reaper.reap();
   expect(fake.calls).toEqual([]);
+});
+
+test("C-LIFE-10 EPERM with a live leader still sends SIGKILL and retains its failure", async () => {
+  const fake = scripted([[leaderRow]], {
+    stopGroup: () => {
+      throw errno("EPERM");
+    },
+  });
+  const reaper = new SessionReaper(LEADER, fake.ops);
+  const send = vi.fn();
+  await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
+    code: "termination_failed",
+    details: {
+      sweepError: expect.stringContaining("could not stop the leader's group (EPERM)"),
+      unconfirmedProcessGroupIds: [LEADER],
+    },
+  });
+  expect(send).toHaveBeenCalledExactlyOnceWith("SIGKILL");
+  expect(fake.calls).toEqual(["list", `kill ${LEADER}`]);
+  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(
+    "could not stop the leader's group (EPERM)",
+  );
 });

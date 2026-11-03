@@ -13,13 +13,17 @@ import {
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import type { SessionReaper } from "./reap-tree.ts";
+import type { SessionReaper, SweepSignalOutcome } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached" | "signalLeaderPty">;
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
+const groupGoneForOutcome: Readonly<Record<SweepSignalOutcome, boolean>> = {
+  "signal-sent": false,
+  "leader-group-gone": true,
+};
 
 /**
  * Signal the PTY, wait for exit, and reap the leader's process group. The reap is
@@ -55,12 +59,12 @@ export async function terminatePty(
     exit = latch;
     if (signal === "SIGTERM") {
       const outcome = reaper.signalLeaderPty(() => pty.kill("SIGTERM"));
-      observedExit = outcome === "leader-group-gone" || (await latch.within(timeouts.gracefulMs));
+      observedExit = groupGoneForOutcome[outcome] || (await latch.within(timeouts.gracefulMs));
     }
     if (!observedExit) {
       sweepError = await reaper.sweepDetached(() => latch.exited).then(() => undefined, toError);
       const leaderGroupGone =
-        !latch.exited && reaper.signalLeaderPty(() => pty.kill("SIGKILL")) === "leader-group-gone";
+        !latch.exited && groupGoneForOutcome[reaper.signalLeaderPty(() => pty.kill("SIGKILL"))];
       observedExit = leaderGroupGone || (await latch.within(timeouts.forceMs));
       if (!observedExit) {
         terminationError = elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
@@ -143,7 +147,7 @@ function ptyOperationFailed(error: unknown): ElwoodError {
   return elwoodError(
     "termination_failed",
     `Could not terminate the PTY: ${toError(error).message}`,
-    causeDetails(error),
+    { ...causeDetails(error), ...unconfirmedGroupsDetail(toError(error)) },
   );
 }
 

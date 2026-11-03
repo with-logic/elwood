@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Shutdown permanently stops signaling a leader PID or group once its detached
   sweep confirms the group gone, retaining any earlier unresolved descendant failure.
+  An exit during that confirmation waits for its shutdown owner’s final reap, and
+  saved sweep failures retain their unconfirmed group IDs through teardown.
 
 - Shutdown bounds native process-table scans and daemon-path probes to two concurrent
   subprocesses per parent process, preserving coalescing and existing read deadlines.
