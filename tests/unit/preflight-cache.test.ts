@@ -44,7 +44,7 @@ describe("version-read cache", () => {
     expect(maxInFlight).toBe(2);
   });
 
-  test("C-PERF-02 reads --version at most once per process", async () => {
+  test("C-PERF-02 reuses a retained --version result in the same directory", async () => {
     let reads = 0;
     setPlatformForTests("darwin");
     setCommandRunnerForTests(() => {

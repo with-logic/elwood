@@ -26,7 +26,7 @@ export type CommandResult = {
   } & ProbeCleanup;
 };
 
-/** The initial working directory of a non-PTY probe; omitted means the host cwd. */
+/** Initial working directory for a non-PTY probe; omitted uses the host cwd. */
 export type CommandOptions = { readonly cwd?: string };
 
 /**

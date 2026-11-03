@@ -49,9 +49,8 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
     await assertLaunchDirectory("claude", cwd);
-    const warning = await preflightClaude(
-      options.strictVersionCheck ?? false,
-      options.autoupdate ?? false,
+    const warning = await recheckLaunchDirectoryOnFailure("claude", cwd, () =>
+      preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false, cwd),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,

@@ -75,15 +75,23 @@ an inherited `SHELL` environment override from the parent process.
 
 These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
-preflights on a single thread. Elwood reads each adapter's `--version` at most
-once per parent process — concurrent first reads share a single subprocess, and
-later reads reuse the cached result — mirroring the once-per-process autoupdate
-dedupe (C-LIFE-09). The cached version and adapter-capability reads are invalidated
-after every coordinated update attempt, including a failed or peer-owned attempt,
-because a failed installer may still have partially changed the binary. When
-`autoupdate` is set, concurrent callers share one update and all validate the same
-post-attempt version, so no caller proceeds on a stale pre-update version or races
-a second update. This mutual exclusion also applies across separate Elwood parent
+preflights on a single thread. Version, Codex capability, update and verification
+probes start in the validated launch directory. Version and capability answers are
+cached per adapter, directory path and observed device/inode (C-PERF-02). Concurrent
+reads for one key share a subprocess. Each cache keeps the 32 most recently used
+successful settled answers; in-flight reads are shared without counting toward
+that bound. Version results are retained only when both stdout and stderr contain
+at most 65,536 UTF-16 code units; larger results are returned unchanged but not
+retained. Capability caching retains only the derived boolean, not the help text.
+A result is retained only if directory identities observed before and after its
+read match. These bounded snapshots can miss a replacement restored between checks;
+they do not track executable changes or PATH changes within the same directory.
+The cached version and adapter-capability reads are invalidated after every
+coordinated update attempt, including a failed or peer-owned attempt, because a
+failed installer may still have partially changed the binary. Update coordination
+remains once per parent process and adapter across workspaces (C-LIFE-09): its
+owner verifies and updates from that caller's captured directory, and each caller
+validates its own workspace's post-attempt version without racing a second update. This mutual exclusion also applies across separate Elwood parent
 processes for the same macOS user and adapter: an atomic lease names the adapter in
 a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
