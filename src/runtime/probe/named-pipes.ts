@@ -38,6 +38,9 @@ const pipeNames = ["stdout", "stderr"] as const;
 const systemMkfifo = "/usr/bin/mkfifo";
 let mkfifo = systemMkfifo;
 
+/** Setup gets its own bound before a probe's shell and command timers can start. */
+export const probeOutputSetupTimeoutMs = 60_000;
+
 /** Points the capture at another `mkfifo`, so a test can make one fail; with none, the system's. */
 export function setMkfifoForTests(path: string = systemMkfifo): void {
   mkfifo = path;
@@ -123,10 +126,17 @@ export class NamedPipeCapture implements ProbeCapture {
     );
   }
 
-  static async create(): Promise<NamedPipeCapture> {
+  /**
+   * Bounds the `mkfifo` child, killing and reaping it on expiry. Filesystem operations
+   * outside that child are not timed; setup failures release partial pipes and the directory.
+   */
+  static async create(setupTimeoutMs = probeOutputSetupTimeoutMs): Promise<NamedPipeCapture> {
     const capture = new NamedPipeCapture(makePrivateDirectory());
     try {
-      await run(mkfifo, ["-m", pipeMode, ...capture.pipes.map((pipe) => pipe.path)]);
+      await run(mkfifo, ["-m", pipeMode, ...capture.pipes.map((pipe) => pipe.path)], {
+        timeout: setupTimeoutMs,
+        killSignal: "SIGKILL",
+      });
       for (const pipe of capture.pipes) pipe.open();
       return capture;
     } catch (error) {
