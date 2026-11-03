@@ -93,7 +93,7 @@ export function prepareStateDirectory(
         `State directory must be owned by the current user: ${path}`,
       );
     }
-    fchmodSync(fd, mode);
+    if ((info.mode & 0o7777) !== mode) fchmodSync(fd, mode);
   } finally {
     closeSync(fd);
   }

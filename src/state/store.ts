@@ -6,12 +6,13 @@
  * are recomputed at each launch and live in memory only.
  */
 
-import { existsSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { elwoodError, toError } from "../core/errors.ts";
 import { assertStatePath, PRIVATE_STATE_MODE, SHARED_STATE_MODE } from "./directories.ts";
-import { safeSessionDir, secureMkdir, writePrivateFileAtomic, writeSharedFile } from "./files.ts";
+import { safeSessionDir, secureMkdir, writePrivateFileAtomic } from "./files.ts";
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
+import { installDefaultIgnore } from "./preparation/install-ignore.ts";
 import { currentFileOwner, type FileOwner, readPrivateFile } from "./private-read.ts";
 import { makeStateRoot, makeStateTree } from "./root.ts";
 import { removeSocketHome } from "./socket-home.ts";
@@ -82,9 +83,7 @@ export function prepareStateDir(stateDir: string, setup: StateDirSetup): void {
   makeStateTree(setup.cwd, session ?? sessions, () => {
     makeStateRoot(root, isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE, setup.cwd);
     const gitignorePath = join(root, ".gitignore");
-    if (isDefault && !existsSync(gitignorePath)) {
-      writeSharedFile(gitignorePath, "*\n");
-    }
+    if (isDefault) installDefaultIgnore(gitignorePath);
     secureMkdir(sessions);
     if (session !== undefined) secureMkdir(session);
   });

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Install the default `.elwood/.gitignore` atomically without overwriting a competing writer or leaving partial contents after a failed write.
+
 - A session's final transcript flush, and a Claude subagent's retirement, now read
   the first unread chunk (up to 256 KiB) of each transcript they drain, for up to 16
   transcripts, before their 50 ms time limit can stop them. Before, a host too loaded

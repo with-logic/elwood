@@ -11,6 +11,7 @@ import {
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
+import { prepareLaunchState } from "../../runtime/session/prepare-state.ts";
 import { withSocketHomeCleanup } from "../../runtime/startup/cleanup.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { safeSessionDir } from "../../state/files.ts";
@@ -19,12 +20,7 @@ import { codexLaunchPosture, withCodexLaunch } from "../../state/launch-posture.
 import { sessionRuntime } from "../../state/runtime-paths.ts";
 import { releaseLaunchSocket } from "../../state/socket-home.ts";
 import { withLaunchOwnership } from "../../state/startup-ownership.ts";
-import {
-  createSessionRecord,
-  defaultStateDir,
-  prepareStateDir,
-  type SessionRecord,
-} from "../../state/store.ts";
+import { createSessionRecord, defaultStateDir, type SessionRecord } from "../../state/store.ts";
 import * as preflight from "../preflight.ts";
 import { codexHomeReportPath, explainCodexStartFailure } from "../pty.ts";
 import { buildCodexSession } from "./build.ts";
@@ -71,7 +67,7 @@ export async function startCodexWithId(
     options.autoupdate ?? false,
   );
   const session = await recheckLaunchDirectoryOnFailure("codex", options.cwd, () => {
-    prepareStateDir(stateDir, {
+    prepareLaunchState("codex", stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,
