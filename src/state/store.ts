@@ -80,12 +80,18 @@ export function prepareStateDir(stateDir: string, setup: StateDirSetup): void {
   const sessions = join(root, "sessions");
   const id = setup.elwoodSessionId;
   const session = id === undefined ? undefined : safeSessionDir(root, id);
-  makeStateTree(setup.cwd, session ?? sessions, () => {
-    makeStateRoot(root, isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE, setup.cwd);
+  makeStateTree(setup.cwd, (created) => {
+    makeStateRoot(
+      root,
+      isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE,
+      setup.cwd,
+      undefined,
+      created,
+    );
     const gitignorePath = join(root, ".gitignore");
     if (isDefault) installDefaultIgnore(gitignorePath);
-    secureMkdir(sessions);
-    if (session !== undefined) secureMkdir(session);
+    secureMkdir(sessions, created);
+    if (session !== undefined) secureMkdir(session, created);
   });
 }
 

@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { elwoodError, errnoCode } from "../core/errors.ts";
+import type { StateDirectoryCreated } from "./preparation/created-directories.ts";
 
 /** Reject planted ancestors too, while allowing root-owned OS aliases such as /tmp. */
 export function assertStatePath(path: string): void {
@@ -60,18 +61,23 @@ export function makeStateDirectory(
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,
+  created?: StateDirectoryCreated,
 ): void {
   assertStatePath(path);
-  makeAs[policy](path, mode);
+  makeAs[policy](path, mode, created);
 }
 
 /**
  * Makes `path` inside its existing parent, an ancestry the caller has already checked, so only
  * `path` itself is checked not to be a symlink.
  */
-export function makeStateDirectoryBelow(path: string, mode: StateDirectoryMode): void {
+export function makeStateDirectoryBelow(
+  path: string,
+  mode: StateDirectoryMode,
+  created?: StateDirectoryCreated,
+): void {
   assertSafeEntry(path, true);
-  makeInsideParent(path, mode);
+  makeInsideParent(path, mode, created);
 }
 
 /**
@@ -82,8 +88,9 @@ export function prepareStateDirectory(
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,
+  created?: StateDirectoryCreated,
 ): void {
-  makeStateDirectory(path, mode, policy);
+  makeStateDirectory(path, mode, policy, created);
   const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
     const info = fstatSync(fd);
@@ -101,9 +108,12 @@ export function prepareStateDirectory(
 
 /** How each policy makes a directory; the type makes every policy name one. */
 const makeAs: Readonly<
-  Record<StateDirectoryPolicy, (path: string, mode: StateDirectoryMode) => void>
+  Record<
+    StateDirectoryPolicy,
+    (path: string, mode: StateDirectoryMode, created?: StateDirectoryCreated) => void
+  >
 > = {
-  "with-parents": (path, mode) => mkdirSync(path, { recursive: true, mode }),
+  "with-parents": makeWithParents,
   "inside-parent": makeInsideParent,
   "must-exist": () => {
     // Never made: the open below fails with ENOENT when it is missing.
@@ -111,10 +121,31 @@ const makeAs: Readonly<
 };
 
 /** Makes `path` inside its existing parent; an existing directory is fine, a missing parent not. */
-function makeInsideParent(path: string, mode: StateDirectoryMode): void {
+function makeInsideParent(
+  path: string,
+  mode: StateDirectoryMode,
+  created?: StateDirectoryCreated,
+): void {
   try {
     mkdirSync(path, { mode });
   } catch (error) {
     if (errnoCode(error) !== "EEXIST") throw error;
+    return;
+  }
+  created?.(path);
+}
+
+/** Single-directory steps record partial parent creation without repeating ancestry checks. */
+function makeWithParents(
+  path: string,
+  mode: StateDirectoryMode,
+  created?: StateDirectoryCreated,
+): void {
+  try {
+    makeInsideParent(path, mode, created);
+  } catch (error) {
+    if (errnoCode(error) !== "ENOENT") throw error;
+    makeWithParents(dirname(path), mode, created);
+    makeInsideParent(path, mode, created);
   }
 }
