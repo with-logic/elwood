@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { type DirectoryIdentity, sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
+import { probeRefusalContext } from "../../core/probe-refusal.ts";
 import { currentPlatform } from "../seams.ts";
 
 const notADirectory = "The working directory (`cwd`) is not an existing directory.";
@@ -133,7 +134,10 @@ export async function recheckLaunchDirectoryOnFailure<T>(
       const { errno: _launchErrno, ...launched } = launchFailureDetails(error);
       const { errno } = directoryError.details;
       const details = { ...launched, cwd, ...(errno ? { errno } : {}) };
-      throw elwoodError(directoryError.code, directoryError.message, details);
+      const refusal = probeRefusalContext(error);
+      const message =
+        refusal === undefined ? directoryError.message : `${directoryError.message} ${refusal}`;
+      throw elwoodError(directoryError.code, message, details);
     });
     throw error;
   }

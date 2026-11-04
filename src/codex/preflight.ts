@@ -10,6 +10,7 @@ import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/upda
 import {
   createDirectoryProbeCache,
   type ProbeDirectory,
+  probeCommandOptions,
   readInDirectory,
 } from "../runtime/probe/directory-key.ts";
 import { isProbeSetupError } from "../runtime/probe/setup-error.ts";
@@ -87,10 +88,7 @@ export async function preflightCodex(
 }
 
 async function runCodexUpdate(directory: ProbeDirectory): Promise<void> {
-  const options =
-    directory.identity === undefined
-      ? { cwd: directory.cwd }
-      : { cwd: directory.cwd, directoryIdentity: directory.identity };
+  const options = probeCommandOptions(directory);
   const result = await currentCommandRunner()(
     userShell(),
     probeShellCommand("codex update"),

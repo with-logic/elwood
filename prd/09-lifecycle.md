@@ -95,7 +95,12 @@ preflights on a single thread. Version, Codex capability, update and verificatio
 probes start in the validated launch directory. Version and Codex capability reads
 carry the launch's originally captured directory identity into the probe's bounded
 checks. A later observation or a replacement directory's cached answer must not
-substitute for that identity. Version and capability answers are
+substitute for that identity. A definite refusal retains its fixed reason, retry guidance and probe label
+(Claude/Codex version, Codex help, or update) in both a wrapping launch failure's
+top-level message and a best-effort update warning's existing message, without
+including directory paths or profile output. A refused version-verification probe
+is labelled as a version probe even when it occurs during an update attempt.
+Version and capability answers are
 cached per adapter, directory path and observed device/inode (C-PERF-02). Concurrent
 reads for one key share a subprocess. Each cache keeps the 32 most recently used
 successful settled answers; in-flight reads are shared without counting toward

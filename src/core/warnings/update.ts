@@ -15,6 +15,7 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { ElwoodError } from "../errors.ts";
+import { probeRefusalContext } from "../probe-refusal.ts";
 import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
 
 /**
@@ -65,6 +66,7 @@ export function buildUpdateWarning(
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
   const exitStatus = typeof details["exitStatus"] === "number" ? details["exitStatus"] : undefined;
   const skipped = skippedUpdates.get(details["updateReason"]);
+  const refusal = probeRefusalContext(error);
   return {
     agent,
     source: "lifecycle",
@@ -72,7 +74,9 @@ export function buildUpdateWarning(
     severity: "warning",
     message:
       skipped === undefined
-        ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
+        ? refusal === undefined
+          ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
+          : `${refusal} Continuing with the installed CLI ${installedVersion}.`
         : `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
     errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",

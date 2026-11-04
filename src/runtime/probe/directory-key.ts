@@ -14,6 +14,13 @@ export type ProbeDirectory = {
   readonly identity?: DirectoryIdentity | undefined;
 };
 
+/** Preserve a captured identity when passing a directory to the command runner. */
+export function probeCommandOptions(directory: ProbeDirectory): CommandOptions {
+  return directory.identity === undefined
+    ? { cwd: directory.cwd }
+    : { cwd: directory.cwd, directoryIdentity: directory.identity };
+}
+
 /**
  * `cwd` and which directory it names (device and inode), so a directory deleted and made again
  * at the same path is probed again rather than answered from the old one's result. None for a
@@ -67,19 +74,18 @@ export async function readInDirectory<T>(
   expectedIdentity?: DirectoryIdentity,
 ): Promise<T> {
   const observed = await directoryKey(cwd);
-  const key = observed?.key;
-  if (
-    expectedIdentity !== undefined &&
-    key !== `${expectedIdentity.dev}:${expectedIdentity.ino}:${cwd}`
-  ) {
-    // Never replace the launch's original identity with a later observation or cache hit.
-    return read({ cwd, directoryIdentity: expectedIdentity });
-  }
-  // A directory that can't be identified is read, but its answer is neither shared nor kept.
-  if (observed === undefined) return read({ cwd });
-  const { value } = await cache.get(observed.key, async () => {
-    const value = await read({ cwd, directoryIdentity: expectedIdentity ?? observed.identity });
-    return { value, sameDirectory: (await directoryKey(cwd))?.key === observed.key };
-  });
+  const identity = expectedIdentity ?? observed?.identity;
+  // An unidentifiable path with no captured identity cannot be shared or retained.
+  if (identity === undefined) return read(probeCommandOptions({ cwd }));
+  const key = `${identity.dev}:${identity.ino}:${cwd}`;
+  const matches = observed?.key === key;
+  const { value } = await cache.get(
+    key,
+    async () => {
+      const value = await read(probeCommandOptions({ cwd, identity }));
+      return { value, sameDirectory: matches && (await directoryKey(cwd))?.key === key };
+    },
+    !matches,
+  );
   return value;
 }

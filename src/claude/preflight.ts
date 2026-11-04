@@ -7,7 +7,7 @@ import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/error
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
-import type { ProbeDirectory } from "../runtime/probe/directory-key.ts";
+import { type ProbeDirectory, probeCommandOptions } from "../runtime/probe/directory-key.ts";
 import { isProbeSetupError } from "../runtime/probe/setup-error.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
@@ -68,10 +68,7 @@ export async function preflightClaude(
 }
 
 async function runClaudeUpdate(directory: ProbeDirectory): Promise<void> {
-  const options =
-    directory.identity === undefined
-      ? { cwd: directory.cwd }
-      : { cwd: directory.cwd, directoryIdentity: directory.identity };
+  const options = probeCommandOptions(directory);
   const result = await currentCommandRunner()(
     userShell(),
     probeShellCommand("claude update"),

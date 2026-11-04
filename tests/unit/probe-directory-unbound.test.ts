@@ -1,7 +1,7 @@
 /** Unbound probes do not allocate or scan directory-refusal markers (PRD §9.2, C-PERF-03). */
 import { expect, test, vi } from "vitest";
 import { directoryGuardExitCode } from "../../src/core/checked-command.ts";
-import { ProbeDirectoryRefusal } from "../../src/runtime/probe/directory.ts";
+import { checkedProbeCommand, ProbeDirectoryRefusal } from "../../src/runtime/probe/directory.ts";
 import { StreamMarkerWatcher } from "../../src/runtime/stream-marker.ts";
 
 test("C-PERF-03 an unbound probe neither allocates marker buffers nor copies profile chunks", () => {
@@ -22,4 +22,17 @@ test("C-PERF-03 an unbound probe neither allocates marker buffers nor copies pro
   }
   expect(calls).toEqual([0, 0, 0]);
   expect(result).toBeUndefined();
+});
+
+test("C-API-61 a private marker without the guard status does not establish refusal", () => {
+  const options = { cwd: "/unused", directoryIdentity: { dev: 1n, ino: 2n } };
+  const script = checkedProbeCommand("/bin/sh", ["-c", "exit 0"], options).args.join("\n");
+  const marker = script.match(/elwood-probe-directory-refused-[0-9a-f]{16}/)?.[0];
+  expect(marker).toBeDefined();
+  const refusal = new ProbeDirectoryRefusal(options);
+  refusal.feed("stdout", Buffer.from(`${marker}\n`));
+  expect(refusal.result(0)).toBeUndefined();
+  expect(refusal.result(directoryGuardExitCode)).toMatchObject({
+    error: { origin: "probe_setup" },
+  });
 });

@@ -163,3 +163,17 @@ test("C-PERF-02 an original identity bypasses a replacement's settled answer", a
   expect(read).toHaveBeenCalledTimes(2);
   expect(read).toHaveBeenLastCalledWith({ cwd, directoryIdentity: identity });
 });
+
+test("C-PERF-02 matching captured identities share concurrent and settled answers", async () => {
+  const cwd = tempDir("elwood-directory-matching-");
+  const identity = statSync(cwd, { bigint: true });
+  const cache = createDirectoryProbeCache<number>(3);
+  const release = Promise.withResolvers<number>();
+  const read = vi.fn(() => release.promise);
+  const one = readInDirectory(cache, cwd, read, identity);
+  const two = readInDirectory(cache, cwd, read, identity);
+  release.resolve(42);
+  expect(await Promise.all([one, two])).toEqual([42, 42]);
+  expect(await readInDirectory(cache, cwd, read, identity)).toBe(42);
+  expect(read).toHaveBeenCalledTimes(1);
+});

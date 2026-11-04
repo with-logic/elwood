@@ -9,15 +9,14 @@ import {
 } from "../../core/checked-command.ts";
 import { sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { toError } from "../../core/errors.ts";
+import { probeCommandRefusedReason } from "../../core/probe-refusal.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { StreamMarkerWatcher } from "../stream-marker.ts";
 import { mapError, outputUnavailable } from "./results.ts";
 import { announcesStart, type ProbeStartChannel } from "./start.ts";
 
 const refusalLine = `elwood-probe-directory-refused-${randomBytes(8).toString("hex")}`;
-const refusalScript = `{ echo ${refusalLine} >&3; } 2>/dev/null || :; { echo ${refusalLine}; } 2>/dev/null || :; `;
-const probeCommandRefused =
-  "The probe command was refused because the original directory identity changed. Keep the workspace available and unchanged, then retry.";
+const refusalScript = `{ echo ${refusalLine} >&3; } 2>/dev/null || { echo ${refusalLine}; } 2>/dev/null || :; `;
 
 /** Called inside the admitted probe slot, retaining the caller's original identity. */
 export async function refusedProbeDirectory(
@@ -30,7 +29,7 @@ export async function refusedProbeDirectory(
   } catch (error) {
     return outputUnavailable(error);
   }
-  return outputUnavailable(new Error(probeCommandRefused));
+  return outputUnavailable(new Error(probeCommandRefusedReason));
 }
 
 /** Native configured-shell errors cannot be recovered from a supervisor's exit status. */
@@ -95,6 +94,6 @@ export class ProbeDirectoryRefusal {
     const sawRefusalMarker =
       this.watchers !== undefined && Object.values(this.watchers).some((watcher) => watcher.seen);
     if (!(hasIdentity && hasGuardExitCode && sawRefusalMarker)) return undefined;
-    return outputUnavailable(new Error(probeCommandRefused));
+    return outputUnavailable(new Error(probeCommandRefusedReason));
   }
 }

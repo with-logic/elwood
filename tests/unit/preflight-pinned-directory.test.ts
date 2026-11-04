@@ -6,20 +6,24 @@ import { preflightClaude } from "../../src/claude/preflight.ts";
 import { startClaudeWithId } from "../../src/claude/session/index.ts";
 import { detectCodexCliCapabilities, preflightCodex } from "../../src/codex/preflight.ts";
 import { startCodexWithId } from "../../src/codex/session/index.ts";
+import { resumeClaude, resumeCodex } from "../../src/index.ts";
 import {
   type CommandOptions,
   type CommandRunner,
   setCommandRunnerForTests,
 } from "../../src/runtime/seams.ts";
+import * as launchDirectory from "../../src/runtime/session/launch-directory.ts";
 import { checkLaunchDirectory } from "../../src/runtime/session/launch-directory.ts";
 import {
   resetAutoupdateForTests,
   setUpdateCoordinatorForTests,
 } from "../../src/runtime/update/once.ts";
 import { fakeLaunch, resetFakeLaunch } from "../helpers/fake-launch.ts";
+import { resumableStateDir } from "../helpers/session-state.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(resetFakeLaunch);
+afterEach(() => vi.restoreAllMocks());
 
 test.each([
   "claude version",
@@ -89,6 +93,46 @@ for (const [agent, start] of [
     for (const { options } of probes) {
       expect(options?.cwd).toBe(cwd);
       expect(options?.directoryIdentity).toBe(directory.identity);
+    }
+  });
+}
+
+for (const [agent, resume] of [
+  ["claude", resumeClaude],
+  ["codex", resumeCodex],
+] as const) {
+  test(`C-API-61 ${agent} resume forwards its captured identity through every probe`, async () => {
+    fakeLaunch();
+    resetAutoupdateForTests();
+    setUpdateCoordinatorForTests((_adapter, update) => update());
+    const recorded = tempDir("elwood-resume-recorded-");
+    const given = tempDir("elwood-resume-given-");
+    const cwd = agent === "claude" ? given : recorded;
+    const elwoodSessionId = "pinned-resume-probes";
+    const stateDir = resumableStateDir(agent, recorded, elwoodSessionId);
+    // Observe the real public resume check; retain its exact identity object.
+    const checked = vi.spyOn(launchDirectory, "checkLaunchDirectory");
+    const probes: { readonly command: string; readonly options: CommandOptions | undefined }[] = [];
+    setCommandRunnerForTests((_shell, args, options) => {
+      probes.push({ command: args.join(" "), options });
+      return { status: 0, stdout: "2.1.144 --dangerously-bypass-hook-trust", stderr: "" };
+    });
+    await expect(
+      resume({ cwd: given, stateDir, elwoodSessionId, autoupdate: true }),
+    ).rejects.toMatchObject({
+      code: "pty_start_failed",
+      details: { cause: "no PTY in this test" },
+    });
+    expect(checked).toHaveBeenCalledExactlyOnceWith(agent, cwd);
+    const directory = await checked.mock.results[0]?.value;
+    expect(directory?.identity).toBeDefined();
+    expect(probes.some(({ command }) => command.includes(`${agent} --version`))).toBe(true);
+    expect(probes.some(({ command }) => command.includes(`${agent} update`))).toBe(true);
+    if (agent === "codex")
+      expect(probes.some(({ command }) => command.includes("codex --help"))).toBe(true);
+    for (const { options } of probes) {
+      expect(options?.cwd).toBe(cwd);
+      expect(options?.directoryIdentity).toBe(directory?.identity);
     }
   });
 }
