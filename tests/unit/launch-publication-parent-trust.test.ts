@@ -1,4 +1,4 @@
-/** Publication rejects replaceable custom-state ancestry before I/O (PRD §8.1, C-API-20). */
+/** Publication rejects replaceable custom-state ancestry before I/O (PRD §8.1, C-STATE-01). */
 import {
   chmodSync,
   existsSync,
@@ -30,7 +30,7 @@ function fixture(mode: number) {
 }
 
 describe("custom publication ancestry", () => {
-  test("C-API-20 refuses a non-sticky world-writable ancestor", () => {
+  test("C-STATE-01 refuses a non-sticky world-writable ancestor", () => {
     const { file } = fixture(0o777);
     writePrivateFileAtomic(file, "prior posture");
     const publication = new LaunchPublication();
@@ -45,7 +45,7 @@ describe("custom publication ancestry", () => {
     expect(readFileSync(file, "utf8")).toBe("prior posture");
   });
 
-  test.each([0o700, 0o1777])("C-API-20 permits private or sticky ancestry (%o)", (mode) => {
+  test.each([0o700, 0o1777])("C-STATE-01 permits private or sticky ancestry (%o)", (mode) => {
     const { file } = fixture(mode);
     writePrivateFileAtomic(file, "prior posture");
     const publication = new LaunchPublication();
@@ -56,7 +56,7 @@ describe("custom publication ancestry", () => {
   });
 
   test.skipIf(process.getuid!() === 0)(
-    "C-API-20 preserves a native ancestor inspection error",
+    "C-STATE-01 preserves a native ancestor inspection error",
     () => {
       const { root, file } = fixture(0o700);
       writePrivateFileAtomic(file, "prior posture");
@@ -73,7 +73,7 @@ describe("custom publication ancestry", () => {
     },
   );
 
-  test("C-API-20 missing publication parents preserve creation and raw ENOENT behavior", () => {
+  test("C-STATE-01 missing publication parents preserve creation and raw ENOENT behavior", () => {
     const { session } = fixture(0o700);
     const created = join(session, "new-parent", "record");
     const publication = new LaunchPublication();

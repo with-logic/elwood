@@ -1,4 +1,4 @@
-/** Reject other-user replaceable publication ancestry (PRD §8.1, C-API-20). */
+/** Reject other-user replaceable publication ancestry (PRD §8.1, C-STATE-01). */
 import { dirname } from "node:path";
 import { ElwoodError, elwoodError, errnoCode } from "../core/errors.ts";
 import { assertTrustedIgnoreParent } from "./preparation/root-trust.ts";
