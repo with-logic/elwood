@@ -1,13 +1,10 @@
 /** Bounded probes, owned cleanup and home-guard reporting (PRD §9.2/§12, C-PERF-03/05/07, C-E2E-24). */
 
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
-import { resolve } from "node:path";
-import { toError } from "../../core/errors.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { type ProbeCapture, probeCapture } from "./capture.ts";
+import { nativeShellFailure, refusedProbeDirectory } from "./directory.ts";
 import { NamedPipeCapture } from "./named-pipes.ts";
-import { mapError, outputUnavailable } from "./results.ts";
+import { outputUnavailable } from "./results.ts";
 import { runCapturedProbe } from "./run.ts";
 import { withProbeSlot } from "./slots.ts";
 import { announcesStart } from "./start.ts";
@@ -50,24 +47,22 @@ async function spawnProbe(
   args: readonly string[],
   options: CommandOptions,
 ): Promise<CommandResult> {
+  const refused = await refusedProbeDirectory(options);
+  if (refused !== undefined) return refused;
   let capture: ProbeCapture;
   try {
     capture = await probeCapture(args);
   } catch (error) {
     return outputUnavailable(error);
   }
-  try {
-    // Keep native shell-path diagnostics: a supervisor’s status cannot carry errno fields.
-    if ((capture instanceof NamedPipeCapture || announcesStart(args)) && command.includes("/"))
-      await access(resolve(options.cwd ?? process.cwd(), command), constants.X_OK);
-  } catch (error) {
+  const nativeFailure = await nativeShellFailure(
+    command,
+    options,
+    capture instanceof NamedPipeCapture || announcesStart(args),
+  );
+  if (nativeFailure !== undefined) {
     capture.release();
-    return {
-      status: null,
-      stdout: "",
-      stderr: "",
-      error: mapError(toError(error)),
-    };
+    return nativeFailure;
   }
   return runCapturedProbe(command, args, capture, options, {
     launch: () => launchTimeoutMs,

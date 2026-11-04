@@ -17,13 +17,14 @@ export function wrapCommandWithDirectoryGuard(
   identity: DirectoryIdentity | undefined,
   login: boolean,
   platform: NodeJS.Platform = process.platform,
+  refusal?: string,
 ): { readonly command: string; readonly args: readonly string[] } {
   if (identity === undefined) return { command, args };
   const dialect = statDialect(platform);
   if (login) validateLoginShellArgs(args);
   const guardedArgs = login
     ? args.map((arg, index) =>
-        index === 3 ? `${afterProfileGuard(cwd, identity, dialect)}${arg}` : arg,
+        index === 3 ? `${afterProfileGuard(cwd, identity, dialect, refusal)}${arg}` : arg,
       )
     : args;
   return {
@@ -31,7 +32,7 @@ export function wrapCommandWithDirectoryGuard(
     args: [
       "-p",
       "-c",
-      `${directoryGuard(".", identity, dialect)}exec "$@"`,
+      `${directoryGuard(".", identity, dialect, refusal)}exec "$@"`,
       // The placeholder occupies $0; keep the requested command after it, inside "$@".
       "elwood-checked-cwd",
       command,
@@ -45,13 +46,14 @@ function directoryGuard(
   path: string,
   { dev, ino }: DirectoryIdentity,
   platform: StatDialect,
+  refusal: string | undefined,
 ): string {
   const statArgs = platform === "darwin" ? "-L -f '%d:%i'" : "-L -c '%d:%i'";
   // Login-shell xtrace must not expose complete refusal evidence on a passing check.
   const split = directoryGuardStopMarker.lastIndexOf("-") + 1;
   const write = `printf '%s%s\\n' ${shellQuote(directoryGuardStopMarker.slice(0, split))} ${shellQuote(directoryGuardStopMarker.slice(split))}`;
-  const refusal = `{ ${write} >/dev/tty; } 2>/dev/null || ${write}; `;
-  return `[ "$(/usr/bin/stat ${statArgs} ${shellQuote(path)} 2>/dev/null)" = '${dev}:${ino}' ] || { ${refusal}exit ${directoryGuardExitCode}; }; `;
+  const diagnostic = refusal ?? `{ ${write} >/dev/tty; } 2>/dev/null || ${write}; `;
+  return `[ "$(/usr/bin/stat ${statArgs} ${shellQuote(path)} 2>/dev/null)" = '${dev}:${ino}' ] || { ${diagnostic}exit ${directoryGuardExitCode}; }; `;
 }
 
 /** A profile's DEBUG trap must not write inside the guard’s stat command substitution. */
@@ -59,8 +61,9 @@ function afterProfileGuard(
   cwd: string,
   identity: DirectoryIdentity,
   platform: StatDialect,
+  refusal: string | undefined,
 ): string {
-  return `/bin/sh -p -c ${shellQuote(directoryGuard(cwd, identity, platform))} || exit ${directoryGuardExitCode}; `;
+  return `/bin/sh -p -c ${shellQuote(directoryGuard(cwd, identity, platform, refusal))} || exit ${directoryGuardExitCode}; `;
 }
 
 /** Guard syntax exists only for the stat tools shipped on these hosts. */

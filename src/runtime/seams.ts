@@ -3,6 +3,7 @@
  * Implements PRD §13 testability without changing public behavior.
  */
 
+import type { DirectoryIdentity } from "../core/directory-identity.ts";
 import { nodePtyFactory } from "../pty/node.ts";
 import type { PtyFactory } from "../pty/types.ts";
 import type { ProbeCleanup } from "./probe/cleanup.ts";
@@ -27,8 +28,10 @@ export type CommandResult = {
   } & ProbeCleanup;
 };
 
-/** Initial working directory for a non-PTY probe; omitted uses the host cwd. */
-export type CommandOptions = { readonly cwd?: string };
+/** Initial probe cwd and optional original identity, retained across queue/profile boundaries. */
+export type CommandOptions =
+  | { readonly cwd?: string; readonly identity?: undefined }
+  | { readonly cwd: string; readonly identity: DirectoryIdentity };
 
 /**
  * Runs a subprocess and returns its result. Production is async (`spawn`) so a
