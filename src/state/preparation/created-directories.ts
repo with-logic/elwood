@@ -19,14 +19,16 @@ export class CreatedStateDirectories {
   };
 
   /**
-   * Remove only empty, still-matching owned entries. Keep the first cleanup code without
-   * replacing the setup failure that caused rollback.
+   * Remove only empty, still-matching owned entries. Retained shared default roots and
+   * sessions may already support another setup. Keep the first cleanup code without replacing
+   * the setup failure that caused rollback.
    */
-  remove(): string | undefined {
+  remove(retainedDirectories: ReadonlySet<string> = new Set()): string | undefined {
     let failed: string | undefined;
     // Parents are created first even when native aliases spell them differently.
     const deepestFirst = [...this.directories].reverse();
     for (const [path, made] of deepestFirst) {
+      if (retainedDirectories.has(path)) continue;
       try {
         if (!trustedRollbackParent(path)) continue;
         const current = lstatSync(path, { bigint: true });

@@ -85,25 +85,27 @@ const maxStateTreeAttempts = 3;
  * rollback removes only still-matching, owned, empty directories, deepest first (C-STATE-14).
  * Replaced or unverifiable entries are preserved. Nonempty directories, including those
  * another start has populated, stay in place; entries already gone need no cleanup.
+ * Explicitly retained shared directories can already support another setup.
  */
 export function makeStateTree(
   cwd: string,
   makeTree: (onDirectoryCreated: StateDirectoryCreationObserver) => void,
+  retainedDirectories: ReadonlySet<string> = new Set(),
 ): void {
   const made = new CreatedStateDirectories();
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      makeTree(made.record);
-      break;
-    } catch (error) {
-      const retry = errnoCode(error) === "ENOENT" && existsSync(cwd);
-      if (!retry || attempt === maxStateTreeAttempts) throw error;
-    }
-  }
   try {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        makeTree(made.record);
+        break;
+      } catch (error) {
+        const retry = errnoCode(error) === "ENOENT" && existsSync(cwd);
+        if (!retry || attempt === maxStateTreeAttempts) throw error;
+      }
+    }
     realpathSync.native(cwd);
   } catch (error) {
-    const cleanupErrorCode = made.remove();
+    const cleanupErrorCode = made.remove(retainedDirectories);
     throw stateCleanupFailure(error, cleanupErrorCode);
   }
 }

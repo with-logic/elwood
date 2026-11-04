@@ -76,7 +76,7 @@ test.each([
     prepareStateDir(stateDir, { cwd, isImplicitDefaultStateDir: true, elwoodSessionId: "a" }),
   ).toThrow(expect.objectContaining({ code: "EIO" }));
   expect(accepted).toBe(true);
-  expect(fs.existsSync(join(stateDir, "sessions", "b"))).toBe(true);
+  expect(fs.readdirSync(join(stateDir, "sessions"))).toEqual(["b"]);
   expect(fs.readFileSync(join(stateDir, ".gitignore"), "utf8")).toBe("*\n");
   expect(fs.readdirSync(stateDir).sort()).toEqual([".gitignore", "sessions"]);
 });
@@ -91,7 +91,7 @@ test("C-STATE-11 accepting an existing ignore must establish directory durabilit
     "directory sync",
   );
   expect(fs.readFileSync(join(stateDir, ".gitignore"), "utf8")).toBe("keep");
-  expect(fs.existsSync(join(stateDir, "sessions"))).toBe(false);
+  expect(fs.existsSync(join(stateDir, "sessions"))).toBe(true); // another setup may already rely on it
 });
 
 test("C-STATE-11 a second setup accepts a complete ignore before staging is unlinked", () => {
