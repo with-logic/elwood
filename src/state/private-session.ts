@@ -19,24 +19,31 @@ export type SessionOwner = FileOwner;
 /**
  * Create or validate the CLI state root for a session in `cwd` without following a planted
  * root symlink. The root is made only while `cwd` exists, and never makes it (C-STATE-14).
+ * An optional identity assertion runs before each setup attempt and after setup succeeds.
  */
 export function ensurePrivateStateRoot(
   stateDir: string,
   cwd: string,
   owner: SessionOwner = { uid: process.getuid!() },
+  assertCwdUnchanged?: () => void,
 ): void {
   const root = resolve(stateDir);
   const sessions = join(root, "sessions");
-  makeStateTree(cwd, (onDirectoryCreated) => {
-    // Made without `prepareStateDirectory`'s chmod: an existing root keeps its mode, so a
-    // shared one is rejected below instead of being made private (C-CLI-15).
-    const makeRoot = () =>
-      makeStateRoot(root, PRIVATE_STATE_MODE, cwd, makeStateDirectory, onDirectoryCreated);
-    ensurePrivateDirectory(root, owner, makeRoot);
-    ensurePrivateDirectory(sessions, owner, () =>
-      makeStateDirectory(sessions, PRIVATE_STATE_MODE, "inside-parent", onDirectoryCreated),
-    );
-  });
+  makeStateTree(
+    cwd,
+    (onDirectoryCreated) => {
+      // Made without `prepareStateDirectory`'s chmod: an existing root keeps its mode, so a
+      // shared one is rejected below instead of being made private (C-CLI-15).
+      const makeRoot = () =>
+        makeStateRoot(root, PRIVATE_STATE_MODE, cwd, makeStateDirectory, onDirectoryCreated);
+      ensurePrivateDirectory(root, owner, makeRoot);
+      ensurePrivateDirectory(sessions, owner, () =>
+        makeStateDirectory(sessions, PRIVATE_STATE_MODE, "inside-parent", onDirectoryCreated),
+      );
+    },
+    undefined,
+    assertCwdUnchanged,
+  );
 }
 
 /** Makes `path` with `make`, then requires a private directory `owner` owns. */

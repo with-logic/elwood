@@ -16,6 +16,8 @@ export type StateDirSetup = {
   readonly isImplicitDefaultStateDir?: boolean;
   /** The session's working directory, which must exist and is never made (C-STATE-14). */
   readonly cwd: string;
+  /** Rechecks identity before each setup attempt and after setup succeeds. */
+  readonly assertCwdUnchanged?: () => void;
   /**
    * The session whose directory is made with the rest, so that another start's undo, which
    * removes only empty directories, leaves this start's tree (C-STATE-14).
@@ -53,5 +55,6 @@ export function prepareStateDir(stateDir: string, setup: StateDirSetup): void {
       if (isDefault) installDefaultIgnore(join(root, ".gitignore"));
     },
     isDefault ? new Set([root, sessions]) : undefined,
+    setup.assertCwdUnchanged,
   );
 }

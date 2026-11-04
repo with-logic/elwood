@@ -55,6 +55,13 @@ default ignore is shared configuration and is never rolled back by that attempt.
 Custom-state empty scaffolding remains eligible for removal. Cleanup attempts every
 eligible directory and preserves the primary setup failure with its first cleanup
 code, including inside typed error details.
+New sessions check the workspace identity captured before preflight before each
+state setup attempt and after it finishes. A CLI launch captures it before private
+root setup and carries it into adapter start without recapture. A replacement
+observed during private root setup fails before any CLI probe; one observed during
+later state setup or handoff fails before PTY launch. Eligible setup directories
+are rolled back. Changes entirely between validation boundaries can escape
+detection (§4.2).
 
 Custom rollback preserves entries whose parent lookup crosses a foreign-owned or
 non-sticky shared writable ancestor, using the existing mode-bit, private-group and

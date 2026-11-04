@@ -7,7 +7,8 @@ import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import {
-  checkLaunchDirectory,
+  type CheckedLaunchDirectory,
+  prepareLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -45,6 +46,7 @@ export function startCodex(rawOptions: StartCodexOptions): Promise<CodexSessionA
 export async function startCodexWithId(
   rawOptions: StartCodexOptions,
   elwoodSessionId: string,
+  checkedDirectory?: CheckedLaunchDirectory,
 ): Promise<CodexSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
@@ -60,7 +62,12 @@ export async function startCodexWithId(
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
-  const directory = await checkLaunchDirectory("codex", options.cwd);
+  const { directory, assertCwdUnchanged } = await prepareLaunchDirectory(
+    "codex",
+    options.cwd,
+    checkedDirectory,
+  );
+  assertCwdUnchanged();
   const stateDir = canonicalStatePath(stateDirPath);
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflight.preflightCodex(
@@ -72,6 +79,7 @@ export async function startCodexWithId(
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("codex", stateDir, {
       cwd: options.cwd,
+      assertCwdUnchanged,
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,
     });
