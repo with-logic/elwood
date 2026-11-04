@@ -1,18 +1,19 @@
 /** Completion-aware acquisition of the global update lease (PRD §9.2, C-PERF-04). */
 import { unlink } from "node:fs/promises";
 import { elwoodError, errnoCode } from "../../core/errors.ts";
+import type { UpdateSkipReason } from "../../core/warnings/update-skips.ts";
 import { completionSnapshot, readCompletionGeneration } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
 import type { UpdateNotStarted } from "./not-started.ts";
 import { type LeaseOwner, readOptionalText, releaseLease } from "./owner.ts";
-import { type UpdateWaitResult, waitForOwner } from "./waiting.ts";
+import { pathExists, recoveryPath, type UpdateWaitResult, waitForOwner } from "./waiting.ts";
 
 type Acquisition = {
   readonly adapter: UpdateAdapter;
   readonly leasePath: string;
   readonly owner: LeaseOwner;
   readonly completionMarkerPath: string;
-  readonly refusal: string;
+  readonly refusalReceiptPath: string;
   readonly pollMs: number;
   readonly staleMs: number;
   readonly waitUntilMs: number;
@@ -32,7 +33,7 @@ export async function acquireUpdateLease({
   leasePath,
   owner,
   completionMarkerPath,
-  refusal,
+  refusalReceiptPath,
   pollMs,
   staleMs,
   waitUntilMs,
@@ -41,65 +42,98 @@ export async function acquireUpdateLease({
   const { ownerGeneration, priorCompletionGeneration, ownerAlreadyCompleted } =
     await completionSnapshot(leasePath, completionMarkerPath);
   const observedGenerations = new Set(ownerGeneration === undefined ? [] : [ownerGeneration]);
-  let relevantOwner = ownerGeneration;
-  const completedOwner = (generation: string | undefined) =>
+  let latestObservedOwnerGeneration = ownerGeneration;
+  const hasObservedOwnerCompletion = (generation: string | undefined) =>
     ownerAlreadyCompleted || (generation !== undefined && observedGenerations.has(generation));
-  const completed = async () => {
+  const hasPeerCompletion = async () => {
     const current = await readCompletionGeneration(completionMarkerPath);
-    return completedOwner(current) || current !== priorCompletionGeneration;
+    return hasObservedOwnerCompletion(current) || current !== priorCompletionGeneration;
   };
-  const refused = async () => {
-    const marker = await readOptionalText(refusal);
-    return relevantOwner !== undefined && marker === relevantOwner;
+  const hasLatestOwnerNoAttemptReceipt = async () => {
+    const marker = await readOptionalText(refusalReceiptPath);
+    return latestObservedOwnerGeneration !== undefined && marker === latestObservedOwnerGeneration;
   };
-  let observedActive = ownerGeneration !== undefined;
+  const canRetryReleasedOwner = async () =>
+    !(await hasPeerCompletion()) && (await hasLatestOwnerNoAttemptReceipt());
+  let hasObservedActiveOwner = ownerGeneration !== undefined;
   let recoveredStale = false;
-  for (;;) {
-    const claimed = claimDisposition[await claim()];
-    if (claimed === "not-started") return { started: false };
-    if (claimed === "acquired") break;
-    observedActive = true;
+  const hasUnconfirmedPeerAttempt = async () =>
+    hasObservedActiveOwner && !(await hasLatestOwnerNoAttemptReceipt());
+  claiming: for (;;) {
+    const claimed = await classifyClaim(
+      claim,
+      leasePath,
+      hasPeerCompletion,
+      hasUnconfirmedPeerAttempt,
+    );
+    switch (claimed) {
+      case "not-started":
+        return { started: false };
+      case "peer":
+        return false;
+      case "acquired":
+        break claiming;
+      case "wait":
+        break;
+    }
+    hasObservedActiveOwner = true;
     const waited = recoveredWait(
       adapter,
       await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs, (generation) => {
-        relevantOwner = generation;
+        latestObservedOwnerGeneration = generation;
         if (generation !== undefined) observedGenerations.add(generation);
       }),
     );
     if (waited === false) return false;
     if (waited.status === "released") {
-      if ((await completed()) || !(await refused())) return false;
-      continue;
+      // Completion can name any observed owner. Only the latest owner's no-attempt
+      // receipt grants a retry, and an eligible successor clears it before invocation.
+      if (await canRetryReleasedOwner()) continue;
+      return false;
     }
-    relevantOwner = waited.generation;
+    latestObservedOwnerGeneration = waited.generation;
     if (waited.generation !== undefined) observedGenerations.add(waited.generation);
     recoveredStale = true;
   }
-  let currentCompletionGeneration: string | undefined;
+  let hasCompletedPeer: boolean;
   try {
-    currentCompletionGeneration = await readCompletionGeneration(completionMarkerPath);
+    hasCompletedPeer = await hasPeerCompletion();
   } catch (error) {
     await releaseLease(leasePath, owner);
     throw error;
   }
-  const observedOwnerCompleted = completedOwner(currentCompletionGeneration);
-  const completionAdvanced = currentCompletionGeneration !== priorCompletionGeneration;
-  const unrecoveredContention = !recoveredStale && observedActive && !(await refused());
-  if (observedOwnerCompleted || completionAdvanced || unrecoveredContention) {
+  const unrecoveredContention = !recoveredStale && (await hasUnconfirmedPeerAttempt());
+  if (hasCompletedPeer || unrecoveredContention) {
     await releaseLease(leasePath, owner);
     return false;
   }
-  return invalidateRefusal(refusal, leasePath, owner);
+  return invalidateRefusal(refusalReceiptPath, leasePath, owner);
+}
+
+/** Recheck pinned completion and live leases after a failed staging operation. */
+async function classifyClaim(
+  claim: Acquisition["claim"],
+  leasePath: string,
+  hasPeerCompletion: () => Promise<boolean>,
+  hasUnconfirmedPeerAttempt: () => Promise<boolean>,
+): Promise<"acquired" | "wait" | "peer" | "not-started"> {
+  const disposition = claimDisposition[await claim()];
+  if (disposition !== "not-started") return disposition;
+  // A sweeping peer may have retired before the missing staging error was handled.
+  // Still-live peers must settle before compatibility reads; completed peers invalidate caches.
+  if ((await pathExists(leasePath)) || (await pathExists(recoveryPath(leasePath)))) return "wait";
+  if ((await hasPeerCompletion()) || (await hasUnconfirmedPeerAttempt())) return "peer";
+  return "not-started";
 }
 
 /** An eligible successor clears prior evidence before a poller could miss its update. */
 async function invalidateRefusal(
-  refusal: string,
+  refusalReceiptPath: string,
   leasePath: string,
   owner: LeaseOwner,
 ): Promise<true | UpdateNotStarted> {
   try {
-    await unlink(refusal);
+    await unlink(refusalReceiptPath);
   } catch (error) {
     if (errnoCode(error) !== "ENOENT") {
       await releaseLease(leasePath, owner);
@@ -124,13 +158,16 @@ function recoveredWait(
       return false;
     case "wait_expired":
       throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
-        updateReason: "active_owner",
+        updateReason: "active_owner" satisfies UpdateSkipReason,
       });
     case "cleanup_pending":
       throw elwoodError(
         `${adapter}_update_failed`,
         "Another updater's process group has not exited.",
-        { updateReason: "cleanup_pending", cleanupErrorCode: "ETIMEDOUT" },
+        {
+          updateReason: "cleanup_pending" satisfies UpdateSkipReason,
+          cleanupErrorCode: "ETIMEDOUT",
+        },
       );
     case "stale_removed":
       return result;

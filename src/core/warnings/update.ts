@@ -11,13 +11,15 @@
  * The user's login shell can also fail before the update command runs (§9.2): that reports
  * `errorCode: "login_shell_failed"` with empty `raw`, since its stderr would be only the
  * profile's startup output.
- * Confirmed no-attempt outcomes use `update_not_started`, without updater diagnostics.
+ * Confirmed no-attempt outcomes use `update_not_started`, without updater diagnostics;
+ * known contention and pending cleanup take precedence and retain `update_active`.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { ElwoodError } from "../errors.ts";
 import { probeRefusalContext } from "../probe-refusal.ts";
 import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
+import { isUpdateSkipReason, updateSkipMessages } from "./update-skips.ts";
 
 /**
  * `Omit` that DISTRIBUTES over a union (`W extends unknown` triggers distribution), unlike the
@@ -32,18 +34,6 @@ export type UpdateFailedWarning = Omit<AgentUpdateFailedWarning, "elwoodSessionI
 // Cap on the stderr carried in the warning's `raw`, so a hostile/verbose updater cannot flood a
 // warning payload. The probe layer already bounds captured output; this is a second, tighter cap.
 const maxStderr = 2_000;
-
-/**
- * Reasons an update was skipped rather than attempted, and how each reads to a user. A
- * skipped update carries no errno or updater stderr, because no local updater ran. Both
- * reach the consumer as `errorCode: "update_active"` and differ only in timing:
- * `active_owner` follows the full 165-second contention wait, while `cleanup_pending` is
- * immediate, because a surviving updater group may outlive any bound worth waiting out.
- */
-const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
-  ["active_owner", "another updater is still active"],
-  ["cleanup_pending", "another updater's process group has not exited"],
-]);
 
 /**
  * Build the warning from the contained update error. `installedVersion` is the parsed version the
@@ -66,34 +56,46 @@ export function buildUpdateWarning(
   notStarted = false,
 ): UpdateFailedWarning {
   const details = error instanceof ElwoodError ? error.details : {};
-  const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
-  const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
-  const exitStatus = typeof details["exitStatus"] === "number" ? details["exitStatus"] : undefined;
-  const skipped = skippedUpdates.get(details["updateReason"]);
-  const refusal = probeRefusalContext(error);
-  const omitUpdaterDiagnostics = notStarted || skipped !== undefined;
-  const outcome = notStarted ? "was not started" : "failed";
-  const notStartedPrefix = notStarted ? `\`${agent} update\` was not started. ` : "";
-  return {
+  const base = {
     agent,
     source: "lifecycle",
     code: "agent_update_failed",
     severity: "warning",
-    message:
-      skipped === undefined
-        ? refusal === undefined
-          ? `\`${agent} update\` ${outcome}; continuing with the installed CLI ${installedVersion}.`
-          : `${notStartedPrefix}${refusal} Continuing with the installed CLI ${installedVersion}.`
-        : `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
-    errorCode:
-      skipped === undefined
-        ? notStarted
-          ? "update_not_started"
-          : failureCode(details, errno)
-        : "update_active",
-    raw: omitUpdaterDiagnostics ? "" : stderr.slice(0, maxStderr),
-    ...(omitUpdaterDiagnostics || exitStatus === undefined ? {} : { exitStatus }),
+  } as const;
+  const reason = details["updateReason"];
+  if (isUpdateSkipReason(reason)) {
+    return {
+      ...base,
+      message: `\`${agent} update\` skipped: ${updateSkipMessages[reason]}; continuing with the installed CLI ${installedVersion}.`,
+      errorCode: "update_active",
+      raw: "",
+    };
+  }
+  const refusal = probeRefusalContext(error);
+  if (notStarted) {
+    return {
+      ...base,
+      message:
+        refusal === undefined
+          ? `\`${agent} update\` was not started; continuing with the installed CLI ${installedVersion}.`
+          : `\`${agent} update\` was not started. ${refusal} Continuing with the installed CLI ${installedVersion}.`,
+      errorCode: "update_not_started",
+      raw: "",
+    };
+  }
+  const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
+  const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
+  const exitStatus = typeof details["exitStatus"] === "number" ? details["exitStatus"] : undefined;
+  return {
+    ...base,
+    message:
+      refusal === undefined
+        ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
+        : `${refusal} Continuing with the installed CLI ${installedVersion}.`,
+    errorCode: failureCode(details, errno),
+    raw: stderr.slice(0, maxStderr),
+    ...(exitStatus === undefined ? {} : { exitStatus }),
   };
 }
 

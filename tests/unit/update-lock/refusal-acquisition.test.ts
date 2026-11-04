@@ -42,7 +42,7 @@ test.each([
       leasePath,
       owner: { pid: process.pid, token: "c" },
       completionMarkerPath: join(root, "codex.completed"),
-      refusal,
+      refusalReceiptPath: refusal,
       pollMs: 1,
       staleMs: 30_000,
       waitUntilMs: performance.now() + 1_000,

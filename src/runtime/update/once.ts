@@ -4,7 +4,6 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
-import { ElwoodError } from "../../core/errors.ts";
 import {
   createDirectoryProbeCache,
   type DirectoryProbeCache,
@@ -14,21 +13,17 @@ import {
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 import type { UpdateResult } from "./not-started.ts";
+import {
+  type Attempt,
+  type AutoupdateOutcome,
+  shouldPreservePreflightCaches,
+  type UpdateSteps,
+  unstartedSkip,
+} from "./outcome.ts";
+
+export type { AutoupdateOutcome, UpdateSteps } from "./outcome.ts";
 
 let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
-
-/** The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. */
-export type AutoupdateOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly error: unknown; readonly notStarted?: true };
-
-/** Verification runs only after lease ownership, before the updater may be invoked. */
-export type UpdateSteps = {
-  /** Any resolved value passes; rejection means verification failed before updater invocation. */
-  readonly verify: () => Promise<unknown>;
-  readonly update: () => Promise<void>;
-};
-type Attempt = { readonly reusable: boolean; readonly outcome: AutoupdateOutcome };
 
 // The settled autoupdate outcome per adapter. Every `autoupdate: true` caller awaits the SAME
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
@@ -40,7 +35,8 @@ const autoupdates = new Map<UpdateAdapter, Promise<Attempt>>();
 
 /**
  * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt. A refused verification is evicted before its sharers retry.
+ * in-flight attempt. Local prerequisite failures let sharers retry as the next owner;
+ * coordinator skips are shared with current waiters but not retained for later calls.
  * NEVER rejects — a throwing updater resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
  * version cache whether this process owned the update or waited for a peer. The one exception
@@ -55,7 +51,7 @@ export function cachedAutoupdate(
   const existing = autoupdates.get(adapter);
   if (existing) {
     return existing.then((attempt) =>
-      attempt.reusable ? attempt.outcome : cachedAutoupdate(adapter, steps, afterAttempt),
+      attempt.retrySharers ? cachedAutoupdate(adapter, steps, afterAttempt) : attempt.outcome,
     );
   }
   let verificationFailed = false;
@@ -85,9 +81,12 @@ export function cachedAutoupdate(
       }),
     )
     .then((outcome): Attempt => {
-      const reusable = outcome.ok || outcome.notStarted !== true;
-      if (!reusable) autoupdates.delete(adapter); // before a sharer retries as the next owner
-      return { reusable, outcome: finalizeAutoupdate(adapter, outcome, afterAttempt) };
+      const retainOutcome = outcome.ok || outcome.notStarted !== true;
+      if (!retainOutcome) autoupdates.delete(adapter); // independent later callers may retry
+      return {
+        retrySharers: !retainOutcome && verificationFailed,
+        outcome: finalizeAutoupdate(adapter, outcome, afterAttempt),
+      };
     });
   autoupdates.set(adapter, pending);
   return pending.then((attempt) => attempt.outcome);
@@ -98,8 +97,7 @@ function finalizeAutoupdate(
   outcome: AutoupdateOutcome,
   afterAttempt?: () => void,
 ): AutoupdateOutcome {
-  // A peer may have changed the binary even when this caller never invoked its updater.
-  if (!outcome.ok && outcome.notStarted === true && !unstartedSkip(outcome.error)) return outcome;
+  if (shouldPreservePreflightCaches(outcome)) return outcome;
   try {
     // A failed installer may still have changed the binary. Invalidate after
     // every attempt, including a peer-owned or failed one, before validation.
@@ -109,13 +107,6 @@ function finalizeAutoupdate(
   } catch (error) {
     return { ok: false, error };
   }
-}
-
-/** Only explicit coordinator skip reasons prove a rejection happened before invocation. */
-function unstartedSkip(error: unknown): boolean {
-  if (!(error instanceof ElwoodError)) return false;
-  const reason = error.details["updateReason"];
-  return reason === "active_owner" || reason === "cleanup_pending";
 }
 
 /** Settled directory results and retained version-text bounds (C-PERF-02). */

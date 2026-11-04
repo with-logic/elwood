@@ -77,13 +77,13 @@ export async function coordinatedAutoupdate(
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completionMarkerPath = join(root, `${adapter}.completed`);
-  const refusal = join(root, `${adapter}.refused`);
+  const refusalReceiptPath = join(root, `${adapter}.refused`);
   const acquisition = await acquireUpdateLease({
     adapter,
     leasePath,
     owner,
     completionMarkerPath,
-    refusal,
+    refusalReceiptPath,
     pollMs,
     staleMs,
     waitUntilMs,
@@ -111,7 +111,7 @@ export async function coordinatedAutoupdate(
     // A refusal receipt distinguishes no attempt from a failed completion write.
     const receipt =
       noAttempt?.started === false
-        ? writeFile(refusal, owner.token, { mode: 0o600 })
+        ? writeFile(refusalReceiptPath, owner.token, { mode: 0o600 })
         : publishCompletionGeneration(leasePath, completionMarkerPath, owner);
     await Promise.allSettled([receipt]);
     await releaseLease(leasePath, owner);

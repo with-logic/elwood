@@ -82,7 +82,9 @@ before the updater is invoked is no attempt: it publishes no lease completion,
 is not retained by the per-process update cache. A caller that becomes the next
 lease owner reruns its own prerequisite verification. Callers joining an actual
 updater attempt share its outcome and each still runs its own normal compatibility
-check. The lease stores at most one refusal receipt per adapter, containing the
+check. Current waiters share one coordinator-skip result rather than repeating its
+wait; that result is not retained for later independent calls. The lease stores
+at most one refusal receipt per adapter, containing the
 refusing generation token. That receipt survives its owner's release, but a
 successor eligible to invoke the updater MUST invalidate it before invocation;
 if invalidation fails, no updater runs and the result is explicitly no-attempt.

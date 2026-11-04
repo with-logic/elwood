@@ -132,3 +132,21 @@ for (const [agent, version, preflight] of [
     expect(updates).toBe(1);
   });
 }
+
+test("C-PERF-02 Claude retains its version cache after a local verification failure", async () => {
+  const directory = { cwd: tempDir("elwood-claude-noattempt-cache-") };
+  const version = vi.fn(async () => ({ status: 0, stdout: "2.1.144", stderr: "" }));
+  await cachedVersionRead("claude", version, directory);
+  setUpdateCoordinatorForTests((_adapter, update) => update());
+  const update = vi.fn(async () => {});
+  expect(
+    await cachedAutoupdate("claude", { verify: () => Promise.reject(undefined), update }),
+  ).toEqual({
+    ok: false,
+    error: undefined,
+    notStarted: true,
+  });
+  await cachedVersionRead("claude", version, directory);
+  expect(version).toHaveBeenCalledTimes(1);
+  expect(update).not.toHaveBeenCalled();
+});

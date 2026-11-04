@@ -16,9 +16,9 @@ vi.mock("node:fs/promises", async (original) => {
         return Promise.reject(Object.assign(new Error("publication refused"), { code: "EACCES" }));
       return actual.rename(...args);
     },
-    stat: async (...args: Parameters<typeof actual.stat>) => {
-      const result = await actual.stat(...args);
-      if (String(args[0]).endsWith("/codex.lock")) observation.notify();
+    readFile: async (...args: Parameters<typeof actual.readFile>) => {
+      const result = await actual.readFile(...args);
+      if (String(args[0]).endsWith("/codex.lock/owner")) observation.notify();
       return result;
     },
   };
@@ -46,25 +46,41 @@ test.each([
       await finish.promise;
       return scenario === "completion-unwritable" ? undefined : { started: false };
     },
-    { root },
+    { root, pollMs: 1, waitMs: 1_000 },
   );
-  await entered.promise;
-  observation.notify = observed.resolve;
+  let contender: ReturnType<typeof coordinatedAutoupdate> | undefined;
   let updates = 0;
-  const contender = coordinatedAutoupdate(
-    "codex",
-    () => {
-      updates += 1;
-      return Promise.resolve();
-    },
-    { root, pollMs: 1 },
-  );
-  await observed.promise;
-  finish.resolve();
-  expect(await owner).toEqual(
-    scenario === "completion-unwritable" ? undefined : { started: false },
-  );
-  await contender;
-  expect(updates).toBe(scenario === "refused" ? 1 : 0);
-  if (updates === 1) expect(readFileSync(join(root, "codex.completed"), "utf8")).not.toBe("");
+  try {
+    await Promise.race([
+      entered.promise,
+      owner.then(() => {
+        throw new Error("Owner settled before entering its callback.");
+      }),
+    ]);
+    observation.notify = observed.resolve;
+    contender = coordinatedAutoupdate(
+      "codex",
+      () => {
+        updates += 1;
+        return Promise.resolve();
+      },
+      { root, pollMs: 1, waitMs: 1_000 },
+    );
+    await Promise.race([
+      observed.promise,
+      contender.then(() => {
+        throw new Error("Contender settled before observing its owner.");
+      }),
+    ]);
+    finish.resolve();
+    expect(await owner).toEqual(
+      scenario === "completion-unwritable" ? undefined : { started: false },
+    );
+    await contender;
+    expect(updates).toBe(scenario === "refused" ? 1 : 0);
+    if (updates === 1) expect(readFileSync(join(root, "codex.completed"), "utf8")).not.toBe("");
+  } finally {
+    finish.resolve();
+    await Promise.allSettled([owner, contender]);
+  }
 });

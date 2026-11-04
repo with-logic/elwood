@@ -96,7 +96,7 @@ test.each([
       observed.promise.then(() => "observed"),
       contender.then(() => "returned"),
     ]);
-    expect(first).toBe(state === "lease" || state === "recovery" ? "observed" : "returned");
+    expect(first).toBe(state === "missing" ? "returned" : "observed");
     finish.resolve();
     await Promise.all([owner, contender]);
     expect(attempts).toEqual(state === "missing" ? [] : ["owner"]);
