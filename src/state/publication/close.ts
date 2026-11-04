@@ -1,11 +1,15 @@
-/** Nonfatal, bounded diagnostics for publication descriptor disposal (PRD §8.1). */
+/** Contain native close failures and schedule bounded Node diagnostics (PRD §8.1). */
 import { closeSync } from "node:fs";
 import { errnoCode } from "../../core/errors.ts";
 
 let warned = false;
 type CloseWarningCode = "EBADF" | "EINTR" | "EIO" | "UnknownError";
 
-/** Never retry: a failed native close may already have released its descriptor number. */
+/**
+ * Native close failures do not escape disposal or mask a primary error. Never retry an
+ * ambiguous close: its descriptor number may already have been released. Warning delivery
+ * and host warning-listener exceptions retain Node's normal asynchronous semantics.
+ */
 export function closePublicationDirectory(fd: number): void {
   try {
     closeSync(fd);

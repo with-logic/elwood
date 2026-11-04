@@ -2,7 +2,7 @@
 import { closeSync, fstatSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, expect, test, vi } from "vitest";
-import { PublicationDirectory } from "../../src/state/publication-directory.ts";
+import { PublicationDirectoryHold } from "../../src/state/publication-directory.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const registry = vi.hoisted(() => {
@@ -45,7 +45,7 @@ afterEach(() => {
 
 function fixture() {
   const file = join(tempDir(), "record");
-  const pin = new PublicationDirectory(file);
+  const pin = new PublicationDirectoryHold(file);
   const fd = registry.register.mock.calls[0]![1];
   return { pin, fd, file };
 }
@@ -78,7 +78,9 @@ test("C-STATE-01 an ambiguous close never retries a descriptor reused by another
     pin.close();
     expect(fstatSync(unrelated).isFile()).toBe(true);
     expect(registry.unregister).toHaveBeenCalledWith(pin);
-    expect(() => pin.pathInHeldDirectory(file)).toThrow("Could not locate");
+    expect(() => pin.pathInHeldDirectory(file)).toThrowError(
+      expect.objectContaining({ code: "state_corrupt" }),
+    );
   } finally {
     try {
       closeSync(unrelated);

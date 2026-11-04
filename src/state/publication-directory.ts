@@ -13,7 +13,7 @@ import { closePublicationDirectory } from "./publication/close.ts";
 // A failed rollback may be abandoned by its caller; a live retry keeps its pin.
 const abandoned = new FinalizationRegistry<number>(closePublicationDirectory);
 
-export class PublicationDirectory {
+export class PublicationDirectoryHold {
   private readonly fd: number;
   private closed = false;
   private readonly identity: BigIntStats;
@@ -51,6 +51,10 @@ export class PublicationDirectory {
     }
   }
 
+  /**
+   * Idempotent disposal contains native close failures and reports them through the bounded
+   * Node warning. Host callbacks follow Node's normal asynchronous error semantics.
+   */
   close(): void {
     if (this.closed) return;
     // A failed close may already have released the number; never retry or finalize it.

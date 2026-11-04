@@ -78,10 +78,13 @@ Directory preparation may transfer its verified no-follow descriptor to an inter
 hold without closing and reopening it. On macOS, that hold resolves through the
 verified device/inode VolFS namespace even after parent renames; unavailable or
 unverifiable lookup fails as `state_corrupt`. Disposing a read-only hold is
-idempotent and nonfatal, never retrying an ambiguous descriptor close. A disposal
+idempotent: native descriptor-close failures are contained by disposal and cannot
+mask a primary error, and ambiguous descriptor closes are never retried. A close
 failure emits at most one bounded Node `ElwoodStateDirectoryCloseWarning` per
 process with a fixed content-free message and only `EBADF`, `EINTR`, `EIO`, or
-`UnknownError` as its code.
+`UnknownError` as its code. Warning delivery and exceptions thrown by host warning
+listeners follow Node's normal asynchronous error semantics; the disposal guarantee
+does not contain those later host callback failures.
 These checks protect against planted checkout paths; they do not isolate a
 hostile process already running as the same OS user.
 

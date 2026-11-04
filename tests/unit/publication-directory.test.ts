@@ -2,15 +2,17 @@
 import * as fs from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { PublicationDirectory } from "../../src/state/publication-directory.ts";
+import { PublicationDirectoryHold } from "../../src/state/publication-directory.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const native = await vi.importActual<typeof import("node:fs")>("node:fs");
+const rejectedAliases = ["missing", "different", "different-device", "foreign", "file"] as const;
+type FaultAlias = "valid" | (typeof rejectedAliases)[number];
 const fault = vi.hoisted(() => ({
   platform: process.platform,
   parent: "",
   moved: "",
-  alias: "valid",
+  alias: "valid" as FaultAlias,
   opened: 0,
   failStat: false,
   afterValidation: false,
@@ -51,6 +53,7 @@ vi.mock("node:fs", async (original) => {
           bigint: true,
         });
         if (fault.alias === "different") info.ino += 1n;
+        if (fault.alias === "different-device") info.dev += 1n;
         if (fault.alias === "foreign") info.uid += 1n;
         if (fault.alias === "file") info.isDirectory = () => false;
         return info;
@@ -84,7 +87,7 @@ function fixture() {
 test("C-STATE-01 an unchanged parent keeps the ordinary path and closes its pin", () => {
   const file = fixture();
   fault.platform = "linux";
-  const pin = new PublicationDirectory(file);
+  const pin = new PublicationDirectoryHold(file);
   expect(fault.opened).toBe(1);
   expect(pin.pathInHeldDirectory(file)).toBe(file);
   pin.close();
@@ -96,7 +99,7 @@ test("C-STATE-01 an unchanged parent keeps the ordinary path and closes its pin"
 for (const replace of [false, true]) {
   test(`C-STATE-01 a moved parent uses only its verified inode namespace (${replace ? "replacement" : "missing"})`, () => {
     const file = fixture();
-    const pin = new PublicationDirectory(file);
+    const pin = new PublicationDirectoryHold(file);
     fs.renameSync(fault.parent, fault.moved);
     if (replace) fs.mkdirSync(fault.parent);
     fault.platform = "darwin";
@@ -108,10 +111,10 @@ for (const replace of [false, true]) {
   });
 }
 
-for (const alias of ["missing", "different", "foreign", "file"]) {
+for (const alias of rejectedAliases) {
   test(`C-STATE-01 an unavailable or unverifiable inode namespace fails closed (${alias})`, () => {
     const file = fixture();
-    const pin = new PublicationDirectory(file);
+    const pin = new PublicationDirectoryHold(file);
     fs.renameSync(fault.parent, fault.moved);
     fault.alias = alias;
     fault.platform = "darwin";
@@ -135,12 +138,14 @@ for (const alias of ["missing", "different", "foreign", "file"]) {
 
 test("C-STATE-01 unsupported platforms never choose a changed directory", () => {
   const file = fixture();
-  const pin = new PublicationDirectory(file);
+  const pin = new PublicationDirectoryHold(file);
   fs.renameSync(fault.parent, fault.moved);
   fs.mkdirSync(fault.parent);
   fault.platform = "linux";
   try {
-    expect(() => pin.pathInHeldDirectory(file)).toThrow("Could not locate");
+    expect(() => pin.pathInHeldDirectory(file)).toThrowError(
+      expect.objectContaining({ code: "state_corrupt" }),
+    );
   } finally {
     pin.close();
   }
@@ -157,7 +162,7 @@ for (const [mode, snapshot] of [
     fault[mode] = true;
     fault.afterValidation = snapshot;
     fault.failCleanup = true;
-    expect(() => new PublicationDirectory(file)).toThrow(
+    expect(() => new PublicationDirectoryHold(file)).toThrow(
       mode === "failStat" ? "fstat failed" : snapshot ? "Could not locate" : "must be owned",
     );
     expect(() => native.fstatSync(fault.held)).toThrowError(
