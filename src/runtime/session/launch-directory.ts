@@ -8,6 +8,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { DirectoryIdentity } from "../../core/directory-identity.ts";
 import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
 import { currentPlatform } from "../seams.ts";
 
@@ -29,7 +30,7 @@ export function resolveLaunchDirectory(agent: ElwoodAgentKind, cwd: string): str
 }
 
 /** Which directory `cwd` named when it was checked (device and inode); none where unchecked. */
-type LaunchDirectoryIdentity = { readonly dev: bigint; readonly ino: bigint } | undefined;
+type LaunchDirectoryIdentity = DirectoryIdentity | undefined;
 
 /** The launch path and directory identity captured before preflight. */
 export type CheckedLaunchDirectory = {
@@ -78,11 +79,11 @@ async function assertLaunchDirectory(
  * Checks the captured directory before invoking the callback, then rechecks only if it fails.
  * After successful preflight, callers must invoke this again before any state write or spawn.
  * On callback failure, `cwd` is checked against the directory found first, so one deleted and made
- * again while the launch failed is not taken for the same directory. When that check fails,
+ * again while the operation failed is not taken for the same directory. When that check fails,
  * because `cwd` has gone (state setup never makes it, so it fails with `ENOENT` instead of
  * recreating the project), is no longer a directory, was replaced, or can't be checked, the
- * check's failure is the error, keeping the failed launch's cause and cleanup details (§9.1,
- * §10). While `cwd` is still that directory, the launch's own failure is rethrown.
+ * check's failure is the error, keeping the failed operation's cause and cleanup details (§9.1,
+ * §10). While `cwd` is still that directory, the operation's own failure is rethrown.
  */
 export async function recheckLaunchDirectoryOnFailure<T>(
   directory: CheckedLaunchDirectory,

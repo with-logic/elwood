@@ -5,20 +5,21 @@
 
 import { isClaudeReauthRequiredText } from "../../claude/login/expiry-screen.ts";
 import { delay } from "../../core/delay.ts";
+import {
+  type DirectoryGuardObservation,
+  directoryGuardExitCode,
+  directoryGuardStoppedReason,
+} from "../../core/directory-guard.ts";
 import { elwoodError } from "../../core/errors.ts";
 import type { PtyExit } from "../../pty/types.ts";
-import {
-  homeGuardExitCode,
-  homeGuardStopped,
-  homeGuardStoppedReason,
-} from "../home-guard/index.ts";
+import { homeGuardExitCode, homeGuardStoppedReason } from "../home-guard/index.ts";
 
 export type StartupAdapter = "claude" | "codex";
 type StartupValue<T> = T | (() => T);
 let startupWaitMs = 500;
 /**
- * Once the check sees a status-97 exit of a launch the e2e home guard checks, the longest it
- * waits for the guard's line: a PTY's last output can arrive after its exit (§9.4).
+ * Once a checked launch exits with a guard status, wait at most this long for its marker:
+ * a PTY's last output can arrive after its exit (§9.4).
  */
 const stopMarkerGraceMs = 1_000;
 /** How often that wait looks for the line: often enough to add little to a stop's report. */
@@ -33,11 +34,11 @@ export function resetStartupWaitMsForTests(): void {
 }
 
 /**
- * Fails a session's start when its CLI exited or asked for a login during startup. It waits
- * `waitMs` (500 ms by default) first, then reads the exit and the output once. A status-97
- * exit of a launch the e2e home guard checks (`sawStopMarker` set) may wait up to
- * `stopMarkerGraceMs` more for the guard's line (PRD §12, C-E2E-24); any other check adds no
- * wait.
+ * Fails a session's start when its launch is refused, its CLI exits, or login is required. It waits
+ * `waitMs` (500 ms by default) first, then reads the exit and the output once. A checked
+ * directory/home guard status may wait up to `stopMarkerGraceMs` more for its private
+ * marker; other statuses add no wait. Success does not confirm that profiles have
+ * completed or the CLI has started (C-API-61, C-E2E-24).
  */
 export async function assertStartupUsable(input: {
   readonly adapter: StartupAdapter;
@@ -48,6 +49,7 @@ export async function assertStartupUsable(input: {
    * `undefined` for a launch the guard does not check.
    */
   readonly sawStopMarker?: (() => boolean) | undefined;
+  readonly directoryGuard?: DirectoryGuardObservation | undefined;
   readonly waitMs?: number;
 }): Promise<void> {
   await delay(input.waitMs ?? startupWaitMs);
@@ -56,12 +58,19 @@ export async function assertStartupUsable(input: {
     // The guard's own line is in the output, among the user's startup output: name the guard
     // instead of forwarding that output.
     const stopped = await stoppedByGuard(exit.exitCode, input.sawStopMarker);
+    const directory = input.directoryGuard;
+    const directoryStopped =
+      directory !== undefined &&
+      (await stoppedByGuard(exit.exitCode, directory.sawMarker, directoryGuardExitCode));
     const guard = stopped ? `: ${homeGuardStoppedReason}` : "";
-    throw elwoodError(
-      `${input.adapter}_start_failed`,
-      `${input.adapter} exited during startup${guard}.`,
-      { exitCode: exit.exitCode, signal: exit.signal },
-    );
+    const message = directoryStopped
+      ? `${input.adapter} did not start: ${directoryGuardStoppedReason}.`
+      : `${input.adapter} exited during startup${guard}.`;
+    throw elwoodError(`${input.adapter}_start_failed`, message, {
+      exitCode: exit.exitCode,
+      signal: exit.signal,
+      ...(directoryStopped ? { cwd: directory.cwd } : {}),
+    });
   }
   if (isAuthFailure(input.adapter, readStartupValue(input.output))) {
     throw elwoodError(
@@ -72,20 +81,20 @@ export async function assertStartupUsable(input: {
 }
 
 /**
- * Whether the e2e home guard stopped a session's login shell that exited with `exitCode`. For
- * a launch the guard checks, a status-97 exit first waits, up to `stopMarkerGraceMs`, for the
- * guard's line to arrive. A launch it does not check fails at once.
+ * Whether a checked guard stopped the shell. Its status and private marker must both
+ * match; only that status waits for late output, within the existing startup grace.
  */
 async function stoppedByGuard(
   exitCode: number,
   sawMarker: (() => boolean) | undefined,
+  guardExitCode: typeof homeGuardExitCode | typeof directoryGuardExitCode = homeGuardExitCode,
 ): Promise<boolean> {
   if (sawMarker === undefined) return false;
-  if (exitCode === homeGuardExitCode) {
+  if (exitCode === guardExitCode) {
     const deadline = performance.now() + stopMarkerGraceMs;
     while (!sawMarker() && performance.now() < deadline) await delay(stopMarkerPollMs);
   }
-  return homeGuardStopped(exitCode, sawMarker);
+  return exitCode === guardExitCode && sawMarker();
 }
 
 function isAuthFailure(adapter: StartupAdapter, output: string): boolean {

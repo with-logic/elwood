@@ -3,7 +3,6 @@
  * Implements PRD §4, §6, and §9.
  */
 
-import { resolve } from "node:path";
 import { bridgeScriptSource } from "../../bridge/script.ts";
 import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
@@ -21,6 +20,7 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { currentPtyFactory } from "../../runtime/seams.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
+import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
 import { userShell } from "../../runtime/shell.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -29,11 +29,16 @@ import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
 
+/** The identity first checked before this launch’s preflight. */
+export type ClaudeLaunchOptions = StartClaudeOptions & {
+  readonly launchDirectory: CheckedLaunchDirectory;
+};
+
 export type BuildClaudeSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
-  readonly options: StartClaudeOptions;
+  readonly options: ClaudeLaunchOptions;
   readonly resumed: boolean;
   readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
@@ -88,7 +93,7 @@ export function cliHookTimeoutSeconds(hookTimeoutMs: number): number {
 export function spawnClaudePty(
   record: SessionRecord,
   settingsPath: string,
-  options: StartClaudeOptions & { readonly initialSize: TerminalSize },
+  options: ClaudeLaunchOptions & { readonly initialSize: TerminalSize },
 ): PtyProcess {
   const launch = shellLaunch(
     userShell(),
@@ -98,7 +103,8 @@ export function spawnClaudePty(
     return currentPtyFactory()({
       command: launch.command,
       args: launch.args,
-      cwd: resolve(options.cwd),
+      cwd: options.launchDirectory.cwd,
+      directoryIdentity: options.launchDirectory.identity,
       env: {
         ...process.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,

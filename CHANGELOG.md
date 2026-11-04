@@ -12,6 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Carry the original workspace identity into PTY children and refuse replacements observed at bounded checks before or after login profiles, while preserving deliberate profile directory changes.
 - Keep pending launch records, loop reads and predecessor updates in the verified original directory across workspace replacements.
 
 - Directory-hold disposal contains native close failures and reports at most one bounded Node warning per process.
@@ -19,6 +20,7 @@ back each entry are listed in `prd/14-conformance.md`.
 - Reject launch publication through custom-state ancestry that other users could redirect, before reading or changing the session file.
 
 - Reject a working directory replaced during preflight before writing launch state or spawning the PTY, retaining the identity first checked on start and resume.
+- Preserve the launch-directory verification reason when a failed launch's original directory has already been restored, with guidance for retrying.
 
 ## [0.2.2] - 2026-11-03
 

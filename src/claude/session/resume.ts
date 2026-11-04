@@ -64,6 +64,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
         {
           cwd,
           stateDir,
+          launchDirectory: directory,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),

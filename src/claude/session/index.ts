@@ -28,6 +28,7 @@ import { preflightClaude } from "../preflight.ts";
 import { resetClaudeHookBridgeFactoryForTests, setHookBridgeFactoryForTests } from "./bridge.ts";
 import { buildClaudeSession } from "./build.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
+import type { ClaudeLaunchOptions } from "./runtime.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
@@ -77,7 +78,13 @@ export async function startClaudeWithId(
     });
     const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
     const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
-    return startClaudeFromRecord(record, stateDir, options, false, warning);
+    return startClaudeFromRecord(
+      record,
+      stateDir,
+      { ...options, launchDirectory: directory },
+      false,
+      warning,
+    );
   });
   return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
@@ -85,7 +92,7 @@ export async function startClaudeWithId(
 export function startClaudeFromRecord(
   record: SessionRecord,
   stateDir: string,
-  options: StartClaudeOptions,
+  options: ClaudeLaunchOptions,
   resumed: boolean,
   preflightWarning: ClaudePreflightWarning | undefined,
   ownership?: LaunchReservation,

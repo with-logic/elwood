@@ -60,6 +60,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
         {
           cwd: record.cwd, // where Codex relaunches; `options.cwd` only located the state
           stateDir,
+          launchDirectory: directory,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),

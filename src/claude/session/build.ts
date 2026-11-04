@@ -100,7 +100,7 @@ export async function buildClaudeSession(
     await cleanupStartupResources({ bridge });
     throw error;
   }
-  const startupOutput = createStartupBuffer({ source: pty });
+  const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
