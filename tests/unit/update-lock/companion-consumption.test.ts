@@ -1,4 +1,5 @@
 /** Partial completion cleanup preserves changed ownership/evidence (PRD §9.2, C-PERF-04). */
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -17,6 +18,7 @@ import {
   consumeMismatchedReceipt,
   serializeCompletionReceipt,
 } from "../../../src/runtime/update/completion.ts";
+import { readOwner, serializeOwner } from "../../../src/runtime/update/owner.ts";
 import { tempDir } from "../../helpers/tmp.ts";
 
 function fileState(path: string) {
@@ -38,13 +40,15 @@ test.each([
   const marker = join(root, "codex.completed");
   const receipt = completionReceiptPath(marker);
   const ownerPath = join(lease, "owner");
-  const owner = { pid: process.pid, token: "consumer" };
+  const owner = { pid: process.pid, token: randomUUID() };
   mkdirSync(lease);
-  writeFileSync(ownerPath, `${owner.pid}:${owner.token}`);
+  writeFileSync(ownerPath, serializeOwner(owner));
+  expect(await readOwner(lease)).toEqual(owner);
   writeFileSync(marker, scenario === "no mismatch" ? "b" : "a");
   writeFileSync(receipt, serializeCompletionReceipt("b"));
   const snapshot = await completionSnapshot(lease, marker);
-  if (scenario === "changed owner") writeFileSync(ownerPath, `${process.pid}:successor`);
+  if (scenario === "changed owner")
+    writeFileSync(ownerPath, serializeOwner({ pid: process.pid, token: randomUUID() }));
   if (scenario === "missing receipt") unlinkSync(receipt);
   if (scenario === "replaced receipt inode") {
     renameSync(receipt, join(root, "captured-receipt"));
