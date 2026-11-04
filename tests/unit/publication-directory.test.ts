@@ -9,16 +9,15 @@ import { tempDir } from "../helpers/tmp.ts";
 
 const native = await vi.importActual<typeof import("node:fs")>("node:fs");
 const fault = vi.hoisted(() => ({
-  platform: "darwin",
+  platform: process.platform,
   parent: "",
   moved: "",
-  code: "",
   alias: "valid",
   opened: 0,
   failStat: false,
   foreign: false,
   held: -1,
-  closes: [] as number[],
+  failCleanup: false,
 }));
 vi.mock("node:os", async (original) => ({
   ...(await original<typeof import("node:os")>()),
@@ -34,8 +33,8 @@ vi.mock("node:fs", async (original) => {
       return fd;
     },
     closeSync: (fd: number) => {
-      fault.closes.push(fd);
       actual.closeSync(fd);
+      if (fd === fault.held && fault.failCleanup) throw new Error("secondary close failure");
     },
     fstatSync: (...args: Parameters<typeof actual.fstatSync>) => {
       if (args[0] === fault.held && fault.failStat) throw new Error("fstat failed");
@@ -45,13 +44,12 @@ vi.mock("node:fs", async (original) => {
       return info;
     },
     lstatSync: (...args: Parameters<typeof actual.lstatSync>) => {
-      if (args[0] === fault.parent && fault.code === "uncoded") throw new Error("uncoded fault");
-      if (args[0] === fault.parent && fault.code)
-        throw Object.assign(new Error("lookup failed"), { code: fault.code });
       if (String(args[0]).startsWith("/.vol/")) {
         if (fault.alias === "missing")
           throw Object.assign(new Error("no volfs"), { code: "ENOENT" });
-        const info = actual.lstatSync(fault.moved, { bigint: true });
+        const info = actual.lstatSync(actual.existsSync(fault.moved) ? fault.moved : fault.parent, {
+          bigint: true,
+        });
         if (fault.alias === "different") info.ino += 1n;
         if (fault.alias === "foreign") info.uid += 1n;
         if (fault.alias === "file") info.isDirectory = () => false;
@@ -63,17 +61,16 @@ vi.mock("node:fs", async (original) => {
 });
 afterEach(() => {
   Object.assign(fault, {
-    platform: "darwin",
+    platform: process.platform,
     parent: "",
     moved: "",
-    code: "",
     alias: "valid",
     opened: 0,
     failStat: false,
     foreign: false,
     held: -1,
   });
-  fault.closes.length = 0;
+  fault.failCleanup = false;
 });
 function fixture() {
   fault.parent = join(tempDir(), "parent");
@@ -84,6 +81,7 @@ function fixture() {
 
 test("C-API-61 an unchanged parent keeps the ordinary path and closes its pin", () => {
   const file = fixture();
+  fault.platform = "linux";
   const pin = new PublicationDirectory(file);
   expect(pin.rollbackPath(file)).toBe(file);
   pin.close();
@@ -92,13 +90,13 @@ test("C-API-61 an unchanged parent keeps the ordinary path and closes its pin", 
   );
 });
 
-for (const code of ["ENOENT", "ENOTDIR", ""]) {
-  test(`C-API-61 a moved parent uses only its verified inode namespace (${code || "replacement"})`, () => {
+for (const replace of [false, true]) {
+  test(`C-API-61 a moved parent uses only its verified inode namespace (${replace ? "replacement" : "missing"})`, () => {
     const file = fixture();
     const pin = new PublicationDirectory(file);
     fs.renameSync(fault.parent, fault.moved);
-    fs.mkdirSync(fault.parent);
-    fault.code = code;
+    if (replace) fs.mkdirSync(fault.parent);
+    fault.platform = "darwin";
     try {
       expect(pin.rollbackPath(file)).toMatch(/^\/\.vol\/\d+\/\d+\/record$/);
     } finally {
@@ -113,6 +111,7 @@ for (const alias of ["missing", "different", "foreign", "file"]) {
     const pin = new PublicationDirectory(file);
     fs.renameSync(fault.parent, fault.moved);
     fault.alias = alias;
+    fault.platform = "darwin";
     try {
       expect(() => pin.rollbackPath(file)).toThrow();
     } finally {
@@ -121,16 +120,13 @@ for (const alias of ["missing", "different", "foreign", "file"]) {
   });
 }
 
-test("C-API-61 ordinary lookup faults and unsupported platforms do not choose another directory", () => {
+test("C-API-61 unsupported platforms never choose a changed directory", () => {
   const file = fixture();
   const pin = new PublicationDirectory(file);
-  fault.code = "EACCES";
+  fs.renameSync(fault.parent, fault.moved);
+  fs.mkdirSync(fault.parent);
+  fault.platform = "linux";
   try {
-    expect(() => pin.rollbackPath(file)).toThrow("lookup failed");
-    fault.code = "uncoded";
-    expect(() => pin.rollbackPath(file)).toThrow("uncoded fault");
-    fault.code = "ENOENT";
-    fault.platform = "linux";
     expect(() => pin.rollbackPath(file)).toThrow("Could not locate");
   } finally {
     pin.close();
@@ -141,7 +137,10 @@ for (const mode of ["failStat", "foreign"] as const) {
   test(`C-API-61 a failed pin verification releases the descriptor (${mode})`, () => {
     const file = fixture();
     fault[mode] = true;
-    expect(() => new PublicationDirectory(file)).toThrow();
+    fault.failCleanup = true;
+    expect(() => new PublicationDirectory(file)).toThrow(
+      mode === "failStat" ? "fstat failed" : "Could not locate",
+    );
     expect(() => native.fstatSync(fault.held)).toThrowError(
       expect.objectContaining({ code: "EBADF" }),
     );
@@ -173,6 +172,7 @@ test("C-API-61 failed rollback keeps its descriptor for a successful retry", () 
   publication.write(file, "pending");
   fs.renameSync(fault.parent, fault.moved);
   fault.alias = "missing";
+  fault.platform = "darwin";
   expect(() => publication.rollback()).toThrowError(
     expect.objectContaining({ code: "state_corrupt" }),
   );
@@ -180,6 +180,7 @@ test("C-API-61 failed rollback keeps its descriptor for a successful retry", () 
   expect(fs.readFileSync(join(fault.moved, "record"), "utf8")).toBe("pending");
   fs.renameSync(fault.moved, fault.parent);
   fault.alias = "valid";
+  fault.platform = process.platform;
   publication.rollback();
   expect(fs.readFileSync(file, "utf8")).toBe("prior");
   expect(() => native.fstatSync(fault.held)).toThrowError(

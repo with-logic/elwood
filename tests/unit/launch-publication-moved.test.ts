@@ -1,12 +1,13 @@
 /** Native macOS rollback reaches the original files after a parent rename (C-API-61). */
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaudeWithId } from "../../src/claude/session/index.ts";
 import { resumeClaude, resumeCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { writePrivateFileAtomic } from "../../src/state/files.ts";
 import { LaunchPublication } from "../../src/state/launch-publication.ts";
+import { PublicationDirectory } from "../../src/state/publication-directory.ts";
 import {
   createSessionRecord,
   prepareStateDir,
@@ -15,7 +16,10 @@ import {
 } from "../../src/state/store.ts";
 import { installFakes, resetFakes, tempDir } from "../claude/helpers.ts";
 
-afterEach(resetFakes);
+afterEach(() => {
+  resetFakes();
+  vi.restoreAllMocks();
+});
 
 describe.runIf(process.platform === "darwin")("native moved-directory rollback", () => {
   test("C-API-61 moved publication restores physical existing record and removes fresh record", () => {
@@ -34,6 +38,30 @@ describe.runIf(process.platform === "darwin")("native moved-directory rollback",
     publication.rollback();
     expect(readFileSync(join(moved, "session.json"), "utf8")).toBe("prior posture");
     expect(existsSync(join(moved, "fresh.json"))).toBe(false);
+  });
+
+  test("C-API-61 replacement after rollback resolves its path still restores the original record", () => {
+    const root = tempDir();
+    const cwd = join(root, "workspace");
+    const moved = join(root, "moved");
+    mkdirSync(cwd);
+    const file = join(cwd, "session.json");
+    writePrivateFileAtomic(file, "prior posture");
+    const publication = new LaunchPublication();
+    publication.write(file, "attempted posture");
+    const resolve = PublicationDirectory.prototype.rollbackPath;
+    vi.spyOn(PublicationDirectory.prototype, "rollbackPath").mockImplementation(function (
+      this: PublicationDirectory,
+      path: string,
+    ) {
+      const resolved = resolve.call(this, path);
+      renameSync(cwd, moved);
+      mkdirSync(cwd);
+      return resolved;
+    });
+    publication.rollback();
+    expect(readFileSync(join(moved, "session.json"), "utf8")).toBe("prior posture");
+    expect(readdirSync(cwd)).toEqual([]);
   });
 
   test.each([

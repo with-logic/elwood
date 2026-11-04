@@ -2,18 +2,21 @@
 import { type BigIntStats, closeSync, constants, fstatSync, lstatSync, openSync } from "node:fs";
 import { platform } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { elwoodError, errnoCode } from "../core/errors.ts";
+import { elwoodError } from "../core/errors.ts";
 import { assertStatePath } from "./directories.ts";
 import { secureMkdir } from "./files.ts";
 
 // A failed rollback may be abandoned by its caller; a live retry keeps its pin.
-const abandoned = new FinalizationRegistry<number>((fd) => {
+const abandoned = new FinalizationRegistry<number>(closeQuietly);
+
+/** A read-only hold's disposal cannot reject publication or replace a validation failure. */
+function closeQuietly(fd: number): void {
   try {
     closeSync(fd);
   } catch {
-    /* Abandoned cleanup must not escape the GC callback. */
+    /* Never retry an ambiguous descriptor close. */
   }
-});
+}
 
 export class PublicationDirectory {
   private readonly fd: number;
@@ -32,21 +35,19 @@ export class PublicationDirectory {
       this.identity = fstatSync(this.fd, { bigint: true });
       if (this.identity.uid !== BigInt(process.getuid!())) throw unavailable();
     } catch (error) {
-      closeSync(this.fd);
+      closeQuietly(this.fd);
       throw error;
     }
     abandoned.register(this, this.fd, this);
   }
 
-  /** Ordinary paths stay ordinary; only a moved parent needs macOS's inode namespace. */
+  /** Every macOS rollback operation stays anchored to the held directory inode. */
   rollbackPath(path: string): string {
     if (this.closed) throw unavailable();
-    try {
+    if (platform() !== "darwin") {
       if (this.matches(lstatSync(this.parent, { bigint: true }))) return path;
-    } catch (error) {
-      if (!["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) throw error;
+      throw unavailable();
     }
-    if (platform() !== "darwin") throw unavailable();
     const pinned = `/.vol/${this.identity.dev}/${this.identity.ino}`;
     assertStatePath(pinned);
     if (!this.matches(lstatSync(pinned, { bigint: true }))) throw unavailable();
@@ -58,7 +59,7 @@ export class PublicationDirectory {
     // A failed close may already have released the number; never retry or finalize it.
     this.closed = true;
     abandoned.unregister(this);
-    closeSync(this.fd);
+    closeQuietly(this.fd);
   }
 
   private matches(current: BigIntStats): boolean {

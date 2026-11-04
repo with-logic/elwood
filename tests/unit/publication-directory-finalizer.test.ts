@@ -69,7 +69,7 @@ test("C-API-61 finalizer close failures are contained; ordinary close unregister
 test("C-API-61 an ambiguous close never retries a descriptor reused by another file", () => {
   const { pin, fd, file } = fixture();
   registry.failAfterClose = true;
-  expect(() => pin.close()).toThrow("closed then failed");
+  expect(() => pin.close()).not.toThrow();
   registry.failAfterClose = false;
   const unrelated = openSync(join(tempDir(), "unrelated"), "w");
   try {
