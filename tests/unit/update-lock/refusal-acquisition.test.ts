@@ -1,5 +1,5 @@
 /** Only the relevant owner's refusal authorizes another claim (PRD §9.2, C-LIFE-09). */
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { acquireUpdateLease } from "../../../src/runtime/update/acquire.ts";
@@ -75,4 +75,57 @@ test("C-LIFE-09 failed receipt invalidation returns no-attempt without updater i
   expect(updates).toBe(0);
   expect(existsSync(updateLockPath("codex", root))).toBe(false);
   expect(existsSync(join(root, "codex.completed"))).toBe(false);
+});
+
+test("C-LIFE-09 a released observed owner with a matching refusal permits a fresh claim", async () => {
+  const root = tempDir("elwood-released-refusal-");
+  const leasePath = updateLockPath("codex", root);
+  const ownerPath = join(leasePath, "owner");
+  const refusalReceiptPath = join(root, "codex.refused");
+  const completionMarkerPath = join(root, "codex.completed");
+  mkdirSync(leasePath);
+  writeFileSync(ownerPath, `${process.pid}:a`);
+  writeFileSync(completionMarkerPath, "historical");
+  let claims = 0;
+  let retireOnRead = false;
+  let retired = false;
+  race.path = ownerPath;
+  race.afterRead = () => {
+    if (!retireOnRead) return;
+    // WaitForOwner captures A, then A publishes its refusal and retires before the next poll.
+    retireOnRead = false;
+    writeFileSync(refusalReceiptPath, "a");
+    rmSync(leasePath, { recursive: true });
+    retired = true;
+  };
+  try {
+    const acquired = await acquireUpdateLease({
+      adapter: "codex",
+      leasePath,
+      owner: { pid: process.pid, token: "c" },
+      completionMarkerPath,
+      refusalReceiptPath,
+      pollMs: 1,
+      staleMs: 30_000,
+      waitUntilMs: performance.now() + 1_000,
+      claim: () => {
+        if (++claims === 1) {
+          retireOnRead = true;
+          return Promise.resolve("contended");
+        }
+        mkdirSync(leasePath);
+        writeFileSync(ownerPath, `${process.pid}:c`);
+        return Promise.resolve("claimed");
+      },
+    });
+    expect(retired).toBe(true);
+    expect(acquired).toBe(true);
+    expect(claims).toBe(2);
+    expect(readFileSync(ownerPath, "utf8")).toBe(`${process.pid}:c`);
+    expect(readFileSync(completionMarkerPath, "utf8")).toBe("historical");
+    expect(existsSync(refusalReceiptPath)).toBe(false);
+  } finally {
+    race.afterRead = () => {};
+    rmSync(leasePath, { recursive: true, force: true });
+  }
 });
