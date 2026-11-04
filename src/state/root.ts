@@ -5,8 +5,8 @@
  * made. Implements PRD §8.1 and C-STATE-14.
  */
 
-import { existsSync, realpathSync, rmdirSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { errnoCode } from "../core/errors.ts";
 import { withRealAncestor } from "./canonical-path.ts";
 import {
@@ -17,6 +17,10 @@ import {
   type StateDirectoryMode,
   type StateDirectoryPolicy,
 } from "./directories.ts";
+import {
+  CreatedStateDirectories,
+  type StateDirectoryCreationObserver,
+} from "./preparation/created-directories.ts";
 import { stateCleanupFailure } from "./setup-failure.ts";
 
 /** What makes the root itself once its parents are in place. */
@@ -24,6 +28,7 @@ export type MakeRootDirectory = (
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ) => void;
 
 /**
@@ -35,6 +40,7 @@ export function makeStateRoot(
   mode: StateDirectoryMode,
   cwd: string,
   make: MakeRootDirectory = prepareStateDirectory,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
   // The root first: while `cwd` exists, its real path, spelled as on disk, leads the root's too,
   // so the two compare exactly however the caller spelled them.
@@ -43,7 +49,7 @@ export function makeStateRoot(
   const project = realpathSync.native(cwd);
   const names = namesBelow(project, target);
   if (names === undefined) {
-    make(root, mode, "with-parents");
+    make(root, mode, "with-parents", onDirectoryCreated);
     return;
   }
   // Each directory is made inside its parent, so a `cwd` removed meanwhile fails the next one
@@ -54,9 +60,9 @@ export function makeStateRoot(
   assertStatePath(join(project, ...parents));
   for (const name of parents) {
     current = join(current, name);
-    makeStateDirectoryBelow(current, PRIVATE_STATE_MODE);
+    makeStateDirectoryBelow(current, PRIVATE_STATE_MODE, onDirectoryCreated);
   }
-  make(root, mode, names.length === 0 ? "must-exist" : "inside-parent");
+  make(root, mode, names.length === 0 ? "must-exist" : "inside-parent", onDirectoryCreated);
 }
 
 /** The names leading from `project` down to `path`, or `undefined` when it is not under it. */
@@ -74,18 +80,20 @@ function namesBelow(project: string, path: string): readonly string[] | undefine
 const maxStateTreeAttempts = 3;
 
 /**
- * Runs `makeTree`, which makes `deepest` and any of its missing parents for a session in `cwd`,
+ * Runs `makeTree`, recording its successful directory creations for a session in `cwd`,
  * then requires `cwd` to exist still. A `cwd` removed meanwhile fails with ENOENT, and the
- * directories `makeTree` made are removed again, deepest first, so a root elsewhere does not
- * outlive the start that failed for it (C-STATE-14). One another start has put its session in
- * meanwhile is left to it, and so is one already gone.
+ * rollback removes only still-matching, owned, empty directories, deepest first (C-STATE-14).
+ * Replaced or unverifiable entries are preserved. Nonempty directories, including those
+ * another start has populated, stay in place; entries already gone need no cleanup.
  */
-export function makeStateTree(cwd: string, deepest: string, makeTree: () => void): void {
-  const made = new Set<string>();
+export function makeStateTree(
+  cwd: string,
+  makeTree: (onDirectoryCreated: StateDirectoryCreationObserver) => void,
+): void {
+  const made = new CreatedStateDirectories();
   for (let attempt = 1; ; attempt += 1) {
-    for (let path = deepest; !existsSync(path); path = dirname(path)) made.add(path);
     try {
-      makeTree();
+      makeTree(made.record);
       break;
     } catch (error) {
       const retry = errnoCode(error) === "ENOENT" && existsSync(cwd);
@@ -95,25 +103,7 @@ export function makeStateTree(cwd: string, deepest: string, makeTree: () => void
   try {
     realpathSync.native(cwd);
   } catch (error) {
-    // Deepest first: each path is a parent of the ones before it.
-    const cleanupErrorCode = removeMade([...made].sort((a, b) => b.length - a.length));
+    const cleanupErrorCode = made.remove();
     throw stateCleanupFailure(error, cleanupErrorCode);
   }
-}
-
-/**
- * Removes each of `directories` that is still empty, and returns the code of the first removal
- * that failed for another reason. An undo never replaces the failure that caused it.
- */
-function removeMade(directories: readonly string[]): string | undefined {
-  let failed: string | undefined;
-  for (const directory of directories) {
-    try {
-      rmdirSync(directory);
-    } catch (error) {
-      const code = errnoCode(error);
-      if (code !== "ENOENT" && code !== "ENOTEMPTY") failed ??= code;
-    }
-  }
-  return failed;
 }

@@ -20,6 +20,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
 import { assertStatePath, PRIVATE_STATE_MODE, prepareStateDirectory } from "./directories.ts";
+import type { StateDirectoryCreationObserver } from "./preparation/created-directories.ts";
 
 export function newBridgeToken(): string {
   return randomUUID();
@@ -38,8 +39,11 @@ export function safeSessionDir(stateDir: string, id: string): string {
 }
 
 /** Makes the private directory `path` inside its parent; a missing parent fails with `ENOENT`. */
-export function secureMkdir(path: string): void {
-  prepareStateDirectory(path, PRIVATE_STATE_MODE, "inside-parent");
+export function secureMkdir(
+  path: string,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
+): void {
+  prepareStateDirectory(path, PRIVATE_STATE_MODE, "inside-parent", onDirectoryCreated);
 }
 
 export function writePrivateFile(path: string, content: string): void {
