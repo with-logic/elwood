@@ -1,9 +1,8 @@
 /**
- * A `cwd` removed after state setup resolved it is not brought back, also for a `stateDir` in
- * another letter case. A `stateDir` elsewhere made meanwhile is taken back, and no more: the undo
- * keeps the start's own failure, gets past a directory already gone, reports one it can't remove,
- * and leaves one another start put its session in. A start whose directory such an undo removed
- * makes it again (PRD §8.1, §12A.5, C-STATE-14, C-CLI-15, C-API-61).
+ * Removed working directories stay removed, including differently cased state roots.
+ * Roots made elsewhere are undone: preserve the start's error, ignore vanished directories,
+ * report failed removals, retain another start's session, and retry a directory another undo
+ * removed (PRD §8.1, §12A.5, C-STATE-14, C-CLI-15, C-API-61).
  */
 
 import * as fs from "node:fs";
@@ -11,7 +10,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resetRuntimeSeamsForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
-import { recheckLaunchDirectoryOnFailure } from "../../src/runtime/session/launch-directory.ts";
+import * as directories from "../../src/runtime/session/launch-directory.ts";
 import { secureMkdir } from "../../src/state/files.ts";
 import { ensurePrivateStateRoot } from "../../src/state/private-session.ts";
 import { prepareStateDir } from "../../src/state/store.ts";
@@ -150,7 +149,8 @@ describe.skipIf(process.getuid?.() === 0)("as a user other than root", () => {
     Object.assign(race.now, { removing: cwd, early: true });
     race.now.meanwhile = () => fs.chmodSync(elsewhere, 0o500); // so `state` can't leave it
     setPlatformForTests("darwin");
-    const launch = recheckLaunchDirectoryOnFailure("codex", cwd, async () =>
+    const directory = await directories.checkLaunchDirectory("codex", cwd);
+    const launch = directories.recheckLaunchDirectoryOnFailure(directory, async () =>
       prepare(join(elsewhere, "state"), cwd),
     );
     await expect(launch).rejects.toMatchObject({

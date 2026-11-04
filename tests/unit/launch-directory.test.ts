@@ -15,7 +15,10 @@ import {
   setPlatformForTests,
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
-import { recheckLaunchDirectoryOnFailure } from "../../src/runtime/session/launch-directory.ts";
+import {
+  checkLaunchDirectory,
+  recheckLaunchDirectoryOnFailure,
+} from "../../src/runtime/session/launch-directory.ts";
 import { replaceDirectory } from "../helpers/replace-directory.ts";
 import {
   resumableStateDir as resumable,
@@ -149,7 +152,8 @@ describe("C-API-61 a launch that fails after its cwd has gone", () => {
     setPlatformForTests("darwin");
     const cwd = join(tempDir("elwood-launch-dir-"), "worktree");
     mkdirSync(cwd);
-    const launching = recheckLaunchDirectoryOnFailure("codex", cwd, () => {
+    const directory = await checkLaunchDirectory("codex", cwd);
+    const launching = recheckLaunchDirectoryOnFailure(directory, () => {
       rmSync(cwd, { recursive: true });
       return Promise.reject(failure.error);
     });
@@ -163,7 +167,8 @@ describe("C-API-61 a launch that fails after its cwd has gone", () => {
     setPlatformForTests("darwin");
     const cwd = join(tempDir("elwood-launch-dir-"), "worktree");
     mkdirSync(cwd);
-    const launching = recheckLaunchDirectoryOnFailure("codex", cwd, () => {
+    const directory = await checkLaunchDirectory("codex", cwd);
+    const launching = recheckLaunchDirectoryOnFailure(directory, () => {
       replaceDirectory(cwd);
       return Promise.reject(Object.assign(new Error("spawn failed"), { code: "EACCES" }));
     });
