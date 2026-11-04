@@ -25,12 +25,12 @@ for (const [code, expected] of [
   ["EINTR", "EINTR"],
   ["EIO", "EIO"],
   ["private/path", "UnknownError"],
-]) {
+] as const) {
   test(`C-STATE-01 disposal reports only bounded ${expected} once per process`, async () => {
     vi.resetModules();
     const { closePublicationDirectory } = await import("../../src/state/publication/close.ts");
     const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
-    fault.code = code!;
+    fault.code = code;
     fault.active = true;
     closePublicationDirectory(openSync(join(tempDir(), "first"), "w"));
     closePublicationDirectory(openSync(join(tempDir(), "second"), "w"));

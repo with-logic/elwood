@@ -46,8 +46,7 @@ vi.mock("node:fs", async (original) => {
     },
     lstatSync: (...args: Parameters<typeof actual.lstatSync>) => {
       if (String(args[0]).startsWith("/.vol/")) {
-        if (fault.alias === "missing")
-          throw Object.assign(new Error("no volfs"), { code: "ENOENT" });
+        if (fault.alias === "missing") return actual.lstatSync("/.vol/0/0", { bigint: true });
         const info = actual.lstatSync(actual.existsSync(fault.moved) ? fault.moved : fault.parent, {
           bigint: true,
         });
@@ -117,7 +116,17 @@ for (const alias of ["missing", "different", "foreign", "file"]) {
     fault.alias = alias;
     fault.platform = "darwin";
     try {
-      expect(() => pin.pathInHeldDirectory(file)).toThrow();
+      if (alias === "missing")
+        expect(() => native.lstatSync("/.vol/0/0")).toThrowError(
+          expect.objectContaining({ code: "ENOENT" }),
+        );
+      expect(() => pin.pathInHeldDirectory(file)).toThrowError(
+        expect.objectContaining({
+          code: "state_corrupt",
+          message: "Could not locate the original launch state directory.",
+          details: {},
+        }),
+      );
     } finally {
       pin.close();
     }

@@ -19,8 +19,9 @@ export class PublicationDirectory {
   private readonly identity: BigIntStats;
   private readonly parent: string;
 
-  constructor(path: string) {
-    this.parent = dirname(path);
+  /** Hold the parent of a published-file path. */
+  constructor(publishedFilePath: string) {
+    this.parent = dirname(publishedFilePath);
     this.fd = prepareAndOpenStateDirectory(this.parent, PRIVATE_STATE_MODE, "inside-parent");
     try {
       this.identity = fstatSync(this.fd, { bigint: true });
@@ -32,18 +33,22 @@ export class PublicationDirectory {
     abandoned.register(this, this.fd, this);
   }
 
-  /** Every macOS rollback operation stays anchored to the held directory inode. */
-  pathInHeldDirectory(path: string): string {
+  /** Resolve a published-file path through the held parent, preserving its filename. */
+  pathInHeldDirectory(publishedFilePath: string): string {
     if (this.closed) throw unavailable();
-    if (platform() !== "darwin") {
-      if (this.matches(lstatSync(this.parent, { bigint: true }))) return path;
+    try {
+      if (platform() !== "darwin") {
+        if (this.matches(lstatSync(this.parent, { bigint: true }))) return publishedFilePath;
+        throw unavailable();
+      }
+      // macOS VolFS addresses a directory by device/inode even after its parents move.
+      const pinned = `/.vol/${this.identity.dev}/${this.identity.ino}`;
+      assertStatePath(pinned);
+      if (!this.matches(lstatSync(pinned, { bigint: true }))) throw unavailable();
+      return join(pinned, basename(publishedFilePath));
+    } catch {
       throw unavailable();
     }
-    // macOS VolFS addresses a directory by device/inode even after its parents move.
-    const pinned = `/.vol/${this.identity.dev}/${this.identity.ino}`;
-    assertStatePath(pinned);
-    if (!this.matches(lstatSync(pinned, { bigint: true }))) throw unavailable();
-    return join(pinned, basename(path));
   }
 
   close(): void {
