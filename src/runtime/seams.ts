@@ -11,6 +11,8 @@ import { resetProbeTimeoutsForTests, runProbe } from "./probe/index.ts";
 export type CommandResult = {
   /** A private lookup marker and status 127 conclusively identified a missing command. */
   readonly commandLookupFailed?: true;
+  /** Present only for a conclusive pre-command failure. */
+  readonly started?: false;
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
@@ -19,6 +21,7 @@ export type CommandResult = {
     readonly syscall?: string | undefined;
     readonly path?: string | undefined;
     readonly message: string;
+    readonly origin?: "probe_setup";
     /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
     readonly phase?: "login_shell";
     /** The login shell's own status when it exited before starting the command. */

@@ -37,7 +37,8 @@ export const spawnInteractiveAgent: InteractiveSpawner = async (launch) => {
 };
 
 function spawnFailure(launch: InteractiveLaunch, error: unknown) {
-  const missing = errnoCode(error) === "ENOENT";
+  const setupFailed = error instanceof Error && "origin" in error && error.origin === "probe_setup";
+  const missing = errnoCode(error) === "ENOENT" && !setupFailed;
   const code = `${launch.agent}_${missing ? "not_found" : "start_failed"}` as const;
   return elwoodError(
     code,
@@ -70,5 +71,5 @@ async function loginShellPath(cwd: string): Promise<string | undefined> {
 
 function lookupFailure({ status, error }: CommandResult): Error {
   const message = error?.message ?? `login shell exited with status ${status}`;
-  return Object.assign(new Error(message), error?.code === undefined ? {} : { code: error.code });
+  return Object.assign(new Error(message), error);
 }

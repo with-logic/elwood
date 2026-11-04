@@ -13,6 +13,7 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Keep the CLI workspace identity through private state setup and adapter handoff, rejecting observed replacements before probing or launching the agent.
+- Isolate CLI probe output from login-profile hooks and retain process-group ownership until inherited output drains or bounded cleanup ends the probe.
 
 - Carry the original workspace identity into PTY children and refuse replacements observed at bounded checks before or after login profiles, while preserving deliberate profile directory changes.
 - Keep pending launch records, loop reads and predecessor updates in the verified original directory across workspace replacements.

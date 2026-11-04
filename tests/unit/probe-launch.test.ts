@@ -14,13 +14,16 @@ import {
   setProbeTimeoutsForTests,
 } from "../../src/runtime/probe/index.ts";
 import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
-import { probeShellCommand } from "../../src/runtime/shell.ts";
+import { probeShellCommand, shellQuote } from "../../src/runtime/shell.ts";
 import { pollGone } from "../helpers/process-liveness.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 /** A probe shell whose "profile" takes `profile` before the production probe command runs. */
 function probe(profile: string, command: string) {
-  return runProbe("/bin/sh", ["-c", `${profile}; ${probeShellCommand(command)[3]}`]);
+  return runProbe("/bin/sh", [
+    "-c",
+    `${profile}; ${probeShellCommand(`/bin/sh -c ${shellQuote(command)}`)[3]}`,
+  ]);
 }
 
 afterEach(() => resetProbeTimeoutsForTests());
@@ -55,7 +58,7 @@ test("C-PERF-03 the command bound starts at the start line and still kills a hun
 
 test("C-PERF-05 the start line never reaches captured stderr", async () => {
   const result = await probe("printf warn >&2", "echo err >&2; exit 2");
-  expect(result).toEqual({ status: 2, stdout: "", stderr: "warnerr\n" });
+  expect(result).toEqual({ status: 2, stdout: "", stderr: "err\n" });
 });
 
 test("C-PERF-03 a command-bound timeout kills the command's whole process group", async () => {
@@ -81,7 +84,7 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
   expect(result.status).toBeNull();
   expect(result.stdout).toBe("");
   expect(result.error).toEqual({
-    message: "login shell exited with status 0 before starting the probe command",
+    message: "login shell exited with status 0 without an observed probe start line",
     phase: "login_shell",
     shellStatus: 0,
   });

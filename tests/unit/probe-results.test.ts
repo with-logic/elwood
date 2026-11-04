@@ -12,6 +12,7 @@ import {
   guardStopped,
   launchTimedOut,
   mapError,
+  outputUnavailable,
   overflow,
   shellExited,
 } from "../../src/runtime/probe/results.ts";
@@ -49,10 +50,10 @@ test.each([
     },
   ],
   [
-    "a login shell that exited before the command",
+    "a login shell with no observed command start line",
     shellExited(2, "out", "err"),
     {
-      message: "login shell exited with status 2 before starting the probe command",
+      message: "login shell exited with status 2 without an observed probe start line",
       phase: "login_shell",
       shellStatus: 2,
     },
@@ -69,4 +70,12 @@ test.each([
   ],
 ])("%s settles with no status, its output, and its error", (_, result, error) => {
   expect(result).toStrictEqual({ status: null, ...output, error });
+});
+
+test("C-ERR-08 output setup normalizes an unknown failure without claiming a command ran", () => {
+  expect(outputUnavailable("setup failed")).toMatchObject({
+    started: false,
+    status: null,
+    error: { message: "setup failed", origin: "probe_setup" },
+  });
 });

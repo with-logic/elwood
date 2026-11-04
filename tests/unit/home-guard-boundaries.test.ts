@@ -52,7 +52,7 @@ function hiddenStdoutStop(shell: string): NonNullable<CommandResult["error"]> {
     stdio: ["ignore", "ignore", "ignore", "pipe"],
   });
   if (opened.status === 0) return stopped;
-  const message = "login shell exited with status 97 before starting the probe command";
+  const message = "login shell exited with status 97 without an observed probe start line";
   return { message, phase: "login_shell", shellStatus: 97 };
 }
 const stopped: NonNullable<CommandResult["error"]> = {
@@ -118,7 +118,7 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
     ["under a list that guards no home", () => JSON.stringify(["/elsewhere"])],
   ])("whose own command exits 97 %s is the command's failure", async (_case, list) => {
     guardWith(":", list);
-    const result = await runProbe(shell, probeShellCommand("exit 97"));
+    const result = await runProbe(shell, probeShellCommand("/bin/sh -c 'exit 97'"));
     expect(result).toMatchObject({ status: 97 });
     expect(result.error).toBeUndefined();
   });

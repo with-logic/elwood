@@ -67,15 +67,18 @@ export async function waitForProbeGroups(
   return live;
 }
 
-export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
+export async function abortProbe(
+  child: ChildProcess,
+  { keepEventLoopAlive = false }: { readonly keepEventLoopAlive?: boolean } = {},
+): Promise<ProbeCleanup> {
   // Abort only follows timeout/output from a successfully spawned process, and
   // a detached child leads the process group named by its own pid.
   const processGroupId = child.pid!;
   child.stdin?.destroy();
   child.stdout?.destroy();
   child.stderr?.destroy();
-  // Nothing in the cleanup window may prolong host shutdown: not the child handle, and
-  // not the retry timers. The window is measured on a clock that cannot be adjusted.
+  // The awaiting runner keeps retry timers referenced until it delivers the result;
+  // retained retries and the child handle never prolong host shutdown.
   child.unref();
   const reaper = new ProbeReaper(child, processGroupId);
   const started = performance.now();
@@ -92,7 +95,7 @@ export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
     }
     // Confirmed cleanup is not a failure, whichever signal achieved it.
     if (reaper.reap(elapsedMs >= leaderFallbackAfterMs)) return {};
-    await delay(cleanupRetryMs, undefined, { ref: false });
+    await delay(cleanupRetryMs, undefined, { ref: keepEventLoopAlive });
   }
   // Only an UNRESOLVED abort gets here — confirmed cleanup has already returned above — and
   // it is what retains cleanup ownership; update leases additionally preserve exclusion

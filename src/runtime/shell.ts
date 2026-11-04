@@ -18,6 +18,7 @@ import { commandLookupScript } from "./probe/lookup.ts";
 import {
   probeControlClose,
   probeControlFd,
+  probeExec,
   probeNotFoundHandlerReset,
   probeStartScript,
 } from "./probe/start.ts";
@@ -53,20 +54,18 @@ export function loginShellCommand(command: string): LoginShellArgs {
  * between the line and the CLI too: a few builtins.
  */
 export function probeShellCommand(command: string, lookupCommand?: string): LoginShellArgs {
-  // The start line comes first, so the runner still tells a shell that never started the
-  // probe from one the e2e home guard stopped after it (`homeGuardStopped`).
-  const guard = homeGuardScript("probe");
-  const lookup = lookupCommand === undefined ? "" : commandLookupScript(lookupCommand);
-  const script = `${probeStartScript}${guard}${probeNotFoundHandlerReset}${lookup}${probeControlClose}${command}`;
-  return loginShellArgs(script);
+  return loginShellArgs(`${probePreamble(lookupCommand)}${probeExec(command)}`);
 }
 
-/**
- * The same login shell, for a lookup answered by its exit status alone (`command -v`). The
- * command's output goes to `/dev/null`, so the probe captures none of it.
- */
+/** Status-only lookups discard command output and every profile’s original streams. */
 export function probeShellStatus(command: string): LoginShellArgs {
-  return probeShellCommand(`${command} >/dev/null 2>&1`);
+  return loginShellArgs(`${probePreamble()}${command} >/dev/null 2>&1`);
+}
+
+/** One production preamble for output-capturing and status-only probes. */
+function probePreamble(lookupCommand?: string): string {
+  const lookup = lookupCommand === undefined ? "" : commandLookupScript(lookupCommand);
+  return `${probeStartScript}${homeGuardScript("probe")}${probeNotFoundHandlerReset}${lookup}${probeControlClose}`;
 }
 
 /**

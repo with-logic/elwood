@@ -181,10 +181,19 @@ token chosen once per parent process so that no startup file's output can pass f
 on a private channel that is neither stdout nor stderr, so a startup file that
 redirects either cannot hide the line. A shell that closed that channel at startup (macOS's bash 3.2,
 started as an interactive login shell, closes every inherited descriptor above
-stderr) writes the line on stdout instead. Not stderr, which a startup file may
-discard or merge into stdout: a startup file that hid stdout would also hide the
-command's own output. Elwood removes the line from captured stdout, so on either
-channel the probe's captured output is exactly the shell's and the command's.
+stderr) writes the line on stdout instead. A profile that also hides stdout can
+hide that fallback even when the command runs; an unobserved line does not prove
+that the command never ran. Only the command's stdout/stderr and a clean exec
+helper's failed-exec diagnostics are retained, excluding profile, trap, and logout
+output. Private output paths are supplied only after profile loading, and the
+command receives EOF on stdin. A lightweight supervisor retains the detached
+process-group identity until the command's inherited output writers finish or
+bounded abort cleanup runs, even when the start line was unobserved. Its exit
+status and acknowledgement channels are not inherited by the login shell.
+Pending output capture keeps an otherwise idle host alive. Discarded shell
+streams are closed at settlement so profile writers cannot keep Elwood draining
+after its result. Output setup failures preserve their native cause and details
+and report startup failure rather than a missing CLI.
 The private channel stays open past the start line, for the e2e home guard's stop
 line (§12), and closes before the command, which never inherits it.
 After the start line and before the command, the probe script removes the user's
@@ -198,7 +207,7 @@ resolved CLI exiting 127 reports `*_start_failed` with its stderr and exit statu
 Lookup markers are removed from captured output, and no handler output is captured.
 The shell has 60 seconds from spawn to write that line (the launch bound),
 and the probe command then has a default timeout of 15 seconds from that line until
-it exits. A probe that
+its output, including inherited writers, finishes. A probe that
 exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
 Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
@@ -206,7 +215,7 @@ process dies of a signal Elwood did not send reports the status a shell would, 1
 the signal's number; a login shell that dies before then is a login-shell failure, as
 follows. A login shell that misses the launch bound, or
 exits without writing the start line (a startup file that `exec`s another program,
-say), never ran the probe command, so the probe fails as a login-shell failure
+say), cannot establish the command start, so the probe fails as a login-shell failure
 rather than reporting the shell's exit status as the command's: its cause names the
 login shell, and its typed error details carry `phase: "login_shell"`. Its captured
 stderr is only the user's startup output, which can hold expanded secrets, so it is

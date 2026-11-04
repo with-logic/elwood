@@ -21,7 +21,7 @@ export const probeCommandStartLine = `elwood-probe-command-start-${randomBytes(8
 /**
  * The start line's primary channel: a fourth pipe the runner opens for every probe. Not stdout
  * or stderr, so a profile that redirects those (`exec 2>&1`, `exec 2>/dev/null`) cannot hide
- * the line, and captured output stays exactly the profile's and the command's. A shell that
+ * the line, while command output is captured separately and profile output is excluded. A shell that
  * closed it at startup writes the line on stdout instead (`probeStartScript`).
  */
 export const probeControlFd = 3;
@@ -57,6 +57,11 @@ export const probeOutputRedirect = ">%elwood-probe-stdout% 2>%elwood-probe-stder
  */
 export const probeNotFoundHandlerReset =
   "unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; ";
+
+/** Hand off to a clean shell without invoking a profile-defined exec function (C-PERF-05). */
+export function probeExec(command: string): string {
+  return `elwood_probe_exec=command; [ -z "\${ZSH_VERSION-}" ] || elwood_probe_exec=builtin; "$elwood_probe_exec" exec /bin/sh -p -c 'exec 3>&-; exec "$@"' elwood-probe-exec ${command} ${probeOutputRedirect}`;
+}
 
 /** Whether a probe runs a script that announces its command with the start line. */
 export function announcesStart(args: readonly string[]): boolean {

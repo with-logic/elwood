@@ -5,7 +5,7 @@
  * DEBUG or ZERR trap writes to them while the command runs, an EXIT trap and `.zlogout` write
  * after it, and a background helper can write at any time, so no marker can tell their output
  * from the command's. A probe script therefore `exec`s its command with stdout and stderr
- * redirected into two named pipes in a directory made for that probe alone (`probeScript`), and
+ * redirected into two named pipes in a directory made for that probe alone (`probeShellCommand`), and
  * the shell's own pipes are drained and never kept.
  */
 

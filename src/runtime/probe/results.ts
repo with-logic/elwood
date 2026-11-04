@@ -1,9 +1,10 @@
 /**
  * The results a probe settles with when its command did not simply exit: a spawn error, a
- * bound, an overflow, a login shell that never started the command, or the e2e home guard
+ * bound, an overflow, a login shell with no observed command start line, or the e2e home guard
  * (PRD §9.2, C-PERF-03, C-PERF-05, C-E2E-24; native spawn diagnostics, C-ERR-08).
  */
 
+import { toError } from "../../core/errors.ts";
 import { homeGuardExitCode, homeGuardStoppedReason } from "../home-guard/index.ts";
 import type { CommandResult } from "../seams.ts";
 import { maxProbeStreamOutputBytes } from "./capped-buffer.ts";
@@ -12,19 +13,21 @@ export function mapError(error: NodeJS.ErrnoException): NonNullable<CommandResul
   return { code: error.code, syscall: error.syscall, path: error.path, message: error.message };
 }
 
-export function commandTimedOut(ms: number, stdout: string, stderr: string): CommandResult {
+export type AbortResult = CommandResult & { readonly error: NonNullable<CommandResult["error"]> };
+
+export function commandTimedOut(ms: number, stdout: string, stderr: string): AbortResult {
   const message = `probe timed out after ${ms} ms`;
   return { status: null, stdout, stderr, error: { code: "ETIMEDOUT", message } };
 }
 
-export function launchTimedOut(ms: number, stdout: string, stderr: string): CommandResult {
+export function launchTimedOut(ms: number, stdout: string, stderr: string): AbortResult {
   const message = `login shell did not start the probe command within ${ms} ms`;
   const error = { code: "ETIMEDOUT", message, phase: "login_shell" } as const;
   return { status: null, stdout, stderr, error };
 }
 
 export function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
-  const message = `login shell exited with status ${status} before starting the probe command`;
+  const message = `login shell exited with status ${status} without an observed probe start line`;
   const error = { message, phase: "login_shell", shellStatus: status } as const;
   return { status: null, stdout, stderr, error };
 }
@@ -39,7 +42,18 @@ export function guardStopped(stdout: string, stderr: string): CommandResult {
   return { status: null, stdout, stderr, error };
 }
 
-export function overflow(stdout: string, stderr: string): CommandResult {
+export function overflow(stdout: string, stderr: string): AbortResult {
   const message = `a probe output stream exceeded ${maxProbeStreamOutputBytes} bytes`;
   return { status: null, stdout, stderr, error: { code: "E2BIG", message } };
+}
+
+/** Output setup failed before any shell or CLI was started (C-ERR-08). */
+export function outputUnavailable(error: unknown): AbortResult {
+  return {
+    started: false,
+    status: null,
+    stdout: "",
+    stderr: "",
+    error: { ...mapError(toError(error)), origin: "probe_setup" },
+  };
 }

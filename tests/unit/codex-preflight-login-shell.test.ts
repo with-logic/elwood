@@ -13,6 +13,7 @@ import {
 import { commandLookupScript } from "../../src/runtime/probe/lookup.ts";
 import {
   probeControlClose,
+  probeExec,
   probeNotFoundHandlerReset,
   probeStartScript,
 } from "../../src/runtime/probe/start.ts";
@@ -41,18 +42,18 @@ test("C-PERF-05 every Codex probe announces its command after the login shell lo
   await preflightCodex(false, true);
   await detectCodexCliCapabilities();
   const prefix = `${probeStartScript}${probeNotFoundHandlerReset}`;
-  const version = `${prefix}${commandLookupScript("codex")}${probeControlClose}codex --version`;
+  const version = `${prefix}${commandLookupScript("codex")}${probeControlClose}${probeExec("codex --version")}`;
   expect(scripts).toEqual([
     version,
-    `${prefix}${probeControlClose}codex update`,
+    `${prefix}${probeControlClose}${probeExec("codex update")}`,
     version,
-    `${prefix}${probeControlClose}codex --help`,
+    `${prefix}${probeControlClose}${probeExec("codex --help")}`,
   ]);
 });
 
 test("C-PERF-05 a login shell that fails before `codex update` reports login_shell_failed", async () => {
   setCommandRunnerForTests((_command, args) =>
-    args.at(-1)?.endsWith("codex update")
+    args.at(-1)?.includes("codex update")
       ? {
           status: null,
           stdout: "",

@@ -91,7 +91,9 @@ async function readClaudeVersion(cwd: string): Promise<CommandResult> {
       ),
     cwd,
   );
-  if (result.error?.code === "ENOENT" || result.commandLookupFailed === true) {
+  const missingCommand = result.error?.code === "ENOENT" || result.commandLookupFailed === true;
+  const outputSetupFailed = result.error?.origin === "probe_setup";
+  if (missingCommand && !outputSetupFailed) {
     throw elwoodError(
       "claude_not_found",
       "`claude` was not found on PATH.",

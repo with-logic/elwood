@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { probeCommandStartLine } from "../../src/runtime/probe/start.ts";
+import { probeCommandStartLine, probeExec } from "../../src/runtime/probe/start.ts";
 import { loginShellCommand, probeShellCommand, probeShellStatus } from "../../src/runtime/shell.ts";
 
 const os = vi.hoisted(() => ({ userInfo: vi.fn() }));
@@ -35,7 +35,7 @@ describe("user shell", () => {
       "-l",
       "-i",
       "-c",
-      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; exec 3>&-; claude --version`,
+      `{ echo ${line} >&3; } 2>/dev/null || echo ${line}; unset -f command_not_found_handler command_not_found_handle 2>/dev/null || :; exec 3>&-; ${probeExec("claude --version")}`,
     ]);
     // A lookup answered by its status alone discards its output.
     expect(probeShellStatus("command -v claude")).toEqual([

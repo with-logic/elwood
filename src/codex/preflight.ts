@@ -96,7 +96,9 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
       ),
     cwd,
   );
-  if (result.error?.code === "ENOENT" || result.commandLookupFailed === true) {
+  const missingCommand = result.error?.code === "ENOENT" || result.commandLookupFailed === true;
+  const outputSetupFailed = result.error?.origin === "probe_setup";
+  if (missingCommand && !outputSetupFailed) {
     throw elwoodError(
       "codex_not_found",
       "Could not find `codex` on PATH.",
