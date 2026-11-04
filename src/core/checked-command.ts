@@ -47,7 +47,9 @@ function directoryGuard(
   platform: StatDialect,
 ): string {
   const statArgs = platform === "darwin" ? "-L -f '%d:%i'" : "-L -c '%d:%i'";
-  const write = `printf '%s\\n' ${shellQuote(directoryGuardStopMarker)}`;
+  // Login-shell xtrace must not expose complete refusal evidence on a passing check.
+  const split = directoryGuardStopMarker.lastIndexOf("-") + 1;
+  const write = `printf '%s%s\\n' ${shellQuote(directoryGuardStopMarker.slice(0, split))} ${shellQuote(directoryGuardStopMarker.slice(split))}`;
   const refusal = `{ ${write} >/dev/tty; } 2>/dev/null || ${write}; `;
   return `[ "$(/usr/bin/stat ${statArgs} ${shellQuote(path)} 2>/dev/null)" = '${dev}:${ino}' ] || { ${refusal}exit ${directoryGuardExitCode}; }; `;
 }

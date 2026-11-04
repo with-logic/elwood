@@ -34,7 +34,7 @@ export function resetStartupWaitMsForTests(): void {
 }
 
 /**
- * Fails a session's start when its CLI exited or asked for a login during startup. It waits
+ * Fails a session's start when its launch is refused, its CLI exits, or login is required. It waits
  * `waitMs` (500 ms by default) first, then reads the exit and the output once. A checked
  * directory/home guard status may wait up to `stopMarkerGraceMs` more for its private
  * marker; other statuses add no wait (C-API-61, C-E2E-24).
@@ -61,21 +61,15 @@ export async function assertStartupUsable(input: {
     const directoryStopped =
       directory !== undefined &&
       (await stoppedByGuard(exit.exitCode, directory.sawMarker, directoryGuardExitCode));
-    const reason = directoryStopped
-      ? directoryGuardStoppedReason
-      : stopped
-        ? homeGuardStoppedReason
-        : "";
-    const guard = reason === "" ? "" : `: ${reason}`;
-    throw elwoodError(
-      `${input.adapter}_start_failed`,
-      `${input.adapter} exited during startup${guard}.`,
-      {
-        exitCode: exit.exitCode,
-        signal: exit.signal,
-        ...(directoryStopped ? { cwd: directory.cwd } : {}),
-      },
-    );
+    const guard = stopped ? `: ${homeGuardStoppedReason}` : "";
+    const message = directoryStopped
+      ? `${input.adapter} did not start: ${directoryGuardStoppedReason}.`
+      : `${input.adapter} exited during startup${guard}.`;
+    throw elwoodError(`${input.adapter}_start_failed`, message, {
+      exitCode: exit.exitCode,
+      signal: exit.signal,
+      ...(directoryStopped ? { cwd: directory.cwd } : {}),
+    });
   }
   if (isAuthFailure(input.adapter, readStartupValue(input.output))) {
     throw elwoodError(
@@ -92,7 +86,7 @@ export async function assertStartupUsable(input: {
 async function stoppedByGuard(
   exitCode: number,
   sawMarker: (() => boolean) | undefined,
-  guardExitCode = homeGuardExitCode,
+  guardExitCode: typeof homeGuardExitCode | typeof directoryGuardExitCode = homeGuardExitCode,
 ): Promise<boolean> {
   if (sawMarker === undefined) return false;
   if (exitCode === guardExitCode) {

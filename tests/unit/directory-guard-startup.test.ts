@@ -29,7 +29,7 @@ function check(exitCode = 96) {
 const refusal = {
   code: "claude_start_failed",
   message:
-    "claude exited during startup: the working directory (`cwd`) failed its child-side identity check.",
+    "claude did not start: the launch directory failed verification. Keep the workspace available and unchanged, then retry.",
   details: { cwd: "/checked", exitCode: 96 },
 };
 test("C-API-61 a split marker past the output cap identifies the refusal and is released", async () => {

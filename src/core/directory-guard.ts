@@ -6,7 +6,7 @@ export const directoryGuardExitCode = 96;
 /** A fixed prefix with a private parent-process token avoids confusing an agent exit. */
 export const directoryGuardStopMarker = `elwood-directory-guard-${randomBytes(8).toString("hex")}`;
 export const directoryGuardStoppedReason =
-  "the working directory (`cwd`) failed its child-side identity check";
+  "the launch directory failed verification. Keep the workspace available and unchanged, then retry";
 export type DirectoryGuardObservation = {
   readonly cwd: string;
   readonly sawMarker: () => boolean;

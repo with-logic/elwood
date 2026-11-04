@@ -79,11 +79,14 @@ afterEach(() => {
   resetCodexPreflightCacheForTests();
 });
 
+// Moved-state assertions require actual macOS VolFS lookup (PRD §8.1).
 for (const kind of ["start", "resume"] as const) {
   for (const phase of ["before", "profile"] as const) {
-    test.each(
-      agents,
-    )(`C-API-61 real PTY ${kind} of %s refuses a ${phase} replacement`, async (agent, start) => {
+    test.for(agents)(`C-API-61 real PTY ${kind} of %s refuses a ${phase} replacement`, async ([
+      agent,
+      start,
+    ], { skip }) => {
+      if (process.platform !== "darwin") skip();
       const cwd = realpathSync(tempDir("elwood-pty-guard-cwd-"));
       const original = join(tempDir("elwood-pty-guard-original-"), "kept");
       const replacement = tempDir("elwood-pty-guard-replacement-");

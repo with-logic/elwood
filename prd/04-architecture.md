@@ -45,7 +45,9 @@ For PTY launches, the child checks its initial kernel working-directory identity
 before loading profiles and checks the original launch path again after profiles,
 before the CLI command. A mismatch refuses launch. These are bounded checks:
 profiles may deliberately change directories, and a replacement restored entirely
-between checks may be missed. They do not make executable selection atomic.
+between checks may be missed. After the final check, later CLI workspace-path
+resolution, including Codex's `--cd`, can observe a subsequent replacement.
+Workspace and executable selection are not atomically bound.
 
 This interactive login form (`-l -i` for zsh) applies to both the **agent PTY**
 and one-shot, non-PTY preflight probes (`--version`, `update`, `--help`). The

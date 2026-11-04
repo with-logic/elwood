@@ -86,7 +86,7 @@ for (const kind of ["start", "resume"] as const) {
         : start({ cwd, stateDir });
     await expect(launch).rejects.toMatchObject({
       code: `${agent}_start_failed`,
-      message: `${agent} exited during startup: the working directory (\`cwd\`) failed its child-side identity check.`,
+      message: `${agent} did not start: the launch directory failed verification. Keep the workspace available and unchanged, then retry.`,
       details: { cwd, exitCode: 96 },
     });
     expect(existsSync(held)).toBe(false);

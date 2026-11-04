@@ -36,11 +36,14 @@ output after the check succeeds or fails.
 
 A child-side workspace identity refusal writes a bounded stop marker carrying a
 private per-process token. During startup, status 96 together with that marker
-rejects with the adapter's existing `*_start_failed`, a fixed workspace-identity
-reason, and `details.cwd`, even if the original path has since been restored.
+rejects with the adapter's existing `*_start_failed`, a fixed launch-directory
+verification reason, guidance to keep the workspace available and unchanged before
+retrying, and `details.cwd`, even if the original path has since been restored.
 The marker is recognized beyond the output cap and for up to one second after
 the exit is observed, using the existing late-PTY-output bound. Status 96 without
-the marker remains an ordinary agent startup exit.
+the marker remains an ordinary agent startup exit. Profile tracing MUST NOT
+expose the complete marker in command text and turn an ordinary status-96 agent
+exit into a workspace-refusal diagnostic.
 
 ### 9.2 Compatibility checks
 
