@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reject launch publication through custom-state ancestry that other users could redirect, before reading or changing the session file.
+
 - Reject a working directory replaced during preflight before writing launch state or spawning the PTY, retaining the identity first checked on start and resume.
 
 ## [0.2.2] - 2026-11-03
