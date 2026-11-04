@@ -49,6 +49,11 @@ so does a write whose state directory is gone, as when it was in the removed
 worktree; a running session whose state directory is elsewhere keeps writing
 there (C-STATE-14).
 
+Custom rollback preserves entries whose parent lookup crosses a foreign-owned or
+non-sticky shared writable ancestor, using the existing mode-bit, private-group and
+sticky-directory policy. Root-owned sticky `/tmp` remains eligible. These bounded
+observations provide no same-user/root isolation or ACL audit.
+
 Before creating or changing state, Elwood MUST reject a symlink at the state
 root, sessions directory, or session directory, and reject user-owned symlink
 ancestors that redirect those paths. System-owned path aliases (such as macOS

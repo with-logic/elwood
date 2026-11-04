@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { elwoodError, errnoCode } from "../core/errors.ts";
-import type { StateDirectoryCreated } from "./preparation/created-directories.ts";
+import type { StateDirectoryCreationObserver } from "./preparation/created-directories.ts";
 
 /** Reject planted ancestors too, while allowing root-owned OS aliases such as /tmp. */
 export function assertStatePath(path: string): void {
@@ -61,10 +61,10 @@ export function makeStateDirectory(
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
   assertStatePath(path);
-  makeAs[policy](path, mode, created);
+  makeAs[policy](path, mode, onDirectoryCreated);
 }
 
 /**
@@ -74,10 +74,10 @@ export function makeStateDirectory(
 export function makeStateDirectoryBelow(
   path: string,
   mode: StateDirectoryMode,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
   assertSafeEntry(path, true);
-  makeInsideParent(path, mode, created);
+  makeInsideParent(path, mode, onDirectoryCreated);
 }
 
 /**
@@ -88,9 +88,9 @@ export function prepareStateDirectory(
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
-  makeStateDirectory(path, mode, policy, created);
+  makeStateDirectory(path, mode, policy, onDirectoryCreated);
   const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
     const info = fstatSync(fd);
@@ -110,7 +110,11 @@ export function prepareStateDirectory(
 const makeAs: Readonly<
   Record<
     StateDirectoryPolicy,
-    (path: string, mode: StateDirectoryMode, created?: StateDirectoryCreated) => void
+    (
+      path: string,
+      mode: StateDirectoryMode,
+      onDirectoryCreated?: StateDirectoryCreationObserver,
+    ) => void
   >
 > = {
   "with-parents": makeWithParents,
@@ -124,7 +128,7 @@ const makeAs: Readonly<
 function makeInsideParent(
   path: string,
   mode: StateDirectoryMode,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
   try {
     mkdirSync(path, { mode });
@@ -132,20 +136,20 @@ function makeInsideParent(
     if (errnoCode(error) !== "EEXIST") throw error;
     return;
   }
-  created?.(path);
+  onDirectoryCreated?.(path);
 }
 
 /** Single-directory steps record partial parent creation without repeating ancestry checks. */
 function makeWithParents(
   path: string,
   mode: StateDirectoryMode,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
   try {
-    makeInsideParent(path, mode, created);
+    makeInsideParent(path, mode, onDirectoryCreated);
   } catch (error) {
     if (errnoCode(error) !== "ENOENT") throw error;
-    makeWithParents(dirname(path), mode, created);
-    makeInsideParent(path, mode, created);
+    makeWithParents(dirname(path), mode, onDirectoryCreated);
+    makeInsideParent(path, mode, onDirectoryCreated);
   }
 }

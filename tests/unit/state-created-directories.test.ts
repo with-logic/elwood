@@ -95,16 +95,6 @@ test("C-STATE-14 an unverifiable identity is preserved and reports the cleanup e
   expect(fault.removals).toEqual([]);
 });
 
-test("C-STATE-14 retained shared entries survive and ordinary owned entries are removed", () => {
-  const { path, made } = fixture();
-  made.record(path);
-  expect(made.remove(new Set([path]))).toBeUndefined();
-  expect(fs.existsSync(path)).toBe(true);
-  expect(made.remove()).toBeUndefined();
-  expect(fs.existsSync(path)).toBe(false);
-  expect(made.remove()).toBeUndefined();
-});
-
 test("C-STATE-14 nonempty owned directories survive without a cleanup error", () => {
   const { path, made } = fixture();
   made.record(path);

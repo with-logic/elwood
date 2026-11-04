@@ -19,7 +19,7 @@ import {
 } from "./directories.ts";
 import {
   CreatedStateDirectories,
-  type StateDirectoryCreated,
+  type StateDirectoryCreationObserver,
 } from "./preparation/created-directories.ts";
 import { stateCleanupFailure } from "./setup-failure.ts";
 
@@ -28,7 +28,7 @@ export type MakeRootDirectory = (
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ) => void;
 
 /**
@@ -40,7 +40,7 @@ export function makeStateRoot(
   mode: StateDirectoryMode,
   cwd: string,
   make: MakeRootDirectory = prepareStateDirectory,
-  created?: StateDirectoryCreated,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
   // The root first: while `cwd` exists, its real path, spelled as on disk, leads the root's too,
   // so the two compare exactly however the caller spelled them.
@@ -49,7 +49,7 @@ export function makeStateRoot(
   const project = realpathSync.native(cwd);
   const names = namesBelow(project, target);
   if (names === undefined) {
-    make(root, mode, "with-parents", created);
+    make(root, mode, "with-parents", onDirectoryCreated);
     return;
   }
   // Each directory is made inside its parent, so a `cwd` removed meanwhile fails the next one
@@ -60,9 +60,9 @@ export function makeStateRoot(
   assertStatePath(join(project, ...parents));
   for (const name of parents) {
     current = join(current, name);
-    makeStateDirectoryBelow(current, PRIVATE_STATE_MODE, created);
+    makeStateDirectoryBelow(current, PRIVATE_STATE_MODE, onDirectoryCreated);
   }
-  make(root, mode, names.length === 0 ? "must-exist" : "inside-parent", created);
+  make(root, mode, names.length === 0 ? "must-exist" : "inside-parent", onDirectoryCreated);
 }
 
 /** The names leading from `project` down to `path`, or `undefined` when it is not under it. */
@@ -82,13 +82,13 @@ const maxStateTreeAttempts = 3;
 /**
  * Runs `makeTree`, recording its successful directory creations for a session in `cwd`,
  * then requires `cwd` to exist still. A `cwd` removed meanwhile fails with ENOENT, and the
- * directories `makeTree` made are removed again, deepest first, so a root elsewhere does not
- * outlive the start that failed for it (C-STATE-14). One another start has put its session in
- * meanwhile is left to it, and so is one already gone.
+ * rollback removes only still-matching, owned, empty directories, deepest first (C-STATE-14).
+ * Replaced or unverifiable entries are preserved. Nonempty directories, including those
+ * another start has populated, stay in place; entries already gone need no cleanup.
  */
 export function makeStateTree(
   cwd: string,
-  makeTree: (created: StateDirectoryCreated) => void,
+  makeTree: (onDirectoryCreated: StateDirectoryCreationObserver) => void,
 ): void {
   const made = new CreatedStateDirectories();
   for (let attempt = 1; ; attempt += 1) {

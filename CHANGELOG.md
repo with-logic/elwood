@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve custom state directories during rollback when another user could redirect their parent lookup.
+
 - State rollback records successful directory creation and checks observed ownership before removing empty scaffolding, preserving directories another actor created or replaced.
 
 - Shutdown permanently stops signaling a leader PID or group once its detached

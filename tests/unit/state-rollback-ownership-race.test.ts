@@ -12,6 +12,7 @@ const race = vi.hoisted(() => ({
   cwd: "",
   mode: "late" as FaultMode,
   raced: false,
+  lateHookRan: false,
   rootFd: undefined as number | undefined,
   actorIdentity: undefined as { readonly dev: bigint; readonly ino: bigint } | undefined,
 }));
@@ -22,15 +23,17 @@ vi.mock("node:fs", async (original) => {
     mkdirSync: (...args: Parameters<typeof actual.mkdirSync>) => {
       const path = String(args[0]);
       if (path === race.target && !race.raced && race.mode !== "replacement") {
-        // Another actor wins after makeStateTree's absence check, before our mkdir.
+        // Another actor creates the target immediately before Elwood's mkdir attempt.
         actual.mkdirSync(path, { mode: 0o700 });
         race.raced = true;
         const { dev, ino } = actual.statSync(path, { bigint: true });
         race.actorIdentity = { dev, ino };
       }
       const result = actual.mkdirSync(...args);
-      if (race.mode === "late" && path === join(race.target, "sessions"))
+      if (race.mode === "late" && path === join(race.target, "sessions")) {
+        race.lateHookRan = true;
         actual.rmSync(race.cwd, { recursive: true });
+      }
       return result;
     },
     realpathSync: Object.assign((path: string) => actual.realpathSync(path), {
@@ -74,6 +77,7 @@ afterEach(() =>
     target: "",
     cwd: "",
     raced: false,
+    lateHookRan: false,
     rootFd: undefined,
     actorIdentity: undefined,
   }),
@@ -93,7 +97,15 @@ for (const [api, setup] of [
     const state = join(root, "custom");
     fs.mkdirSync(cwd);
     Object.assign(race, { target: state, cwd, mode });
-    expect(() => setup(state, cwd)).toThrow();
+    expect(() => setup(state, cwd)).toThrow(
+      expect.objectContaining(
+        mode === "construction"
+          ? { code: "state_corrupt" }
+          : { code: "ENOENT", syscall: "realpath", path: cwd },
+      ),
+    );
+    expect(race.lateHookRan).toBe(mode === "late");
+    expect(fs.existsSync(cwd)).toBe(mode === "construction");
     expect(race.raced).toBe(true);
     expect(fs.existsSync(state)).toBe(true);
     const identity = race.actorIdentity;
