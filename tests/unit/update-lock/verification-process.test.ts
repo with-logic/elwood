@@ -24,10 +24,14 @@ const childScript = `
     }
   };
   if (role === "waiter") {
-    const nativeStat = fs.stat;
-    fs.stat = async (...args) => {
-      const result = await nativeStat(...args);
-      if (args[0] === updateLockPath("codex", root)) await mark("waiter-observed");
+    const nativeReadFile = fs.readFile;
+    fs.readFile = async (...args) => {
+      const result = await nativeReadFile(...args);
+      if (args[0] === updateLockPath("codex", root) + "/owner") {
+        // Existence alone can race readOwner: capture the generation before retirement.
+        await mark("waiter-observed");
+        await wait("owner-done"); // Hold those bytes across the actual lease release.
+      }
       return result;
     };
     syncBuiltinESMExports();

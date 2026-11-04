@@ -5,8 +5,20 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate } from "../../../src/runtime/update/lock.ts";
 import { tempDir } from "../../helpers/tmp.ts";
 
-const observation = vi.hoisted(() => ({ notify: () => {}, denyPublication: false }));
-beforeEach(() => Object.assign(observation, { notify: () => {}, denyPublication: false }));
+const observation = vi.hoisted(() => ({
+  notify: () => {},
+  denyPublication: false,
+  holdNextOwnerRead: false,
+  ownerSettled: () => Promise.resolve(),
+}));
+beforeEach(() =>
+  Object.assign(observation, {
+    notify: () => {},
+    denyPublication: false,
+    holdNextOwnerRead: false,
+    ownerSettled: () => Promise.resolve(),
+  }),
+);
 vi.mock("node:fs/promises", async (original) => {
   const actual = await original<typeof import("node:fs/promises")>();
   return {
@@ -18,7 +30,12 @@ vi.mock("node:fs/promises", async (original) => {
     },
     readFile: async (...args: Parameters<typeof actual.readFile>) => {
       const result = await actual.readFile(...args);
-      if (String(args[0]).endsWith("/codex.lock/owner")) observation.notify();
+      if (observation.holdNextOwnerRead && String(args[0]).endsWith("/codex.lock/owner")) {
+        // Hold the waiter's captured identity, without holding the owner's release read.
+        observation.holdNextOwnerRead = false;
+        observation.notify();
+        await observation.ownerSettled();
+      }
       return result;
     },
   };
@@ -58,6 +75,10 @@ test.each([
       }),
     ]);
     observation.notify = observed.resolve;
+    observation.holdNextOwnerRead = true;
+    observation.ownerSettled = async () => {
+      await owner;
+    };
     contender = coordinatedAutoupdate(
       "codex",
       () => {
