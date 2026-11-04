@@ -6,7 +6,7 @@
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import {
-  assertLaunchDirectory,
+  checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
 } from "../../runtime/session/launch-directory.ts";
 import { canonicalStatePath } from "../../state/canonical-path.ts";
@@ -40,8 +40,8 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   try {
     // Codex relaunches where the session started (`--cd`); `cwd` only locates the state.
-    await assertLaunchDirectory("codex", record.cwd);
-    const warning = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
+    const directory = await checkLaunchDirectory("codex", record.cwd);
+    const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
       preflight.preflightCodex(
         options.strictVersionCheck ?? false,
         options.autoupdate ?? false,
@@ -53,7 +53,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.codex.launch, codexLaunchPosture(options));
     const resumedRecord = withCodexLaunch(record, launch);
-    const session = await recheckLaunchDirectoryOnFailure("codex", record.cwd, () =>
+    const session = await recheckLaunchDirectoryOnFailure(directory, () =>
       startCodexFromRecord(
         resumedRecord,
         stateDir,
