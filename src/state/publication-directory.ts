@@ -1,0 +1,78 @@
+/** Retain a verified directory descriptor across renames (PRD §8.1, C-STATE-01). */
+import { type BigIntStats, fstatSync, lstatSync } from "node:fs";
+import { platform } from "node:os";
+import { basename, dirname, join } from "node:path";
+import { elwoodError } from "../core/errors.ts";
+import {
+  assertStatePath,
+  PRIVATE_STATE_MODE,
+  prepareAndOpenStateDirectory,
+} from "./directories.ts";
+import { closePublicationDirectory } from "./publication/close.ts";
+
+// A failed rollback may be abandoned by its caller; a live retry keeps its pin.
+const abandoned = new FinalizationRegistry<number>(closePublicationDirectory);
+
+export class PublicationDirectoryHold {
+  private readonly fd: number;
+  private closed = false;
+  private readonly identity: BigIntStats;
+  private readonly parent: string;
+
+  /** Hold the parent of a published-file path. */
+  constructor(publishedFilePath: string) {
+    this.parent = dirname(publishedFilePath);
+    this.fd = prepareAndOpenStateDirectory(this.parent, PRIVATE_STATE_MODE, "inside-parent");
+    try {
+      this.identity = fstatSync(this.fd, { bigint: true });
+      if (this.identity.uid !== BigInt(process.getuid!())) throw unavailable();
+    } catch (error) {
+      closePublicationDirectory(this.fd);
+      throw error;
+    }
+    abandoned.register(this, this.fd, this);
+  }
+
+  /** Resolve a published-file path through the held parent, preserving its filename. */
+  pathInHeldDirectory(publishedFilePath: string): string {
+    if (this.closed) throw unavailable();
+    try {
+      if (platform() !== "darwin") {
+        if (this.matches(lstatSync(this.parent, { bigint: true }))) return publishedFilePath;
+        throw unavailable();
+      }
+      // macOS VolFS addresses a directory by device/inode even after its parents move.
+      const pinned = `/.vol/${this.identity.dev}/${this.identity.ino}`;
+      assertStatePath(pinned);
+      if (!this.matches(lstatSync(pinned, { bigint: true }))) throw unavailable();
+      return join(pinned, basename(publishedFilePath));
+    } catch {
+      throw unavailable();
+    }
+  }
+
+  /**
+   * Idempotent disposal contains native close failures and reports them through the bounded
+   * Node warning. Host callbacks follow Node's normal asynchronous error semantics.
+   */
+  close(): void {
+    if (this.closed) return;
+    // A failed close may already have released the number; never retry or finalize it.
+    this.closed = true;
+    abandoned.unregister(this);
+    closePublicationDirectory(this.fd);
+  }
+
+  private matches(current: BigIntStats): boolean {
+    return (
+      current.isDirectory() &&
+      current.dev === this.identity.dev &&
+      current.ino === this.identity.ino &&
+      current.uid === this.identity.uid
+    );
+  }
+}
+
+function unavailable(): Error {
+  return elwoodError("state_corrupt", "Could not locate the original launch state directory.");
+}

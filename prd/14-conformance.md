@@ -245,7 +245,7 @@ Each criterion has:
 
 | ID | Section | Criterion |
 |---|---:|---|
-| C-STATE-01 | §8.1 | Default state is written under `<cwd>/.elwood/`; planted state-directory and generated-file links are rejected before changing external contents or modes (§8.1/8.2). Launch publication, including custom state, rejects existing ancestry failing the owner/mode/private-group/sticky lookup policy before reading or changing the file; missing parents retain creation or native `ENOENT` behavior. |
+| C-STATE-01 | §8.1 | Default state is written under `<cwd>/.elwood/`; planted state-directory and generated-file links are rejected before changing external contents or modes (§8.1/8.2). Launch publication, including custom state, rejects existing ancestry failing the owner/mode/private-group/sticky lookup policy before reading or changing the file; missing parents retain creation or native `ENOENT` behavior. An internal directory hold retains the descriptor that passed validation, verifies its inode namespace before lookup, and disposes idempotently without retrying an ambiguous close. Disposal failures emit the bounded §8.1 Node warning. |
 | C-STATE-02 | §8.1 | Passing `stateDir` stores state under the caller-provided directory. |
 | C-STATE-03 | §8.2 | Session metadata is written atomically. |
 | C-STATE-04 | §8.2 | Session metadata contains enough information to resume after parent process restart. |
