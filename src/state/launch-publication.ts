@@ -5,8 +5,13 @@ import { elwoodError } from "../core/errors.ts";
 import { assertStatePath } from "./directories.ts";
 import { fsyncDir, writePrivateFileAtomic } from "./files.ts";
 import { currentFileOwner, readPrivateFile } from "./private-read.ts";
+import { PublicationDirectory } from "./publication-directory.ts";
 
-type PublishedFile = { before: string | undefined; written: readonly (string | undefined)[] };
+type PublishedFile = {
+  before: string | undefined;
+  written: readonly (string | undefined)[];
+  readonly directory: PublicationDirectory;
+};
 
 export class LaunchPublication {
   private readonly files = new Map<string, PublishedFile>();
@@ -18,7 +23,11 @@ export class LaunchPublication {
   write(path: string, text: string, readText?: string): void {
     assertStatePath(path);
     const current = readText ?? readFile(path);
-    const entry = this.files.get(path) ?? { before: current, written: [current] };
+    const entry = this.files.get(path) ?? {
+      before: current,
+      written: [current],
+      directory: new PublicationDirectory(path),
+    };
     // Preserve a predecessor's intervening record update across our next write.
     if (!entry.written.includes(current)) entry.before = current;
     // A failed write can leave either version: rename precedes directory fsync.
@@ -30,10 +39,12 @@ export class LaunchPublication {
 
   /** A predecessor's later write to `path` stands: rollback leaves it, whatever its bytes. */
   forget(path: string): void {
+    this.files.get(path)?.directory.close();
     this.files.delete(path);
   }
 
   clear(): void {
+    for (const entry of this.files.values()) entry.directory.close();
     this.files.clear();
   }
 
@@ -41,14 +52,16 @@ export class LaunchPublication {
     let failed = false;
     for (const [path, entry] of this.files) {
       try {
-        if (entry.written.includes(read(path))) {
+        const rollbackPath = entry.directory.rollbackPath(path);
+        if (entry.written.includes(read(rollbackPath))) {
           // A restoration can itself fail after rename/unlink but before directory fsync.
           entry.written = [...new Set([...entry.written, entry.before])];
           if (entry.before === undefined) {
-            rmSync(path, { force: true });
-            fsyncDir(dirname(path));
-          } else writePrivateFileAtomic(path, entry.before);
+            rmSync(rollbackPath, { force: true });
+            fsyncDir(dirname(rollbackPath));
+          } else writePrivateFileAtomic(rollbackPath, entry.before);
         }
+        entry.directory.close();
         this.files.delete(path);
       } catch {
         failed = true;

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Restore failed-start and failed-resume state in the original macOS directory after its workspace is renamed or replaced; never roll back files in the replacement directory.
+
 ## [0.2.2] - 2026-11-03
 
 - Preserve custom state directories during rollback when another user could redirect their parent lookup.
