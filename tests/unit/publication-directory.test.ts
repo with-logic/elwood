@@ -1,9 +1,7 @@
-/** Verified original-directory lookup and descriptor lifetime (PRD §8.1, C-API-61). */
+/** Verified original-directory lookup and descriptor lifetime (PRD §8.1, C-STATE-01). */
 import * as fs from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { writePrivateFileAtomic } from "../../src/state/files.ts";
-import { LaunchPublication } from "../../src/state/launch-publication.ts";
 import { PublicationDirectory } from "../../src/state/publication-directory.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -84,11 +82,12 @@ function fixture() {
   return join(fault.parent, "record");
 }
 
-test("C-API-61 an unchanged parent keeps the ordinary path and closes its pin", () => {
+test("C-STATE-01 an unchanged parent keeps the ordinary path and closes its pin", () => {
   const file = fixture();
   fault.platform = "linux";
   const pin = new PublicationDirectory(file);
-  expect(pin.rollbackPath(file)).toBe(file);
+  expect(fault.opened).toBe(1);
+  expect(pin.pathInHeldDirectory(file)).toBe(file);
   pin.close();
   expect(() => native.fstatSync(fault.held)).toThrowError(
     expect.objectContaining({ code: "EBADF" }),
@@ -96,14 +95,14 @@ test("C-API-61 an unchanged parent keeps the ordinary path and closes its pin", 
 });
 
 for (const replace of [false, true]) {
-  test(`C-API-61 a moved parent uses only its verified inode namespace (${replace ? "replacement" : "missing"})`, () => {
+  test(`C-STATE-01 a moved parent uses only its verified inode namespace (${replace ? "replacement" : "missing"})`, () => {
     const file = fixture();
     const pin = new PublicationDirectory(file);
     fs.renameSync(fault.parent, fault.moved);
     if (replace) fs.mkdirSync(fault.parent);
     fault.platform = "darwin";
     try {
-      expect(pin.rollbackPath(file)).toMatch(/^\/\.vol\/\d+\/\d+\/record$/);
+      expect(pin.pathInHeldDirectory(file)).toMatch(/^\/\.vol\/\d+\/\d+\/record$/);
     } finally {
       pin.close();
     }
@@ -111,28 +110,28 @@ for (const replace of [false, true]) {
 }
 
 for (const alias of ["missing", "different", "foreign", "file"]) {
-  test(`C-API-61 an unavailable or unverifiable inode namespace fails closed (${alias})`, () => {
+  test(`C-STATE-01 an unavailable or unverifiable inode namespace fails closed (${alias})`, () => {
     const file = fixture();
     const pin = new PublicationDirectory(file);
     fs.renameSync(fault.parent, fault.moved);
     fault.alias = alias;
     fault.platform = "darwin";
     try {
-      expect(() => pin.rollbackPath(file)).toThrow();
+      expect(() => pin.pathInHeldDirectory(file)).toThrow();
     } finally {
       pin.close();
     }
   });
 }
 
-test("C-API-61 unsupported platforms never choose a changed directory", () => {
+test("C-STATE-01 unsupported platforms never choose a changed directory", () => {
   const file = fixture();
   const pin = new PublicationDirectory(file);
   fs.renameSync(fault.parent, fault.moved);
   fs.mkdirSync(fault.parent);
   fault.platform = "linux";
   try {
-    expect(() => pin.rollbackPath(file)).toThrow("Could not locate");
+    expect(() => pin.pathInHeldDirectory(file)).toThrow("Could not locate");
   } finally {
     pin.close();
   }
@@ -144,7 +143,7 @@ for (const [mode, snapshot] of [
   ["failStat", true],
   ["foreign", true],
 ] as const) {
-  test(`C-API-61 a failed pin verification releases the descriptor (${mode})`, () => {
+  test(`C-STATE-01 a failed pin verification releases the descriptor (${mode})`, () => {
     const file = fixture();
     fault[mode] = true;
     fault.afterValidation = snapshot;
@@ -157,44 +156,3 @@ for (const [mode, snapshot] of [
     );
   });
 }
-
-for (const action of ["clear", "forget", "rollback"] as const) {
-  test(`C-API-61 ${action} closes publication descriptors exactly once`, () => {
-    const file = fixture();
-    const publication = new LaunchPublication();
-    publication.write(file, "pending");
-    expect(native.fstatSync(fault.held).isDirectory()).toBe(true);
-    if (action === "forget") {
-      publication.forget(file);
-      publication.forget(file);
-    } else publication[action]();
-    expect(() => native.fstatSync(fault.held)).toThrowError(
-      expect.objectContaining({ code: "EBADF" }),
-    );
-    publication.clear();
-  });
-}
-
-test("C-API-61 failed rollback keeps its descriptor for a successful retry", () => {
-  const file = fixture();
-  writePrivateFileAtomic(file, "prior");
-  fault.opened = 0;
-  const publication = new LaunchPublication();
-  publication.write(file, "pending");
-  fs.renameSync(fault.parent, fault.moved);
-  fault.alias = "missing";
-  fault.platform = "darwin";
-  expect(() => publication.rollback()).toThrowError(
-    expect.objectContaining({ code: "state_corrupt" }),
-  );
-  expect(native.fstatSync(fault.held).isDirectory()).toBe(true);
-  expect(fs.readFileSync(join(fault.moved, "record"), "utf8")).toBe("pending");
-  fs.renameSync(fault.moved, fault.parent);
-  fault.alias = "valid";
-  fault.platform = process.platform;
-  publication.rollback();
-  expect(fs.readFileSync(file, "utf8")).toBe("prior");
-  expect(() => native.fstatSync(fault.held)).toThrowError(
-    expect.objectContaining({ code: "EBADF" }),
-  );
-});

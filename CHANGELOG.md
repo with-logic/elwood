@@ -12,7 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Keep failed-launch rollback bound to the original macOS session directory across workspace replacement races. All publication writes share one verified hold per parent. Disposal cannot reject a successful launch; failures emit at most one bounded Node warning per process.
+- Directory-hold disposal is nonfatal and reports at most one bounded Node warning per process when a descriptor close fails.
+
 - Reject launch publication through custom-state ancestry that other users could redirect, before reading or changing the session file.
 
 - Reject a working directory replaced during preflight before writing launch state or spawning the PTY, retaining the identity first checked on start and resume.

@@ -21,10 +21,12 @@ afterEach(() => {
 });
 
 for (const [code, expected] of [
+  ["EBADF", "EBADF"],
+  ["EINTR", "EINTR"],
   ["EIO", "EIO"],
   ["private/path", "UnknownError"],
 ]) {
-  test(`C-API-61 disposal reports only bounded ${expected} once per process`, async () => {
+  test(`C-STATE-01 disposal reports only bounded ${expected} once per process`, async () => {
     vi.resetModules();
     const { closePublicationDirectory } = await import("../../src/state/publication/close.ts");
     const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => {});

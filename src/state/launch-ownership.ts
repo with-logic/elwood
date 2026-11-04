@@ -25,8 +25,8 @@ class Generation {
   }
 }
 
-/** Writes `text` to `path`; pending writes reread the held physical preimage. */
-export type StateFileWriter = (path: string, text: string) => void;
+/** Writes `text` to `path`; `readText` is the file's text when the caller has just read it. */
+export type StateFileWriter = (path: string, text: string, readText?: string) => void;
 
 export type LaunchOwnership = {
   /** Exclusive authority for startup publication and destructive cleanup. */
@@ -72,17 +72,17 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   return {
     current,
     canPersist,
-    persistFile: (file, text) => {
+    persistFile: (file, text, readText) => {
       const later = successors();
       if (later === undefined) throw elwoodError("session_not_running", "Launch was superseded.");
-      if (token.phase === "pending") publication.write(file, text);
+      if (token.phase === "pending") publication.write(file, text, readText);
       else writePrivateFileAtomic(file, text);
       // A successor's rollback keeps this write, even one whose bytes match its own (§8.1).
       for (const successor of later) successor.publication.forget(file);
     },
-    publishFile: (file, text) => {
+    publishFile: (file, text, readText) => {
       if (!current()) throw elwoodError("session_not_running", "Launch was superseded.");
-      if (token.phase === "pending") publication.write(file, text);
+      if (token.phase === "pending") publication.write(file, text, readText);
       else writePrivateFileAtomic(file, text);
     },
     onCommit: (activate) => {

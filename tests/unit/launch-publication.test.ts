@@ -56,11 +56,12 @@ test("C-API-20 invalid publication and failed rollback are explicit state errors
   );
 });
 
-test("C-API-20 a write restores the actual physical preimage", () => {
+test("C-API-20 a write given the text its caller just read keeps that text as the preimage", () => {
   const file = join(tempDir(), "loops.json");
   writePrivateFileAtomic(file, "on disk");
   const publication = new LaunchPublication();
-  publication.write(file, "pruned");
+  // The caller's text stands in for a second read of the file, so it is what rollback restores.
+  publication.write(file, "pruned", "as read");
   publication.rollback();
-  expect(readFileSync(file, "utf8")).toBe("on disk");
+  expect(readFileSync(file, "utf8")).toBe("as read");
 });

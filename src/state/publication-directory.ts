@@ -1,9 +1,13 @@
-/** Pin a publication's parent across renames for rollback (PRD §8.1, C-API-61). */
+/** Retain a verified directory descriptor across renames (PRD §8.1, C-STATE-01). */
 import { type BigIntStats, fstatSync, lstatSync } from "node:fs";
 import { platform } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError } from "../core/errors.ts";
-import { assertStatePath, openPreparedStateDirectory, PRIVATE_STATE_MODE } from "./directories.ts";
+import {
+  assertStatePath,
+  PRIVATE_STATE_MODE,
+  prepareAndOpenStateDirectory,
+} from "./directories.ts";
 import { closePublicationDirectory } from "./publication/close.ts";
 
 // A failed rollback may be abandoned by its caller; a live retry keeps its pin.
@@ -17,7 +21,7 @@ export class PublicationDirectory {
 
   constructor(path: string) {
     this.parent = dirname(path);
-    this.fd = openPreparedStateDirectory(this.parent, PRIVATE_STATE_MODE, "inside-parent");
+    this.fd = prepareAndOpenStateDirectory(this.parent, PRIVATE_STATE_MODE, "inside-parent");
     try {
       this.identity = fstatSync(this.fd, { bigint: true });
       if (this.identity.uid !== BigInt(process.getuid!())) throw unavailable();
@@ -29,7 +33,7 @@ export class PublicationDirectory {
   }
 
   /** Every macOS rollback operation stays anchored to the held directory inode. */
-  rollbackPath(path: string): string {
+  pathInHeldDirectory(path: string): string {
     if (this.closed) throw unavailable();
     if (platform() !== "darwin") {
       if (this.matches(lstatSync(this.parent, { bigint: true }))) return path;

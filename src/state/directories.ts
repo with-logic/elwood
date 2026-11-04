@@ -91,11 +91,11 @@ export function prepareStateDirectory(
   policy: StateDirectoryPolicy,
   onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
-  closeSync(openPreparedStateDirectory(path, mode, policy, onDirectoryCreated));
+  closeSync(prepareAndOpenStateDirectory(path, mode, policy, onDirectoryCreated));
 }
 
 /** Return the same descriptor that passed type, owner and mode validation; caller owns it. */
-export function openPreparedStateDirectory(
+export function prepareAndOpenStateDirectory(
   path: string,
   mode: StateDirectoryMode,
   policy: StateDirectoryPolicy,

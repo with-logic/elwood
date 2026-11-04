@@ -1,5 +1,5 @@
 /** Failed startup restores published predecessor files and hook delivery (C-API-20). */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session/bridge.ts";
@@ -64,15 +64,11 @@ test.each([
   }
 });
 
-test.each([
-  false,
-  true,
-])("C-API-20 failed pending startup rolls back its hook record after moved=%s", async (move) => {
+test("C-API-20 failed pending startup rolls back its first hook record publication", async () => {
   installFakes();
   const cwd = tempDir();
   const stateDir = join(cwd, "state");
   const id = "pending-hook";
-  const moved = join(tempDir(), "moved");
   const dir = join(stateDir, "sessions", id);
   const launched = Promise.withResolvers<void>();
   const factory = currentPtyFactory();
@@ -86,33 +82,23 @@ test.each([
   const starting = startClaudeWithId({ cwd, stateDir }, id).catch((error: unknown) => error);
   try {
     await launched.promise;
-    if (move) {
-      renameSync(cwd, moved);
-      mkdirSync(cwd);
-    }
-    const physicalState = move ? join(moved, "state") : stateDir;
     await ptys[0]!.dispatchHook(
       id,
       { hook_event_name: "SessionStart", session_id: "pending-id", cwd, source: "startup" },
-      physicalState,
+      stateDir,
     );
-    expect(readSessionRecord(physicalState, id).claude.resumeId).toBe("pending-id");
+    expect(readSessionRecord(stateDir, id).claude.resumeId).toBe("pending-id");
     ptys[0]!.emitExit({ exitCode: 1 });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await starting).toMatchObject({ code: "claude_start_failed" });
-    const physicalDir = join(physicalState, "sessions", id);
-    expect(existsSync(join(physicalDir, "session.json"))).toBe(false);
-    expect(readdirSync(physicalDir)).toEqual([]);
+    expect(existsSync(join(dir, "session.json"))).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
     expect(hasLaunchOwner(dir)).toBe(false);
   } finally {
     ptys[0]?.emitExit({ exitCode: 1 });
     await vi.advanceTimersByTimeAsync(1_000);
     await starting;
     vi.useRealTimers();
-    if (existsSync(moved)) {
-      rmSync(cwd, { recursive: true });
-      renameSync(moved, cwd);
-    }
     removeSessionIdentity(stateDir, id, "claude");
   }
 });

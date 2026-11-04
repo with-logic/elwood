@@ -1,4 +1,4 @@
-/** Deterministic descriptor finalization without GC timing (PRD §8.1, C-API-61). */
+/** Deterministic descriptor finalization without GC timing (PRD §8.1, C-STATE-01). */
 import { closeSync, fstatSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, expect, test, vi } from "vitest";
@@ -50,14 +50,14 @@ function fixture() {
   return { pin, fd, file };
 }
 
-test("C-API-61 an abandoned pin finalizes only its numeric descriptor", () => {
+test("C-STATE-01 an abandoned pin finalizes only its numeric descriptor", () => {
   const { pin, fd } = fixture();
   expect(registry.register).toHaveBeenCalledWith(pin, fd, pin);
   registry.finalize(fd);
   expect(() => fstatSync(fd)).toThrowError(expect.objectContaining({ code: "EBADF" }));
 });
 
-test("C-API-61 finalizer close failures are contained; ordinary close unregisters", () => {
+test("C-STATE-01 finalizer close failures are contained; ordinary close unregisters", () => {
   const { pin, fd } = fixture();
   registry.failClose = true;
   expect(() => registry.finalize(fd)).not.toThrow();
@@ -67,7 +67,7 @@ test("C-API-61 finalizer close failures are contained; ordinary close unregister
   expect(() => fstatSync(fd)).toThrowError(expect.objectContaining({ code: "EBADF" }));
 });
 
-test("C-API-61 an ambiguous close never retries a descriptor reused by another file", () => {
+test("C-STATE-01 an ambiguous close never retries a descriptor reused by another file", () => {
   const { pin, fd, file } = fixture();
   registry.failAfterClose = true;
   expect(() => pin.close()).not.toThrow();
@@ -78,7 +78,7 @@ test("C-API-61 an ambiguous close never retries a descriptor reused by another f
     pin.close();
     expect(fstatSync(unrelated).isFile()).toBe(true);
     expect(registry.unregister).toHaveBeenCalledWith(pin);
-    expect(() => pin.rollbackPath(file)).toThrow("Could not locate");
+    expect(() => pin.pathInHeldDirectory(file)).toThrow("Could not locate");
   } finally {
     try {
       closeSync(unrelated);
