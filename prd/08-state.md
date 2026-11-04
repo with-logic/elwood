@@ -67,6 +67,12 @@ ancestors that redirect those paths. System-owned path aliases (such as macOS
 `/tmp`) remain supported. Directory permission changes and generated-file writes
 MUST use no-follow descriptors and verify ownership/type before changing them.
 Unsafe state paths fail as `state_corrupt` before touching the linked target.
+Launch publication, including caller-provided custom state, also requires its existing
+parent lookup ancestry to pass the same owner, mode-bit, private-group and sticky-bit
+checks as the default ignore parent. It rejects unsafe ancestry as `state_corrupt`
+before reading or changing the published file. Missing paths retain their existing
+creation or `ENOENT` behavior. These checks do not inspect ACLs or isolate same-user
+or root changes.
 These checks protect against planted checkout paths; they do not isolate a
 hostile process already running as the same OS user.
 

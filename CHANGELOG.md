@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reject launch publication through custom-state ancestry that other users could redirect, before reading or changing the session file.
+
 - Keep failed-launch rollback bound to the original macOS session directory across workspace replacement races. Disposing its read-only directory hold cannot reject a successful launch.
 
 - Reject a working directory replaced during preflight before writing launch state or spawning the PTY, retaining the identity first checked on start and resume.

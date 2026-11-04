@@ -6,6 +6,7 @@ import { assertStatePath } from "./directories.ts";
 import { fsyncDir, writePrivateFileAtomic } from "./files.ts";
 import { currentFileOwner, readPrivateFile } from "./private-read.ts";
 import { PublicationDirectory } from "./publication-directory.ts";
+import { assertTrustedPublicationParent } from "./publication-parent-trust.ts";
 
 type PublishedFile = {
   before: string | undefined;
@@ -22,6 +23,7 @@ export class LaunchPublication {
    */
   write(path: string, text: string, readText?: string): void {
     assertStatePath(path);
+    assertTrustedPublicationParent(path);
     const current = readText ?? readFile(path);
     const entry = this.files.get(path) ?? {
       before: current,

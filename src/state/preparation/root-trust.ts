@@ -52,13 +52,13 @@ export function assertTrustedIgnoreParent(path: string): void {
 }
 
 function assertDirectory(info: Stats, user: PathUser, path: string): void {
-  if (!info.isDirectory()) corrupt(`Ignore parent component is not a directory: ${path}`);
+  if (!info.isDirectory()) corrupt(`State ancestor component is not a directory: ${path}`);
   const fault = lookupFault(info, user, path);
   if (fault !== undefined) corrupt(fault);
 }
 
 function corrupt(reason: string): never {
-  throw elwoodError("state_corrupt", `Cannot trust default ignore parent: ${reason}`);
+  throw elwoodError("state_corrupt", `Cannot trust state ancestor: ${reason}`);
 }
 
 function namesOf(path: string): string[] {
