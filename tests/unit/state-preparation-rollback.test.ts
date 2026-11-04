@@ -3,14 +3,17 @@ import * as fs from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { elwoodError } from "../../src/core/errors.ts";
+import { makeStateDirectory } from "../../src/state/directories.ts";
 import { makeStateTree } from "../../src/state/root.ts";
 import { prepareStateDir } from "../../src/state/store.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
+type FaultMode = "mkdir" | "verify";
+
 const fault = vi.hoisted(() => ({
   sessions: "",
   cwd: "",
-  kind: "",
+  kind: undefined as FaultMode | undefined,
   made: false,
   cleanup: "",
   removals: [] as string[],
@@ -20,7 +23,7 @@ vi.mock("node:fs", async (original) => {
   const actual = await original<typeof import("node:fs")>();
   const native = (path: string) => {
     if (path === fault.cwd && fault.made && fault.kind === "verify") {
-      fault.kind = "";
+      fault.kind = undefined;
       fault.sessions = "";
       fault.consume();
       throw Object.assign(new Error("verification refused"), { code: "EACCES" });
@@ -50,7 +53,7 @@ afterEach(() =>
   Object.assign(fault, {
     sessions: "",
     cwd: "",
-    kind: "",
+    kind: undefined,
     made: false,
     cleanup: "",
     removals: [],
@@ -58,7 +61,7 @@ afterEach(() =>
   }),
 );
 
-function fixture(kind: string) {
+function fixture(kind: FaultMode) {
   const base = tempDir("elwood-state-rollback-");
   const cwd = join(base, "project");
   const state = join(base, "made", "state");
@@ -137,8 +140,8 @@ for (const typed of [false, true]) {
         : Object.assign(new Error("primary"), details);
       fault.cleanup = child;
       expect(() =>
-        makeStateTree(root, child, () => {
-          fs.mkdirSync(child, { recursive: true });
+        makeStateTree(root, (onDirectoryCreated) => {
+          makeStateDirectory(child, 0o700, "with-parents", onDirectoryCreated);
           throw error;
         }),
       ).toThrow(

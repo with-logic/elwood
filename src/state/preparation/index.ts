@@ -39,12 +39,17 @@ export function prepareStateDir(stateDir: string, setup: StateDirSetup): void {
   const session = id === undefined ? undefined : safeSessionDir(root, id);
   makeStateTree(
     setup.cwd,
-    session ?? sessions,
-    () => {
-      makeStateRoot(root, isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE, setup.cwd);
+    (onDirectoryCreated) => {
+      makeStateRoot(
+        root,
+        isDefault ? SHARED_STATE_MODE : PRIVATE_STATE_MODE,
+        setup.cwd,
+        undefined,
+        onDirectoryCreated,
+      );
       // Publish named-session presence before accepting shared configuration.
-      secureMkdir(sessions);
-      if (session !== undefined) secureMkdir(session);
+      secureMkdir(sessions, onDirectoryCreated);
+      if (session !== undefined) secureMkdir(session, onDirectoryCreated);
       if (isDefault) installDefaultIgnore(join(root, ".gitignore"));
     },
     isDefault ? new Set([root, sessions]) : undefined,

@@ -27,13 +27,14 @@ export function ensurePrivateStateRoot(
 ): void {
   const root = resolve(stateDir);
   const sessions = join(root, "sessions");
-  makeStateTree(cwd, sessions, () => {
+  makeStateTree(cwd, (onDirectoryCreated) => {
     // Made without `prepareStateDirectory`'s chmod: an existing root keeps its mode, so a
     // shared one is rejected below instead of being made private (C-CLI-15).
-    const makeRoot = () => makeStateRoot(root, PRIVATE_STATE_MODE, cwd, makeStateDirectory);
+    const makeRoot = () =>
+      makeStateRoot(root, PRIVATE_STATE_MODE, cwd, makeStateDirectory, onDirectoryCreated);
     ensurePrivateDirectory(root, owner, makeRoot);
     ensurePrivateDirectory(sessions, owner, () =>
-      makeStateDirectory(sessions, PRIVATE_STATE_MODE, "inside-parent"),
+      makeStateDirectory(sessions, PRIVATE_STATE_MODE, "inside-parent", onDirectoryCreated),
     );
   });
 }

@@ -56,6 +56,11 @@ Custom-state empty scaffolding remains eligible for removal. Cleanup attempts ev
 eligible directory and preserves the primary setup failure with its first cleanup
 code, including inside typed error details.
 
+Custom rollback preserves entries whose parent lookup crosses a foreign-owned or
+non-sticky shared writable ancestor, using the existing mode-bit, private-group and
+sticky-directory policy. Root-owned sticky `/tmp` remains eligible. These bounded
+observations provide no same-user/root isolation or ACL audit.
+
 Before creating or changing state, Elwood MUST reject a symlink at the state
 root, sessions directory, or session directory, and reject user-owned symlink
 ancestors that redirect those paths. System-owned path aliases (such as macOS

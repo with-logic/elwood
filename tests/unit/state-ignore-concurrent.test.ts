@@ -76,7 +76,7 @@ test.each([
     prepareStateDir(stateDir, { cwd, isImplicitDefaultStateDir: true, elwoodSessionId: "a" }),
   ).toThrow(expect.objectContaining({ code: "EIO" }));
   expect(accepted).toBe(true);
-  expect(fs.existsSync(join(stateDir, "sessions", "b"))).toBe(true);
+  expect(fs.readdirSync(join(stateDir, "sessions"))).toEqual(["b"]);
   expect(fs.readFileSync(join(stateDir, ".gitignore"), "utf8")).toBe("*\n");
   expect(fs.readdirSync(stateDir).sort()).toEqual([".gitignore", "sessions"]);
 });
