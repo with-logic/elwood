@@ -1,4 +1,4 @@
-/** A contender whose staging was swept still waits for the actual installer owner (C-PERF-04). */
+/** Lease-claim outcomes after a contender’s staging directory disappears (C-PERF-04). */
 import { existsSync, renameSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { expect, test, vi } from "vitest";
@@ -49,7 +49,7 @@ test.each([
   "recovery",
   "missing",
   "other-error",
-] as const)("C-PERF-04 swept staging handles %s ownership", async (state) => {
+] as const)("C-PERF-04 missing staging handles the %s claim outcome", async (state) => {
   const root = tempDir("elwood-swept-claim-");
   const staged = Promise.withResolvers<string>();
   const resume = Promise.withResolvers<void>();

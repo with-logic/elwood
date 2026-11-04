@@ -7,11 +7,11 @@
  * arrive after the first update finishes and legitimately start another one.
  */
 
-import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
+import { startNodeScript } from "../../helpers/node-script.ts";
 import { tempDir } from "../../helpers/tmp.ts";
 
 const barrierSize = 6;
@@ -67,8 +67,15 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
     if (!outcome.ok) throw outcome.error;
   `;
   const exits = await Promise.all(
-    Array.from({ length: barrierSize }, (_, index) =>
-      runChild(child, root, attempts, ready, index),
+    Array.from(
+      { length: barrierSize },
+      (_, index) =>
+        startNodeScript(child, {
+          ELWOOD_TEST_ATTEMPTS: attempts,
+          ELWOOD_TEST_LOCK_ROOT: root,
+          ELWOOD_TEST_READY: ready,
+          TMPDIR: join(root, `independent-tmp-${index}`),
+        }).exit,
     ),
   );
   expect(
@@ -77,33 +84,3 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
   ).toEqual(Array.from({ length: barrierSize }, () => 0));
   expect(readFileSync(attempts, "utf8").trim().split("\n")).toHaveLength(1);
 });
-
-function runChild(
-  script: string,
-  root: string,
-  attempts: string,
-  ready: string,
-  index: number,
-): Promise<{ readonly status: number | null; readonly stderr: string }> {
-  return new Promise((resolve) => {
-    const childProcess = spawn(
-      process.execPath,
-      ["--no-warnings", "--input-type=module", "-e", script],
-      {
-        env: {
-          ...process.env,
-          ELWOOD_TEST_ATTEMPTS: attempts,
-          ELWOOD_TEST_LOCK_ROOT: root,
-          ELWOOD_TEST_READY: ready,
-          TMPDIR: join(root, `independent-tmp-${index}`),
-        },
-        stdio: ["ignore", "ignore", "pipe"],
-      },
-    );
-    let stderr = "";
-    childProcess.stderr.on("data", (data: Buffer) => {
-      stderr = (stderr + data.toString()).slice(0, 4_096);
-    });
-    childProcess.on("close", (status) => resolve({ status, stderr }));
-  });
-}

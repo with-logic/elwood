@@ -12,6 +12,8 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
  * terminal transcripts, prompts, tokens, or environment secrets.
  * Contention uses `errorCode: "update_active"` and a canonical skipped-update message. A login
  * shell that failed before the update ran uses `errorCode: "login_shell_failed"` with empty `raw`.
+ * A confirmed no-attempt uses `update_not_started`, fixed bounded context, empty `raw` and
+ * no exit status or verification diagnostics; known contention still uses `update_active`.
  */
 export type AgentUpdateFailedWarning = {
   readonly elwoodSessionId: string;

@@ -1,5 +1,5 @@
 /** A contender retries a lease generation that never invoked an updater (PRD §9.2, C-LIFE-09). */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate } from "../../../src/runtime/update/lock.ts";
@@ -31,9 +31,6 @@ test.each([
   "refusal-malformed",
 ])("C-LIFE-09 an observed %s owner retries only with a conclusive refusal receipt", async (scenario) => {
   const root = tempDir("elwood-update-verification-contention-");
-  if (scenario === "refusal-malformed")
-    writeFileSync(join(root, "codex.refused"), "not-a-generation", { mode: 0o400 });
-  else if (scenario === "refusal-unwritable") mkdirSync(join(root, "codex.refused"));
   observation.denyPublication = scenario === "completion-unwritable";
   const entered = Promise.withResolvers<void>();
   const observed = Promise.withResolvers<void>();
@@ -41,6 +38,10 @@ test.each([
   const owner = coordinatedAutoupdate(
     "codex",
     async () => {
+      // Structural failures remain unwritable even when these tests run as root.
+      if (scenario === "refusal-malformed")
+        symlinkSync("codex.refused", join(root, "codex.refused"));
+      else if (scenario === "refusal-unwritable") mkdirSync(join(root, "codex.refused"));
       entered.resolve();
       await finish.promise;
       return scenario === "completion-unwritable" ? undefined : { started: false };

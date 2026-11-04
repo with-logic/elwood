@@ -79,11 +79,18 @@ version is below the minimum does startup fail (with the same typed
 compatibility error below). An updater command that ran and failed is attempted
 at most once per parent process and MUST NOT be retried per start. A prerequisite verification that fails
 before the updater is invoked is no attempt: it publishes no lease completion,
-is not retained by the per-process update cache, and waiting callers retry their
-own verification under the lease. The lease stores at most one refusal receipt
-per adapter, containing the refusing generation token. An observed owner without
-a matching refusal receipt remains non-retryable if completion publication fails;
-a missing completion alone does not establish a refusal. The normal compatibility check still reports
+is not retained by the per-process update cache. A caller that becomes the next
+lease owner reruns its own prerequisite verification. Callers joining an actual
+updater attempt share its outcome and each still runs its own normal compatibility
+check. The lease stores at most one refusal receipt per adapter, containing the
+refusing generation token. That receipt survives its owner's release, but a
+successor eligible to invoke the updater MUST invalidate it before invocation;
+if invalidation fails, no updater runs and the result is explicitly no-attempt.
+A retry requires a receipt matching the latest relevant observed owner, never an
+earlier observed generation. Missing completion alone does not establish a refusal,
+even when an intervening updater's entire lease lifetime falls between polls. A confirmed no-attempt result preserves version and capability caches unless
+coordination observed a peer updater, which may have changed the shared binary.
+The normal compatibility check still reports
 the verification failure when it persists. Neither a missing start marker nor an
 unknown runner rejection alone proves that an updater never ran. Nor may a failed
 shared update reject or poison any other otherwise-compatible start in the roster. If the
@@ -95,7 +102,15 @@ warning and continues by default, with an option for callers to make this fatal.
 The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
 allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
-never terminal transcripts, prompts, tokens, or environment secrets. Like all
+never terminal transcripts, prompts, tokens, or environment secrets.
+A confirmed update that was not invoked is observable when later
+compatibility checks succeed: the existing `agent_update_failed` warning uses
+`errorCode: "update_not_started"` and a fixed message saying the update was not
+started, with the installed version. It has empty `raw` and no exit status or
+verification diagnostics. Only recognized fixed probe-refusal context may be added
+to its message; arbitrary verification output, paths and errors are excluded.
+Known contention or pending cleanup retains `update_active` instead. This live
+warning does not change retryable no-attempt behavior. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
 `ready`.

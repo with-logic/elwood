@@ -12,6 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Report confirmed updates that were never invoked with a live `update_not_started` warning when compatibility succeeds, without exposing verification diagnostics.
 - Retry automatic updates after prerequisite verification refuses before the updater runs, without publishing a false completion or suppressing a waiting process’s update.
 
 - Report persistent temporary probe-directory cleanup failure once per process through a fixed, content-free Node warning without changing the probe result. Finish removing the probe root when a descendant disappears during cleanup.

@@ -23,6 +23,10 @@ type RecoveryResult =
   | { readonly status: "alive" | "unrecoverable" }
   | { readonly status: "removed"; readonly generation: string | undefined };
 
+/**
+ * Calls observe on each poll with an existing lease: undefined means its owner is
+ * unreadable, not absent. An absent lease returns without invoking observe.
+ */
 export async function waitForOwner(
   path: string,
   pollMs: number,

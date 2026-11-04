@@ -4,6 +4,7 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
+import { ElwoodError } from "../../core/errors.ts";
 import {
   createDirectoryProbeCache,
   type DirectoryProbeCache,
@@ -19,10 +20,11 @@ let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
 /** The outcome of a best-effort autoupdate: it NEVER rejects — a failure is a value. */
 export type AutoupdateOutcome =
   | { readonly ok: true }
-  | { readonly ok: false; readonly error: unknown };
+  | { readonly ok: false; readonly error: unknown; readonly notStarted?: true };
 
 /** Verification runs only after lease ownership, before the updater may be invoked. */
 export type UpdateSteps = {
+  /** Any resolved value passes; rejection means verification failed before updater invocation. */
   readonly verify: () => Promise<unknown>;
   readonly update: () => Promise<void>;
 };
@@ -32,7 +34,8 @@ type Attempt = { readonly reusable: boolean; readonly outcome: AutoupdateOutcome
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
 // `{ok:false}` value, NOT a rejected promise — so one failed update can neither reject the other
 // concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Verification refusals
-// are not attempts and leave no settled entry: each sharer retries its own prerequisites.
+// are not attempts and leave no settled entry: the next eligible owner retries verification.
+// Every public preflight still checks its own workspace compatibility after the shared outcome.
 const autoupdates = new Map<UpdateAdapter, Promise<Attempt>>();
 
 /**
@@ -55,25 +58,36 @@ export function cachedAutoupdate(
       attempt.reusable ? attempt.outcome : cachedAutoupdate(adapter, steps, afterAttempt),
     );
   }
-  let verificationRefused = false;
+  let verificationFailed = false;
+  let updaterInvoked = false;
   const run = async (): Promise<UpdateResult> => {
     try {
       await steps.verify();
     } catch (error) {
-      verificationRefused = true;
+      verificationFailed = true;
       return { started: false, error };
     }
+    updaterInvoked = true;
     await steps.update();
   };
   const pending = coordinateUpdate(adapter, run)
     .then(
-      () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
-      (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
+      (result): AutoupdateOutcome =>
+        result?.started === false
+          ? { ok: false, error: result.error, notStarted: true }
+          : { ok: true },
+      (error): AutoupdateOutcome => ({
+        ok: false,
+        error,
+        ...(verificationFailed || (!updaterInvoked && unstartedSkip(error))
+          ? ({ notStarted: true } as const)
+          : {}),
+      }),
     )
     .then((outcome): Attempt => {
-      if (!verificationRefused) return { reusable: true, outcome };
-      autoupdates.delete(adapter); // before any sharer retries its own verification
-      return { reusable: false, outcome: { ok: true } };
+      const reusable = outcome.ok || outcome.notStarted !== true;
+      if (!reusable) autoupdates.delete(adapter); // before a sharer retries as the next owner
+      return { reusable, outcome: finalizeAutoupdate(adapter, outcome, afterAttempt) };
     });
   autoupdates.set(adapter, pending);
   return pending.then((attempt) => attempt.outcome);
@@ -84,6 +98,8 @@ function finalizeAutoupdate(
   outcome: AutoupdateOutcome,
   afterAttempt?: () => void,
 ): AutoupdateOutcome {
+  // A peer may have changed the binary even when this caller never invoked its updater.
+  if (!outcome.ok && outcome.notStarted === true && !unstartedSkip(outcome.error)) return outcome;
   try {
     // A failed installer may still have changed the binary. Invalidate after
     // every attempt, including a peer-owned or failed one, before validation.
@@ -93,6 +109,13 @@ function finalizeAutoupdate(
   } catch (error) {
     return { ok: false, error };
   }
+}
+
+/** Only explicit coordinator skip reasons prove a rejection happened before invocation. */
+function unstartedSkip(error: unknown): boolean {
+  if (!(error instanceof ElwoodError)) return false;
+  const reason = error.details["updateReason"];
+  return reason === "active_owner" || reason === "cleanup_pending";
 }
 
 /** Settled directory results and retained version-text bounds (C-PERF-02). */

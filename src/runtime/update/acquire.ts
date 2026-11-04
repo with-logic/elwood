@@ -1,7 +1,9 @@
 /** Completion-aware acquisition of the global update lease (PRD §9.2, C-PERF-04). */
-import { elwoodError } from "../../core/errors.ts";
+import { unlink } from "node:fs/promises";
+import { elwoodError, errnoCode } from "../../core/errors.ts";
 import { completionSnapshot, readCompletionGeneration } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
+import type { UpdateNotStarted } from "./not-started.ts";
 import { type LeaseOwner, readOptionalText, releaseLease } from "./owner.ts";
 import { type UpdateWaitResult, waitForOwner } from "./waiting.ts";
 
@@ -17,7 +19,14 @@ type Acquisition = {
   readonly claim: () => Promise<"claimed" | "contended" | "unavailable">;
 };
 
-/** True grants update ownership; false means no update lease acquired. */
+// Every claim outcome must choose an explicit disposition when the union grows.
+const claimDisposition = {
+  claimed: "acquired",
+  contended: "wait",
+  unavailable: "not-started",
+} as const satisfies Readonly<Record<Awaited<ReturnType<Acquisition["claim"]>>, string>>;
+
+/** True owns the lease; false preserves peer exclusion; no-attempt is retryable. */
 export async function acquireUpdateLease({
   adapter,
   leasePath,
@@ -28,10 +37,11 @@ export async function acquireUpdateLease({
   staleMs,
   waitUntilMs,
   claim,
-}: Acquisition): Promise<boolean> {
+}: Acquisition): Promise<boolean | UpdateNotStarted> {
   const { ownerGeneration, priorCompletionGeneration, ownerAlreadyCompleted } =
     await completionSnapshot(leasePath, completionMarkerPath);
   const observedGenerations = new Set(ownerGeneration === undefined ? [] : [ownerGeneration]);
+  let relevantOwner = ownerGeneration;
   const completedOwner = (generation: string | undefined) =>
     ownerAlreadyCompleted || (generation !== undefined && observedGenerations.has(generation));
   const completed = async () => {
@@ -40,18 +50,19 @@ export async function acquireUpdateLease({
   };
   const refused = async () => {
     const marker = await readOptionalText(refusal);
-    return marker !== undefined && observedGenerations.has(marker);
+    return relevantOwner !== undefined && marker === relevantOwner;
   };
   let observedActive = ownerGeneration !== undefined;
   let recoveredStale = false;
   for (;;) {
-    const claimed = await claim();
-    if (claimed === "unavailable") return false;
-    if (claimed === "claimed") break;
+    const claimed = claimDisposition[await claim()];
+    if (claimed === "not-started") return { started: false };
+    if (claimed === "acquired") break;
     observedActive = true;
     const waited = recoveredWait(
       adapter,
       await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs, (generation) => {
+        relevantOwner = generation;
         if (generation !== undefined) observedGenerations.add(generation);
       }),
     );
@@ -60,6 +71,7 @@ export async function acquireUpdateLease({
       if ((await completed()) || !(await refused())) return false;
       continue;
     }
+    relevantOwner = waited.generation;
     if (waited.generation !== undefined) observedGenerations.add(waited.generation);
     recoveredStale = true;
   }
@@ -76,6 +88,23 @@ export async function acquireUpdateLease({
   if (observedOwnerCompleted || completionAdvanced || unrecoveredContention) {
     await releaseLease(leasePath, owner);
     return false;
+  }
+  return invalidateRefusal(refusal, leasePath, owner);
+}
+
+/** An eligible successor clears prior evidence before a poller could miss its update. */
+async function invalidateRefusal(
+  refusal: string,
+  leasePath: string,
+  owner: LeaseOwner,
+): Promise<true | UpdateNotStarted> {
+  try {
+    await unlink(refusal);
+  } catch (error) {
+    if (errnoCode(error) !== "ENOENT") {
+      await releaseLease(leasePath, owner);
+      return { started: false, error };
+    }
   }
   return true;
 }

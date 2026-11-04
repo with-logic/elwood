@@ -1,8 +1,8 @@
 /** Real lease waiters distinguish verification refusals from attempted update failures (PRD §9.2). */
-import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import { startNodeScript } from "../../helpers/node-script.ts";
 import { tempDir } from "../../helpers/tmp.ts";
 
 const moduleUrl = (path: string) => new URL(`../../../src/${path}.ts`, import.meta.url).href;
@@ -51,7 +51,9 @@ const childScript = `
     return { status: 0, stdout: "codex-cli 0.150.0", stderr: "" };
   });
   const warning = await preflightCodex(false, true);
-  await mark(role + "-done", JSON.stringify(warning?.code ?? null));
+  await mark(role + "-done", JSON.stringify(warning && {
+    code: warning.code, errorCode: warning.errorCode, raw: warning.raw,
+  }));
 `;
 
 for (const scenario of ["refused", "attempted"] as const) {
@@ -76,9 +78,11 @@ for (const scenario of ["refused", "attempted"] as const) {
       expect(existsSync(join(root, "waiter-entered"))).toBe(refused);
       expect(existsSync(join(root, "owner-updated"))).toBe(!refused);
       expect(readFileSync(completion, "utf8") === "previous").toBe(refused);
-      expect(JSON.parse(readFileSync(join(root, "owner-done"), "utf8"))).toBe(
-        refused ? null : "agent_update_failed",
-      );
+      expect(JSON.parse(readFileSync(join(root, "owner-done"), "utf8"))).toEqual({
+        code: "agent_update_failed",
+        errorCode: refused ? "update_not_started" : "update_failed",
+        raw: refused ? "" : "installer failed",
+      });
       writeFileSync(join(root, "release-waiter"), "ready");
       expect(await owner.exit).toEqual({ status: 0, stderr: "" });
       expect(await waiter.exit).toEqual({ status: 0, stderr: "" });
@@ -94,27 +98,9 @@ for (const scenario of ["refused", "attempted"] as const) {
 }
 
 function runChild(root: string, role: string, scenario: string) {
-  const child = spawn(
-    process.execPath,
-    ["--no-warnings", "--input-type=module", "-e", childScript],
-    {
-      env: {
-        ...process.env,
-        ELWOOD_TEST_ROOT: root,
-        ELWOOD_TEST_ROLE: role,
-        ELWOOD_TEST_CASE: scenario,
-      },
-      stdio: ["ignore", "ignore", "pipe"],
-    },
-  );
-  let stderr = "";
-  child.stderr.on("data", (data: Buffer) => {
-    stderr = (stderr + data.toString()).slice(-4_096);
+  return startNodeScript(childScript, {
+    ELWOOD_TEST_ROOT: root,
+    ELWOOD_TEST_ROLE: role,
+    ELWOOD_TEST_CASE: scenario,
   });
-  const exit = new Promise<{ readonly status: number | null; readonly stderr: string }>(
-    (resolve) => {
-      child.on("close", (status) => resolve({ status, stderr }));
-    },
-  );
-  return { process: child, exit };
 }

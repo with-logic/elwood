@@ -1,7 +1,7 @@
 /**
- * An aborted updater whose process group survives keeps the update lease, so no second
- * host installs over a still-running installer (PRD §9.2, C-PERF-04). The groups here are
- * real and detached; production code only observes them.
+ * An aborted lease-owned verification or updater probe retains its surviving process group,
+ * so another host cannot install while it remains live (PRD §9.2, C-PERF-04). The groups
+ * here are real and detached; production code only observes them.
  */
 
 import { spawn } from "node:child_process";
@@ -31,7 +31,7 @@ function spawnGroup(): { id: number; killGroup: () => Promise<void> } {
   return { id, killGroup };
 }
 
-/** What an aborted update probe throws when it could not confirm its group gone. */
+/** A lease-owned probe failure whose process group could not be confirmed gone. */
 const abortedWith = (processGroupId: number): Error =>
   elwoodError("codex_update_failed", "`codex update` was aborted.", {
     cleanupProcessGroupId: processGroupId,
@@ -75,7 +75,7 @@ test("C-PERF-04 a group that exits within the cleanup window never retains the l
   const group = spawnGroup();
   const root = tempDir("elwood-retain-exits-");
   const path = updateLockPath("codex", root);
-  // Gone before the update settles, so there is nothing left to wait for.
+  // Gone before the probe settles, so there is nothing left to wait for.
   await group.killGroup();
   await expect(
     coordinatedAutoupdate("codex", () => Promise.reject(abortedWith(group.id)), { root }),
