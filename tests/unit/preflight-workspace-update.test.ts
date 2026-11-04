@@ -42,9 +42,9 @@ test.each([
     const version = updated ? (options?.cwd === owner ? versions[0] : versions[1]) : "2.1.144";
     return { status: 0, stdout: version, stderr: "" };
   });
-  const first = preflight(true, true, owner);
+  const first = preflight(true, true, { cwd: owner });
   await entered.promise;
-  const second = preflight(true, true, follower);
+  const second = preflight(true, true, { cwd: follower });
   const outcomes = Promise.allSettled([first, second]);
   expect(updates).toEqual([owner]);
   expect(postReads).toEqual([]);

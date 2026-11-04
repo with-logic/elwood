@@ -9,7 +9,7 @@ import { type BigIntStats, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
-import type { DirectoryIdentity } from "../../core/directory-identity.ts";
+import { type DirectoryIdentity, sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
 import { currentPlatform } from "../seams.ts";
 
@@ -100,7 +100,7 @@ function identify(
   if (!info.isDirectory())
     throw elwoodError(`${agent}_start_failed`, notADirectory, { cwd, errno: "ENOTDIR" });
   const { dev, ino } = info;
-  if (checked === undefined || (dev === checked.dev && ino === checked.ino)) return { dev, ino };
+  if (checked === undefined || sameDirectoryIdentity(info, checked)) return { dev, ino };
   throw elwoodError(`${agent}_start_failed`, replaced, { cwd });
 }
 

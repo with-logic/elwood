@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep the original launch directory identity through version and capability cache reads, refusing observed replacements even when the replacement has a cached answer.
+
 - Keep the CLI workspace identity through private state setup and adapter handoff, rejecting observed replacements before probing or launching the agent.
 - Recheck captured probe workspace identities after queueing and across login profiles, refusing observed replacements without confusing profile exits with directory refusal.
 - Isolate CLI probe output from login-profile hooks and retain process-group ownership until inherited output drains or bounded cleanup ends the probe.

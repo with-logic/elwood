@@ -54,7 +54,7 @@ export async function spawnCodexPty(
   runtime: Pick<SessionRuntime, "socketHome" | "socketPath" | "bridgeScriptPath">,
   options: CodexLaunchOptions,
 ): Promise<CodexLaunch> {
-  const capabilities = await preflight.detectCodexCliCapabilities(options.cwd);
+  const capabilities = await preflight.detectCodexCliCapabilities(options.launchDirectory);
   const reportPath = codexHomeReportPath(runtime);
   const launch = buildCodexShellCommand(
     { ...record, cwd: options.launchDirectory.cwd },

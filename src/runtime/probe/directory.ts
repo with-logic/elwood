@@ -7,6 +7,7 @@ import {
   directoryGuardExitCode,
   wrapCommandWithDirectoryGuard,
 } from "../../core/checked-command.ts";
+import { sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { toError } from "../../core/errors.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { StreamMarkerWatcher } from "../stream-marker.ts";
@@ -15,20 +16,21 @@ import { announcesStart, type ProbeStartChannel } from "./start.ts";
 
 const refusalLine = `elwood-probe-directory-refused-${randomBytes(8).toString("hex")}`;
 const refusalScript = `{ echo ${refusalLine} >&3; } 2>/dev/null || :; { echo ${refusalLine}; } 2>/dev/null || :; `;
-const changed = "The directory was removed or replaced before the probe started.";
+const probeCommandRefused =
+  "The probe command was refused because the original directory identity changed. Keep the workspace available and unchanged, then retry.";
 
 /** Called inside the admitted probe slot, retaining the caller's original identity. */
 export async function refusedProbeDirectory(
   options: CommandOptions,
 ): Promise<CommandResult | undefined> {
-  if (options.identity === undefined) return undefined;
+  if (options.directoryIdentity === undefined) return undefined;
   try {
-    const { dev, ino } = await stat(options.cwd, { bigint: true });
-    if (dev === options.identity.dev && ino === options.identity.ino) return undefined;
+    const observed = await stat(options.cwd, { bigint: true });
+    if (sameDirectoryIdentity(observed, options.directoryIdentity)) return undefined;
   } catch (error) {
     return outputUnavailable(error);
   }
-  return outputUnavailable(new Error(changed));
+  return outputUnavailable(new Error(probeCommandRefused));
 }
 
 /** Native configured-shell errors cannot be recovered from a supervisor's exit status. */
@@ -61,7 +63,7 @@ export function checkedProbeCommand(
     command,
     args,
     options.cwd ?? process.cwd(),
-    options.identity,
+    options.directoryIdentity,
     announcesStart(args),
     process.platform,
     refusalScript,
@@ -70,26 +72,29 @@ export function checkedProbeCommand(
 
 /** Only the private signal plus guard status proves refusal; a profile exit alone does not. */
 export class ProbeDirectoryRefusal {
-  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarkerWatcher>> = {
-    control: new StreamMarkerWatcher(Buffer.from(`${refusalLine}\n`)),
-    stdout: new StreamMarkerWatcher(Buffer.from(`${refusalLine}\n`)),
-  };
+  private readonly watchers: Readonly<Record<ProbeStartChannel, StreamMarkerWatcher>> | undefined;
   private readonly options: CommandOptions;
   constructor(options: CommandOptions) {
     this.options = options;
+    this.watchers =
+      options.directoryIdentity === undefined
+        ? undefined
+        : {
+            control: new StreamMarkerWatcher(Buffer.from(`${refusalLine}\n`)),
+            stdout: new StreamMarkerWatcher(Buffer.from(`${refusalLine}\n`)),
+          };
   }
 
   feed(channel: ProbeStartChannel, chunk: Buffer): void {
-    this.watchers[channel].feed(chunk);
+    this.watchers?.[channel].feed(chunk);
   }
 
   result(status: number | null): CommandResult | undefined {
-    if (
-      this.options.identity === undefined ||
-      status !== directoryGuardExitCode ||
-      !Object.values(this.watchers).some((watcher) => watcher.seen)
-    )
-      return undefined;
-    return outputUnavailable(new Error(changed));
+    const hasIdentity = this.options.directoryIdentity !== undefined;
+    const hasGuardExitCode = status === directoryGuardExitCode;
+    const sawRefusalMarker =
+      this.watchers !== undefined && Object.values(this.watchers).some((watcher) => watcher.seen);
+    if (!(hasIdentity && hasGuardExitCode && sawRefusalMarker)) return undefined;
+    return outputUnavailable(new Error(probeCommandRefused));
   }
 }

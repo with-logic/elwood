@@ -3,6 +3,7 @@ import * as childProcess from "node:child_process";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { directoryGuardExitCode } from "../../src/core/directory-guard.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -25,7 +26,7 @@ function workspace() {
   const cwd = join(root, "workspace");
   mkdirSync(cwd);
   const { dev, ino } = statSync(cwd, { bigint: true });
-  return { root, options: { cwd, identity: { dev, ino } } };
+  return { root, options: { cwd, directoryIdentity: { dev, ino } } };
 }
 function replace(cwd: string) {
   renameSync(cwd, `${cwd}-original`);
@@ -33,8 +34,8 @@ function replace(cwd: string) {
 }
 function profile(script: string) {
   const home = tempDir("elwood-identity-profile-");
-  writeFileSync(join(home, ".zshrc"), script);
-  vi.stubEnv("ZDOTDIR", home);
+  writeFileSync(join(home, ".bash_profile"), script);
+  vi.stubEnv("HOME", home);
   vi.stubEnv("TERM_PROGRAM", "");
 }
 afterEach(() => {
@@ -46,7 +47,7 @@ test("C-API-61 keeps capture paths valid inside a matching identity guard", asyn
   profile("");
   const { options } = workspace();
   const spawn = vi.spyOn(childProcess, "spawn");
-  expect(await runProbe("/bin/zsh", probeShellCommand("/bin/echo wanted"), options)).toEqual({
+  expect(await runProbe("/bin/bash", probeShellCommand("/bin/echo wanted"), options)).toEqual({
     status: 0,
     stdout: "wanted\n",
     stderr: "",
@@ -102,7 +103,7 @@ test("C-API-61 child guard refuses replacement after the host check before profi
     return spawn(...args);
   });
   expect(
-    await runProbe("/bin/zsh", probeShellCommand("/bin/echo unwanted"), options),
+    await runProbe("/bin/bash", probeShellCommand("/bin/echo unwanted"), options),
   ).toMatchObject({ status: null, stdout: "", stderr: "", error: { origin: "probe_setup" } });
   expect(existsSync(marker)).toBe(false);
 });
@@ -113,30 +114,45 @@ test("C-API-61 refuses a replacement performed by login profiles", async () => {
     `/bin/mv ${shellQuote(options.cwd)} ${shellQuote(`${options.cwd}-original`)}; /bin/mkdir ${shellQuote(options.cwd)}`,
   );
   expect(
-    await runProbe("/bin/zsh", probeShellCommand("/bin/echo unwanted"), options),
+    await runProbe("/bin/bash", probeShellCommand("/bin/echo unwanted"), options),
   ).toMatchObject({ status: null, stdout: "", stderr: "", error: { origin: "probe_setup" } });
+});
+
+test("C-API-61 closed control falls back to a visible stdout refusal marker", async () => {
+  const { root, options } = workspace();
+  const marker = join(root, "command-ran");
+  profile(
+    `exec 3>&-; /bin/mv ${shellQuote(options.cwd)} ${shellQuote(`${options.cwd}-original`)}; /bin/mkdir ${shellQuote(options.cwd)}`,
+  );
+  const result = await runProbe(
+    "/bin/bash",
+    probeShellCommand(`/usr/bin/touch ${shellQuote(marker)}`),
+    options,
+  );
+  expect(result).toMatchObject({ status: null, error: { origin: "probe_setup" } });
+  expect(existsSync(marker)).toBe(false);
 });
 
 test("C-API-61 allows a profile's deliberate directory change", async () => {
   const { root, options } = workspace();
   profile(`cd ${shellQuote(root)}`);
-  expect(await runProbe("/bin/zsh", probeShellCommand("/bin/pwd"), options)).toMatchObject({
+  expect(await runProbe("/bin/bash", probeShellCommand("/bin/pwd"), options)).toMatchObject({
     status: 0,
     stdout: `${root}\n`,
   });
 });
 
 test.each([
-  "exit 96",
-  "exec 3>&-; exec >/dev/null; exit 96",
+  `exit ${directoryGuardExitCode}`,
+  `exec 3>&-; exec >/dev/null; exit ${directoryGuardExitCode}`,
 ])("C-API-61 profile status alone does not prove refusal (%s)", async (rc) => {
   const { options } = workspace();
   profile(rc);
-  const result = await runProbe("/bin/zsh", probeShellCommand("/bin/echo unwanted"), options);
+  const result = await runProbe("/bin/bash", probeShellCommand("/bin/echo unwanted"), options);
   expect(result).not.toHaveProperty("started");
   expect(result).toMatchObject({
     status: null,
-    error: { phase: "command_start_unobserved", shellStatus: 96 },
+    error: { phase: "command_start_unobserved", shellStatus: directoryGuardExitCode },
   });
 });
 
@@ -145,10 +161,10 @@ test("C-API-61 hidden guard refusal remains unknown rather than claiming no atte
   profile(
     `exec 3>&-; exec >/dev/null; /bin/mv ${shellQuote(options.cwd)} ${shellQuote(`${options.cwd}-original`)}; /bin/mkdir ${shellQuote(options.cwd)}`,
   );
-  const result = await runProbe("/bin/zsh", probeShellCommand("/bin/echo unwanted"), options);
+  const result = await runProbe("/bin/bash", probeShellCommand("/bin/echo unwanted"), options);
   expect(result).not.toHaveProperty("started");
   expect(result).toMatchObject({
     status: null,
-    error: { phase: "command_start_unobserved", shellStatus: 96 },
+    error: { phase: "command_start_unobserved", shellStatus: directoryGuardExitCode },
   });
 });

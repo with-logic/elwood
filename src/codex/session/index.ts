@@ -73,7 +73,7 @@ export async function startCodexWithId(
     preflight.preflightCodex(
       options.strictVersionCheck ?? false,
       options.autoupdate ?? false,
-      options.cwd,
+      directory,
     ),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {

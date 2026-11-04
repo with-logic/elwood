@@ -36,7 +36,9 @@ test("C-PERF-05 hidden marker channels retain CLI stderr through typed startup a
   setCommandRunnerForTests(() => result);
   setPlatformForTests("darwin");
   resetPreflightCacheForTests();
-  const failure = await preflightClaude(false, false, home).catch((error: unknown) => error);
+  const failure = await preflightClaude(false, false, { cwd: home }).catch(
+    (error: unknown) => error,
+  );
   expect(failure).toMatchObject({ code: "claude_start_failed", details: { stderr } });
   expect(failure).toMatchObject({ details: { phase: "command_start_unobserved" } });
   expect(result).toMatchObject({

@@ -7,9 +7,18 @@ import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/error
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
-import { createDirectoryProbeCache, readInDirectory } from "../runtime/probe/directory-key.ts";
+import {
+  createDirectoryProbeCache,
+  type ProbeDirectory,
+  readInDirectory,
+} from "../runtime/probe/directory-key.ts";
 import { isProbeSetupError } from "../runtime/probe/setup-error.ts";
-import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
+import {
+  type CommandOptions,
+  type CommandResult,
+  currentCommandRunner,
+  currentPlatform,
+} from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
   cachedAutoupdate,
@@ -35,14 +44,14 @@ const capabilityProbe = createDirectoryProbeCache<CodexCliCapabilities>(
 export async function preflightCodex(
   strictVersionCheck: boolean,
   autoupdate = false,
-  cwd?: string,
+  directory?: ProbeDirectory,
 ): Promise<CodexPreflightWarning | undefined> {
   // Platform check is synchronous and first: unsupported hosts throw before
   // any subprocess is spawned.
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  const workspace = cwd ?? process.cwd();
+  const workspace = directory ?? { cwd: process.cwd() };
   let updateError: unknown;
   if (autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
@@ -77,25 +86,31 @@ export async function preflightCodex(
   return updateError === undefined ? undefined : buildUpdateWarning("codex", version, updateError);
 }
 
-async function runCodexUpdate(cwd: string): Promise<void> {
-  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex update"), {
-    cwd,
-  });
+async function runCodexUpdate(directory: ProbeDirectory): Promise<void> {
+  const options =
+    directory.identity === undefined
+      ? { cwd: directory.cwd }
+      : { cwd: directory.cwd, directoryIdentity: directory.identity };
+  const result = await currentCommandRunner()(
+    userShell(),
+    probeShellCommand("codex update"),
+    options,
+  );
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
 }
 
-async function readCodexVersion(cwd: string): Promise<CommandResult> {
+async function readCodexVersion(directory: ProbeDirectory): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const result = await cachedVersionRead(
     "codex",
-    () =>
+    (options) =>
       Promise.resolve(
-        currentCommandRunner()(userShell(), probeShellCommand("codex --version", "codex"), { cwd }),
+        currentCommandRunner()(userShell(), probeShellCommand("codex --version", "codex"), options),
       ),
-    cwd,
+    directory,
   );
   const missingCommand = result.error?.code === "ENOENT" || result.commandLookupFailed === true;
   if (missingCommand && !isProbeSetupError(result.error)) {
@@ -116,17 +131,19 @@ async function readCodexVersion(cwd: string): Promise<CommandResult> {
 }
 
 export function detectCodexCliCapabilities(
-  cwd: string = process.cwd(),
+  directory: ProbeDirectory = { cwd: process.cwd() },
 ): Promise<CodexCliCapabilities> {
   // Matching-directory first spawns share a probe; a rejected read is not retained.
   // A later start retries instead of inheriting the failure.
-  return readInDirectory(capabilityProbe, cwd, () => detectCapabilities(cwd));
+  return readInDirectory(capabilityProbe, directory.cwd, detectCapabilities, directory.identity);
 }
 
-async function detectCapabilities(cwd: string): Promise<CodexCliCapabilities> {
-  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex --help"), {
-    cwd,
-  });
+async function detectCapabilities(options: CommandOptions): Promise<CodexCliCapabilities> {
+  const result = await currentCommandRunner()(
+    userShell(),
+    probeShellCommand("codex --help"),
+    options,
+  );
   // A bounded probe (timeout/overflow) or nonzero exit is a diagnosable
   // startup failure, not "capability unsupported" — surface it with cause.
   if (result.error !== undefined || result.status !== 0) {

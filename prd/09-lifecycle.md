@@ -92,7 +92,10 @@ an inherited `SHELL` environment override from the parent process.
 These probes MUST run asynchronously and MUST NOT block the host process's
 event loop: a parent that spawns a roster of sessions must not serialize their
 preflights on a single thread. Version, Codex capability, update and verification
-probes start in the validated launch directory. Version and capability answers are
+probes start in the validated launch directory. Version and Codex capability reads
+carry the launch's originally captured directory identity into the probe's bounded
+checks. A later observation or a replacement directory's cached answer must not
+substitute for that identity. Version and capability answers are
 cached per adapter, directory path and observed device/inode (C-PERF-02). Concurrent
 reads for one key share a subprocess. Each cache keeps the 32 most recently used
 successful settled answers; in-flight reads are shared without counting toward

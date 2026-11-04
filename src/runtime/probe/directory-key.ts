@@ -4,17 +4,27 @@
  */
 
 import { stat } from "node:fs/promises";
+import type { DirectoryIdentity } from "../../core/directory-identity.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
+import type { CommandOptions } from "../seams.ts";
+
+/** A launch path and, when captured earlier, the directory it must still name. */
+export type ProbeDirectory = {
+  readonly cwd: string;
+  readonly identity?: DirectoryIdentity | undefined;
+};
 
 /**
  * `cwd` and which directory it names (device and inode), so a directory deleted and made again
  * at the same path is probed again rather than answered from the old one's result. None for a
  * path that can't be checked.
  */
-async function directoryKey(cwd: string): Promise<string | undefined> {
+async function directoryKey(
+  cwd: string,
+): Promise<{ readonly key: string; readonly identity: DirectoryIdentity } | undefined> {
   try {
     const { dev, ino } = await stat(cwd, { bigint: true });
-    return `${dev}:${ino}:${cwd}`;
+    return { key: `${dev}:${ino}:${cwd}`, identity: { dev, ino } };
   } catch {
     return undefined;
   }
@@ -53,14 +63,23 @@ export function createDirectoryProbeCache<T>(
 export async function readInDirectory<T>(
   cache: DirectoryProbeCache<T>,
   cwd: string,
-  read: () => Promise<T>,
+  read: (options: CommandOptions) => Promise<T>,
+  expectedIdentity?: DirectoryIdentity,
 ): Promise<T> {
-  const key = await directoryKey(cwd);
+  const observed = await directoryKey(cwd);
+  const key = observed?.key;
+  if (
+    expectedIdentity !== undefined &&
+    key !== `${expectedIdentity.dev}:${expectedIdentity.ino}:${cwd}`
+  ) {
+    // Never replace the launch's original identity with a later observation or cache hit.
+    return read({ cwd, directoryIdentity: expectedIdentity });
+  }
   // A directory that can't be identified is read, but its answer is neither shared nor kept.
-  if (key === undefined) return read();
-  const { value } = await cache.get(key, async () => {
-    const value = await read();
-    return { value, sameDirectory: (await directoryKey(cwd)) === key };
+  if (observed === undefined) return read({ cwd });
+  const { value } = await cache.get(observed.key, async () => {
+    const value = await read({ cwd, directoryIdentity: expectedIdentity ?? observed.identity });
+    return { value, sameDirectory: (await directoryKey(cwd))?.key === observed.key };
   });
   return value;
 }
