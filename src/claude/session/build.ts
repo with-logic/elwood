@@ -42,7 +42,8 @@ export async function buildClaudeSession(
   secureMkdir(runtime.sessionDir);
   const publish = runtime.stateOwnership.publishFile;
   writeSessionRecord(record, runtime.sessionDir, publish);
-  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, publish) : [];
+  const files = { readFile: runtime.stateOwnership.readFile, writeFile: publish };
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, files) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);

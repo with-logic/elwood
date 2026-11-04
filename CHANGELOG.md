@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep pending launch records, loop reads and predecessor updates in the verified original directory across workspace replacements.
+
 - Directory-hold disposal contains native close failures and reports at most one bounded Node warning per process.
 
 - Reject launch publication through custom-state ancestry that other users could redirect, before reading or changing the session file.
