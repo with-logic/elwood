@@ -7,6 +7,7 @@ import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/error
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
+import { type ProbeDirectory, probeCommandOptions } from "../runtime/probe/directory-key.ts";
 import { isProbeSetupError } from "../runtime/probe/setup-error.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
@@ -23,14 +24,14 @@ export type ClaudePreflightWarning = DistributiveOmit<
 export async function preflightClaude(
   strictVersionCheck: boolean,
   autoupdate = false,
-  cwd?: string,
+  directory?: ProbeDirectory,
 ): Promise<ClaudePreflightWarning | undefined> {
   // Platform check is synchronous and first: unsupported hosts throw before
   // any subprocess is spawned.
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  const workspace = cwd ?? process.cwd();
+  const workspace = directory ?? { cwd: process.cwd() };
   let updateError: unknown;
   if (autoupdate) {
     // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
@@ -66,10 +67,13 @@ export async function preflightClaude(
   return updateError === undefined ? undefined : buildUpdateWarning("claude", version, updateError);
 }
 
-async function runClaudeUpdate(cwd: string): Promise<void> {
-  const result = await currentCommandRunner()(userShell(), probeShellCommand("claude update"), {
-    cwd,
-  });
+async function runClaudeUpdate(directory: ProbeDirectory): Promise<void> {
+  const options = probeCommandOptions(directory);
+  const result = await currentCommandRunner()(
+    userShell(),
+    probeShellCommand("claude update"),
+    options,
+  );
   if (result.status !== 0) {
     throw elwoodError(
       "claude_update_failed",
@@ -79,18 +83,20 @@ async function runClaudeUpdate(cwd: string): Promise<void> {
   }
 }
 
-async function readClaudeVersion(cwd: string): Promise<CommandResult> {
+async function readClaudeVersion(directory: ProbeDirectory): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const result = await cachedVersionRead(
     "claude",
-    () =>
+    (options) =>
       Promise.resolve(
-        currentCommandRunner()(userShell(), probeShellCommand("claude --version", "claude"), {
-          cwd,
-        }),
+        currentCommandRunner()(
+          userShell(),
+          probeShellCommand("claude --version", "claude"),
+          options,
+        ),
       ),
-    cwd,
+    directory,
   );
   const missingCommand = result.error?.code === "ENOENT" || result.commandLookupFailed === true;
   if (missingCommand && !isProbeSetupError(result.error)) {

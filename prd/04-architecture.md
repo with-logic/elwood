@@ -41,9 +41,12 @@ The implementation should use the user's login shell and interactive/login flags
 appropriate for that shell. For the common zsh case, this is expected to behave
 like an interactive login shell and load the user's normal startup files.
 
-For PTY launches, the child checks its initial kernel working-directory identity
+For PTY launches and probes supplied with a captured directory identity, the child checks its initial kernel working-directory identity
 before loading profiles and checks the original launch path again after profiles,
-before the CLI command. A mismatch refuses launch. These are bounded checks:
+before the CLI command. A mismatch refuses launch. Probes also recheck the supplied identity after waiting
+for their concurrency slot. A definite directory refusal reports that no command
+started; an unobserved start marker or a profile choosing the guard status does
+not establish refusal. These are bounded checks:
 profiles may deliberately change directories, and a replacement restored entirely
 between checks may be missed. After the final check, later CLI workspace-path
 resolution, including Codex's `--cd`, can observe a subsequent replacement.

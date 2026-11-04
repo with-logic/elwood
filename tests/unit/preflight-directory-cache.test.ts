@@ -37,7 +37,9 @@ test.each([
   const read = vi.fn(async () => result());
   setCommandRunnerForTests(read);
   const at = (cwd: string) =>
-    kind === "version" ? cachedVersionRead("codex", read, cwd) : detectCodexCliCapabilities(cwd);
+    kind === "version"
+      ? cachedVersionRead("codex", read, { cwd })
+      : detectCodexCliCapabilities({ cwd });
   await Promise.all([at(first), at(first), at(first)]);
   expect(read).toHaveBeenCalledTimes(1);
   for (const cwd of dirs.slice(1)) await at(cwd);
@@ -57,8 +59,8 @@ test.each([
     resetPreflightCacheForTests();
     const value = { ...result(), [stream]: text };
     const read = vi.fn(async () => value);
-    expect(await cachedVersionRead("claude", read, cwd)).toEqual(value);
-    expect(await cachedVersionRead("claude", read, cwd)).toEqual(value);
+    expect(await cachedVersionRead("claude", read, { cwd })).toEqual(value);
+    expect(await cachedVersionRead("claude", read, { cwd })).toEqual(value);
     expect(read).toHaveBeenCalledTimes(text.length > cap ? 2 : 1);
   }
 });
@@ -73,7 +75,9 @@ test.each([
   const read = vi.fn(async () => result());
   setCommandRunnerForTests(read);
   const at = () =>
-    kind === "version" ? cachedVersionRead("codex", read, cwd) : detectCodexCliCapabilities(cwd);
+    kind === "version"
+      ? cachedVersionRead("codex", read, { cwd })
+      : detectCodexCliCapabilities({ cwd });
   await at();
   renameSync(cwd, join(root, "original"));
   mkdirSync(cwd);
@@ -86,7 +90,7 @@ test.each([
   "failed",
   "peer",
 ] as const)("C-LIFE-11 %s update invalidates all directory versions and capabilities", async (outcome) => {
-  const dirs = [tempDir("elwood-cache-update-a-"), tempDir("elwood-cache-update-b-")];
+  const dirs = [tempDir("elwood-cache-update-a-"), tempDir("elwood-cache-update-b-")] as const;
   const runner = vi.fn((_shell: string, args: readonly string[]) =>
     args.join(" ").includes("codex update") && outcome === "failed"
       ? { status: 1, stdout: "", stderr: "partial update" }
@@ -94,14 +98,14 @@ test.each([
   );
   setCommandRunnerForTests(runner);
   for (const cwd of dirs) {
-    await preflightCodex(false, false, cwd);
-    await detectCodexCliCapabilities(cwd);
+    await preflightCodex(false, false, { cwd });
+    await detectCodexCliCapabilities({ cwd });
   }
   if (outcome === "peer") setUpdateCoordinatorForTests(async () => {});
-  await preflightCodex(false, true, dirs[0]);
+  await preflightCodex(false, true, { cwd: dirs[0] });
   for (const cwd of dirs) {
-    await preflightCodex(false, false, cwd);
-    await detectCodexCliCapabilities(cwd);
+    await preflightCodex(false, false, { cwd });
+    await detectCodexCliCapabilities({ cwd });
   }
   expect(runner.mock.calls.filter(([, args]) => args.join(" ").includes("--version"))).toHaveLength(
     4,

@@ -75,7 +75,7 @@ export async function startClaudeWithId(
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-    preflightClaude(strict, options.autoupdate ?? false, options.cwd),
+    preflightClaude(strict, options.autoupdate ?? false, directory),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {

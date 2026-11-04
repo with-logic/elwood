@@ -5,6 +5,7 @@ import { homeGuardStopMarker, homeGuardStopped, watchForStopMarker } from "../ho
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import type { ProbeCapture } from "./capture.ts";
 import { abortProbe } from "./cleanup.ts";
+import { checkedProbeCommand, ProbeDirectoryRefusal } from "./directory.ts";
 import { ProbeCommandLookup } from "./lookup.ts";
 import { NamedPipeCapture } from "./named-pipes.ts";
 import { ProbeProcess } from "./process.ts";
@@ -45,6 +46,7 @@ class ProbeRun {
   private readonly lookup = new ProbeCommandLookup();
   private readonly guardStop = watchForStopMarker();
   private readonly expectsStartLine: boolean;
+  private readonly directory: ProbeDirectoryRefusal;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private commandExit:
     | { readonly code: number | null; readonly signal: NodeJS.Signals | null }
@@ -61,10 +63,12 @@ class ProbeRun {
     this.capture = capture;
     this.timeouts = timeouts;
     this.resolve = resolve;
+    this.directory = new ProbeDirectoryRefusal(options);
     try {
+      const launch = checkedProbeCommand(command, capture.args(args), options);
       this.process = new ProbeProcess(
-        command,
-        capture.args(args),
+        launch.command,
+        launch.args,
         capture instanceof NamedPipeCapture || announcesStart(args),
         options,
       );
@@ -104,12 +108,14 @@ class ProbeRun {
 
   private readonly onStdout = (chunk: Buffer): void => {
     this.guardStop.feed(chunk);
+    this.directory.feed("stdout", chunk);
     this.lookup.feed("stdout", chunk);
     this.onStart("stdout", chunk);
   };
 
   private readonly onControl = (chunk: Buffer): void => {
     this.guardStop.feed(chunk);
+    this.directory.feed("control", chunk);
     this.lookup.feed("control", chunk);
     this.onStart("control", chunk);
   };
@@ -134,6 +140,8 @@ class ProbeRun {
 
   private exitResult(code: number | null, signal: NodeJS.Signals | null): CommandResult {
     const [stdout, stderr] = this.capturedOutput();
+    const refusal = this.directory.result(code);
+    if (refusal !== undefined) return refusal;
     if (this.expectsStartLine && !this.startMarker.started)
       return shellExited(code, stdout, stderr);
     if (

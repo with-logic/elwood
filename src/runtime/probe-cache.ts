@@ -5,8 +5,8 @@
  */
 
 export type ProbeCache<T> = {
-  /** The cached or in-flight result for `key`, else the result of a new `run()`. */
-  readonly get: (key: string, run: () => Promise<T>) => Promise<T>;
+  /** Share in-flight reads; optionally bypass a settled answer when its identity is untrusted. */
+  readonly get: (key: string, run: () => Promise<T>, bypassSettled?: boolean) => Promise<T>;
   readonly clear: () => void;
 };
 
@@ -24,15 +24,15 @@ export function createProbeCache<T>(
   const running = new Map<string, Promise<T>>();
   // Map order is recency order: a hit is re-inserted at the end, eviction takes the front.
   const settled = new Map<string, { readonly value: T }>();
-  const get = (key: string, run: () => Promise<T>): Promise<T> => {
-    const hit = settled.get(key);
+  const get = (key: string, run: () => Promise<T>, bypassSettled = false): Promise<T> => {
+    const existing = running.get(key);
+    if (existing) return existing;
+    const hit = bypassSettled ? undefined : settled.get(key);
     if (hit) {
       settled.delete(key);
       settled.set(key, hit);
       return Promise.resolve(hit.value);
     }
-    const existing = running.get(key);
-    if (existing) return existing;
     const pending = run();
     running.set(key, pending);
     const current = () => running.get(key) === pending;

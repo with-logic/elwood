@@ -62,17 +62,17 @@ for (const [agent, preflight] of adapters) {
     expect((await runProbe(first.shell, probeShellCommand(`command -v ${agent}`))).status).not.toBe(
       0,
     );
-    await expect(preflight(false, false, first.cwd)).resolves.toBeUndefined();
+    await expect(preflight(false, false, { cwd: first.cwd })).resolves.toBeUndefined();
     const second = installation("0.1.0");
     setCommandRunnerForTests((_command, args, options) => runProbe(second.shell, args, options));
-    await expect(preflight(false, false, second.cwd)).rejects.toMatchObject({
+    await expect(preflight(false, false, { cwd: second.cwd })).rejects.toMatchObject({
       code: `${agent}_version_unsupported`,
     });
   });
   test(`C-LIFE-11 ${agent} verification and update use the selected workspace`, async () => {
     const workspace = installation("2.1.144");
     setCommandRunnerForTests((_command, args, options) => runProbe(workspace.shell, args, options));
-    await expect(preflight(false, true, workspace.cwd)).resolves.toBeUndefined();
+    await expect(preflight(false, true, { cwd: workspace.cwd })).resolves.toBeUndefined();
     expect(existsSync(join(workspace.cwd, `.updated-${agent}`))).toBe(true);
   });
 }
@@ -84,7 +84,7 @@ test("C-PERF-02 Codex help answers belong to the selected workspace", async () =
   ] as const) {
     const workspace = installation("2.1.144", help);
     setCommandRunnerForTests((_command, args, options) => runProbe(workspace.shell, args, options));
-    expect(await detectCodexCliCapabilities(workspace.cwd)).toEqual({
+    expect(await detectCodexCliCapabilities({ cwd: workspace.cwd })).toEqual({
       supportsHookTrustBypass: supported,
     });
   }

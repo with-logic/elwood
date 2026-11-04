@@ -4,17 +4,34 @@
  */
 
 import { stat } from "node:fs/promises";
+import type { DirectoryIdentity } from "../../core/directory-identity.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
+import type { CommandOptions } from "../seams.ts";
+
+/** A launch path and, when captured earlier, the directory it must still name. */
+export type ProbeDirectory = {
+  readonly cwd: string;
+  readonly identity?: DirectoryIdentity | undefined;
+};
+
+/** Preserve a captured identity when passing a directory to the command runner. */
+export function probeCommandOptions(directory: ProbeDirectory): CommandOptions {
+  return directory.identity === undefined
+    ? { cwd: directory.cwd }
+    : { cwd: directory.cwd, directoryIdentity: directory.identity };
+}
 
 /**
  * `cwd` and which directory it names (device and inode), so a directory deleted and made again
  * at the same path is probed again rather than answered from the old one's result. None for a
  * path that can't be checked.
  */
-async function directoryKey(cwd: string): Promise<string | undefined> {
+async function directoryKey(
+  cwd: string,
+): Promise<{ readonly key: string; readonly identity: DirectoryIdentity } | undefined> {
   try {
     const { dev, ino } = await stat(cwd, { bigint: true });
-    return `${dev}:${ino}:${cwd}`;
+    return { key: `${dev}:${ino}:${cwd}`, identity: { dev, ino } };
   } catch {
     return undefined;
   }
@@ -53,14 +70,22 @@ export function createDirectoryProbeCache<T>(
 export async function readInDirectory<T>(
   cache: DirectoryProbeCache<T>,
   cwd: string,
-  read: () => Promise<T>,
+  read: (options: CommandOptions) => Promise<T>,
+  expectedIdentity?: DirectoryIdentity,
 ): Promise<T> {
-  const key = await directoryKey(cwd);
-  // A directory that can't be identified is read, but its answer is neither shared nor kept.
-  if (key === undefined) return read();
-  const { value } = await cache.get(key, async () => {
-    const value = await read();
-    return { value, sameDirectory: (await directoryKey(cwd)) === key };
-  });
+  const observed = await directoryKey(cwd);
+  const identity = expectedIdentity ?? observed?.identity;
+  // An unidentifiable path with no captured identity cannot be shared or retained.
+  if (identity === undefined) return read(probeCommandOptions({ cwd }));
+  const key = `${identity.dev}:${identity.ino}:${cwd}`;
+  const matches = observed?.key === key;
+  const { value } = await cache.get(
+    key,
+    async () => {
+      const value = await read(probeCommandOptions({ cwd, identity }));
+      return { value, sameDirectory: matches && (await directoryKey(cwd))?.key === key };
+    },
+    !matches,
+  );
   return value;
 }

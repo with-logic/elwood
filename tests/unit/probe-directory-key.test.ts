@@ -1,5 +1,5 @@
 /** Internal probe-cache boundary identity checks and their limits (PRD §9.2). */
-import { mkdirSync, renameSync, symlinkSync } from "node:fs";
+import { mkdirSync, renameSync, statSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { expect, expectTypeOf, test, vi } from "vitest";
 import {
@@ -9,6 +9,7 @@ import {
   readInDirectory,
 } from "../../src/runtime/probe/directory-key.ts";
 import type { ProbeCache } from "../../src/runtime/probe-cache.ts";
+import type { CommandOptions } from "../../src/runtime/seams.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 function lookup() {
@@ -112,5 +113,67 @@ test("internal cache cannot detect a directory swapped and restored between its 
   });
   expect(await at(cwd)).toBe(99);
   expect(await at(cwd)).toBe(99);
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+test("C-PERF-02 a missing pinned directory retains its original identity without cache admission", async () => {
+  const root = tempDir("elwood-directory-pinned-missing-");
+  const cwd = join(root, "cwd");
+  mkdirSync(cwd);
+  const identity = statSync(cwd, { bigint: true });
+  renameSync(cwd, join(root, "original"));
+  const cache = createDirectoryProbeCache<number>(3);
+  const read = vi.fn(async () => 1);
+  await readInDirectory(cache, cwd, read, identity);
+  await readInDirectory(cache, cwd, read, identity);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenLastCalledWith({ cwd, directoryIdentity: identity });
+});
+
+test("C-PERF-02 a directory missing at the final boundary is not retained after restoration", async () => {
+  const root = tempDir("elwood-directory-final-missing-");
+  const cwd = join(root, "cwd");
+  const original = join(root, "original");
+  mkdirSync(cwd);
+  const { at, read } = lookup();
+  read.mockImplementationOnce(() => {
+    renameSync(cwd, original);
+    return Promise.resolve(99);
+  });
+  expect(await at(cwd)).toBe(99);
+  renameSync(original, cwd);
+  expect(await at(cwd)).toBe(1);
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+test("C-PERF-02 an original identity bypasses a replacement's settled answer", async () => {
+  const root = tempDir("elwood-directory-pinned-replacement-");
+  const cwd = join(root, "cwd");
+  mkdirSync(cwd);
+  const identity = statSync(cwd, { bigint: true });
+  renameSync(cwd, join(root, "original"));
+  mkdirSync(cwd);
+  const cache = createDirectoryProbeCache<number>(3);
+  const refusal = new Error("original directory refused");
+  const read = vi.fn((options?: CommandOptions) =>
+    options?.directoryIdentity?.ino === identity.ino ? Promise.reject(refusal) : Promise.resolve(1),
+  );
+  expect(await readInDirectory(cache, cwd, read)).toBe(1);
+  await expect(readInDirectory(cache, cwd, read, identity)).rejects.toBe(refusal);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenLastCalledWith({ cwd, directoryIdentity: identity });
+});
+
+test("C-PERF-02 matching captured identities share concurrent and settled answers", async () => {
+  const cwd = tempDir("elwood-directory-matching-");
+  const identity = statSync(cwd, { bigint: true });
+  const cache = createDirectoryProbeCache<number>(3);
+  const release = Promise.withResolvers<number>();
+  const read = vi.fn(() => release.promise);
+  const one = readInDirectory(cache, cwd, read, identity);
+  const two = readInDirectory(cache, cwd, read, identity);
+  release.resolve(42);
+  expect(await Promise.all([one, two])).toEqual([42, 42]);
+  expect(await readInDirectory(cache, cwd, read, identity)).toBe(42);
   expect(read).toHaveBeenCalledTimes(1);
 });
