@@ -8,6 +8,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { DirectoryIdentity } from "../../core/directory-identity.ts";
 import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
 import { currentPlatform } from "../seams.ts";
 
@@ -29,7 +30,22 @@ export function resolveLaunchDirectory(agent: ElwoodAgentKind, cwd: string): str
 }
 
 /** Which directory `cwd` named when it was checked (device and inode); none where unchecked. */
-export type LaunchDirectoryIdentity = { readonly dev: bigint; readonly ino: bigint } | undefined;
+export type LaunchDirectoryIdentity = DirectoryIdentity | undefined;
+
+/** The launch path and directory identity captured before preflight. */
+export type CheckedLaunchDirectory = {
+  readonly agent: ElwoodAgentKind;
+  readonly cwd: string;
+  readonly identity: LaunchDirectoryIdentity;
+};
+
+/** Capture the directory before any asynchronous preflight work. */
+export async function checkLaunchDirectory(
+  agent: ElwoodAgentKind,
+  cwd: string,
+): Promise<CheckedLaunchDirectory> {
+  return { agent, cwd, identity: await assertLaunchDirectory(agent, cwd) };
+}
 
 /**
  * Rejects unless `cwd` is an existing directory and, given the directory an earlier check
@@ -60,7 +76,7 @@ export async function assertLaunchDirectory(
 }
 
 /**
- * Checks `cwd`, since it can go while preflight runs, then runs the launch. If the launch
+ * Checks the captured directory after preflight, then runs the launch. If the launch
  * fails, `cwd` is checked again against the directory found first, so one deleted and made
  * again while the launch failed is not taken for the same directory. When that check fails,
  * because `cwd` has gone (state setup never makes it, so it fails with `ENOENT` instead of
@@ -69,11 +85,11 @@ export async function assertLaunchDirectory(
  * §10). While `cwd` is still that directory, the launch's own failure is rethrown.
  */
 export async function recheckLaunchDirectoryOnFailure<T>(
-  agent: ElwoodAgentKind,
-  cwd: string,
+  directory: CheckedLaunchDirectory,
   launch: () => Promise<T>,
 ): Promise<T> {
-  const checked = await assertLaunchDirectory(agent, cwd);
+  const { agent, cwd, identity } = directory;
+  const checked = await assertLaunchDirectory(agent, cwd, identity);
   try {
     return await launch();
   } catch (error) {

@@ -25,7 +25,12 @@ test("C-LIFE-10 a real PTY child that exits during startup is not signaled or aw
   let exited = false;
   let listenersAfterExit = 0;
   setPtyFactoryForTests((options) => {
-    const pty = nodePtyFactory({ ...options, command: "/bin/sh", args: ["-c", "exit 12"] });
+    const pty = nodePtyFactory({
+      ...options,
+      command: "/bin/sh",
+      args: ["-l", "-i", "-c", "exit 12"],
+      env: { ...options.env, HOME: options.cwd, ENV: "" },
+    });
     leaderPid = pty.pid;
     pty.onExit(() => {
       exited = true;

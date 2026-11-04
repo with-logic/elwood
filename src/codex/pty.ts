@@ -10,6 +10,7 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, ElwoodError, elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
+import type { CheckedLaunchDirectory } from "../runtime/session/launch-directory.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
 import type { SessionRuntime } from "../state/runtime-paths.ts";
 import type { SessionRecord } from "../state/store.ts";
@@ -22,6 +23,11 @@ import {
 } from "./config/home.ts";
 import * as preflight from "./preflight.ts";
 import type { StartCodexOptions } from "./session/types.ts";
+
+/** The identity first checked before this launch’s preflight. */
+export type CodexLaunchOptions = StartCodexOptions & {
+  readonly launchDirectory: CheckedLaunchDirectory;
+};
 
 export type CodexLaunch = {
   readonly pty: PtyProcess;
@@ -46,17 +52,23 @@ export function codexHomeReportPath(
 export async function spawnCodexPty(
   record: SessionRecord,
   runtime: Pick<SessionRuntime, "socketHome" | "socketPath" | "bridgeScriptPath">,
-  options: StartCodexOptions,
+  options: CodexLaunchOptions,
 ): Promise<CodexLaunch> {
   const capabilities = await preflight.detectCodexCliCapabilities(options.cwd);
   const reportPath = codexHomeReportPath(runtime);
-  const launch = buildCodexShellCommand(record, runtime.bridgeScriptPath, options, capabilities);
+  const launch = buildCodexShellCommand(
+    { ...record, cwd: options.launchDirectory.cwd },
+    runtime.bridgeScriptPath,
+    options,
+    capabilities,
+  );
   let pty: PtyProcess;
   try {
     pty = currentPtyFactory()({
       command: userShell(),
       args: loginShellCommand(`${reportCodexHomeCommand(reportPath)}; ${launch}`),
-      cwd: record.cwd,
+      cwd: options.launchDirectory.cwd,
+      directoryIdentity: options.launchDirectory.identity,
       env: { ...process.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
       size: options.initialSize ?? defaultTerminalSize,
     });

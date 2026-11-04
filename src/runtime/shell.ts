@@ -5,6 +5,7 @@
  */
 
 import { userInfo } from "node:os";
+import type { LoginShellArgs } from "../core/shell.ts";
 import {
   guardedVariables,
   type HomeVariable,
@@ -26,10 +27,9 @@ export function userShell(): string {
   return userInfo().shell || "/bin/zsh";
 }
 
-export { shellQuote };
-
 /** The login shell's arguments; the script to run is always the fourth. */
-export type LoginShellArgs = readonly ["-l", "-i", "-c", string];
+export type { LoginShellArgs } from "../core/shell.ts";
+export { shellQuote };
 
 /** The interactive login shell's arguments for `script`, shared by the PTY and the probes. */
 function loginShellArgs(script: string): LoginShellArgs {

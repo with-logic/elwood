@@ -8,7 +8,7 @@ import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
 import {
-  assertLaunchDirectory,
+  checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -28,6 +28,7 @@ import { preflightClaude } from "../preflight.ts";
 import { resetClaudeHookBridgeFactoryForTests, setHookBridgeFactoryForTests } from "./bridge.ts";
 import { buildClaudeSession } from "./build.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
+import type { ClaudeLaunchOptions } from "./runtime.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
@@ -63,13 +64,13 @@ export async function startClaudeWithId(
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
-  await assertLaunchDirectory("claude", options.cwd);
+  const directory = await checkLaunchDirectory("claude", options.cwd);
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
-  const warning = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () =>
+  const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflightClaude(strict, options.autoupdate ?? false, options.cwd),
   );
-  const session = await recheckLaunchDirectoryOnFailure("claude", options.cwd, () => {
+  const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {
       cwd: options.cwd,
       isImplicitDefaultStateDir: options.stateDir === undefined,
@@ -77,7 +78,13 @@ export async function startClaudeWithId(
     });
     const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
     const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
-    return startClaudeFromRecord(record, stateDir, options, false, warning);
+    return startClaudeFromRecord(
+      record,
+      stateDir,
+      { ...options, launchDirectory: directory },
+      false,
+      warning,
+    );
   });
   return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
@@ -85,7 +92,7 @@ export async function startClaudeWithId(
 export function startClaudeFromRecord(
   record: SessionRecord,
   stateDir: string,
-  options: StartClaudeOptions,
+  options: ClaudeLaunchOptions,
   resumed: boolean,
   preflightWarning: ClaudePreflightWarning | undefined,
   ownership?: LaunchReservation,
