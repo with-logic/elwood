@@ -5,6 +5,7 @@ import { elwoodError } from "../core/errors.ts";
 import { assertStatePath } from "./directories.ts";
 import { fsyncDir, writePrivateFileAtomic } from "./files.ts";
 import { currentFileOwner, readPrivateFile } from "./private-read.ts";
+import { assertTrustedPublicationParent } from "./publication-parent-trust.ts";
 
 type PublishedFile = { before: string | undefined; written: readonly (string | undefined)[] };
 
@@ -17,6 +18,7 @@ export class LaunchPublication {
    */
   write(path: string, text: string, readText?: string): void {
     assertStatePath(path);
+    assertTrustedPublicationParent(path);
     const current = readText ?? readFile(path);
     const entry = this.files.get(path) ?? { before: current, written: [current] };
     // Preserve a predecessor's intervening record update across our next write.
