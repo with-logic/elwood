@@ -19,7 +19,10 @@ export class PublicationDirectoryHold {
   private readonly identity: BigIntStats;
   private readonly parent: string;
 
-  /** Hold the parent of a published-file path; an expected hold permits no preparation. */
+  /**
+   * Hold a published file's parent. Reopening an expected hold skips preparation so
+   * identity is checked before a replacement directory could have its permissions changed.
+   */
   constructor(publishedFilePath: string, expected?: PublicationDirectoryHold) {
     this.parent = dirname(publishedFilePath);
     this.fd =

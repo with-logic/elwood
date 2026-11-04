@@ -67,6 +67,7 @@ export class LaunchPublication {
     const current = snapshot?.directory.sameDirectory(directory) ? snapshot.text : read(physical);
     const entry = this.files.get(path) ?? { before: current, written: [current], directory };
     if (!entry.written.includes(current)) entry.before = current;
+    // Atomic rename may succeed before fsync fails; rollback must recognize either preimage.
     entry.written = [current, text];
     this.files.set(path, entry);
     writePrivateFileAtomic(physical, text);
@@ -104,7 +105,8 @@ export class LaunchPublication {
     this.directories.clear();
   }
 
-  clear(): void {
+  /** Release transient writes and holds; retain identity for later post-commit persistence. */
+  clearTransientPublicationState(): void {
     this.files.clear();
     this.snapshots.clear();
     this.closeHolds();
@@ -116,6 +118,7 @@ export class LaunchPublication {
       try {
         const physical = entry.directory.pathInHeldDirectory(path);
         if (entry.written.includes(read(physical))) {
+          // Restoration can also fail after rename or unlink; retries accept that partial result.
           entry.written = [...new Set([...entry.written, entry.before])];
           if (entry.before === undefined) {
             rmSync(physical, { force: true });
@@ -129,7 +132,7 @@ export class LaunchPublication {
     }
     if (failed)
       throw elwoodError("state_corrupt", "Could not restore state after failed session startup.");
-    this.clear();
+    this.clearTransientPublicationState();
   }
 }
 

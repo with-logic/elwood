@@ -114,7 +114,7 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
     release: () => {
       if (current()) {
         generations.delete(path);
-        publication.clear();
+        publication.clearTransientPublicationState();
         collected.unregister(token);
         token.settled.resolve();
       }
@@ -123,12 +123,12 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
       if (!canPersist()) throw elwoodError("session_not_running", "Launch was superseded.");
       // Activation rereads durable loops synchronously before ownership changes.
       for (const activate of token.activation) activate();
-      publication.clear();
+      publication.clearTransientPublicationState();
       token.phase = "active";
       let previous = token.previous;
       token.previous = undefined;
       while (previous) {
-        previous.publication.clear();
+        previous.publication.clearTransientPublicationState();
         for (const pause of previous.revoked) pause();
         previous = previous.previous;
       }

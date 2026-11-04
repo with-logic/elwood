@@ -7,7 +7,6 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
-import { LOOP_EXPIRATION_MS } from "../../src/core/loops/constants.ts";
 import { loadRuntimeLoopDefinitions } from "../../src/runtime/loop-restore.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import {
@@ -15,7 +14,7 @@ import {
   reserveLaunchOwnership,
 } from "../../src/state/launch-ownership.ts";
 import { writeLoopDefinitions } from "../../src/state/loop-store.ts";
-import { readLoopDefinitions } from "../helpers/loops.ts";
+import { fixedLoop, readLoopDefinitions } from "../helpers/loops.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const failure = vi.hoisted(() => ({ directoryFsync: false, measureReads: false, reads: 0 }));
@@ -49,19 +48,7 @@ function sessionWithLoops() {
   const stateDir = tempDir();
   const sessionDir = join(stateDir, "sessions", id);
   mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
-  const timing = { intervalMs: 60_000, jitterMs: 0 } as const;
-  const expiring = (loopId: string, expiresAt: number) => {
-    const createdAt = expiresAt - LOOP_EXPIRATION_MS;
-    return {
-      id: loopId,
-      message: "check",
-      mode: "fixed",
-      ...timing,
-      createdAt,
-      expiresAt,
-    } as const;
-  };
-  writeLoopDefinitions(stateDir, id, [expiring("soon", NOW + 1000), expiring("live", NOW + 9e6)]);
+  writeLoopDefinitions(stateDir, id, [fixedLoop("soon", NOW + 1000), fixedLoop("live", NOW + 9e6)]);
   return { stateDir, sessionDir, sidecar: join(sessionDir, "loops.json") };
 }
 

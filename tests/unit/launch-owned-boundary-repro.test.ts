@@ -3,27 +3,18 @@ import { mkdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
-import { LOOP_EXPIRATION_MS } from "../../src/core/loops/constants.ts";
 import { loadRuntimeLoopDefinitions } from "../../src/runtime/loop-restore.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import { secureMkdir, writePrivateFileAtomic } from "../../src/state/files.ts";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { readLoopSidecar, writeLoopDefinitions } from "../../src/state/loop-store.ts";
 import { prepareStateDir, sessionDir } from "../../src/state/store.ts";
+import { fixedLoop } from "../helpers/loops.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => vi.useRealTimers());
 
 const NOW = 1_800_000_000_000;
-const loop = (id: string, expiresAt: number) => ({
-  id,
-  message: id,
-  mode: "fixed" as const,
-  intervalMs: 60_000,
-  jitterMs: 0,
-  createdAt: expiresAt - LOOP_EXPIRATION_MS,
-  expiresAt,
-});
 
 describe.runIf(process.platform === "darwin")("launch-owned file boundary", () => {
   test("C-API-61 predecessor persistence cannot write the replacement or forget the wrong original", () => {
@@ -72,12 +63,12 @@ describe.runIf(process.platform === "darwin")("launch-owned file boundary", () =
       secureMkdir(sessionDir(path, id));
     }
     writeLoopDefinitions(state, id, [
-      loop("original-expired", NOW - 1),
-      loop("original-live", NOW + 60_000),
+      fixedLoop("original-expired", NOW - 1),
+      fixedLoop("original-live", NOW + 60_000),
     ]);
     writeLoopDefinitions(replacement, id, [
-      loop("replacement-expired", NOW - 1),
-      loop("replacement-live", NOW + 60_000),
+      fixedLoop("replacement-expired", NOW - 1),
+      fixedLoop("replacement-live", NOW + 60_000),
     ]);
     const owner = reserveLaunchOwnership(sessionDir(state, id));
     owner.publishFile(join(sessionDir(state, id), "session.json"), "pending");
