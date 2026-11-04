@@ -7,6 +7,24 @@ import { mkdtempSync, rmdirSync, rmSync } from "node:fs";
 import { chmod, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runContained } from "../../core/contained.ts";
+import { errnoCode } from "../../core/errors.ts";
+
+let cleanupWarningAttempted = false;
+
+/** A process-level diagnostic with no original error or filesystem details. */
+function reportCleanupFailure(): void {
+  if (cleanupWarningAttempted) return;
+  cleanupWarningAttempted = true;
+  runContained(() => {
+    const warning = Object.assign(
+      new Error("A temporary probe output directory could not be removed."),
+      { name: "ElwoodProbeCleanupWarning", code: "ELWOOD_PROBE_CLEANUP_FAILED" },
+    );
+    warning.stack = `${warning.name}: ${warning.message}`;
+    process.emitWarning(warning);
+  });
+}
 
 /** Makes a probe's private directory; `mkdtemp` makes it mode 0700. */
 export function makePrivateDirectory(): string {
@@ -36,15 +54,19 @@ async function removeTree(dir: string): Promise<void> {
     await unlock(dir);
     await rm(dir, { recursive: true, force: true });
   } catch {
-    // Mostly, the command removed the directory itself. Any other failure leaves it behind,
-    // unreported: the probe has settled, and nothing reads a removal's outcome yet.
+    reportCleanupFailure();
   }
 }
 
 /** Gives `dir` and every directory under it back their owner's access. */
 async function unlock(dir: string): Promise<void> {
-  await chmod(dir, 0o700);
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) await unlock(join(dir, entry.name));
+  try {
+    await chmod(dir, 0o700);
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) await unlock(join(dir, entry.name));
+    }
+  } catch (error) {
+    // A vanished descendant must not skip removal of its surviving parent.
+    if (errnoCode(error) !== "ENOENT") throw error;
   }
 }

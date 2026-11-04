@@ -52,6 +52,15 @@ exit into a workspace-refusal diagnostic.
 
 ### 9.2 Compatibility checks
 
+If deferred removal of a probe's temporary output directory fails with an error
+other than `ENOENT`, Elwood emits at most one Node process warning per parent
+process: code `ELWOOD_PROBE_CLEANUP_FAILED`, name `ElwoodProbeCleanupWarning`, and
+message `A temporary probe output directory could not be removed.` Its stack
+contains only that fixed name and message. No original error, path, command,
+output, or environment data is included. Successful cleanup is silent; reporting
+does not change the settled probe result, and synchronous reporter failures are
+contained.
+
 Elwood MUST check the installed Claude Code version during startup. The minimum
 supported Claude Code version is `2.1.144`.
 
