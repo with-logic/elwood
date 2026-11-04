@@ -10,7 +10,7 @@ import {
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
-import { resumableStateDir } from "../helpers/session-state.ts";
+import { resumableStateDir, sessionState } from "../helpers/session-state.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const agents = [
@@ -32,6 +32,7 @@ for (const kind of ["start", "resume"] as const) {
     const original = join(tempDir("elwood-pty-guard-held-"), "kept");
     const replacement = tempDir("elwood-pty-guard-new-");
     const stateDir = kind === "resume" ? resumableStateDir(agent, cwd, "guard-resume") : undefined;
+    const before = stateDir === undefined ? undefined : sessionState(stateDir, "guard-resume");
     let swapped = false;
     let ptys = 0;
     setCommandRunnerForTests(() => {
@@ -56,7 +57,8 @@ for (const kind of ["start", "resume"] as const) {
         details: { cwd },
       });
       expect(ptys).toBe(0);
-      expect(existsSync(join(cwd, ".elwood"))).toBe(false);
+      if (stateDir === undefined) expect(existsSync(join(cwd, ".elwood"))).toBe(false);
+      else expect(sessionState(stateDir, "guard-resume")).toEqual(before);
     } finally {
       if (existsSync(original)) {
         renameSync(cwd, replacement);
