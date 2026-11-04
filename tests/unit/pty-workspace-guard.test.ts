@@ -96,27 +96,28 @@ for (const kind of ["start", "resume"] as const) {
       const agentScript = `#!/bin/sh\ntouch '${marker}'\nexit 1\n`;
       writeFileSync(join(replacement, "bin", agent), agentScript, { mode: 0o700 });
       const stateDir = join(cwd, ".elwood");
-      const id = "guard-resume";
-      const recordPath = (root: string, sessionId: string) =>
-        join(root, ".elwood", "sessions", sessionId, "session.json");
+      const elwoodSessionId = "guard-resume";
+      const recordPath = (root: string, elwoodSessionId: string) =>
+        join(root, ".elwood", "sessions", elwoodSessionId, "session.json");
       if (kind === "resume") {
-        prepareStateDir(stateDir, { cwd, elwoodSessionId: id });
+        prepareStateDir(stateDir, { cwd, elwoodSessionId });
         writeSessionRecord(
           updateSessionResumeId(
-            createSessionRecord({ cwd, id, adapter: agent }),
+            createSessionRecord({ cwd, id: elwoodSessionId, adapter: agent }),
             agent,
             `${agent}-old`,
           ),
-          join(stateDir, "sessions", id),
+          join(stateDir, "sessions", elwoodSessionId),
         );
       }
-      const before = kind === "resume" ? readFileSync(recordPath(cwd, id), "utf8") : undefined;
-      let launchedId = "";
+      const before =
+        kind === "resume" ? readFileSync(recordPath(cwd, elwoodSessionId), "utf8") : undefined;
+      let launchedElwoodSessionId = "";
       setPtyFactoryForTests((options) => {
         expect(options.directoryIdentity).toBeDefined();
-        launchedId = options.env["ELWOOD_SESSION_ID"] ?? "";
-        expect(launchedId).not.toBe("");
-        const published = readFileSync(recordPath(cwd, launchedId), "utf8");
+        launchedElwoodSessionId = options.env["ELWOOD_SESSION_ID"] ?? "";
+        expect(launchedElwoodSessionId).not.toBe("");
+        const published = readFileSync(recordPath(cwd, launchedElwoodSessionId), "utf8");
         if (kind === "resume") expect(published).not.toBe(before);
         const swap = `mv '${cwd}' '${original}'; mv '${replacement}' '${cwd}'`;
         writeFileSync(
@@ -134,8 +135,8 @@ for (const kind of ["start", "resume"] as const) {
           kind === "start"
             ? start({ cwd })
             : agent === "claude"
-              ? resumeClaude({ stateDir, elwoodSessionId: id, permissionMode: "plan" })
-              : resumeCodex({ stateDir, elwoodSessionId: id, sandbox: "read-only" });
+              ? resumeClaude({ stateDir, elwoodSessionId, permissionMode: "plan" })
+              : resumeCodex({ stateDir, elwoodSessionId, sandbox: "read-only" });
         await expect(launch).rejects.toMatchObject({
           code: `${agent}_start_failed`,
           details: { cwd },
@@ -143,8 +144,9 @@ for (const kind of ["start", "resume"] as const) {
         expect(existsSync(original)).toBe(true);
         expect(existsSync(profileMarker)).toBe(phase === "profile");
         expect(existsSync(marker), "the replacement CLI never runs").toBe(false);
-        if (kind === "resume") expect(readFileSync(recordPath(original, id), "utf8")).toBe(before);
-        else expect(existsSync(recordPath(original, launchedId))).toBe(false);
+        if (kind === "resume")
+          expect(readFileSync(recordPath(original, elwoodSessionId), "utf8")).toBe(before);
+        else expect(existsSync(recordPath(original, launchedElwoodSessionId))).toBe(false);
         expect(readdirSync(cwd)).toEqual(["bin"]);
         expect(readFileSync(join(cwd, "bin", agent), "utf8")).toBe(agentScript);
       } finally {

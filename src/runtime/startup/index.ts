@@ -37,7 +37,8 @@ export function resetStartupWaitMsForTests(): void {
  * Fails a session's start when its launch is refused, its CLI exits, or login is required. It waits
  * `waitMs` (500 ms by default) first, then reads the exit and the output once. A checked
  * directory/home guard status may wait up to `stopMarkerGraceMs` more for its private
- * marker; other statuses add no wait (C-API-61, C-E2E-24).
+ * marker; other statuses add no wait. Success does not confirm that profiles have
+ * completed or the CLI has started (C-API-61, C-E2E-24).
  */
 export async function assertStartupUsable(input: {
   readonly adapter: StartupAdapter;

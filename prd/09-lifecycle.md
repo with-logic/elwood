@@ -27,21 +27,26 @@
    session env.
 9. Return a `CodexSessionApi` object once the process and bridge are ready.
 
-Both adapters inspect received PTY output during the bounded startup health check,
-independently of terminal rendering. The collector retains at most the first
+Both adapters inspect received PTY output at the bounded startup health check
+(default 500 ms after spawn), independently of terminal rendering. This samples
+the current exit state; it does not wait for profile completion or positive CLI
+readiness. The collector retains at most the first
 64 KiB of UTF-8 output, ending on a complete code point. If a chunk exceeds the
 remaining budget, its remainder and all subsequent chunks are discarded; later
 output cannot fill a gap in that prefix. The collector releases its retained
 output after the check succeeds or fails.
 
-A child-side workspace identity refusal writes a bounded stop marker carrying a
-private per-process token. During startup, status 96 together with that marker
+A PTY workspace identity refusal writes a bounded stop marker carrying a
+private per-process token. When exit is observed at that health sample, status 96
+together with that marker
 rejects with the adapter's existing `*_start_failed`, a fixed launch-directory
 verification reason, guidance to keep the workspace available and unchanged before
 retrying, and `details.cwd`, even if the original path has since been restored.
 The marker is recognized beyond the output cap and for up to one second after
 the exit is observed, using the existing late-PTY-output bound. Status 96 without
-the marker remains an ordinary agent startup exit. Profile tracing MUST NOT
+the marker remains an ordinary agent startup exit. A later post-profile refusal
+still blocks CLI execution and follows the normal PTY-exit path; it cannot reject
+an already-settled start promise. Profile tracing MUST NOT
 expose the complete marker in command text and turn an ordinary status-96 agent
 exit into a workspace-refusal diagnostic.
 

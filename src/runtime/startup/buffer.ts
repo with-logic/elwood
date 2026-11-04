@@ -73,8 +73,11 @@ export function createStartupBuffer(
   let directoryStop =
     cwd === undefined ? undefined : new StreamMarkerWatcher(Buffer.from(directoryGuardStopMarker));
   const push = (data: string): void => {
-    stop?.feed(Buffer.from(data));
-    directoryStop?.feed(Buffer.from(data));
+    if (stop !== undefined || directoryStop !== undefined) {
+      const chunk = Buffer.from(data);
+      stop?.feed(chunk);
+      directoryStop?.feed(chunk);
+    }
     if (!open || length >= cap) return;
     const remaining = cap - length;
     // UTF-8 needs at least as many bytes as UTF-16 units. Only measure chunks
