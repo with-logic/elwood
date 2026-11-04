@@ -37,12 +37,26 @@ describe("custom publication ancestry", () => {
     expect(() => publication.write(file, "attempted posture")).toThrowError(
       expect.objectContaining({
         code: "state_corrupt",
-        message: "Cannot trust launch state parent.",
+        message: expect.stringContaining("Use a private, current-user-owned stateDir"),
+        details: { cause: expect.stringContaining("Cannot trust state ancestor: directory '") },
       }),
     );
     expect(readFileSync(file, "utf8")).toBe("prior posture");
     publication.rollback();
     expect(readFileSync(file, "utf8")).toBe("prior posture");
+  });
+
+  test("C-STATE-01 rejects unsafe ancestry before reading a directory as the preimage", () => {
+    const { file } = fixture(0o777);
+    mkdirSync(file, { mode: 0o700 });
+    const publication = new LaunchPublication();
+    expect(() => publication.write(file, "attempted posture")).toThrowError(
+      expect.objectContaining({
+        code: "state_corrupt",
+        message: expect.stringContaining("writable by other users"),
+      }),
+    );
+    expect(existsSync(file)).toBe(true);
   });
 
   test.each([0o700, 0o1777])("C-STATE-01 permits private or sticky ancestry (%o)", (mode) => {

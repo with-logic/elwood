@@ -9,9 +9,11 @@ export function assertTrustedPublicationParent(path: string): void {
     assertTrustedIgnoreParent(dirname(path));
   } catch (error) {
     if (error instanceof ElwoodError)
-      throw elwoodError("state_corrupt", "Cannot trust launch state parent.", {
-        cause: error.message,
-      });
+      throw elwoodError(
+        "state_corrupt",
+        `${error.message} Use a private, current-user-owned stateDir or remove shared-write permissions from its ancestors.`,
+        { cause: error.message },
+      );
     // The root-first walk checked every existing ancestor before reaching the absent entry.
     if (errnoCode(error) !== "ENOENT") throw error;
   }
