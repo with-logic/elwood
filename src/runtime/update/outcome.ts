@@ -15,10 +15,22 @@ export type UpdateSteps = {
 };
 
 /** Sharing with current waiters is independent of retaining the outcome for later calls. */
-export type Attempt = {
-  readonly retrySharers: boolean;
+export type SharedAutoupdateResult = {
+  readonly retryCurrentCallers: boolean;
+  readonly retryOnce: CurrentCallerRetry;
   readonly outcome: AutoupdateOutcome;
 };
+
+type CurrentCallerRetry = (
+  steps: UpdateSteps,
+  afterAttempt?: () => void,
+) => Promise<AutoupdateOutcome>;
+
+/** All callers of one cohort hold the same successor, even after its map entry expires. */
+export function singleSuccessorHandoff(run: CurrentCallerRetry): CurrentCallerRetry {
+  let successor: Promise<AutoupdateOutcome> | undefined;
+  return (steps, afterAttempt) => (successor ??= run(steps, afterAttempt));
+}
 
 /** Only explicit coordinator skip reasons prove a rejection happened before invocation. */
 export function unstartedSkip(error: unknown): boolean {

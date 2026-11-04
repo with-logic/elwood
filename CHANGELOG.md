@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound a roster’s repeated update-verification failures to one successor handoff, while allowing a later independent start to retry.
+
 - Report confirmed updates that were never invoked with a live `update_not_started` warning when compatibility succeeds, without exposing verification diagnostics.
 - Retry automatic updates after prerequisite verification refuses before the updater runs, without publishing a false completion or suppressing a waiting process’s update.
 

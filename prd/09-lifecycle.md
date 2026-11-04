@@ -80,7 +80,12 @@ compatibility error below). An updater command that ran and failed is attempted
 at most once per parent process and MUST NOT be retried per start. A prerequisite verification that fails
 before the updater is invoked is no attempt: it publishes no lease completion,
 is not retained by the per-process update cache. A caller that becomes the next
-lease owner reruns its own prerequisite verification. Callers joining an actual
+lease owner reruns its own prerequisite verification. A current in-process cohort
+may hand off once to a successor after a local verification failure. If that
+successor also fails verification, all remaining callers share its no-attempt
+outcome instead of serializing another probe per caller. Calls joining that
+successor inherit the exhausted handoff bound. Its no-attempt outcome remains
+uncached, so a later independent invocation may retry. Callers joining an actual
 updater attempt share its outcome and each still runs its own normal compatibility
 check. Current waiters share one coordinator-skip result rather than repeating its
 wait; that result is not retained for later independent calls. The lease stores

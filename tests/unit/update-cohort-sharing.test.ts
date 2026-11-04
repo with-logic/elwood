@@ -44,3 +44,54 @@ test.each([
   expect(coordinate).toHaveBeenCalledTimes(failedAttempt ? 1 : 2);
   expect(update).toHaveBeenCalledTimes(1);
 });
+
+test.each([
+  false,
+  true,
+])("C-LIFE-09 fifty callers allow one successor when verification recovers (%s)", async (transient) => {
+  const refusal = new Error("controlled verification failure");
+  const release = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  let healthy = false;
+  let verifications = 0;
+  const coordinate = vi.fn((_adapter: UpdateAdapter, update: UpdateOperation) => update());
+  setUpdateCoordinatorForTests(coordinate);
+  const steps = {
+    verify: async () => {
+      const index = verifications++;
+      await release[index]?.promise;
+      if (!(healthy || (transient && index > 0))) throw refusal;
+    },
+    update: vi.fn(async () => {}),
+  };
+  const owner = cachedAutoupdate("codex", steps);
+  const pending = [owner];
+  try {
+    await vi.waitFor(() => expect(verifications).toBe(1));
+    const callers = Array.from({ length: 48 }, () => cachedAutoupdate("codex", steps));
+    pending.push(...callers);
+    const settled = Promise.all([...pending]);
+    release[0]?.resolve();
+    await vi.waitFor(() => expect(verifications).toBe(2));
+    // A caller arriving during the successor inherits its exhausted retry budget.
+    const successorJoiner = cachedAutoupdate("codex", steps);
+    pending.push(successorJoiner);
+    release[1]?.resolve();
+    const outcomes = await settled;
+    const noAttempt = { ok: false, error: refusal, notStarted: true };
+    expect(outcomes[0]).toEqual(noAttempt);
+    expect(outcomes.slice(1)).toEqual(
+      Array.from({ length: 48 }, () => (transient ? { ok: true } : noAttempt)),
+    );
+    expect(await successorJoiner).toEqual(transient ? { ok: true } : noAttempt);
+    expect(coordinate).toHaveBeenCalledTimes(2);
+    expect(verifications).toBe(2);
+    expect(steps.update).toHaveBeenCalledTimes(transient ? 1 : 0);
+    healthy = true;
+    expect(await cachedAutoupdate("codex", steps)).toEqual({ ok: true });
+    expect(coordinate).toHaveBeenCalledTimes(transient ? 2 : 3);
+    expect(steps.update).toHaveBeenCalledTimes(1);
+  } finally {
+    for (const gate of release) gate.resolve();
+    await Promise.allSettled(pending);
+  }
+});

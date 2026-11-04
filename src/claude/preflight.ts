@@ -38,10 +38,10 @@ export async function preflightClaude(
   const workspace = directory ?? { cwd: process.cwd() };
   let updateFailure: Extract<AutoupdateOutcome, { readonly ok: false }> | undefined;
   if (autoupdate) {
-    // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
-    // we re-read the installed version and fall through to the compatibility gate — a failed
-    // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11). Only a test
-    // that reset the update module without setting a coordinator sees a throw here instead.
+    // Best-effort: after verification passes, callers share the actual update attempt.
+    // Verification failures are not retained as attempts; a cohort may hand off once.
+    // Every caller then checks its installed version (C-LIFE-11). Only a test reset without
+    // a coordinator throws here instead of returning a contained outcome.
     const outcome = await cachedAutoupdate("claude", {
       verify: () => readClaudeVersion(workspace),
       update: () => runClaudeUpdate(workspace),

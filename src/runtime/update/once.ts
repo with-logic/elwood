@@ -14,9 +14,10 @@ import type { CommandOptions, CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
 import type { UpdateResult } from "./not-started.ts";
 import {
-  type Attempt,
   type AutoupdateOutcome,
+  type SharedAutoupdateResult,
   shouldPreservePreflightCaches,
+  singleSuccessorHandoff,
   type UpdateSteps,
   unstartedSkip,
 } from "./outcome.ts";
@@ -31,11 +32,11 @@ let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
 // concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Verification refusals
 // are not attempts and leave no settled entry: the next eligible owner retries verification.
 // Every public preflight still checks its own workspace compatibility after the shared outcome.
-const autoupdates = new Map<UpdateAdapter, Promise<Attempt>>();
+const autoupdates = new Map<UpdateAdapter, Promise<SharedAutoupdateResult>>();
 
 /**
  * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt. Local prerequisite failures let sharers retry as the next owner;
+ * in-flight attempt. Local verification failures allow one shared successor handoff;
  * coordinator skips are shared with current waiters but not retained for later calls.
  * NEVER rejects — a throwing updater resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
@@ -51,9 +52,23 @@ export function cachedAutoupdate(
   const existing = autoupdates.get(adapter);
   if (existing) {
     return existing.then((attempt) =>
-      attempt.retrySharers ? cachedAutoupdate(adapter, steps, afterAttempt) : attempt.outcome,
+      attempt.retryCurrentCallers ? attempt.retryOnce(steps, afterAttempt) : attempt.outcome,
     );
   }
+  return beginSharedAutoupdate(adapter, steps, afterAttempt, true).then((result) => result.outcome);
+}
+
+function beginSharedAutoupdate(
+  adapter: UpdateAdapter,
+  steps: UpdateSteps,
+  afterAttempt: (() => void) | undefined,
+  allowCurrentRetry: boolean,
+): Promise<SharedAutoupdateResult> {
+  const retryOnce = singleSuccessorHandoff((nextSteps, nextAfter) =>
+    (autoupdates.get(adapter) ?? beginSharedAutoupdate(adapter, nextSteps, nextAfter, false)).then(
+      (result) => result.outcome,
+    ),
+  );
   let verificationFailed = false;
   let updaterInvoked = false;
   const run = async (): Promise<UpdateResult> => {
@@ -72,24 +87,23 @@ export function cachedAutoupdate(
         result?.started === false
           ? { ok: false, error: result.error, notStarted: true }
           : { ok: true },
-      (error): AutoupdateOutcome => ({
-        ok: false,
-        error,
-        ...(verificationFailed || (!updaterInvoked && unstartedSkip(error))
-          ? ({ notStarted: true } as const)
-          : {}),
-      }),
+      (error): AutoupdateOutcome => {
+        const coordinatorSkip = !updaterInvoked && unstartedSkip(error);
+        const noAttempt = verificationFailed || coordinatorSkip;
+        return { ok: false, error, ...(noAttempt ? ({ notStarted: true } as const) : {}) };
+      },
     )
-    .then((outcome): Attempt => {
+    .then((outcome): SharedAutoupdateResult => {
       const retainOutcome = outcome.ok || outcome.notStarted !== true;
       if (!retainOutcome) autoupdates.delete(adapter); // independent later callers may retry
       return {
-        retrySharers: !retainOutcome && verificationFailed,
+        retryCurrentCallers: allowCurrentRetry && !retainOutcome && verificationFailed,
+        retryOnce,
         outcome: finalizeAutoupdate(adapter, outcome, afterAttempt),
       };
     });
   autoupdates.set(adapter, pending);
-  return pending.then((attempt) => attempt.outcome);
+  return pending;
 }
 
 function finalizeAutoupdate(
