@@ -19,9 +19,10 @@ export type CommandResult = {
     readonly syscall?: string | undefined;
     readonly path?: string | undefined;
     readonly message: string;
-    /** Set when the user's login shell, not the probe command, failed (§9.2, C-PERF-05). */
-    readonly phase?: "login_shell";
-    /** The login shell's own status when it exited before starting the command. */
+    readonly origin?: "probe_setup";
+    /** Confirmed pre-command refusal or unobserved start, which does not prove no run (§9.2). */
+    readonly phase?: "login_shell" | "command_start_unobserved";
+    /** The login shell's own status, not a proven command exit status. */
     readonly shellStatus?: number | null;
   } & ProbeCleanup;
 };

@@ -7,6 +7,7 @@ import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/error
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
+import { isProbeSetupError } from "../runtime/probe/setup-error.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
@@ -91,7 +92,8 @@ async function readClaudeVersion(cwd: string): Promise<CommandResult> {
       ),
     cwd,
   );
-  if (result.error?.code === "ENOENT" || result.commandLookupFailed === true) {
+  const missingCommand = result.error?.code === "ENOENT" || result.commandLookupFailed === true;
+  if (missingCommand && !isProbeSetupError(result.error)) {
     throw elwoodError(
       "claude_not_found",
       "`claude` was not found on PATH.",

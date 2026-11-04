@@ -106,11 +106,14 @@ test("C-PERF-05 interactive PATH lookup gives a slow profile the login shell's o
   setProbeTimeoutsForTests({ commandMs: 300, launchMs: 10_000 });
   const launch = { agent: "claude", command: "elwood-test-agent", args: [], cwd: f.root } as const;
   expect(await spawnInteractiveAgent(launch)).toBe(7);
-  // A profile that outlasts the launch bound fails as the login shell, not as a hang.
+  // An unobserved start has its own bound without asserting that the command never ran.
   setProbeTimeoutsForTests({ commandMs: 300, launchMs: 200 });
   await expect(spawnInteractiveAgent(launch)).rejects.toMatchObject({
     code: "claude_start_failed",
-    details: { cause: expect.stringContaining("login shell did not start"), errno: "ETIMEDOUT" },
+    details: {
+      cause: expect.stringContaining("probe command start was not observed"),
+      errno: "ETIMEDOUT",
+    },
   });
 });
 

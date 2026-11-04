@@ -5,12 +5,38 @@ import { afterEach, expect, test, vi } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
+import { commandLookupScript } from "../../src/runtime/probe/lookup.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
-import { probeShellCommand } from "../../src/runtime/shell.ts";
+import { probeShellCommand, shellQuote } from "../../src/runtime/shell.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => vi.unstubAllEnvs());
+test.each([
+  "control",
+  "stdout",
+])("C-PERF-05 direct pipe lookup strips only its observed %s marker", async (channel) => {
+  const script = `${channel === "stdout" ? "exec 3>&-; " : ""}${commandLookupScript("elwood-missing-cli-for-tests")}`;
+  expect(await runProbe("/bin/sh", ["-c", script])).toEqual({
+    status: 127,
+    commandLookupFailed: true,
+    stdout: "",
+    stderr: "",
+  });
+});
+
+test("C-PERF-05 private CLI output equal to a lookup marker remains intact", async () => {
+  const marker = /echo ([^ ]+) >&3/.exec(commandLookupScript("unused"))?.[1];
+  if (marker === undefined) throw new Error("fixture lookup marker");
+  const print = `/usr/bin/printf ${shellQuote(`${marker}\n`)}`;
+  const args = probeShellCommand(print);
+  expect(await runProbe("/bin/sh", ["-c", `${print}; ${args[3]}`])).toEqual({
+    status: 0,
+    stdout: `${marker}\n`,
+    stderr: "",
+  });
+});
+
 for (const [agent, preflight] of [
   ["claude", preflightClaude],
   ["codex", preflightCodex],

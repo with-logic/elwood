@@ -12,6 +12,7 @@ import {
   guardStopped,
   launchTimedOut,
   mapError,
+  outputUnavailable,
   overflow,
   shellExited,
 } from "../../src/runtime/probe/results.ts";
@@ -44,23 +45,27 @@ test.each([
     launchTimedOut(150, "out", "err"),
     {
       code: "ETIMEDOUT",
-      message: "login shell did not start the probe command within 150 ms",
-      phase: "login_shell",
+      message: "probe command start was not observed within 150 ms",
+      phase: "command_start_unobserved",
     },
   ],
   [
-    "a login shell that exited before the command",
+    "a login shell with no observed command start line",
     shellExited(2, "out", "err"),
     {
-      message: "login shell exited with status 2 before starting the probe command",
-      phase: "login_shell",
+      message: "login shell exited with status 2 without an observed probe start line",
+      phase: "command_start_unobserved",
       shellStatus: 2,
     },
   ],
   [
     "a probe the e2e home guard stopped",
     guardStopped("out", "err"),
-    { message: homeGuardStoppedReason, phase: "login_shell", shellStatus: homeGuardExitCode },
+    {
+      message: homeGuardStoppedReason,
+      phase: "login_shell",
+      shellStatus: homeGuardExitCode,
+    },
   ],
   [
     "a stream past the output cap",
@@ -69,4 +74,11 @@ test.each([
   ],
 ])("%s settles with no status, its output, and its error", (_, result, error) => {
   expect(result).toStrictEqual({ status: null, ...output, error });
+});
+
+test("C-ERR-08 output setup normalizes an unknown failure without claiming a command ran", () => {
+  expect(outputUnavailable("setup failed")).toMatchObject({
+    status: null,
+    error: { message: "setup failed", origin: "probe_setup" },
+  });
 });

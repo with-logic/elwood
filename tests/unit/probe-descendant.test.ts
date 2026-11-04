@@ -86,7 +86,7 @@ test("C-PERF-03 group retries reach real descendants while the unreaped leader p
     expect(result.error).toEqual({
       code: "ETIMEDOUT",
       message: expect.any(String),
-      phase: "login_shell",
+      phase: "command_start_unobserved",
     });
     expect(attempts).toHaveLength(4);
     expect(processGroupGone(Number(readFileSync(join(root, "leader"), "utf8")))).toBe(true);

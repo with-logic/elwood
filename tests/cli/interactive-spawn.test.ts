@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { type InteractiveLaunch, spawnInteractiveAgent } from "../../src/cli/interactive/spawn.ts";
 import { exitStatus } from "../../src/runtime/exit-status.ts";
+import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import * as shell from "../../src/runtime/shell.ts";
 
 const roots: string[] = [];
@@ -58,5 +59,44 @@ describe("spawnInteractiveAgent", () => {
     expect(exitStatus(0, null)).toBe(0);
     expect(exitStatus(null, "SIGINT")).toBe(130);
     expect(exitStatus(null, null)).toBe(1);
+  });
+  test("C-ERR-08 output setup ENOENT stays a startup failure with native details", async () => {
+    setCommandRunnerForTests(() => ({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: {
+        code: "ENOENT",
+        origin: "probe_setup",
+        message: "setup failed",
+        syscall: "spawn mkfifo",
+        path: "/missing/mkfifo",
+      },
+    }));
+    await expect(
+      spawnInteractiveAgent({ agent: "claude", command: "claude", args: [], cwd: tmpdir() }),
+    ).rejects.toMatchObject({
+      code: "claude_start_failed",
+      details: { errno: "ENOENT", syscall: "spawn mkfifo", path: "/missing/mkfifo" },
+    });
+  });
+  test.each([
+    new Error("setup failed"),
+    { message: "setup failed" },
+  ])("C-ERR-08 thrown setup ENOENT stays a startup failure", async (failure) => {
+    const error = Object.assign(failure, { code: "ENOENT", origin: "probe_setup" });
+    setCommandRunnerForTests(() => Promise.reject(error));
+    await expect(
+      spawnInteractiveAgent({ agent: "codex", command: "codex", args: [], cwd: tmpdir() }),
+    ).rejects.toMatchObject({ code: "codex_start_failed" });
+  });
+  test.each([
+    null,
+    Object.assign(new Error("lookup failed"), { origin: "other" }),
+  ])("C-CLI-25 unrelated lookup failures stay startup failures", async (failure) => {
+    setCommandRunnerForTests(() => Promise.reject(failure));
+    await expect(
+      spawnInteractiveAgent({ agent: "claude", command: "claude", args: [], cwd: tmpdir() }),
+    ).rejects.toMatchObject({ code: "claude_start_failed" });
   });
 });

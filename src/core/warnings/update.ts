@@ -82,8 +82,8 @@ export function buildUpdateWarning(
 }
 
 /**
- * A login shell that timed out or exited before running `update` is the user's profile, not the
- * updater, so it reports as `login_shell_failed` rather than the probe's errno (§9.2, C-PERF-05).
+ * A confirmed pre-command shell refusal reports `login_shell_failed`; an unobserved command
+ * start retains the probe's errno or generic update failure (§9.2, C-PERF-05).
  */
 function failureCode(
   details: Readonly<Record<string, unknown>>,

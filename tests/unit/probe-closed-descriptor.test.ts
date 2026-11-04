@@ -20,6 +20,7 @@ import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 const realSetTimeout = setTimeout;
+const realClearTimeout = clearTimeout;
 const phasePollMs = 20;
 // Allow slow native startup while leaving five seconds of the test's limit for cleanup.
 const nativeStartWatchdogMs = 10_000;
@@ -53,7 +54,7 @@ test("C-PERF-05 a login shell that closed descriptor 3 still passes Claude's ver
 
 test.each([
   ["", "2.1.310\n"],
-  ["printf noise", "noise2.1.310\n"],
+  ["printf noise", "2.1.310\n"],
   ["exec 2>/dev/null", "2.1.310\n"],
   ["exec 2>&1", "2.1.310\n"],
 ])("C-PERF-05 without descriptor 3 the start line goes to stdout and is removed (%s)", async (profile, stdout) => {
@@ -68,9 +69,8 @@ test("C-PERF-05 a start line on stdout ends the launch phase while the command s
   setProbeTimeoutsForTests({ commandMs: 10_000, launchMs });
   const seen = vi.spyOn(ProbeStart.prototype, "feed");
   const gate = join(tempDir("elwood-probe-phase-gate-"), "finish");
-  const command = shell.probeShellCommand(
-    `while [ ! -f ${shell.shellQuote(gate)} ]; do sleep ${phasePollMs / 1_000}; done; echo 2.1.310`,
-  );
+  const script = `while [ ! -f ${shell.shellQuote(gate)} ]; do sleep ${phasePollMs / 1_000}; done; echo 2.1.310`;
+  const command = shell.probeShellCommand(`/bin/sh -c ${shell.shellQuote(script)}`);
   const running = runProbe(closingShell(), command);
   try {
     const deadline = Date.now() + nativeStartWatchdogMs;
@@ -96,24 +96,53 @@ test.each([
   "closed",
   "open",
 ])("C-PERF-05 a profile printing the bare start line does not start the command bound (descriptor 3 %s)", async (descriptor) => {
-  // stdout is watched for every probe, so only the line's per-process token marks the start.
-  setProbeTimeoutsForTests({ commandMs: 150, launchMs: 10_000 });
-  const profile = "echo elwood-probe-command-start; sleep 0.6";
+  // Advance the command clock while the real profile is held before its tokenized marker.
+  // Native command startup/output must not inherit an unrelated 150ms wall-clock assertion.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const commandMs = 150;
+  const launchMs = 10_000;
+  setProbeTimeoutsForTests({ commandMs, launchMs });
+  const gate = join(tempDir("elwood-bare-marker-gate-"), "release");
+  const profile = `echo elwood-probe-command-start; sleep 0.6; while [ ! -f ${shell.shellQuote(gate)} ]; do /bin/sleep 0.02; done`;
+  const seen = vi.spyOn(ProbeStart.prototype, "feed");
   const [, , , script] = shell.probeShellCommand("echo 2.1.310");
-  const result = await (descriptor === "closed"
-    ? runProbe(closingShell(profile), ["-l", "-i", "-c", script])
-    : runProbe("/bin/sh", ["-c", `${profile}; ${script}`]));
-  expect(result).toEqual({
-    status: 0,
-    stdout: "elwood-probe-command-start\n2.1.310\n",
-    stderr: "",
-  });
+  const running =
+    descriptor === "closed"
+      ? runProbe(closingShell(profile), ["-l", "-i", "-c", script])
+      : runProbe("/bin/sh", ["-c", `${profile}; ${script}`]);
+  const watchdog = realSetTimeout(
+    () => void vi.advanceTimersByTimeAsync(launchMs + 1),
+    nativeStartWatchdogMs,
+  );
+  try {
+    const deadline = Date.now() + nativeStartWatchdogMs;
+    while (
+      !seen.mock.calls.some(
+        ([channel, chunk]) =>
+          channel === "stdout" && chunk.includes("elwood-probe-command-start\n"),
+      )
+    ) {
+      if (Date.now() >= deadline) throw new Error("Profile did not print its bare marker.");
+      await new Promise<void>((resolve) => realSetTimeout(resolve, phasePollMs));
+    }
+    await vi.advanceTimersByTimeAsync(commandMs + 1);
+    writeFileSync(gate, "release");
+    expect(await running).toEqual({ status: 0, stdout: "2.1.310\n", stderr: "" });
+  } finally {
+    writeFileSync(gate, "release");
+    await vi.advanceTimersByTimeAsync(launchMs + 1);
+    realClearTimeout(watchdog);
+    vi.useRealTimers();
+    await running;
+  }
 });
 
 test("C-PERF-05 the probe command does not inherit the control descriptor", async () => {
   // The descriptor stays open past the start line, for the e2e home guard, then closes.
   vi.stubEnv(homeGuardHomesKey, undefined);
-  const [, , , script] = shell.probeShellCommand("{ echo leaked >&3; } 2>/dev/null || echo closed");
+  const [, , , script] = shell.probeShellCommand(
+    `/bin/sh -c ${shell.shellQuote("{ echo leaked >&3; } 2>/dev/null || echo closed")}`,
+  );
   const result = await runProbe("/bin/sh", ["-c", script]);
   expect(result).toEqual({ status: 0, stdout: "closed\n", stderr: "" });
 });

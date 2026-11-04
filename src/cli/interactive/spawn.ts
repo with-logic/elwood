@@ -7,6 +7,7 @@
 import { spawn } from "node:child_process";
 import { causeDetails, elwoodError, errnoCode } from "../../core/errors.ts";
 import { exitStatus } from "../../runtime/exit-status.ts";
+import { isProbeSetupError } from "../../runtime/probe/setup-error.ts";
 import { type CommandResult, currentCommandRunner } from "../../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import type { CliAgent } from "../types.ts";
@@ -37,7 +38,7 @@ export const spawnInteractiveAgent: InteractiveSpawner = async (launch) => {
 };
 
 function spawnFailure(launch: InteractiveLaunch, error: unknown) {
-  const missing = errnoCode(error) === "ENOENT";
+  const missing = errnoCode(error) === "ENOENT" && !isProbeSetupError(error);
   const code = `${launch.agent}_${missing ? "not_found" : "start_failed"}` as const;
   return elwoodError(
     code,
@@ -70,5 +71,5 @@ async function loginShellPath(cwd: string): Promise<string | undefined> {
 
 function lookupFailure({ status, error }: CommandResult): Error {
   const message = error?.message ?? `login shell exited with status ${status}`;
-  return Object.assign(new Error(message), error?.code === undefined ? {} : { code: error.code });
+  return Object.assign(new Error(message), error);
 }

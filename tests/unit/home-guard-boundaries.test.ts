@@ -4,7 +4,7 @@
  * login-shell failure that carries only the guard's fixed reason, never the shell's stderr,
  * even when a startup file redirected that stderr. Only the guard's stop line with its status
  * counts: a command that exits with the same status is still the command's failure. A login
- * shell that fails before the start line is still the login shell's own failure (C-PERF-05).
+ * shell exiting without an observed start line reports that uncertainty (C-PERF-05).
  * The suite's registry never trusts a list its process inherited. Sessions: `home-guard-startup`.
  */
 
@@ -44,16 +44,16 @@ const command = "printf 'command ran\\n'";
 /**
  * How a probe the guard stopped after a startup file hid stdout fails. Its stop line goes on the
  * control descriptor, beside its start line. A shell that closed that descriptor, as macOS's bash
- * 3.2 does as a login shell, wrote its start line on the hidden stdout too, so the probe is the
- * login shell's failure by its status alone (C-PERF-05).
+ * 3.2 does as a login shell, wrote its start line on hidden stdout too, so the probe reports
+ * an unobserved command start rather than inferring whether the command ran (C-PERF-05).
  */
 function hiddenStdoutStop(shell: string): NonNullable<CommandResult["error"]> {
   const opened = spawnSync(shell, ["-l", "-i", "-c", "{ : >&3; } 2>/dev/null"], {
     stdio: ["ignore", "ignore", "ignore", "pipe"],
   });
   if (opened.status === 0) return stopped;
-  const message = "login shell exited with status 97 before starting the probe command";
-  return { message, phase: "login_shell", shellStatus: 97 };
+  const message = "login shell exited with status 97 without an observed probe start line";
+  return { message, phase: "command_start_unobserved", shellStatus: 97 };
 }
 const stopped: NonNullable<CommandResult["error"]> = {
   message: homeGuardStoppedReason,
@@ -91,7 +91,7 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
   test.each([
     ["with output", probeShellCommand],
     ["by status only", probeShellStatus],
-  ])("the guard stops, %s, after a startup file hid stdout, is a login-shell failure", async (_case, probe) => {
+  ])("the guard stops, %s, after a startup file hid stdout, reports only observed evidence", async (_case, probe) => {
     guardWith('exec >/dev/null; export CODEX_HOME="$HOME"');
     const result = await runProbe(shell, probe(command));
     expect(result).toMatchObject({ status: null, error: hiddenStdoutStop(shell) });
@@ -105,11 +105,11 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
     });
   });
 
-  test("whose login shell exits before its start line is the login shell's failure", async () => {
+  test("whose login shell exits without an observed start line reports that uncertainty", async () => {
     guardWith("exit 3");
     const result = await runProbe(shell, probeShellCommand(command));
     expect(result.status).toBeNull();
-    expect(result.error).toMatchObject({ phase: "login_shell", shellStatus: 3 });
+    expect(result.error).toMatchObject({ phase: "command_start_unobserved", shellStatus: 3 });
   });
 
   test.each([
@@ -118,7 +118,7 @@ describe.each(loginShells)("C-E2E-24 a guarded probe (%s)", (shell) => {
     ["under a list that guards no home", () => JSON.stringify(["/elsewhere"])],
   ])("whose own command exits 97 %s is the command's failure", async (_case, list) => {
     guardWith(":", list);
-    const result = await runProbe(shell, probeShellCommand("exit 97"));
+    const result = await runProbe(shell, probeShellCommand("/bin/sh -c 'exit 97'"));
     expect(result).toMatchObject({ status: 97 });
     expect(result.error).toBeUndefined();
   });

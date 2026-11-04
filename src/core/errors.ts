@@ -149,8 +149,8 @@ function nativeFailureDetails(
  * runner's cause/errno/syscall/path when present (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
  * output overflow) so a start failure never drops the underlying reason. `exitStatus` is the
  * status the probe reported, 128+n for a signal death, and is absent when it reported none.
- * A login-shell failure (`phase: "login_shell"`) never ran the command, so its stderr is
- * only the user's startup output, which can carry expanded secrets: it is withheld.
+ * A confirmed pre-command refusal (`phase: "login_shell"`) withholds shell stderr;
+ * `command_start_unobserved` preserves known command stderr without proving no run.
  * `cleanupErrorCode` and `cleanupProcessGroupId` appear only when an aborted probe's cleanup
  * stayed unconfirmed. The group id is diagnostic: it may already be reissued to an unrelated
  * group, so it must never be signaled.
@@ -169,8 +169,8 @@ export function probeFailureDetails(result: {
     // the constraint is enforced at the producer and documented here.
     readonly cleanupErrorCode?: string;
     readonly cleanupProcessGroupId?: number;
-    /** The user's login shell, not the probe command, failed (§9.2). */
-    readonly phase?: "login_shell";
+    /** Confirmed pre-command refusal or unobserved command start (§9.2). */
+    readonly phase?: "login_shell" | "command_start_unobserved";
   };
 }): Readonly<Record<string, string | number>> {
   const loginShell = result.error?.phase === "login_shell";
