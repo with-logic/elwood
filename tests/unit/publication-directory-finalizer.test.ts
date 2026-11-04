@@ -1,5 +1,5 @@
 /** Deterministic descriptor finalization without GC timing (PRD §8.1, C-API-61). */
-import { fstatSync } from "node:fs";
+import { closeSync, fstatSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { PublicationDirectory } from "../../src/state/publication-directory.ts";
@@ -11,6 +11,7 @@ const registry = vi.hoisted(() => {
     register: vi.fn<(target: object, fd: number, token: object) => void>(),
     unregister: vi.fn<(token: object) => boolean>(),
     failClose: false,
+    failAfterClose: false,
   };
   vi.stubGlobal(
     "FinalizationRegistry",
@@ -31,18 +32,21 @@ vi.mock("node:fs", async (original) => {
     closeSync: (fd: number) => {
       if (registry.failClose) throw new Error("close failed");
       actual.closeSync(fd);
+      if (registry.failAfterClose) throw new Error("closed then failed");
     },
   };
 });
 afterEach(() => {
   vi.clearAllMocks();
   registry.failClose = false;
+  registry.failAfterClose = false;
 });
 
 function fixture() {
-  const pin = new PublicationDirectory(join(tempDir(), "record"));
+  const file = join(tempDir(), "record");
+  const pin = new PublicationDirectory(file);
   const fd = registry.register.mock.calls[0]![1];
-  return { pin, fd };
+  return { pin, fd, file };
 }
 
 test("C-API-61 an abandoned pin finalizes only its numeric descriptor", () => {
@@ -60,4 +64,25 @@ test("C-API-61 finalizer close failures are contained; ordinary close unregister
   pin.close();
   expect(registry.unregister).toHaveBeenCalledWith(pin);
   expect(() => fstatSync(fd)).toThrowError(expect.objectContaining({ code: "EBADF" }));
+});
+
+test("C-API-61 an ambiguous close never retries a descriptor reused by another file", () => {
+  const { pin, fd, file } = fixture();
+  registry.failAfterClose = true;
+  expect(() => pin.close()).toThrow("closed then failed");
+  registry.failAfterClose = false;
+  const unrelated = openSync(join(tempDir(), "unrelated"), "w");
+  try {
+    expect(unrelated).toBe(fd);
+    pin.close();
+    expect(fstatSync(unrelated).isFile()).toBe(true);
+    expect(registry.unregister).toHaveBeenCalledWith(pin);
+    expect(() => pin.rollbackPath(file)).toThrow("Could not locate");
+  } finally {
+    try {
+      closeSync(unrelated);
+    } catch {
+      /* The red control closes it incorrectly. */
+    }
+  }
 });

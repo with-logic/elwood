@@ -17,6 +17,7 @@ const abandoned = new FinalizationRegistry<number>((fd) => {
 
 export class PublicationDirectory {
   private readonly fd: number;
+  private closed = false;
   private readonly identity: BigIntStats;
   private readonly parent: string;
 
@@ -39,6 +40,7 @@ export class PublicationDirectory {
 
   /** Ordinary paths stay ordinary; only a moved parent needs macOS's inode namespace. */
   rollbackPath(path: string): string {
+    if (this.closed) throw unavailable();
     try {
       if (this.matches(lstatSync(this.parent, { bigint: true }))) return path;
     } catch (error) {
@@ -52,8 +54,11 @@ export class PublicationDirectory {
   }
 
   close(): void {
-    closeSync(this.fd);
+    if (this.closed) return;
+    // A failed close may already have released the number; never retry or finalize it.
+    this.closed = true;
     abandoned.unregister(this);
+    closeSync(this.fd);
   }
 
   private matches(current: BigIntStats): boolean {
