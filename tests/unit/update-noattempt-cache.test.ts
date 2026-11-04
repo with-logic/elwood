@@ -1,9 +1,7 @@
 /** No-attempt outcomes remain retryable and preserve unaffected caches (C-LIFE-09/11, C-PERF-02). */
 import { beforeEach, expect, test, vi } from "vitest";
-import { preflightClaude } from "../../src/claude/preflight.ts";
 import {
   detectCodexCliCapabilities,
-  preflightCodex,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
 import { elwoodError } from "../../src/core/errors.ts";
@@ -16,6 +14,7 @@ import {
   setUpdateCoordinatorForTests,
 } from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
+import { updateAdapters } from "../helpers/update-adapters.ts";
 
 beforeEach(() => {
   setPlatformForTests("darwin");
@@ -107,10 +106,7 @@ test("C-LIFE-09 unknown coordination rejection stays conservative while confirme
   expect(peer).toHaveBeenCalledTimes(1);
 });
 
-for (const [agent, version, preflight] of [
-  ["claude", "2.1.144", preflightClaude],
-  ["codex", "codex-cli 0.150.0", preflightCodex],
-] as const) {
+for (const [agent, version, preflight] of updateAdapters) {
   test(`C-LIFE-11 ${agent} an updater rejecting undefined still warns and is shared`, async () => {
     setUpdateCoordinatorForTests((_adapter, update) => update());
     let updates = 0;

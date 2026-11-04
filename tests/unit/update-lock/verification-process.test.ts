@@ -18,9 +18,14 @@ const childScript = `
   const wait = async (name) => {
     const deadline = Date.now() + 10_000;
     for (;;) {
-      try { await access(root + "/" + name); return; } catch {}
-      if (Date.now() >= deadline) throw new Error("barrier expired: " + name);
-      await new Promise(resolve => setTimeout(resolve, 5));
+      try {
+        await access(root + "/" + name);
+        return;
+      } catch {}
+      if (Date.now() >= deadline) {
+        throw new Error("barrier expired: " + name);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
     }
   };
   if (role === "waiter") {
@@ -37,27 +42,46 @@ const childScript = `
     syncBuiltinESMExports();
   }
   setPlatformForTests("darwin");
-  setUpdateCoordinatorForTests((adapter, update) => coordinatedAutoupdate(adapter, update, {
-    root, pollMs: 5, staleMs: 30_000, waitMs: 10_000,
-  }));
+  setUpdateCoordinatorForTests((adapter, update) =>
+    coordinatedAutoupdate(adapter, update, {
+      root,
+      pollMs: 5,
+      staleMs: 30_000,
+      waitMs: 10_000,
+    }),
+  );
   let versions = 0;
   setCommandRunnerForTests(async (_command, args) => {
     if (args.join(" ").includes("codex update")) {
-      if (role === "waiter") { await mark("waiter-entered"); await wait("release-waiter"); }
+      if (role === "waiter") {
+        await mark("waiter-entered");
+        await wait("release-waiter");
+      }
       await mark(role + "-updated");
-      return { status: role === "owner" ? 1 : 0, stdout: "", stderr: "installer failed" };
+      return {
+        status: role === "owner" ? 1 : 0,
+        stdout: "",
+        stderr: "installer failed",
+      };
     }
     if (role === "owner" && ++versions === 1) {
       await mark("owner-ready");
       await wait("waiter-observed");
-      if (scenario === "refused") return { status: 1, stdout: "", stderr: "verification refused" };
+      if (scenario === "refused") {
+        return { status: 1, stdout: "", stderr: "verification refused" };
+      }
     }
     return { status: 0, stdout: "codex-cli 0.150.0", stderr: "" };
   });
   const warning = await preflightCodex(false, true);
-  await mark(role + "-done", JSON.stringify(warning && {
-    code: warning.code, errorCode: warning.errorCode, raw: warning.raw,
-  }));
+  await mark(
+    role + "-done",
+    JSON.stringify(warning && {
+      code: warning.code,
+      errorCode: warning.errorCode,
+      raw: warning.raw,
+    }),
+  );
 `;
 
 for (const scenario of ["refused", "attempted"] as const) {

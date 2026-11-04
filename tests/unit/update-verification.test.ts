@@ -2,8 +2,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
-import { preflightClaude } from "../../src/claude/preflight.ts";
-import { preflightCodex } from "../../src/codex/preflight.ts";
 import {
   type CommandResult,
   setCommandRunnerForTests,
@@ -16,16 +14,14 @@ import {
   setUpdateCoordinatorForTests,
 } from "../../src/runtime/update/once.ts";
 import { tempDir } from "../helpers/tmp.ts";
+import { updateAdapters } from "../helpers/update-adapters.ts";
 
 beforeEach(() => {
   resetAutoupdateForTests();
   resetPreflightCacheForTests();
   setPlatformForTests("darwin");
 });
-for (const [agent, version, preflight] of [
-  ["claude", "2.1.144", preflightClaude],
-  ["codex", "codex-cli 0.150.0", preflightCodex],
-] as const) {
+for (const [agent, version, preflight] of updateAdapters) {
   test(`C-LIFE-09 ${agent} retries after verification failed without running its updater`, async () => {
     const root = tempDir("elwood-update-verify-");
     setUpdateCoordinatorForTests((adapter, update) =>
@@ -54,10 +50,7 @@ for (const [agent, version, preflight] of [
   });
 }
 
-for (const [agent, version, preflight] of [
-  ["claude", "2.1.144", preflightClaude],
-  ["codex", "codex-cli 0.150.0", preflightCodex],
-] as const) {
+for (const [agent, version, preflight] of updateAdapters) {
   test(`C-LIFE-09 ${agent} persistent verification failures reject compatibility without updating`, async () => {
     setUpdateCoordinatorForTests((_adapter, update) => update());
     let updates = 0;
