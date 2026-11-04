@@ -7,6 +7,24 @@ import { mkdtempSync, rmdirSync, rmSync } from "node:fs";
 import { chmod, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runContained } from "../../core/contained.ts";
+import { errnoCode } from "../../core/errors.ts";
+
+let cleanupWarningReported = false;
+
+/** A process-level diagnostic with no original error or filesystem details. */
+function reportCleanupFailure(): void {
+  if (cleanupWarningReported) return;
+  cleanupWarningReported = true;
+  runContained(() => {
+    const warning = Object.assign(
+      new Error("A temporary probe output directory could not be removed."),
+      { name: "ElwoodProbeCleanupWarning", code: "ELWOOD_PROBE_CLEANUP_FAILED" },
+    );
+    warning.stack = `${warning.name}: ${warning.message}`;
+    process.emitWarning(warning);
+  });
+}
 
 /** Makes a probe's private directory; `mkdtemp` makes it mode 0700. */
 export function makePrivateDirectory(): string {
@@ -35,9 +53,8 @@ async function removeTree(dir: string): Promise<void> {
     // owns them, so it can open them again.
     await unlock(dir);
     await rm(dir, { recursive: true, force: true });
-  } catch {
-    // Mostly, the command removed the directory itself. Any other failure leaves it behind,
-    // unreported: the probe has settled, and nothing reads a removal's outcome yet.
+  } catch (error) {
+    if (errnoCode(error) !== "ENOENT") reportCleanupFailure();
   }
 }
 
