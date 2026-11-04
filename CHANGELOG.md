@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Restore failed-start and failed-resume state in the original macOS directory after its workspace is renamed or replaced; never roll back files in the replacement directory.
 
+- Reject a working directory replaced during preflight before writing launch state or spawning the PTY, retaining the identity first checked on start and resume.
+
 ## [0.2.2] - 2026-11-03
 
 - Preserve custom state directories during rollback when another user could redirect their parent lookup.
