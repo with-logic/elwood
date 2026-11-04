@@ -1,0 +1,69 @@
+/** A contender retries a lease generation that never invoked an updater (PRD §9.2, C-LIFE-09). */
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { beforeEach, expect, test, vi } from "vitest";
+import { coordinatedAutoupdate } from "../../../src/runtime/update/lock.ts";
+import { tempDir } from "../../helpers/tmp.ts";
+
+const observation = vi.hoisted(() => ({ notify: () => {}, denyPublication: false }));
+beforeEach(() => Object.assign(observation, { notify: () => {}, denyPublication: false }));
+vi.mock("node:fs/promises", async (original) => {
+  const actual = await original<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    rename: (...args: Parameters<typeof actual.rename>) => {
+      if (observation.denyPublication && String(args[1]).endsWith("/codex.completed"))
+        return Promise.reject(Object.assign(new Error("publication refused"), { code: "EACCES" }));
+      return actual.rename(...args);
+    },
+    stat: async (...args: Parameters<typeof actual.stat>) => {
+      const result = await actual.stat(...args);
+      if (String(args[0]).endsWith("/codex.lock")) observation.notify();
+      return result;
+    },
+  };
+});
+
+test.each([
+  "refused",
+  "completion-unwritable",
+  "refusal-unwritable",
+  "refusal-malformed",
+])("C-LIFE-09 an observed %s owner retries only with a conclusive refusal receipt", async (scenario) => {
+  const root = tempDir("elwood-update-verification-contention-");
+  if (scenario === "refusal-malformed")
+    writeFileSync(join(root, "codex.refused"), "not-a-generation", { mode: 0o400 });
+  else if (scenario === "refusal-unwritable") mkdirSync(join(root, "codex.refused"));
+  observation.denyPublication = scenario === "completion-unwritable";
+  const entered = Promise.withResolvers<void>();
+  const observed = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const owner = coordinatedAutoupdate(
+    "codex",
+    async () => {
+      entered.resolve();
+      await finish.promise;
+      return scenario === "completion-unwritable" ? undefined : { started: false };
+    },
+    { root },
+  );
+  await entered.promise;
+  observation.notify = observed.resolve;
+  let updates = 0;
+  const contender = coordinatedAutoupdate(
+    "codex",
+    () => {
+      updates += 1;
+      return Promise.resolve();
+    },
+    { root, pollMs: 1 },
+  );
+  await observed.promise;
+  finish.resolve();
+  expect(await owner).toEqual(
+    scenario === "completion-unwritable" ? undefined : { started: false },
+  );
+  await contender;
+  expect(updates).toBe(scenario === "refused" ? 1 : 0);
+  if (updates === 1) expect(readFileSync(join(root, "codex.completed"), "utf8")).not.toBe("");
+});

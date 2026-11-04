@@ -2,18 +2,19 @@
 import { elwoodError } from "../../core/errors.ts";
 import { completionSnapshot, readCompletionGeneration } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
-import { type LeaseOwner, releaseLease } from "./owner.ts";
-import { pathExists, recoveryPath, type UpdateWaitResult, waitForOwner } from "./waiting.ts";
+import { type LeaseOwner, readOptionalText, releaseLease } from "./owner.ts";
+import { type UpdateWaitResult, waitForOwner } from "./waiting.ts";
 
 type Acquisition = {
   readonly adapter: UpdateAdapter;
   readonly leasePath: string;
   readonly owner: LeaseOwner;
   readonly completionMarkerPath: string;
+  readonly refusal: string;
   readonly pollMs: number;
   readonly staleMs: number;
   readonly waitUntilMs: number;
-  readonly claim: () => Promise<boolean>;
+  readonly claim: () => Promise<"claimed" | "contended" | "unavailable">;
 };
 
 /** True grants update ownership; false means no update lease acquired. */
@@ -22,34 +23,43 @@ export async function acquireUpdateLease({
   leasePath,
   owner,
   completionMarkerPath,
+  refusal,
   pollMs,
   staleMs,
   waitUntilMs,
   claim,
 }: Acquisition): Promise<boolean> {
-  const {
-    ownerGeneration: observedGeneration,
-    priorCompletionGeneration,
-    ownerAlreadyCompleted,
-  } = await completionSnapshot(leasePath, completionMarkerPath);
-  const observedGenerations = new Set(observedGeneration === undefined ? [] : [observedGeneration]);
-  let observedActive =
-    observedGeneration !== undefined ||
-    (await pathExists(leasePath)) ||
-    (await pathExists(recoveryPath(leasePath)));
+  const { ownerGeneration, priorCompletionGeneration, ownerAlreadyCompleted } =
+    await completionSnapshot(leasePath, completionMarkerPath);
+  const observedGenerations = new Set(ownerGeneration === undefined ? [] : [ownerGeneration]);
+  const completedOwner = (generation: string | undefined) =>
+    ownerAlreadyCompleted || (generation !== undefined && observedGenerations.has(generation));
+  const completed = async () => {
+    const current = await readCompletionGeneration(completionMarkerPath);
+    return completedOwner(current) || current !== priorCompletionGeneration;
+  };
+  const refused = async () => {
+    const marker = await readOptionalText(refusal);
+    return marker !== undefined && observedGenerations.has(marker);
+  };
+  let observedActive = ownerGeneration !== undefined;
   let recoveredStale = false;
-  while (!(await claim())) {
-    // Losing the claim to an existing lease IS an observation of an active owner; a claim
-    // that failed on its own staging finds no lease below and returns as released. Sampling
-    // only before the loop misses a peer that claimed in the interim, and that contender
-    // would then treat its own later claim as the first attempt and run a duplicate
-    // update (PRD §9.2: a contender skips its duplicate attempt).
+  for (;;) {
+    const claimed = await claim();
+    if (claimed === "unavailable") return false;
+    if (claimed === "claimed") break;
     observedActive = true;
     const waited = recoveredWait(
       adapter,
-      await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs),
+      await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs, (generation) => {
+        if (generation !== undefined) observedGenerations.add(generation);
+      }),
     );
     if (waited === false) return false;
+    if (waited.status === "released") {
+      if ((await completed()) || !(await refused())) return false;
+      continue;
+    }
     if (waited.generation !== undefined) observedGenerations.add(waited.generation);
     recoveredStale = true;
   }
@@ -60,12 +70,9 @@ export async function acquireUpdateLease({
     await releaseLease(leasePath, owner);
     throw error;
   }
-  const observedOwnerCompleted =
-    ownerAlreadyCompleted ||
-    (currentCompletionGeneration !== undefined &&
-      observedGenerations.has(currentCompletionGeneration));
+  const observedOwnerCompleted = completedOwner(currentCompletionGeneration);
   const completionAdvanced = currentCompletionGeneration !== priorCompletionGeneration;
-  const unrecoveredContention = !recoveredStale && observedActive;
+  const unrecoveredContention = !recoveredStale && observedActive && !(await refused());
   if (observedOwnerCompleted || completionAdvanced || unrecoveredContention) {
     await releaseLease(leasePath, owner);
     return false;
@@ -73,13 +80,18 @@ export async function acquireUpdateLease({
   return true;
 }
 
-/** A nonoptional return and no default make future wait variants a compile-time error. */
+/** An explicit return without a default makes new wait variants a compile-time error. */
 function recoveredWait(
   adapter: UpdateAdapter,
   result: UpdateWaitResult,
-): false | Extract<UpdateWaitResult, { readonly status: "stale_removed" }> {
+):
+  | false
+  | { readonly status: "released" }
+  | Extract<UpdateWaitResult, { readonly status: "stale_removed" }> {
   switch (result.status) {
     case "released":
+      return { status: "released" };
+    case "unrecoverable":
       return false;
     case "wait_expired":
       throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {

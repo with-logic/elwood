@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Retry automatic updates after prerequisite verification refuses before the updater runs, without publishing a false completion or suppressing a waiting process’s update.
+
 - Report persistent temporary probe-directory cleanup failure once per process through a fixed, content-free Node warning without changing the probe result. Finish removing the probe root when a descendant disappears during cleanup.
 
 - Keep the original launch directory identity through version and capability cache reads, refusing observed replacements even when the replacement has a cached answer.

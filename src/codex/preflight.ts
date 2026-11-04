@@ -60,9 +60,9 @@ export async function preflightCodex(
     // Only a test that reset the update module without setting a coordinator sees a throw here.
     const outcome = await cachedAutoupdate(
       "codex",
-      async () => {
-        await readCodexVersion(workspace); // verify existence only after owning the cross-process lease
-        await runCodexUpdate(workspace);
+      {
+        verify: () => readCodexVersion(workspace),
+        update: () => runCodexUpdate(workspace),
       },
       () => capabilityProbe.clear(),
     );

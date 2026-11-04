@@ -120,7 +120,10 @@ test.each([
   const run = (name: string) =>
     coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push(name)), { root });
   race.ownerPath = join(updateLockPath("codex", root), "owner");
-  if (scenario === "peer") race.afterMissingOwner = () => run("peer");
+  if (scenario === "peer")
+    race.afterMissingOwner = async () => {
+      await run("peer");
+    };
   try {
     await run("caller");
     expect(attempts).toEqual(expectedAttempts[scenario]);

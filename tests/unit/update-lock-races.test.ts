@@ -126,7 +126,7 @@ test("contended stale recovery waits for the active cleaner", async () => {
   expect(ran).toBe(true);
 });
 
-function run(root: string, update: () => void): Promise<void> {
+function run(root: string, update: () => void) {
   return coordinatedAutoupdate(
     "codex",
     () => {

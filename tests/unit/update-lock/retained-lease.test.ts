@@ -37,14 +37,24 @@ const abortedWith = (processGroupId: number): Error =>
     cleanupProcessGroupId: processGroupId,
   });
 
-test("C-PERF-04 an aborted update whose group survives hands the lease to that group", async () => {
+test.each([
+  "update",
+  "verification",
+])("C-PERF-04 an aborted %s whose group survives retains its lease", async (stage) => {
   const group = spawnGroup();
   const root = tempDir("elwood-retain-");
   const path = updateLockPath("codex", root);
   try {
-    await expect(
-      coordinatedAutoupdate("codex", () => Promise.reject(abortedWith(group.id)), { root }),
-    ).rejects.toThrow("was aborted");
+    const outcome = coordinatedAutoupdate(
+      "codex",
+      () =>
+        stage === "update"
+          ? Promise.reject(abortedWith(group.id))
+          : Promise.resolve({ started: false as const, error: abortedWith(group.id) }),
+      { root },
+    );
+    if (stage === "update") await expect(outcome).rejects.toThrow("was aborted");
+    else await expect(outcome).resolves.toMatchObject({ started: false });
     // The lease outlives this process, recorded as held by the surviving group alone.
     expect(await readOwner(path)).toMatchObject({ ownedProcessGroupIds: [group.id] });
     // A contender sees a live group and says so rather than installing over it.

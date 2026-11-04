@@ -76,9 +76,17 @@ installed version and enforces the minimum as usual — if the installed CLI sti
 meets the minimum, Elwood records a typed `agent_update_failed` warning and
 starts the session normally from the installed binary; only if the installed
 version is below the minimum does startup fail (with the same typed
-compatibility error below). A failed update is attempted at most once per parent
-process and MUST NOT be retried per start, nor may one failed shared update
-reject or poison any other otherwise-compatible start in the roster. If the
+compatibility error below). An updater command that ran and failed is attempted
+at most once per parent process and MUST NOT be retried per start. A prerequisite verification that fails
+before the updater is invoked is no attempt: it publishes no lease completion,
+is not retained by the per-process update cache, and waiting callers retry their
+own verification under the lease. The lease stores at most one refusal receipt
+per adapter, containing the refusing generation token. An observed owner without
+a matching refusal receipt remains non-retryable if completion publication fails;
+a missing completion alone does not establish a refusal. The normal compatibility check still reports
+the verification failure when it persists. Neither a missing start marker nor an
+unknown runner rejection alone proves that an updater never ran. Nor may a failed
+shared update reject or poison any other otherwise-compatible start in the roster. If the
 installed agent version is below the minimum after that optional update step,
 startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`

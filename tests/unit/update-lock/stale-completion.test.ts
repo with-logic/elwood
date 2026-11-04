@@ -60,8 +60,13 @@ test.each([
       return Promise.resolve();
     };
   if (scenario === "peer-after-recovery")
-    window.afterRecovery = () =>
-      coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push("peer")), options);
+    window.afterRecovery = async () => {
+      await coordinatedAutoupdate(
+        "codex",
+        () => Promise.resolve(void attempts.push("peer")),
+        options,
+      );
+    };
   try {
     await coordinatedAutoupdate(
       "codex",

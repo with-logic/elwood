@@ -132,7 +132,7 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     await expect(
       cachedAutoupdate(
         "codex",
-        () => Promise.resolve(),
+        { verify: () => Promise.resolve(), update: () => Promise.resolve() },
         () => {
           throw new Error("cache invalidation failed");
         },

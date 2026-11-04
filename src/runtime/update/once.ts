@@ -12,6 +12,7 @@ import {
 } from "../probe/directory-key.ts";
 import type { CommandOptions, CommandResult } from "../seams.ts";
 import { coordinatedAutoupdate, type UpdateAdapter } from "./lock.ts";
+import type { UpdateResult } from "./not-started.ts";
 
 let coordinateUpdate: typeof coordinatedAutoupdate = coordinatedAutoupdate;
 
@@ -20,15 +21,24 @@ export type AutoupdateOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: unknown };
 
+/** Verification runs only after lease ownership, before the updater may be invoked. */
+export type UpdateSteps = {
+  readonly verify: () => Promise<unknown>;
+  readonly update: () => Promise<void>;
+};
+type Attempt = { readonly reusable: boolean; readonly outcome: AutoupdateOutcome };
+
 // The settled autoupdate outcome per adapter. Every `autoupdate: true` caller awaits the SAME
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
 // `{ok:false}` value, NOT a rejected promise — so one failed update can neither reject the other
-// concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Best-effort → not retried.
-const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
+// concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Verification refusals
+// are not attempts and leave no settled entry: each sharer retries its own prerequisites.
+const autoupdates = new Map<UpdateAdapter, Promise<Attempt>>();
 
 /**
  * Runs the adapter's update at most once per process; concurrent callers share the single
- * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
+ * in-flight attempt. A refused verification is evicted before its sharers retry.
+ * NEVER rejects — a throwing updater resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
  * version cache whether this process owned the update or waited for a peer. The one exception
  * is test-only: after `resetAutoupdateForTests()`, until a test sets a coordinator, it throws
@@ -36,17 +46,37 @@ const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
  */
 export function cachedAutoupdate(
   adapter: UpdateAdapter,
-  runUpdate: () => Promise<void>,
+  steps: UpdateSteps,
   afterAttempt?: () => void,
 ): Promise<AutoupdateOutcome> {
   const existing = autoupdates.get(adapter);
-  if (existing) return existing;
-  const pending = coordinateUpdate(adapter, runUpdate).then(
-    () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
-    (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
-  );
+  if (existing) {
+    return existing.then((attempt) =>
+      attempt.reusable ? attempt.outcome : cachedAutoupdate(adapter, steps, afterAttempt),
+    );
+  }
+  let verificationRefused = false;
+  const run = async (): Promise<UpdateResult> => {
+    try {
+      await steps.verify();
+    } catch (error) {
+      verificationRefused = true;
+      return { started: false, error };
+    }
+    await steps.update();
+  };
+  const pending = coordinateUpdate(adapter, run)
+    .then(
+      () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
+      (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
+    )
+    .then((outcome): Attempt => {
+      if (!verificationRefused) return { reusable: true, outcome };
+      autoupdates.delete(adapter); // before any sharer retries its own verification
+      return { reusable: false, outcome: { ok: true } };
+    });
   autoupdates.set(adapter, pending);
-  return pending;
+  return pending.then((attempt) => attempt.outcome);
 }
 
 function finalizeAutoupdate(

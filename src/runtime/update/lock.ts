@@ -8,9 +8,11 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { errnoCode } from "../../core/errors.ts";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
 import { acquireUpdateLease } from "./acquire.ts";
 import { publishCompletionGeneration } from "./completion.ts";
+import type { UpdateOperation, UpdateResult } from "./not-started.ts";
 import {
   type LeaseOwner,
   ownerFile,
@@ -37,6 +39,7 @@ const defaultStaleMs = 30_000;
 const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
 const defaultRetainRetryMs = 1_000;
+const leaseConflictCodes = new Set<string | undefined>(["EEXIST", "ENOTEMPTY"]);
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -49,7 +52,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
 
 /**
  * Runs `update` only for the lease owner. A contender waits until that owner
- * settles and then returns without a duplicate update; callers re-read version
+ * completes an attempt, then skips its duplicate. A released no-attempt owner
+ * allows contenders to acquire and verify for themselves. Callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
  * After 165 seconds by default, a still-active owner rejects with the adapter's
  * update_failed error and updateReason active_owner; preflight warns and continues.
@@ -59,9 +63,9 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  */
 export async function coordinatedAutoupdate(
   adapter: UpdateAdapter,
-  update: () => Promise<void>,
+  update: UpdateOperation,
   options: UpdateLeaseOptions = {},
-): Promise<void> {
+): Promise<UpdateResult> {
   const root = options.root ?? defaultLeaseRoot();
   const leasePath = updateLockPath(adapter, root);
   const pollMs = options.pollMs ?? defaultPollMs;
@@ -73,12 +77,14 @@ export async function coordinatedAutoupdate(
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completionMarkerPath = join(root, `${adapter}.completed`);
+  const refusal = join(root, `${adapter}.refused`);
   if (
     !(await acquireUpdateLease({
       adapter,
       leasePath,
       owner,
       completionMarkerPath,
+      refusal,
       pollMs,
       staleMs,
       waitUntilMs,
@@ -93,16 +99,23 @@ export async function coordinatedAutoupdate(
   const outcome = await Promise.resolve()
     .then(update)
     .then(
-      () => undefined,
+      (result) => ({ result }),
       (error: unknown) => ({ error }),
     );
   // An aborted probe's unresolved group is observed once more: only a group still live
   // after that window keeps the lease, and then the lease outlives this process.
-  const abortedGroupId = unresolvedProbeGroup(outcome?.error);
+  const noAttempt = "result" in outcome ? outcome.result : undefined;
+  const failure = "error" in outcome ? outcome.error : noAttempt?.error;
+  const abortedGroupId = unresolvedProbeGroup(failure);
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
-    await Promise.allSettled([publishCompletionGeneration(leasePath, completionMarkerPath, owner)]);
+    // A refusal receipt distinguishes no attempt from a failed completion write.
+    const receipt =
+      noAttempt?.started === false
+        ? writeFile(refusal, owner.token, { mode: 0o600 })
+        : publishCompletionGeneration(leasePath, completionMarkerPath, owner);
+    await Promise.allSettled([receipt]);
     await releaseLease(leasePath, owner);
   } else {
     await retainLease(
@@ -112,7 +125,8 @@ export async function coordinatedAutoupdate(
       options.retainRetryMs ?? defaultRetainRetryMs,
     );
   }
-  if (outcome !== undefined) throw outcome.error;
+  if ("error" in outcome) throw outcome.error;
+  return noAttempt;
 }
 
 /**
@@ -123,25 +137,31 @@ export async function coordinatedAutoupdate(
  * recovery removes. `rename` refuses a non-empty destination, which is exactly an
  * existing lease.
  */
-async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
+async function claimLease(
+  path: string,
+  owner: LeaseOwner,
+): Promise<"claimed" | "contended" | "unavailable"> {
   // An existing lease, even an ownerless one left by an older version, is a wait condition:
   // `rename` would silently replace an empty directory instead of recovering it as stale.
-  if ((await pathExists(recoveryPath(path))) || (await pathExists(path))) return false;
+  if ((await pathExists(recoveryPath(path))) || (await pathExists(path))) return "contended";
   const staging = `${path}.claim.${randomUUID()}`;
   try {
     await mkdir(staging, { mode: 0o700 });
     await writeFile(join(staging, ownerFile), serializeOwner(owner), { flag: "wx", mode: 0o600 });
     await rename(staging, path);
-  } catch {
+  } catch (error) {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
-    return false;
+    const code = errnoCode(error);
+    const sweptByOwner =
+      code === "ENOENT" && ((await pathExists(path)) || (await pathExists(recoveryPath(path))));
+    return leaseConflictCodes.has(code) || sweptByOwner ? "contended" : "unavailable";
   }
   if (await pathExists(recoveryPath(path))) {
     await releaseLease(path, owner);
-    return false;
+    return "contended";
   }
   await sweepLeaseLeftovers(path);
-  return true;
+  return "claimed";
 }
 
 /**
