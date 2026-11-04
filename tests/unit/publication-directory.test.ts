@@ -15,6 +15,8 @@ const fault = vi.hoisted(() => ({
   alias: "valid",
   opened: 0,
   failStat: false,
+  afterValidation: false,
+  checks: 0,
   foreign: false,
   held: -1,
   failCleanup: false,
@@ -29,7 +31,7 @@ vi.mock("node:fs", async (original) => {
     ...actual,
     openSync: (...args: Parameters<typeof actual.openSync>) => {
       const fd = actual.openSync(...args);
-      if (args[0] === fault.parent && ++fault.opened === 2) fault.held = fd;
+      if (args[0] === fault.parent && ++fault.opened === 1) fault.held = fd;
       return fd;
     },
     closeSync: (fd: number) => {
@@ -37,9 +39,10 @@ vi.mock("node:fs", async (original) => {
       if (fd === fault.held && fault.failCleanup) throw new Error("secondary close failure");
     },
     fstatSync: (...args: Parameters<typeof actual.fstatSync>) => {
-      if (args[0] === fault.held && fault.failStat) throw new Error("fstat failed");
+      const fail = args[0] === fault.held && (!fault.afterValidation || ++fault.checks === 2);
+      if (fail && fault.failStat) throw new Error("fstat failed");
       const info = actual.fstatSync(...args);
-      if (args[0] === fault.held && fault.foreign)
+      if (fail && fault.foreign)
         info.uid = typeof info.uid === "bigint" ? info.uid + 1n : info.uid + 1;
       return info;
     },
@@ -67,6 +70,8 @@ afterEach(() => {
     alias: "valid",
     opened: 0,
     failStat: false,
+    afterValidation: false,
+    checks: 0,
     foreign: false,
     held: -1,
   });
@@ -133,13 +138,19 @@ test("C-API-61 unsupported platforms never choose a changed directory", () => {
   }
 });
 
-for (const mode of ["failStat", "foreign"] as const) {
+for (const [mode, snapshot] of [
+  ["failStat", false],
+  ["foreign", false],
+  ["failStat", true],
+  ["foreign", true],
+] as const) {
   test(`C-API-61 a failed pin verification releases the descriptor (${mode})`, () => {
     const file = fixture();
     fault[mode] = true;
+    fault.afterValidation = snapshot;
     fault.failCleanup = true;
     expect(() => new PublicationDirectory(file)).toThrow(
-      mode === "failStat" ? "fstat failed" : "Could not locate",
+      mode === "failStat" ? "fstat failed" : snapshot ? "Could not locate" : "must be owned",
     );
     expect(() => native.fstatSync(fault.held)).toThrowError(
       expect.objectContaining({ code: "EBADF" }),

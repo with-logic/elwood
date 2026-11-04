@@ -16,38 +16,56 @@ type PublishedFile = {
 
 export class LaunchPublication {
   private readonly files = new Map<string, PublishedFile>();
+  private readonly directories = new Map<string, PublicationDirectory>();
 
-  /**
-   * Publish `text` at `path`. A caller that has just read the file passes what it read as
-   * `readText`, so a large file is not read again for the rollback preimage.
-   */
-  write(path: string, text: string, readText?: string): void {
-    assertStatePath(path);
-    assertTrustedPublicationParent(path);
-    const current = readText ?? readFile(path);
-    const entry = this.files.get(path) ?? {
-      before: current,
-      written: [current],
-      directory: new PublicationDirectory(path),
-    };
+  /** Read and publish through the same held parent, including subsequent hook writes. */
+  write(path: string, text: string): void {
+    let entry = this.files.get(path);
+    const parent = dirname(path);
+    let directory = this.directories.get(parent);
+    if (directory === undefined) {
+      assertStatePath(path);
+      assertTrustedPublicationParent(path);
+      directory = new PublicationDirectory(path);
+      this.directories.set(parent, directory);
+    }
+    let physical: string;
+    let current: string | undefined;
+    try {
+      physical = directory.rollbackPath(path);
+      current = read(physical);
+    } catch (error) {
+      this.releaseUnused(parent, directory);
+      throw error;
+    }
+    entry ??= { before: current, written: [current], directory };
     // Preserve a predecessor's intervening record update across our next write.
     if (!entry.written.includes(current)) entry.before = current;
     // A failed write can leave either version: rename precedes directory fsync.
     entry.written = [current, text];
     this.files.set(path, entry);
-    writePrivateFileAtomic(path, text);
+    writePrivateFileAtomic(physical, text);
     entry.written = [text];
   }
 
   /** A predecessor's later write to `path` stands: rollback leaves it, whatever its bytes. */
   forget(path: string): void {
-    this.files.get(path)?.directory.close();
+    const entry = this.files.get(path);
+    if (entry === undefined) return;
     this.files.delete(path);
+    this.releaseUnused(dirname(path), entry.directory);
   }
 
   clear(): void {
-    for (const entry of this.files.values()) entry.directory.close();
+    for (const directory of this.directories.values()) directory.close();
     this.files.clear();
+    this.directories.clear();
+  }
+
+  private releaseUnused(parent: string, directory: PublicationDirectory): void {
+    if ([...this.files.keys()].some((file) => dirname(file) === parent)) return;
+    directory.close();
+    this.directories.delete(parent);
   }
 
   rollback(): void {
@@ -63,8 +81,8 @@ export class LaunchPublication {
             fsyncDir(dirname(rollbackPath));
           } else writePrivateFileAtomic(rollbackPath, entry.before);
         }
-        entry.directory.close();
         this.files.delete(path);
+        this.releaseUnused(dirname(path), entry.directory);
       } catch {
         failed = true;
       }

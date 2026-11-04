@@ -143,6 +143,12 @@ generation is preserved. If a predecessor updates a file
 between two pending-launch writes, that external version becomes the rollback
 baseline for the later write. Pending-launch hook record writes participate in the
 same transaction. Superseded or failed generations cannot publish metadata.
+Publication holds share one descriptor per distinct parent directory. Descriptor disposal
+is nonfatal and never retries an ambiguous close. At most once per parent process,
+a failed disposal emits a Node `ElwoodStateDirectoryCloseWarning` with a fixed
+message and only `EBADF`, `EINTR`, `EIO`, or `UnknownError` as its code; no path,
+descriptor number, or raw error is exposed.
+
 A rollback failure is reported as
 `state_corrupt`, not as a successful restoration. Rollback attempts every independent
 file restoration, settles the failed reservation and restores the prior viable owner

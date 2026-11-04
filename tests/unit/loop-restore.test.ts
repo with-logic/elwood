@@ -30,11 +30,9 @@ describe("loadRuntimeLoopDefinitions", () => {
     const read = sidecar(fixed("expired", NOW), fixed("live", NOW + 1));
     const result = loadRuntimeLoopDefinitions("/state", "s1", write, NOW, read);
     expect(result.map(({ id }) => id)).toEqual(["live"]);
-    const [path, text, readText] = write.mock.calls[0] as [string, string, string];
+    const [path, text] = write.mock.calls[0] as [string, string];
     expect(path).toBe(join("/state", "sessions", "s1", "loops.json"));
     expect(JSON.parse(text)).toMatchObject({ loops: [{ id: "live" }] });
-    // The prune hands over the text it read, so the launch need not read it again.
-    expect(readText).toBe("read");
   });
 
   test("does not rewrite a sidecar when every definition survives", () => {

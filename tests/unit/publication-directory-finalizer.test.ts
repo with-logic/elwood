@@ -1,7 +1,7 @@
 /** Deterministic descriptor finalization without GC timing (PRD §8.1, C-API-61). */
 import { closeSync, fstatSync, openSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { PublicationDirectory } from "../../src/state/publication-directory.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -36,6 +36,7 @@ vi.mock("node:fs", async (original) => {
     },
   };
 });
+afterAll(() => vi.unstubAllGlobals());
 afterEach(() => {
   vi.clearAllMocks();
   registry.failClose = false;
@@ -82,7 +83,7 @@ test("C-API-61 an ambiguous close never retries a descriptor reused by another f
     try {
       closeSync(unrelated);
     } catch {
-      /* The red control closes it incorrectly. */
+      /* A faulty repeated pin.close() may already have closed this reused descriptor. */
     }
   }
 });
