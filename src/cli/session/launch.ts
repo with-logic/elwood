@@ -11,6 +11,8 @@ import { resumeCodex } from "../../codex/session/resume.ts";
 import type { CodexSessionApi } from "../../codex/session/types.ts";
 import type { ElwoodAgentSession } from "../../core/agent-session.ts";
 import {
+  assertLaunchDirectoryUnchanged,
+  type CheckedLaunchDirectory,
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
 } from "../../runtime/session/launch-directory.ts";
@@ -19,15 +21,17 @@ import { optional } from "../request/values.ts";
 import type { EffectiveRunRequest } from "../types.ts";
 
 export type CliLaunchDependencies = {
-  readonly prepareStateRoot: (stateDir: string, cwd: string) => void;
+  readonly prepareStateRoot: typeof ensurePrivateStateRoot;
   readonly startClaude: (
     options: Parameters<typeof startClaudeWithId>[0],
     id: string,
+    directory?: CheckedLaunchDirectory,
   ) => Promise<ClaudeSessionApi>;
   readonly resumeClaude: typeof resumeClaude;
   readonly startCodex: (
     options: Parameters<typeof startCodexWithId>[0],
     id: string,
+    directory?: CheckedLaunchDirectory,
   ) => Promise<CodexSessionApi>;
   readonly resumeCodex: typeof resumeCodex;
 };
@@ -66,10 +70,11 @@ function claudeLaunch(
   if (request.resume !== undefined)
     return () => dependencies.resumeClaude({ ...common, elwoodSessionId: id });
   return async () => {
-    await prepareStateRoot(request, dependencies);
+    const directory = await prepareStateRoot(request, dependencies);
     return await dependencies.startClaude(
       { ...common, ...(request.model === undefined ? {} : { model: request.model }) },
       id,
+      directory,
     );
   };
 }
@@ -91,10 +96,11 @@ function codexLaunch(
   if (request.resume !== undefined)
     return () => dependencies.resumeCodex({ ...common, elwoodSessionId: id });
   return async () => {
-    await prepareStateRoot(request, dependencies);
+    const directory = await prepareStateRoot(request, dependencies);
     return await dependencies.startCodex(
       { ...common, ...(request.model === undefined ? {} : { model: request.model }) },
       id,
+      directory,
     );
   };
 }
@@ -107,9 +113,12 @@ function codexLaunch(
 async function prepareStateRoot(
   request: EffectiveRunRequest,
   dependencies: CliLaunchDependencies,
-): Promise<void> {
+): Promise<CheckedLaunchDirectory> {
   const directory = await checkLaunchDirectory(request.agent, request.cwd);
-  return recheckLaunchDirectoryOnFailure(directory, async () =>
-    dependencies.prepareStateRoot(request.stateDir, request.cwd),
+  await recheckLaunchDirectoryOnFailure(directory, async () =>
+    dependencies.prepareStateRoot(request.stateDir, request.cwd, undefined, () =>
+      assertLaunchDirectoryUnchanged(directory),
+    ),
   );
+  return directory;
 }

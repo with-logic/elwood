@@ -91,10 +91,12 @@ export function makeStateTree(
   cwd: string,
   makeTree: (onDirectoryCreated: StateDirectoryCreationObserver) => void,
   retainedDirectories: ReadonlySet<string> = new Set(),
+  beforeWrite?: () => void,
 ): void {
   const made = new CreatedStateDirectories();
   try {
     for (let attempt = 1; ; attempt += 1) {
+      beforeWrite?.();
       try {
         makeTree(made.record);
         break;
@@ -103,7 +105,8 @@ export function makeStateTree(
         if (!retry || attempt === maxStateTreeAttempts) throw error;
       }
     }
-    realpathSync.native(cwd);
+    if (beforeWrite === undefined) realpathSync.native(cwd);
+    else beforeWrite();
   } catch (error) {
     const cleanupErrorCode = made.remove(retainedDirectories);
     throw stateCleanupFailure(error, cleanupErrorCode);

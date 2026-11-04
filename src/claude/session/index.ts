@@ -8,6 +8,8 @@ import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
 import {
+  assertLaunchDirectoryUnchanged,
+  type CheckedLaunchDirectory,
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
@@ -49,6 +51,7 @@ export function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessi
 export async function startClaudeWithId(
   rawOptions: StartClaudeOptions,
   elwoodSessionId: string,
+  checkedDirectory?: CheckedLaunchDirectory,
 ): Promise<ClaudeSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
@@ -64,7 +67,8 @@ export async function startClaudeWithId(
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
-  const directory = await checkLaunchDirectory("claude", options.cwd);
+  const directory = checkedDirectory ?? (await checkLaunchDirectory("claude", options.cwd));
+  if (checkedDirectory !== undefined) assertLaunchDirectoryUnchanged(directory);
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
@@ -73,6 +77,7 @@ export async function startClaudeWithId(
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {
       cwd: options.cwd,
+      assertCwdUnchanged: () => assertLaunchDirectoryUnchanged(directory),
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,
     });

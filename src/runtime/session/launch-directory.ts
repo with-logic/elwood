@@ -5,6 +5,7 @@
  * Implements PRD §5.1, §5.2, §5.5, §5.6 and C-API-61.
  */
 
+import { type BigIntStats, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
@@ -58,21 +59,41 @@ async function assertLaunchDirectory(
 ): Promise<LaunchDirectoryIdentity> {
   // An unsupported platform stays preflight's first error, ahead of anything about `cwd`.
   if (currentPlatform() !== "darwin") return undefined;
-  let message = notADirectory;
-  let details: Readonly<Record<string, string>> = { errno: "ENOTDIR" };
+  const info = await stat(cwd, { bigint: true }).catch((error: unknown) => {
+    throw unreadable(agent, cwd, error);
+  });
+  return identify(agent, cwd, info, checked);
+}
+
+/** Synchronous checkpoints keep private state setup bound to the initially checked workspace. */
+export function assertLaunchDirectoryUnchanged(directory: CheckedLaunchDirectory): void {
+  if (directory.identity === undefined) return;
+  const { agent, cwd, identity } = directory;
+  let info: BigIntStats;
   try {
-    const info = await stat(cwd, { bigint: true });
-    if (info.isDirectory()) {
-      const { dev, ino } = info;
-      if (checked === undefined || (dev === checked.dev && ino === checked.ino))
-        return { dev, ino };
-      [message, details] = [replaced, {}];
-    }
+    info = statSync(cwd, { bigint: true });
   } catch (error) {
-    details = causeDetails(error);
-    if (!missingCodes.has(errnoCode(error))) message = uncheckable;
+    throw unreadable(agent, cwd, error);
   }
-  throw elwoodError(`${agent}_start_failed`, message, { cwd, ...details });
+  identify(agent, cwd, info, identity);
+}
+
+function identify(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  info: BigIntStats,
+  checked: LaunchDirectoryIdentity,
+): LaunchDirectoryIdentity {
+  if (!info.isDirectory())
+    throw elwoodError(`${agent}_start_failed`, notADirectory, { cwd, errno: "ENOTDIR" });
+  const { dev, ino } = info;
+  if (checked === undefined || (dev === checked.dev && ino === checked.ino)) return { dev, ino };
+  throw elwoodError(`${agent}_start_failed`, replaced, { cwd });
+}
+
+function unreadable(agent: ElwoodAgentKind, cwd: string, error: unknown): ElwoodError {
+  const message = missingCodes.has(errnoCode(error)) ? notADirectory : uncheckable;
+  return elwoodError(`${agent}_start_failed`, message, { cwd, ...causeDetails(error) });
 }
 
 /**
