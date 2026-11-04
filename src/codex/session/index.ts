@@ -7,9 +7,8 @@ import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import {
-  assertLaunchDirectoryUnchanged,
   type CheckedLaunchDirectory,
-  checkLaunchDirectory,
+  prepareLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
   resolveLaunchDirectory,
 } from "../../runtime/session/launch-directory.ts";
@@ -63,8 +62,12 @@ export async function startCodexWithId(
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
-  const directory = checkedDirectory ?? (await checkLaunchDirectory("codex", options.cwd));
-  if (checkedDirectory !== undefined) assertLaunchDirectoryUnchanged(directory);
+  const { directory, assertCwdUnchanged } = await prepareLaunchDirectory(
+    "codex",
+    options.cwd,
+    checkedDirectory,
+  );
+  assertCwdUnchanged();
   const stateDir = canonicalStatePath(stateDirPath);
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflight.preflightCodex(
@@ -76,7 +79,7 @@ export async function startCodexWithId(
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("codex", stateDir, {
       cwd: options.cwd,
-      assertCwdUnchanged: () => assertLaunchDirectoryUnchanged(directory),
+      assertCwdUnchanged,
       isImplicitDefaultStateDir: options.stateDir === undefined,
       elwoodSessionId,
     });

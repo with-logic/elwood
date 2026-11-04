@@ -48,6 +48,19 @@ export async function checkLaunchDirectory(
   return { agent, cwd, identity: await assertLaunchDirectory(agent, cwd) };
 }
 
+/** Capture or reuse a launch directory and its synchronous state-setup checkpoint. */
+export async function prepareLaunchDirectory(
+  agent: ElwoodAgentKind,
+  cwd: string,
+  checkedDirectory?: CheckedLaunchDirectory,
+): Promise<{
+  readonly directory: CheckedLaunchDirectory;
+  readonly assertCwdUnchanged: () => void;
+}> {
+  const directory = checkedDirectory ?? (await checkLaunchDirectory(agent, cwd));
+  return { directory, assertCwdUnchanged: () => assertLaunchDirectoryUnchanged(directory) };
+}
+
 /**
  * Rejects unless `cwd` is an existing directory and, given the directory an earlier check
  * found, still that one. Start and resume call it before any probe.

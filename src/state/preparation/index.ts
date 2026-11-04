@@ -16,7 +16,7 @@ export type StateDirSetup = {
   readonly isImplicitDefaultStateDir?: boolean;
   /** The session's working directory, which must exist and is never made (C-STATE-14). */
   readonly cwd: string;
-  /** Rechecks the directory captured before preflight at state setup boundaries. */
+  /** Rechecks identity before each setup attempt and after setup succeeds. */
   readonly assertCwdUnchanged?: () => void;
   /**
    * The session whose directory is made with the rest, so that another start's undo, which

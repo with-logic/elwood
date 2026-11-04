@@ -41,7 +41,7 @@ for (const agent of ["claude", "codex"] as const) {
     "handoff",
     "removed",
     "session",
-  ])(`C-API-61 CLI ${agent} rejects a workspace swap at %s`, async (at) => {
+  ])(`C-API-61 C-STATE-14 CLI ${agent} rejects a workspace change at %s`, async (at) => {
     const base = fs.realpathSync(tempDir("elwood-cli-state-identity-"));
     const cwd = join(base, "worktree");
     const replacement = join(base, "replacement");
@@ -97,4 +97,32 @@ test("C-API-61 unsupported CLI launches retain platform precedence at synchronou
     defaultCliLaunchDependencies,
   );
   await expect(launch()).rejects.toMatchObject({ code: "unsupported_platform" });
+});
+
+test("C-STATE-14 identity-free CLI setup removes new external scaffolding when cwd disappears", async () => {
+  setPlatformForTests("linux");
+  const base = fs.realpathSync(tempDir("elwood-cli-identity-free-"));
+  const cwd = join(base, "worktree");
+  const created = join(base, "created");
+  const stateDir = join(created, "state");
+  fs.mkdirSync(cwd);
+  race.path = stateDir;
+  race.swap = () => fs.rmSync(cwd, { recursive: true });
+  const probes = vi.fn(() => ({ status: 0, stdout: "2.1.223", stderr: "" }));
+  const launches = vi.fn(() => {
+    throw new Error("unexpected PTY launch");
+  });
+  setCommandRunnerForTests(probes);
+  setPtyFactoryForTests(launches);
+  const launch = createCliLaunch(
+    effectiveRequest({ cwd, stateDir }),
+    "identity-free",
+    defaultCliLaunchDependencies,
+  );
+  const result = await launch().catch((error: unknown) => error);
+  expect(fs.existsSync(cwd)).toBe(false);
+  expect(fs.existsSync(created)).toBe(false);
+  expect(result).toMatchObject({ code: "ENOENT", syscall: "realpath", path: cwd });
+  expect(probes).not.toHaveBeenCalled();
+  expect(launches).not.toHaveBeenCalled();
 });

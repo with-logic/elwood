@@ -19,12 +19,13 @@ export type SessionOwner = FileOwner;
 /**
  * Create or validate the CLI state root for a session in `cwd` without following a planted
  * root symlink. The root is made only while `cwd` exists, and never makes it (C-STATE-14).
+ * An optional identity assertion runs before each setup attempt and after setup succeeds.
  */
 export function ensurePrivateStateRoot(
   stateDir: string,
   cwd: string,
   owner: SessionOwner = { uid: process.getuid!() },
-  beforeWrite?: () => void,
+  assertCwdUnchanged?: () => void,
 ): void {
   const root = resolve(stateDir);
   const sessions = join(root, "sessions");
@@ -41,7 +42,7 @@ export function ensurePrivateStateRoot(
       );
     },
     undefined,
-    beforeWrite,
+    assertCwdUnchanged,
   );
 }
 
