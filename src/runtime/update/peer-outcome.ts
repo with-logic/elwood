@@ -4,6 +4,15 @@ import type { PeerCompletionEvidence } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
 import { type LeaseOwner, releaseLease } from "./owner.ts";
 
+/** Recovery may lose a retiring pathname after its owner already published completion. */
+export function excludedPeerOutcome(
+  adapter: UpdateAdapter,
+  evidence: PeerCompletionEvidence,
+): false {
+  if (evidence !== "confirmed") throw unconfirmedPeerUpdate(adapter);
+  return false;
+}
+
 /** A released peer permits retry only with its conclusive no-attempt receipt. */
 export async function releasedPeerOutcome(
   adapter: UpdateAdapter,
@@ -22,11 +31,15 @@ export async function confirmAcquiredLease(
   owner: LeaseOwner,
   readEvidence: () => Promise<PeerCompletionEvidence>,
   hasUnconfirmedActivePeer: () => Promise<boolean>,
+  consumeUnconfirmedEvidence: () => Promise<void>,
 ): Promise<boolean> {
   try {
     const evidence = await readEvidence();
     if (evidence === "none" && !(await hasUnconfirmedActivePeer())) return true;
-    if (evidence !== "confirmed") throw unconfirmedPeerUpdate(adapter);
+    if (evidence !== "confirmed") {
+      await consumeUnconfirmedEvidence().catch(() => undefined);
+      throw unconfirmedPeerUpdate(adapter);
+    }
   } catch (error) {
     await releaseLease(leasePath, owner);
     throw error;

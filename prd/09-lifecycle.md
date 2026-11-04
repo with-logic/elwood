@@ -180,6 +180,13 @@ an attempt only when both files match that generation. A contender pins both
 baseline files before observing the owner and compares them with the current
 pathnames after acquisition. A matching pair for an observed generation or changed
 payload confirms a peer attempt; a missing or mismatched companion does not.
+A mismatched affirmative baseline also stays unconfirmed when unchanged: another
+attempt may have completed between the two baseline opens. A new lease owner may
+consume only that captured, unchanged companion. It first atomically promotes the
+companion's affirmed generation into the raw token, then removes the companion
+and reports the unconfirmed outcome. The raw payload change keeps callers with
+an earlier pinned baseline excluded; a later independent call can start afresh.
+Failed promotion or removal remains conservative, and changed evidence is preserved.
 Legacy plain tokens use the same lease namespace but may represent a failed
 verification rather than an updater attempt. A relevant legacy token therefore
 preserves exclusion and emits `update_unconfirmed`; it never authorizes a retry.

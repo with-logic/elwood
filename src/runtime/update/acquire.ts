@@ -5,13 +5,14 @@ import type { UpdateSkipReason } from "../../core/warnings/update-skips.ts";
 import { unconfirmedPeerUpdate } from "../../core/warnings/update-unconfirmed.ts";
 import {
   completionSnapshot,
+  consumeMismatchedReceipt,
   observePeerCompletion,
   type PeerCompletionEvidence,
 } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
 import type { UpdateNotStarted } from "./not-started.ts";
 import { type LeaseOwner, readOptionalText, releaseLease } from "./owner.ts";
-import { confirmAcquiredLease, releasedPeerOutcome } from "./peer-outcome.ts";
+import { confirmAcquiredLease, excludedPeerOutcome, releasedPeerOutcome } from "./peer-outcome.ts";
 import { pathExists, recoveryPath, type UpdateWaitResult, waitForOwner } from "./waiting.ts";
 
 type Acquisition = {
@@ -88,7 +89,7 @@ export async function acquireUpdateLease({
         if (generation !== undefined) observedGenerations.add(generation);
       }),
     );
-    if (waited === false) throw unconfirmedPeerUpdate(adapter);
+    if (waited === false) return excludedPeerOutcome(adapter, await peerCompletion());
     if (waited.status === "released") {
       // Completion can name any observed owner. Only the latest owner's no-attempt
       // receipt grants a retry, and an eligible successor clears it before invocation.
@@ -110,6 +111,7 @@ export async function acquireUpdateLease({
     owner,
     peerCompletion,
     async () => !recoveredStale && (await hasUnconfirmedPeerAttempt()),
+    () => consumeMismatchedReceipt(snapshot, completionMarkerPath, leasePath, owner),
   );
   if (!ownsUpdate) return false;
   return invalidateRefusal(refusalReceiptPath, leasePath, owner);

@@ -1,6 +1,7 @@
 /** Pin completion evidence and atomically publish affirmative attempts (PRD §9.2, C-PERF-04). */
 import { type FileHandle, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { errnoCode } from "../../core/errors.ts";
 import { type LeaseOwner, pendingOwnerPrefix, readOwner } from "./owner.ts";
 
@@ -41,7 +42,13 @@ export async function observePeerCompletion(
     (generation !== undefined && generation === current && (observedOwner || changed))
   )
     return "confirmed";
-  if (snapshot.ownerCompletionUnconfirmed || changed || observedOwner) return "unconfirmed";
+  if (
+    snapshot.mismatchedReceipt !== undefined ||
+    snapshot.ownerCompletionUnconfirmed ||
+    changed ||
+    observedOwner
+  )
+    return "unconfirmed";
   return "none";
 }
 
@@ -65,6 +72,17 @@ export async function completionSnapshot(leasePath: string, markerPath: string) 
     const ownerGeneration = (await readOwner(leasePath))?.token;
     const priorCompletionGeneration = await baseline?.readFile("utf8");
     const priorCompletionReceipt = await receiptBaseline?.readFile("utf8");
+    const priorReceiptGeneration = confirmedReceiptGeneration(priorCompletionReceipt);
+    const mismatchedReceipt =
+      receiptBaseline !== undefined &&
+      priorReceiptGeneration !== undefined &&
+      priorReceiptGeneration !== priorCompletionGeneration
+        ? ({
+            generation: priorReceiptGeneration,
+            contents: priorCompletionReceipt,
+            identity: await receiptBaseline.stat({ bigint: true }),
+          } as const)
+        : undefined;
     const visibleCompletionGeneration = await readCompletionGeneration(markerPath);
     const visibleReceipt = confirmedReceiptGeneration(await readCompletionGeneration(receiptPath));
     const ownerAlreadyCompleted =
@@ -75,6 +93,7 @@ export async function completionSnapshot(leasePath: string, markerPath: string) 
       ownerGeneration,
       priorCompletionGeneration,
       priorCompletionReceipt,
+      mismatchedReceipt,
       ownerAlreadyCompleted,
       ownerCompletionUnconfirmed:
         ownerGeneration !== undefined &&
@@ -87,6 +106,31 @@ export async function completionSnapshot(leasePath: string, markerPath: string) 
     } finally {
       await receiptBaseline?.close();
     }
+  }
+}
+
+/** Consume only unchanged captured evidence while owning the lease; keep current waiters excluded. */
+export async function consumeMismatchedReceipt(
+  snapshot: Awaited<ReturnType<typeof completionSnapshot>>,
+  markerPath: string,
+  leasePath: string,
+  owner: LeaseOwner,
+): Promise<void> {
+  const mismatch = snapshot.mismatchedReceipt;
+  if (mismatch === undefined || (await readOwner(leasePath))?.token !== owner.token) return;
+  const receiptPath = completionReceiptPath(markerPath);
+  const receipt = await openOptional(receiptPath);
+  try {
+    if (receipt === undefined) return;
+    const identity = await receipt.stat({ bigint: true });
+    if (!sameDirectoryIdentity(identity, mismatch.identity)) return;
+    if ((await receipt.readFile("utf8")) !== mismatch.contents) return;
+    if ((await readCompletionGeneration(markerPath)) === mismatch.generation) return;
+    // Promotion truthfully names the affirmed attempt, and changes every earlier raw baseline.
+    await publishMarker(leasePath, markerPath, owner, "acknowledged", mismatch.generation);
+    await unlink(receiptPath);
+  } finally {
+    await receipt?.close();
   }
 }
 
