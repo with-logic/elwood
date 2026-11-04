@@ -12,15 +12,29 @@ const race = vi.hoisted(() => ({
   ownerPath: "",
   afterRead: undefined as undefined | (() => void),
   publications: [] as string[],
+  rawPath: "",
+  afterRawOpen: undefined as undefined | (() => Promise<void>),
+  denyRawPublication: false,
 }));
 beforeEach(() => {
   race.afterRead = undefined;
   race.publications = [];
+  race.afterRawOpen = undefined;
+  race.denyRawPublication = false;
 });
 vi.mock("node:fs/promises", async (original) => {
   const actual = await original<typeof import("node:fs/promises")>();
   return {
     ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      if (String(args[0]) === race.rawPath && race.afterRawOpen) {
+        const after = race.afterRawOpen;
+        race.afterRawOpen = undefined;
+        await after();
+      }
+      return handle;
+    },
     readFile: async (...args: Parameters<typeof actual.readFile>) => {
       const result = await actual.readFile(...args);
       if (String(args[0]) === race.ownerPath && race.afterRead) {
@@ -31,6 +45,10 @@ vi.mock("node:fs/promises", async (original) => {
       return result;
     },
     rename: (...args: Parameters<typeof actual.rename>) => {
+      if (race.denyRawPublication && String(args[1]) === race.rawPath)
+        return Promise.reject(
+          Object.assign(new Error("raw publication denied"), { code: "EACCES" }),
+        );
       if (/codex\.completed(?:\.attempted)?$/.test(String(args[1])))
         race.publications.push(String(args[1]));
       return actual.rename(...args);
@@ -83,9 +101,10 @@ for (const position of ["already-visible", "changed-after-snapshot"] as const) {
           details: { updateOutcome: "unconfirmed" },
         });
       expect(updates).toBe(0);
-      // Old readers continue to compare exactly the raw generation UUID.
-      expect(readFileSync(raw, "utf8")).toBe(generation);
-      expect(existsSync(attempted)).toBe(evidence !== "legacy");
+      // Only a captured, unchanged mismatch may be consumed under the new owner's lease.
+      const consumed = evidence === "mismatch" && position === "already-visible";
+      expect(readFileSync(raw, "utf8")).toBe(consumed ? historical : generation);
+      expect(existsSync(attempted)).toBe(evidence !== "legacy" && !consumed);
     } finally {
       race.afterRead = undefined;
     }
@@ -105,4 +124,49 @@ test("C-PERF-04 historical legacy evidence without an observed owner allows a ne
   expect(current).not.toBe(historical);
   expect(readFileSync(attempted, "utf8")).toBe(prefix + current);
   expect(race.publications).toEqual([attempted, raw]);
+});
+
+test("C-PERF-04 an affirmative receipt published between baseline pins cannot hide a peer attempt", async () => {
+  const root = tempDir("elwood-split-baseline-");
+  const raw = join(root, "codex.completed");
+  writeFileSync(raw, historical);
+  writeFileSync(`${raw}.attempted`, prefix + historical);
+  const attempts: string[] = [];
+  let completedByB: string | undefined;
+  race.rawPath = raw;
+  race.afterRawOpen = async () => {
+    // C pins rawA, then B completes entirely before C can pin companionB.
+    race.denyRawPublication = true;
+    try {
+      await coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push("B")), {
+        root,
+      });
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "codex_update_failed",
+        details: { updateOutcome: "unconfirmed" },
+      });
+    } finally {
+      race.denyRawPublication = false;
+    }
+    completedByB = readFileSync(`${raw}.attempted`, "utf8").slice(prefix.length);
+  };
+  const pending = coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push("C")), {
+    root,
+  });
+  const outcome = await pending.catch((error: unknown) => error);
+  expect(attempts).toEqual(["B"]);
+  expect(outcome).toMatchObject({
+    code: "codex_update_failed",
+    details: { updateOutcome: "unconfirmed" },
+  });
+  expect(completedByB).toMatch(/^[0-9a-f-]{36}$/);
+  expect(readFileSync(raw, "utf8")).toBe(completedByB);
+  expect(existsSync(`${raw}.attempted`)).toBe(false);
+  // After C safely consumes unchanged evidence, a later independent owner may update.
+  await coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push("D")), { root });
+  expect(attempts).toEqual(["B", "D"]);
+  const completed = readFileSync(raw, "utf8");
+  expect(completed).not.toBe(completedByB);
+  expect(readFileSync(`${raw}.attempted`, "utf8")).toBe(prefix + completed);
 });
