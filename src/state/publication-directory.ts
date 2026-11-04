@@ -1,5 +1,5 @@
 /** Retain a verified directory descriptor across renames (PRD §8.1, C-STATE-01). */
-import { type BigIntStats, fstatSync, lstatSync } from "node:fs";
+import { type BigIntStats, constants, fstatSync, lstatSync, openSync } from "node:fs";
 import { platform } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError } from "../core/errors.ts";
@@ -19,13 +19,20 @@ export class PublicationDirectoryHold {
   private readonly identity: BigIntStats;
   private readonly parent: string;
 
-  /** Hold the parent of a published-file path. */
-  constructor(publishedFilePath: string) {
+  /** Hold the parent of a published-file path; an expected hold permits no preparation. */
+  constructor(publishedFilePath: string, expected?: PublicationDirectoryHold) {
     this.parent = dirname(publishedFilePath);
-    this.fd = prepareAndOpenStateDirectory(this.parent, PRIVATE_STATE_MODE, "inside-parent");
+    this.fd =
+      expected === undefined
+        ? prepareAndOpenStateDirectory(this.parent, PRIVATE_STATE_MODE, "inside-parent")
+        : openSync(this.parent, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
     try {
       this.identity = fstatSync(this.fd, { bigint: true });
-      if (this.identity.uid !== BigInt(process.getuid!())) throw unavailable();
+      if (
+        this.identity.uid !== BigInt(process.getuid!()) ||
+        (expected !== undefined && !expected.sameDirectory(this))
+      )
+        throw unavailable();
     } catch (error) {
       closePublicationDirectory(this.fd);
       throw error;
@@ -49,6 +56,11 @@ export class PublicationDirectoryHold {
     } catch {
       throw unavailable();
     }
+  }
+
+  /** Compare captured directory identities without exposing mutable metadata. */
+  sameDirectory(other: PublicationDirectoryHold): boolean {
+    return this.matches(other.identity);
   }
 
   /**

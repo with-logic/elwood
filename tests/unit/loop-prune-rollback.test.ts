@@ -18,11 +18,15 @@ import { writeLoopDefinitions } from "../../src/state/loop-store.ts";
 import { readLoopDefinitions } from "../helpers/loops.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
-const failure = vi.hoisted(() => ({ directoryFsync: false }));
+const failure = vi.hoisted(() => ({ directoryFsync: false, measureReads: false, reads: 0 }));
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
     ...actual,
+    readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
+      if (failure.measureReads) failure.reads += 1;
+      return actual.readFileSync(...args);
+    },
     fsyncSync: (fd: number) => {
       if (failure.directoryFsync && actual.fstatSync(fd).isDirectory())
         throw new Error("directory fsync failed");
@@ -31,7 +35,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 afterEach(() => {
-  failure.directoryFsync = false;
+  Object.assign(failure, { directoryFsync: false, measureReads: false, reads: 0 });
   vi.useRealTimers();
 });
 
@@ -106,7 +110,13 @@ test("C-API-20 a predecessor's prune stands when a resume that made the same pru
   vi.setSystemTime(NOW + 1000);
   const resume = reserveLaunchOwnership(sessionDir);
   try {
-    loadRuntimeLoopDefinitions(stateDir, id, resume.publishFile);
+    failure.measureReads = true;
+    loadRuntimeLoopDefinitions(stateDir, id, {
+      readFile: resume.readFile,
+      writeFile: resume.publishFile,
+    });
+    failure.measureReads = false;
+    expect(failure.reads).toBe(1);
     const pruned = readFileSync(sidecar, "utf8");
     // The stopped predecessor prunes the same loop, writing the bytes the resume wrote.
     expect(priorLoops.list().map((loop) => loop.id)).toEqual(["live"]);

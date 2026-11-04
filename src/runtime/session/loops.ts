@@ -25,7 +25,7 @@ type SessionLoopsInput = {
   readonly elwoodSessionId: string;
   readonly ownership: Pick<
     LaunchOwnership,
-    "canPersist" | "persistFile" | "onCommit" | "onRevoked"
+    "canPersist" | "readFile" | "persistFile" | "onCommit" | "onRevoked"
   >;
   readonly definitions: readonly PersistedLoopDefinition[];
   readonly queue: ControlQueue;
@@ -46,11 +46,10 @@ export class SessionLoops {
     input.ownership.onCommit(() => {
       // Commit runs before the launch's publication clears, so a failed one restores this prune.
       const { stateDir, elwoodSessionId, ownership } = input;
-      const definitions = loadRuntimeLoopDefinitions(
-        stateDir,
-        elwoodSessionId,
-        ownership.persistFile,
-      );
+      const definitions = loadRuntimeLoopDefinitions(stateDir, elwoodSessionId, {
+        readFile: ownership.readFile,
+        writeFile: ownership.persistFile,
+      });
       this.scheduler.pause();
       this.scheduler = createScheduler({ ...input, definitions });
       this.active = true;

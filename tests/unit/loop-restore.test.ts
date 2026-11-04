@@ -19,29 +19,41 @@ const fixed = (id: string, expiresAt: number): PersistedLoopDefinition => ({
   expiresAt,
 });
 
-/** Reads a sidecar holding `definitions` from the text "read". */
+/** Reads a sidecar holding the supplied definitions. */
 function sidecar(...definitions: PersistedLoopDefinition[]) {
-  return () => ({ definitions, text: "read" });
+  return () => ({ definitions });
 }
 
 describe("loadRuntimeLoopDefinitions", () => {
   test("C-LOOP-12/13 silently prunes downtime expiry before runtime startup", () => {
     const write = vi.fn();
     const read = sidecar(fixed("expired", NOW), fixed("live", NOW + 1));
-    const result = loadRuntimeLoopDefinitions("/state", "s1", write, NOW, read);
+    const result = loadRuntimeLoopDefinitions(
+      "/state",
+      "s1",
+      { readFile: () => undefined, writeFile: write },
+      NOW,
+      read,
+    );
     expect(result.map(({ id }) => id)).toEqual(["live"]);
-    const [path, text, readText] = write.mock.calls[0] as [string, string, string];
+    const [path, text] = write.mock.calls[0] as [string, string];
     expect(path).toBe(join("/state", "sessions", "s1", "loops.json"));
     expect(JSON.parse(text)).toMatchObject({ loops: [{ id: "live" }] });
-    // The prune hands over the text it read, so the launch need not read it again.
-    expect(readText).toBe("read");
   });
 
   test("does not rewrite a sidecar when every definition survives", () => {
     const definitions = [fixed("live", NOW + 1)];
     const write = vi.fn();
-    const read = () => ({ definitions, text: "read" });
-    expect(loadRuntimeLoopDefinitions("/state", "s1", write, NOW, read)).toBe(definitions);
+    const read = () => ({ definitions });
+    expect(
+      loadRuntimeLoopDefinitions(
+        "/state",
+        "s1",
+        { readFile: () => undefined, writeFile: write },
+        NOW,
+        read,
+      ),
+    ).toBe(definitions);
     expect(write).not.toHaveBeenCalled();
   });
 
@@ -50,7 +62,13 @@ describe("loadRuntimeLoopDefinitions", () => {
       throw new Error("disk rejected check");
     };
     expect(() =>
-      loadRuntimeLoopDefinitions("/state", "s1", fail, NOW, sidecar(fixed("expired", NOW))),
+      loadRuntimeLoopDefinitions(
+        "/state",
+        "s1",
+        { readFile: () => undefined, writeFile: fail },
+        NOW,
+        sidecar(fixed("expired", NOW)),
+      ),
     ).toThrowError(
       expect.objectContaining({
         code: "loop_persistence_failed",

@@ -16,27 +16,29 @@ const LOOP_SIDECAR_NAME = "loops.json";
 
 export type LoopSidecar = {
   readonly definitions: readonly PersistedLoopDefinition[];
-  /** The text the definitions were read from; `undefined` when there is no sidecar. */
-  readonly text: string | undefined;
 };
 
 /**
- * Read and validate a session's sidecar, keeping the text it was read from. Absence is the
+ * Read and validate a session's sidecar, through the supplied private reader. Absence is the
  * canonical empty state.
  */
-export function readLoopSidecar(stateDir: string, elwoodSessionId: string): LoopSidecar {
+export function readLoopSidecar(
+  stateDir: string,
+  elwoodSessionId: string,
+  read: typeof readPrivateFile = readPrivateFile,
+): LoopSidecar {
   const corrupt = () => corruptState(elwoodSessionId);
   let text: string | undefined;
   try {
-    text = readPrivateFile(sidecarPath(stateDir, elwoodSessionId), currentFileOwner(), corrupt);
+    text = read(sidecarPath(stateDir, elwoodSessionId), currentFileOwner(), corrupt);
   } catch {
     throw corrupt(); // an invalid session id or an unsafe/unreadable sidecar
   }
-  if (text === undefined) return { definitions: [], text };
+  if (text === undefined) return { definitions: [] };
   try {
     const definitions = validateLoopSidecar(JSON.parse(text));
     if (definitions === null) throw corrupt();
-    return { definitions, text };
+    return { definitions };
   } catch {
     throw corrupt();
   }

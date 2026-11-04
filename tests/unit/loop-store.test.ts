@@ -62,7 +62,7 @@ describe("loop sidecar store", () => {
     const withExtra = definitions.map((definition) => ({ ...definition, state: "due" }));
     writeLoopDefinitions(root, id, withExtra);
     const path = join(sessionDir(root, id), "loops.json");
-    expect(readLoopSidecar(root, id)).toEqual({ definitions, text: readFileSync(path, "utf8") });
+    expect(readLoopSidecar(root, id)).toEqual({ definitions });
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(readFileSync(path, "utf8")).not.toContain('"state"');
     expect(readFileSync(path, "utf8")).not.toContain("nextDueAt");
