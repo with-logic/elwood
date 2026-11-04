@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Report persistent temporary probe-directory cleanup failure once per process through a fixed, content-free Node warning without changing the probe result.
+- Report persistent temporary probe-directory cleanup failure once per process through a fixed, content-free Node warning without changing the probe result. Finish removing the probe root when a descendant disappears during cleanup.
 
 - Keep the original launch directory identity through version and capability cache reads, refusing observed replacements even when the replacement has a cached answer.
 

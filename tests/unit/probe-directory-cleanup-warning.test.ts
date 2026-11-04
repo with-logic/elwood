@@ -5,7 +5,11 @@ import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { tempDir } from "../helpers/tmp.ts";
 
-const fault = vi.hoisted(() => ({ error: undefined as unknown, calls: 0 }));
+const fault = vi.hoisted(() => ({
+  error: undefined as unknown,
+  calls: 0,
+  remove: undefined as string | undefined,
+}));
 vi.mock("node:fs/promises", async (original) => {
   const actual = await original<typeof import("node:fs/promises")>();
   return {
@@ -13,13 +17,17 @@ vi.mock("node:fs/promises", async (original) => {
     chmod: async (...args: Parameters<typeof actual.chmod>) => {
       await actual.chmod(...args);
       fault.calls++;
+      if (args[0] === fault.remove) {
+        await actual.rm(fault.remove, { recursive: true, force: true });
+        throw Object.assign(new Error("removed descendant"), { code: "ENOENT" });
+      }
       if (fault.error !== undefined) throw fault.error;
     },
   };
 });
 beforeEach(() => {
   vi.resetModules();
-  Object.assign(fault, { error: undefined, calls: 0 });
+  Object.assign(fault, { error: undefined, calls: 0, remove: undefined });
   vi.stubEnv("TMPDIR", tempDir("elwood-cleanup-warning-"));
 });
 afterEach(() => {
@@ -72,6 +80,11 @@ test("C-PERF-05 persistent failures emit one sanitized real Node warning per pro
   cleanup.removePrivateDirectory(cleanup.path, []);
   await vi.waitFor(() => expect(fault.calls).toBe(2));
   await setImmediate();
+  const second = await directory();
+  mkdirSync(join(second.path, "another-failed-tree"));
+  second.removePrivateDirectory(second.path, []);
+  await vi.waitFor(() => expect(fault.calls).toBe(3));
+  await setImmediate();
   expect(report).toHaveBeenCalledTimes(1);
 });
 
@@ -103,4 +116,17 @@ test("C-PERF-05 a real probe retains its settled output and status after cleanup
   expect(result.error).toBeUndefined();
   await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
   expect(result).toMatchObject({ status: 7, stdout: "ok", stderr: "err" });
+});
+
+test("C-PERF-05 a vanished descendant does not strand its surviving probe directory", async () => {
+  const report = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
+  const cleanup = await directory();
+  const child = join(cleanup.path, "removed-during-walk");
+  mkdirSync(child);
+  mkdirSync(join(cleanup.path, "remaining"));
+  fault.remove = child;
+  cleanup.removePrivateDirectory(cleanup.path, []);
+  await vi.waitFor(() => expect(existsSync(cleanup.path)).toBe(false));
+  expect(fault.calls).toBeGreaterThan(1);
+  expect(report).not.toHaveBeenCalled();
 });
