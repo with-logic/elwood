@@ -153,14 +153,19 @@ describe("cross-process autoupdate lease", () => {
     const stale = new Date(Date.now() - 1_000);
     utimesSync(path, stale, stale);
     let ran = false;
-    await coordinatedAutoupdate(
-      "codex",
-      () => {
-        ran = true;
-        return Promise.resolve();
-      },
-      leaseOptions(root),
-    );
+    await expect(
+      coordinatedAutoupdate(
+        "codex",
+        () => {
+          ran = true;
+          return Promise.resolve();
+        },
+        leaseOptions(root),
+      ),
+    ).rejects.toMatchObject({
+      code: "codex_update_failed",
+      details: { updateOutcome: "unconfirmed" },
+    });
     expect(ran).toBe(false);
   });
 });

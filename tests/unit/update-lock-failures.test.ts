@@ -70,7 +70,6 @@ beforeEach(() => {
   failures.recoveryRmdir = false;
   failures.staleUnlink = false;
 });
-
 test("default lease options coordinate through the stable account cache", async () => {
   // Before anything runs: the default root must be the mocked home's. A lease module loaded
   // before this file's mocks would put it in the developer's real cache.
@@ -102,7 +101,7 @@ test("an owner-record write failure skips this update and cannot block the next"
   failures.stagingRm = false;
   await update("sweeping");
   expect(attempts).toEqual(["next", "sweeping"]);
-  expect(readdirSync(root)).toEqual(["codex.completed"]);
+  expect(readdirSync(root)).toEqual(["codex.completed", "codex.completed.attempted"]);
 });
 
 test("an unreadable lease root cannot stop the lease holder from updating", async () => {
@@ -125,14 +124,19 @@ test("a stale-owner unlink failure fails safe without a duplicate update", async
   staleDeadLease(root);
   failures.staleUnlink = true;
   let ran = false;
-  await coordinatedAutoupdate(
-    "codex",
-    () => {
-      ran = true;
-      return Promise.resolve();
-    },
-    options(root),
-  );
+  await expect(
+    coordinatedAutoupdate(
+      "codex",
+      () => {
+        ran = true;
+        return Promise.resolve();
+      },
+      options(root),
+    ),
+  ).rejects.toMatchObject({
+    code: "codex_update_failed",
+    details: { updateOutcome: "unconfirmed" },
+  });
   expect(ran).toBe(false);
 });
 
@@ -141,14 +145,19 @@ test("a recovery-move permission failure fails safe", async () => {
   staleDeadLease(root);
   failures.recoveryRename = true;
   let ran = false;
-  await coordinatedAutoupdate(
-    "codex",
-    () => {
-      ran = true;
-      return Promise.resolve();
-    },
-    options(root),
-  );
+  await expect(
+    coordinatedAutoupdate(
+      "codex",
+      () => {
+        ran = true;
+        return Promise.resolve();
+      },
+      options(root),
+    ),
+  ).rejects.toMatchObject({
+    code: "codex_update_failed",
+    details: { updateOutcome: "unconfirmed" },
+  });
   expect(ran).toBe(false);
 });
 
@@ -157,23 +166,26 @@ test("recovery cleanup failure skips the updater safely", async () => {
   staleDeadLease(root);
   failures.recoveryRmdir = true;
   let ran = false;
-  await coordinatedAutoupdate(
-    "codex",
-    () => {
-      ran = true;
-      return Promise.resolve();
-    },
-    options(root),
-  );
+  await expect(
+    coordinatedAutoupdate(
+      "codex",
+      () => {
+        ran = true;
+        return Promise.resolve();
+      },
+      options(root),
+    ),
+  ).rejects.toMatchObject({
+    code: "codex_update_failed",
+    details: { updateOutcome: "unconfirmed" },
+  });
   expect(ran).toBe(false);
 });
 
 const options = (root: string) => ({ root, pollMs: 1, staleMs: 1 });
-
 function sandbox(label: string): string {
   return tempDir(`elwood-update-lock-${label}-`);
 }
-
 function staleDeadLease(root: string): void {
   const path = updateLockPath("codex", root);
   mkdirSync(path);

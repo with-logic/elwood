@@ -56,8 +56,11 @@ test.each([
         writeFileSync(ownerPath, `${process.pid}:c`);
         return Promise.resolve("claimed");
       },
+    }).catch((error: unknown) => error);
+    expect(acquired).toMatchObject({
+      code: "codex_update_failed",
+      details: { updateOutcome: "unconfirmed" },
     });
-    expect(acquired).toBe(false);
     expect(claims).toBe(1);
   } finally {
     race.afterRead = () => {};

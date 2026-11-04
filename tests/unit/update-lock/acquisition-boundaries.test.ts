@@ -18,6 +18,7 @@ import {
   setUpdateCoordinatorForTests,
 } from "../../../src/runtime/update/once.ts";
 import { tempDir } from "../../helpers/tmp.ts";
+import { writeUpdateCompletion } from "../../helpers/update-completion.ts";
 
 const race = vi.hoisted(() => ({
   marker: "",
@@ -57,7 +58,8 @@ test.each([
   const generation = "00000000-0000-4000-8000-000000000000";
   mkdirSync(`${lease}.recovery`);
   writeFileSync(join(`${lease}.recovery`, "owner"), `99999999:${generation}`);
-  writeFileSync(join(root, "codex.completed"), completed ? generation : "before");
+  if (completed) writeUpdateCompletion(join(root, "codex.completed"), generation);
+  else writeFileSync(join(root, "codex.completed"), "before");
   let updates = 0;
   await coordinatedAutoupdate("codex", () => Promise.resolve(void updates++), {
     root,

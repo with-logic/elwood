@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { tempDir } from "../../helpers/tmp.ts";
+import { writeUpdateCompletion } from "../../helpers/update-completion.ts";
 
 const window = vi.hoisted(() => ({
   marker: "",
@@ -56,7 +57,7 @@ test.each([
   if (scenario === "owner-completed")
     window.afterSnapshot = () => {
       // Publish the observed owner's last completion after its contender sampled the marker.
-      writeFileSync(window.marker, generation);
+      writeUpdateCompletion(window.marker, generation);
       return Promise.resolve();
     };
   if (scenario === "peer-after-recovery")

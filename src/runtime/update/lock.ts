@@ -113,6 +113,7 @@ export async function coordinatedAutoupdate(
       noAttempt?.started === false
         ? writeFile(refusalReceiptPath, owner.token, { mode: 0o600 })
         : publishCompletionGeneration(leasePath, completionMarkerPath, owner);
+    // Missing refusal publication stays unconfirmed for waiters, never authority to retry.
     await Promise.allSettled([receipt]);
     await releaseLease(leasePath, owner);
   } else {

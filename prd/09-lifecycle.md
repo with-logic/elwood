@@ -95,7 +95,11 @@ successor eligible to invoke the updater MUST invalidate it before invocation;
 if invalidation fails, no updater runs and the result is explicitly no-attempt.
 A retry requires a receipt matching the latest relevant observed owner, never an
 earlier observed generation. Missing completion alone does not establish a refusal,
-even when an intervening updater's entire lease lifetime falls between polls. A confirmed no-attempt result preserves version and capability caches unless
+even when an intervening updater's entire lease lifetime falls between polls.
+If a released peer has no conclusive refusal receipt or affirmative completion,
+its outcome is unconfirmed: the contender preserves exclusion rather than retrying
+and reports the fixed `update_unconfirmed` warning after compatibility succeeds.
+A confirmed no-attempt result preserves version and capability caches unless
 coordination observed a peer updater, which may have changed the shared binary.
 The normal compatibility check still reports
 the verification failure when it persists. Neither a missing start marker nor an
@@ -116,7 +120,10 @@ compatibility checks succeed: the existing `agent_update_failed` warning uses
 started, with the installed version. It has empty `raw` and no exit status or
 verification diagnostics. Only recognized fixed probe-refusal context may be added
 to its message; arbitrary verification output, paths and errors are excluded.
-Known contention or pending cleanup retains `update_active` instead. This live
+Known contention or pending cleanup retains `update_active` instead. An unconfirmed
+peer outcome uses `errorCode: "update_unconfirmed"`, a fixed bounded message and
+the installed version, with empty `raw` and no exit status or peer diagnostics.
+It is not a confirmed no-attempt and does not preserve caches on that basis. This live
 warning does not change retryable no-attempt behavior. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
@@ -165,11 +172,25 @@ rest covers their abort cleanup. An owner that has not finished by then causes t
 contender to skip its update and warn, without deleting the owner's lease. This warning uses `errorCode: "update_active"`
 and a canonical message explaining that the update was skipped because another
 updater is still active; no local update command ran, so it carries no exit status
-or stderr. Completion publication atomically replaces the marker's token file. A contender
-pins its baseline file before observing the owner, then compares the pinned token
-with the current pathname after acquisition; recovered owner generations remain
-completion evidence. Concurrent older Elwood writers that modify a marker inode
-in place retain the earlier snapshot race; its token payload remains compatible.
+or stderr. Completion publication preserves the legacy raw generation token in
+`<adapter>.completed`. Before atomically replacing that token file, the owner
+atomically publishes `<adapter>.completed.attempted` containing
+`elwood-update-attempt-v1:` followed by the same generation. New readers confirm
+an attempt only when both files match that generation. A contender pins both
+baseline files before observing the owner and compares them with the current
+pathnames after acquisition. A matching pair for an observed generation or changed
+payload confirms a peer attempt; a missing or mismatched companion does not.
+Legacy plain tokens use the same lease namespace but may represent a failed
+verification rather than an updater attempt. A relevant legacy token therefore
+preserves exclusion and emits `update_unconfirmed`; it never authorizes a retry.
+An unchanged historical legacy token without an observed owner does not block a
+new update. The companion is written first and the raw token last; failure of either
+publication never proves no attempt. Refusal leaves earlier completion evidence
+untouched, and unique owner generations prevent it from matching a later legacy
+token. Old readers still receive the raw UUID they expect. Older writers that
+mutate a pinned inode in place retain that snapshot race; new publication never
+overwrites either pinned inode. Marker read failures
+remain conservative and report an unconfirmed outcome.
 The lease records the owner's process id and a unique
 generation. Cleanup removes only the generation it owns, a live owner is never
 evicted solely because the stale bound elapsed, and recovery of a dead owner's

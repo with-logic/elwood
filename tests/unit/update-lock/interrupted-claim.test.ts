@@ -118,7 +118,7 @@ test.each([
     { root, pollMs: 5, staleMs: 50 },
   );
   expect(ran).toBe(true);
-  expect(readdirSync(root)).toEqual(["codex.completed"]);
+  expect(readdirSync(root)).toEqual(["codex.completed", "codex.completed.attempted"]);
 });
 
 test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging directories", async () => {

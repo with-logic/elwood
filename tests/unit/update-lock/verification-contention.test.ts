@@ -97,7 +97,13 @@ test.each([
     expect(await owner).toEqual(
       scenario === "completion-unwritable" ? undefined : { started: false },
     );
-    await contender;
+    const outcome = await contender.catch((error: unknown) => error);
+    if (scenario === "refused") expect(outcome).toBeUndefined();
+    else
+      expect(outcome).toMatchObject({
+        code: "codex_update_failed",
+        details: { updateOutcome: "unconfirmed" },
+      });
     expect(updates).toBe(scenario === "refused" ? 1 : 0);
     if (updates === 1) expect(readFileSync(join(root, "codex.completed"), "utf8")).not.toBe("");
   } finally {

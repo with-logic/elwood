@@ -20,6 +20,7 @@ import { ElwoodError } from "../errors.ts";
 import { probeRefusalContext } from "../probe-refusal.ts";
 import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
 import { isUpdateSkipReason, updateSkipMessages } from "./update-skips.ts";
+import { isUnconfirmedPeerUpdate } from "./update-unconfirmed.ts";
 
 /**
  * `Omit` that DISTRIBUTES over a union (`W extends unknown` triggers distribution), unlike the
@@ -69,6 +70,14 @@ export function buildUpdateWarning(
       ...base,
       message: `\`${agent} update\` skipped: ${updateSkipMessages[reason]}; continuing with the installed CLI ${installedVersion}.`,
       errorCode: "update_active",
+      raw: "",
+    };
+  }
+  if (isUnconfirmedPeerUpdate(error)) {
+    return {
+      ...base,
+      message: `\`${agent} update\` skipped: another updater's outcome could not be confirmed; continuing with the installed CLI ${installedVersion}.`,
+      errorCode: "update_unconfirmed",
       raw: "",
     };
   }

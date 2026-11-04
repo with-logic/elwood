@@ -64,7 +64,17 @@ test.each([
     await coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push("B")), { root });
   };
   try {
-    await coordinatedAutoupdate("codex", () => Promise.resolve(void attempts.push("C")), { root });
+    const outcome = await coordinatedAutoupdate(
+      "codex",
+      () => Promise.resolve(void attempts.push("C")),
+      { root },
+    ).catch((error: unknown) => error);
+    if (published) expect(outcome).toBeUndefined();
+    else
+      expect(outcome).toMatchObject({
+        code: "codex_update_failed",
+        details: { updateOutcome: "unconfirmed" },
+      });
     expect(attempts).toEqual(["B"]);
     const visible = readFileSync(completion, "utf8");
     expect(visible === "historical").toBe(!published);

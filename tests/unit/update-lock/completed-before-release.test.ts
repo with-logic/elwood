@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate } from "../../../src/runtime/update/lock.ts";
 import { tempDir } from "../../helpers/tmp.ts";
+import { writeUpdateCompletion } from "../../helpers/update-completion.ts";
 
 const window = vi.hoisted(() => ({
   ownerReleasing: Promise.withResolvers<void>(),
@@ -76,7 +77,7 @@ test("C-PERF-04 recovering a completed owner's stale lease does not repeat its u
   const generation = "00000000-0000-4000-8000-000000000000";
   mkdirSync(lease);
   writeFileSync(join(lease, "owner"), `99999999:${generation}`);
-  writeFileSync(join(root, "codex.completed"), generation);
+  writeUpdateCompletion(join(root, "codex.completed"), generation);
   const update = vi.fn(async () => undefined);
   await coordinatedAutoupdate("codex", update, { root, staleMs: 0, pollMs: 1 });
   expect(update).not.toHaveBeenCalled();

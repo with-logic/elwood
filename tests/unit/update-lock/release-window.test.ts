@@ -103,7 +103,7 @@ test("C-PERF-04 a release that cannot retire the lease still frees later updater
   await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
   // The owner is this live process, so a lease left standing here would make every later
   // updater on the host wait on a pid that is alive but finished — indefinitely.
-  expect(readdirSync(root)).toEqual(["codex.completed"]);
+  expect(readdirSync(root)).toEqual(["codex.completed", "codex.completed.attempted"]);
   let laterUpdated = false;
   await coordinatedAutoupdate(
     "codex",
@@ -124,7 +124,7 @@ test("a retired lease that cannot be deleted is swept by a later holder", async 
   expect(readdirSync(root).filter((entry) => entry.includes(".released."))).toHaveLength(1);
   release.deleteDenied = false;
   await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
-  expect(readdirSync(root)).toEqual(["codex.completed"]);
+  expect(readdirSync(root)).toEqual(["codex.completed", "codex.completed.attempted"]);
 });
 
 test("C-PERF-04 both kinds of leftover share one removal budget", async () => {

@@ -109,8 +109,13 @@ test("a generation changed during stale recovery fails safe", async () => {
   staleDeadLease(root);
   races.mutateMovedOwner = true;
   let ran = false;
-  await run(root, () => {
-    ran = true;
+  await expect(
+    run(root, () => {
+      ran = true;
+    }),
+  ).rejects.toMatchObject({
+    code: "codex_update_failed",
+    details: { updateOutcome: "unconfirmed" },
   });
   expect(ran).toBe(false);
 });
