@@ -1,7 +1,6 @@
 /** Same-process launch ownership for shared session state (PRD §8.1, C-API-20). */
 import { elwoodError } from "../core/errors.ts";
 import { canonicalStatePath } from "./canonical-path.ts";
-import { writePrivateFileAtomic } from "./files.ts";
 import { LaunchPublication } from "./launch-publication.ts";
 
 type Phase = "active" | "pending" | "failed";
@@ -25,14 +24,15 @@ class Generation {
   }
 }
 
-/** Writes `text` to `path`; `readText` is the file's text when the caller has just read it. */
-export type StateFileWriter = (path: string, text: string, readText?: string) => void;
+/** Writes `text` to `path`; pending writes use a fresh, held physical preimage. */
+export type StateFileWriter = (path: string, text: string) => void;
 
 export type LaunchOwnership = {
   /** Exclusive authority for startup publication and destructive cleanup. */
   readonly current: () => boolean;
   /** Ordinary loop and record writes may continue on a predecessor while resume is pending. */
   readonly canPersist: () => boolean;
+  readonly readFile: (path: string) => string | undefined;
   readonly persistFile: StateFileWriter;
   readonly publishFile: StateFileWriter;
   readonly release: () => void;
@@ -72,18 +72,31 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   return {
     current,
     canPersist,
-    persistFile: (file, text, readText) => {
+    readFile: (file) => {
       const later = successors();
       if (later === undefined) throw elwoodError("session_not_running", "Launch was superseded.");
-      if (token.phase === "pending") publication.write(file, text, readText);
-      else writePrivateFileAtomic(file, text);
-      // A successor's rollback keeps this write, even one whose bytes match its own (§8.1).
-      for (const successor of later) successor.publication.forget(file);
+      return publication.read(
+        file,
+        later.map((generation) => generation.publication),
+      );
     },
-    publishFile: (file, text, readText) => {
+    persistFile: (file, text) => {
+      const later = successors();
+      if (later === undefined) throw elwoodError("session_not_running", "Launch was superseded.");
+      const directory =
+        token.phase === "pending"
+          ? publication.write(file, text)
+          : publication.persist(
+              file,
+              text,
+              later.map((generation) => generation.publication),
+            );
+      for (const successor of later) successor.publication.forgetMatching(file, directory);
+    },
+    publishFile: (file, text) => {
       if (!current()) throw elwoodError("session_not_running", "Launch was superseded.");
-      if (token.phase === "pending") publication.write(file, text, readText);
-      else writePrivateFileAtomic(file, text);
+      if (token.phase === "pending") publication.write(file, text);
+      else publication.persist(file, text, []);
     },
     onCommit: (activate) => {
       token.activation.push(activate);
@@ -101,6 +114,7 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
     release: () => {
       if (current()) {
         generations.delete(path);
+        publication.clearTransientPublicationState();
         collected.unregister(token);
         token.settled.resolve();
       }
@@ -109,11 +123,12 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
       if (!canPersist()) throw elwoodError("session_not_running", "Launch was superseded.");
       // Activation rereads durable loops synchronously before ownership changes.
       for (const activate of token.activation) activate();
-      publication.clear();
+      publication.clearTransientPublicationState();
       token.phase = "active";
       let previous = token.previous;
       token.previous = undefined;
       while (previous) {
+        previous.publication.clearTransientPublicationState();
         for (const pause of previous.revoked) pause();
         previous = previous.previous;
       }

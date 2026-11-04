@@ -8,6 +8,7 @@ import type { ElwoodLoopEvent } from "../../src/core/loops/types.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import { writePrivateFileAtomic } from "../../src/state/files.ts";
 import type { PersistedLoopDefinition } from "../../src/state/loop-store.ts";
+import { currentFileOwner, readPrivateFile } from "../../src/state/private-read.ts";
 import { readLoopDefinitions } from "../helpers/loops.ts";
 import { stateDirWithSession } from "../helpers/session-state.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -85,6 +86,9 @@ describe("SessionLoops", () => {
     const oldLoop = old.create({ mode: "fixed", intervalMs: 60_000, message: "old" });
     old.pause();
     mayPersistLoops = false;
+    expect(() => old.create({ mode: "fixed", intervalMs: 60_000, message: "stale" })).toThrowError(
+      expect.objectContaining({ code: "session_not_running" }),
+    );
     vi.setSystemTime(start + 86_400_000);
     const successor = createLoops(queue, [], stateDir);
     successor.ready();
@@ -122,6 +126,8 @@ function createLoops(
     ownership: {
       canPersist: mayPersistLoops,
       persistFile: writePrivateFileAtomic,
+      readFile: (path) =>
+        readPrivateFile(path, currentFileOwner(), () => new Error("invalid state")),
       onCommit: (activate) => activate(),
       onRevoked: () => undefined,
     },

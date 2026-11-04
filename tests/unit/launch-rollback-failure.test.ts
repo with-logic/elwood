@@ -16,7 +16,13 @@ vi.mock("node:fs", async (importOriginal) => {
       actual.fsyncSync(fd);
     },
     renameSync: (from: string, to: string) => {
-      if (to === failure.path) throw new Error("restore denied");
+      if (failure.path) {
+        // The inode also matches macOS rollback's pinned namespace alias.
+        const target = actual.statSync(to, { bigint: true });
+        const denied = actual.statSync(failure.path, { bigint: true });
+        if (target.dev === denied.dev && target.ino === denied.ino)
+          throw new Error("restore denied");
+      }
       actual.renameSync(from, to);
     },
   };

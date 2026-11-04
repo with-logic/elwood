@@ -7,7 +7,6 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
-import { LOOP_EXPIRATION_MS } from "../../src/core/loops/constants.ts";
 import { loadRuntimeLoopDefinitions } from "../../src/runtime/loop-restore.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import {
@@ -15,14 +14,18 @@ import {
   reserveLaunchOwnership,
 } from "../../src/state/launch-ownership.ts";
 import { writeLoopDefinitions } from "../../src/state/loop-store.ts";
-import { readLoopDefinitions } from "../helpers/loops.ts";
+import { fixedLoop, readLoopDefinitions } from "../helpers/loops.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
-const failure = vi.hoisted(() => ({ directoryFsync: false }));
+const failure = vi.hoisted(() => ({ directoryFsync: false, measureReads: false, reads: 0 }));
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
     ...actual,
+    readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
+      if (failure.measureReads) failure.reads += 1;
+      return actual.readFileSync(...args);
+    },
     fsyncSync: (fd: number) => {
       if (failure.directoryFsync && actual.fstatSync(fd).isDirectory())
         throw new Error("directory fsync failed");
@@ -31,7 +34,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 afterEach(() => {
-  failure.directoryFsync = false;
+  Object.assign(failure, { directoryFsync: false, measureReads: false, reads: 0 });
   vi.useRealTimers();
 });
 
@@ -45,19 +48,7 @@ function sessionWithLoops() {
   const stateDir = tempDir();
   const sessionDir = join(stateDir, "sessions", id);
   mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
-  const timing = { intervalMs: 60_000, jitterMs: 0 } as const;
-  const expiring = (loopId: string, expiresAt: number) => {
-    const createdAt = expiresAt - LOOP_EXPIRATION_MS;
-    return {
-      id: loopId,
-      message: "check",
-      mode: "fixed",
-      ...timing,
-      createdAt,
-      expiresAt,
-    } as const;
-  };
-  writeLoopDefinitions(stateDir, id, [expiring("soon", NOW + 1000), expiring("live", NOW + 9e6)]);
+  writeLoopDefinitions(stateDir, id, [fixedLoop("soon", NOW + 1000), fixedLoop("live", NOW + 9e6)]);
   return { stateDir, sessionDir, sidecar: join(sessionDir, "loops.json") };
 }
 
@@ -106,7 +97,13 @@ test("C-API-20 a predecessor's prune stands when a resume that made the same pru
   vi.setSystemTime(NOW + 1000);
   const resume = reserveLaunchOwnership(sessionDir);
   try {
-    loadRuntimeLoopDefinitions(stateDir, id, resume.publishFile);
+    failure.measureReads = true;
+    loadRuntimeLoopDefinitions(stateDir, id, {
+      readFile: resume.readFile,
+      writeFile: resume.publishFile,
+    });
+    failure.measureReads = false;
+    expect(failure.reads).toBe(1);
     const pruned = readFileSync(sidecar, "utf8");
     // The stopped predecessor prunes the same loop, writing the bytes the resume wrote.
     expect(priorLoops.list().map((loop) => loop.id)).toEqual(["live"]);

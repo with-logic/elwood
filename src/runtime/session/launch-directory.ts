@@ -30,7 +30,7 @@ export function resolveLaunchDirectory(agent: ElwoodAgentKind, cwd: string): str
 }
 
 /** Which directory `cwd` named when it was checked (device and inode); none where unchecked. */
-export type LaunchDirectoryIdentity = DirectoryIdentity | undefined;
+type LaunchDirectoryIdentity = DirectoryIdentity | undefined;
 
 /** The launch path and directory identity captured before preflight. */
 export type CheckedLaunchDirectory = {
@@ -51,7 +51,7 @@ export async function checkLaunchDirectory(
  * Rejects unless `cwd` is an existing directory and, given the directory an earlier check
  * found, still that one. Start and resume call it before any probe.
  */
-export async function assertLaunchDirectory(
+async function assertLaunchDirectory(
   agent: ElwoodAgentKind,
   cwd: string,
   checked?: LaunchDirectoryIdentity,
@@ -76,13 +76,14 @@ export async function assertLaunchDirectory(
 }
 
 /**
- * Checks the captured directory after preflight, then runs the launch. If the launch
- * fails, `cwd` is checked again against the directory found first, so one deleted and made
- * again while the launch failed is not taken for the same directory. When that check fails,
+ * Checks the captured directory before invoking the callback, then rechecks only if it fails.
+ * After successful preflight, callers must invoke this again before any state write or spawn.
+ * On callback failure, `cwd` is checked against the directory found first, so one deleted and made
+ * again while the operation failed is not taken for the same directory. When that check fails,
  * because `cwd` has gone (state setup never makes it, so it fails with `ENOENT` instead of
  * recreating the project), is no longer a directory, was replaced, or can't be checked, the
- * check's failure is the error, keeping the failed launch's cause and cleanup details (§9.1,
- * §10). While `cwd` is still that directory, the launch's own failure is rethrown.
+ * check's failure is the error, keeping the failed operation's cause and cleanup details (§9.1,
+ * §10). While `cwd` is still that directory, the operation's own failure is rethrown.
  */
 export async function recheckLaunchDirectoryOnFailure<T>(
   directory: CheckedLaunchDirectory,

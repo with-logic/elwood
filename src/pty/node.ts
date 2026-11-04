@@ -6,7 +6,7 @@
 import { chmodSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn } from "node-pty";
-import { checkedCommand } from "../core/checked-command.ts";
+import { wrapCommandWithDirectoryGuard } from "../core/checked-command.ts";
 import { moduleRequire } from "../core/module-require.ts";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyFactory, PtyProcess, PtySpawnOptions } from "./types.ts";
@@ -15,7 +15,7 @@ const require = moduleRequire(import.meta.url);
 
 export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess => {
   ensureNodePtySpawnHelperExecutable();
-  const launch = checkedCommand(
+  const launch = wrapCommandWithDirectoryGuard(
     options.command,
     options.args,
     options.cwd,

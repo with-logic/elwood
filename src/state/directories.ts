@@ -11,6 +11,7 @@ import {
 import { dirname, resolve } from "node:path";
 import { elwoodError, errnoCode } from "../core/errors.ts";
 import type { StateDirectoryCreationObserver } from "./preparation/created-directories.ts";
+import { closePublicationDirectory } from "./publication/close.ts";
 
 /** Reject planted ancestors too, while allowing root-owned OS aliases such as /tmp. */
 export function assertStatePath(path: string): void {
@@ -90,6 +91,16 @@ export function prepareStateDirectory(
   policy: StateDirectoryPolicy,
   onDirectoryCreated?: StateDirectoryCreationObserver,
 ): void {
+  closeSync(prepareAndOpenStateDirectory(path, mode, policy, onDirectoryCreated));
+}
+
+/** Return the same descriptor that passed type, owner and mode validation; caller owns it. */
+export function prepareAndOpenStateDirectory(
+  path: string,
+  mode: StateDirectoryMode,
+  policy: StateDirectoryPolicy,
+  onDirectoryCreated?: StateDirectoryCreationObserver,
+): number {
   makeStateDirectory(path, mode, policy, onDirectoryCreated);
   const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
@@ -101,8 +112,10 @@ export function prepareStateDirectory(
       );
     }
     if ((info.mode & 0o7777) !== mode) fchmodSync(fd, mode);
-  } finally {
-    closeSync(fd);
+    return fd;
+  } catch (error) {
+    closePublicationDirectory(fd);
+    throw error;
   }
 }
 

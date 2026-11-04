@@ -1,7 +1,8 @@
 /** Shared-state reservations preserve failed launches without revoking successors (C-API-20). */
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import { writePrivateFileAtomic } from "../../src/state/files.ts";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -17,6 +18,9 @@ test("C-API-20 pending resume reserves deletion but preserves prior ordinary loo
   expect(pending.canPersist()).toBe(false);
   first.release();
   expect(first.canPersist()).toBe(false);
+  expect(() => first.readFile("/unused")).toThrowError(
+    expect.objectContaining({ code: "session_not_running" }),
+  );
 });
 
 test("C-API-20 a committed successor permanently revokes old authority", () => {
@@ -63,6 +67,7 @@ test("C-API-20 owned record writes track pending publication and preserve interv
   prior.commit();
   prior.publishFile(file, "original");
   const pending = reserveLaunchOwnership(path);
+  expect(prior.readFile(file)).toBe("original");
   expect(() => prior.publishFile(file, "stale")).toThrowError(
     expect.objectContaining({ code: "session_not_running" }),
   );
@@ -113,5 +118,54 @@ test("C-API-20 superseded pending activation cannot reclaim authority", () => {
   } finally {
     earlier.rollback();
     successor.release();
+  }
+});
+
+test.each([
+  false,
+  true,
+])("C-API-61 a replaced predecessor without a matching hold rejects safely (remembered=%s)", (remembered) => {
+  const root = tempDir();
+  const directory = join(root, "session");
+  const moved = join(root, "moved");
+  const replacement = join(root, "replacement");
+  mkdirSync(directory);
+  mkdirSync(replacement);
+  const file = join(directory, "session.json");
+  writePrivateFileAtomic(file, "original");
+  writePrivateFileAtomic(join(replacement, "session.json"), "other");
+  const prior = reserveLaunchOwnership(directory);
+  if (remembered) prior.publishFile(file, "original");
+  prior.commit();
+  if (remembered) {
+    renameSync(directory, moved);
+    renameSync(replacement, directory);
+  }
+  const pending = reserveLaunchOwnership(directory);
+  pending.publishFile(file, "attempted");
+  if (!remembered) {
+    renameSync(directory, moved);
+    renameSync(replacement, directory);
+  }
+  chmodSync(directory, 0o755);
+  try {
+    expect(() => prior.persistFile(file, "wrong tree")).toThrowError(
+      expect.objectContaining({ code: "state_corrupt" }),
+    );
+    expect(statSync(directory).mode & 0o777).toBe(0o755);
+    if (!remembered) {
+      renameSync(directory, replacement);
+      renameSync(moved, directory);
+    }
+    pending.rollback();
+    expect(readFileSync(join(remembered ? moved : directory, "session.json"), "utf8")).toBe(
+      "original",
+    );
+    expect(readFileSync(join(remembered ? directory : replacement, "session.json"), "utf8")).toBe(
+      "other",
+    );
+  } finally {
+    pending.release();
+    prior.release();
   }
 });

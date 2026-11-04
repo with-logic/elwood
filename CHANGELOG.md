@@ -12,6 +12,18 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Carry the original workspace identity into PTY children and refuse replacements observed before or after login profiles, while preserving deliberate profile directory changes.
+- Keep pending launch records, loop reads and predecessor updates in the verified original directory across workspace replacements.
+
+- Directory-hold disposal contains native close failures and reports at most one bounded Node warning per process.
+
+- Reject launch publication through custom-state ancestry that other users could redirect, before reading or changing the session file.
+
+- Reject a working directory replaced during preflight before writing launch state or spawning the PTY, retaining the identity first checked on start and resume.
+- Preserve the workspace-identity refusal reason when a failed launch's original directory has already been restored.
+
+## [0.2.2] - 2026-11-03
+
 - Preserve custom state directories during rollback when another user could redirect their parent lookup.
 
 - State rollback records successful directory creation and checks observed ownership before removing empty scaffolding, preserving directories another actor created or replaced.
@@ -33,7 +45,6 @@ back each entry are listed in `prd/14-conformance.md`.
 - Preserve native cause, `syscall`, and `path` diagnostics for probe failures surfaced as startup errors, including missing login shells; missing-command diagnostics withhold shell output.
 - Preserve a resolved CLI's diagnostic when it exits with status 127 instead of reporting it missing from PATH. A command lookup must fail before Elwood uses the fixed not-found diagnostic.
 - Clean up eligible empty state scaffolding after setup fails while retaining shared default directories and complete ignores that another setup may already use; report cleanup failures with the original error.
-- Carry the original workspace identity into PTY children and refuse replacements observed before or after login profiles, while preserving deliberate profile directory changes.
 
 - Install the default `.elwood/.gitignore` atomically without overwriting a competing writer or leaving partial contents after a failed write.
 

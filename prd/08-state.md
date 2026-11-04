@@ -67,6 +67,24 @@ ancestors that redirect those paths. System-owned path aliases (such as macOS
 `/tmp`) remain supported. Directory permission changes and generated-file writes
 MUST use no-follow descriptors and verify ownership/type before changing them.
 Unsafe state paths fail as `state_corrupt` before touching the linked target.
+Launch publication, including caller-provided custom state, also requires its existing
+parent lookup ancestry to pass the same owner, mode-bit, private-group and sticky-bit
+checks as the default ignore parent. It rejects unsafe ancestry as `state_corrupt`
+before reading or changing the published file. Missing paths retain their existing
+creation or `ENOENT` behavior. These checks do not inspect ACLs or isolate same-user
+or root changes.
+
+Directory preparation may transfer its verified no-follow descriptor to an internal
+hold without closing and reopening it. On macOS, that hold resolves through the
+verified device/inode VolFS namespace even after parent renames; unavailable or
+unverifiable lookup fails as `state_corrupt`. Disposing a read-only hold is
+idempotent: native descriptor-close failures are contained by disposal and cannot
+mask a primary error, and ambiguous descriptor closes are never retried. A close
+failure emits at most one bounded Node `ElwoodStateDirectoryCloseWarning` per
+process with a fixed content-free message and only `EBADF`, `EINTR`, `EIO`, or
+`UnknownError` as its code. Warning delivery and exceptions thrown by host warning
+listeners follow Node's normal asynchronous error semantics; the disposal guarantee
+does not contain those later host callback failures.
 These checks protect against planted checkout paths; they do not isolate a
 hostile process already running as the same OS user.
 
@@ -137,6 +155,9 @@ generation is preserved. If a predecessor updates a file
 between two pending-launch writes, that external version becomes the rollback
 baseline for the later write. Pending-launch hook record writes participate in the
 same transaction. Superseded or failed generations cannot publish metadata.
+Startup and commit-time loop reads and predecessor writes use the same verified
+parent identity; only a write to that identity can supersede a pending rollback.
+
 A rollback failure is reported as
 `state_corrupt`, not as a successful restoration. Rollback attempts every independent
 file restoration, settles the failed reservation and restores the prior viable owner

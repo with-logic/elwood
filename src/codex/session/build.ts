@@ -52,7 +52,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   secureMkdir(runtime.sessionDir);
   const publish = runtime.stateOwnership.publishFile;
   writeSessionRecord(record, runtime.sessionDir, publish);
-  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, publish) : [];
+  const files = { readFile: runtime.stateOwnership.readFile, writeFile: publish };
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, files) : [];
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -88,7 +89,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       throw error;
     },
   );
-  const startupOutput = createStartupBuffer({ source: pty });
+  const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);

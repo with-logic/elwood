@@ -1,5 +1,13 @@
 /** Real PTY start/resume guards reject observed workspace replacements (PRD §4.2, C-API-61). */
-import { existsSync, mkdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
@@ -17,7 +25,12 @@ import {
   setStartupWaitMsForTests,
 } from "../../src/runtime/startup/index.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
-import { resumableStateDir } from "../helpers/session-state.ts";
+import {
+  createSessionRecord,
+  prepareStateDir,
+  updateSessionResumeId,
+  writeSessionRecord,
+} from "../../src/state/store.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 // Only the health wait is gated; native PTY/socket timers remain real under host load.
@@ -70,20 +83,38 @@ for (const kind of ["start", "resume"] as const) {
   for (const phase of ["before", "profile"] as const) {
     test.each(
       agents,
-    )(`C-API-61 real PTY ${kind} of %s refuses a ${phase} replacement`, async (agent, start, resume) => {
+    )(`C-API-61 real PTY ${kind} of %s refuses a ${phase} replacement`, async (agent, start) => {
       const cwd = realpathSync(tempDir("elwood-pty-guard-cwd-"));
       const original = join(tempDir("elwood-pty-guard-original-"), "kept");
       const replacement = tempDir("elwood-pty-guard-replacement-");
       const marker = join(home, "cli-ran");
       const profileMarker = join(home, "profile-ran");
       mkdirSync(join(replacement, "bin"));
-      writeFileSync(join(replacement, "bin", agent), `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, {
-        mode: 0o700,
-      });
-      const stateDir =
-        kind === "resume" ? resumableStateDir(agent, cwd, "guard-resume") : undefined;
+      const agentScript = `#!/bin/sh\ntouch '${marker}'\nexit 1\n`;
+      writeFileSync(join(replacement, "bin", agent), agentScript, { mode: 0o700 });
+      const stateDir = join(cwd, ".elwood");
+      const id = "guard-resume";
+      const recordPath = (root: string, sessionId: string) =>
+        join(root, ".elwood", "sessions", sessionId, "session.json");
+      if (kind === "resume") {
+        prepareStateDir(stateDir, { cwd, elwoodSessionId: id });
+        writeSessionRecord(
+          updateSessionResumeId(
+            createSessionRecord({ cwd, id, adapter: agent }),
+            agent,
+            `${agent}-old`,
+          ),
+          join(stateDir, "sessions", id),
+        );
+      }
+      const before = kind === "resume" ? readFileSync(recordPath(cwd, id), "utf8") : undefined;
+      let launchedId = "";
       setPtyFactoryForTests((options) => {
         expect(options.directoryIdentity).toBeDefined();
+        launchedId = options.env["ELWOOD_SESSION_ID"] ?? "";
+        expect(launchedId).not.toBe("");
+        const published = readFileSync(recordPath(cwd, launchedId), "utf8");
+        if (kind === "resume") expect(published).not.toBe(before);
         const swap = `mv '${cwd}' '${original}'; mv '${replacement}' '${cwd}'`;
         writeFileSync(
           join(home, ".profile"),
@@ -97,9 +128,11 @@ for (const kind of ["start", "resume"] as const) {
       });
       try {
         const launch =
-          stateDir === undefined
+          kind === "start"
             ? start({ cwd })
-            : resume({ stateDir, elwoodSessionId: "guard-resume" });
+            : agent === "claude"
+              ? resumeClaude({ stateDir, elwoodSessionId: id, permissionMode: "plan" })
+              : resumeCodex({ stateDir, elwoodSessionId: id, sandbox: "read-only" });
         await expect(launch).rejects.toMatchObject({
           code: `${agent}_start_failed`,
           details: { cwd },
@@ -107,6 +140,10 @@ for (const kind of ["start", "resume"] as const) {
         expect(existsSync(original)).toBe(true);
         expect(existsSync(profileMarker)).toBe(phase === "profile");
         expect(existsSync(marker), "the replacement CLI never runs").toBe(false);
+        if (kind === "resume") expect(readFileSync(recordPath(original, id), "utf8")).toBe(before);
+        else expect(existsSync(recordPath(original, launchedId))).toBe(false);
+        expect(readdirSync(cwd)).toEqual(["bin"]);
+        expect(readFileSync(join(cwd, "bin", agent), "utf8")).toBe(agentScript);
       } finally {
         if (existsSync(original)) {
           renameSync(cwd, replacement);
@@ -133,45 +170,3 @@ test.each(
     await session?.teardown();
   }
 });
-
-for (const kind of ["start", "resume"] as const) {
-  test.each(
-    agents,
-  )(`C-API-61 ${kind} of %s retains its identity across preflight`, async (agent, start, resume) => {
-    const cwd = realpathSync(tempDir("elwood-pty-guard-first-"));
-    const original = join(tempDir("elwood-pty-guard-held-"), "kept");
-    const replacement = tempDir("elwood-pty-guard-new-");
-    const stateDir = kind === "resume" ? resumableStateDir(agent, cwd, "guard-resume") : undefined;
-    let swapped = false;
-    let ptys = 0;
-    setCommandRunnerForTests(() => {
-      if (!swapped) {
-        swapped = true;
-        renameSync(cwd, original);
-        renameSync(replacement, cwd);
-      }
-      return { status: 0, stdout: "2.1.144 (Claude Code) codex-cli 0.150.0", stderr: "" };
-    });
-    setPtyFactoryForTests(() => {
-      ptys += 1;
-      throw new Error("must not spawn");
-    });
-    try {
-      const launch =
-        stateDir === undefined
-          ? start({ cwd })
-          : resume({ stateDir, elwoodSessionId: "guard-resume" });
-      await expect(launch).rejects.toMatchObject({
-        code: `${agent}_start_failed`,
-        details: { cwd },
-      });
-      expect(ptys).toBe(0);
-      expect(existsSync(join(cwd, ".elwood"))).toBe(false);
-    } finally {
-      if (existsSync(original)) {
-        renameSync(cwd, replacement);
-        renameSync(original, cwd);
-      }
-    }
-  });
-}

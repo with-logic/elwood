@@ -97,11 +97,7 @@ export function spawnClaudePty(
 ): PtyProcess {
   const launch = shellLaunch(
     userShell(),
-    buildClaudeShellCommand(
-      settingsPath,
-      { ...options, cwd: options.launchDirectory.cwd },
-      record.claude.resumeId,
-    ),
+    buildClaudeShellCommand(settingsPath, options, record.claude.resumeId),
   );
   try {
     return currentPtyFactory()({

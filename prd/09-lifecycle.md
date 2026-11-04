@@ -34,6 +34,14 @@ remaining budget, its remainder and all subsequent chunks are discarded; later
 output cannot fill a gap in that prefix. The collector releases its retained
 output after the check succeeds or fails.
 
+A child-side workspace identity refusal writes a bounded stop marker carrying a
+private per-process token. During startup, status 96 together with that marker
+rejects with the adapter's existing `*_start_failed`, a fixed workspace-identity
+reason, and `details.cwd`, even if the original path has since been restored.
+The marker is recognized beyond the output cap and for up to one second after
+the exit is observed, using the existing late-PTY-output bound. Status 96 without
+the marker remains an ordinary agent startup exit.
+
 ### 9.2 Compatibility checks
 
 Elwood MUST check the installed Claude Code version during startup. The minimum

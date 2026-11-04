@@ -13,11 +13,18 @@
  * after a status-97 exit the check waits up to a second more for that marker before
  * it settles. Once `release()` is called, when the check settles, further chunks are
  * dropped and the retained bytes and the watcher are cleared, so no per-session
- * transcript lingers. Implements PRD §9.1 startup usability and §9.4 resource cleanup.
+ * transcript lingers. Identity-bound launches also watch their private directory-refusal
+ * marker past the cap. Implements PRD §9.1 startup usability and §9.4 resource cleanup.
  */
 
+import {
+  type DirectoryGuardObservation,
+  directoryGuardStopMarker,
+} from "../../core/directory-guard.ts";
 import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { homeGuardChecksLaunch, watchForStopMarker } from "../home-guard/index.ts";
+import type { CheckedLaunchDirectory } from "../session/launch-directory.ts";
+import { StreamMarkerWatcher } from "../stream-marker.ts";
 import { assertStartupUsable, type StartupAdapter } from "./index.ts";
 
 // Startup output is tiny (a banner, a prompt); this cap is comfortably larger
@@ -38,6 +45,8 @@ export type StartupBuffer = {
    * never scanned for it.
    */
   readonly sawStopMarker: (() => boolean) | undefined;
+  /** Evidence for an identity-bound child launch, watched independently of the output cap. */
+  readonly directoryGuard: DirectoryGuardObservation | undefined;
 };
 
 /**
@@ -51,6 +60,7 @@ export function createStartupBuffer(
     readonly capBytes?: number;
     readonly watchStopMarker?: boolean;
     readonly source?: Pick<PtyProcess, "onData">;
+    readonly directory?: CheckedLaunchDirectory;
   } = {},
 ): StartupBuffer {
   const cap = options.capBytes ?? STARTUP_BUFFER_CAP_BYTES;
@@ -59,8 +69,12 @@ export function createStartupBuffer(
   let open = true;
   const watched = options.watchStopMarker ?? homeGuardChecksLaunch();
   let stop = watched ? watchForStopMarker() : undefined;
+  const cwd = options.directory?.identity === undefined ? undefined : options.directory.cwd;
+  let directoryStop =
+    cwd === undefined ? undefined : new StreamMarkerWatcher(Buffer.from(directoryGuardStopMarker));
   const push = (data: string): void => {
     stop?.feed(Buffer.from(data));
+    directoryStop?.feed(Buffer.from(data));
     if (!open || length >= cap) return;
     const remaining = cap - length;
     // UTF-8 needs at least as many bytes as UTF-16 units. Only measure chunks
@@ -82,8 +96,11 @@ export function createStartupBuffer(
       buffer = Buffer.alloc(0);
       length = 0;
       stop = undefined;
+      directoryStop = undefined;
     },
     sawStopMarker: watched ? () => stop?.seen ?? false : undefined,
+    directoryGuard:
+      cwd === undefined ? undefined : { cwd, sawMarker: () => directoryStop?.seen ?? false },
   };
 }
 
@@ -103,6 +120,7 @@ export async function assertStartupThenRelease(
       exit,
       output: () => buffer.read(),
       sawStopMarker: buffer.sawStopMarker,
+      directoryGuard: buffer.directoryGuard,
     });
   } finally {
     buffer.release();
