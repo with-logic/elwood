@@ -81,6 +81,16 @@ describe("spawnInteractiveAgent", () => {
     });
   });
   test.each([
+    new Error("setup failed"),
+    { message: "setup failed" },
+  ])("C-ERR-08 thrown setup ENOENT stays a startup failure", async (failure) => {
+    const error = Object.assign(failure, { code: "ENOENT", origin: "probe_setup" });
+    setCommandRunnerForTests(() => Promise.reject(error));
+    await expect(
+      spawnInteractiveAgent({ agent: "codex", command: "codex", args: [], cwd: tmpdir() }),
+    ).rejects.toMatchObject({ code: "codex_start_failed" });
+  });
+  test.each([
     null,
     Object.assign(new Error("lookup failed"), { origin: "other" }),
   ])("C-CLI-25 unrelated lookup failures stay startup failures", async (failure) => {

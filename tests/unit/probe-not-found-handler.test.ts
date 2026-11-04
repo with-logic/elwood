@@ -58,6 +58,7 @@ describe.each(shells)("a real $shell login shell", ({ shell, available, profile 
       );
       const result = await runProbe(shell, probeShellCommand("elwood-no-such-cli --version"));
       expect(result).toMatchObject({ status: 127, stdout: "" });
+      expect(result.stderr).toContain("elwood-no-such-cli");
       expect(JSON.stringify(result)).not.toContain("FAKE-SECRET");
     }, 60_000);
   });

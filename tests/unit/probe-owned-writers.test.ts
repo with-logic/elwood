@@ -67,7 +67,7 @@ test("C-PERF-05 an unobserved marker still waits for inherited output EOF", asyn
     expect(await pending).toMatchObject({
       status: null,
       stdout: "late\n",
-      error: { phase: "login_shell" },
+      error: { phase: "command_start_unobserved" },
     });
   } finally {
     writeFileSync(release, "");

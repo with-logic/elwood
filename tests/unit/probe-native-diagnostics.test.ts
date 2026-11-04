@@ -1,4 +1,4 @@
-/** Native login-shell launch failures retain C-ERR-08 diagnostics through both adapter preflights. */
+/** Native shell-launch and output-setup failures retain C-ERR-08 diagnostics in both preflights. */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
@@ -17,7 +17,7 @@ test.each([
   ["codex", "ENOENT"],
   ["claude", "setup"],
   ["codex", "setup"],
-] as const)("C-ERR-08 %s preflight keeps native shell %s syscall and path", async (adapter, mode) => {
+] as const)("C-ERR-08 %s preflight keeps native shell/output-setup %s syscall and path", async (adapter, mode) => {
   const errno = mode === "EACCES" ? "EACCES" : "ENOENT";
   const shell = join(tempDir("elwood-probe-spawn-"), "shell");
   if (mode === "EACCES") writeFileSync(shell, "#!/bin/sh\nexit 0\n", { mode: 0o600 });

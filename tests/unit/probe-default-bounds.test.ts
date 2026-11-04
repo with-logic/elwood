@@ -50,8 +50,8 @@ test("C-PERF-05 by default the login shell has 60 seconds to start the probe com
   await vi.advanceTimersByTimeAsync(1);
   expect((await settled(probe))?.error).toMatchObject({
     code: "ETIMEDOUT",
-    message: "login shell did not start the probe command within 60000 ms",
-    phase: "login_shell",
+    message: "probe command start was not observed within 60000 ms",
+    phase: "command_start_unobserved",
   });
 });
 

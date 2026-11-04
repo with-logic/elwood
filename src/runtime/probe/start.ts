@@ -60,7 +60,7 @@ export const probeNotFoundHandlerReset =
 
 /** Hand off to a clean shell without invoking a profile-defined exec function (C-PERF-05). */
 export function probeExec(command: string): string {
-  return `elwood_probe_exec=command; [ -z "\${ZSH_VERSION-}" ] || elwood_probe_exec=builtin; "$elwood_probe_exec" exec /bin/sh -p -c 'exec 3>&-; exec "$@"' elwood-probe-exec ${command} ${probeOutputRedirect}`;
+  return `elwood_probe_exec=command; [ -z "\${ZSH_VERSION-}" ] || elwood_probe_exec=builtin; "$elwood_probe_exec" exec /bin/sh -p -c 'exec ${probeControlFd}>&-; exec "$@"' elwood-probe-exec ${command} ${probeOutputRedirect}`;
 }
 
 /** Whether a probe runs a script that announces its command with the start line. */

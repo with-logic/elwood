@@ -13,7 +13,10 @@ export function mapError(error: NodeJS.ErrnoException): NonNullable<CommandResul
   return { code: error.code, syscall: error.syscall, path: error.path, message: error.message };
 }
 
-export type AbortResult = CommandResult & { readonly error: NonNullable<CommandResult["error"]> };
+export type AbortResult = Omit<CommandResult, "status"> & {
+  readonly status: null;
+  readonly error: NonNullable<CommandResult["error"]>;
+};
 
 export function commandTimedOut(ms: number, stdout: string, stderr: string): AbortResult {
   const message = `probe timed out after ${ms} ms`;
@@ -21,14 +24,14 @@ export function commandTimedOut(ms: number, stdout: string, stderr: string): Abo
 }
 
 export function launchTimedOut(ms: number, stdout: string, stderr: string): AbortResult {
-  const message = `login shell did not start the probe command within ${ms} ms`;
-  const error = { code: "ETIMEDOUT", message, phase: "login_shell" } as const;
+  const message = `probe command start was not observed within ${ms} ms`;
+  const error = { code: "ETIMEDOUT", message, phase: "command_start_unobserved" } as const;
   return { status: null, stdout, stderr, error };
 }
 
 export function shellExited(status: number | null, stdout: string, stderr: string): CommandResult {
   const message = `login shell exited with status ${status} without an observed probe start line`;
-  const error = { message, phase: "login_shell", shellStatus: status } as const;
+  const error = { message, phase: "command_start_unobserved", shellStatus: status } as const;
   return { status: null, stdout, stderr, error };
 }
 
@@ -50,7 +53,6 @@ export function overflow(stdout: string, stderr: string): AbortResult {
 /** Output setup failed before any shell or CLI was started (C-ERR-08). */
 export function outputUnavailable(error: unknown): AbortResult {
   return {
-    started: false,
     status: null,
     stdout: "",
     stderr: "",

@@ -45,8 +45,8 @@ test.each([
     launchTimedOut(150, "out", "err"),
     {
       code: "ETIMEDOUT",
-      message: "login shell did not start the probe command within 150 ms",
-      phase: "login_shell",
+      message: "probe command start was not observed within 150 ms",
+      phase: "command_start_unobserved",
     },
   ],
   [
@@ -54,14 +54,18 @@ test.each([
     shellExited(2, "out", "err"),
     {
       message: "login shell exited with status 2 without an observed probe start line",
-      phase: "login_shell",
+      phase: "command_start_unobserved",
       shellStatus: 2,
     },
   ],
   [
     "a probe the e2e home guard stopped",
     guardStopped("out", "err"),
-    { message: homeGuardStoppedReason, phase: "login_shell", shellStatus: homeGuardExitCode },
+    {
+      message: homeGuardStoppedReason,
+      phase: "login_shell",
+      shellStatus: homeGuardExitCode,
+    },
   ],
   [
     "a stream past the output cap",
@@ -74,7 +78,6 @@ test.each([
 
 test("C-ERR-08 output setup normalizes an unknown failure without claiming a command ran", () => {
   expect(outputUnavailable("setup failed")).toMatchObject({
-    started: false,
     status: null,
     error: { message: "setup failed", origin: "probe_setup" },
   });

@@ -4,7 +4,7 @@
  * probe `claude` and `codex` concurrently and keep the first, in that order,
  * whose command resolves in the user's login shell — the same resolution the
  * agent PTY launch uses (§4.2) — without running either agent. A probe that
- * cannot run at all is reported as such, not as "no agent installed".
+ * fails to establish a result is reported as such, not as "no agent installed".
  */
 
 import { currentCommandRunner } from "../../runtime/seams.ts";
@@ -32,7 +32,7 @@ export const noAgentFoundMessage =
  * interactive login shell as the agent PTY so PATH resolution is identical, but
  * asks only `command -v`, so the agent itself never starts (C-CLI-14). Detection uses only
  * `command -v`'s exit status; its output is discarded. A probe
- * that could not run at all (missing or broken shell, probe timeout) is a
+ * that fails (missing or broken shell, timeout, unobserved start) is a
  * distinct failure: it says nothing about which agents are installed.
  */
 export async function loginShellResolves(
@@ -53,13 +53,15 @@ function probeFailedMessage(
   shell: string,
   error: { readonly code?: string | undefined; readonly message: string; readonly phase?: string },
 ): string {
-  // A login-shell failure's message is Elwood's own fixed text, never captured output.
+  // Phase messages are Elwood's own fixed text, never captured output.
   const reason =
-    error.phase === "login_shell"
-      ? `failed before running the check (${error.message})`
-      : error.code === undefined
-        ? "did not run"
-        : `failed with ${error.code}`;
+    error.phase === "command_start_unobserved"
+      ? `did not observe the check start (${error.message})`
+      : error.phase === "login_shell"
+        ? `failed before running the check (${error.message})`
+        : error.code === undefined
+          ? "did not run"
+          : `failed with ${error.code}`;
   return (
     `No agent was found because the probe itself failed: login shell ${JSON.stringify(shell)} ` +
     `${reason} while checking for \`claude\` and \`codex\`. Fix the shell, or select an agent ` +

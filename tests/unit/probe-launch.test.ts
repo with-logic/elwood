@@ -41,8 +41,8 @@ test("C-PERF-05 a shell that never writes the start line is killed at the launch
   expect(result.stderr).toBe("profile-noise\n");
   expect(result.error).toMatchObject({
     code: "ETIMEDOUT",
-    message: "login shell did not start the probe command within 150 ms",
-    phase: "login_shell",
+    message: "probe command start was not observed within 150 ms",
+    phase: "command_start_unobserved",
   });
 });
 
@@ -85,7 +85,7 @@ test("C-PERF-05 a login shell that exits before announcing its command fails the
   expect(result.stdout).toBe("");
   expect(result.error).toEqual({
     message: "login shell exited with status 0 without an observed probe start line",
-    phase: "login_shell",
+    phase: "command_start_unobserved",
     shellStatus: 0,
   });
 });

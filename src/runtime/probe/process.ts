@@ -6,12 +6,13 @@ import { createInterface } from "node:readline";
 import { setImmediate } from "node:timers";
 import type { CommandOptions } from "../seams.ts";
 import type { ProbeChild } from "./capture.ts";
+import { probeControlFd } from "./start.ts";
 
 const statusFd = 4;
 const acknowledgementFd = 5;
 const statusPrefix = "elwood-probe-command-exit:";
 const supervisor =
-  'if "$@" 4>&- 5>&- </dev/null; then elwood_status=0; else elwood_status=$?; fi; ' +
+  `if "$@" ${statusFd}>&- ${acknowledgementFd}>&- </dev/null; then elwood_status=0; else elwood_status=$?; fi; ` +
   `printf '${statusPrefix}%s\\n' "$elwood_status" >&${statusFd}; ` +
   `IFS= read -r elwood_ack <&${acknowledgementFd}; exit "$elwood_status"`;
 
@@ -67,6 +68,7 @@ export class ProbeProcess {
     child.once(supervised ? "exit" : "close", (code, signal) => this.exit(code, signal));
   }
 
+  /** Reports command completion; a supervised owner remains alive until output is acknowledged. */
   onExit(listener: (code: number | null, signal: NodeJS.Signals | null) => void): void {
     this.exits.once("exit", listener);
   }
@@ -77,14 +79,15 @@ export class ProbeProcess {
     this.child.stdout.destroy();
     this.child.stderr.destroy();
 
-    (this.child.stdio[3] as Socket).destroy();
+    (this.child.stdio[probeControlFd] as Socket).destroy();
     if (this.supervised) {
       (this.child.stdio[statusFd] as Socket).unref();
       (this.child.stdio.at(acknowledgementFd) as Socket).unref();
     }
   }
 
-  release(): void {
+  /** Acknowledge drained capture so the foreground supervisor may exit; not abort cleanup. */
+  acknowledgeOutputDrained(): void {
     if (this.supervised) (this.child.stdio.at(acknowledgementFd) as Socket).end("done\n");
   }
 

@@ -212,16 +212,17 @@ exceeds either bound, or whose captured output exceeds a per-stream byte cap
 (1,000,000 bytes), is killed, and its captured output is truncated to the cap.
 Either timeout reports `ETIMEDOUT`. Once the probe command has started, a probe whose
 process dies of a signal Elwood did not send reports the status a shell would, 128 plus
-the signal's number; a login shell that dies before then is a login-shell failure, as
-follows. A login shell that misses the launch bound, or
-exits without writing the start line (a startup file that `exec`s another program,
-say), cannot establish the command start, so the probe fails as a login-shell failure
-rather than reporting the shell's exit status as the command's: its cause names the
-login shell, and its typed error details carry `phase: "login_shell"`. Its captured
-stderr is only the user's startup output, which can hold expanded secrets, so it is
-withheld: `details.stderr` is empty. A best-effort update probe that fails this way
-surfaces the `agent_update_failed` warning with `errorCode: "login_shell_failed"` and
-an empty `raw`. Abort cleanup has an
+the signal's number. If the launch bound expires, or the login shell exits without
+an observed start line, the probe reports no command exit status and carries
+`phase: "command_start_unobserved"` in typed error details. Neither observation
+proves the command never ran. Known command stderr from the isolated capture is
+preserved; profile output remains excluded. Agent detection reports that the
+check's start was unobserved rather than claiming the check never ran. A confirmed
+pre-command login-shell refusal, such as the e2e home guard, instead carries
+`phase: "login_shell"` and withholds shell stderr. Its best-effort update warning
+uses `errorCode: "login_shell_failed"` with empty `raw`; an unobserved start uses
+the ordinary probe errno or generic update failure and retains bounded known
+command stderr. Abort cleanup has an
 additional one-second bound: an aborted probe retries process-group termination,
 falls back to terminating the direct child once group signals have kept failing,
 and awaits exit within that window. A process-group id is signaled only while the
