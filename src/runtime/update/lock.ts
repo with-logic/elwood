@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { elwoodError, errnoCode } from "../../core/errors.ts";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
 import { acquireUpdateLease } from "./acquire.ts";
 import { publishCompletionGeneration } from "./completion.ts";
@@ -102,7 +103,19 @@ export async function coordinatedAutoupdate(
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
-    await Promise.allSettled([publishCompletionGeneration(leasePath, completionMarkerPath, owner)]);
+    try {
+      await publishCompletionGeneration(leasePath, completionMarkerPath, owner);
+    } catch (error) {
+      // Retain the durable owner: releasing without completion lets a pinned contender update again.
+      if (outcome !== undefined) throw outcome.error;
+      throw elwoodError(
+        `${adapter}_update_failed`,
+        "Could not record completion of the agent update.",
+        {
+          errno: errnoCode(error),
+        },
+      );
+    }
     await releaseLease(leasePath, owner);
   } else {
     await retainLease(
