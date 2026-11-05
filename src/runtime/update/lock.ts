@@ -52,6 +52,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * Runs `update` only for the lease owner. A contender waits until that owner
  * settles and then returns without a duplicate update; callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
+ * Failed completion publication retains the owned lease; ordinary dead-owner
+ * recovery may later permit a retry.
  * After 165 seconds by default, a still-active owner rejects with the adapter's
  * update_failed error and updateReason active_owner; preflight warns and continues.
  * A lease held by a surviving updater group skips that wait and rejects immediately with

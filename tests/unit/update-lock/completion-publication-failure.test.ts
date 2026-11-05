@@ -1,7 +1,8 @@
 /** Failed completion publication preserves the existing update lease (PRD §9.2, C-PERF-04). */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { preflightClaude } from "../../../src/claude/preflight.ts";
 import { preflightCodex } from "../../../src/codex/preflight.ts";
 import { elwoodError } from "../../../src/core/errors.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../../src/runtime/seams.ts";
@@ -40,16 +41,18 @@ vi.mock("node:fs/promises", async (original) => {
 });
 
 test.each([
-  false,
-  true,
-])("C-PERF-04 publication failure retains ownership after updater failure=%s", async (failed) => {
+  ["codex", false],
+  ["codex", true],
+  ["claude", false],
+  ["claude", true],
+] as const)("C-PERF-04 %s retains ownership on publication failure (updater failure=%s)", async (agent, failed) => {
   const root = tempDir("elwood-update-publication-failure-");
-  const lease = updateLockPath("codex", root);
+  const lease = updateLockPath(agent, root);
   const ownerPath = join(lease, "owner");
-  const completion = join(root, "codex.completed");
+  const completion = join(root, `${agent}.completed`);
   const previous = "00000000-0000-4000-8000-00000000000a";
   writeFileSync(completion, previous);
-  const installerError = elwoodError("codex_update_failed", "Installer failed.", {
+  const installerError = elwoodError(`${agent}_update_failed`, "Installer failed.", {
     errno: "EIO",
     exitStatus: 7,
     stderr: "installer failed",
@@ -62,7 +65,7 @@ test.each([
     // C pins the old marker before B's entire update and failed publication.
     race.denyPublication = true;
     ownerFailure = await coordinatedAutoupdate(
-      "codex",
+      agent,
       () => {
         attempts.push("B");
         ownerRecord = readFileSync(ownerPath, "utf8");
@@ -77,7 +80,7 @@ test.each([
   };
   try {
     const contenderFailure = await coordinatedAutoupdate(
-      "codex",
+      agent,
       () => Promise.resolve(void attempts.push("C")),
       {
         root,
@@ -90,7 +93,7 @@ test.each([
     );
     expect(attempts).toEqual(["B"]);
     expect(contenderFailure).toMatchObject({
-      code: "codex_update_failed",
+      code: `${agent}_update_failed`,
       details: { updateReason: "active_owner" },
     });
     expect(ownerRecord).toMatch(new RegExp(`^${process.pid}:[0-9a-f-]{36}$`));
@@ -99,7 +102,7 @@ test.each([
     if (failed) expect(ownerFailure).toBe(installerError);
     else
       expect(ownerFailure).toMatchObject({
-        code: "codex_update_failed",
+        code: `${agent}_update_failed`,
         details: { errno: "EACCES" },
       });
     // The existing public best-effort path still permits a compatible installed CLI.
@@ -107,8 +110,13 @@ test.each([
     resetPreflightCacheForTests();
     setPlatformForTests("darwin");
     setUpdateCoordinatorForTests(() => Promise.reject(ownerFailure));
-    setCommandRunnerForTests(() => ({ status: 0, stdout: "codex-cli 0.150.0", stderr: "" }));
-    expect(await preflightCodex(false, true)).toMatchObject({
+    setCommandRunnerForTests(() => ({
+      status: 0,
+      stdout: agent === "codex" ? "codex-cli 0.150.0" : "2.1.305 (Claude Code)",
+      stderr: "",
+    }));
+    const preflight = agent === "codex" ? preflightCodex : preflightClaude;
+    expect(await preflight(false, true)).toMatchObject({
       code: "agent_update_failed",
       errorCode: failed ? "EIO" : "EACCES",
       raw: failed ? "installer failed" : "",
@@ -118,6 +126,5 @@ test.each([
   } finally {
     race.afterOpen = undefined;
     race.denyPublication = false;
-    rmSync(lease, { recursive: true, force: true });
   }
 });
