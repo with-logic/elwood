@@ -2501,6 +2501,19 @@ These captures establish the layouts in
 `tests/fixtures/codex-0.163.0/questions/`; they do not reverify all earlier
 Codex trust and update dialogs.
 
+### Codex home-path footer after question closure (2026-10-24)
+
+Coal Harbor captured a completed queued-question turn with a visible input cursor
+at column 2 and an empty composer above `  gpt-6.1 low · ~/.coal-harbor/…`.
+Its replay at 80, 100 and 140 columns proved that rejecting the native `~/`
+directory abbreviation retained the question input hold; changing only that
+prefix to an absolute path made the existing predicate accept the same frame.
+The home-path prefix is valid footer evidence, alongside absolute POSIX and
+Windows paths. Native question closure alone still cannot release input: the
+current visible cursor, empty composer and absence of dialog chrome remain
+required. Public send-path regressions are in
+`tests/codex/session-question-home-footer.test.ts`.
+
 ### Native Codex editor provenance and clipped drafts (2026-10-21)
 
 Two isolated Codex 0.163.0 captures distinguish an empty placeholder from a

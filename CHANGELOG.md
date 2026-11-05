@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-04
+
+- Codex queued messages resume after an unanswered question closes and a live empty
+  composer shows its working directory as `~/…`. Previously that native home-path
+  footer could retain the question's input hold indefinitely.
+
 - Report persistent temporary probe-directory cleanup failure once per process through a fixed, content-free Node warning without changing the probe result. Finish removing the probe root when a descendant disappears during cleanup.
 
 - Keep the original launch directory identity through version and capability cache reads, refusing observed replacements even when the replacement has a cached answer.
