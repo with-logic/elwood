@@ -1,8 +1,9 @@
-/** Native home-path composer releases queued input after question closure (C-QUESTION-05). */
+/** Native home-path composer releases queued sendMessage after closure (C-API-56, C-QUESTION-04). */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { type ElwoodQuestionEvent, startCodex } from "../../src/index.ts";
+import { codexTty } from "../fixtures/trust-composer.ts";
 import { captured, records } from "../unit/codex-questions/helpers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -10,7 +11,7 @@ afterEach(resetFakes);
 
 test.each([
   80, 100, 140,
-])("C-QUESTION-05 closed queued questions release guidance at a live home-path composer (%i columns)", async (cols) => {
+])("C-API-56 C-QUESTION-04 closed queued questions release sendMessage at a live home-path composer (%i columns)", async (cols) => {
   installFakes();
   const cwd = tempDir();
   const path = join(cwd, "transcript.jsonl");
@@ -25,9 +26,7 @@ test.each([
       for (const item of items) appendFileSync(path, `${JSON.stringify(item)}\n`);
     };
     const render = async (text: string, visible = true) => {
-      ptys[0]!.emitData(
-        `\x1b[2J\x1b[H${text.replaceAll("\n", "\r\n")}\x1b[1;3H\x1b[?25${visible ? "h" : "l"}`,
-      );
+      ptys[0]!.emitData(`\x1b[2J\x1b[H${codexTty(text, visible)}`);
       await session.terminal.settled();
       await new Promise<void>((resolve) => setImmediate(resolve));
     };

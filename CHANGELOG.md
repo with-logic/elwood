@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-## [0.2.3] - 2026-11-04
+## [0.2.3] - 2026-11-05
 
 - Codex queued messages resume after an unanswered question closes and a live empty
   composer shows its working directory as `~/…`. Previously that native home-path
