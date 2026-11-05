@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep the owned update lease when completion cannot be recorded, preventing a
+  second updater from racing an attempt whose completion was not published.
+
 ## [0.2.3] - 2026-11-05
 
 - Codex queued messages resume after an unanswered question closes and a live empty
