@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Emit optional CLI update warnings even when the updater rejects with `undefined`.
+
 - Retry optional CLI updates on a later independent start after local or peer
   prerequisite verification refuses, without recording a completed update or exposing verifier output.
 
