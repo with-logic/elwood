@@ -84,6 +84,17 @@ startup fails with a typed error that names the required version and feature. If
 the version cannot be parsed, Elwood records a typed `version_unparseable`
 warning and continues by default, with an option for callers to make this fatal.
 
+Verification runs under the update lease. A rejected prerequisite verification means
+no updater was invoked: it publishes no completion, and releases ownership only
+after probe cleanup (surviving groups still retain the lease). Callers already
+sharing that operation share its failure without an automatic successor attempt;
+a later independent call may retry. A coordination rejection before its callback
+also permits a later independent retry. Each caller still enforces its own
+compatibility gate. With a compatible CLI, a verification refusal uses the existing
+`agent_update_failed` warning and `update_failed` error code with fixed “skipped
+before invocation” wording, empty `raw`, and no exit status or verifier output.
+Actual or uncertain updater failures remain shared without per-start retry.
+
 The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
 allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
@@ -107,8 +118,9 @@ checks. A later observation or a replacement directory's cached answer must not
 substitute for that identity. A definite refusal retains its fixed reason, retry guidance and probe label
 (Claude/Codex version, Codex help, or update) in both a wrapping launch failure's
 top-level message and a best-effort update warning's existing message, without
-including directory paths or profile output. A refused version-verification probe
-is labelled as a version probe even when it occurs during an update attempt.
+including directory paths or profile output. Prerequisite verification failures
+use the skipped-before-invocation warning above; fatal version-verification
+failures retain the version-probe label.
 Version and capability answers are
 cached per adapter, directory path and observed device/inode (C-PERF-02). Concurrent
 reads for one key share a subprocess. Each cache keeps the 32 most recently used

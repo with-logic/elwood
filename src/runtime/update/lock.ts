@@ -9,6 +9,7 @@ import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError, errnoCode } from "../../core/errors.ts";
+import { UpdateVerificationFailure } from "../../core/update-verification.ts";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
 import { acquireUpdateLease } from "./acquire.ts";
 import { publishCompletionGeneration } from "./completion.ts";
@@ -52,6 +53,7 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * Runs `update` only for the lease owner. A contender waits until that owner
  * settles and then returns without a duplicate update; callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
+ * Owned verification failures release without completion after probe cleanup.
  * Failed completion publication retains the owned lease; ordinary dead-owner
  * recovery may later permit a retry.
  * After 165 seconds by default, a still-active owner rejects with the adapter's
@@ -101,12 +103,16 @@ export async function coordinatedAutoupdate(
     );
   // An aborted probe's unresolved group is observed once more: only a group still live
   // after that window keeps the lease, and then the lease outlives this process.
-  const abortedGroupId = unresolvedProbeGroup(outcome?.error);
+  const refusal = outcome?.error instanceof UpdateVerificationFailure ? outcome.error : undefined;
+  const abortedGroupId = unresolvedProbeGroup(
+    refusal === undefined ? outcome?.error : refusal.error,
+  );
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
     try {
-      await publishCompletionGeneration(leasePath, completionMarkerPath, owner);
+      if (refusal === undefined)
+        await publishCompletionGeneration(leasePath, completionMarkerPath, owner);
     } catch (error) {
       // Retain the durable owner: releasing without completion lets a pinned contender update again.
       if (outcome !== undefined) throw outcome.error;

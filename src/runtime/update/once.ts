@@ -4,6 +4,7 @@
  * never-poisoning update contract (C-LIFE-09, C-LIFE-11).
  */
 
+import { UpdateVerificationFailure } from "../../core/update-verification.ts";
 import {
   createDirectoryProbeCache,
   type DirectoryProbeCache,
@@ -23,11 +24,12 @@ export type AutoupdateOutcome =
 // The settled autoupdate outcome per adapter. Every `autoupdate: true` caller awaits the SAME
 // attempt (concurrent roster spawns run one update); a FAILURE is recorded as a resolved
 // `{ok:false}` value, NOT a rejected promise — so one failed update can neither reject the other
-// concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Best-effort → not retried.
+// concurrent callers nor poison a later start (C-LIFE-09, C-LIFE-11). Actual attempts are not retried.
 const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
 
 /**
- * Runs the adapter's update at most once per process; concurrent callers share the single
+ * Runs the adapter's updater at most once per process; local non-attempts permit a later retry.
+ * Concurrent callers share the single
  * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
  * version cache whether this process owned the update or waited for a peer. The one exception
@@ -41,9 +43,16 @@ export function cachedAutoupdate(
 ): Promise<AutoupdateOutcome> {
   const existing = autoupdates.get(adapter);
   if (existing) return existing;
-  const pending = coordinateUpdate(adapter, runUpdate).then(
+  let entered = false;
+  const pending = coordinateUpdate(adapter, () => {
+    entered = true;
+    return runUpdate();
+  }).then(
     () => finalizeAutoupdate(adapter, { ok: true }, afterAttempt),
-    (error) => finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt),
+    (error) => {
+      if (!entered || error instanceof UpdateVerificationFailure) autoupdates.delete(adapter);
+      return finalizeAutoupdate(adapter, { ok: false, error }, afterAttempt);
+    },
   );
   autoupdates.set(adapter, pending);
   return pending;

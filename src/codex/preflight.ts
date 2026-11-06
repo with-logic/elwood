@@ -5,6 +5,7 @@
 
 import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { verifyBeforeUpdate } from "../core/update-verification.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import {
@@ -22,6 +23,7 @@ import {
 } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
+  type AutoupdateOutcome,
   cachedAutoupdate,
   cachedVersionRead,
   maxSettledPreflightDirectoryResults,
@@ -53,20 +55,20 @@ export async function preflightCodex(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   const workspace = directory ?? { cwd: process.cwd() };
-  let updateError: unknown;
+  let updateOutcome: AutoupdateOutcome | undefined;
   if (autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
     // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
     // Only a test that reset the update module without setting a coordinator sees a throw here.
-    const outcome = await cachedAutoupdate(
+    updateOutcome = await cachedAutoupdate(
       "codex",
-      async () => {
-        await readCodexVersion(workspace); // verify existence only after owning the cross-process lease
-        await runCodexUpdate(workspace);
-      },
+      () =>
+        verifyBeforeUpdate(
+          () => readCodexVersion(workspace),
+          () => runCodexUpdate(workspace),
+        ),
       () => capabilityProbe.clear(),
     );
-    if (!outcome.ok) updateError = outcome.error;
   }
   const result = await readCodexVersion(workspace);
   const version = parseVersion(result.stdout);
@@ -84,7 +86,9 @@ export async function preflightCodex(
     );
   }
   // Installed CLI is compatible: a failed best-effort update is a warning, not a start failure.
-  return updateError === undefined ? undefined : buildUpdateWarning("codex", version, updateError);
+  return updateOutcome?.ok === false
+    ? buildUpdateWarning("codex", version, updateOutcome.error)
+    : undefined;
 }
 
 async function runCodexUpdate(directory: ProbeDirectory): Promise<void> {
