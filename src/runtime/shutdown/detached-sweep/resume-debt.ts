@@ -5,7 +5,9 @@ import type { SweepOps } from "./rounds.ts";
 
 /** Per-read identity lookup shared by all records examining the same process table. */
 const identityIndexes = new WeakMap<readonly ProcessEntry[], ReadonlyMap<string, ProcessEntry>>();
-function identitiesIn(table: readonly ProcessEntry[]): ReadonlyMap<string, ProcessEntry> {
+function processEntriesByIdentity(
+  table: readonly ProcessEntry[],
+): ReadonlyMap<string, ProcessEntry> {
   const cached = identityIndexes.get(table);
   if (cached !== undefined) return cached;
   const index = new Map(table.map((row) => [processIdentity(row), row]));
@@ -13,7 +15,7 @@ function identitiesIn(table: readonly ProcessEntry[]): ReadonlyMap<string, Proce
   return index;
 }
 
-/** The stopped identities whose owning signal pass could not restore their group. */
+/** Live identities from a failed group restoration; retry only those still stopped there. */
 export class ResumeDebt {
   private readonly rows = new Map<string, ProcessEntry>();
 
@@ -29,11 +31,11 @@ export class ResumeDebt {
 
   /** Resolve only a matching stopped identity, preserving failures independently per group. */
   retry(table: readonly ProcessEntry[], ops: Pick<SweepOps, "continueGroup">): boolean {
-    const current = identitiesIn(table);
+    const current = processEntriesByIdentity(table);
     const pending = new Map<number, string[]>();
     for (const [id, held] of this.rows) {
       const row = current.get(id);
-      if (row === undefined || row.zombie || !row.stopped || row.pgid !== held.pgid) {
+      if (!isOriginalStoppedMember(row, held.pgid)) {
         this.rows.delete(id);
         continue;
       }
@@ -51,4 +53,11 @@ export class ResumeDebt {
     }
     return this.rows.size === 0;
   }
+}
+
+function isOriginalStoppedMember(
+  row: ProcessEntry | undefined,
+  group: number,
+): row is ProcessEntry {
+  return row !== undefined && !row.zombie && row.stopped && row.pgid === group;
 }

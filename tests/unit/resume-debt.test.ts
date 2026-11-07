@@ -12,7 +12,8 @@ test("C-LIFE-10 only live rows of the failed group are remembered", () => {
   debt.remember([...table, hook(5003), hook(5004, { zombie: true, pgid: 5002 })], 5002);
   expect(debt.pids).toEqual([5002, 5005]);
   const continueGroup = vi.fn();
-  expect(debt.retry(table, { continueGroup })).toBe(true);
+  const freshTable = table.map((row) => ({ ...row }));
+  expect(debt.retry(freshTable, { continueGroup })).toBe(true);
   expect(continueGroup.mock.calls).toEqual([[5002]]);
   expect(debt.retry(table, { continueGroup })).toBe(true);
   expect(continueGroup).toHaveBeenCalledOnce();
