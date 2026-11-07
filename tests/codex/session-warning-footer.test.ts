@@ -6,6 +6,7 @@ import {
   codexComposerConfigured,
 } from "../../src/codex/screen/clearance.ts";
 import { startCodex } from "../../src/index.ts";
+import { codexTty } from "../fixtures/trust-composer.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -21,10 +22,7 @@ const agents = readFileSync(
   new URL("../fixtures/codex-0.167.0/agents-footer.txt", import.meta.url),
   "utf8",
 );
-const paint = (text: string, visible = true) => {
-  const cursorRow = text.split("\n").findIndex((row) => row.startsWith("› ")) + 1;
-  return `${asScreen(text)}\u001b[${cursorRow};3H\u001b[?25${visible ? "h" : "l"}`;
-};
+const paint = (text: string, visible = true) => `\u001b[2J\u001b[H${codexTty(text, visible)}`;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -44,16 +42,26 @@ test("C-TRUST-01 captured warning footer requires native chrome and an exact suf
   );
 });
 
-test("C-API-28 C-TRUST-01 the captured agents hint preserves exact native footer evidence", () => {
-  for (const frame of [agents, agents.replace(/ +⚠ 3 warnings · f2 to view/, "")]) {
-    expect(codexComposerConfigured(frame)).toBe(true);
-    expect(codexComposerClearance(frame)).toBe(true);
-  }
-  for (const hint of ["for agents", "← for agents", "← for agents -", "← for agents · extra"]) {
-    const frame = agents.replace("← for agents ·", hint);
-    expect(codexComposerConfigured(frame)).toBe(false);
-    expect(codexComposerClearance(frame)).toBe(false);
-  }
+test.each([
+  { label: "warning counter", frame: agents },
+  { label: "no warning counter", frame: agents.replace(/ +⚠ 3 warnings · f2 to view/, "") },
+])("C-API-28 C-TRUST-01 accepts the captured agents hint with $label", ({ frame }) => {
+  expect(codexComposerConfigured(frame)).toBe(true);
+  expect(codexComposerClearance(frame)).toBe(true);
+});
+
+test.each([
+  "for agents",
+  "← for agents",
+  "← for agents -",
+  "← for agents · extra",
+])("C-API-28 C-TRUST-01 rejects malformed agents hint %s", (hint) => {
+  const frame = agents.replace("← for agents ·", hint);
+  expect(codexComposerConfigured(frame)).toBe(false);
+  expect(codexComposerClearance(frame)).toBe(false);
+});
+
+test("C-API-28 C-TRUST-01 agents hint retains warning, chrome, and dialog guards", () => {
   expect(codexComposerClearance(agents.replace("3 warnings", "3 warnings · press Enter"))).toBe(
     false,
   );
@@ -64,9 +72,11 @@ test("C-API-28 C-TRUST-01 the captured agents hint preserves exact native footer
 });
 
 test.each([
-  captured,
-  agents,
-])("C-API-28 a live warning footer releases deferred trust readiness, not hidden or dialog frames", async (frame) => {
+  { label: "Codex 0.159.2 warning footer", frame: captured },
+  { label: "Codex 0.167.0 agents footer", frame: agents },
+])("C-API-28 $label releases deferred trust readiness, not hidden or dialog frames", async ({
+  frame,
+}) => {
   installFakes();
   const session = await startCodex({
     cwd: tempDir(),
