@@ -6,7 +6,13 @@ import { opendir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../probe/index.ts";
-import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.ts";
+import {
+  type LeaseOwner,
+  leaseIsAlive,
+  ownerFile,
+  pendingOwnerPrefix,
+  readOwner,
+} from "./owner.ts";
 
 /**
  * A contender's default wait: longer than an owner can hold the lease while its two probes,
@@ -23,6 +29,10 @@ type RecoveryResult =
   | { readonly status: "alive" | "unrecoverable" }
   | { readonly status: "removed"; readonly generation: string | undefined };
 
+/**
+ * Seeds the token from the acquisition snapshot if the lease vanishes before the first
+ * poll; returns the latest token observed during the wait.
+ */
 export async function waitForOwner(
   path: string,
   pollMs: number,
@@ -41,7 +51,7 @@ export async function waitForOwner(
       return { status: "released", generation };
     }
     const current = await readOwner(path);
-    generation = current?.token;
+    generation = await observedOwnerGeneration(path, current, generation);
     // Presence of the record only, not proof that any of those groups still runs; the
     // liveness question is asked separately below.
     const hasRecordedProcessGroups = current?.ownedProcessGroupIds !== undefined;
@@ -59,6 +69,16 @@ export async function waitForOwner(
     }
     await delay(pollMs);
   }
+}
+
+/** Keep the last token only when a missing record belongs to a lease that disappeared. */
+async function observedOwnerGeneration(
+  path: string,
+  current: LeaseOwner | undefined,
+  previous: string | undefined,
+): Promise<string | undefined> {
+  if (current !== undefined) return current.token;
+  return (await pathExists(path)) ? undefined : previous;
 }
 
 async function recoverStaleLease(path: string): Promise<RecoveryResult> {
