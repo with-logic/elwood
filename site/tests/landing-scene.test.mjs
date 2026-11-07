@@ -90,10 +90,34 @@ test("landing starts with complete retained idle and never fetches videos", asyn
   assert.deepEqual(errors, []);
 });
 
-test("the actual scene gives manual movement priority and idles before resuming autonomy", async () => {
+test("the actual scene gives manual movement priority and idles before resuming autonomy", async (t) => {
+  const fetch = globalThis.fetch;
+  const requested = Promise.withResolvers();
+  const rotation = Promise.withResolvers();
+  globalThis.fetch = async (input) => {
+    if (String(input).includes("/rotation/")) {
+      requested.resolve();
+      await rotation.promise;
+    }
+    return fetch(input);
+  };
+  t.after(() => { rotation.resolve(); globalThis.fetch = fetch; });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   scene.interact();
   scene.axis = 1;
-  await advance(1.2);
+  let advanced = false;
+  const advancing = advance(1.2).then(() => { advanced = true; });
+  await requested.promise;
+  // Drive more than all 72 frame yields while the rotation asset remains unavailable.
+  for (let tick = 0; tick < 120; tick++) {
+    t.mock.timers.tick(1);
+    await new Promise(setImmediate);
+  }
+  assert.equal(advanced, false, "The frame clock must wait for the pending rotation asset");
+  rotation.resolve();
+  t.mock.timers.reset();
+  globalThis.fetch = fetch;
+  await advancing;
   assert.equal(scene.director.mode, "manual");
   assert.equal(scene.world.player.animation, "walk-right");
   scene.clearInput();
