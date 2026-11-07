@@ -125,9 +125,8 @@ describe("C-LIFE-10 terminatePty", () => {
   });
 
   test("a SIGTERM timeout that escalates and also times out reports SIGKILL", async () => {
-    // The reported signal must be the phase that actually failed: after a SIGTERM
-    // timeout escalates to SIGKILL and that also times out, the operator is sent
-    // to the SIGKILL phase, not misdirected back to SIGTERM.
+    // Grace expiry kills only verified groups; a missing native exit still reports
+    // the failed SIGKILL phase without sending an unverified PTY signal.
     const signals: string[] = [];
     const neverExits = {
       ...deadPty,
@@ -146,7 +145,7 @@ describe("C-LIFE-10 terminatePty", () => {
         },
       ),
     ).rejects.toThrow("PTY did not exit after SIGKILL.");
-    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(signals).toEqual(["SIGTERM"]);
   });
 
   test("a reap-ONLY failure (termination succeeded) wraps as typed termination_failed", async () => {

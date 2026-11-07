@@ -5,7 +5,7 @@ import { MAX_REPORTED_GROUPS, type SweepFailure } from "./detached-sweep/failure
 /** Both internal sweep phases produce the same bounded diagnostic group field. */
 export function mergeSweepErrors(first: unknown, later: unknown): Error {
   const second = toError(later);
-  if (first === undefined) return second;
+  if (first === undefined || first === later) return second;
   const primary = toError(first);
   const groups = (error: Error) => (error as Partial<SweepFailure>).processGroupIds ?? [];
   const code = errnoCode(primary) ?? errnoCode(second);

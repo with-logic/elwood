@@ -16,7 +16,7 @@ import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { assertLeaderObservation } from "./detached-sweep/held-leader.ts";
 import type { SurvivorWatch } from "./detached-sweep/survivor-watch.ts";
 import { mergeSweepErrors } from "./merge-sweep-errors.ts";
-import type { LeaderPtySignalOutcome, SessionReaper } from "./reap-tree.ts";
+import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 type TerminationReaper = Pick<
@@ -26,16 +26,12 @@ type TerminationReaper = Pick<
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
-const leaderGroupGoneForOutcome: Readonly<Record<LeaderPtySignalOutcome, boolean>> = {
-  "signal-sent": false,
-  "leader-group-gone": true,
-};
 
 /**
  * Graceful stop records observed descendants before TERM and holds/verifies the original
  * leader before signaling it. The same latch cancels escalation after native exit.
- * Finish recording on every path, retaining an unconfirmed termination, then reap only
- * while SessionReaper still authorizes the original numeric group. Uncertain identity,
+ * Grace expiry reaps the retained original groups with fresh verification. Finish joins
+ * that cleanup on every path; it never falls back to a saved numeric group. Uncertain identity,
  * gone-group evidence and an earlier failed verification prohibit later leader signals.
  * Independent observed survivor groups remain eligible for verified cleanup (C-LIFE-10).
  */
@@ -58,14 +54,18 @@ export async function terminatePty(
       const observation = await watch.firstObservation;
       assertLeaderObservation(observation);
       const outcome = latch.exited ? undefined : await watch.sendSignal(() => pty.kill("SIGTERM"));
-      const groupGone = outcome !== undefined && leaderGroupGoneForOutcome[outcome];
+      const groupGone = outcome === "leader-group-gone";
       observedExit = latch.exited || groupGone || (await latch.within(timeouts.gracefulMs));
     }
     if (!observedExit) {
-      sweepError = await reaper.sweepDetached(() => latch.exited).then(() => undefined, toError);
+      sweepError = await (watch?.reap() ?? reaper.sweepDetached(() => latch.exited)).then(
+        () => undefined,
+        toError,
+      );
       const leaderGroupGone =
+        watch === undefined &&
         !latch.exited &&
-        leaderGroupGoneForOutcome[reaper.signalLeaderPty(() => pty.kill("SIGKILL"))];
+        reaper.signalLeaderPty(() => pty.kill("SIGKILL")) === "leader-group-gone";
       observedExit = leaderGroupGone || (await latch.within(timeouts.forceMs));
       if (!observedExit) {
         terminationError = elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
