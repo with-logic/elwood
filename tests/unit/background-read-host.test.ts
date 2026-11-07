@@ -62,7 +62,8 @@ const {reapInBackground} = await import(process.env.SHUTDOWN+"/detached-sweep/ba
 const {DescendantRecord} = await import(process.env.SHUTDOWN+"/detached-sweep/record.ts");
 const record = new DescendantRecord();
 const leader = {pid:10000001,pgid:10000001,ppid:1,zombie:false,stopped:false,startedAt:"Fri Jan 1 00:00:00 1960",name:"sh",shared:false};
-record.observe([leader,{...leader,pid:10000002,pgid:10000002,ppid:leader.pid}],leader.pid,true);
+record.observeFirst([leader],leader.pid,Date.now());
+record.observe([leader,{...leader,pid:10000002,pgid:10000002,ppid:leader.pid}],leader.pid,Date.now());
 reapInBackground(record,{
   listProcesses:async()=>{console.log("ready\\nqueued");throw new Error("unreadable");},
   stopGroup:()=>{},killGroup:()=>{},continueGroup:()=>{}

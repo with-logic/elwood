@@ -55,7 +55,8 @@ test("C-LIFE-10 a read ending beyond the retry window cannot start a survivor re
   let now = 0;
   vi.spyOn(performance, "now").mockImplementation(() => now);
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(5002)], LEADER, true);
+  record.observeFirst([leaderRow, hook(5002)], LEADER, Date.now());
+  record.observe([leaderRow, hook(5002)], LEADER, Date.now());
   const fake = scripted([]);
   const recovery = reapInBackground(
     record,
@@ -81,7 +82,8 @@ test("C-LIFE-10 queued admission past expiry starts no automatic scan", async ()
   const gate = Promise.withResolvers<void>();
   const held = queue.run(() => gate.promise);
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(5002)], LEADER, true);
+  record.observeFirst([leaderRow, hook(5002)], LEADER, Date.now());
+  record.observe([leaderRow, hook(5002)], LEADER, Date.now());
   const fake = scripted([[]]);
   const recovery = reapInBackground(record, fake.ops, (attempt) => queue.run(attempt));
   now = BACKGROUND_REAP_RETRY_WINDOW_MS;
@@ -97,7 +99,8 @@ test("C-LIFE-10 a newly recorded child's root remains in later automatic reads",
   let clock = 0;
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(5002)], LEADER, true);
+  record.observeFirst([leaderRow, hook(5002)], LEADER, Date.now());
+  record.observe([leaderRow, hook(5002)], LEADER, Date.now());
   const parent = hook(5002, { ppid: 1 });
   const child = hook(5003, { ppid: 5002 });
   const tables = [[parent], [parent, child], [{ ...child, ppid: 1 }], []];

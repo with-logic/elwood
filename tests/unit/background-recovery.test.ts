@@ -27,10 +27,15 @@ afterEach(() => {
 });
 function recorded() {
   const record = new DescendantRecord();
+  record.observeFirst(
+    [{ ...leaderRow, startedAt: "Sun Oct 25 21:59:00 2026" }, hook(5002)],
+    LEADER,
+    Date.now(),
+  );
   record.observe(
     [{ ...leaderRow, startedAt: "Sun Oct 25 21:59:00 2026" }, hook(5002)],
     LEADER,
-    true,
+    Date.now(),
   );
   return record;
 }
@@ -88,7 +93,10 @@ test.each([
   false,
 ])("C-LIFE-10 resume-only recovery requires a known tree (%s)", async (known) => {
   const record = new DescendantRecord();
-  if (known) record.observe([leaderRow], LEADER, true);
+  if (known) {
+    record.observeFirst([leaderRow], LEADER, Date.now());
+    record.observe([leaderRow], LEADER, Date.now());
+  }
   record.resumes.remember([{ ...leaderRow, stopped: true }], LEADER);
   const fake = scripted([[{ ...leaderRow, stopped: true }]]);
   const recovery = reapInBackground(record, fake.ops, queue());
@@ -149,7 +157,8 @@ test("C-LIFE-10 every attempt retains confirmed daemon paths", async () => {
 
 test("C-LIFE-10 failed restoration stays pending until a matching stopped group resumes", async () => {
   const record = new DescendantRecord();
-  record.observe([leaderRow], LEADER, true);
+  record.observeFirst([leaderRow], LEADER, Date.now());
+  record.observe([leaderRow], LEADER, Date.now());
   record.resumes.remember([{ ...leaderRow, stopped: true }], LEADER);
   let attempts = 0;
   const fake = scripted([], {
