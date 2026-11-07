@@ -2,7 +2,15 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
-import { errno, hook, LEADER, leaderRow } from "../helpers/scripted-process-tree.ts";
+import {
+  errno,
+  hook,
+  LEADER,
+  leaderRow,
+  useScriptedHost,
+} from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 const epoch = Date.parse(`${leaderRow.startedAt} UTC`);
 afterEach(() => vi.restoreAllMocks());
