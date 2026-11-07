@@ -63,7 +63,7 @@ async function sendSerializedLeaderSignal(signal: HeldLeader): Promise<LeaderSig
     failures.push(error);
   }
   if (stoppedIdentity !== undefined && !groupGone)
-    groupGone = restoreHold(signal, stoppedIdentity, read.table, failures);
+    groupGone = await restoreHold(signal, stoppedIdentity, read.table, failures);
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) {
     const code = errnoCode(failures[0]);
@@ -126,13 +126,16 @@ async function verifyHeldLeader(
   }
 }
 
-/** Restore only a freshly held original identity; unreadable holds retain original debt. */
-function restoreHold(
+/**
+ * Restore only the original hold. Darwin can refuse CONT during TERM exit; one fresh
+ * read must prove the original running or the whole group gone before discarding debt.
+ */
+async function restoreHold(
   signal: HeldLeader,
   identity: string,
   table: readonly ProcessEntry[] | undefined,
   failures: unknown[],
-): boolean {
+): Promise<boolean> {
   const { pid, ops, record } = signal;
   if (table === undefined) {
     record.markUnknownResume();
@@ -155,8 +158,29 @@ function restoreHold(
       signal.guard.gone();
       return true;
     }
+    let confirmationError: unknown;
+    if (errnoCode(error) === "EPERM") {
+      try {
+        const fresh = await ops.listProcesses(remaining(signal.deadline));
+        remaining(signal.deadline);
+        if (!fresh.some((row) => row.pgid === pid && !row.zombie)) {
+          signal.guard.gone();
+          return true;
+        }
+        if (
+          fresh.some(
+            (row) =>
+              !(row.zombie || row.stopped) && row.pgid === pid && processIdentity(row) === identity,
+          )
+        )
+          return false;
+      } catch (readError) {
+        confirmationError = readError;
+      }
+    }
     record.resumes.remember([original], pid);
     failures.push(error);
+    if (confirmationError !== undefined) failures.push(confirmationError);
   }
   return false;
 }
