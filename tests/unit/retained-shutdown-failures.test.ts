@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { BACKGROUND_REAP_RETRY_WINDOW_MS } from "../../src/runtime/shutdown/detached-sweep/background.ts";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { RetainedShutdownFailures } from "../../src/runtime/shutdown/detached-sweep/retained-failures.ts";
+import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/rounds.ts";
 import { SerialDetachedSweepQueue } from "../../src/runtime/shutdown/reap-queue.ts";
 import {
   errno,
@@ -83,4 +84,43 @@ test("C-LIFE-10 an unknown older record keeps the original failure after newer r
   clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
   await failures.confirm();
   expect(() => failures.throwIfUnresolved()).toThrow(failure);
+});
+
+test("C-LIFE-10 expired confirmation cannot clear an unreadable observation gap", async () => {
+  const record = recorded();
+  record.noteReadFailure(errno("EIO"));
+  const read = vi.fn<SweepOps["listProcesses"]>(() => Promise.resolve([]));
+  const failures = manager({
+    ...scripted([]).ops,
+    listProcesses: read,
+    listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+  });
+  expect(() => failures.keep(failure, record)).toThrow(failure);
+  await vi.advanceTimersByTimeAsync(0);
+  clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
+  await failures.confirm();
+  expect(() => failures.throwIfUnresolved()).toThrow(failure);
+  await failures.confirm();
+  expect(() => failures.throwIfUnresolved()).toThrow(failure);
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+test("C-LIFE-10 expired confirmation cannot clear lost original-group authority", async () => {
+  const record = recorded();
+  record.observeLeaderGroup([leaderRow], LEADER, Date.now());
+  record.markLeaderAuthorityLost(LEADER);
+  const read = vi.fn<SweepOps["listProcesses"]>(() => Promise.resolve([]));
+  const failures = manager({
+    ...scripted([]).ops,
+    listProcesses: read,
+    listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+  });
+  expect(() => failures.keep(failure, record)).toThrow(failure);
+  await vi.advanceTimersByTimeAsync(0);
+  clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
+  await failures.confirm();
+  expect(() => failures.throwIfUnresolved()).toThrow(failure);
+  await failures.confirm();
+  expect(() => failures.throwIfUnresolved()).toThrow(failure);
+  expect(read).toHaveBeenCalledTimes(2);
 });
