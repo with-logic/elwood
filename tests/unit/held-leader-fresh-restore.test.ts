@@ -1,5 +1,7 @@
 /** Only fresh original member evidence restores a graceful hold (PRD §5.3, C-LIFE-10). */
 import { afterEach, expect, test, vi } from "vitest";
+import { setPlatformForTests } from "../../src/runtime/seams.ts";
+import { processStartTimeUncertaintyMs } from "../../src/runtime/shutdown/detached-sweep/leader-observation.ts";
 import { heldLeader } from "../helpers/held-leader.ts";
 import { errno, hook, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
 
@@ -73,6 +75,8 @@ test("C-LIFE-10 an already running original member needs no CONT", async () => {
   const run = heldLeader(fake.ops);
   await expect(run.run()).resolves.toBe("signal-sent");
   expect(fake.calls).not.toContain(`cont ${LEADER}`);
+  expect(run.record.resumes.pids).toEqual([]);
+  expect(run.record.hasUnknownResume).toBe(false);
 });
 
 test("C-LIFE-10 late restoration read results cannot authorize CONT", async () => {
@@ -107,37 +111,50 @@ test("C-LIFE-10 CONT EPERM can confirm an original running helper after leader e
   expect(run.record.resumes.pids).toEqual([]);
 });
 
-test.each([
-  {
-    reason: "known",
-    owned: [member],
-    survivor: member,
-    continued: [LEADER],
-    debt: [],
-    unknown: false,
-  },
-  { reason: "unowned", owned: [], survivor: member, continued: [], debt: [LEADER], unknown: true },
-  {
-    reason: "ambiguous",
-    owned: [{ ...member, startedAt: "Sun Oct 25 22:00:01 2026" }],
-    survivor: { ...member, startedAt: "Sun Oct 25 22:00:01 2026" },
-    continued: [],
-    debt: [LEADER],
-    unknown: true,
-  },
-])("C-LIFE-10 verification losing its leader restores only a $reason member", async ({
+test.each(
+  ["darwin", "linux"].flatMap((platform) =>
+    [
+      {
+        reason: "known",
+        owned: [member],
+        survivor: member,
+        continued: [LEADER],
+        debt: [],
+        unknown: false,
+      },
+      {
+        reason: "unowned",
+        owned: [],
+        survivor: member,
+        continued: [],
+        debt: [LEADER],
+        unknown: true,
+      },
+      {
+        reason: "ambiguous",
+        owned: [{ ...member, startedAt: "Sun Oct 25 22:00:01 2026" }],
+        survivor: { ...member, startedAt: "Sun Oct 25 22:00:01 2026" },
+        continued: [],
+        debt: [LEADER],
+        unknown: true,
+      },
+    ].map((entry) => ({ ...entry, platform })),
+  ),
+)("C-LIFE-10 $platform verification losing its leader restores only a $reason member", async ({
+  platform,
   owned,
   survivor,
   continued,
   debt,
   unknown,
 }) => {
+  setPlatformForTests(platform);
   const fake = scripted([[{ ...survivor, ppid: 1, stopped: true }]]);
   const run = heldLeader(fake.ops);
   run.record.observeLeaderGroup(
     [leaderRow, ...owned],
     LEADER,
-    Date.parse(`${leaderRow.startedAt} UTC`) + 1_001,
+    Date.parse(`${leaderRow.startedAt} UTC`) + processStartTimeUncertaintyMs() + 1,
   );
   await expect(run.run()).rejects.toThrow("not confirmed held");
   expect(

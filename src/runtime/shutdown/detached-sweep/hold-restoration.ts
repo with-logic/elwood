@@ -14,12 +14,12 @@ type HoldRestoration = {
 export async function confirmRestoration(
   signal: HoldRestoration,
   identities: ReadonlySet<string>,
-): Promise<boolean | undefined> {
+): Promise<"group-gone" | "original-running" | "unconfirmed"> {
   const fresh = await signal.ops.listProcesses(remainingMs(signal.deadline));
   remainingMs(signal.deadline);
   if (!fresh.some((row) => row.pgid === signal.pid && !row.zombie)) {
     signal.guard.gone();
-    return true;
+    return "group-gone";
   }
   const originalMemberIsRunning = fresh.some(
     (row) =>
@@ -30,7 +30,7 @@ export async function confirmRestoration(
   const hasStoppedLiveGroupMember = fresh.some(
     (row) => !row.zombie && row.stopped && row.pgid === signal.pid,
   );
-  return originalMemberIsRunning && !hasStoppedLiveGroupMember ? false : undefined;
+  return originalMemberIsRunning && !hasStoppedLiveGroupMember ? "original-running" : "unconfirmed";
 }
 
 /** Share the original graceful deadline through all verification and restoration reads. */

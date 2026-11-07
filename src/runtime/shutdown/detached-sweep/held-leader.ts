@@ -120,7 +120,7 @@ async function verifyHeldLeader(
   }
 }
 
-/** Restore only freshly matched original stopped members after the signal attempt. */
+/** The group may exit on TERM and its PGID be reused; CONT requires a fresh original stopped member. */
 async function restoreHold(
   signal: HeldLeader,
   identity: string,
@@ -177,7 +177,7 @@ async function restoreHold(
     if (errnoCode(error) === "EPERM") {
       try {
         const confirmed = await confirmRestoration(signal, identities);
-        if (confirmed !== undefined) return confirmed;
+        if (confirmed !== "unconfirmed") return confirmed === "group-gone";
       } catch (readError) {
         confirmationError = readError;
       }
