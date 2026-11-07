@@ -7,9 +7,10 @@
  */
 
 import { expect, test } from "vitest";
-import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/record.ts";
+import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
+import { delay } from "../helpers/process-liveness.ts";
 import { lateRealReads } from "../helpers/table-reads.ts";
 
 /** How late each read starts: longer than one second, as a read under load can take. */
@@ -18,6 +19,8 @@ const SLOW_READ_MS = 1_200;
 test("C-LIFE-10 a stop's record knows the leader's tree when each read takes over a second", async () => {
   const tree = startDetachedTree();
   const [child, grandchild] = await detachedDescendantPids(tree);
+  // The read-start epoch must distinguish the leader before the slow native read.
+  await delay(1_100);
   const slowReads = { listProcesses: lateRealReads(SLOW_READ_MS) };
   let exited = false;
   const exit = new Promise<void>((resolve) => {

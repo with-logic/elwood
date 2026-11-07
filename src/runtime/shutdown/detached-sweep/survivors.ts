@@ -17,7 +17,7 @@ import { daemonScope } from "../shared-daemon.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
 import { killOrResumeSignaledGroups } from "./kill.ts";
-import { type DescendantRecord, watchDescendants } from "./record.ts";
+import type { DescendantRecord } from "./record.ts";
 import {
   newSweepState,
   recordUnconfirmed,
@@ -30,6 +30,8 @@ import {
   unheldGroups,
   unreachedGroups,
 } from "./rounds.ts";
+
+import { watchDescendants } from "./watch-descendants.ts";
 
 /** A graceful stop's watch for survivors, from the first recording read to the reap. */
 export type SurvivorWatch = {

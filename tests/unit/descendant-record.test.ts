@@ -6,11 +6,11 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import {
-  DescendantRecord,
   RECORD_READ_MS,
   watchDescendants,
-} from "../../src/runtime/shutdown/detached-sweep/record.ts";
+} from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import type { DaemonScope } from "../../src/runtime/shutdown/shared-daemon.ts";
 import { hook, LEADER, leaderRow, useScriptedHost } from "../helpers/scripted-process-tree.ts";
@@ -125,30 +125,24 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     expect(ops.scopes[0]).toMatchObject({ roots: new Set([LEADER]) });
   });
 
-  test("a failed read records nothing and the next read follows", async () => {
+  test("a failed first read permanently refuses a later replacement baseline", async () => {
     const ops = reads([new Error("ps failed"), tree]);
     const watch = watchDescendants(LEADER, ops, () => false);
     await watch.firstRead;
-    while (ops.timeouts.length < 2) await new Promise((resolve) => setImmediate(resolve));
+    for (let turn = 0; turn < 3; turn += 1) await new Promise((resolve) => setImmediate(resolve));
     const record = await watch.finish();
-    expect(pids(record.survivors(tree))).toEqual([5002, 5003]);
+    record.observe(tree, LEADER); // Even a direct later read cannot establish authority.
+    expect(record.known).toBe(false);
+    expect(record.survivors(tree)).toEqual([]);
+    expect(ops.timeouts).toEqual([RECORD_READ_MS]);
   });
 
-  test("a watch whose every read failed knows nothing", async () => {
-    const ops = reads([new Error("ps failed")]);
+  test("a failed later read retains the baseline and the next read follows", async () => {
+    const ops = reads([[leaderRow], new Error("ps failed"), tree]);
     const watch = watchDescendants(LEADER, ops, () => false);
     await watch.firstRead;
-    const record = await watch.finish();
-    expect(record.known).toBe(false);
-  });
-
-  test("a failed first read, then reads without the leader, leave its tree unknown", async () => {
-    // The SIGTERM follows the failed read, and the leader exits on it before another shows it.
-    const ops = reads([new Error("ps failed"), [hook(5002, { ppid: 1 })]]);
-    const watch = watchDescendants(LEADER, ops, () => ops.timeouts.length >= 2);
-    await watch.firstRead;
-    while (ops.timeouts.length < 2) await new Promise((resolve) => setImmediate(resolve));
-    expect((await watch.finish()).known).toBe(false);
+    while (ops.timeouts.length < 3) await new Promise((resolve) => setImmediate(resolve));
+    expect(pids((await watch.finish()).survivors(tree))).toEqual([5002, 5003]);
   });
 
   test("an exit seen while waiting between reads ends the watch without another read", async () => {
