@@ -99,17 +99,18 @@ function groupStops() {
   return { stops, reads };
 }
 
-// Without a commit wait, shutdown reads ownership in the calling tick; TERM follows verification.
+// Without a commit wait, stop verifies before TERM; kill enters the forced sweep immediately.
 test.each([
-  ["kill forces termination", "kill", true, {}],
-  ["a Stop without a transcript path leaves nothing to read", "stop", false, {}],
+  ["kill forces termination", "kill", true, {}, ["SIGSTOP"]],
+  ["a Stop without a transcript path leaves nothing to read", "stop", false, {}, []],
   [
     "a blocked Stop continues the turn",
     "stop",
     true,
     { Stop: () => ({ decision: "block" as const, reason: "go on" }) },
+    [],
   ],
-] as const)("C-LIFE-13 no commit wait: %s", async (_name, verb, withPath, hooks) => {
+] as const)("C-LIFE-13 no commit wait: %s", async (_name, verb, withPath, hooks, expectedStops) => {
   installFakes();
   const { stops, reads } = groupStops();
   const cwd = tempDir();
@@ -117,7 +118,7 @@ test.each([
   await stopHook(session, cwd, withPath ? path : null);
   const shutdown = tracked(session[verb]());
   expect(reads).toHaveBeenCalledTimes(1);
-  expect(stops).toEqual(verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`] : []);
+  expect(stops).toEqual(expectedStops.map((signal) => `${signal} -${ptys[0]!.pid}`));
   await shutdown;
   expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
 });

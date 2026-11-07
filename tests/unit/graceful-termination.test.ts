@@ -96,7 +96,9 @@ test("C-LIFE-10 a completed group reap suppresses later graceful and force signa
   const fixture = gracefulTermination(fake.ops);
   fixture.reaper.reap();
   const completed = [...fake.calls];
-  await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
+  await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toMatchObject({
+    code: "termination_failed",
+  });
   await fixture.reaper.sweepDetached(() => false);
   expect(fixture.reaper.signalLeaderPty(() => fixture.pty.kill())).toBe("leader-group-gone");
   expect(fixture.ptySignals).toEqual([]);
@@ -110,8 +112,12 @@ test("C-LIFE-10 graceful ESRCH cancels every later leader signal", async () => {
     },
   });
   const fixture = gracefulTermination(fake.ops);
-  await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
-  await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
+  for (let attempt = 0; attempt < 2; attempt += 1)
+    await expect(
+      terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds),
+    ).rejects.toMatchObject({
+      code: "termination_failed",
+    });
   expect(fixture.ptySignals).toEqual([]);
   expect(fake.calls).toEqual(["list", "list"]);
 });

@@ -1437,9 +1437,9 @@ leader signaling rather than adopting a later process with the same PID.
 
 Codex 0.167.0 on macOS can exit between TERM and the hold's CONT, before the
 terminal exit notification arrives. Darwin then returns `EPERM` for CONT. One
-fresh read within the existing deadline must confirm either the same original
-leader with no live group member still stopped, or the whole group has no live
-members. A stopped member, replacement identity, failed read, or expired deadline preserves the
+fresh read within the existing deadline must confirm either a previously recorded
+original group member running with no live group member still stopped, or that
+the whole group has no live members. A stopped member, replacement identity, failed read, or expired deadline preserves the
 restoration failure and debt. The real snapshot-shell stop test reproduces the
 failure without this confirmation and passes with it (2026-11-07).
 

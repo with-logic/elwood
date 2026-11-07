@@ -1,7 +1,4 @@
-/**
- * Shared PTY termination helper for graceful stop and force kill.
- * Implements PRD §5.3 and §9.4.
- */
+/** Shared PTY graceful-stop and force-kill termination (PRD §5.3 and §9.4). */
 
 import {
   causeDetails,
@@ -16,7 +13,7 @@ import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { assertLeaderObservation } from "./detached-sweep/held-leader.ts";
 import type { SurvivorWatch } from "./detached-sweep/survivor-watch.ts";
 import { mergeSweepErrors } from "./merge-sweep-errors.ts";
-import type { SessionReaper } from "./reap-tree.ts";
+import type { LeaderPtySignalOutcome, SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 type TerminationReaper = Pick<
@@ -26,6 +23,10 @@ type TerminationReaper = Pick<
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
+const leaderGroupGoneForOutcome: Readonly<Record<LeaderPtySignalOutcome, boolean>> = {
+  "signal-sent": false,
+  "leader-group-gone": true,
+};
 
 /**
  * Graceful stop records observed descendants before TERM and holds/verifies the original
@@ -54,19 +55,20 @@ export async function terminatePty(
       const observation = await watch.firstObservation;
       assertLeaderObservation(observation);
       const outcome = latch.exited ? undefined : await watch.sendSignal(() => pty.kill("SIGTERM"));
-      const groupGone = outcome === "leader-group-gone";
-      observedExit = latch.exited || groupGone || (await latch.within(timeouts.gracefulMs));
+      const groupGone = outcome !== undefined && leaderGroupGoneForOutcome[outcome];
+      observedExit = !groupGone && (await latch.within(timeouts.gracefulMs));
     }
     if (!observedExit) {
       sweepError = await (watch?.reap() ?? reaper.sweepDetached(() => latch.exited)).then(
         () => undefined,
         toError,
       );
-      const leaderGroupGone =
+      void (
         watch === undefined &&
         !latch.exited &&
-        reaper.signalLeaderPty(() => pty.kill("SIGKILL")) === "leader-group-gone";
-      observedExit = leaderGroupGone || (await latch.within(timeouts.forceMs));
+        reaper.signalLeaderPty(() => pty.kill("SIGKILL"))
+      );
+      observedExit = await latch.within(timeouts.forceMs);
       if (!observedExit) {
         terminationError = elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
       }

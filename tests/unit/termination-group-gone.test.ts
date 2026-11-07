@@ -37,9 +37,15 @@ test.each([
   const fake = scripted([rows], { stopGroup: stop });
   const reaper = new SessionReaper(LEADER, fake.ops);
   const send = vi.fn();
-  await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).resolves.toBeUndefined();
+  await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
+    code: "termination_failed",
+    message: "PTY did not exit after SIGKILL.",
+  });
   for (const signal of ["SIGTERM", "SIGKILL"] as const)
-    await expect(terminatePty(pty(send), signal, reaper, timeouts)).resolves.toBeUndefined();
+    await expect(terminatePty(pty(send), signal, reaper, timeouts)).rejects.toMatchObject({
+      code: "termination_failed",
+      message: "PTY did not exit after SIGKILL.",
+    });
   await reaper.sweepDetached(() => false);
   reaper.reap();
   reaper.reapAndThrowOnDetachedSweepFailure();

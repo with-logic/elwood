@@ -4,9 +4,9 @@ import { startCodex } from "../../src/index.ts";
 import { PtyExitLatch } from "../../src/pty/exit-latch.ts";
 import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { SessionReapPolicy } from "../../src/runtime/session/reap.ts";
-import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
-import { errno, heldLeaderRow } from "../helpers/scripted-process-tree.ts";
+import { pendingGroupConfirmation } from "../helpers/pending-group-confirmation.ts";
+import { errno } from "../helpers/scripted-process-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -22,33 +22,18 @@ test.each([
 ] as const)("C-LIFE-10 Codex startup exit defers reap until %s EPERM confirmation settles", async (kind) => {
   installFakes();
   vi.useFakeTimers();
-  const readStarted = Promise.withResolvers<void>();
-  const confirmation = Promise.withResolvers<readonly ProcessEntry[]>();
+  const { readStarted, confirmation, ownedLeader, markTermSent, ops } = pendingGroupConfirmation(
+    () => ptys[0]!.pid,
+    reapedGroups,
+  );
   const exitReap = vi.spyOn(SessionReapPolicy.prototype, "bestEffort");
   // Skip only the graceful wait; Codex's actual startup and exit wiring still run.
   vi.spyOn(PtyExitLatch.prototype, "within").mockResolvedValueOnce(false);
-  let termSent = false;
-  let confirming = false;
-  const ownedLeader = () => heldLeaderRow(ptys[0]!.pid);
-  setProcessTreeOpsForTests({
-    stopGroup: () => {
-      if (!termSent) return;
-      confirming = true;
-      throw errno("EPERM");
-    },
-    listProcesses: () => {
-      if (!confirming) return Promise.resolve([ownedLeader()]);
-      readStarted.resolve();
-      return confirmation.promise;
-    },
-    killGroup: (pgid) => reapedGroups.push(pgid),
-  });
+  setProcessTreeOpsForTests(ops);
   const spawn = currentPtyFactory();
   setPtyFactoryForTests((options) => {
     const pty = spawn(options);
-    vi.spyOn(pty, "kill").mockImplementation(() => {
-      termSent = true;
-    });
+    vi.spyOn(pty, "kill").mockImplementation(markTermSent);
     return pty;
   });
   const starting = startCodex({ cwd: tempDir() }).catch((error: unknown) => error);

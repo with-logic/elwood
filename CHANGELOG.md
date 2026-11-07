@@ -26,7 +26,8 @@ back each entry are listed in `prd/14-conformance.md`.
   verification fails. Ambiguous or lost ownership rejects with `termination_failed`
   and prevents final or later leader signals. Initial identity checks honor the full
   platform timestamp uncertainty, including Linux's two-second window; CONT requires
-  a fresh match to original held group members.
+  a fresh match to original held group members. Group disappearance suppresses
+  further signals but does not replace the bounded wait for native PTY exit.
 
 ## [0.2.4] - 2026-11-06
 
