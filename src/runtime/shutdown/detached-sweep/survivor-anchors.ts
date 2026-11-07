@@ -11,7 +11,7 @@ import type { SweepOps, SweepState } from "./rounds.ts";
 export class SurvivorAnchors {
   private readonly members = new Map<number, ReadonlyMap<string, ProcessEntry>>();
   private readonly readAfterStop = new Set<number>();
-  private readonly confirmed = new Set<number>();
+  private readonly groupsWithStoppedOriginalAnchor = new Set<number>();
   private readonly rejectedGroups = new Set<number>();
 
   private readonly state: SweepState;
@@ -37,7 +37,7 @@ export class SurvivorAnchors {
     };
   }
 
-  /** Rejects and restores any stopped group whose pre-signal member no longer anchors it. */
+  /** Reject unowned holds; restore only a freshly identified original member’s group. */
   afterRead(table: readonly ProcessEntry[]): void {
     this.byGroup = new Map();
     for (const row of table) {
@@ -46,22 +46,25 @@ export class SurvivorAnchors {
       members.set(processIdentity(row), row);
       this.byGroup.set(row.pgid, members);
     }
+    const unsafe = this.record.unsafeSurvivorGroups(table);
     for (const [group, identities] of this.members) {
       this.readAfterStop.add(group);
       const anchors = [
         ...(this.byGroup.get(group) ?? new Map<string, ProcessEntry>()).values(),
       ].filter((row) => identities.has(processIdentity(row)));
-      if (anchors.length === 0) {
+      if (anchors.length === 0 || unsafe.has(group)) {
         this.restore(group);
-      } else if (anchors.some((row) => row.stopped)) this.confirmed.add(group);
-      else this.confirmed.delete(group);
+      } else if (anchors.some((row) => row.stopped))
+        this.groupsWithStoppedOriginalAnchor.add(group);
+      else this.groupsWithStoppedOriginalAnchor.delete(group);
     }
   }
 
   /** A failed read or deadline cannot turn an unconfirmed SIGSTOP into authority to kill. */
   restoreUnconfirmed(): void {
     for (const group of this.members.keys()) {
-      if (!this.confirmed.has(group) || this.state.unheld.includes(group)) this.restore(group);
+      if (!this.groupsWithStoppedOriginalAnchor.has(group) || this.state.unheld.includes(group))
+        this.restore(group);
     }
   }
 
@@ -76,18 +79,25 @@ export class SurvivorAnchors {
       [group],
     );
     this.rejectedGroups.add(group);
+    const identities = this.members.get(group)!;
     this.members.delete(group);
     this.state.signaledGroupIds.delete(group);
     const index = this.state.signaledDescendantGroupIds.indexOf(group);
     this.state.signaledDescendantGroupIds.splice(index, 1);
+    if (!this.readAfterStop.has(group)) {
+      this.record.markUnknownResume();
+      this.record.resumes.remember([...identities.values()], group);
+      return;
+    }
+    const original = this.state.latest.filter(
+      (row) => !row.zombie && row.pgid === group && identities.has(processIdentity(row)),
+    );
+    if (original.length === 0) return;
     try {
       this.ops.continueGroup(group);
     } catch (error) {
       if (errnoCode(error) === "ESRCH") return;
-      const table = this.state.latest;
-      if (this.readAfterStop.has(group) && table.some((row) => !row.zombie && row.pgid === group))
-        this.record.resumes.remember(table, group);
-      else this.record.markUnknownResume();
+      this.record.resumes.remember(original, group);
       this.state.failures.record("could not resume an unconfirmed survivor group", error, [group]);
     }
   }

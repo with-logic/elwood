@@ -26,6 +26,7 @@ export type FailureReason =
   | "could not resume a group spared for Codex's shared daemon"
   | "a stopped group has unresolved restoration"
   | "a survivor group could not be safely confirmed stopped"
+  | "a survivor group has an ambiguous identity"
   | "could not resume an unconfirmed survivor group"
   | "no read showed the leader's tree";
 

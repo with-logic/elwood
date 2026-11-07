@@ -7,10 +7,12 @@
  * anchors the groups it started, a group read with a member running is stopped again,
  * and once a read converges the signaled groups are SIGKILLed deepest first, but one
  * holding Codex's daemon, which is resumed (`kill.ts`). A fresh post-stop read must
- * confirm an original stopped member before the kill pass; an unconfirmed hold is
- * restored and fails. This private foundation has no production lifecycle caller yet.
+ * confirm an original stopped member before the kill pass. Unconfirmed holds fail;
+ * restoration requires a fresh original identity, otherwise only owned debt is retained.
+ * This private foundation has no production lifecycle caller yet.
  */
 
+import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
@@ -113,14 +115,33 @@ async function stopSurvivorGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      const readStartedAtEpochMs = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
-      if (!record.resumes.retry(table, ops))
-        state.failures.record("a stopped group has unresolved restoration", undefined, []);
-      const roots = survivorGroups(record.survivors(table), table);
+      record.resumes.retry(table, {
+        continueGroup: (group) => {
+          try {
+            ops.continueGroup(group);
+          } catch (error) {
+            if (errnoCode(error) !== "ESRCH")
+              state.failures.record("a stopped group has unresolved restoration", error, [group]);
+            throw error;
+          }
+        },
+      });
+      const blocked = record.unsafeSurvivorGroups(table);
+      const roots = survivorGroups(
+        record.survivors(table).filter((row) => !blocked.has(row.pgid)),
+        table,
+      );
+      const discovered = liveGroups(table, roots);
+      record.observeGroups(table, discovered, readStartedAtEpochMs);
       anchors.afterRead(table);
+      const unsafe = record.unsafeSurvivorGroups(table);
+      if (unsafe.size > 0)
+        state.failures.record("a survivor group has an ambiguous identity", undefined, [...unsafe]);
       state.live = new Map(
-        [...liveGroups(table, roots)].filter(([group]) => !anchors.rejected.has(group)),
+        [...discovered].filter(([group]) => !(unsafe.has(group) || anchors.rejected.has(group))),
       );
       state.unheld = unheldGroups(table, state);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;

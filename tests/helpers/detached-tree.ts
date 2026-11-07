@@ -33,6 +33,8 @@ const DAEMON_BINARY = "packages/app-server-daemon/releases/0.164.0/bin/codex";
 const NODE = realpathSync(process.execPath);
 /** How long a test waits for a process of the tree to record its pid. */
 const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
+/** Yield between marker checks while keeping exit below the native-read cadence. */
+const LATE_OBSERVATION_POLL_MS = 2;
 
 // `hold.cjs <dir> <name> [next] [mode] [...]`: records its pid as <dir>/<name>.pid,
 // optionally starts `next` DETACHED from plain Node (Node's `detached` is `setsid()`, as
@@ -57,7 +59,7 @@ if (mode === "late-on-term" || mode === "late-until-seen") process.on("SIGTERM",
   start(process.execPath, ["late"]);
   if (mode === "late-on-term") setTimeout(() => process.exit(0), 500);
   else {
-    const exitOnceSeen = () => existsSync(dir + "/seen") ? process.exit(0) : setTimeout(exitOnceSeen, 2);
+    const exitOnceSeen = () => existsSync(dir + "/seen") ? process.exit(0) : setTimeout(exitOnceSeen, ${LATE_OBSERVATION_POLL_MS});
     exitOnceSeen();
   }
 });

@@ -1,11 +1,11 @@
 /**
  * The survivor reap on real processes (PRD §5.3 and §9.4, C-LIFE-10): with real SIGSTOP,
  * SIGKILL, and `/bin/ps`, the watch's record reaps the setsid descendants a leader leaves
- * on SIGTERM, one it starts after the SIGTERM too, but no detached process outside the
- * leader's tree, nor Codex's app-server daemon or its updater loop.
+ * on SIGTERM, refusing newly ambiguous identities and sparing unrelated processes,
+ * Codex's app-server daemon, and its updater loop.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
@@ -25,8 +25,6 @@ const RUNNING = { zombie: false, stopped: false };
 
 /** Sends `tree`'s leader SIGTERM under a survivor watch and reaps once it exits. */
 async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = async () => {}) {
-  // Same-second process ownership is deliberately refused by the first observation.
-  await delay(DISTINCT_PROCESS_START_DELAY_MS);
   let exited = false;
   const exit = new Promise<void>((resolve) => {
     tree.pty.onExit(() => {
@@ -51,18 +49,26 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
   return outcomes;
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("C-LIFE-10 survivor reap on real processes", () => {
-  test("reaps what a leader leaves on SIGTERM, a process it starts after it too", async () => {
+  test("reaps older survivors but refuses a newly observed ambiguous late child", async () => {
     const tree = startDetachedTree("late-until-seen");
     const bystander = startBystander();
     try {
       const [child, grandchild] = await detachedDescendantPids(tree);
+      await delay(DISTINCT_PROCESS_START_DELAY_MS);
+      // Keep observation epochs fixed while native deadlines and process cleanup remain real.
+      vi.spyOn(Date, "now").mockReturnValue(Date.now());
       let late = 0;
       const outcomes = await stopWatched(tree, async () => {
         late = await waitForTreeProcessPid(tree, "late");
       });
-      expect(outcomes).toEqual([undefined]);
-      for (const pid of [child, grandchild, late]) {
+      expect(outcomes).toMatchObject([{ message: expect.stringContaining("ambiguous identity") }]);
+      expect((await listProcessTable(10_000)).find((row) => row.pid === late)).toMatchObject(
+        RUNNING,
+      );
+      for (const pid of [child, grandchild]) {
         expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
       }
       const table = await listProcessTable(10_000);
@@ -83,6 +89,7 @@ describe("C-LIFE-10 survivor reap on real processes", () => {
         waitForTreeProcessPid(tree, "updater"),
         waitForTreeProcessPid(tree, "mcp"),
       ]);
+      await delay(DISTINCT_PROCESS_START_DELAY_MS);
       expect(await stopWatched(tree)).toEqual([undefined]);
       for (const pid of [child, grandchild]) {
         expect(await pollGone({ pid, timeoutMs: 5_000 })).toBe(true);
