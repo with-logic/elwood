@@ -447,5 +447,5 @@ caller still observes its own operation's success or typed failure.
 
 Graceful shutdown records detached descendants before TERM and suspends leader-group
 reap before the initial process-table read. Initial refusal or lost ownership permanently
-vetoes final and later leader signals. Independently verified detached groups and owed
-hold restoration remain eligible; unknown ownership or restoration cannot report success.
+vetoes final and later leader signals. Independently verified detached groups and identity-verified hold restoration
+remain eligible; unknown ownership or restoration cannot report success.
