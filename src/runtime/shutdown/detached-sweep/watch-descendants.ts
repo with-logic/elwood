@@ -1,4 +1,4 @@
-/** Records descendants while preserving immutable first-read authority (PRD §5.3, C-LIFE-10). */
+/** Records original leader-group members and linked detached helpers (PRD §5.3, C-LIFE-10). */
 import { daemonScope } from "../shared-daemon.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
 import type { LeaderObservation } from "./leader-observation.ts";
@@ -22,10 +22,10 @@ export type DescendantWatch = {
 };
 
 /**
- * Reads the table again and again, with Codex's daemon marked under `leaderPid`, recording
- * the leader's detached descendants until `finish` is called or `leaderExited` reports the
- * exit. A failed later read retains uncertainty even if later reads succeed. An initial refusal
- * ends the watch, so a replacement cannot establish a new baseline.
+ * Records original leader-group members and linked detached helpers until `finish` or
+ * leader exit. Codex's daemon is marked under `leaderPid` and excluded from owned cleanup.
+ * Failed later reads retain uncertainty even after readable snapshots. An initial refusal
+ * ends observation, so a replacement cannot establish a new baseline.
  */
 export function watchDescendants(
   leaderPid: number,
@@ -38,7 +38,10 @@ export function watchDescendants(
   const readOnce = () => {
     const started = Date.now();
     return ops.listProcesses(RECORD_READ_MS, scope).then(
-      (table) => record.observe(table, leaderPid, started),
+      (table) => {
+        record.observe(table, leaderPid, started);
+        record.observeLeaderGroup(table, leaderPid, started);
+      },
       (error: unknown) => record.noteReadFailure(error),
     );
   };
@@ -47,6 +50,7 @@ export function watchDescendants(
     (table) => {
       const observation = record.observeFirst(table, leaderPid, started);
       record.observe(table, leaderPid, started);
+      record.observeLeaderGroup(table, leaderPid, started);
       return observation;
     },
     (error: unknown) => record.refuseFirstObservation(error),

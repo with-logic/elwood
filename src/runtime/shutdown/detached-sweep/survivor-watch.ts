@@ -1,4 +1,4 @@
-/** Private graceful recording, held signaling and retained outcomes (PRD §5.3, C-LIFE-10). */
+/** Owns one verified cleanup of original groups and detached helpers (PRD §5.3, C-LIFE-10). */
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import {
   type LeaderSignalGuard,
@@ -17,9 +17,24 @@ export type SurvivorWatch = {
   /** Freezes the first read's evidence; a missing target settles immediately as refused. */
   readonly firstObservation: Promise<LeaderObservation>;
   readonly sendSignal: (send: () => void) => Promise<LeaderSignalOutcome>;
-  /** Retain read failures regardless of the flag; true also records an unconfirmed exit. */
+  /** Stop recording and memoize one verified cleanup, while the leader lives or after exit. */
+  readonly reap: () => Promise<void>;
+  /** Join started cleanup, or start it after exit; retain read failures for either flag.
+   * True also records an unconfirmed exit when cleanup has not started. */
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
+
+/** A completed cleanup never sends another signal and still reports retained failures. */
+export function completedSurvivorWatch(checkFailure: () => void): SurvivorWatch {
+  const finish = async () => checkFailure();
+  return {
+    firstRead: Promise.resolve(),
+    firstObservation: Promise.resolve({ kind: "gone" }),
+    sendSignal: async () => "leader-group-gone",
+    reap: finish,
+    finish,
+  };
+}
 
 /** Keep first-read authority and the original deadline through queued signal admission. */
 export function watchSurvivors(
@@ -37,6 +52,7 @@ export function watchSurvivors(
       firstRead: Promise.resolve(),
       firstObservation: Promise.resolve({ kind: "refused", error }),
       sendSignal: () => Promise.reject(error),
+      reap: () => Promise.reject(error),
       finish: (failedTermination = false) =>
         Promise.resolve().then(() => {
           if (!failedTermination) return;
@@ -55,27 +71,38 @@ export function watchSurvivors(
       guard.forbid(new Error("No original leader before SIGTERM."));
     return observation;
   });
+  let reaping: Promise<void> | undefined;
+  const reap = () => {
+    reaping ??= (async () => {
+      const record = await watch.finish();
+      keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
+    })();
+    return reaping;
+  };
   return {
     firstRead: firstObservation.then(() => undefined),
     firstObservation,
     sendSignal: (send) =>
-      sendHeldLeaderSignal({
-        pid: leaderPid,
-        record: watch.record,
-        observation: firstObservation,
-        ops,
-        leaderExited,
-        deadline,
-        guard,
-        send,
-      }).then((outcome) => {
-        groupGone = outcome === "leader-group-gone";
-        return outcome;
-      }),
+      reaping === undefined
+        ? sendHeldLeaderSignal({
+            pid: leaderPid,
+            record: watch.record,
+            observation: firstObservation,
+            ops,
+            leaderExited,
+            deadline,
+            guard,
+            send,
+          }).then((outcome) => {
+            groupGone = outcome === "leader-group-gone";
+            return outcome;
+          })
+        : reaping.then(() => "leader-group-gone"),
+    reap,
     finish: async (failedTermination = false) => {
       const record = await watch.finish();
-      if (groupGone || leaderExited())
-        keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
+      if (reaping !== undefined) return reaping;
+      if (groupGone || leaderExited()) return reap();
       else {
         const failures = new SweepFailures();
         record.includeReadFailure(failures);

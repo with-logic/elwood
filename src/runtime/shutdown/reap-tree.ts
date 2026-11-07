@@ -15,11 +15,18 @@
  * `sweepDetached` finds those groups by parent pid and kills them, all but the daemon's
  * and its updater's, which other Codex sessions share, so it has to run
  * while that link still exists: before the live leader is SIGKILLed (see
- * `sweepDetachedGroups` in `detached-sweep/index.ts`).
+ * `sweepDetachedGroups` in `detached-sweep/index.ts`). Graceful shutdown records those
+ * links before TERM and verifies recorded survivors after exit (`watchSurvivors`).
  */
 
+import { toError } from "../../core/errors.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
 import { sweepDetachedGroups } from "./detached-sweep/index.ts";
+import {
+  completedSurvivorWatch,
+  type SurvivorWatch,
+  watchSurvivors,
+} from "./detached-sweep/survivor-watch.ts";
 import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
 import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
 import { SerialDetachedSweepQueue } from "./reap-queue.ts";
@@ -37,20 +44,20 @@ export {
 export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
 
 /**
- * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
- * once: `stop()` then a later `teardown()` both want to guarantee the group is
- * gone, but signaling the same numeric pgid twice is unsafe — once the group is
- * empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit an
- * unrelated group. So the latch is set only AFTER the kill succeeds (an already
- * empty group's `ESRCH` is normalized to success by `reapProcessGroup`). A real
- * failure (e.g. EPERM) leaves the latch OPEN and rethrows, so a later teardown
- * call can retry rather than leaving the descendant leak permanently unreaped.
+ * Owns one successful group cleanup: a numeric forced reap or a verified graceful walk.
+ * Completion prevents another numeric kill after PID reuse; it does not prove that
+ * node-pty delivered exit. The termination owner separately awaits that observation.
+ * Syscall reap failures stay retryable; an ownership veto permanently blocks later
+ * leader signals. Graceful cleanup retains its original record and first outcome.
  */
 export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
   private done = false;
   private pendingSweeps = 0;
+  private gracefulWatch: SurvivorWatch | undefined;
+  private leaderVerificationPending = false;
+  private leaderSignalAuthorizationError: Error | undefined;
   /** Terminal evidence about the entire group, never inferred merely from leader exit. */
   private leaderGroupGone = false;
   private readonly detachedSweepQueue = new SerialDetachedSweepQueue();
@@ -65,31 +72,94 @@ export class SessionReaper {
   /**
    * Reap the group once it succeeds; a successful call latches so subsequent
    * calls no-op (no recycled-pgid double-kill). A failed kill does NOT latch and
-   * rethrows, keeping the reap retryable on a later lifecycle call.
+   * rethrows, keeping syscall failures retryable. An ownership veto permanently blocks
+   * later leader signals, including retries from a lifecycle call.
    */
   reap(): void {
     // The active shutdown owner reaps after its sweep, including any pending confirmation.
     if (this.done || this.leaderGroupGone || this.pendingSweeps > 0) return;
+    this.assertLeaderSignalsAllowed();
+    if (this.gracefulWatch !== undefined) return;
     reapProcessGroup(this.leaderPid, this.ops);
     this.done = true;
   }
 
   /** Dispatch a PTY signal only while this session has not confirmed its group gone. */
   signalLeaderPty(send: () => void): LeaderPtySignalOutcome {
-    if (this.leaderGroupGone) {
+    if (this.leaderGroupGone || this.done) {
       this.reapAndThrowOnDetachedSweepFailure();
       return "leader-group-gone";
     }
+    this.assertLeaderSignalsAllowed();
+    if (this.gracefulWatch !== undefined)
+      throw new Error("Graceful shutdown owns verified leader-group cleanup.");
     send();
     return "signal-sent";
   }
 
+  /** Verify graceful authority before any exit callback can reap the numeric leader group. */
+  watchSurvivors(leaderExited: () => boolean): SurvivorWatch {
+    if (this.gracefulWatch !== undefined) return this.gracefulWatch;
+    const pid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
+    if (pid !== undefined && (this.done || this.leaderGroupGone)) {
+      return completedSurvivorWatch(() => this.reapAndThrowOnDetachedSweepFailure());
+    }
+    if (pid !== undefined) {
+      this.assertLeaderSignalsAllowed();
+      this.leaderVerificationPending = true;
+    }
+    this.gracefulWatch = watchSurvivors(
+      pid,
+      this.ops,
+      leaderExited,
+      (failure) => {
+        if (failure !== undefined) this.unresolvedSweep = failure;
+        if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+        this.assertNoAuthorizationFailure();
+        this.done = true;
+      },
+      {
+        serialize: (attempt) => this.detachedSweepQueue.run(attempt),
+        assertRetainedAuthority: () => {
+          this.assertNoAuthorizationFailure();
+          if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+        },
+        authorize: () => {
+          this.assertNoAuthorizationFailure();
+          this.leaderVerificationPending = false;
+        },
+        forbid: (error) => this.forbidLeaderSignals(error),
+        gone: () => {
+          this.leaderGroupGone = true;
+          this.leaderVerificationPending = false;
+        },
+      },
+    );
+    return this.gracefulWatch;
+  }
+
+  private forbidLeaderSignals(error: unknown): void {
+    this.leaderSignalAuthorizationError ??= toError(error);
+    this.leaderVerificationPending = false;
+  }
+
+  private assertNoAuthorizationFailure(): void {
+    if (this.leaderSignalAuthorizationError !== undefined)
+      throw this.leaderSignalAuthorizationError;
+  }
+
+  private assertLeaderSignalsAllowed(): void {
+    if (this.leaderVerificationPending)
+      this.forbidLeaderSignals(
+        new Error("The leader exited before signal ownership was verified."),
+      );
+    this.assertNoAuthorizationFailure();
+  }
+
   /**
-   * The group reap for an explicit shutdown's retry: it also keeps failing while an
-   * earlier detached sweep is unresolved, so a later `stop()`/`kill()`/`teardown()`
-   * never reports success for a hook that may still be running. It says nothing about
-   * a sweep that never ran: the caller sweeps first, before any SIGKILL it sends to a
-   * live leader.
+   * Synchronous failure check, not an owner of the asynchronous graceful wait.
+   * ShutdownCoordinator joins/chains explicit shutdown before this check; native exit
+   * callbacks only attempt the synchronous reap. Unobserved helpers cannot be discovered.
    */
   reapAndThrowOnDetachedSweepFailure(): void {
     this.reap();
@@ -97,21 +167,21 @@ export class SessionReaper {
   }
 
   /**
-   * Kill the process groups the leader's descendants moved into. Valid only while
-   * the leader is alive — afterwards its detached descendants are reparented to
-   * PID 1 and cannot be found — so it runs just before the leader is SIGKILLed, with
-   * `leaderExited` reporting whether the caller has seen the leader exit. A failure,
-   * including a leader exit that left a found group unreached, is kept for
-   * `reapAndThrowOnDetachedSweepFailure`, then thrown. Refuses the same misrouted ids
-   * as the group reap.
+   * With a graceful owner, joins its retained identity-verified cleanup before or after
+   * leader exit. Otherwise uses the legacy live-leader sweep before forced SIGKILL,
+   * while parent links can still identify detached descendants. That sweep records
+   * failed or unconfirmed groups for the later synchronous failure check and refuses
+   * the same unsafe numeric IDs as the group reap.
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
+    if (this.gracefulWatch !== undefined) return this.gracefulWatch.reap();
     if (!isReapableGroupId(this.leaderPid)) return;
     this.pendingSweeps += 1;
     try {
       const failure = await this.detachedSweepQueue.run(() => {
         // A queued request must recheck after the preceding pass has confirmed exit.
-        if (this.leaderGroupGone) return Promise.resolve(undefined);
+        if (this.leaderGroupGone || this.done) return Promise.resolve(undefined);
+        this.assertLeaderSignalsAllowed();
         return sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, undefined, () => {
           this.leaderGroupGone = true;
         });

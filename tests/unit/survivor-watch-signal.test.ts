@@ -128,7 +128,7 @@ test("C-LIFE-10 held signaling and survivor reaping share the session queue and 
   await watch.finish();
   expect(delivered).toBe(1);
   expect(keep).toHaveBeenCalledExactlyOnceWith(undefined, expect.objectContaining({ known: true }));
-  expect(keep.mock.calls[0]?.[1].pids).toEqual([5002]);
+  expect(keep.mock.calls[0]?.[1].pids).toEqual([5002, LEADER]);
   expect(fake.calls).toContain("kill 5002");
 });
 

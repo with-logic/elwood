@@ -123,7 +123,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     exited = true;
     const record = await watch.finish();
     const count = ops.timeouts.length;
-    expect(pids(record.survivors(tree))).toEqual([5002, 5003]);
+    expect(pids(record.survivors(tree))).toEqual([LEADER, 5001, 5002, 5003]);
     await vi.advanceTimersByTimeAsync(RECORD_INTERVAL_MS);
     expect(ops.timeouts.length).toBe(count);
     expect(new Set(ops.timeouts)).toEqual(new Set([RECORD_READ_MS]));
@@ -150,7 +150,7 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
     const watch = watchDescendants(LEADER, ops, () => false);
     await watch.firstRead;
     await vi.advanceTimersByTimeAsync(RECORD_INTERVAL_MS * 2);
-    expect(pids((await watch.finish()).survivors(tree))).toEqual([5002, 5003]);
+    expect(pids((await watch.finish()).survivors(tree))).toEqual([LEADER, 5001, 5002, 5003]);
   });
 
   test("an exit seen while waiting between reads ends the watch without another read", async () => {

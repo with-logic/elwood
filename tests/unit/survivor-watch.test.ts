@@ -80,7 +80,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
       undefined,
       expect.objectContaining({ known: true }),
     );
-    expect(keep.mock.calls[0]?.[1].pids).toEqual([5002, 5003]);
+    expect(keep.mock.calls[0]?.[1].pids).toEqual([5002, 5003, LEADER]);
   });
 
   test("a reap that fails hands its failure to keep, once", async () => {
@@ -112,7 +112,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
       }),
       expect.objectContaining({ known: true }),
     );
-    expect(keep.mock.calls[0]?.[1].pids).toEqual([5002, 5003]);
+    expect(keep.mock.calls[0]?.[1].pids).toEqual([5002, 5003, LEADER]);
   });
   test("whole-group disappearance queues reaping of a live recorded child", async () => {
     const child = hook(5002);
@@ -146,7 +146,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     expect(delivered).not.toHaveBeenCalled();
     expect(keep).toHaveBeenCalledExactlyOnceWith(
       undefined,
-      expect.objectContaining({ known: true, pids: [5002] }),
+      expect.objectContaining({ known: true, pids: [5002, LEADER] }),
     );
   });
 });

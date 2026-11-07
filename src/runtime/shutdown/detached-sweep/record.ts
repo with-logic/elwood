@@ -1,12 +1,10 @@
 /**
- * Private descendant-record foundation for graceful shutdown (PRD §5.3 and §9.4,
- * C-LIFE-10); not yet wired into the production lifecycle. Records links while the
- * leader lives, before detached helpers can be reparented on its exit. The first
- * observation freezes leader authority: a missing leader stays gone, and a failed,
- * unparseable, same-second, or wrong-group identity cannot be replaced by a later row.
- * Later reads record only descendants of that original identity. Each recorded pid
- * retains its second-resolution start time, so distinguishable PID reuse is rejected.
- * Failed later reads preserve the baseline and retain uncertainty about missed helpers.
+ * Private graceful-shutdown ownership for original leader-group members and detached
+ * helpers (PRD §5.3/§9.4, C-LIFE-10); not yet wired into the production lifecycle.
+ * The first observation freezes the leader identity; later reads cannot adopt another.
+ * Linked helpers are recorded while that leader lives, before exit can reparent them.
+ * Start times reject distinguishable PID reuse. Failed reads and unattributable live
+ * leader-group members retain uncertainty through subsequent cleanup attempts.
  */
 
 import {
@@ -23,10 +21,12 @@ import {
 } from "./leader-observation.ts";
 import { ResumeDebt } from "./resume-debt.ts";
 
-/** The detached descendants seen so far, by pid and start time. */
+/** Recorded graceful-shutdown processes, by pid and start time. */
 export class DescendantRecord {
   private readonly identities = new Set<string>();
   private readonly ambiguous = new Set<string>();
+  private leaderGroup: number | undefined;
+  private unknownLeaderGroup: number | undefined;
   private unknownResume = false;
   private readonly readFailures = new SweepFailures();
   private missedRead = false;
@@ -60,6 +60,29 @@ export class DescendantRecord {
     this.observeGroups(table, observed, readStartedAtEpochMs);
   }
 
+  /** Graceful cleanup also owns members of the frozen original leader's group. */
+  observeLeaderGroup(
+    table: readonly ProcessEntry[],
+    leaderPid: number,
+    readStartedAtEpochMs: number,
+  ): void {
+    const first = this.firstLeaderObservation;
+    const leader = table.find((row) => row.pid === leaderPid && !row.zombie);
+    if (
+      first?.kind !== "observed" ||
+      leader?.pgid !== leaderPid ||
+      identity(leader) !== first.identity
+    )
+      return;
+    this.known = true;
+    this.leaderGroup = leaderPid;
+    this.observeGroups(
+      table,
+      new Map([[leaderPid, new Set<ProcessEntry>()]]),
+      readStartedAtEpochMs,
+    );
+  }
+
   /** Retain first-observation ambiguity for owned group members across later reads. */
   observeGroups(
     table: readonly ProcessEntry[],
@@ -81,13 +104,20 @@ export class DescendantRecord {
     }
   }
 
-  /** Only a matching live ambiguous identity blocks its group. */
+  /** Ambiguous identities and unattributable original-group members cannot authorize cleanup. */
   unsafeSurvivorGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
-    return new Set(
+    if (this.leaderGroup !== undefined) {
+      const members = table.filter((row) => !row.zombie && row.pgid === this.leaderGroup);
+      if (members.length > 0 && !members.some((row) => this.identities.has(identity(row))))
+        this.unknownLeaderGroup = this.leaderGroup;
+    }
+    const unsafe = new Set(
       this.survivors(table)
         .filter((row) => this.ambiguous.has(identity(row)))
         .map((row) => row.pgid),
     );
+    if (this.unknownLeaderGroup !== undefined) unsafe.add(this.unknownLeaderGroup);
+    return unsafe;
   }
 
   /** Freeze the first read before signaling; no later row can replace its authority. */
