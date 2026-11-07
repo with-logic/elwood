@@ -145,14 +145,14 @@ test("C-LIFE-10 empty recovery reads cannot retire an unreadable observation gap
   expect(fake.calls).toEqual(["list", "list"]);
 });
 
-test("C-LIFE-10 empty recovery reads cannot restore lost original-group authority", async () => {
+test("C-LIFE-10 empty recovery reads cannot clear unknown original-group ownership", async () => {
   vi.useFakeTimers();
   vi.spyOn(performance, "now").mockImplementation(() => Date.now());
   const record = new DescendantRecord();
   const tree = [leaderRow, hook(5002, { pgid: LEADER })];
   record.observeFirst(tree, LEADER, Date.now());
   record.observeLeaderGroup(tree, LEADER, Date.now());
-  record.markLeaderAuthorityLost(LEADER);
+  expect(record.unsafeSurvivorGroups([hook(5003, { pgid: LEADER })])).toEqual(new Set([LEADER]));
   const fake = scripted([[]]);
   const first = reapInBackground(record, fake.ops, serialized());
   await vi.advanceTimersByTimeAsync(0);
