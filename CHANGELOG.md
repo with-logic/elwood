@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-06
+
 - Preserve healthy workspace version and capability caches after uncontended local
   update verification refusals; observed peer activity still invalidates them.
 
