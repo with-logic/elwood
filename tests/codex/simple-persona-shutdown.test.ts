@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexSession } from "../../src/index.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -13,6 +14,7 @@ test("C-API-51 failed stop and kill still cancel the caller waiting on its perso
   installFakes();
   let failShutdown = true;
   setProcessTreeOpsForTests({
+    ...quietPtyTree(ptys),
     killGroup: () => {
       if (failShutdown) throw new Error("reap failed");
     },
@@ -51,7 +53,8 @@ test("C-API-51 failed stop and kill still cancel the caller waiting on its perso
     failShutdown = false;
     vi.restoreAllMocks();
     ptys[0]?.emitExit({ exitCode: 0 });
-    await facade.close();
+    // Unknown ownership still rejects after the injected signal/reap failures are removed.
+    await expect(facade.close()).rejects.toMatchObject({ code: "termination_failed" });
     await result;
   }
 });
