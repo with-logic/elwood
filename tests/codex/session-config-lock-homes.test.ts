@@ -11,27 +11,19 @@ import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { codexHomeReportPath } from "../helpers/codex-home.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, tempDir } from "./helpers.ts";
 import {
   becomeReadyFor,
+  cleanupModelSessions,
   driveSetModel,
   driveUntilConfigWritten,
-  restoreCodexHome,
   sandboxCodexHome,
-  stopModelSessions,
   trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(async () => {
-  try {
-    await stopModelSessions();
-  } finally {
-    resetFakes();
-    restoreCodexHome();
-  }
-});
+afterEach(cleanupModelSessions);
 
 /** Starts a session whose launch shell reports `home`, not Elwood's `CODEX_HOME`. */
 async function startReportingHome(name: string, ptyIndex: number) {

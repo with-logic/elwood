@@ -14,25 +14,17 @@ import { codexHomeReportPath } from "../helpers/codex-home.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { FakePty } from "../helpers/fake-pty.ts";
 import { exitingDuringStartup, rejection, startupExit } from "../helpers/startup-exit.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, tempDir } from "./helpers.ts";
 import {
+  cleanupModelSessions,
   driveSetModel,
-  restoreCodexHome,
   sandboxCodexHome,
-  stopModelSessions,
   trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(async () => {
-  try {
-    await stopModelSessions();
-  } finally {
-    resetFakes();
-    restoreCodexHome();
-  }
-});
+afterEach(cleanupModelSessions);
 
 /** The report path of the first Codex launch. */
 function firstReport(): string {

@@ -12,25 +12,17 @@ import { resumeCodex, startCodex } from "../../src/index.ts";
 import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { codexHomeReportPath } from "../helpers/codex-home.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, tempDir } from "./helpers.ts";
 import {
+  cleanupModelSessions,
   driveSetModel,
-  restoreCodexHome,
   sandboxCodexHome,
-  stopModelSessions,
   trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(async () => {
-  try {
-    await stopModelSessions();
-  } finally {
-    resetFakes();
-    restoreCodexHome();
-  }
-});
+afterEach(cleanupModelSessions);
 
 const shellConfigText = 'model = "gpt-5.4"\nmodel_reasoning_effort = "low"\n\n[hooks]\n';
 

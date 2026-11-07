@@ -8,25 +8,17 @@ import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { fifoWithLateWriter } from "../helpers/fifo.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, tempDir } from "./helpers.ts";
 import {
+  cleanupModelSessions,
   driveUntilConfigWritten,
-  restoreCodexHome,
   sandboxCodexHome,
-  stopModelSessions,
   trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(async () => {
-  try {
-    await stopModelSessions();
-  } finally {
-    resetFakes();
-    restoreCodexHome();
-  }
-});
+afterEach(cleanupModelSessions);
 
 async function readySession() {
   const cwd = tempDir();
