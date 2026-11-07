@@ -1,0 +1,192 @@
+/** Explicit retries confirm retained evidence with a bounded referenced read (C-LIFE-10). */
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import {
+  BACKGROUND_REAP_RETRY_WINDOW_MS,
+  reapInBackground,
+} from "../../src/runtime/shutdown/detached-sweep/background.ts";
+import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
+import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/rounds.ts";
+import { serializedReapQueue } from "../helpers/reap-queue.ts";
+import { recordedDescendants } from "../helpers/recorded-descendants.ts";
+import {
+  errno,
+  hook,
+  LEADER,
+  leaderRow,
+  scripted,
+  useScriptedHost,
+} from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
+let clock = 0;
+beforeEach(() => {
+  vi.useFakeTimers();
+  clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+/** Keep owned live evidence waiting on a signal failure, without inventing a read gap. */
+function parked() {
+  return scripted([], {
+    listProcesses: () => Promise.resolve([hook(5002)]),
+    stopGroup: () => {
+      throw errno("EIO");
+    },
+  });
+}
+const expiry = () => {
+  clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
+};
+
+test("C-LIFE-10 confirmation starts only after expiry, and never for empty or resolved records", async () => {
+  const fake = scripted([[]]);
+  const empty = reapInBackground(new DescendantRecord(), fake.ops, serializedReapQueue());
+  const resolved = reapInBackground(recordedDescendants(), fake.ops, serializedReapQueue());
+  expect(resolved.confirm()).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(resolved.resolved()).toBe(true);
+  expiry();
+  expect(resolved.confirm()).toBeUndefined();
+  expect(empty.confirm()).toBeUndefined();
+  expect(empty.resolved()).toBe(false);
+});
+
+test("C-LIFE-10 an unreadable confirmation remains unresolved after matching identities disappear", async () => {
+  const fake = parked();
+  let rows = [hook(5002, { stopped: true })];
+  let unreadable = false;
+  const read = vi.fn(() => (unreadable ? Promise.reject(errno("EIO")) : Promise.resolve(rows)));
+  const stopGroup = vi.fn();
+  const killGroup = vi.fn();
+  const recovery = reapInBackground(recordedDescendants(), fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    listProcesses: read,
+    stopGroup,
+    killGroup,
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expiry();
+  await recovery.confirm();
+  expect(stopGroup).not.toHaveBeenCalled();
+  expect(killGroup).not.toHaveBeenCalled();
+  expect(recovery.resolved()).toBe(false);
+  unreadable = true;
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(false);
+  unreadable = false;
+  rows = [{ ...hook(5002), startedAt: "Mon Jan 1 00:00:00 2001" }];
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(false);
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(stopGroup).not.toHaveBeenCalled();
+  expect(killGroup).not.toHaveBeenCalled();
+});
+
+test("C-LIFE-10 unknown ownership cannot be confirmed", async () => {
+  const record = recordedDescendants();
+  record.known = false;
+  const fake = parked();
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    listProcesses: () => Promise.resolve([]),
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expiry();
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(false);
+});
+
+test("C-LIFE-10 unknown restoration cannot be confirmed", async () => {
+  const record = recordedDescendants();
+  record.markUnknownResume();
+  const fake = parked();
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    listProcesses: () => Promise.resolve([]),
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expiry();
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(false);
+});
+
+test("C-LIFE-10 concurrent confirmations reuse conclusive evidence and retain new roots and daemon paths", async () => {
+  const record = recordedDescendants();
+  const fake = scripted([], {
+    listProcesses: (_ms, scope) => {
+      scope?.known.add("confirmed daemon path");
+      return Promise.resolve([hook(5002)]);
+    },
+    stopGroup: () => {
+      throw errno("EIO");
+    },
+  });
+  const read = vi.fn<SweepOps["listProcesses"]>((_ms, scope) => {
+    expect(scope?.roots).toEqual(new Set([5002, 5003]));
+    expect(scope?.known.has("confirmed daemon path")).toBe(true);
+    return Promise.resolve([]);
+  });
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    listProcesses: read,
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  record.observeGroups([hook(5003)], new Map([[5003, new Set()]]), Date.now());
+  expiry();
+  await Promise.all([recovery.confirm(), recovery.confirm(), recovery.confirm()]);
+  expect(recovery.resolved()).toBe(true);
+  expect(read).toHaveBeenCalledOnce();
+});
+
+test("C-LIFE-10 expired confirmation retries matching stopped restoration without restarting kills", async () => {
+  const record = new DescendantRecord();
+  record.observeFirst([leaderRow], LEADER, Date.now());
+  record.observe([leaderRow], LEADER);
+  const held = { ...leaderRow, stopped: true };
+  record.resumes.remember([held], LEADER);
+  const fake = scripted([[held]], {
+    continueGroup: () => {
+      throw errno("EPERM");
+    },
+  });
+  const restored: number[] = [];
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    continueGroup: (group) => {
+      restored.push(group);
+    },
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expiry();
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(true);
+  expect(restored).toEqual([LEADER]);
+  expect(fake.calls).toEqual(["list", "list"]);
+});
+
+test("C-LIFE-10 an ambiguous recorded survivor stays unresolved until it disappears", async () => {
+  const record = recordedDescendants();
+  const ambiguous = hook(5003);
+  record.observeGroups(
+    [ambiguous],
+    new Map([[5003, new Set()]]),
+    Date.parse(`${ambiguous.startedAt} UTC`),
+  );
+  const fake = parked();
+  let rows = [ambiguous];
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    listProcesses: () => Promise.resolve(rows),
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expiry();
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(false);
+  expect(fake.calls).toEqual([]);
+  rows = [];
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(true);
+});
