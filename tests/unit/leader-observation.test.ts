@@ -1,5 +1,6 @@
 /** Immutable first-read graceful authority (PRD §5.3, C-LIFE-10); no real signals. */
 import { afterEach, expect, test, vi } from "vitest";
+import { processStartTimeUncertaintyMs } from "../../src/runtime/shutdown/detached-sweep/leader-observation.ts";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
 import {
@@ -29,9 +30,13 @@ test.each([
   expect(record.pids).toEqual([]);
 });
 
-test("C-LIFE-10 exact start-second boundary is old enough and freezes authority", () => {
+test("C-LIFE-10 exact platform uncertainty boundary is old enough and freezes authority", () => {
   const record = new DescendantRecord();
-  const observed = record.observeFirst([leaderRow], LEADER, epoch + 1_000);
+  const observed = record.observeFirst(
+    [leaderRow],
+    LEADER,
+    epoch + processStartTimeUncertaintyMs(),
+  );
   expect(observed).toEqual({ kind: "observed", identity: `${LEADER} ${leaderRow.startedAt}` });
   expect(record.refuseFirstObservation(errno("EIO"))).toBe(observed);
   expect(record.observeFirst([], LEADER, epoch + 2_000)).toBe(observed);

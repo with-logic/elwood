@@ -6,6 +6,7 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { processStartTimeUncertaintyMs } from "../../src/runtime/shutdown/detached-sweep/leader-observation.ts";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
@@ -68,7 +69,7 @@ describe("C-LIFE-10 survivor reap on real processes", () => {
         .map((row) => Date.parse(`${row.startedAt} UTC`));
       expect(starts).toHaveLength(3);
       expect(starts.every(Number.isFinite)).toBe(true);
-      vi.spyOn(Date, "now").mockReturnValue(Math.max(...starts) + 1_000);
+      vi.spyOn(Date, "now").mockReturnValue(Math.max(...starts) + processStartTimeUncertaintyMs());
       let late = 0;
       const outcomes = await stopWatched(tree, async () => {
         late = await waitForTreeProcessPid(tree, "late");

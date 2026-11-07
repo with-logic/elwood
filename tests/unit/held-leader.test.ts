@@ -11,7 +11,7 @@ test("C-LIFE-10 TERM is delivered only after holding and verifying the original 
   await expect(run.run()).resolves.toBe("signal-sent");
   expect(run.delivered).toEqual(["TERM"]);
   expect(run.refused).toEqual([]);
-  expect(fake.calls).toEqual([`stop ${LEADER}`, "list", `cont ${LEADER}`]);
+  expect(fake.calls).toEqual([`stop ${LEADER}`, "list", "list", `cont ${LEADER}`]);
 });
 
 test.each([
@@ -33,8 +33,8 @@ test.each([
   expect(run.refused).toHaveLength(1);
   expect(fake.calls).toEqual([`stop ${LEADER}`]);
   expect.soft(continueGroup).not.toHaveBeenCalled();
-  expect.soft(run.record.resumes.pids).toEqual([]);
-  expect(run.record.hasUnknownResume).toBe(false);
+  expect.soft(run.record.resumes.pids).toEqual([LEADER]);
+  expect(run.record.hasUnknownResume).toBe(true);
   expect.soft(run.record.resumes.retry([row], { continueGroup })).toBe(true);
   expect.soft(continueGroup).not.toHaveBeenCalled();
 });
@@ -96,12 +96,18 @@ test("C-LIFE-10 deadline expiry before SIGSTOP has no signal effects", async () 
 });
 
 test.each([
-  { next: [{ ...leaderRow, stopped: true }], outcome: "signal-sent", delivered: ["TERM"] },
-  { next: [], outcome: "leader-group-gone", delivered: [] },
+  {
+    next: [{ ...leaderRow, stopped: true }],
+    outcome: "signal-sent",
+    delivered: ["TERM"],
+    timeouts: [6_000, 6_000, 6_000],
+  },
+  { next: [], outcome: "leader-group-gone", delivered: [], timeouts: [6_000, 6_000] },
 ])("C-LIFE-10 delayed STOP verification reaches $outcome within its deadline", async ({
   next,
   outcome,
   delivered,
+  timeouts,
 }) => {
   let clock = 0;
   let reads = 0;
@@ -121,13 +127,13 @@ test.each([
   });
   await expect(run.run()).resolves.toBe(outcome);
   expect(run.delivered).toEqual(delivered);
-  expect(fake.timeouts).toEqual([6_000, 6_000]);
+  expect(fake.timeouts).toEqual(timeouts);
 });
 
 test.each([
-  { stopped: true, calls: [`cont ${LEADER}`], debt: [] },
+  { stopped: true, calls: [], debt: [LEADER] },
   { stopped: false, calls: [], debt: [LEADER] },
-])("C-LIFE-10 expiry during the fresh read retains or restores the hold ($stopped)", async ({
+])("C-LIFE-10 expiry during the fresh read retains the hold without stale restoration ($stopped)", async ({
   stopped,
   calls,
   debt,

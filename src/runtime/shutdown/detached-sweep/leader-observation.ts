@@ -1,8 +1,9 @@
 /**
  * Freezes graceful-watch leader authority (PRD §5.3, C-LIFE-10). `ps lstart` has
- * second resolution; a first observation within that second cannot exclude PID reuse.
+ * second resolution; first observations exclude the platform’s full timestamp uncertainty.
  */
 import { errnoCode, isErrnoToken } from "../../../core/errors.ts";
+import { currentPlatform } from "../../seams.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
 
 export type LeaderObservation =
@@ -10,7 +11,10 @@ export type LeaderObservation =
   | { readonly kind: "gone" }
   | { readonly kind: "refused"; readonly error: Error };
 
-export const PROCESS_START_TIME_RESOLUTION_MS = 1_000;
+/** Linux ps truncates boot time and process uptime separately; Darwin truncates once. */
+export function processStartTimeUncertaintyMs(): number {
+  return currentPlatform() === "linux" ? 2_000 : 1_000;
+}
 
 /** Authorize only an older, parseable original group leader. */
 export function observeLeader(
@@ -23,7 +27,7 @@ export function observeLeader(
   if (
     row.pgid !== leaderPid ||
     !Number.isFinite(started) ||
-    started + PROCESS_START_TIME_RESOLUTION_MS > readStartedAtEpochMs
+    started + processStartTimeUncertaintyMs() > readStartedAtEpochMs
   )
     return {
       kind: "refused",

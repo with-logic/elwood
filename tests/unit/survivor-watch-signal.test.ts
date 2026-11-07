@@ -124,7 +124,8 @@ test("C-LIFE-10 held signaling and survivor reaping share the session queue and 
   expect(fake.calls).not.toContain(`stop ${LEADER}`);
   gate.resolve();
   await held;
-  expect(await signaling).toBe("signal-sent");
+  expect(await signaling).toBe("leader-group-gone");
+  expect(fake.calls).not.toContain(`cont ${LEADER}`);
   await watch.finish();
   expect(delivered).toBe(1);
   expect(keep).toHaveBeenCalledExactlyOnceWith(undefined, expect.objectContaining({ known: true }));

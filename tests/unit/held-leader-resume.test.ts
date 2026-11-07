@@ -12,7 +12,7 @@ function refusedResume(
   held: readonly ProcessEntry[] = [{ ...leaderRow, stopped: true }],
 ) {
   const error = errno(code);
-  const read = vi.fn().mockResolvedValueOnce(held);
+  const read = vi.fn().mockResolvedValueOnce(held).mockResolvedValueOnce(held);
   if (table instanceof Error) read.mockRejectedValue(table);
   else read.mockResolvedValue(table);
   const resume = vi.fn(() => {
@@ -36,7 +36,7 @@ test.each([
   expect(run.groupGone()).toBe(gone);
   expect(run.delivered).toEqual(["TERM"]);
   expect(run.record.resumes.pids).toEqual([]);
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(3);
   expect(resume).toHaveBeenCalledTimes(1);
 });
 
@@ -63,7 +63,7 @@ test.each([
   await expect(run.run()).rejects.toBe(error);
   expect(run.groupGone()).toBe(false);
   expect(run.record.resumes.pids).toEqual([LEADER]);
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(3);
   expect(resume).toHaveBeenCalledTimes(1);
 });
 
@@ -90,13 +90,14 @@ test.each([
     read
       .mockReset()
       .mockResolvedValueOnce([{ ...leaderRow, stopped: true }])
+      .mockResolvedValueOnce([{ ...leaderRow, stopped: true }])
       .mockImplementationOnce(() => {
         clock = 10_001;
         return Promise.resolve([leaderRow]);
       });
   await expect(run.run()).rejects.toMatchObject({ errors: [error, { code: "ETIMEDOUT" }] });
-  expect(read).toHaveBeenCalledTimes(late ? 2 : 1);
-  if (late) expect(read.mock.calls[1]).toEqual([6_000]);
+  expect(read).toHaveBeenCalledTimes(late ? 3 : 2);
+  if (late) expect(read.mock.calls[2]).toEqual([6_000]);
   expect(run.record.resumes.pids).toEqual([LEADER]);
   expect(run.groupGone()).toBe(false);
 });
@@ -104,7 +105,7 @@ test.each([
 test("C-LIFE-10 another CONT failure does not trigger a confirmation read", async () => {
   const { run, read, error } = refusedResume([leaderRow], "EIO");
   await expect(run.run()).rejects.toBe(error);
-  expect(read).toHaveBeenCalledTimes(1);
+  expect(read).toHaveBeenCalledTimes(2);
   expect(run.record.resumes.pids).toEqual([LEADER]);
 });
 
@@ -128,7 +129,7 @@ test("C-LIFE-10 a running leader cannot clear another original member's stopped 
   await expect(run.run()).rejects.toBe(error);
   expect(run.groupGone()).toBe(false);
   expect(run.record.resumes.pids).toEqual([LEADER, member.pid]);
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(3);
   expect(resume).toHaveBeenCalledTimes(1);
   const continueGroup = vi.fn();
   expect(run.record.resumes.retry(fresh, { continueGroup })).toBe(true);
