@@ -32,7 +32,8 @@ const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
  * Concurrent callers share the single
  * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
- * version cache whether this process owned the update or waited for a peer. The one exception
+ * version cache after actual, peer-owned, or uncertain attempts. A positively uncontended
+ * local verification refusal preserves caches after cleanup. The one exception
  * is test-only: after `resetAutoupdateForTests()`, until a test sets a coordinator, it throws
  * at once instead of returning.
  */
@@ -66,10 +67,15 @@ function finalizeAutoupdate(
   afterAttempt?: () => void,
 ): AutoupdateOutcome {
   try {
-    // A failed installer may still have changed the binary. Invalidate after
-    // every attempt, including a peer-owned or failed one, before validation.
-    invalidateVersionRead(adapter);
-    afterAttempt?.();
+    // A recovered or uncertain peer may have changed the binary before local verification.
+    const unchanged =
+      !outcome.ok &&
+      outcome.error instanceof UpdateVerificationFailure &&
+      outcome.error.uncontended;
+    if (!unchanged) {
+      invalidateVersionRead(adapter);
+      afterAttempt?.();
+    }
     return outcome;
   } catch (error) {
     return { ok: false, error };

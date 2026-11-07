@@ -18,7 +18,7 @@ type Acquisition = {
   readonly claim: () => Promise<boolean>;
 };
 
-/** True grants update ownership; false means no update lease acquired. */
+/** Ownership records whether any peer activity preceded this claim; false skips the update. */
 export async function acquireUpdateLease({
   adapter,
   leasePath,
@@ -29,7 +29,7 @@ export async function acquireUpdateLease({
   staleMs,
   waitUntilMs,
   claim,
-}: Acquisition): Promise<boolean> {
+}: Acquisition): Promise<false | "uncontended" | "recovered"> {
   const {
     ownerGeneration: observedGeneration,
     priorCompletionGeneration,
@@ -104,7 +104,7 @@ export async function acquireUpdateLease({
     await releaseLease(leasePath, owner);
     throw error;
   });
-  return true;
+  return observedActive ? "recovered" : "uncontended";
 }
 
 /** A nonoptional return and no default make future wait variants a compile-time error. */

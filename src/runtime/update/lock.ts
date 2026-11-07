@@ -73,20 +73,18 @@ export async function coordinatedAutoupdate(
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completionMarkerPath = join(root, `${adapter}.completed`);
   const refusalMarkerPath = `${completionMarkerPath}.refused`;
-  if (
-    !(await acquireUpdateLease({
-      adapter,
-      leasePath,
-      owner,
-      completionMarkerPath,
-      refusalMarkerPath,
-      pollMs,
-      staleMs,
-      waitUntilMs,
-      claim: () => claimLease(leasePath, owner),
-    }))
-  )
-    return;
+  const ownership = await acquireUpdateLease({
+    adapter,
+    leasePath,
+    owner,
+    completionMarkerPath,
+    refusalMarkerPath,
+    pollMs,
+    staleMs,
+    waitUntilMs,
+    claim: () => claimLease(leasePath, owner),
+  });
+  if (ownership === false) return;
   // Started through `Promise.resolve().then` so an updater that throws SYNCHRONOUSLY is a
   // rejection like any other. Calling `update()` bare would let such a throw escape past
   // the release below with the lease still held, which is the one failure the lease cannot
@@ -110,6 +108,7 @@ export async function coordinatedAutoupdate(
       if (refusal === undefined) {
         await publishCompletionGeneration(leasePath, completionMarkerPath, owner);
       } else {
+        refusal.uncontended = ownership === "uncontended";
         await publishCompletionGeneration(leasePath, refusalMarkerPath, owner).catch(
           () => undefined,
         );

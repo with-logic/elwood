@@ -1,6 +1,8 @@
 /** Private prerequisite-verification provenance for PRD §9.2 / C-LIFE-09/11. */
 export class UpdateVerificationFailure {
   readonly error: unknown;
+  /** Set only by coordination after uncontended ownership and completed probe cleanup. */
+  uncontended = false;
   constructor(error: unknown) {
     this.error = error;
   }

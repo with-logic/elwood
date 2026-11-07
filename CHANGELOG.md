@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve healthy workspace version and capability caches after uncontended local
+  update verification refusals; observed peer activity still invalidates them.
+
 - Emit optional CLI update warnings even when the updater rejects with `undefined`.
 
 - Retry optional CLI updates on a later independent start after local or peer
