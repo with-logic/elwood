@@ -1,4 +1,5 @@
 /** Retain failed shutdown observations until every record resolves (PRD §9.4, C-LIFE-10). */
+import { errnoCode } from "../../../core/errors.ts";
 import type { ProcessTreeOps } from "../process-tree-ops.ts";
 import type { ReapQueue } from "../reap-queue.ts";
 import { type BackgroundReap, reapInBackground } from "./background.ts";
@@ -20,15 +21,26 @@ export class RetainedShutdownFailures {
   keep(failure: SweepFailure | undefined, record: DescendantRecord): void {
     if (failure === undefined) return;
     this.failure ??= failure;
+    const ops = {
+      ...this.ops,
+      continueGroup: (group: number) => {
+        try {
+          this.ops.continueGroup(group);
+        } catch (error) {
+          if (errnoCode(error) === "ESRCH") record.markGroupGone(group);
+          throw error;
+        }
+      },
+    };
     this.recoveries.push(
       reapInBackground(
         record,
         {
-          ...this.ops,
+          ...ops,
           listProcesses: this.ops.listProcessesUnreferenced ?? this.ops.listProcesses,
         },
         this.serialize,
-        this.ops,
+        ops,
       ),
     );
     throw failure;

@@ -1,10 +1,6 @@
 /**
- * Private graceful-shutdown ownership for original leader-group members and detached
- * helpers (PRD §5.3/§9.4, C-LIFE-10); not yet wired into the production lifecycle.
- * The first observation freezes the leader identity; later reads cannot adopt another.
- * Linked helpers are recorded while that leader lives, before exit can reparent them.
- * Start times reject distinguishable PID reuse. Failed reads and unattributable live
- * leader-group members retain uncertainty through subsequent cleanup attempts.
+ * Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10/14).
+ * Frozen identities exclude replacements; failed observations retain uncertainty.
  */
 
 import {
@@ -25,6 +21,7 @@ import { ResumeDebt } from "./resume-debt.ts";
 export class DescendantRecord {
   private readonly identities = new Set<string>();
   private readonly ambiguous = new Set<string>();
+  private readonly goneGroups = new Set<number>();
   private leaderGroup: number | undefined;
   private unknownLeaderGroup: number | undefined;
   private unknownResume = false;
@@ -33,11 +30,7 @@ export class DescendantRecord {
   readonly resumes = new ResumeDebt();
   /** Frozen first-read result: an accepted identity, confirmed absence, or refusal. */
   private firstLeaderObservation: LeaderObservation | undefined;
-  /**
-   * Whether a read matched the validated original leader identity, or the first read
-   * confirmed it already gone, with nothing left linked to it. Later absence does not
-   * establish the tree; an ambiguous or refused first identity never does.
-   */
+  /** Only a matched original identity or initial absence establishes the tree. */
   known = false;
 
   /** Record detached group members only while the frozen original leader is still live. */
@@ -100,6 +93,16 @@ export class DescendantRecord {
       }
       this.identities.add(id);
     }
+  }
+
+  /** Whole-group ESRCH retires recorded members even when a just-read table is stale. */
+  markGroupGone(group: number): void {
+    this.goneGroups.add(group);
+  }
+
+  /** A lost graceful owner can never regain permission to signal its original group. */
+  markLeaderAuthorityLost(leaderPid: number): void {
+    this.unknownLeaderGroup = leaderPid;
   }
 
   /** Ambiguous identities and unattributable original-group members cannot authorize cleanup. */
@@ -186,6 +189,8 @@ export class DescendantRecord {
    */
   survivors(table: readonly ProcessEntry[]): readonly ProcessEntry[] {
     const recorded = (row: ProcessEntry) => this.identities.has(identity(row));
-    return table.filter((row) => !row.zombie && recorded(row) && !row.shared);
+    return table.filter(
+      (row) => !row.zombie && recorded(row) && !row.shared && !this.goneGroups.has(row.pgid),
+    );
   }
 }
