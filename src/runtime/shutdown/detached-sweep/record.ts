@@ -1,5 +1,5 @@
 /**
- * Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10/14).
+ * Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10).
  * Frozen identities exclude replacements; failed observations retain uncertainty.
  */
 

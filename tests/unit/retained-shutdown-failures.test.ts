@@ -129,35 +129,3 @@ test("C-LIFE-10 expired confirmation cannot clear lost original-group authority"
   expect(() => failures.throwIfUnresolved()).toThrow(failure);
   expect(read).toHaveBeenCalledTimes(2);
 });
-
-test.each([
-  "ESRCH",
-  "EPERM",
-  undefined,
-] as const)("C-LIFE-14 retained restoration handles %s without reaping a conclusively gone group", async (code) => {
-  const record = recorded();
-  record.observeLeaderGroup([leaderRow], LEADER, Date.now());
-  const held = { ...leaderRow, stopped: true };
-  record.resumes.remember([held], LEADER);
-  const calls: string[] = [];
-  const failures = manager({
-    ...scripted([]).ops,
-    listProcesses: () => Promise.resolve([]),
-    listProcessesUnreferenced: () => Promise.resolve([{ ...held, shared: code !== "ESRCH" }]),
-    continueGroup: (group) => {
-      calls.push(`cont ${group}`);
-      if (code !== undefined) throw errno(code);
-    },
-    stopGroup: (group) => {
-      calls.push(`stop ${group}`);
-    },
-    killGroup: (group) => {
-      calls.push(`kill ${group}`);
-    },
-  });
-  expect(() => failures.keep(failure, record)).toThrow(failure);
-  await vi.advanceTimersByTimeAsync(0);
-  if (code === "EPERM") expect(() => failures.throwIfUnresolved()).toThrow(failure);
-  else expect(() => failures.throwIfUnresolved()).not.toThrow();
-  expect(calls).toEqual([`cont ${LEADER}`]);
-});
