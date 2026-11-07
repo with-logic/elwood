@@ -6,9 +6,10 @@
 
 import { describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
-import { quietProcessTree, SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
+import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 
 const LEADER = FAKE_PID;
 
@@ -36,7 +37,7 @@ function killablePty() {
 }
 const throwingReaper = (code?: string) =>
   new SessionReaper(LEADER, {
-    ...quietProcessTree(),
+    ...quietPtyTree([{ pid: LEADER }]),
     killGroup: () => {
       throw Object.assign(new Error("reap failure"), code === undefined ? {} : { code });
     },
@@ -46,7 +47,7 @@ describe("C-LIFE-10 terminatePty", () => {
   test("reaps the leader's group after exit", async () => {
     const killed: number[] = [];
     const reaper = new SessionReaper(LEADER, {
-      ...quietProcessTree(),
+      ...quietPtyTree([{ pid: LEADER }]),
       killGroup: (p) => killed.push(p),
     });
     await terminatePty(killablePty(), "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
@@ -95,7 +96,7 @@ describe("C-LIFE-10 terminatePty", () => {
       },
     };
     const reaper = new SessionReaper(LEADER, {
-      ...quietProcessTree(),
+      ...quietPtyTree([{ pid: LEADER }]),
       killGroup: (pgid) => killed.push(pgid),
     });
     await expect(
@@ -112,7 +113,7 @@ describe("C-LIFE-10 terminatePty", () => {
     // The reap killer throws a bare string (not an Error): its String() form is
     // still carried, never dropped, when termination also fails.
     const stringThrowReaper = new SessionReaper(LEADER, {
-      ...quietProcessTree(),
+      ...quietPtyTree([{ pid: LEADER }]),
       killGroup: () => {
         // biome-ignore lint/style/useThrowOnlyError: intentional non-Error throw for coverage of the String() path.
         throw "raw-string-failure";
@@ -138,7 +139,7 @@ describe("C-LIFE-10 terminatePty", () => {
       terminatePty(
         neverExits,
         "SIGTERM",
-        new SessionReaper(LEADER, { ...quietProcessTree(), killGroup: () => {} }),
+        new SessionReaper(LEADER, { ...quietPtyTree([{ pid: LEADER }]), killGroup: () => {} }),
         {
           gracefulMs: 0,
           forceMs: 0,
@@ -153,7 +154,7 @@ describe("C-LIFE-10 terminatePty", () => {
     // must NOT escape unwrapped; stop()/kill() reject with a typed `termination_failed`
     // (PRD §10, C-ERR-01) whose normalized cause preserves errno.
     const epermReaper = new SessionReaper(LEADER, {
-      ...quietProcessTree(),
+      ...quietPtyTree([{ pid: LEADER }]),
       killGroup: () => {
         throw Object.assign(new Error("reap failure"), { code: "EPERM" });
       },

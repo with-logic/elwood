@@ -11,6 +11,7 @@ import { describe, expect, test } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
+import { fakeSurvivorWatch } from "../helpers/fake-survivor-watch.ts";
 import { harness, sweepFailure, swept, timeouts } from "../helpers/termination-harness.ts";
 
 describe("C-LIFE-10 terminatePty detached sweep", () => {
@@ -20,7 +21,7 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     expect(calls).toEqual([...swept, "signal SIGKILL", "unsubscribe", "reap"]);
   });
 
-  test("a leader that exits on SIGTERM is not swept", async () => {
+  test("a graceful exit needs no forced sweep", async () => {
     const { pty, reaper, calls } = harness({ exitsOn: ["SIGTERM"] });
     await terminatePty(pty, "SIGTERM", reaper, timeouts);
     expect(calls).toEqual(["signal SIGTERM", "unsubscribe", "reap"]);
@@ -117,5 +118,23 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
       "subscribe failed",
     );
     expect(calls).toEqual(["reap"]);
+  });
+});
+
+test("C-LIFE-10 force and graceful survivor failures both survive termination reporting", async () => {
+  const force = sweepFailure("process table unreadable", [7001], "EIO");
+  const survivor = sweepFailure("could not kill a signaled descendant group", [7002], "EPERM");
+  const { pty, reaper } = harness({ exitsOn: ["SIGKILL"], sweepError: force });
+  reaper.watchSurvivors = () => ({
+    ...fakeSurvivorWatch(),
+    finish: () => Promise.reject(survivor),
+  });
+  await expect(terminatePty(pty, "SIGTERM", reaper, timeouts)).rejects.toMatchObject({
+    code: "termination_failed",
+    details: {
+      cause: `${force.message}; ${survivor.message}`,
+      errno: "EIO",
+      unconfirmedProcessGroupIds: [7001, 7002],
+    },
   });
 });

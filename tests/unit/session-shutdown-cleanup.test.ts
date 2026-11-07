@@ -11,6 +11,7 @@ import { elwoodError } from "../../src/core/errors.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { runShutdown, type ShutdownHost } from "../../src/runtime/session/shutdown.ts";
 import type { ShutdownContext } from "../../src/runtime/shutdown/coordinator.ts";
+import { fakeSurvivorWatch } from "../helpers/fake-survivor-watch.ts";
 
 /** A PTY the already-signaled hosts below never touch (no signal is ever re-sent). */
 const untouchedPty: PtyProcess = {
@@ -26,6 +27,7 @@ const untouchedPty: PtyProcess = {
 
 /** A reaper whose reap and detached sweep always succeed. */
 const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
+  watchSurvivors: fakeSurvivorWatch,
   signalLeaderPty: (send: () => void) => {
     send();
     return "signal-sent" as const;

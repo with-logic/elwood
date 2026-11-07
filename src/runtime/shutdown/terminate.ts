@@ -13,10 +13,16 @@ import {
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
+import { assertLeaderObservation } from "./detached-sweep/held-leader.ts";
+import type { SurvivorWatch } from "./detached-sweep/survivor-watch.ts";
+import { mergeSweepErrors } from "./merge-sweep-errors.ts";
 import type { LeaderPtySignalOutcome, SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
-type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached" | "signalLeaderPty">;
+type TerminationReaper = Pick<
+  SessionReaper,
+  "reap" | "sweepDetached" | "signalLeaderPty" | "watchSurvivors"
+>;
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
@@ -26,23 +32,12 @@ const leaderGroupGoneForOutcome: Readonly<Record<LeaderPtySignalOutcome, boolean
 };
 
 /**
- * Signal the PTY, wait for exit, and reap the leader's process group. The reap is
- * ATTEMPTED on EVERY exit path — normal exit, timeout, or a throwing PTY operation
- * — so no path skips it. It does NOT guarantee the tree is gone: a failing reap
- * (e.g. EPERM) still leaves descendants alive, so that failure is PROPAGATED as a
- * typed `termination_failed` (never swallowed) and the reaper stays unlatched so a
- * later `teardown()` RETRIES it. A successful reap latches, so a later reuse is a
- * harmless no-op (see SessionReaper) (C-LIFE-10).
- *
- * Before the SIGKILL — the initial signal, or the escalation after an ignored
- * SIGTERM — the detached-descendant sweep runs while the leader is still alive and
- * still the parent of its `setsid()` hooks. A leader that exits on SIGTERM is not
- * swept: the CLI's own graceful shutdown ends its hooks. One exit latch spans every
- * phase, and once it has seen the exit, nothing more is sent to the leader's pid,
- * which may already belong to another process: an exit during the sweep's table reads
- * cancels the SIGKILL. A sweep failure is reported like a reap failure, after the
- * leader is still killed and reaped unless its whole group was confirmed gone. That
- * terminal fact cancels all later PTY and group signals without clearing old failures.
+ * Graceful stop records observed descendants before TERM and holds/verifies the original
+ * leader before signaling it. The same latch cancels escalation after native exit.
+ * Finish recording on every path, retaining an unconfirmed termination, then reap only
+ * while SessionReaper still authorizes the original numeric group. Uncertain identity,
+ * gone-group evidence and an earlier failed verification prohibit later leader signals.
+ * Independent observed survivor groups remain eligible for verified cleanup (C-LIFE-10).
  */
 export async function terminatePty(
   pty: PtyProcess,
@@ -54,13 +49,17 @@ export async function terminatePty(
   let sweepError: unknown;
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
+  let watch: SurvivorWatch | undefined;
   try {
     const latch = new PtyExitLatch(pty);
     exit = latch;
     if (signal === "SIGTERM") {
-      const outcome = reaper.signalLeaderPty(() => pty.kill("SIGTERM"));
-      observedExit =
-        leaderGroupGoneForOutcome[outcome] || (await latch.within(timeouts.gracefulMs));
+      watch = reaper.watchSurvivors(() => latch.exited);
+      const observation = await watch.firstObservation;
+      assertLeaderObservation(observation);
+      const outcome = latch.exited ? undefined : await watch.sendSignal(() => pty.kill("SIGTERM"));
+      const groupGone = outcome !== undefined && leaderGroupGoneForOutcome[outcome];
+      observedExit = latch.exited || groupGone || (await latch.within(timeouts.gracefulMs));
     }
     if (!observedExit) {
       sweepError = await reaper.sweepDetached(() => latch.exited).then(() => undefined, toError);
@@ -73,9 +72,13 @@ export async function terminatePty(
       }
     }
   } catch (error) {
-    terminationError =
-      "processGroupIds" in toError(error) ? sweepOnlyFailed(error) : ptyOperationFailed(error);
+    terminationError = terminationOperationFailed(error);
   } finally {
+    try {
+      await watch?.finish(terminationError !== undefined);
+    } catch (error) {
+      sweepError = mergeSweepErrors(sweepError, error);
+    }
     exit?.dispose();
   }
   if (sweepError !== undefined) {
@@ -84,14 +87,8 @@ export async function terminatePty(
         ? sweepOnlyFailed(sweepError)
         : withCause(terminationError, "sweepError", sweepError);
   }
-  // Reap on every path — even if the wait timed out or a PTY call threw — so a
-  // termination_failed outcome never leaks the descendant tree (C-LIFE-10). The
-  // reaper does NOT latch on failure, so a later teardown can retry. When BOTH
-  // termination and reap fail, neither cause is dropped: the thrown error keeps
-  // the termination message and carries the reap failure in its details. When
-  // ONLY the reap fails (termination succeeded), the raw system error is wrapped
-  // as a typed `termination_failed` so the caller always rejects with an
-  // ElwoodError, never a bare EPERM (PRD §10, C-ERR-01).
+  // Attempt the final reap through SessionReaper's retained signal authority.
+  // Refusal or a failed reap remains typed; when termination also failed, preserve both.
   try {
     await reapAfterTermination(reaper, observedExit);
   } catch (reapError) {
@@ -140,12 +137,13 @@ function withCause(
 }
 
 /**
- * Wraps a throwing PTY operation (`kill` or `onExit`) as the documented typed
- * `termination_failed`, keeping the underlying message and errno/syscall/path in
+ * Routes retained sweep failures to their wrapper; otherwise wraps a throwing PTY
+ * operation (`kill` or `onExit`) as `termination_failed`, keeping message/errno/syscall/path in
  * details, so `stop()`/`kill()` never reject with a raw system error whose own
  * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
  */
-function ptyOperationFailed(error: unknown): ElwoodError {
+function terminationOperationFailed(error: unknown): ElwoodError {
+  if ("processGroupIds" in toError(error)) return sweepOnlyFailed(error);
   return elwoodError(
     "termination_failed",
     `Could not terminate the PTY: ${toError(error).message}`,

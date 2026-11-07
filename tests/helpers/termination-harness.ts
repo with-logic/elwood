@@ -10,6 +10,7 @@ import {
   SweepFailures,
 } from "../../src/runtime/shutdown/detached-sweep/failures.ts";
 import type { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
+import { fakeSurvivorWatch } from "./fake-survivor-watch.ts";
 
 export const timeouts = { gracefulMs: 20, forceMs: 20 };
 
@@ -50,6 +51,7 @@ export function harness(script: Script) {
     },
   };
   const reaper = {
+    watchSurvivors: fakeSurvivorWatch,
     signalLeaderPty: (send: () => void) => {
       send();
       return "signal-sent" as const;

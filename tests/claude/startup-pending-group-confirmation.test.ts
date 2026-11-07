@@ -26,11 +26,22 @@ test.each([
   const exitReap = vi.spyOn(SessionReapPolicy.prototype, "bestEffort");
   // Skip only the graceful wait; the real startup, sweep and exit callback still run.
   vi.spyOn(PtyExitLatch.prototype, "within").mockResolvedValueOnce(false);
+  let termSent = false;
+  let confirming = false;
+  const ownedLeader = () => ({
+    ...leaderRow,
+    pid: ptys[0]!.pid,
+    pgid: ptys[0]!.pid,
+    stopped: true,
+  });
   setProcessTreeOpsForTests({
     stopGroup: () => {
+      if (!termSent) return;
+      confirming = true;
       throw errno("EPERM");
     },
     listProcesses: () => {
+      if (!confirming) return Promise.resolve([ownedLeader()]);
       readStarted.resolve();
       return confirmation.promise;
     },
@@ -39,7 +50,9 @@ test.each([
   const running = runningWithStartupOutput(ptys, "not authenticated");
   setPtyFactoryForTests((options) => {
     const pty = running(options);
-    vi.spyOn(pty, "kill").mockImplementation(() => {});
+    vi.spyOn(pty, "kill").mockImplementation(() => {
+      termSent = true;
+    });
     return pty;
   });
   const starting = startClaude({ cwd: tempDir() }).catch((error: unknown) => error);
@@ -51,10 +64,7 @@ test.each([
     expect(reapedGroups).toEqual([]);
   } finally {
     if (kind === "failed") confirmation.reject(errno("EIO"));
-    else
-      confirmation.resolve(
-        kind === "gone" ? [] : [{ ...leaderRow, pid: ptys[0]!.pid, pgid: ptys[0]!.pid }],
-      );
+    else confirmation.resolve(kind === "gone" ? [] : [ownedLeader()]);
     expect(await starting).toMatchObject({
       code: "claude_not_authenticated",
       ...(kind === "gone" ? {} : { details: { cleanupErrorCode: "EPERM" } }),

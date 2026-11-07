@@ -25,6 +25,7 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { fakeSurvivorWatch } from "../helpers/fake-survivor-watch.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 /** A PTY the already-signaled hosts below never touch (no signal is ever re-sent). */
@@ -44,6 +45,7 @@ function recordingReap(calls: string[]): ShutdownReapPolicy {
   return {
     orThrow: () => void calls.push("reap"),
     reaper: {
+      watchSurvivors: fakeSurvivorWatch,
       signalLeaderPty: (send: () => void) => {
         send();
         return "signal-sent" as const;
@@ -68,6 +70,7 @@ function host(
     reapPolicy: {
       orThrow: () => undefined,
       reaper: {
+        watchSurvivors: fakeSurvivorWatch,
         signalLeaderPty: (send: () => void) => {
           send();
           return "signal-sent" as const;
