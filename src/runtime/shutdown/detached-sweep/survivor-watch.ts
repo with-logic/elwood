@@ -23,6 +23,18 @@ export type SurvivorWatch = {
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
 
+/** A completed cleanup never sends another signal and still reports retained failures. */
+export function completedSurvivorWatch(checkFailure: () => void): SurvivorWatch {
+  const finish = async () => checkFailure();
+  return {
+    firstRead: Promise.resolve(),
+    firstObservation: Promise.resolve({ kind: "gone" }),
+    sendSignal: async () => "leader-group-gone",
+    reap: finish,
+    finish,
+  };
+}
+
 /** Keep first-read authority and the original deadline through queued signal admission. */
 export function watchSurvivors(
   leaderPid: number | undefined,
@@ -70,19 +82,21 @@ export function watchSurvivors(
     firstRead: firstObservation.then(() => undefined),
     firstObservation,
     sendSignal: (send) =>
-      sendHeldLeaderSignal({
-        pid: leaderPid,
-        record: watch.record,
-        observation: firstObservation,
-        ops,
-        leaderExited,
-        deadline,
-        guard,
-        send,
-      }).then((outcome) => {
-        groupGone = outcome === "leader-group-gone";
-        return outcome;
-      }),
+      reaping === undefined
+        ? sendHeldLeaderSignal({
+            pid: leaderPid,
+            record: watch.record,
+            observation: firstObservation,
+            ops,
+            leaderExited,
+            deadline,
+            guard,
+            send,
+          }).then((outcome) => {
+            groupGone = outcome === "leader-group-gone";
+            return outcome;
+          })
+        : reaping.then(() => "leader-group-gone"),
     reap,
     finish: async (failedTermination = false) => {
       const record = await watch.finish();
