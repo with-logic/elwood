@@ -63,7 +63,7 @@ test("C-LIFE-10 confirmed group exit does not clear an earlier unresolved descen
   const send = vi.fn();
   await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
     code: "termination_failed",
-    message: "PTY exited but its detached descendants could not be confirmed reaped.",
+    message: "PTY exited but its process-tree groups could not be confirmed reaped.",
     details: {
       cause: expect.stringContaining("could not stop the leader's group"),
       unconfirmedProcessGroupIds: [LEADER],
@@ -77,7 +77,7 @@ test("C-LIFE-10 confirmed group exit does not clear an earlier unresolved descen
       failures: [
         {
           code: "termination_failed",
-          message: "PTY exited but its detached descendants could not be confirmed reaped.",
+          message: "PTY exited but its process-tree groups could not be confirmed reaped.",
           details: { unconfirmedProcessGroupIds: [LEADER] },
         },
       ],

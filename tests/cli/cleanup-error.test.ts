@@ -59,6 +59,20 @@ describe("C-CLI-09 cleanupFailureMessage", () => {
       "Cleanup failed (termination_failed).",
     ],
     [
+      "a combined termination, reap and sweep failure",
+      elwoodError("termination_failed", "x", {
+        errno: "EIO",
+        reapErrno: "EPERM",
+        sweepErrno: "EAGAIN",
+      }),
+      "Cleanup failed (termination_failed EIO reap EPERM sweep EAGAIN).",
+    ],
+    [
+      "a sweep errno that is not an errno token",
+      elwoodError("termination_failed", "x", { sweepErrno: "/private/path" }),
+      "Cleanup failed (termination_failed).",
+    ],
+    [
       "a sweep failure's unconfirmed process groups, after its errno",
       elwoodError("termination_failed", "x", {
         errno: "EAGAIN",

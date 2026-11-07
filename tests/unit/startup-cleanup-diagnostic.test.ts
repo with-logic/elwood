@@ -47,11 +47,19 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
       elwoodError("termination_failed", "PTY exited but…", { errno: "EPERM" }),
     ],
     [
+      "a sweep errno over the termination's",
+      elwoodError("termination_failed", "PTY did not exit after SIGKILL.", {
+        errno: "ESRCH",
+        sweepErrno: "EPERM",
+      }),
+    ],
+    [
       "a reap errno over the termination's",
       elwoodError("termination_failed", "PTY did not exit after SIGKILL.", {
         errno: "ESRCH",
         reapError: "kill EPERM",
         reapErrno: "EPERM",
+        sweepErrno: "EIO",
       }),
     ],
   ])("%s is named on the typed startup error", async (_case, failure) => {

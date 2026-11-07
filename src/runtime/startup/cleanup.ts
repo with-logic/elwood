@@ -119,11 +119,14 @@ async function endPty(
 
 /**
  * The errno to report: the failed group reap's errno when there is one, because that
- * reap decides whether descendants may still be running; otherwise the termination's.
+ * reap decides whether descendants may still be running; otherwise the sweep's, then
+ * the termination's.
  */
 function cleanupErrno(error: unknown): string | undefined {
   const reapErrno = error instanceof ElwoodError ? error.details["reapErrno"] : undefined;
-  return typeof reapErrno === "string" ? reapErrno : underlyingErrno(error);
+  if (typeof reapErrno === "string") return reapErrno;
+  const sweepErrno = error instanceof ElwoodError ? error.details["sweepErrno"] : undefined;
+  return typeof sweepErrno === "string" ? sweepErrno : underlyingErrno(error);
 }
 
 /**

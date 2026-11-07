@@ -29,7 +29,7 @@ describe("C-LIFE-10 sweep failures", () => {
     failures.record("could not kill a signaled descendant group", raw("EPERM"), [7001]);
     expect(failures.result()).toMatchObject({
       message:
-        "Could not reap detached descendants: process table unreadable (ETIMEDOUT); could not kill a signaled descendant group (EPERM)",
+        "Could not reap process-tree groups: process table unreadable (ETIMEDOUT); could not kill a signaled descendant group (EPERM)",
       code: "ETIMEDOUT",
       processGroupIds: [7001],
     });

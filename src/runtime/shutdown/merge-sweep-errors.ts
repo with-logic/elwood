@@ -1,5 +1,5 @@
 /** Preserve force-sweep and graceful-survivor diagnostics together (PRD §9.4, C-LIFE-10). */
-import { errnoCode, isErrnoToken, toError } from "../../core/errors.ts";
+import { causeDetails, errnoCode, isErrnoToken, toError } from "../../core/errors.ts";
 import { MAX_REPORTED_GROUPS, type SweepFailure } from "./detached-sweep/failures.ts";
 
 /** Both internal sweep phases produce the same bounded diagnostic group field. */
@@ -27,11 +27,17 @@ export function throwSignalFailures(failures: readonly unknown[]): void {
   if (failures.length > 1) throw aggregateSignalFailures(failures);
 }
 
-/** Preserve combined signal causes and messages with the first failure's errno. */
+/** Preserve combined causes and the first native failure's structured operation details. */
 export function aggregateSignalFailures(failures: readonly unknown[]): AggregateError {
-  const code = errnoCode(failures[0]);
+  const source = failures.find((error) => errnoCode(error) !== undefined) ?? failures[0];
+  const code = errnoCode(source);
+  const { syscall, path } = causeDetails(source);
   return Object.assign(
     new AggregateError(failures, failures.map((error) => toError(error).message).join("; ")),
-    code === undefined ? {} : { code },
+    {
+      ...(code === undefined ? {} : { code }),
+      ...(syscall === undefined ? {} : { syscall }),
+      ...(path === undefined ? {} : { path }),
+    },
   );
 }

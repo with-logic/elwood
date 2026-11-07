@@ -52,9 +52,9 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     const { pty, reaper, calls } = harness({ exitsOn: ["SIGKILL"], sweepError });
     await expect(terminatePty(pty, "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
       code: "termination_failed",
-      message: "PTY exited but its detached descendants could not be confirmed reaped.",
+      message: "PTY exited but its process-tree groups could not be confirmed reaped.",
       details: {
-        cause: "Could not reap detached descendants: process table unreadable (ETIMEDOUT)",
+        cause: "Could not reap process-tree groups: process table unreadable (ETIMEDOUT)",
         errno: "ETIMEDOUT",
         unconfirmedProcessGroupIds: [7001, 7002],
       },
@@ -80,16 +80,19 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
 
   test("a sweep failure rides along on a typed PTY signaling failure too", async () => {
     const { pty, reaper } = harness({
-      sweepError: sweepFailure("could not kill a signaled descendant group", [7003]),
+      sweepError: sweepFailure("could not kill a signaled descendant group", [7003], "EPERM"),
       killError: new Error("kill exploded"),
     });
-    await expect(terminatePty(pty, "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
+    const failed = terminatePty(pty, "SIGKILL", reaper, timeouts);
+    await expect(failed).rejects.not.toHaveProperty("details.reapErrno");
+    await expect(failed).rejects.toMatchObject({
       code: "termination_failed",
       message: "Could not terminate the PTY: kill exploded",
       details: {
         cause: "kill exploded",
+        sweepErrno: "EPERM",
         sweepError:
-          "Could not reap detached descendants: could not kill a signaled descendant group",
+          "Could not reap process-tree groups: could not kill a signaled descendant group (EPERM)",
         unconfirmedProcessGroupIds: [7003],
       },
     });

@@ -37,7 +37,7 @@ test("C-LIFE-10 an unresolved detached sweep keeps every later shutdown failing"
   const sessionDir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
   const { socketPath } = readBridgeScript(onlyLaunchArtifact(sessionDir, "hook-bridge"));
   expect(await bridgeAccepts(socketPath)).toBe(true);
-  const unreadable = "Could not reap detached descendants: process table unreadable (EAGAIN)";
+  const unreadable = "Could not reap process-tree groups: process table unreadable (EAGAIN)";
   await expect(session.kill()).rejects.toMatchObject({
     code: "termination_failed",
     details: { cause: unreadable, errno: "EAGAIN" },
