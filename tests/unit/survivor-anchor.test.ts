@@ -9,6 +9,7 @@ const original = hook(CHILD, { ppid: 1 });
 const replacement = hook(CHILD, { ppid: 1, startedAt: "Sun Oct 25 22:00:09 2026" });
 const recorded = () => {
   const record = new DescendantRecord();
+  record.observeFirst([leaderRow], LEADER, Date.now());
   record.observe([leaderRow, hook(CHILD)], LEADER);
   return record;
 };
@@ -83,6 +84,7 @@ test("C-LIFE-10 an empty post-stop read cannot authorize retry after a failed re
 
 test("C-LIFE-10 unresolved restoration is retried independently of survivor ownership", async () => {
   const record = new DescendantRecord();
+  record.observeFirst([leaderRow], LEADER, Date.now());
   record.observe([leaderRow], LEADER);
   const stopped = { ...replacement, stopped: true, shared: true };
   record.resumes.remember([stopped], CHILD);
