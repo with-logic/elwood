@@ -11,6 +11,7 @@ export function survivorAndDescendantGroups(
   readonly roots: ReadonlySet<number>;
   readonly groups: ReadonlyMap<number, ReadonlySet<ProcessEntry>>;
 } {
+  if (survivors.length === 0) return { roots: new Set(), groups: new Map() };
   const { byPid, byGroup, children } = processIndex(table);
   const hostGroup = byPid.get(hostPid)?.pgid;
   const roots = new Set(

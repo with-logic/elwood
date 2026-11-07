@@ -27,6 +27,7 @@ export async function killOrResumeSignaledGroups(
   deadline: number,
   record?: DescendantRecord,
 ): Promise<void> {
+  if (state.signaledDescendantGroupIds.length === 0) return;
   const toResume = groupIdsToResume(state.latest);
   const refused = new Map<number, unknown>();
   for (const group of [...state.signaledDescendantGroupIds].reverse()) {
