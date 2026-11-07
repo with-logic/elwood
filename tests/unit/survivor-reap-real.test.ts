@@ -58,8 +58,15 @@ describe("C-LIFE-10 survivor reap on real processes", () => {
     try {
       const [child, grandchild] = await detachedDescendantPids(tree);
       await delay(DISTINCT_PROCESS_START_DELAY_MS);
-      // Keep observation epochs fixed while native deadlines and process cleanup remain real.
-      vi.spyOn(Date, "now").mockReturnValue(Date.now());
+      // Use ps's reported clock: Linux separately truncates boot time and process uptime.
+      // Every old identity is distinct; the later child remains within its start interval.
+      const owned = new Set([tree.pty.pid, child, grandchild]);
+      const starts = (await listProcessTable(10_000))
+        .filter((row) => owned.has(row.pid))
+        .map((row) => Date.parse(`${row.startedAt} UTC`));
+      expect(starts).toHaveLength(3);
+      expect(starts.every(Number.isFinite)).toBe(true);
+      vi.spyOn(Date, "now").mockReturnValue(Math.max(...starts) + 1_000);
       let late = 0;
       const outcomes = await stopWatched(tree, async () => {
         late = await waitForTreeProcessPid(tree, "late");
