@@ -29,13 +29,22 @@ test("C-LIFE-10 native exit and final cleanup never kill a replacement leader gr
     exitCallbacks += 1;
     fixture.reaper.reap();
   });
-  await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
+  await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toMatchObject({
+    code: "termination_failed",
+    details: {
+      cause: expect.stringContaining("a survivor group has an ambiguous identity"),
+      unconfirmedProcessGroupIds: [LEADER],
+    },
+  });
   expect(exitCallbacks).toBe(1);
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
   const completed = [...fake.calls];
   for (const signal of ["SIGTERM", "SIGKILL"] as const)
-    await terminatePty(fixture.pty, signal, fixture.reaper, bounds);
+    await expect(terminatePty(fixture.pty, signal, fixture.reaper, bounds)).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { unconfirmedProcessGroupIds: [LEADER] },
+    });
   expect(fake.calls).toEqual(completed);
   expect(fixture.ptySignals).toEqual(["SIGTERM"]);
 });
