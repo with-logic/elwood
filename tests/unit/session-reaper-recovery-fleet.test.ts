@@ -47,7 +47,11 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
         if (reads === 2) return Promise.reject(errno("EIO"));
         return read(ms);
       },
-      listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+      listProcessesUnreferenced: () => Promise.resolve([hook(10_002_000 + index, { ppid: 1 })]),
+      stopGroup: (group) => {
+        if (group === 10_002_000 + index) throw errno("EIO");
+        fake.ops.stopGroup(group);
+      },
     });
   });
   try {
