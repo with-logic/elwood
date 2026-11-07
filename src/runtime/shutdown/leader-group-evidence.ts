@@ -15,8 +15,10 @@ export function withLeaderGroupDisappearanceGuard(
   };
   const read =
     (list: ProcessTreeOps["listProcesses"]): ProcessTreeOps["listProcesses"] =>
-    async (ms, scope) =>
-      (await list(ms, scope)).filter((row) => row.pgid !== leaderGroupId || !isLeaderGroupGone());
+    async (ms, scope) => {
+      const table = await list(ms, scope);
+      return isLeaderGroupGone() ? table.filter((row) => row.pgid !== leaderGroupId) : table;
+    };
   return {
     ...ops,
     killGroup: (group) => {

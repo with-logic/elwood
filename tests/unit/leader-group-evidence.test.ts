@@ -83,3 +83,19 @@ test("C-LIFE-10 EPERM propagates without retiring later leader-group operations"
   ]);
   expect(gone).toBe(false);
 });
+
+test("C-LIFE-10 live leader groups preserve the shared table without copying it", async () => {
+  const table = [leaderRow, hook(5002)];
+  const ops = withLeaderGroupDisappearanceGuard(
+    LEADER,
+    {
+      ...scripted([]).ops,
+      listProcesses: () => Promise.resolve(table),
+      listProcessesUnreferenced: () => Promise.resolve(table),
+    },
+    () => false,
+    () => {},
+  );
+  expect(await ops.listProcesses(1000)).toBe(table);
+  expect(await ops.listProcessesUnreferenced?.(1000)).toBe(table);
+});
