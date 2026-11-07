@@ -42,6 +42,7 @@ export class DescendantRecord {
     table: readonly ProcessEntry[],
     leaderPid: number,
     readStartedAtEpochMs = Date.now(),
+    groups?: ReadonlyMap<number, ReadonlySet<ProcessEntry>>,
   ): void {
     const leaderRow = table.find((row) => row.pid === leaderPid && !row.zombie);
     const first = this.firstLeaderObservation;
@@ -52,8 +53,8 @@ export class DescendantRecord {
     )
       return;
     this.known = true;
-    const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
-    this.observeGroups(table, groups, readStartedAtEpochMs);
+    const observed = groups ?? detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+    this.observeGroups(table, observed, readStartedAtEpochMs);
   }
 
   /** Retain first-observation ambiguity for owned group members across later reads. */

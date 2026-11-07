@@ -35,6 +35,7 @@ import {
   killOrResumeSignaledGroups,
   recordFailedRead,
 } from "./kill.ts";
+import type { DescendantRecord } from "./record.ts";
 import {
   newSweepState,
   recordUnconfirmed,
@@ -67,6 +68,8 @@ export const DETACHED_SWEEP_BUDGET_MS = 10_000;
  * pid may be reused, so the sweep stops no further group and never signals the leader's
  * group again, though it still SIGKILLs the groups it already signaled (resuming any
  * that hold Codex's daemon).
+ * Pass `record` when a failed walk needs recovery after leader exit: it retains
+ * observed identities and failed restoration debt for identity-bound survivor cleanup.
  * `onLeaderGroupGone` publishes only whole-group ESRCH or fresh empty-group evidence,
  * never merely a leader exit notification. These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;
@@ -80,6 +83,7 @@ export async function sweepDetachedGroups(
   leaderExited: () => boolean,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
   onLeaderGroupGone: () => void = () => undefined,
+  record?: DescendantRecord,
 ): Promise<SweepFailure | undefined> {
   if (leaderExited()) return undefined;
   const deadline = performance.now() + budgetMs;
@@ -91,8 +95,8 @@ export async function sweepDetachedGroups(
   }
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
-  await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
-  await killOrResumeSignaledGroups(ops, state, deadline);
+  await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state, record);
+  await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
 
@@ -111,6 +115,7 @@ async function stopDescendantGroups(
   leaderExited: () => boolean,
   deadline: number,
   state: SweepState,
+  record: DescendantRecord | undefined,
 ): Promise<void> {
   // Each group the walk stops is a root too: its exit can leave one under PID 1.
   const scope = daemonScope(state.signaledGroupIds);
@@ -119,9 +124,12 @@ async function stopDescendantGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      const readStartedAtEpochMs = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+      record?.observeFirst(table, leaderPid, readStartedAtEpochMs);
+      record?.observe(table, leaderPid, readStartedAtEpochMs, state.live);
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       if (leaderExited())

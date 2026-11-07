@@ -13,7 +13,6 @@
  */
 
 import { errnoCode } from "../../../core/errors.ts";
-import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
@@ -32,6 +31,7 @@ import {
   unreachedGroups,
 } from "./rounds.ts";
 import { SurvivorAnchors } from "./survivor-anchors.ts";
+import { survivorAndDescendantGroups } from "./survivor-groups.ts";
 
 import { watchDescendants } from "./watch-descendants.ts";
 
@@ -130,11 +130,13 @@ async function stopSurvivorGroups(
         },
       });
       const blocked = record.unsafeSurvivorGroups(table);
-      const roots = survivorGroups(
-        record.survivors(table).filter((row) => !blocked.has(row.pgid)),
+      const survivors = record.survivors(table).filter((row) => !blocked.has(row.pgid));
+      const { roots, groups: discovered } = survivorAndDescendantGroups(
+        survivors,
         table,
+        process.pid,
       );
-      const discovered = liveGroups(table, roots);
+      // Retain owned children before another group's failed anchor can lose their parent link.
       record.observeGroups(table, discovered, readStartedAtEpochMs);
       anchors.afterRead(table);
       const unsafe = record.unsafeSurvivorGroups(table);
@@ -154,31 +156,4 @@ async function stopSurvivorGroups(
   } catch (error) {
     recordUnconfirmed(state, "process table unreadable", error);
   }
-}
-
-/** The groups of `survivors`, never the host's or an id `kill(-pgid)` would misroute. */
-function survivorGroups(
-  survivors: readonly ProcessEntry[],
-  table: readonly ProcessEntry[],
-): ReadonlySet<number> {
-  const host = table.find((row) => row.pid === process.pid)?.pgid;
-  return new Set(survivors.map((row) => row.pgid).filter((pgid) => pgid > 1 && pgid !== host));
-}
-
-/** The survivor groups, then every group a member of one anchors, with the parents' rows. */
-function liveGroups(
-  table: readonly ProcessEntry[],
-  roots: ReadonlySet<number>,
-): ReadonlyMap<number, ReadonlySet<ProcessEntry>> {
-  const live = new Map<number, Set<ProcessEntry>>([...roots].map((group) => [group, new Set()]));
-  for (const member of table) {
-    if (member.zombie || !roots.has(member.pgid)) continue;
-    const found = detachedDescendantGroups(table, { leaderPid: member.pid, hostPid: process.pid });
-    for (const [group, parents] of found) {
-      const known = live.get(group) ?? new Set<ProcessEntry>();
-      for (const parent of parents) known.add(parent);
-      live.set(group, known);
-    }
-  }
-  return live;
 }
