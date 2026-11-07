@@ -21,22 +21,41 @@ test.each(
   Array.from({ length: 21 }, (_, deadline) => deadline),
 )("C-LIFE-10 a confirmation budget of %i clock ticks never resumes late or clears unsent debt", (deadline) => {
   let clock = 0;
-  vi.spyOn(performance, "now").mockImplementation(() => clock++);
+  let observedTime = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => {
+    observedTime = clock++;
+    return observedTime;
+  });
   const rows = [hook(5002, { stopped: true }), hook(5003, { stopped: true })];
   const debt = new ResumeDebt();
   for (const row of rows) debt.remember([row], row.pgid);
-  const restored: number[] = [];
-  debt.retry(
+  const attempts: { readonly group: number; readonly at: number }[] = [];
+  const resolved = debt.retry(
     rows,
     {
       continueGroup: (group) => {
-        expect(clock - 1).toBeLessThan(deadline);
-        restored.push(group);
+        attempts.push({ group, at: observedTime });
       },
     },
     deadline,
   );
-  for (const row of rows) {
-    if (!restored.includes(row.pgid)) expect(debt.pids).toContain(row.pid);
+  for (const attempt of attempts) expect(attempt.at).toBeLessThan(deadline);
+  if (resolved) {
+    expect(observedTime).toBeLessThan(deadline);
+    expect(debt.pids).toEqual([]);
   }
+  for (const row of rows) {
+    if (!attempts.some(({ group }) => group === row.pgid)) expect(debt.pids).toContain(row.pid);
+  }
+});
+
+test("C-LIFE-10 equality with the deadline preserves debt without dispatching CONT", () => {
+  vi.spyOn(performance, "now").mockReturnValue(10);
+  const row = hook(5002, { stopped: true });
+  const debt = new ResumeDebt();
+  debt.remember([row], row.pgid);
+  const continueGroup = vi.fn<(group: number) => void>();
+  expect(debt.retry([row], { continueGroup }, 10)).toBe(false);
+  expect(continueGroup).not.toHaveBeenCalled();
+  expect(debt.pids).toEqual([row.pid]);
 });
