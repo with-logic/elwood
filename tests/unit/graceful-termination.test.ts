@@ -46,7 +46,7 @@ test("C-LIFE-10 a failed first read forbids TERM and final or later group signal
   expect(fake.calls).toEqual([]);
 });
 
-test("C-LIFE-10 replacement ownership after recording receives neither TERM nor final reap", async () => {
+test("C-LIFE-10 replacement ownership receives no TERM, CONT or final reap", async () => {
   const fake = scripted([[leaderRow], [{ ...leaderRow, startedAt: "Sun Oct 25 22:00:09 2026" }]]);
   const fixture = gracefulTermination(fake.ops);
   await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toThrow(
@@ -54,7 +54,7 @@ test("C-LIFE-10 replacement ownership after recording receives neither TERM nor 
   );
   expect(fixture.signals).toEqual([]);
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
-  expect(fake.calls).toContain(`cont ${LEADER}`);
+  expect(fake.calls).not.toContain(`cont ${LEADER}`);
 });
 
 test("C-LIFE-10 native exit during the first read cannot bypass the graceful ownership veto", async () => {
