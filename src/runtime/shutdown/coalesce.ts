@@ -12,7 +12,9 @@ import { processReadTimeout } from "./read-timeout.ts";
  * own leader was frozen. The listing starts on the next turn of the event loop and may
  * run for the largest timeout any of its requests asked for, while each request still
  * rejects with `ETIMEDOUT` at its own timeout: one session's nearly spent deadline never
- * cuts short another's read.
+ * cuts short another's read. With `ref: false`, an idle host may exit before the read
+ * starts or its timeout settles; these scheduling and timeout guarantees apply only
+ * while the host remains alive.
  */
 export function coalesceUnstarted<T>(
   run: (timeoutMs: number) => Promise<T>,

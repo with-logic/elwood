@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { expect, test, vi } from "vitest";
 import { psRunOptions, runFile } from "../../../src/runtime/shutdown/process-table.ts";
+import { runFileUnreferenced } from "../../../src/runtime/shutdown/unreferenced-read.ts";
 import { killIfCommandHas, pidExists } from "../../helpers/process-liveness.ts";
 import { tempDir } from "../../helpers/tmp.ts";
 
@@ -15,15 +16,24 @@ const wait = () => existsSync(dir + "/release") ? process.exit(0) : setTimeout(w
 wait();
 `;
 
-test("C-LIFE-10 eight native readers hold at most two live subprocesses", async () => {
+test.each([
+  { label: "foreground", mixed: false },
+  { label: "mixed foreground and background", mixed: true },
+])("C-LIFE-10 eight $label native readers hold at most two live subprocesses", async ({
+  mixed,
+}) => {
   const dir = tempDir("elwood-native-read-bound-");
   const pids = () =>
     readdirSync(dir)
       .filter((name) => /^\d+$/.test(name))
       .map(Number);
   const liveCount = () => pids().filter(pidExists).length;
-  const requests = Array.from({ length: 8 }, () =>
-    runFile(process.execPath, ["-e", HOLD, dir], psRunOptions(5_000)),
+  const requests = Array.from({ length: 8 }, (_, index) =>
+    (mixed && index % 2 !== 0 ? runFileUnreferenced : runFile)(
+      process.execPath,
+      ["-e", HOLD, dir],
+      psRunOptions(5_000),
+    ),
   );
   const settled = Promise.allSettled(requests);
   let peak = 0;
