@@ -74,6 +74,8 @@ async function advance(seconds) {
     const pending = [...frames.values()];
     frames.clear();
     for (const callback of pending) callback(now);
+    // Let requested sprite I/O settle before advancing the simulated frame clock.
+    await Promise.all([...scene.bank.clipPromises.values(), ...scene.bank.pendingPages.values()]);
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
 }
