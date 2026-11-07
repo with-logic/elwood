@@ -24,7 +24,8 @@ test("C-LIFE-10 retain a newly owned child before another anchor fails and its p
   const child = hook(5003, { ppid: 5002 });
   const orphan = { ...child, ppid: 1 };
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(5002), hook(5004)], LEADER);
+  record.observeFirst([leaderRow, hook(5002), hook(5004)], LEADER, Date.now());
+  record.observe([leaderRow, hook(5002), hook(5004)], LEADER, Date.now());
   let retainedBeforeRestoration = false;
   const { ops, calls } = scripted([[parent, other], [parent, replacement, child], [orphan]], {
     continueGroup: (group) => {
@@ -53,10 +54,11 @@ test.each([
   const record = new DescendantRecord();
   const safe = hook(5003, { startedAt: older });
   const ambiguous = hook(5002, { startedAt });
-  record.observe([{ ...leaderRow, startedAt: older }, ambiguous, safe], LEADER);
+  record.observeFirst([{ ...leaderRow, startedAt: older }, ambiguous, safe], LEADER, Date.now());
+  record.observe([{ ...leaderRow, startedAt: older }, ambiguous, safe], LEADER, Date.now());
   clock.mockReturnValue(epoch + 5_000);
   // A later observation must not convert the same ambiguous identity into authority.
-  record.observe([{ ...leaderRow, startedAt: older }, ambiguous, safe], LEADER);
+  record.observe([{ ...leaderRow, startedAt: older }, ambiguous, safe], LEADER, Date.now());
   const { ops, calls } = scripted([[ambiguous, safe]]);
   expect((await reapRecordedSurvivors(record, ops))?.processGroupIds).toEqual([5002]);
   expect(calls).not.toContain("stop 5002");
@@ -74,7 +76,8 @@ test.each([
 test("C-LIFE-10 an ambiguous parent cannot authorize a new child after the leader exited", async () => {
   const record = new DescendantRecord();
   const ambiguous = hook(5002);
-  record.observe([{ ...leaderRow, startedAt: older }, ambiguous], LEADER, true, epoch);
+  record.observeFirst([{ ...leaderRow, startedAt: older }, ambiguous], LEADER, epoch);
+  record.observe([{ ...leaderRow, startedAt: older }, ambiguous], LEADER, epoch);
   const child = hook(5003, { ppid: 5002, startedAt: "Sun Oct 25 22:00:01 2026" });
   vi.spyOn(Date, "now").mockReturnValue(epoch + 5_000);
   const fake = scripted([[{ ...ambiguous, ppid: 1 }, child]]);
@@ -87,12 +90,21 @@ test("C-LIFE-10 a newly observed child's ambiguity uses its process-read start e
   const parent = hook(5002, { startedAt: older, ppid: 1 });
   const child = hook(5003, { ppid: 5002 });
   const record = new DescendantRecord();
+  record.observeFirst(
+    [
+      { ...leaderRow, startedAt: older },
+      { ...parent, ppid: LEADER },
+    ],
+    LEADER,
+    Date.now(),
+  );
   record.observe(
     [
       { ...leaderRow, startedAt: older },
       { ...parent, ppid: LEADER },
     ],
     LEADER,
+    Date.now(),
   );
   const clock = vi.spyOn(Date, "now").mockReturnValue(epoch);
   const { ops, calls } = scripted([[parent, child]]);
@@ -111,7 +123,8 @@ test("C-LIFE-10 a newly observed child's ambiguity uses its process-read start e
 test("C-LIFE-10 an exact start-second boundary supplies distinguishable descendant identity", async () => {
   const child = hook(5002);
   const record = new DescendantRecord();
-  record.observe([{ ...leaderRow, startedAt: older }, child], LEADER, true, epoch + 500);
+  record.observeFirst([{ ...leaderRow, startedAt: older }, child], LEADER, epoch + 500);
+  record.observe([{ ...leaderRow, startedAt: older }, child], LEADER, epoch + 500);
   const { ops, calls } = scripted([[{ ...child, ppid: 1 }]]);
   expect(await reapRecordedSurvivors(record, ops)).toBeUndefined();
   expect(calls).toContain("kill 5002");

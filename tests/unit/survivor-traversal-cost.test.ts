@@ -26,7 +26,8 @@ test("C-LIFE-10 a survivor group is traversed once rather than once per member",
     return row;
   });
   const record = new DescendantRecord();
-  record.observe([leaderRow, ...rows], LEADER);
+  record.observeFirst([leaderRow, ...rows], LEADER, Date.now());
+  record.observe([leaderRow, ...rows], LEADER, Date.now());
   const fake = scripted([rows]);
   inspected = 0;
   expect(await reapRecordedSurvivors(record, fake.ops)).toBeUndefined();

@@ -126,7 +126,8 @@ async function stopDescendantGroups(
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
-      record?.observe(table, leaderPid, false, readStartedAtEpochMs, state.live);
+      record?.observeFirst(table, leaderPid, readStartedAtEpochMs);
+      record?.observe(table, leaderPid, readStartedAtEpochMs, state.live);
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       if (leaderExited())
