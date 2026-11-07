@@ -23,7 +23,11 @@ export type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_c
 export type ShutdownReapPolicy = Pick<SessionReapPolicy, "orThrow"> & {
   readonly reaper: Pick<
     SessionReapPolicy["reaper"],
-    "reap" | "reapAndThrowOnDetachedSweepFailure" | "sweepDetached" | "signalLeaderPty"
+    | "reap"
+    | "reapAndThrowOnDetachedSweepFailure"
+    | "sweepDetached"
+    | "signalLeaderPty"
+    | "watchSurvivors"
   >;
 };
 

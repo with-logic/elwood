@@ -1429,6 +1429,12 @@ for Claude's hooks but not for this Codex shell: a `stop()` during the snapshot
 leaves it running. `tests/e2e/codex-snapshot-reap.e2e.ts` holds a snapshot open
 this way and checks that `teardown()` reaps it.
 
+Elwood now records linked detached descendants before TERM and verifies recorded
+survivors after exit, covering the snapshot-shell case described above. Before TERM it
+holds and freshly verifies the original leader, then restores the hold. `ps lstart`
+has second resolution, so ambiguous first identities and failed first reads refuse
+leader signaling rather than adopting a later process with the same PID.
+
 ## Codex 0.164 starts an app-server daemon per `CODEX_HOME` (2026-10-25)
 
 Codex 0.158.0 and later list the feature `daemon_auto_start` as stable and on (0.156.1

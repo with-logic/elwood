@@ -408,7 +408,8 @@ transcript activity, and its hook commands reach no handler: the stopped bridge
 accepts no new request. A host hook handler already running when cleanup starts may
 still finish and report its result.
 
-Reaping the leader's process group is unconditional on every exit path
+Reaping the leader's process group is attempted on every exit path, subject to
+terminal whole-group evidence and the graceful ownership checks in §5.3
 (C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,
 then the group is reaped in a `finally`, so transcript-drain, warning-emission, or
 status-listener failures can never skip the reap; a reap failure there surfaces as
@@ -443,3 +444,8 @@ than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
 exception is a detached-descendant walk that could not complete (§5.3): with the
 leader gone it cannot be retried, so every later call keeps rejecting for it. Each
 caller still observes its own operation's success or typed failure.
+
+Graceful shutdown records detached descendants before TERM and suspends leader-group
+reap before the initial process-table read. Initial refusal or lost ownership permanently
+vetoes final and later leader signals. Independently verified detached groups and owed
+hold restoration remain eligible; unknown ownership or restoration cannot report success.
