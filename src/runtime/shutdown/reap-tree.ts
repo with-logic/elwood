@@ -1,10 +1,9 @@
 /**
  * Reaps PTY descendants except Codex's shared daemon/updater tree (PRD §5.3/§9.4,
- * C-LIFE-10/14). Group membership survives reparenting; detached hooks instead need
- * recorded parent links and identity verification before the leader exits.
+ * C-LIFE-10/14). Retained identities protect cleanup after the leader exits.
  */
 
-import { errnoCode, toError } from "../../core/errors.ts";
+import { toError } from "../../core/errors.ts";
 import { sweepDetachedGroups } from "./detached-sweep/index.ts";
 import { DescendantRecord } from "./detached-sweep/record.ts";
 import { RetainedShutdownFailures } from "./detached-sweep/retained-failures.ts";
@@ -14,6 +13,8 @@ import {
   watchSurvivors,
 } from "./detached-sweep/survivor-watch.ts";
 import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
+import { withTerminalLeaderGroup } from "./leader-group-evidence.ts";
+import { mergeSweepErrors } from "./merge-sweep-errors.ts";
 import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
 import { SerialDetachedSweepQueue } from "./reap-queue.ts";
 
@@ -36,29 +37,24 @@ export class SessionReaper {
   private done = false;
   private pendingSweeps = 0;
   private gracefulWatch: SurvivorWatch | undefined;
+  private gracefulCleanupFinished = false;
   private leaderVerificationPending = false;
   private leaderSignalAuthorizationError: Error | undefined;
-  /** Terminal evidence about the entire group, never inferred merely from leader exit. */
   private leaderGroupGone = false;
   private readonly detachedSweepQueue = new SerialDetachedSweepQueue();
   private readonly retainedFailures: RetainedShutdownFailures;
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
-    this.ops = {
-      ...ops,
-      continueGroup: (group) => {
-        try {
-          ops.continueGroup(group);
-        } catch (error) {
-          if (group === leaderPid && errnoCode(error) === "ESRCH") {
-            this.leaderGroupGone = true;
-            this.leaderVerificationPending = false;
-          }
-          throw error;
-        }
+    this.ops = withTerminalLeaderGroup(
+      leaderPid,
+      ops,
+      () => this.leaderGroupGone,
+      () => {
+        this.leaderGroupGone = true;
+        this.leaderVerificationPending = false;
       },
-    };
+    );
     this.retainedFailures = new RetainedShutdownFailures(this.ops, (attempt) =>
       this.detachedSweepQueue.run(attempt),
     );
@@ -66,7 +62,6 @@ export class SessionReaper {
 
   /** Numeric reap stays retryable after syscall failure, never after an ownership veto. */
   reap(): void {
-    // The active shutdown owner reaps after its sweep, including any pending confirmation.
     if (this.done || this.leaderGroupGone || this.pendingSweeps > 0) return;
     this.assertLeaderSignalsAllowed();
     if (this.gracefulWatch !== undefined) return;
@@ -103,7 +98,21 @@ export class SessionReaper {
       this.ops,
       leaderExited,
       (failure, record) => {
-        this.retainedFailures.keep(failure, record);
+        this.gracefulCleanupFinished = true;
+        let previous: unknown;
+        try {
+          this.retainedFailures.throwIfUnresolved();
+        } catch (error) {
+          previous = error;
+        }
+        if (this.leaderSignalAuthorizationError !== undefined)
+          record.markLeaderAuthorityLost(this.leaderPid);
+        if (this.leaderGroupGone) record.markGroupGone(this.leaderPid);
+        try {
+          this.retainedFailures.keep(failure, record);
+        } catch (error) {
+          throw mergeSweepErrors(previous, error);
+        }
         this.retainedFailures.throwIfUnresolved();
         this.assertNoAuthorizationFailure();
         this.done = true;
@@ -157,9 +166,8 @@ export class SessionReaper {
     finish();
   }
 
-  /** Join graceful cleanup, or record linked descendants before a forced leader kill. */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
-    if (this.done || this.leaderGroupGone) return;
+    if (this.done || (this.leaderGroupGone && this.gracefulCleanupFinished)) return;
     if (this.gracefulWatch !== undefined) return this.gracefulWatch.reap();
     if (!isReapableGroupId(this.leaderPid)) return;
     this.pendingSweeps += 1;
