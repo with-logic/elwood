@@ -25,7 +25,7 @@ test("C-LIFE-10 successful TERM reaps a recorded helper after the leader exits",
       Promise.resolve(fake.asRead(fixture.exited() ? [{ ...child, ppid: 1 }] : [leaderRow, child])),
   });
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
-  expect(fixture.signals).toEqual(["SIGTERM"]);
+  expect(fixture.ptySignals).toEqual(["SIGTERM"]);
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).toContain(`cont ${LEADER}`);
   expect(fake.calls.at(-1)).toBe(`kill ${LEADER}`);
@@ -38,10 +38,11 @@ test("C-LIFE-10 a failed first read forbids TERM and final or later group signal
     code: "termination_failed",
     details: { errno: "EIO" },
   });
-  expect(fixture.signals).toEqual([]);
+  expect(fixture.ptySignals).toEqual([]);
   expect(fake.calls).toEqual([]);
   expect(() => fixture.reaper.reap()).toThrow("First leader process-table read failed");
   expect(() => fixture.reaper.signalLeaderPty(() => fixture.pty.kill())).toThrow();
+  expect(fixture.ptySignals).toEqual([]);
   await expect(fixture.reaper.sweepDetached(() => false)).rejects.toThrow();
   expect(fake.calls).toEqual([]);
 });
@@ -52,7 +53,7 @@ test("C-LIFE-10 replacement ownership receives no TERM, CONT or final reap", asy
   await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toThrow(
     "not confirmed held",
   );
-  expect(fixture.signals).toEqual([]);
+  expect(fixture.ptySignals).toEqual([]);
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
   expect(fake.calls).not.toContain(`cont ${LEADER}`);
 });
@@ -75,7 +76,7 @@ test("C-LIFE-10 native exit during the first read cannot bypass the graceful own
   fixture.exit();
   first.resolve([]);
   expect(await pending).toMatchObject({ code: "termination_failed" });
-  expect(fixture.signals).toEqual([]);
+  expect(fixture.ptySignals).toEqual([]);
   expect(fake.calls).toEqual([]);
 });
 
@@ -87,7 +88,7 @@ test("C-LIFE-10 a completed group reap suppresses later graceful and force signa
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
   await fixture.reaper.sweepDetached(() => false);
   expect(fixture.reaper.signalLeaderPty(() => fixture.pty.kill())).toBe("leader-group-gone");
-  expect(fixture.signals).toEqual([]);
+  expect(fixture.ptySignals).toEqual([]);
   expect(fake.calls).toEqual(completed);
 });
 
@@ -100,7 +101,7 @@ test("C-LIFE-10 graceful ESRCH cancels every later leader signal", async () => {
   const fixture = gracefulTermination(fake.ops);
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
-  expect(fixture.signals).toEqual([]);
+  expect(fixture.ptySignals).toEqual([]);
   expect(fake.calls).toEqual(["list"]);
 });
 
@@ -134,11 +135,11 @@ test("C-LIFE-10 recording continues after TERM and retains a newly observed help
     },
   });
   fixture.pty.kill = (signal = "SIGTERM") => {
-    fixture.signals.push(signal);
+    fixture.ptySignals.push(signal);
     term = true;
   };
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, { gracefulMs: 1_000, forceMs: 0 });
-  expect(fixture.signals).toEqual(["SIGTERM"]);
+  expect(fixture.ptySignals).toEqual(["SIGTERM"]);
   expect(fake.calls).toContain("kill 5003");
 });
 
@@ -156,5 +157,5 @@ test("C-LIFE-10 completed watches retain sweep errors when exit skips signaling"
     code: "termination_failed",
     details: { errno: "EIO" },
   });
-  expect(fixture.signals).toEqual([]);
+  expect(fixture.ptySignals).toEqual([]);
 });

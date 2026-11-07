@@ -82,7 +82,7 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
   expect(ptys[0]!.killSignals).toEqual(["SIGTERM"]);
 });
 
-/** Records the process-group SIGSTOPs the detached sweep sends, on a quiet fake tree. */
+/** Records graceful leader holds and detached-sweep group SIGSTOPs on a quiet fake tree. */
 function groupStops() {
   const quiet = quietPtyTree(ptys);
   const reads = vi.fn(quiet.listProcesses);

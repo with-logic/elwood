@@ -39,6 +39,11 @@ export const leaderRow: ProcessEntry = {
   shared: false,
 };
 
+/** An original stopped leader under a caller-selected process-group identity. */
+export function heldLeaderRow(pid: number): ProcessEntry {
+  return { ...leaderRow, pid, pgid: pid, stopped: true };
+}
+
 /**
  * A descendant row: by default a setsid hook heading its own group under the leader,
  * running. `pgid`, `ppid`, and the state can each be set to model a multi-process group,

@@ -7,8 +7,8 @@
  *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session
  *     and for `teardown`'s retry step: it must NOT swallow — it throws a typed
  *     `termination_failed` (with its errno and the leader's process-group id) so
- *     the caller rejects with an ElwoodError (C-ERR-01), and the reap stays
- *     unlatched for a later retry.
+ *     the caller rejects with an ElwoodError (C-ERR-01). Syscall reap failures stay
+ *     unlatched for retry; an ownership veto permanently blocks later leader signals.
  * `reaper` exposes the underlying one-shot for the `terminatePty` termination path,
  * which owns its own failure handling.
  */

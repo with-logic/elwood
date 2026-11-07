@@ -1,11 +1,11 @@
 /**
- * Real-Codex proof that `teardown()` and `kill()` reap Codex's shell-snapshot shell
+ * Real-Codex proof that `stop()`, `teardown()`, and `kill()` reap Codex's shell-snapshot shell
  * (PRD §5.3, C-LIFE-10). Soon after it starts, Codex snapshots the user's shell
  * environment with `/bin/zsh -lc <script>`, run in a session of its own. The script
  * sources the user's `.zshrc`, so a slow profile keeps that shell running. A shutdown
  * in that window used to leave it, and whatever the profile started, running under
  * PID 1: the leader-group SIGKILL cannot reach another session. The detached walk
- * reaps it. (A graceful `stop()` is not walked; see docs/cli-behavior.md.)
+ * reaps it before forced exit; graceful stop records and verifies survivors after exit.
  */
 
 import assert from "node:assert/strict";
@@ -15,7 +15,13 @@ import { join } from "node:path";
 import test from "node:test";
 import { childPids } from "../../dev/child-lookup.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { killGroupsWhoseCommandHas, pidExists, processRows } from "../helpers/process-liveness.ts";
+import {
+  delay,
+  killGroupsWhoseCommandHas,
+  pidExists,
+  processRows,
+} from "../helpers/process-liveness.ts";
+import { DISTINCT_PROCESS_START_DELAY_MS } from "../helpers/process-start-time.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -53,7 +59,7 @@ function snapshotShell(marker: string, leaders: readonly number[]) {
  * Shuts Codex down with `verb` while its snapshot shell runs, waits for the shell and its
  * child to be gone, and resolves to how many processes from the slow profile survived.
  */
-async function shutDownDuringSnapshot(verb: "kill" | "teardown"): Promise<number> {
+async function shutDownDuringSnapshot(verb: "stop" | "kill" | "teardown"): Promise<number> {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, "check_for_update_on_startup = false\n");
   const previousZdotdir = process.env["ZDOTDIR"];
@@ -73,6 +79,8 @@ async function shutDownDuringSnapshot(verb: "kill" | "teardown"): Promise<number
     });
     const leaders = childPids(process.pid).filter((pid) => !before.has(pid));
     const held = await waitFor(() => snapshotShell(marker, leaders), "snapshot shell", 60_000);
+    // Distinguish the recorded snapshot identities at second-resolution start times.
+    if (verb === "stop") await delay(DISTINCT_PROCESS_START_DELAY_MS);
     await session[verb]();
     for (const pid of [held.shell, held.sleeper]) {
       await waitFor(() => (pidExists(pid) ? undefined : true), `pid ${pid} reaped`, 10_000);
@@ -87,7 +95,7 @@ async function shutDownDuringSnapshot(verb: "kill" | "teardown"): Promise<number
   }
 }
 
-for (const verb of ["teardown", "kill"] as const) {
+for (const verb of ["teardown", "kill", "stop"] as const) {
   test(`C-LIFE-10 ${verb} reaps Codex's shell-snapshot shell while it still runs`, {
     skip: skipIf(skipReason("codex"), codexAuthMissing()),
     timeout: 180_000,

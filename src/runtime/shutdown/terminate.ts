@@ -138,9 +138,10 @@ function withCause(
 }
 
 /**
- * Routes retained sweep failures to their wrapper; otherwise wraps a throwing PTY
- * operation (`kill` or `onExit`) as `termination_failed`, keeping message/errno/syscall/path in
- * details, so `stop()`/`kill()` never reject with a raw system error whose own
+ * Routes retained sweep failures to their wrapper. Other termination failures, including
+ * PTY operations, observations and ownership verification, become `termination_failed`
+ * with message/errno/syscall/path details. Thus `stop()`/`kill()` never reject with a raw
+ * system error whose own
  * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
  */
 function terminationOperationFailed(error: unknown): ElwoodError {
