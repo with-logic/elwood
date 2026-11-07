@@ -38,7 +38,7 @@ test("C-LIFE-10 successful TERM reaps a recorded helper after the leader exits",
   expect(order).toEqual(["SIGTERM", "exit", "helper KILL"]);
   expect(fixture.ptySignals).toEqual(["SIGTERM"]);
   expect(fake.calls).toContain("kill 5002");
-  expect(fake.calls).toContain(`cont ${LEADER}`);
+  expect(fake.calls).not.toContain(`cont ${LEADER}`);
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
 });
 
@@ -122,13 +122,13 @@ test("C-LIFE-10 recording continues after TERM and retains a newly observed help
   const fake = scripted([]);
   const fixture = gracefulTermination({
     ...fake.ops,
-    listProcesses: () => {
+    listProcesses: (_timeout, scope) => {
       const rows = fixture.exited()
         ? [{ ...child, ppid: 1 }]
         : term
           ? [leaderRow, child]
           : [leaderRow];
-      if (term && !fixture.exited()) queueMicrotask(fixture.exit);
+      if (scope !== undefined && term && !fixture.exited()) queueMicrotask(fixture.exit);
       return Promise.resolve(fake.asRead(rows));
     },
   });

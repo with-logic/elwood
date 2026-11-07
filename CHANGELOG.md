@@ -24,7 +24,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Graceful shutdown records linked detached helpers before TERM and verifies recorded
   survivors after the agent exits. Independent helper cleanup continues when leader
   verification fails. Ambiguous or lost ownership rejects with `termination_failed`
-  and prevents final or later leader signals.
+  and prevents final or later leader signals. Initial identity checks honor the full
+  platform timestamp uncertainty, including Linux's two-second window; CONT requires
+  a fresh match to original held group members.
 
 ## [0.2.4] - 2026-11-06
 

@@ -26,6 +26,10 @@ test.each([
       Promise.resolve(
         fake.asRead(fixture.exited() ? [replacement, { ...child, ppid: 1 }] : [leaderRow, child]),
       ),
+    continueGroup: (group) => {
+      fake.calls.push(`cont ${group}`);
+      if (group === LEADER && fixture.exited()) throw new Error("replacement CONT refused");
+    },
   });
   let exitCallbacks = 0;
   fixture.pty.onExit(() => {
@@ -42,6 +46,7 @@ test.each([
   expect(exitCallbacks).toBe(1);
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
+  expect(fake.calls).not.toContain(`cont ${LEADER}`);
   const completed = [...fake.calls];
   await expect(terminatePty(fixture.pty, signal, fixture.reaper, bounds)).rejects.toMatchObject({
     code: "termination_failed",
