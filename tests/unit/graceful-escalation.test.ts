@@ -13,7 +13,10 @@ import {
 useScriptedHost();
 const bounds = { gracefulMs: 0, forceMs: 0 };
 
-test("C-LIFE-10 native exit and final cleanup never kill a replacement leader group", async () => {
+test.each([
+  "SIGTERM",
+  "SIGKILL",
+] as const)("C-LIFE-10 native exit and final cleanup never kill a replacement leader group on later %s", async (signal) => {
   const child = hook(5002);
   const replacement = { ...leaderRow, startedAt: "Sun Oct 25 22:00:09 2026" };
   const fake = scripted([]);
@@ -40,11 +43,10 @@ test("C-LIFE-10 native exit and final cleanup never kill a replacement leader gr
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
   const completed = [...fake.calls];
-  for (const signal of ["SIGTERM", "SIGKILL"] as const)
-    await expect(terminatePty(fixture.pty, signal, fixture.reaper, bounds)).rejects.toMatchObject({
-      code: "termination_failed",
-      details: { unconfirmedProcessGroupIds: [LEADER] },
-    });
+  await expect(terminatePty(fixture.pty, signal, fixture.reaper, bounds)).rejects.toMatchObject({
+    code: "termination_failed",
+    details: { unconfirmedProcessGroupIds: [LEADER] },
+  });
   expect(fake.calls).toEqual(completed);
   expect(fixture.ptySignals).toEqual(["SIGTERM"]);
 });

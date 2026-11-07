@@ -79,6 +79,8 @@ export function watchSurvivors(
         try {
           guard.assertRetainedAuthority();
         } catch {
+          // Keep the leader veto latched; only independently recorded identities
+          // remain eligible for cleanup after authority is lost.
           record.markLeaderAuthorityLost(leaderPid);
         }
         return reapRecordedSurvivors(record, ops);

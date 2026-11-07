@@ -131,8 +131,8 @@ export async function runShutdown(
 /**
  * Teardown: terminate a still-live PTY (unless it was already signaled), reap
  * (retrying a prior failed reap), stop the runtime, record teardown evidence, and
- * remove owned session files. Each step runs even if an earlier one rejected, so a
- * leaked group is always reaped; a re-signal is refused once signal ownership is held.
+ * remove owned session files. Each step is attempted even if an earlier one rejected;
+ * an ownership veto can leave a group unconfirmed and make teardown fail without re-signaling.
  */
 export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Promise<void> {
   host.claimShutdown("teardown_completed");

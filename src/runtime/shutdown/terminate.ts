@@ -46,7 +46,6 @@ export async function terminatePty(
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
   let watch: SurvivorWatch | undefined;
-  let gracefulSignalAttempted = false;
   try {
     const latch = new PtyExitLatch(pty);
     exit = latch;
@@ -54,11 +53,7 @@ export async function terminatePty(
       watch = reaper.watchSurvivors(() => latch.exited);
       const observation = await watch.firstObservation;
       assertLeaderObservation(observation);
-      const send = () => {
-        gracefulSignalAttempted = true;
-        pty.kill("SIGTERM");
-      };
-      const outcome = latch.exited ? undefined : await watch.sendSignal(send);
+      const outcome = latch.exited ? undefined : await watch.sendSignal(() => pty.kill("SIGTERM"));
       const groupGone = outcome === "leader-group-gone";
       observedExit = latch.exited || groupGone || (await latch.within(timeouts.gracefulMs));
     }
@@ -80,7 +75,7 @@ export async function terminatePty(
     terminationError = terminationOperationFailed(error);
   } finally {
     try {
-      await finishWatch(watch, gracefulSignalAttempted, terminationError !== undefined);
+      await finishWatch(watch, terminationError !== undefined);
     } catch (error) {
       sweepError = mergeSweepErrors(sweepError, error);
     }
@@ -103,9 +98,9 @@ export async function terminatePty(
   if (terminationError !== undefined) throw terminationError;
 }
 
-async function finishWatch(watch: SurvivorWatch | undefined, sent: boolean, failed: boolean) {
+async function finishWatch(watch: SurvivorWatch | undefined, failed: boolean) {
   if (watch === undefined) return;
-  if (sent && failed) await watch.reap();
+  if (failed) await watch.reap();
   await watch.finish(failed);
 }
 

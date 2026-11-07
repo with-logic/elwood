@@ -17,13 +17,25 @@ const bounds = { gracefulMs: 0, forceMs: 0 };
 
 test("C-LIFE-10 successful TERM reaps a recorded helper after the leader exits", async () => {
   const child = hook(5002);
+  const order: string[] = [];
   const fake = scripted([]);
   const fixture = gracefulTermination({
     ...fake.ops,
     listProcesses: () =>
       Promise.resolve(fake.asRead(fixture.exited() ? [{ ...child, ppid: 1 }] : [leaderRow, child])),
+    killGroup: (group) => {
+      fake.calls.push(`kill ${group}`);
+      if (group === child.pgid) order.push("helper KILL");
+    },
   });
+  fixture.pty.onExit(() => order.push("exit"));
+  const kill = fixture.pty.kill;
+  fixture.pty.kill = (signal = "SIGTERM") => {
+    order.push(signal);
+    kill(signal);
+  };
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
+  expect(order).toEqual(["SIGTERM", "exit", "helper KILL"]);
   expect(fixture.ptySignals).toEqual(["SIGTERM"]);
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).toContain(`cont ${LEADER}`);
@@ -144,4 +156,22 @@ test("C-LIFE-10 completed watches retain sweep errors when exit skips signaling"
     details: { errno: "EIO" },
   });
   expect(fixture.ptySignals).toEqual([]);
+});
+
+test("C-LIFE-10 failed held verification still reaps recorded helpers before native exit", async () => {
+  const child = hook(5002);
+  const replacement = { ...leaderRow, startedAt: "Sun Oct 25 22:00:09 2026" };
+  const fake = scripted([
+    [leaderRow, child],
+    [replacement, { ...child, ppid: 1 }],
+  ]);
+  const fixture = gracefulTermination(fake.ops);
+  await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toMatchObject({
+    code: "termination_failed",
+  });
+  expect(fake.calls).toContain("kill 5002");
+  expect(fake.calls).not.toContain(`kill ${LEADER}`);
+  expect(fixture.ptySignals).toEqual([]);
+  expect(fixture.exited()).toBe(false);
+  fixture.exit();
 });
