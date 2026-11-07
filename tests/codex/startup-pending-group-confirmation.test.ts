@@ -6,7 +6,7 @@ import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seam
 import { SessionReapPolicy } from "../../src/runtime/session/reap.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
-import { errno, leaderRow } from "../helpers/scripted-process-tree.ts";
+import { errno, heldLeaderRow } from "../helpers/scripted-process-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -27,11 +27,17 @@ test.each([
   const exitReap = vi.spyOn(SessionReapPolicy.prototype, "bestEffort");
   // Skip only the graceful wait; Codex's actual startup and exit wiring still run.
   vi.spyOn(PtyExitLatch.prototype, "within").mockResolvedValueOnce(false);
+  let termSent = false;
+  let confirming = false;
+  const ownedLeader = () => heldLeaderRow(ptys[0]!.pid);
   setProcessTreeOpsForTests({
     stopGroup: () => {
+      if (!termSent) return;
+      confirming = true;
       throw errno("EPERM");
     },
     listProcesses: () => {
+      if (!confirming) return Promise.resolve([ownedLeader()]);
       readStarted.resolve();
       return confirmation.promise;
     },
@@ -40,7 +46,9 @@ test.each([
   const spawn = currentPtyFactory();
   setPtyFactoryForTests((options) => {
     const pty = spawn(options);
-    vi.spyOn(pty, "kill").mockImplementation(() => {});
+    vi.spyOn(pty, "kill").mockImplementation(() => {
+      termSent = true;
+    });
     return pty;
   });
   const starting = startCodex({ cwd: tempDir() }).catch((error: unknown) => error);
@@ -54,17 +62,14 @@ test.each([
     expect(reapedGroups).toEqual([]);
   } finally {
     if (kind === "failed") confirmation.reject(errno("EIO"));
-    else
-      confirmation.resolve(
-        kind === "gone"
-          ? []
-          : [{ ...leaderRow, pid: ptys[0]!.pid, pgid: ptys[0]!.pid, ppid: process.pid }],
-      );
+    else confirmation.resolve(kind === "gone" ? [] : [ownedLeader()]);
     expect(await starting).toMatchObject({
       code: "codex_not_authenticated",
-      ...(kind === "gone" ? {} : { details: { cleanupErrorCode: "EPERM" } }),
+      ...(kind === "gone"
+        ? {}
+        : { details: { cleanupErrorCode: kind === "failed" ? "UnknownError" : "EPERM" } }),
     });
   }
-  expect(reapedGroups).toEqual(kind === "gone" ? [] : [ptys[0]!.pid]);
+  expect(reapedGroups).toEqual([]);
   expect(ptys[0]!.kill).toHaveBeenCalledExactlyOnceWith("SIGTERM");
 });

@@ -1,6 +1,6 @@
 /**
- * Private graceful-shutdown ownership for original leader-group members and detached
- * helpers (PRD §5.3/§9.4, C-LIFE-10); not yet wired into the production lifecycle.
+ * Records original leader-group members and detached helpers for graceful shutdown
+ * (PRD §5.3/§9.4, C-LIFE-10).
  * The first observation freezes the leader identity; later reads cannot adopt another.
  * Linked helpers are recorded while that leader lives, before exit can reparent them.
  * Start times reject distinguishable PID reuse. Failed reads and unattributable live
@@ -102,6 +102,11 @@ export class DescendantRecord {
       }
       this.identities.add(id);
     }
+  }
+
+  /** A lost graceful owner can never regain permission to signal its original group. */
+  markLeaderAuthorityLost(leaderPid: number): void {
+    this.unknownLeaderGroup = leaderPid;
   }
 
   /** Ambiguous identities and unattributable original-group members cannot authorize cleanup. */

@@ -101,7 +101,11 @@ test("C-LIFE-10 an earlier forced-sweep failure survives verified graceful clean
     code: "EIO",
   });
   expect(fake.calls).toEqual(before);
-  await expect(watch.reap()).rejects.toMatchObject({ code: "EIO" });
+  await expect(watch.reap()).rejects.toMatchObject({
+    code: "EIO",
+    processGroupIds: [LEADER],
+    message: expect.stringContaining("a survivor group has an ambiguous identity"),
+  });
   const completed = [...fake.calls];
   await expect(reaper.sweepDetached(() => false)).rejects.toMatchObject({ code: "EIO" });
   expect(fake.calls).toEqual(completed);

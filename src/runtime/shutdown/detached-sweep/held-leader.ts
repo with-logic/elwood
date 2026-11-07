@@ -1,4 +1,4 @@
-/** Private held-leader signal foundation; no lifecycle caller yet (PRD §5.3/§9.4, C-LIFE-10). */
+/** Holds and verifies the original leader before graceful signals (PRD §5.3/§9.4, C-LIFE-10). */
 import { scheduler } from "node:timers/promises";
 import { errnoCode } from "../../../core/errors.ts";
 import { aggregateSignalFailures, throwSignalFailures } from "../merge-sweep-errors.ts";

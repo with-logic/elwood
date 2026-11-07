@@ -14,6 +14,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Recognize Codex 0.167.0’s agents footer as a configured composer, so startup and
   queued input do not wait for the readiness fallback.
+- Graceful shutdown records linked detached helpers before TERM and verifies recorded
+  survivors after the agent exits. Ambiguous or lost ownership
+  rejects with `termination_failed` and prevents final or later leader signals.
 
 ## [0.2.4] - 2026-11-06
 

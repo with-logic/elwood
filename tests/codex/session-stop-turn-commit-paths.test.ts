@@ -2,12 +2,11 @@
  * Every path to a graceful shutdown during a Codex `Stop` hook meets the wait for the
  * turn's record, and the paths that must not wait do not (PRD §5.7, C-LIFE-13).
  */
+
 import { afterEach, expect, test, vi } from "vitest";
 import type { CodexSessionApi } from "../../src/index.ts";
-import {
-  quietProcessTree,
-  setProcessTreeOpsForTests,
-} from "../../src/runtime/shutdown/reap-tree.ts";
+import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
+import { quietPtyTree } from "../helpers/quiet-pty-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
@@ -83,23 +82,24 @@ test("C-LIFE-13 a Stop hook that blocks releases a stop its observer started", a
   expect(ptys[0]!.killSignals).toEqual(["SIGTERM"]);
 });
 
-/** Records the process-group SIGSTOPs the detached sweep sends, on a quiet fake tree. */
-function groupStops(): string[] {
-  const quiet = quietProcessTree();
+/** Records graceful leader holds and detached-sweep group SIGSTOPs on a quiet fake tree. */
+function groupStops() {
+  const quiet = quietPtyTree(ptys);
+  const reads = vi.fn(quiet.listProcesses);
   const stops: string[] = [];
   setProcessTreeOpsForTests({
     ...quiet,
+    listProcesses: reads,
     stopGroup: (pgid) => {
       stops.push(`SIGSTOP -${pgid}`);
       quiet.stopGroup(pgid);
     },
     killGroup: (pgid) => void reapedGroups.push(pgid),
   });
-  return stops;
+  return { stops, reads };
 }
 
-// Without a wait, the first signal goes out in the same tick as the call: SIGTERM for a
-// stop, and for a kill the SIGSTOP of the CLI's group that starts the detached sweep.
+// Without a commit wait, shutdown reads ownership in the calling tick; TERM follows verification.
 test.each([
   ["kill forces termination", "kill", true, {}],
   ["a Stop without a transcript path leaves nothing to read", "stop", false, {}],
@@ -111,14 +111,13 @@ test.each([
   ],
 ] as const)("C-LIFE-13 no commit wait: %s", async (_name, verb, withPath, hooks) => {
   installFakes();
-  const stops = groupStops();
+  const { stops, reads } = groupStops();
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd, hooks);
   await stopHook(session, cwd, withPath ? path : null);
   const shutdown = tracked(session[verb]());
-  expect([...ptys[0]!.killSignals, ...stops]).toEqual(
-    verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`] : ["SIGTERM"],
-  );
+  expect(reads).toHaveBeenCalledTimes(1);
+  expect(stops).toEqual(verb === "kill" ? [`SIGSTOP -${ptys[0]!.pid}`] : []);
   await shutdown;
   expect(ptys[0]!.killSignals).toEqual([verb === "kill" ? "SIGKILL" : "SIGTERM"]);
 });
