@@ -46,6 +46,7 @@ export async function terminatePty(
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
   let watch: SurvivorWatch | undefined;
+  let gracefulSignalAttempted = false;
   try {
     const latch = new PtyExitLatch(pty);
     exit = latch;
@@ -53,7 +54,11 @@ export async function terminatePty(
       watch = reaper.watchSurvivors(() => latch.exited);
       const observation = await watch.firstObservation;
       assertLeaderObservation(observation);
-      const outcome = latch.exited ? undefined : await watch.sendSignal(() => pty.kill("SIGTERM"));
+      const send = () => {
+        gracefulSignalAttempted = true;
+        pty.kill("SIGTERM");
+      };
+      const outcome = latch.exited ? undefined : await watch.sendSignal(send);
       const groupGone = outcome === "leader-group-gone";
       observedExit = latch.exited || groupGone || (await latch.within(timeouts.gracefulMs));
     }
@@ -75,7 +80,7 @@ export async function terminatePty(
     terminationError = terminationOperationFailed(error);
   } finally {
     try {
-      await watch?.finish(terminationError !== undefined);
+      await finishWatch(watch, gracefulSignalAttempted, terminationError !== undefined);
     } catch (error) {
       sweepError = mergeSweepErrors(sweepError, error);
     }
@@ -98,6 +103,12 @@ export async function terminatePty(
   if (terminationError !== undefined) throw terminationError;
 }
 
+async function finishWatch(watch: SurvivorWatch | undefined, sent: boolean, failed: boolean) {
+  if (watch === undefined) return;
+  if (sent && failed) await watch.reap();
+  await watch.finish(failed);
+}
+
 async function reapAfterTermination(
   reaper: Pick<SessionReaper, "reap">,
   observedExit: boolean,
@@ -116,19 +127,16 @@ async function reapAfterTermination(
 }
 
 /**
- * Builds one error preserving BOTH the termination failure and a secondary cause:
- * the reap failure (`reapError`, with its errno in `reapErrno`) or the
- * detached-descendant sweep failure (`sweepError`). The secondary cause is carried in
- * `details` under its own keys (NOT `details.cause`/`errno`, which the termination
- * error may already use for its own root cause), so neither cause is dropped
- * (C-LIFE-10).
+ * Preserve the primary failure; secondary messages use `reapError` or `sweepError`.
+ * Secondary cleanup errno uses `reapErrno` without replacing the primary errno;
+ * sweep group IDs remain diagnostic only (C-LIFE-10).
  */
 function withCause(
   terminationError: ElwoodError,
   key: "reapError" | "sweepError",
   secondary: unknown,
 ): ElwoodError {
-  const reapErrno = key === "reapError" ? errnoCode(secondary) : undefined;
+  const reapErrno = errnoCode(secondary);
   return elwoodError(terminationError.code, terminationError.message, {
     ...terminationError.details,
     [key]: toError(secondary).message,
@@ -138,11 +146,9 @@ function withCause(
 }
 
 /**
- * Routes retained sweep failures to their wrapper. Other termination failures, including
- * PTY operations, observations and ownership verification, become `termination_failed`
- * with message/errno/syscall/path details. Thus `stop()`/`kill()` never reject with a raw
- * system error whose own
- * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
+ * Wrap sweep failures separately; other PTY, observation and ownership failures become
+ * `termination_failed`. Preserve message/errno/syscall/path so raw syscall codes cannot
+ * appear as Elwood error names (PRD §10, C-ERR-01).
  */
 function terminationOperationFailed(error: unknown): ElwoodError {
   if ("processGroupIds" in toError(error)) return sweepOnlyFailed(error);

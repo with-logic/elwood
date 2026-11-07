@@ -34,8 +34,6 @@ test.each([
     await expect(session[verb]()).rejects.toMatchObject({ code: "termination_failed" });
     expect(await bridgeAccepts(socketPath)).toBe(false); // runtime cleanup still ran
   } finally {
-    if (verb === "stop")
-      await expect(session.teardown()).rejects.toMatchObject({ code: "teardown_failed" });
-    else await session.teardown();
+    await session.teardown();
   }
 });

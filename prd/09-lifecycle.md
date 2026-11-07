@@ -322,7 +322,9 @@ startup), the PTY is not signaled again: the leader's pid may already belong to 
 unrelated process, so only that shared reaper runs. That reaper does nothing if the
 exit's reap succeeded and retries it if it failed. Otherwise the PTY is signaled, its
 exit is awaited within a bounded window, and the leader's process-group reap is attempted
-on every path, even if the PTY signal throws. If the detached sweep confirms the entire
+on every path, even if the PTY signal throws: an authorized graceful signal uses its
+retained identity-verified owner; refused initial ownership never authorizes leader-group cleanup.
+If the detached sweep confirms the entire
 group gone, the final group SIGKILL is skipped, avoiding a signal to a possibly reused
 numeric id; an earlier unresolved descendant-sweep failure still rejects. An eligible
 group kill stops a CLI-spawned

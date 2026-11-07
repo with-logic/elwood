@@ -71,7 +71,7 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
   });
 
   test("a PTY that never exits and a refused group kill report the reap's EPERM", async () => {
-    // Real termination: SIGTERM and SIGKILL go unanswered, then the group kill is refused.
+    // TERM goes unanswered and the verified group kill is refused; no numeric PTY KILL.
     const signals: string[] = [];
     const silent = {
       pid: LEADER,
@@ -93,7 +93,7 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
         terminationTimeouts: { gracefulMs: 0, forceMs: 0 },
       }),
     ).resolves.toEqual({ cleanupErrorCode: "EPERM", cleanupProcessGroupId: LEADER });
-    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(signals).toEqual(["SIGTERM"]);
   });
 
   // A PTY that never reported exit carries no errno; an errno outside the allowlist, or

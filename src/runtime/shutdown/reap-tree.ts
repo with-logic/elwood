@@ -28,6 +28,7 @@ import {
   watchSurvivors,
 } from "./detached-sweep/survivor-watch.ts";
 import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
+import { mergeSweepErrors } from "./merge-sweep-errors.ts";
 import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
 import { SerialDetachedSweepQueue } from "./reap-queue.ts";
 
@@ -113,7 +114,8 @@ export class SessionReaper {
       this.ops,
       leaderExited,
       (failure) => {
-        if (failure !== undefined) this.unresolvedSweep = failure;
+        if (failure !== undefined)
+          this.unresolvedSweep = mergeSweepErrors(this.unresolvedSweep, failure);
         if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
         this.assertNoAuthorizationFailure();
         this.done = true;

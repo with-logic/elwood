@@ -1,6 +1,4 @@
-/** PTY boundaries (PRD §4.1/§4.2/§5.3/§9.4; C-PTY-01/02, C-LIFE-02/10).
- * node-pty is mocked; native zsh runs only when installed.
- */
+/** Mocked PTY and optional native zsh boundaries (PRD §4/§5.3/§9.4; C-PTY-01/02, C-LIFE-02/10). */
 
 import { spawnSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
@@ -18,10 +16,13 @@ const hasZsh = existsSync(zsh);
 if (!hasZsh) console.warn(`SKIPPING C-PTY-02: ${zsh} is not installed on this host`);
 
 /** A reaper with an injected killer so tests never signal a real process group. */
-function testReaper(reaped: number[], pid = FAKE_PID) {
+function testReaper(reaped: number[], pid = FAKE_PID, onGroupKilled?: () => void) {
   return new SessionReaper(pid, {
     ...quietPtyTree([{ pid }]),
-    killGroup: (pgid) => reaped.push(pgid),
+    killGroup: (pgid) => {
+      reaped.push(pgid);
+      onGroupKilled?.();
+    },
   });
 }
 
@@ -136,15 +137,14 @@ describe("node PTY adapter", () => {
         resize: () => "resized",
         kill: (signal) => {
           signals.push(signal ?? "SIGTERM");
-          if (signal === "SIGKILL") exitHandler?.();
         },
       },
       "SIGTERM",
-      testReaper(reaped),
+      testReaper(reaped, FAKE_PID, () => exitHandler?.()),
       { gracefulMs: 0, forceMs: 10 },
     );
-    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
-    expect(reaped).toEqual([FAKE_PID]); // reaped after exit
+    expect(signals).toEqual(["SIGTERM"]);
+    expect(reaped).toEqual([FAKE_PID]); // verified group kill delivers native exit
   });
 
   test("C-LIFE-10 termination reports failure but STILL reaps the group", async () => {

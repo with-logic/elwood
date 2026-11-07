@@ -3,6 +3,11 @@ import { errnoCode, isErrnoToken, toError } from "../../core/errors.ts";
 import { MAX_REPORTED_GROUPS, type SweepFailure } from "./detached-sweep/failures.ts";
 
 /** Both internal sweep phases produce the same bounded diagnostic group field. */
+export function mergeSweepErrors(
+  first: SweepFailure | undefined,
+  later: SweepFailure,
+): SweepFailure;
+export function mergeSweepErrors(first: unknown, later: unknown): Error;
 export function mergeSweepErrors(first: unknown, later: unknown): Error {
   const second = toError(later);
   if (first === undefined || first === later) return second;
