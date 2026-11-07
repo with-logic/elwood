@@ -106,8 +106,13 @@ test("C-LIFE-10 graceful ESRCH cancels every later leader signal", async () => {
 
 test.each([0, 1])("C-LIFE-10 misrouted leader %s starts no graceful process read", async (pid) => {
   const fake = scripted([[leaderRow]]);
-  const watch = new SessionReaper(pid, fake.ops).watchSurvivors(() => false);
-  expect(await watch.firstObservation).toEqual({ kind: "gone" });
+  const reaper = new SessionReaper(pid, fake.ops);
+  reaper.reap();
+  const watch = reaper.watchSurvivors(() => false);
+  expect(await watch.firstObservation).toMatchObject({ kind: "refused" });
+  await expect(watch.sendSignal(() => fake.calls.push("unsafe signal"))).rejects.toThrow(
+    "No safe leader signal target",
+  );
   await watch.finish();
   expect(fake.calls).toEqual([]);
 });
@@ -135,4 +140,21 @@ test("C-LIFE-10 recording continues after TERM and retains a newly observed help
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, { gracefulMs: 1_000, forceMs: 0 });
   expect(fixture.signals).toEqual(["SIGTERM"]);
   expect(fake.calls).toContain("kill 5003");
+});
+
+test("C-LIFE-10 completed watches retain sweep errors when exit skips signaling", async () => {
+  const fake = scripted([], { listProcesses: () => Promise.reject(errno("EIO")) });
+  const fixture = gracefulTermination(fake.ops);
+  await expect(fixture.reaper.sweepDetached(() => false)).rejects.toThrow();
+  fixture.reaper.reap();
+  const subscribe = fixture.pty.onExit;
+  fixture.pty.onExit = (handler) => {
+    queueMicrotask(fixture.exit);
+    return subscribe(handler);
+  };
+  await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toMatchObject({
+    code: "termination_failed",
+    details: { errno: "EIO" },
+  });
+  expect(fixture.signals).toEqual([]);
 });
