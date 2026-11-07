@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { RECORD_READ_MS } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
+import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import {
   errno,
   hook,
@@ -125,4 +126,37 @@ test("C-LIFE-10 whole-group disappearance reaps recorded survivors without a lea
   await watch.finish();
   expect(delivered).not.toHaveBeenCalled();
   expect(keep).toHaveBeenCalledOnce();
+});
+
+test("C-LIFE-10 pending first observation keeps signal admission ahead of later passes", async () => {
+  const first = Promise.withResolvers<readonly ProcessEntry[]>();
+  const fake = scripted([[leaderRow]]);
+  const list = vi
+    .fn()
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementation(fake.ops.listProcesses);
+  const guard = survivorGuard();
+  const events: string[] = [];
+  const watch = watchSurvivors(
+    LEADER,
+    { ...fake.ops, listProcesses: list },
+    () => false,
+    () => undefined,
+    guard,
+  );
+  expect(list).toHaveBeenCalledTimes(1);
+  const signaling = watch.sendSignal(() => {
+    events.push("TERM");
+  });
+  const later = guard.serialize(() => {
+    events.push("later");
+    return Promise.resolve();
+  });
+  await Promise.resolve();
+  expect(events).toEqual([]);
+  first.resolve([leaderRow]);
+  await signaling;
+  await later;
+  await watch.finish();
+  expect(events).toEqual(["TERM", "later"]);
 });

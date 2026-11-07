@@ -46,17 +46,16 @@ export function watchSurvivors(
     firstRead: firstObservation.then(() => undefined),
     firstObservation,
     sendSignal: (send) =>
-      guard.serialize(async () => {
-        const outcome = await sendHeldLeaderSignal({
-          pid: leaderPid,
-          record: watch.record,
-          observation: await firstObservation,
-          ops,
-          leaderExited,
-          deadline,
-          guard,
-          send,
-        });
+      sendHeldLeaderSignal({
+        pid: leaderPid,
+        record: watch.record,
+        observation: firstObservation,
+        ops,
+        leaderExited,
+        deadline,
+        guard,
+        send,
+      }).then((outcome) => {
         groupGone = outcome === "leader-group-gone";
         return outcome;
       }),

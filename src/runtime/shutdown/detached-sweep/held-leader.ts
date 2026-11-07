@@ -1,6 +1,7 @@
 /** Private held-leader signal foundation; no lifecycle caller yet (PRD §5.3/§9.4, C-LIFE-10). */
 import { scheduler } from "node:timers/promises";
 import { errnoCode, toError } from "../../../core/errors.ts";
+import { throwSignalFailures } from "../merge-sweep-errors.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
 import { processReadTimeout } from "../read-timeout.ts";
 import type { ReapQueue } from "../reap-queue.ts";
@@ -20,7 +21,7 @@ export type LeaderSignalOutcome = "signal-sent" | "leader-group-gone";
 type HeldLeader = {
   readonly pid: number;
   readonly record: DescendantRecord;
-  readonly observation: LeaderObservation;
+  readonly observation: LeaderObservation | Promise<LeaderObservation>;
   readonly ops: SweepOps;
   readonly leaderExited: () => boolean;
   readonly deadline: number;
@@ -34,13 +35,14 @@ export function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOu
 }
 
 async function sendSerializedLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOutcome> {
-  const { guard, observation } = signal;
+  const { guard } = signal;
   let stoppedIdentity: string | undefined;
   let authorized = false;
   let groupGone = false;
   const read: HeldRead = { table: undefined };
   const failures: unknown[] = [];
   try {
+    const observation = await signal.observation;
     guard.assertRetainedAuthority();
     assertLeaderObservation(observation);
     if (observation.kind === "gone" || signal.leaderExited())
@@ -64,14 +66,7 @@ async function sendSerializedLeaderSignal(signal: HeldLeader): Promise<LeaderSig
   }
   if (stoppedIdentity !== undefined && !groupGone)
     groupGone = await restoreHold(signal, stoppedIdentity, read.table, failures);
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) {
-    const code = errnoCode(failures[0]);
-    throw Object.assign(
-      new AggregateError(failures, failures.map((error) => toError(error).message).join("; ")),
-      code === undefined ? {} : { code },
-    );
-  }
+  throwSignalFailures(failures);
   return groupGone ? "leader-group-gone" : "signal-sent";
 }
 
@@ -161,8 +156,8 @@ async function restoreHold(
     let confirmationError: unknown;
     if (errnoCode(error) === "EPERM") {
       try {
-        const fresh = await ops.listProcesses(remaining(signal.deadline));
-        remaining(signal.deadline);
+        const fresh = await ops.listProcesses(remainingMs(signal.deadline));
+        remainingMs(signal.deadline);
         if (!fresh.some((row) => row.pgid === pid && !row.zombie)) {
           signal.guard.gone();
           return true;
