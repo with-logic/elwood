@@ -7,10 +7,16 @@ import type { SweepOps } from "./rounds.ts";
 const identityIndexes = new WeakMap<readonly ProcessEntry[], ReadonlyMap<string, ProcessEntry>>();
 function processEntriesByIdentity(
   table: readonly ProcessEntry[],
-): ReadonlyMap<string, ProcessEntry> {
+  deadline: number | undefined,
+): ReadonlyMap<string, ProcessEntry> | undefined {
   const cached = identityIndexes.get(table);
   if (cached !== undefined) return cached;
-  const index = new Map(table.map((row) => [processIdentity(row), row]));
+  const index = new Map<string, ProcessEntry>();
+  for (const row of table) {
+    if (expired(deadline)) return undefined;
+    index.set(processIdentity(row), row);
+  }
+  if (expired(deadline)) return undefined;
   identityIndexes.set(table, index);
   return index;
 }
@@ -46,21 +52,49 @@ export class ResumeDebt {
   }
 
   /** Resolve only a matching stopped identity, preserving failures independently per group. */
-  retry(table: readonly ProcessEntry[], ops: Pick<SweepOps, "continueGroup">): boolean {
+  retry(
+    table: readonly ProcessEntry[],
+    ops: Pick<SweepOps, "continueGroup">,
+    deadline?: number,
+  ): boolean {
+    if (expired(deadline)) return false;
     if (this.rows.size === 0) return true;
-    const current = processEntriesByIdentity(table);
+    const current = processEntriesByIdentity(table, deadline);
+    if (current === undefined) return false;
+    const pending = this.pendingGroups(current, deadline);
+    if (pending === undefined) return false;
+    for (const [group, members] of pending) {
+      if (expired(deadline)) return false;
+      try {
+        ops.continueGroup(group);
+      } catch (error) {
+        if (errnoCode(error) !== "ESRCH") continue;
+      }
+      for (const id of members) {
+        if (expired(deadline)) return false;
+        this.rows.delete(id);
+      }
+    }
+    return !expired(deadline) && this.rows.size === 0;
+  }
+
+  /** Keep unprocessed debt intact when foreground scanning runs out of time. */
+  private pendingGroups(current: ReadonlyMap<string, ProcessEntry>, deadline: number | undefined) {
     const pending = new Map<number, string[]>();
     for (const [id, held] of this.rows) {
+      if (expired(deadline)) return undefined;
       const row = current.get(id);
-      if (
+      const stopStillPending =
         held.pendingStop &&
         row !== undefined &&
         !row.zombie &&
         row.pgid === held.pgid &&
-        !row.stopped
-      )
-        continue;
-      if (!isOriginalStoppedMember(row, held.pgid)) {
+        !row.stopped;
+      if (expired(deadline)) return undefined;
+      if (stopStillPending) continue;
+      const eligible = isOriginalStoppedMember(row, held.pgid);
+      if (expired(deadline)) return undefined;
+      if (!eligible) {
         this.rows.delete(id);
         continue;
       }
@@ -68,15 +102,7 @@ export class ResumeDebt {
       members.push(id);
       pending.set(row.pgid, members);
     }
-    for (const [group, members] of pending) {
-      try {
-        ops.continueGroup(group);
-      } catch (error) {
-        if (errnoCode(error) !== "ESRCH") continue;
-      }
-      for (const id of members) this.rows.delete(id);
-    }
-    return this.rows.size === 0;
+    return pending;
   }
 }
 
@@ -85,4 +111,9 @@ function isOriginalStoppedMember(
   group: number,
 ): row is ProcessEntry {
   return row !== undefined && !row.zombie && row.stopped && row.pgid === group;
+}
+
+/** Background callers omit the deadline and keep their existing restoration semantics. */
+function expired(deadline: number | undefined): boolean {
+  return deadline !== undefined && performance.now() >= deadline;
 }
