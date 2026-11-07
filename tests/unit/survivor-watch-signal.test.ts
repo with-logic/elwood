@@ -43,7 +43,7 @@ test.each([
   expect(fake.calls).not.toContain(`stop ${LEADER}`);
 });
 
-test("C-LIFE-10 a replacement identity after the first read never receives TERM", async () => {
+test("C-LIFE-10 a replacement identity after the first read receives neither TERM nor CONT", async () => {
   const replacement = { ...leaderRow, startedAt: "Sun Oct 25 22:00:09 2026" };
   const fake = scripted([[leaderRow], [replacement]]);
   const delivered = vi.fn();
@@ -58,7 +58,7 @@ test("C-LIFE-10 a replacement identity after the first read never receives TERM"
   await expect(watch.sendSignal(delivered)).rejects.toThrow("not confirmed held");
   await watch.finish();
   expect(delivered).not.toHaveBeenCalled();
-  expect(fake.calls).toContain(`cont ${LEADER}`);
+  expect(fake.calls).not.toContain(`cont ${LEADER}`);
 });
 
 test("C-LIFE-10 queued signal admission spends the watch's original deadline", async () => {
