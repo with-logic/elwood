@@ -9,6 +9,7 @@ import { describe, expect, test } from "vitest";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
+import { markingLateSeen } from "../helpers/detached-tree/observed-late.ts";
 import {
   type DetachedTree,
   detachedDescendantPids,
@@ -36,7 +37,7 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
   const outcomes: unknown[] = [];
   const watch = watchSurvivors(
     tree.pty.pid,
-    realOps,
+    { ...realOps, listProcesses: markingLateSeen(tree, (row) => !row.zombie) },
     () => exited,
     (outcome) => {
       outcomes.push(outcome);
@@ -52,7 +53,7 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
 
 describe("C-LIFE-10 survivor reap on real processes", () => {
   test("reaps what a leader leaves on SIGTERM, a process it starts after it too", async () => {
-    const tree = startDetachedTree("late-on-term");
+    const tree = startDetachedTree("late-until-seen");
     const bystander = startBystander();
     try {
       const [child, grandchild] = await detachedDescendantPids(tree);
