@@ -6,9 +6,13 @@ import { errno, LEADER, leaderRow, scripted } from "../helpers/scripted-process-
 
 afterEach(() => vi.restoreAllMocks());
 
-function refusedResume(table: readonly ProcessEntry[] | Error, code = "EPERM") {
+function refusedResume(
+  table: readonly ProcessEntry[] | Error,
+  code = "EPERM",
+  held: readonly ProcessEntry[] = [{ ...leaderRow, stopped: true }],
+) {
   const error = errno(code);
-  const read = vi.fn().mockResolvedValueOnce([{ ...leaderRow, stopped: true }]);
+  const read = vi.fn().mockResolvedValueOnce(held);
   if (table instanceof Error) read.mockRejectedValue(table);
   else read.mockResolvedValue(table);
   const resume = vi.fn(() => {
@@ -112,4 +116,21 @@ test("C-LIFE-10 confirmed restoration preserves the independent TERM failure", a
   };
   await expect(run.run()).rejects.toBe(termError);
   expect(run.record.resumes.pids).toEqual([]);
+});
+
+test("C-LIFE-10 a running leader cannot clear another original member's stopped hold", async () => {
+  const member = { ...leaderRow, pid: LEADER + 1, stopped: true };
+  const fresh = [leaderRow, member];
+  const { run, read, resume, error } = refusedResume(fresh, "EPERM", [
+    { ...leaderRow, stopped: true },
+    member,
+  ]);
+  await expect(run.run()).rejects.toBe(error);
+  expect(run.groupGone()).toBe(false);
+  expect(run.record.resumes.pids).toEqual([LEADER, member.pid]);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(resume).toHaveBeenCalledTimes(1);
+  const continueGroup = vi.fn();
+  expect(run.record.resumes.retry(fresh, { continueGroup })).toBe(true);
+  expect(continueGroup).toHaveBeenCalledExactlyOnceWith(LEADER);
 });

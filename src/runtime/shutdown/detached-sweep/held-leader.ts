@@ -171,14 +171,15 @@ async function restoreHold(
           fresh.some(
             (row) =>
               !(row.zombie || row.stopped) && row.pgid === pid && processIdentity(row) === identity,
-          )
+          ) &&
+          !fresh.some((row) => !row.zombie && row.stopped && row.pgid === pid)
         )
           return false;
       } catch (readError) {
         confirmationError = readError;
       }
     }
-    record.resumes.remember([original], pid);
+    record.resumes.remember(table, pid);
     failures.push(error);
     if (confirmationError !== undefined) failures.push(confirmationError);
   }
