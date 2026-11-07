@@ -18,7 +18,11 @@ type Acquisition = {
   readonly claim: () => Promise<boolean>;
 };
 
-/** "uncontended" attests no observed peer or recorded outcome; false skips the update. */
+/**
+ * `false` grants no ownership and skips the update. Both strings grant lease ownership
+ * and permit updater invocation. `"uncontended"` permits cache-preservation attestation
+ * only for a local verification refusal after cleanup; `"uncertain"` never permits it.
+ */
 export async function acquireUpdateLease({
   adapter,
   leasePath,

@@ -1,5 +1,4 @@
 /** C-PERF-02 / C-LIFE-11: local verification refusal preserves other workspaces' caches. */
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -13,7 +12,6 @@ import {
   UpdateVerificationFailure,
   verifyBeforeUpdate,
 } from "../../src/core/update-verification.ts";
-import { processGroupGone } from "../../src/runtime/probe/cleanup.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
 import {
@@ -24,6 +22,7 @@ import {
 import { ownerFile, serializeOwner } from "../../src/runtime/update/owner.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { tempDir } from "../helpers/tmp.ts";
+import { spawnUpdateProcessGroup } from "../helpers/update-process-group.ts";
 
 beforeEach(() => {
   resetAutoupdateForTests();
@@ -49,26 +48,6 @@ const states = [
   { mode: "prior_refusal", expectedReads: 2 },
 ] satisfies readonly { readonly mode: VerificationMode; readonly expectedReads: number }[];
 
-/** A real live group whose verifier could not confirm cleanup; always killed in finally. */
-function spawnGroup(): { readonly id: number; readonly cleanup: () => Promise<void> } {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  const id = child.pid!;
-  return {
-    id,
-    cleanup: async () => {
-      child.kill("SIGKILL");
-      const deadline = Date.now() + 5_000;
-      while (!processGroupGone(id) && Date.now() < deadline)
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      if (!processGroupGone(id)) throw new Error(`fixture group ${id} outlived SIGKILL`);
-    },
-  };
-}
-
 const cases = (
   [
     { agent: "claude", preflight: preflightClaude, version: "2.1.305" },
@@ -84,7 +63,7 @@ test.each(
   mode,
   expectedReads,
 }) => {
-  const group = mode === "cleanup_pending" ? spawnGroup() : undefined;
+  const group = mode === "cleanup_pending" ? await spawnUpdateProcessGroup() : undefined;
   try {
     const root = tempDir("elwood-local-cache-lease-");
     const healthy = { cwd: tempDir("elwood-local-cache-healthy-") };
@@ -97,13 +76,14 @@ test.each(
     let versionReads = 0;
     let helpReads = 0;
     let verificationReads = 0;
+    let leaseHeldDuringVerification: boolean | undefined;
     let updates = 0;
     setCommandRunnerForTests((_shell, args, options) => {
       const command = args.join(" ");
       if (command.includes(`${agent} update`)) updates++;
       if (options?.cwd === failing.cwd) {
         if (++verificationReads === 1)
-          expect(existsSync(updateLockPath(agent, root))).toBe(mode !== "unattested");
+          leaseHeldDuringVerification = existsSync(updateLockPath(agent, root));
         return {
           status: 9,
           stdout: "",
@@ -164,6 +144,7 @@ test.each(
     await expect(preflight(true, true, failing)).rejects.toMatchObject({
       code: `${agent}_start_failed`,
     });
+    expect(leaseHeldDuringVerification).toBe(mode !== "unattested");
     expect(verificationReads).toBe(2);
     expect(updates).toBe(0);
     expect(existsSync(updateLockPath(agent, root))).toBe(mode === "cleanup_pending");
@@ -177,6 +158,6 @@ test.each(
     expect.soft(versionReads).toBe(expectedReads);
     expect.soft(helpReads).toBe(agent === "codex" ? expectedReads : 0);
   } finally {
-    await group?.cleanup();
+    await group?.killGroup();
   }
 });

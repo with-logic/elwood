@@ -4,33 +4,14 @@
  * real and detached; production code only observes them.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { expect, test } from "vitest";
 import { elwoodError } from "../../../src/core/errors.ts";
 import { UpdateVerificationFailure } from "../../../src/core/update-verification.ts";
-import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { readOwner } from "../../../src/runtime/update/owner.ts";
 import { tempDir } from "../../helpers/tmp.ts";
-
-function spawnGroup(): { id: number; killGroup: () => Promise<void> } {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  const id = child.pid as number;
-  const killGroup = async (): Promise<void> => {
-    if (processGroupGone(id)) return;
-    process.kill(-id, "SIGKILL");
-    const deadline = Date.now() + 5_000;
-    while (!processGroupGone(id) && Date.now() < deadline)
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    if (!processGroupGone(id)) throw new Error(`fixture process group ${id} outlived SIGKILL`);
-  };
-  return { id, killGroup };
-}
+import { spawnUpdateProcessGroup } from "../../helpers/update-process-group.ts";
 
 /** What an aborted update probe throws when it could not confirm its group gone. */
 const abortedWith = (processGroupId: number): Error =>
@@ -42,7 +23,7 @@ test.each([
   false,
   true,
 ])("C-PERF-04 an aborted probe retains its group (verification=%s)", async (verification) => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   const root = tempDir("elwood-retain-");
   const path = updateLockPath("codex", root);
   try {
@@ -68,7 +49,7 @@ test.each([
 });
 
 test("C-PERF-04 a group that exits within the cleanup window never retains the lease", async () => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   const root = tempDir("elwood-retain-exits-");
   const path = updateLockPath("codex", root);
   // Gone before the update settles, so there is nothing left to wait for.
@@ -91,7 +72,7 @@ test("C-PERF-04 a group that exits within the cleanup window never retains the l
 });
 
 test("C-PERF-04 a retained lease is recovered once its group exits", async () => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   const root = tempDir("elwood-retain-released-");
   await expect(
     coordinatedAutoupdate("codex", () => Promise.reject(abortedWith(group.id)), { root }),
