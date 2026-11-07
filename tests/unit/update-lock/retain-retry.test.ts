@@ -5,32 +5,13 @@
  * loop in-process so each of its exits is exercised directly.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { expect, test, vi } from "vitest";
-import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { updateLockPath } from "../../../src/runtime/update/lock.ts";
 import * as owner from "../../../src/runtime/update/owner.ts";
 import { retainLease } from "../../../src/runtime/update/retained-lease.ts";
 import { tempDir } from "../../helpers/tmp.ts";
-
-function spawnGroup(): { id: number; killGroup: () => Promise<void> } {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  const id = child.pid as number;
-  const killGroup = async (): Promise<void> => {
-    if (processGroupGone(id)) return;
-    process.kill(-id, "SIGKILL");
-    const deadline = Date.now() + 5_000;
-    while (!processGroupGone(id) && Date.now() < deadline)
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    if (!processGroupGone(id)) throw new Error(`fixture process group ${id} outlived SIGKILL`);
-  };
-  return { id, killGroup };
-}
+import { spawnUpdateProcessGroup } from "../../helpers/update-process-group.ts";
 
 /** A claimed lease whose record names this process, as an owner mid-update holds it. */
 async function claimedLease(prefix: string): Promise<{ path: string; lease: owner.LeaseOwner }> {
@@ -44,7 +25,7 @@ async function claimedLease(prefix: string): Promise<{ path: string; lease: owne
 }
 
 test("C-PERF-04 a retry that succeeds records the groups and stops retrying", async () => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   const { path, lease } = await claimedLease("elwood-retain-retry-ok-");
   // Fail only the first write, so the loop runs once and then commits.
   const retain = vi.spyOn(owner, "retainProbeOwner");
@@ -66,7 +47,7 @@ test("C-PERF-04 a retry that succeeds records the groups and stops retrying", as
 });
 
 test("C-PERF-04 a retry releases the lease once the groups exit, without ever recording them", async () => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   const { path, lease } = await claimedLease("elwood-retain-retry-release-");
   // Every write fails, so the only way out of the loop is the groups exiting.
   const retain = vi.spyOn(owner, "retainProbeOwner").mockRejectedValue(new Error("disk failed"));

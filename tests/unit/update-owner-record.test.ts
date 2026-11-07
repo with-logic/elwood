@@ -5,7 +5,6 @@
  * below is this test disposing of the fixture group it created.
  */
 
-import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
@@ -19,30 +18,7 @@ import {
   serializeOwner,
 } from "../../src/runtime/update/owner.ts";
 import { tempDir } from "../helpers/tmp.ts";
-
-/**
- * A real process group that outlives this call, plus the means to end it. `killGroup` waits
- * for the group to stop being observable rather than for the child's `close` event: reaping
- * is not instantaneous, and a transient `EPERM` counts as live by design, so polling the
- * same predicate production uses is what avoids a macOS-only race.
- */
-function spawnGroup(): { id: number; killGroup: () => Promise<void> } {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  const id = child.pid as number;
-  const killGroup = async (): Promise<void> => {
-    if (processGroupGone(id)) return;
-    process.kill(-id, "SIGKILL");
-    const deadline = Date.now() + 5_000;
-    while (!processGroupGone(id) && Date.now() < deadline)
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    if (!processGroupGone(id)) throw new Error(`fixture process group ${id} outlived SIGKILL`);
-  };
-  return { id, killGroup };
-}
+import { spawnUpdateProcessGroup } from "../helpers/update-process-group.ts";
 
 function writeRecord(path: string, contents: string): void {
   mkdirSync(path, { recursive: true });
@@ -79,7 +55,7 @@ test.each([
 });
 
 test("C-PERF-04 a record naming groups is alive while any group is, not while its writer is", async () => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   try {
     const held = {
       pid: process.pid,

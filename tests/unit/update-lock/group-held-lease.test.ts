@@ -6,32 +6,13 @@
  * them (`retainLease`), which is covered by its own tests.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { serializeOwner } from "../../../src/runtime/update/owner.ts";
 import { tempDir } from "../../helpers/tmp.ts";
-
-function spawnGroup(): { id: number; killGroup: () => Promise<void> } {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  const id = child.pid as number;
-  const killGroup = async (): Promise<void> => {
-    if (processGroupGone(id)) return;
-    process.kill(-id, "SIGKILL");
-    const deadline = Date.now() + 5_000;
-    while (!processGroupGone(id) && Date.now() < deadline)
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    if (!processGroupGone(id)) throw new Error(`fixture process group ${id} outlived SIGKILL`);
-  };
-  return { id, killGroup };
-}
+import { spawnUpdateProcessGroup } from "../../helpers/update-process-group.ts";
 
 /** A stale lease whose record names a dead parent but the given live groups. */
 function writeGroupHeldLease(root: string, processGroupIds: readonly number[]): string {
@@ -48,7 +29,7 @@ function writeGroupHeldLease(root: string, processGroupIds: readonly number[]): 
 }
 
 test("C-PERF-04 a stale lease is held by its live group alone, whatever its age", async () => {
-  const group = spawnGroup();
+  const group = await spawnUpdateProcessGroup();
   const root = tempDir("elwood-group-held-");
   try {
     const path = writeGroupHeldLease(root, [group.id]);

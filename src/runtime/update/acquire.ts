@@ -18,7 +18,11 @@ type Acquisition = {
   readonly claim: () => Promise<boolean>;
 };
 
-/** True grants update ownership; false means no update lease acquired. */
+/**
+ * `false` grants no ownership and skips the update. Both strings grant lease ownership
+ * and permit updater invocation. `"uncontended"` permits cache-preservation attestation
+ * only for a local verification refusal after cleanup; `"uncertain"` never permits it.
+ */
 export async function acquireUpdateLease({
   adapter,
   leasePath,
@@ -29,7 +33,7 @@ export async function acquireUpdateLease({
   staleMs,
   waitUntilMs,
   claim,
-}: Acquisition): Promise<boolean> {
+}: Acquisition): Promise<false | "uncontended" | "uncertain"> {
   const {
     ownerGeneration: observedGeneration,
     priorCompletionGeneration,
@@ -99,12 +103,16 @@ export async function acquireUpdateLease({
     if (!(observedOwnerCompleted || completionAdvanced)) await rejectRefusal();
     return false;
   }
-  await unlink(refusalMarkerPath).catch(async (error: unknown) => {
-    if (errnoCode(error) === "ENOENT") return;
-    await releaseLease(leasePath, owner);
-    throw error;
-  });
-  return true;
+  const clearedRefusal = await unlink(refusalMarkerPath)
+    .then(() => true)
+    .catch(async (error: unknown) => {
+      if (errnoCode(error) === "ENOENT") return false;
+      await releaseLease(leasePath, owner);
+      throw error;
+    });
+  return observedActive || priorCompletionGeneration !== undefined || clearedRefusal
+    ? "uncertain"
+    : "uncontended";
 }
 
 /** A nonoptional return and no default make future wait variants a compile-time error. */
