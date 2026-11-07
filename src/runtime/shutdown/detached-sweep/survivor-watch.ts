@@ -17,7 +17,7 @@ export type SurvivorWatch = {
   /** Freezes the first read's evidence; a missing target settles immediately as refused. */
   readonly firstObservation: Promise<LeaderObservation>;
   readonly sendSignal: (send: () => void) => Promise<LeaderSignalOutcome>;
-  /** Stop recording; true retains failure and record if termination failed before exit. */
+  /** Retain read failures regardless of the flag; true also records an unconfirmed exit. */
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
 

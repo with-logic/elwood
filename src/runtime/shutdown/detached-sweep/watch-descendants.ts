@@ -7,7 +7,7 @@ import type { SweepOps } from "./rounds.ts";
 
 /** Each native table read has the existing detached-walk budget. */
 export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
-/** Minimum quiet interval after a completed observation, excluding verification reads. */
+/** One second limits scans during a five-second grace window to a few; verification is immediate. */
 export const RECORD_INTERVAL_MS = 1_000;
 
 /** A recording in progress. */
