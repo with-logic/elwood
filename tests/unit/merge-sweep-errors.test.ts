@@ -2,9 +2,10 @@
 import { expect, test } from "vitest";
 import { mergeSweepErrors } from "../../src/runtime/shutdown/merge-sweep-errors.ts";
 
-test("C-LIFE-10 a lone later failure retains its original identity", () => {
+test("C-LIFE-10 a lone or repeated failure retains its original identity", () => {
   const later = new Error("survivor failed");
   expect(mergeSweepErrors(undefined, later)).toBe(later);
+  expect(mergeSweepErrors(later, later)).toBe(later);
 });
 
 test("C-LIFE-10 merged failures retain both causes, the first errno, and bounded unique groups", () => {

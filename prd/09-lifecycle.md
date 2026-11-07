@@ -445,7 +445,8 @@ exception is a detached-descendant walk that could not complete (§5.3): with th
 leader gone it cannot be retried, so every later call keeps rejecting for it. Each
 caller still observes its own operation's success or typed failure.
 
-Graceful shutdown records detached descendants before TERM and suspends leader-group
-reap before the initial process-table read. Initial refusal or lost ownership permanently
+Graceful shutdown records detached descendants and original leader-group members before
+TERM and suspends numeric leader-group reaps before the initial process-table read.
+Grace expiry and later force calls use the same retained identity-verified cleanup. Initial refusal or lost ownership permanently
 vetoes final and later leader signals. Independently verified detached groups and identity-verified hold restoration
 remain eligible; unknown ownership or restoration cannot report success.

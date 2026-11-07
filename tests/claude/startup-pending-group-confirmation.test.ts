@@ -62,9 +62,11 @@ test.each([
     else confirmation.resolve(kind === "gone" ? [] : [ownedLeader()]);
     expect(await starting).toMatchObject({
       code: "claude_not_authenticated",
-      ...(kind === "gone" ? {} : { details: { cleanupErrorCode: "EPERM" } }),
+      ...(kind === "gone"
+        ? {}
+        : { details: { cleanupErrorCode: kind === "failed" ? "UnknownError" : "EPERM" } }),
     });
   }
-  expect(reapedGroups).toEqual(kind === "gone" ? [] : [ptys[0]!.pid]);
+  expect(reapedGroups).toEqual([]);
   expect(ptys[0]!.kill).toHaveBeenCalledExactlyOnceWith("SIGTERM");
 });

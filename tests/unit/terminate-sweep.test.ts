@@ -11,7 +11,6 @@ import { describe, expect, test } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
-import { fakeSurvivorWatch } from "../helpers/fake-survivor-watch.ts";
 import { harness, sweepFailure, swept, timeouts } from "../helpers/termination-harness.ts";
 
 describe("C-LIFE-10 terminatePty detached sweep", () => {
@@ -27,10 +26,10 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     expect(calls).toEqual(["signal SIGTERM", "unsubscribe", "reap"]);
   });
 
-  test("an ignored SIGTERM is swept before the escalating SIGKILL", async () => {
+  test("an ignored SIGTERM escalates through the retained verified group reap", async () => {
     const { pty, reaper, calls } = harness({ exitsOn: ["SIGKILL"] });
     await terminatePty(pty, "SIGTERM", reaper, timeouts);
-    expect(calls).toEqual(["signal SIGTERM", ...swept, "signal SIGKILL", "unsubscribe", "reap"]);
+    expect(calls).toEqual(["signal SIGTERM", "verified group reap", "unsubscribe", "reap"]);
   });
 
   test("an exit during the sweep is observed, and no SIGKILL goes to the retired pid", async () => {
@@ -39,13 +38,7 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     // is seen, the leader's pid may belong to another process, so nothing is sent to it.
     const { pty, reaper, calls } = harness({ exitDuringSweep: true });
     await expect(terminatePty(pty, "SIGTERM", reaper, timeouts)).resolves.toBeUndefined();
-    expect(calls).toEqual([
-      "signal SIGTERM",
-      "sweep (exited: false)",
-      "swept (exited: true)",
-      "unsubscribe",
-      "reap",
-    ]);
+    expect(calls).toEqual(["signal SIGTERM", "verified group reap", "unsubscribe", "reap"]);
   });
 
   test("a sweep failure alone rejects as typed termination_failed with its errno", async () => {
@@ -111,14 +104,12 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
   });
 });
 
-test("C-LIFE-10 force and graceful survivor failures both survive termination reporting", async () => {
+test("C-LIFE-10 verified reap and finalization failures both survive termination reporting", async () => {
   const force = sweepFailure("process table unreadable", [7001], "EIO");
   const survivor = sweepFailure("could not kill a signaled descendant group", [7002], "EPERM");
   const { pty, reaper } = harness({ exitsOn: ["SIGKILL"], sweepError: force });
-  reaper.watchSurvivors = () => ({
-    ...fakeSurvivorWatch(),
-    finish: () => Promise.reject(survivor),
-  });
+  const watch = reaper.watchSurvivors();
+  reaper.watchSurvivors = () => ({ ...watch, finish: () => Promise.reject(survivor) });
   await expect(terminatePty(pty, "SIGTERM", reaper, timeouts)).rejects.toMatchObject({
     code: "termination_failed",
     details: {

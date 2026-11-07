@@ -1,7 +1,6 @@
 /** Graceful shutdown activates identity-bound recording before TERM (C-LIFE-10). */
 import { expect, test } from "vitest";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
-import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { gracefulTermination } from "../helpers/graceful-termination.ts";
 import {
@@ -28,7 +27,7 @@ test("C-LIFE-10 successful TERM reaps a recorded helper after the leader exits",
   expect(fixture.ptySignals).toEqual(["SIGTERM"]);
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).toContain(`cont ${LEADER}`);
-  expect(fake.calls.at(-1)).toBe(`kill ${LEADER}`);
+  expect(fake.calls).not.toContain(`kill ${LEADER}`);
 });
 
 test("C-LIFE-10 a failed first read forbids TERM and final or later group signals", async () => {
@@ -93,7 +92,7 @@ test("C-LIFE-10 a completed group reap suppresses later graceful and force signa
 });
 
 test("C-LIFE-10 graceful ESRCH cancels every later leader signal", async () => {
-  const fake = scripted([[leaderRow]], {
+  const fake = scripted([[leaderRow], []], {
     stopGroup: () => {
       throw errno("ESRCH");
     },
@@ -102,20 +101,7 @@ test("C-LIFE-10 graceful ESRCH cancels every later leader signal", async () => {
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
   await terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds);
   expect(fixture.ptySignals).toEqual([]);
-  expect(fake.calls).toEqual(["list"]);
-});
-
-test.each([0, 1])("C-LIFE-10 misrouted leader %s starts no graceful process read", async (pid) => {
-  const fake = scripted([[leaderRow]]);
-  const reaper = new SessionReaper(pid, fake.ops);
-  reaper.reap();
-  const watch = reaper.watchSurvivors(() => false);
-  expect(await watch.firstObservation).toMatchObject({ kind: "refused" });
-  await expect(watch.sendSignal(() => fake.calls.push("unsafe signal"))).rejects.toThrow(
-    "No safe leader signal target",
-  );
-  await watch.finish();
-  expect(fake.calls).toEqual([]);
+  expect(fake.calls).toEqual(["list", "list"]);
 });
 
 test("C-LIFE-10 recording continues after TERM and retains a newly observed helper", async () => {

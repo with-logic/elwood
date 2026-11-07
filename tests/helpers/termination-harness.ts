@@ -51,7 +51,17 @@ export function harness(script: Script) {
     },
   };
   const reaper = {
-    watchSurvivors: fakeSurvivorWatch,
+    watchSurvivors: () => ({
+      ...fakeSurvivorWatch(),
+      reap: () => {
+        calls.push("verified group reap");
+        if (script.exitDuringSweep || script.exitsOn?.includes("SIGKILL"))
+          onExit?.({ exitCode: 0 });
+        return script.sweepError === undefined
+          ? Promise.resolve()
+          : Promise.reject(script.sweepError);
+      },
+    }),
     signalLeaderPty: (send: () => void) => {
       send();
       return "signal-sent" as const;

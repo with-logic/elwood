@@ -9,6 +9,7 @@ export function fakeSurvivorWatch(): SurvivorWatch {
       send();
       return Promise.resolve("signal-sent");
     },
+    reap: () => Promise.resolve(),
     finish: () => Promise.resolve(),
   };
 }

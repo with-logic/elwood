@@ -132,8 +132,8 @@ describe("C-LIFE-10 session reap-failure handling", () => {
   });
 
   test("C-ERR-01 stop() and kill() reject with termination_failed when signaling the PTY throws", async () => {
-    // The group reap succeeds, so only the PTY signal failed. The public verbs must
-    // still reject with the documented code, keeping the underlying cause and errno.
+    // Both verbs preserve the signaling failure. Graceful ownership prevents a numeric
+    // reap after unconfirmed TERM; a direct force attempt retains its ordinary reap.
     for (const verb of ["stop", "kill"] as const) {
       installFakes();
       const session = await startClaude({ cwd: tempDir() });
@@ -146,7 +146,8 @@ describe("C-LIFE-10 session reap-failure handling", () => {
           code: "termination_failed",
           details: { cause: "kill ESRCH", errno: "ESRCH", syscall: "kill" },
         });
-        expect(reapedGroups).toContain(pty.pid);
+        if (verb === "stop") expect(reapedGroups).toEqual([]);
+        else expect(reapedGroups).toContain(pty.pid);
       } finally {
         // Unknown graceful termination stays unresolved while teardown removes the files.
         if (verb === "stop")
