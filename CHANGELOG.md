@@ -14,6 +14,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Share process-table scans that are still waiting for native capacity, reducing queued reads during concurrent session cleanup.
 
+- Preserve observation uncertainty after an interrupted forced process-tree walk,
+  so later empty snapshots cannot falsely confirm cleanup.
+
 - Recover known retained shutdown failures in the background without holding the host alive; later shutdown calls can confirm cleanup after automatic retries expire, without re-signaling the agent.
 
 - Avoid unused process-table indexes when cleanup has no survivors or signaled
