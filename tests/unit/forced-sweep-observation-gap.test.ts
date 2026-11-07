@@ -74,9 +74,23 @@ test("C-LIFE-10 a child forked during a failed forced-walk read cannot be forgot
 });
 
 test.each([
-  ["deadline", "process groups not confirmed stopped by the deadline"],
-  ["leader exit", "the leader exited before every group was confirmed stopped"],
-] as const)("C-LIFE-10 an incomplete forced-walk %s retains observation uncertainty", async (kind, reason) => {
+  {
+    kind: "deadline",
+    reason: "process groups not confirmed stopped by the deadline",
+    readClock: 10,
+    exitAfterReads: Number.POSITIVE_INFINITY,
+  },
+  {
+    kind: "leader exit",
+    reason: "the leader exited before every group was confirmed stopped",
+    readClock: 0,
+    exitAfterReads: 1,
+  },
+])("C-LIFE-10 an incomplete forced-walk $kind retains observation uncertainty", async ({
+  reason,
+  readClock,
+  exitAfterReads,
+}) => {
   vi.useFakeTimers();
   let clock = 0;
   let reads = 0;
@@ -85,14 +99,14 @@ test.each([
   const fake = scripted([], {
     listProcesses: () => {
       reads += 1;
-      if (kind === "deadline") clock = 10;
+      clock = readClock;
       return Promise.resolve(fake.asRead([leaderRow, hook(5002)]));
     },
   });
   const failure = await sweepDetachedGroups(
     LEADER,
     fake.ops,
-    () => kind === "leader exit" && reads > 0,
+    () => reads >= exitAfterReads,
     10,
     undefined,
     record,
