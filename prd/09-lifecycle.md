@@ -458,7 +458,8 @@ After automatic expiry, a later explicit lifecycle call awaits fresh referenced
 confirmation with a ten-second total budget, including the per-session queue. No
 read, result or restoration is accepted after that deadline. Confirmation can retry
 known restoration but never restarts detached kills or original PID/PGID signals.
-Live or unreadable evidence still rejects; disappearance can resolve a matching
+A failed recovery or confirmation read retains an unresolved observation gap, even
+after later empty reads. Live or unreadable evidence still rejects; disappearance can resolve a matching
 ambiguous survivor only when every other condition holds. The original failed
 attempt still rejects even if recovery completes immediately (C-LIFE-14). Each
 caller still observes its own operation's success or typed failure.
