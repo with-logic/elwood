@@ -17,12 +17,17 @@ function processEntriesByIdentity(
 
 /** Live identities from a failed group restoration; retry only those still stopped there. */
 export class ResumeDebt {
-  private readonly rows = new Map<string, ProcessEntry>();
+  private readonly rows = new Map<string, Pick<ProcessEntry, "pid" | "pgid">>();
 
   remember(table: readonly ProcessEntry[], group: number): void {
     for (const row of table) {
       if (row.pgid === group && !row.zombie) this.rows.set(processIdentity(row), row);
     }
+  }
+
+  /** Preserve a known identity when no post-stop table was readable. */
+  rememberIdentity(identity: string, pid: number, pgid: number): void {
+    this.rows.set(identity, { pid, pgid });
   }
 
   get pids(): readonly number[] {

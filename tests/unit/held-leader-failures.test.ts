@@ -1,5 +1,5 @@
 /** Held-leader refusals and restoration debt preserve every failure (PRD §5.3, C-LIFE-10). */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { heldLeader } from "../helpers/held-leader.ts";
 import { errno, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
 
@@ -47,15 +47,27 @@ test("C-LIFE-10 exit during verification restores only the already-sent hold", a
   expect(fake.calls).toEqual(["list", `cont ${LEADER}`]);
 });
 
-test("C-LIFE-10 a failed fresh read restores the hold without inventing debt", async () => {
+test.each([
+  { ...leaderRow, stopped: true },
+  { ...leaderRow, stopped: true, startedAt: "Sun Oct 25 22:00:09 2026" },
+  { ...leaderRow, stopped: true, pgid: LEADER + 1 },
+  leaderRow,
+])("C-LIFE-10 a failed fresh read retains original debt for a safe retry (%j)", async (row) => {
   const error = errno("EIO");
   const fake = scripted([], { listProcesses: () => Promise.reject(error) });
   const run = heldLeader(fake.ops);
   await expect(run.run()).rejects.toBe(error);
-  expect(fake.calls).toContain(`cont ${LEADER}`);
+  expect(fake.calls).toEqual([`stop ${LEADER}`]);
   expect(run.delivered).toEqual([]);
-  expect(run.record.hasUnknownResume).toBe(false);
+  expect(run.record.hasUnknownResume).toBe(true);
+  expect(run.record.resumes.pids).toEqual([LEADER]);
+  const continueGroup = vi.fn();
+  expect(run.record.resumes.retry([row], { continueGroup })).toBe(true);
+  expect(continueGroup.mock.calls).toEqual(
+    row.stopped && row.startedAt === leaderRow.startedAt && row.pgid === LEADER ? [[LEADER]] : [],
+  );
   expect(run.record.resumes.pids).toEqual([]);
+  expect(run.record.hasUnknownResume).toBe(true);
 });
 
 test("C-LIFE-10 a failed known restoration retains original stopped identities for retry", async () => {
@@ -81,20 +93,19 @@ test("C-LIFE-10 a failed known restoration retains original stopped identities f
   expect(resumed).toEqual([LEADER]);
 });
 
-test("C-LIFE-10 an unreadable held group with failed restoration keeps unknown debt", async () => {
+test("C-LIFE-10 an unreadable held group keeps unknown and failed original restoration debt", async () => {
   const readError = errno("EIO");
-  const resumeError = errno("EPERM");
-  const fake = scripted([], {
-    listProcesses: () => Promise.reject(readError),
-    continueGroup: () => {
-      throw resumeError;
-    },
-  });
+  const fake = scripted([], { listProcesses: () => Promise.reject(readError) });
   const run = heldLeader(fake.ops);
-  await expect(run.run()).rejects.toMatchObject({
-    code: "EIO",
-    errors: [readError, resumeError],
+  await expect(run.run()).rejects.toBe(readError);
+  const continueGroup = vi.fn(() => {
+    throw errno("EPERM");
   });
+  expect(run.record.resumes.retry([{ ...leaderRow, stopped: true }], { continueGroup })).toBe(
+    false,
+  );
+  expect(continueGroup).toHaveBeenCalledWith(LEADER);
+  expect(run.record.resumes.pids).toEqual([LEADER]);
   expect(run.record.hasUnknownResume).toBe(true);
   expect(run.delivered).toEqual([]);
 });

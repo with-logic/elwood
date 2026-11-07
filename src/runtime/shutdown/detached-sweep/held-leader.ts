@@ -29,7 +29,7 @@ type HeldLeader = {
 /** No signal after lost authority; only restore a hold this pass already sent. */
 export async function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOutcome> {
   const { guard, observation } = signal;
-  let stopSent = false;
+  let stoppedIdentity: string | undefined;
   let authorized = false;
   let groupGone = false;
   const read: HeldRead = { table: undefined };
@@ -39,7 +39,8 @@ export async function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSi
     assertLeaderObservation(observation);
     if (observation.kind === "gone" || signal.leaderExited())
       throw new Error("The original leader exited before graceful signal authorization.");
-    stopSent = await stopLeader(signal);
+    const stopSent = await stopLeader(signal);
+    if (stopSent) stoppedIdentity = observation.identity;
     groupGone = !stopSent || (await verifyHeldLeader(signal, observation.identity, read));
     if (groupGone) guard.gone();
     else {
@@ -51,7 +52,8 @@ export async function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSi
     if (!authorized) guard.forbid(error);
     failures.push(error);
   }
-  if (stopSent && !groupGone) groupGone = restoreHold(signal, read.table, failures);
+  if (stoppedIdentity !== undefined && !groupGone)
+    groupGone = restoreHold(signal, stoppedIdentity, read.table, failures);
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) {
     const code = errnoCode(failures[0]);
@@ -101,13 +103,23 @@ async function verifyHeldLeader(
   return false;
 }
 
-/** Retain known stopped identities, or unknown restoration if no post-stop table was readable. */
+/** Restore only a freshly held original identity; unreadable holds retain original debt. */
 function restoreHold(
   signal: HeldLeader,
+  identity: string,
   table: readonly ProcessEntry[] | undefined,
   failures: unknown[],
 ): boolean {
   const { pid, ops, record } = signal;
+  if (table === undefined) {
+    record.markUnknownResume();
+    record.resumes.rememberIdentity(identity, pid, pid);
+    return false;
+  }
+  const original = table.find(
+    (row) => !row.zombie && row.pgid === pid && processIdentity(row) === identity,
+  );
+  if (original?.stopped !== true) return false;
   try {
     ops.continueGroup(pid);
   } catch (error) {
@@ -115,8 +127,7 @@ function restoreHold(
       signal.guard.gone();
       return true;
     }
-    if (table?.some((row) => row.pgid === pid && !row.zombie)) record.resumes.remember(table, pid);
-    else record.markUnknownResume();
+    record.resumes.remember([original], pid);
     failures.push(error);
   }
   return false;

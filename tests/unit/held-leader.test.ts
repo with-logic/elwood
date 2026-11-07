@@ -20,15 +20,24 @@ test.each([
   { ...leaderRow, stopped: false },
   { ...leaderRow, pid: LEADER + 1, stopped: true },
   { ...leaderRow, zombie: true, stopped: true },
-])("C-LIFE-10 a changed or running leader %j receives no TERM", async (row) => {
+])("C-LIFE-10 a changed or running leader %j receives no TERM or CONT", async (row) => {
+  const continueGroup = vi.fn(() => {
+    throw errno("EPERM");
+  });
   const fake = scripted([], {
     listProcesses: () => Promise.resolve([row, { ...leaderRow, pid: LEADER + 2 }]),
+    continueGroup,
   });
   const run = heldLeader(fake.ops);
   await expect(run.run()).rejects.toThrow("not confirmed held");
   expect(run.delivered).toEqual([]);
   expect(run.refused).toHaveLength(1);
-  expect(fake.calls).toEqual([`stop ${LEADER}`, `cont ${LEADER}`]);
+  expect(fake.calls).toEqual([`stop ${LEADER}`]);
+  expect.soft(continueGroup).not.toHaveBeenCalled();
+  expect.soft(run.record.resumes.pids).toEqual([]);
+  expect(run.record.hasUnknownResume).toBe(false);
+  expect.soft(run.record.resumes.retry([row], { continueGroup })).toBe(true);
+  expect.soft(continueGroup).not.toHaveBeenCalled();
 });
 
 test.each([
