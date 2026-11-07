@@ -32,21 +32,25 @@ afterEach(() => {
 
 test("C-LIFE-14 forced records recover automatically while their original attempt rejects", async () => {
   const fake = scripted([]);
-  let reads = 0;
   const gate = Promise.withResolvers<void>();
+  let rootAttempts = 0;
   const reaper = new SessionReaper(LEADER, {
     ...fake.ops,
-    listProcesses: () =>
-      ++reads === 1
-        ? Promise.resolve(fake.asRead([leaderRow, hook(5002)]))
-        : Promise.reject(errno("EIO")),
+    listProcesses: () => Promise.resolve(fake.asRead([leaderRow, hook(5002)])),
+    killGroup: (group) => {
+      if (group === 5002) throw errno("EIO");
+      if (group === LEADER && ++rootAttempts === 1) throw errno("EPERM");
+      fake.ops.killGroup(group);
+    },
     listProcessesUnreferenced: async () => {
       await gate.promise;
       return [];
     },
   });
-  await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow("process table unreadable");
-  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow("process table unreadable");
+  await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow("could not kill");
+  expect(() => reaper.reap()).toThrow("raw EPERM detail");
+  reaper.reap();
+  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow("could not kill");
   gate.resolve();
   await vi.advanceTimersByTimeAsync(0);
   await expect(
