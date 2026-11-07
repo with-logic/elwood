@@ -1,27 +1,13 @@
 /**
- * Reaps the process tree of a PTY leader on session teardown, but Codex's shared
- * app-server daemon, its updater, and what they started (`shared-daemon.ts`).
- * Implements PRD §5.3 and §9.4 (C-LIFE-10): a CLI-spawned helper such as the
- * Claude hook bridge is a descendant of the PTY leader. Because POSIX reparents
- * a surviving descendant to PID 1 the instant its parent exits, a parent-pid
- * walk (`pgrep -P`) cannot find it afterwards — but node-pty starts the leader
- * as its own session/process-group leader, and group membership is inherited
- * and survives reparenting. So we reap by SIGKILLing the leader's process group,
- * which reaches every descendant still IN that group in one in-process syscall: no
- * subprocess, no PATH lookup, no post-exit reparenting blind spot.
- *
- * A descendant that started its own group is outside it: Claude and Codex start every
- * hook with `setsid()` (docs/cli-behavior.md, "Hook and MCP process groups").
- * `sweepDetached` finds those groups by parent pid and kills them, all but the daemon's
- * and its updater's, which other Codex sessions share, so it has to run
- * while that link still exists: before the live leader is SIGKILLed (see
- * `sweepDetachedGroups` in `detached-sweep/index.ts`). Graceful shutdown records those
- * links before TERM and verifies recorded survivors after exit (`watchSurvivors`).
+ * Reaps PTY descendants except Codex's shared daemon/updater tree (PRD §5.3/§9.4,
+ * C-LIFE-10/14). Group membership survives reparenting; detached hooks instead need
+ * recorded parent links and identity verification before the leader exits.
  */
 
-import { toError } from "../../core/errors.ts";
-import type { SweepFailure } from "./detached-sweep/failures.ts";
+import { errnoCode, toError } from "../../core/errors.ts";
 import { sweepDetachedGroups } from "./detached-sweep/index.ts";
+import { DescendantRecord } from "./detached-sweep/record.ts";
+import { RetainedShutdownFailures } from "./detached-sweep/retained-failures.ts";
 import {
   completedSurvivorWatch,
   type SurvivorWatch,
@@ -43,13 +29,7 @@ export {
 
 export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
 
-/**
- * Owns one successful group cleanup: a numeric forced reap or a verified graceful walk.
- * Completion prevents another numeric kill after PID reuse; it does not prove that
- * node-pty delivered exit. The termination owner separately awaits that observation.
- * Syscall reap failures stay retryable; an ownership veto permanently blocks later
- * leader signals. Graceful cleanup retains its original record and first outcome.
- */
+/** Completion retires numeric signals; only the termination owner confirms PTY exit. */
 export class SessionReaper {
   private readonly leaderPid: number;
   private readonly ops: ProcessTreeOps;
@@ -61,20 +41,30 @@ export class SessionReaper {
   /** Terminal evidence about the entire group, never inferred merely from leader exit. */
   private leaderGroupGone = false;
   private readonly detachedSweepQueue = new SerialDetachedSweepQueue();
-  /** A detached sweep that failed; once the leader is gone it can never be confirmed. */
-  private unresolvedSweep: SweepFailure | undefined;
+  private readonly retainedFailures: RetainedShutdownFailures;
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
-    this.ops = ops;
+    this.ops = {
+      ...ops,
+      continueGroup: (group) => {
+        try {
+          ops.continueGroup(group);
+        } catch (error) {
+          if (group === leaderPid && errnoCode(error) === "ESRCH") {
+            this.leaderGroupGone = true;
+            this.leaderVerificationPending = false;
+          }
+          throw error;
+        }
+      },
+    };
+    this.retainedFailures = new RetainedShutdownFailures(this.ops, (attempt) =>
+      this.detachedSweepQueue.run(attempt),
+    );
   }
 
-  /**
-   * Reap the group once it succeeds; a successful call latches so subsequent
-   * calls no-op (no recycled-pgid double-kill). A failed kill does NOT latch and
-   * rethrows, keeping syscall failures retryable. An ownership veto permanently blocks
-   * later leader signals, including retries from a lifecycle call.
-   */
+  /** Numeric reap stays retryable after syscall failure, never after an ownership veto. */
   reap(): void {
     // The active shutdown owner reaps after its sweep, including any pending confirmation.
     if (this.done || this.leaderGroupGone || this.pendingSweeps > 0) return;
@@ -87,7 +77,7 @@ export class SessionReaper {
   /** Dispatch a PTY signal only while this session has not confirmed its group gone. */
   signalLeaderPty(send: () => void): LeaderPtySignalOutcome {
     if (this.leaderGroupGone || this.done) {
-      this.reapAndThrowOnDetachedSweepFailure();
+      this.retainedFailures.throwIfUnresolved();
       return "leader-group-gone";
     }
     this.assertLeaderSignalsAllowed();
@@ -102,7 +92,7 @@ export class SessionReaper {
     if (this.gracefulWatch !== undefined) return this.gracefulWatch;
     const pid = isReapableGroupId(this.leaderPid) ? this.leaderPid : undefined;
     if (pid !== undefined && (this.done || this.leaderGroupGone)) {
-      return completedSurvivorWatch(() => this.reapAndThrowOnDetachedSweepFailure());
+      return completedSurvivorWatch(() => this.retainedFailures.throwIfUnresolved());
     }
     if (pid !== undefined) {
       this.assertLeaderSignalsAllowed();
@@ -112,9 +102,9 @@ export class SessionReaper {
       pid,
       this.ops,
       leaderExited,
-      (failure) => {
-        if (failure !== undefined) this.unresolvedSweep = failure;
-        if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+      (failure, record) => {
+        this.retainedFailures.keep(failure, record);
+        this.retainedFailures.throwIfUnresolved();
         this.assertNoAuthorizationFailure();
         this.done = true;
       },
@@ -122,7 +112,7 @@ export class SessionReaper {
         serialize: (attempt) => this.detachedSweepQueue.run(attempt),
         assertRetainedAuthority: () => {
           this.assertNoAuthorizationFailure();
-          if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+          this.retainedFailures.throwIfUnresolved();
         },
         authorize: () => {
           this.assertNoAuthorizationFailure();
@@ -156,39 +146,41 @@ export class SessionReaper {
     this.assertNoAuthorizationFailure();
   }
 
-  /**
-   * Synchronous failure check, not an owner of the asynchronous graceful wait.
-   * ShutdownCoordinator joins/chains explicit shutdown before this check; native exit
-   * callbacks only attempt the synchronous reap. Unobserved helpers cannot be discovered.
-   */
-  reapAndThrowOnDetachedSweepFailure(): void {
-    this.reap();
-    if (this.unresolvedSweep !== undefined) throw this.unresolvedSweep;
+  /** Explicit lifecycle retries await expired confirmation independently of the cached watch. */
+  reapAndThrowOnDetachedSweepFailure(): void | Promise<void> {
+    const confirmation = this.retainedFailures.confirm();
+    const finish = () => {
+      this.reap();
+      this.retainedFailures.throwIfUnresolved();
+    };
+    if (confirmation !== undefined) return confirmation.then(finish);
+    finish();
   }
 
-  /**
-   * With a graceful owner, joins its retained identity-verified cleanup before or after
-   * leader exit. Otherwise uses the legacy live-leader sweep before forced SIGKILL,
-   * while parent links can still identify detached descendants. That sweep records
-   * failed or unconfirmed groups for the later synchronous failure check and refuses
-   * the same unsafe numeric IDs as the group reap.
-   */
+  /** Join graceful cleanup, or record linked descendants before a forced leader kill. */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
+    if (this.done || this.leaderGroupGone) return;
     if (this.gracefulWatch !== undefined) return this.gracefulWatch.reap();
     if (!isReapableGroupId(this.leaderPid)) return;
     this.pendingSweeps += 1;
     try {
+      const record = new DescendantRecord();
       const failure = await this.detachedSweepQueue.run(() => {
         // A queued request must recheck after the preceding pass has confirmed exit.
         if (this.leaderGroupGone || this.done) return Promise.resolve(undefined);
         this.assertLeaderSignalsAllowed();
-        return sweepDetachedGroups(this.leaderPid, this.ops, leaderExited, undefined, () => {
-          this.leaderGroupGone = true;
-        });
+        return sweepDetachedGroups(
+          this.leaderPid,
+          this.ops,
+          leaderExited,
+          undefined,
+          () => {
+            this.leaderGroupGone = true;
+          },
+          record,
+        );
       });
-      if (failure === undefined) return;
-      this.unresolvedSweep = failure;
-      throw failure;
+      this.retainedFailures.keep(failure, record);
     } finally {
       this.pendingSweeps -= 1;
     }

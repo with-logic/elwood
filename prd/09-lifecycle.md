@@ -442,5 +442,23 @@ sticky: because signal ownership is separate from the in-flight promise, a later
 the reap, runtime cleanup, and file removal — without re-signaling the PTY — rather
 than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
 exception is a detached-descendant walk that could not complete (§5.3): with the
-leader gone it cannot be retried, so every later call keeps rejecting for it. Each
+leader gone it cannot be retried from that numeric PID. Known retained observations
+can recover in the background under the same per-session signal queue. Automatic
+retries start for sixty seconds, at one-second intervals, with individual reads and
+survivor sweeps bounded to ten seconds; work already started can finish after the
+sixty-second window. Background reads share the foreground native-read cap. Their
+queue timers, native children, pipes, coalescing handles and retry delays are
+unreferenced, so callbacks need not settle if the host exits.
+
+Recovery clears the original failure only after every retained record has known
+ownership, no matching non-daemon survivors, no unresolved identity-bound restoration
+and no unidentified restoration. Missing process identities and unknown ownership
+or restoration stay unresolved. A separate signal-authorization veto never clears.
+After automatic expiry, a later explicit lifecycle call awaits fresh referenced
+confirmation with a ten-second total budget, including the per-session queue. No
+read, result or restoration is accepted after that deadline. Confirmation can retry
+known restoration but never restarts detached kills or original PID/PGID signals.
+Live or unreadable evidence still rejects; disappearance can resolve a matching
+ambiguous survivor only when every other condition holds. The original failed
+attempt still rejects even if recovery completes immediately (C-LIFE-14). Each
 caller still observes its own operation's success or typed failure.

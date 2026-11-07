@@ -20,7 +20,8 @@ import { shutdownAttemptThenCleanUp } from "./shutdown-cleanup.ts";
 export type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
 
 /** The reap surface shutdown drives: the typed-throw reap plus the retryable one-shot. */
-export type ShutdownReapPolicy = Pick<SessionReapPolicy, "orThrow"> & {
+export type ShutdownReapPolicy = {
+  readonly orThrow: () => void | Promise<void>;
   readonly reaper: Pick<
     SessionReapPolicy["reaper"],
     "reap" | "reapAndThrowOnDetachedSweepFailure" | "sweepDetached" | "signalLeaderPty"
