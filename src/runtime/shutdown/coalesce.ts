@@ -16,32 +16,35 @@ import { processReadTimeout } from "./read-timeout.ts";
  */
 export function coalesceUnstarted<T>(
   run: (timeoutMs: number) => Promise<T>,
+  { ref = true }: { readonly ref?: boolean } = {},
 ): (timeoutMs: number) => Promise<T> {
   type Batch = { timeoutMs: number; readonly result: Promise<T> };
   let open: Batch | undefined;
   const startBatch = (timeoutMs: number): Batch => {
     const { promise: started, resolve: start } = Promise.withResolvers<void>();
     const batch: Batch = { timeoutMs, result: started.then(() => run(batch.timeoutMs)) };
-    setImmediate(() => {
+    const starting = setImmediate(() => {
       open = undefined;
       start();
     });
+    if (!ref) starting.unref();
     return batch;
   };
   return (timeoutMs) => {
     open ??= startBatch(timeoutMs);
     open.timeoutMs = Math.max(open.timeoutMs, timeoutMs);
-    return withinOwnTimeout(open.result, timeoutMs);
+    return withinOwnTimeout(open.result, timeoutMs, ref);
   };
 }
 
 /** `result`, or an `ETIMEDOUT` rejection once `timeoutMs` passes first. */
-function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number): Promise<T> {
+function withinOwnTimeout<T>(result: Promise<T>, timeoutMs: number, ref: boolean): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timedOut = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(processReadTimeout("process table read timed out"));
     }, timeoutMs);
+    if (!ref) timer.unref();
   });
   return Promise.race([result, timedOut]).finally(() => clearTimeout(timer));
 }

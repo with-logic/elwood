@@ -13,10 +13,15 @@ const waiting = new Map<symbol, () => void>();
 let active = 0;
 
 /** Every adapter shares the same admission owner and forwards only its remaining native budget. */
-export function createAdmittedPsRunner(run: PsRunner): PsRunner {
-  return (file, args, options) =>
-    admitNativeProcessRead(options.timeout, (remainingMs) =>
-      run(file, args, { ...options, timeout: remainingMs }),
+export function createAdmittedPsRunner(
+  run: PsRunner,
+  options: { readonly ref?: boolean } = {},
+): PsRunner {
+  return (file, args, bounds) =>
+    admitNativeProcessRead(
+      bounds.timeout,
+      (remainingMs) => run(file, args, { ...bounds, timeout: remainingMs }),
+      options,
     );
 }
 
@@ -24,6 +29,7 @@ export function createAdmittedPsRunner(run: PsRunner): PsRunner {
 export function admitNativeProcessRead<T>(
   timeoutMs: number,
   launch: (remainingMs: number) => Promise<T>,
+  { ref = true }: { readonly ref?: boolean } = {},
 ): Promise<T> {
   const deadline = performance.now() + timeoutMs;
   return new Promise<T>((resolve, reject) => {
@@ -32,6 +38,7 @@ export function admitNativeProcessRead<T>(
       waiting.delete(key);
       reject(timedOut());
     }, timeoutMs);
+    if (!ref) timer.unref();
     waiting.set(key, () => {
       clearTimeout(timer);
       const remainingMs = Math.ceil(deadline - performance.now());
