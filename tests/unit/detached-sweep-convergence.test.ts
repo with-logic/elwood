@@ -23,7 +23,7 @@ import {
 useScriptedHost();
 
 const EXITED =
-  "Could not reap detached descendants: the leader exited before every group was confirmed stopped";
+  "Could not reap process-tree groups: the leader exited before every group was confirmed stopped";
 
 /**
  * `ops` whose listing number `at` is the one during which the leader exits, so the

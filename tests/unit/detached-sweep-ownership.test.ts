@@ -50,7 +50,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits, 1_000);
     expect(failure).toMatchObject({
       message:
-        "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
+        "Could not reap process-tree groups: process groups not confirmed stopped by the deadline",
       processGroupIds: [5002, LEADER],
     });
     expect(calls.join(", ")).toBe("stop 5000, list, stop 5000, list, stop 5000, list, stop 5000");
@@ -101,7 +101,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     const failure = await sweepDetachedGroups(LEADER, ticking(ops), leaderNeverExits);
     expect(failure).toMatchObject({
       message:
-        "Could not reap detached descendants: process groups not confirmed stopped by the deadline; could not stop a live descendant group (EPERM)",
+        "Could not reap process-tree groups: process groups not confirmed stopped by the deadline; could not stop a live descendant group (EPERM)",
       processGroupIds: [5004, 5002],
     });
     expect(calls.slice(0, 5).join(", ")).toBe("stop 5000, list, list, stop 5002, list");
@@ -130,7 +130,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     });
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(failure).toMatchObject({
-      message: `Could not reap detached descendants: could not stop the leader's group${row.token}`,
+      message: `Could not reap process-tree groups: could not stop the leader's group${row.token}`,
       processGroupIds: [LEADER],
     });
     expect(calls.join(", ")).toBe(row.calls);
@@ -158,7 +158,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     });
     await expect(sweepDetachedGroups(LEADER, ops, leaderNeverExits)).resolves.toMatchObject({
       message:
-        "Could not reap detached descendants: could not stop the leader's group (EPERM); process table unreadable (EAGAIN)",
+        "Could not reap process-tree groups: could not stop the leader's group (EPERM); process table unreadable (EAGAIN)",
       processGroupIds: [LEADER],
       code: "EPERM",
     });
@@ -178,7 +178,7 @@ describe("C-LIFE-10 detached sweep ownership", () => {
     const failure = await sweepDetachedGroups(LEADER, ops, () => exited);
     expect(failure).toMatchObject({
       message:
-        "Could not reap detached descendants: the leader exited before every group was confirmed stopped",
+        "Could not reap process-tree groups: the leader exited before every group was confirmed stopped",
       processGroupIds: [5004, 5002],
     });
     expect(calls.join(", ")).toBe("stop 5000, list, list, stop 5002, list, kill 5002");

@@ -121,8 +121,9 @@ Cleanup runs exactly once. A cleanup failure never masks a primary usage,
 agent, timeout, or interruption outcome, and it changes an otherwise successful
 invocation to failure. Its diagnostic names only the typed Elwood failures behind
 it. Each always appears as its error code, followed by its errno token and then
-`reap` and its reap's errno token (§10 `termination_failed`) when those are valid
-errno names, then `process groups` and the ids in its
+`reap` and its reap's errno token, then `sweep` and its sweep's errno token
+(§10 `termination_failed`) when those are valid errno names, then `process groups`
+and the ids in its
 `unconfirmedProcessGroupIds` (positive integers, at most 16) when it has any: for
 example `Cleanup failed (termination_failed EPERM).`, `Cleanup failed
 (termination_failed reap EPERM).`, or `Cleanup failed (termination_failed EAGAIN

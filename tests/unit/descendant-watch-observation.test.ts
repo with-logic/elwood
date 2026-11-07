@@ -98,7 +98,7 @@ test("C-LIFE-10 unreadable observation gaps remain failures after known survivor
   expect(fake.calls).toContain("kill 5002");
   expect(keep).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({
-      message: "Could not reap detached descendants: process table unreadable (EIO)",
+      message: "Could not reap process-tree groups: process table unreadable (EIO)",
       code: "EIO",
       processGroupIds: [],
     }),

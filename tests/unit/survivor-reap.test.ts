@@ -118,7 +118,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     const { ops, calls } = scripted([orphaned]);
     const failure = await reapRecordedSurvivors(new DescendantRecord(), ops);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: no read showed the leader's tree",
+      "Could not reap process-tree groups: no read showed the leader's tree",
     );
     expect(failure?.processGroupIds).toEqual([]);
     expect(calls).toEqual([]);
@@ -134,7 +134,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     });
     const failure = await reapRecordedSurvivors(recorded(), ops);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: process table unreadable (EAGAIN); " +
+      "Could not reap process-tree groups: process table unreadable (EAGAIN); " +
         "a survivor group could not be safely confirmed stopped",
     );
     expect(failure?.processGroupIds).toEqual([5002]);
@@ -151,7 +151,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     const failure = await reapRecordedSurvivors(recorded(), ticking(run.ops), 250);
     expect(timeouts).toEqual([250, 150, 50]); // Each read gets what is left of the deadline.
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: process groups not confirmed stopped by the deadline; " +
+      "Could not reap process-tree groups: process groups not confirmed stopped by the deadline; " +
         "a survivor group could not be safely confirmed stopped",
     );
     expect(failure?.processGroupIds).toEqual([5002]);
@@ -163,7 +163,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     const { ops, calls } = scripted([orphaned], refusingStop);
     const failure = await reapRecordedSurvivors(recorded(), ops);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: could not stop a live descendant group (EPERM)",
+      "Could not reap process-tree groups: could not stop a live descendant group (EPERM)",
     );
     expect(failure?.processGroupIds).toEqual([5002]);
     expect(calls).toEqual(["list", "list"]);

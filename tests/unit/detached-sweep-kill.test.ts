@@ -39,7 +39,7 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(attempts).toEqual([5004, 5003, 5002]); // the last succeeds after two failed
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: could not kill a signaled descendant group",
+      "Could not reap process-tree groups: could not kill a signaled descendant group",
     );
     expect(failure).toMatchObject({ processGroupIds: [5004, 5003] });
     expect(failure).not.toHaveProperty("code");
@@ -74,7 +74,7 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
         reasons === undefined
           ? undefined
           : expect.objectContaining({
-              message: `Could not reap detached descendants: ${reasons}`,
+              message: `Could not reap process-tree groups: ${reasons}`,
               processGroupIds: [5002],
               code: "EPERM",
             }),
@@ -99,7 +99,7 @@ describe("C-LIFE-10 detached sweep kill pass", () => {
     });
     const failure = await sweepDetachedGroups(LEADER, ops, leaderNeverExits);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: could not kill a signaled descendant group (EPERM)",
+      "Could not reap process-tree groups: could not kill a signaled descendant group (EPERM)",
     );
     expect(calls.at(-1)).toBe("kill 5002"); // no read after the kill
   });

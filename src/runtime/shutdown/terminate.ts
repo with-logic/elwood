@@ -118,24 +118,23 @@ async function reapAfterTermination(
   }
 }
 
-/**
- * Builds one error preserving BOTH the termination failure and a secondary cause:
- * the reap failure (`reapError`, with its errno in `reapErrno`) or the
- * detached-descendant sweep failure (`sweepError`). The secondary cause is carried in
- * `details` under its own keys (NOT `details.cause`/`errno`, which the termination
- * error may already use for its own root cause), so neither cause is dropped
- * (C-LIFE-10).
- */
+type SecondaryErrorKey = "reapError" | "sweepError";
+const secondaryErrnoKey: Readonly<Record<SecondaryErrorKey, string>> = {
+  reapError: "reapErrno",
+  sweepError: "sweepErrno",
+};
+
+/** Preserve primary diagnostics and label secondary cleanup details by phase (C-LIFE-10). */
 function withCause(
   terminationError: ElwoodError,
-  key: "reapError" | "sweepError",
+  key: SecondaryErrorKey,
   secondary: unknown,
 ): ElwoodError {
-  const reapErrno = key === "reapError" ? errnoCode(secondary) : undefined;
+  const errno = errnoCode(secondary);
   return elwoodError(terminationError.code, terminationError.message, {
     ...terminationError.details,
     [key]: toError(secondary).message,
-    ...(reapErrno === undefined ? {} : { reapErrno }),
+    ...(errno === undefined ? {} : { [secondaryErrnoKey[key]]: errno }),
     ...(key === "sweepError" ? unconfirmedGroupsDetail(toError(secondary)) : {}),
   });
 }
@@ -170,11 +169,11 @@ function reapOnlyFailed(reapError: unknown): ElwoodError {
   );
 }
 
-/** The same typed wrapping when only the detached-descendant sweep failed. */
+/** The same typed wrapping when only the process-tree sweep failed. */
 function sweepOnlyFailed(sweepError: unknown): ElwoodError {
   return elwoodError(
     "termination_failed",
-    "PTY exited but its detached descendants could not be confirmed reaped.",
+    "PTY exited but its process-tree groups could not be confirmed reaped.",
     { ...causeDetails(sweepError), ...unconfirmedGroupsDetail(toError(sweepError)) },
   );
 }

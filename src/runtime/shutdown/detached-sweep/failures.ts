@@ -1,5 +1,5 @@
 /**
- * Failure accounting for the detached-descendant sweep (PRD §5.3 and §9.4, C-LIFE-10):
+ * Failure accounting for process-tree sweeps (PRD §5.3 and §9.4, C-LIFE-10):
  * fixed reason phrases, an errno-shaped token when one applies, and a bounded list of
  * the process-group ids involved, so a failure never carries raw process or `ps` output.
  */
@@ -48,7 +48,7 @@ export class SweepFailures {
   /** The combined failure, or `undefined` when nothing was recorded. */
   result(): SweepFailure | undefined {
     if (this.reasons.size === 0) return undefined;
-    const message = `Could not reap detached descendants: ${[...this.reasons].join("; ")}`;
+    const message = `Could not reap process-tree groups: ${[...this.reasons].join("; ")}`;
     const processGroupIds = [...this.processGroupIds].slice(0, MAX_REPORTED_GROUPS);
     const code = this.code === undefined ? {} : { code: this.code };
     return Object.assign(new Error(message), { processGroupIds, ...code });

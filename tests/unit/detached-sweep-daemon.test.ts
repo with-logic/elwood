@@ -57,7 +57,7 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
     const { ops, calls } = scripted([[leaderRow, hook(5002), forked]]);
     const failure = await sweepDetachedGroups(LEADER, ticking(ops), leaderNeverExits, 200);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
+      "Could not reap process-tree groups: process groups not confirmed stopped by the deadline",
     );
     expect(calls.slice(-2)).toEqual(["cont 5010", "kill 5002"]);
     expect(calls).not.toContain("kill 5010"); // Never killed, then resumed.
@@ -86,7 +86,7 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
     const refused = refusing("EPERM");
     expect(await sweepDetachedGroups(LEADER, refused.ops, leaderNeverExits)).toMatchObject({
       message:
-        "Could not reap detached descendants: could not resume a group spared for Codex's shared daemon (EPERM)",
+        "Could not reap process-tree groups: could not resume a group spared for Codex's shared daemon (EPERM)",
       processGroupIds: [5010],
       code: "EPERM",
     });

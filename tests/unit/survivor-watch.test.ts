@@ -94,8 +94,7 @@ describe("C-LIFE-10 a graceful stop's survivor watch", () => {
     await watch.finish();
     expect(keep).toHaveBeenCalledOnce();
     expect(keep.mock.calls[0]?.[0]).toMatchObject({
-      message:
-        "Could not reap detached descendants: could not stop a live descendant group (EPERM)",
+      message: "Could not reap process-tree groups: could not stop a live descendant group (EPERM)",
       processGroupIds: [5002],
     });
   });

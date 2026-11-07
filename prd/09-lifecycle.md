@@ -332,7 +332,8 @@ reaped before the escalating SIGKILL, as §5.3 specifies. The original startup e
 preserved; a cleanup or reap failure is secondary and never replaces it. When that PTY termination or group reap cannot be
 confirmed, part of the CLI's process tree may still be running, and a typed startup
 error keeps its code and message and gains two details. `cleanupErrorCode` is
-content-free: the failed group reap's errno if there is one, else the termination's,
+content-free: the failed group reap's errno if there is one, else the sweep's, then
+the termination's,
 when that errno is on the reap allowlist; otherwise `UnknownError`.
 `cleanupProcessGroupId` is the leader's group id, for diagnosis only: it may already
 have been reissued to an unrelated group, so it must never be signaled. A startup error

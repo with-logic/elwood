@@ -151,7 +151,7 @@ test.each([
   if (!(failed instanceof AggregateError)) throw new Error("Expected both signal failures");
   expect(failed).toMatchObject({ errors: [termError, resumeError] });
   expect("code" in failed ? failed.code : undefined).toBe(
-    "code" in termError ? termError.code : undefined,
+    "code" in termError ? termError.code : "code" in resumeError ? resumeError.code : undefined,
   );
   expect(run.refused).toEqual([]);
   expect(run.record.resumes.pids).toEqual([LEADER]);

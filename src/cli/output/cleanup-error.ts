@@ -50,16 +50,18 @@ function typedCauses(error: unknown): readonly TypedCause[] {
 
 /**
  * `termination_failed EIO reap EPERM process groups 4242 4243`: the code, its errno, its
- * reap's, then the process groups a detached sweep could not confirm reaped (§10).
+ * reap's and sweep's, then the process groups the sweep could not confirm reaped (§10).
  */
 function describeCause({ code, details }: TypedCause): string {
   const errno = errnoToken(details["errno"]);
   const reapErrno = errnoToken(details["reapErrno"]);
+  const sweepErrno = errnoToken(details["sweepErrno"]);
   const groups = processGroupIds(details["unconfirmedProcessGroupIds"]);
   return [
     code,
     errno,
     reapErrno === undefined ? undefined : `reap ${reapErrno}`,
+    sweepErrno === undefined ? undefined : `sweep ${sweepErrno}`,
     groups.length === 0 ? undefined : `process groups ${groups.join(" ")}`,
   ]
     .filter((part) => part !== undefined)
