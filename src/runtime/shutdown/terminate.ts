@@ -46,6 +46,7 @@ export async function terminatePty(
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
   let watch: SurvivorWatch | undefined;
+  let gracefulSignalAttempted = false;
   try {
     const latch = new PtyExitLatch(pty);
     exit = latch;
@@ -53,7 +54,11 @@ export async function terminatePty(
       watch = reaper.watchSurvivors(() => latch.exited);
       const observation = await watch.firstObservation;
       assertLeaderObservation(observation);
-      const outcome = latch.exited ? undefined : await watch.sendSignal(() => pty.kill("SIGTERM"));
+      const send = () => {
+        gracefulSignalAttempted = true;
+        pty.kill("SIGTERM");
+      };
+      const outcome = latch.exited ? undefined : await watch.sendSignal(send);
       const groupGone = outcome === "leader-group-gone";
       observedExit = latch.exited || groupGone || (await latch.within(timeouts.gracefulMs));
     }
@@ -75,7 +80,7 @@ export async function terminatePty(
     terminationError = terminationOperationFailed(error);
   } finally {
     try {
-      await watch?.finish(terminationError !== undefined);
+      await finishWatch(watch, gracefulSignalAttempted, terminationError !== undefined);
     } catch (error) {
       sweepError = mergeSweepErrors(sweepError, error);
     }
@@ -96,6 +101,12 @@ export async function terminatePty(
     throw withCause(terminationError, "reapError", reapError);
   }
   if (terminationError !== undefined) throw terminationError;
+}
+
+async function finishWatch(watch: SurvivorWatch | undefined, sent: boolean, failed: boolean) {
+  if (watch === undefined) return;
+  if (sent && failed) await watch.reap();
+  await watch.finish(failed);
 }
 
 async function reapAfterTermination(
@@ -137,11 +148,9 @@ function withCause(
 }
 
 /**
- * Routes retained sweep failures to their wrapper. Other termination failures, including
- * PTY operations, observations and ownership verification, become `termination_failed`
- * with message/errno/syscall/path details. Thus `stop()`/`kill()` never reject with a raw
- * system error whose own
- * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
+ * Wrap sweep failures separately; other PTY, observation and ownership failures become
+ * `termination_failed`. Preserve message/errno/syscall/path so raw syscall codes cannot
+ * appear as Elwood error names (PRD §10, C-ERR-01).
  */
 function terminationOperationFailed(error: unknown): ElwoodError {
   if ("processGroupIds" in toError(error)) return sweepOnlyFailed(error);

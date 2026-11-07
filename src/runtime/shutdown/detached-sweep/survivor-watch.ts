@@ -75,7 +75,15 @@ export function watchSurvivors(
   const reap = () => {
     reaping ??= (async () => {
       const record = await watch.finish();
-      keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
+      const failure = await guard.serialize(() => {
+        try {
+          guard.assertRetainedAuthority();
+        } catch {
+          record.markLeaderAuthorityLost(leaderPid);
+        }
+        return reapRecordedSurvivors(record, ops);
+      });
+      keep(failure, record);
     })();
     return reaping;
   };

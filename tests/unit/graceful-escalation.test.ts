@@ -66,3 +66,19 @@ test("C-LIFE-10 ignored TERM exits through a verified original group kill", asyn
   expect(fixture.exited()).toBe(true);
   expect(fixture.ptySignals).toEqual(["SIGTERM"]);
 });
+
+test("C-LIFE-10 an authorized throwing TERM still reaps known groups and keeps its cause", async () => {
+  const child = hook(5002);
+  const fake = scripted([[leaderRow, child]]);
+  const fixture = gracefulTermination(fake.ops);
+  const failure = Object.assign(new Error("authorized TERM failed"), { code: "ESRCH" });
+  fixture.pty.kill = () => {
+    throw failure;
+  };
+  await expect(terminatePty(fixture.pty, "SIGTERM", fixture.reaper, bounds)).rejects.toMatchObject({
+    code: "termination_failed",
+    details: { cause: failure.message, errno: "ESRCH" },
+  });
+  expect(fake.calls).toContain("kill 5002");
+  expect(fake.calls).toContain(`kill ${LEADER}`);
+});

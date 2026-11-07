@@ -53,7 +53,7 @@ test("C-API-51 failed stop and kill still cancel the caller waiting on its perso
     failShutdown = false;
     vi.restoreAllMocks();
     ptys[0]?.emitExit({ exitCode: 0 });
-    // The unconfirmed-exit failure remains after the injected signal/reap failures are removed.
+    // The failed verified cleanup remains after the injected failures are removed.
     await expect(facade.close()).rejects.toMatchObject({ code: "termination_failed" });
     await result;
   }

@@ -102,6 +102,11 @@ export class DescendantRecord {
     }
   }
 
+  /** A lost graceful owner can never regain permission to signal its original group. */
+  markLeaderAuthorityLost(leaderPid: number): void {
+    this.unknownLeaderGroup = leaderPid;
+  }
+
   /** Ambiguous identities and unattributable original-group members cannot authorize cleanup. */
   unsafeSurvivorGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
     if (this.leaderGroup !== undefined) {
