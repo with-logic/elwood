@@ -6,7 +6,7 @@ import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seam
 import { SessionReapPolicy } from "../../src/runtime/session/reap.ts";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import { setProcessTreeOpsForTests } from "../../src/runtime/shutdown/reap-tree.ts";
-import { errno, leaderRow } from "../helpers/scripted-process-tree.ts";
+import { errno, heldLeaderRow } from "../helpers/scripted-process-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -29,12 +29,7 @@ test.each([
   vi.spyOn(PtyExitLatch.prototype, "within").mockResolvedValueOnce(false);
   let termSent = false;
   let confirming = false;
-  const ownedLeader = () => ({
-    ...leaderRow,
-    pid: ptys[0]!.pid,
-    pgid: ptys[0]!.pid,
-    stopped: true,
-  });
+  const ownedLeader = () => heldLeaderRow(ptys[0]!.pid);
   setProcessTreeOpsForTests({
     stopGroup: () => {
       if (!termSent) return;

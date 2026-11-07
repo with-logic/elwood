@@ -6,7 +6,7 @@ import { LEADER } from "./scripted-process-tree.ts";
 
 export function gracefulTermination(ops: ProcessTreeOps) {
   const handlers = new Set<(event: PtyExit) => void>();
-  const signals: string[] = [];
+  const ptySignals: string[] = [];
   let exited = false;
   const exit = () => {
     exited = true;
@@ -22,9 +22,9 @@ export function gracefulTermination(ops: ProcessTreeOps) {
     write: () => {},
     resize: () => "resized",
     kill: (signal = "SIGTERM") => {
-      signals.push(signal);
+      ptySignals.push(signal);
       exit();
     },
   };
-  return { pty, signals, exit, exited: () => exited, reaper: new SessionReaper(LEADER, ops) };
+  return { pty, ptySignals, exit, exited: () => exited, reaper: new SessionReaper(LEADER, ops) };
 }
