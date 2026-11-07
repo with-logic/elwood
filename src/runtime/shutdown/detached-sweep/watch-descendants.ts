@@ -7,6 +7,8 @@ import type { SweepOps } from "./rounds.ts";
 
 /** Each native table read has the existing detached-walk budget. */
 export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
+/** One second limits scans during a five-second grace window to a few; verification is immediate. */
+export const RECORD_INTERVAL_MS = 1_000;
 
 /** A recording in progress. */
 export type DescendantWatch = {
@@ -22,7 +24,7 @@ export type DescendantWatch = {
 /**
  * Reads the table again and again, with Codex's daemon marked under `leaderPid`, recording
  * the leader's detached descendants until `finish` is called or `leaderExited` reports the
- * exit. A failed later read records nothing and the next one follows. An initial refusal
+ * exit. A failed later read retains uncertainty even if later reads succeed. An initial refusal
  * ends the watch, so a replacement cannot establish a new baseline.
  */
 export function watchDescendants(
@@ -37,7 +39,7 @@ export function watchDescendants(
     const started = Date.now();
     return ops.listProcesses(RECORD_READ_MS, scope).then(
       (table) => record.observe(table, leaderPid, started),
-      () => undefined,
+      (error: unknown) => record.noteReadFailure(error),
     );
   };
   const started = Date.now();
@@ -55,8 +57,11 @@ export function watchDescendants(
     const first = await firstObservation;
     if (first.kind !== "observed") return;
     while (!leaderExited()) {
-      // Lets the exit be observed between reads; a `finish` ends the wait at once.
-      await Promise.race([new Promise((resolve) => setImmediate(resolve)), finishing.promise]);
+      // Bound full-table scan frequency; finish cancels the wait and its referenced timer.
+      const waiting = Promise.withResolvers<void>();
+      const timer = setTimeout(waiting.resolve, RECORD_INTERVAL_MS);
+      await Promise.race([waiting.promise, finishing.promise]);
+      clearTimeout(timer);
       if (!watching || leaderExited()) return;
       await readOnce();
     }

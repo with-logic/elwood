@@ -6,7 +6,7 @@
  * unparseable, same-second, or wrong-group identity cannot be replaced by a later row.
  * Later reads record only descendants of that original identity. Each recorded pid
  * retains its second-resolution start time, so distinguishable PID reuse is rejected.
- * A failed later read records nothing and preserves the baseline for the next read.
+ * Failed later reads preserve the baseline and retain uncertainty about missed helpers.
  */
 
 import {
@@ -14,6 +14,7 @@ import {
   processIdentity as identity,
   type ProcessEntry,
 } from "../process-table.ts";
+import { SweepFailures } from "./failures.ts";
 import {
   type LeaderObservation,
   observeLeader,
@@ -27,6 +28,8 @@ export class DescendantRecord {
   private readonly identities = new Set<string>();
   private readonly ambiguous = new Set<string>();
   private unknownResume = false;
+  private readonly readFailures = new SweepFailures();
+  private missedRead = false;
   readonly resumes = new ResumeDebt();
   /** Frozen first-read result: an accepted identity, confirmed absence, or refusal. */
   private firstLeaderObservation: LeaderObservation | undefined;
@@ -103,6 +106,19 @@ export class DescendantRecord {
   refuseFirstObservation(error: unknown): LeaderObservation {
     this.firstLeaderObservation ??= refuseLeaderObservation(error);
     return this.firstLeaderObservation;
+  }
+
+  /** A failed observation can hide an orphan; later readable tables cannot disprove it. */
+  noteReadFailure(error: unknown): void {
+    if (this.missedRead) return;
+    this.missedRead = true;
+    this.readFailures.record("process table unreadable", error, []);
+  }
+
+  /** Carry bounded observation uncertainty through every later cleanup attempt. */
+  includeReadFailure(failures: SweepFailures): void {
+    const failure = this.readFailures.result();
+    if (failure !== undefined) failures.record("process table unreadable", failure, []);
   }
 
   /** A failed restoration without a fresh process identity cannot be retried safely. */

@@ -17,7 +17,7 @@ export type SurvivorWatch = {
   /** Freezes the first read's evidence; a missing target settles immediately as refused. */
   readonly firstObservation: Promise<LeaderObservation>;
   readonly sendSignal: (send: () => void) => Promise<LeaderSignalOutcome>;
-  /** Stop recording; true retains failure and record if termination failed before exit. */
+  /** Retain read failures regardless of the flag; true also records an unconfirmed exit. */
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
 
@@ -76,10 +76,13 @@ export function watchSurvivors(
       const record = await watch.finish();
       if (groupGone || leaderExited())
         keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
-      else if (failedTermination) {
+      else {
         const failures = new SweepFailures();
-        failures.record("the leader's exit was not confirmed", undefined, []);
-        keep(failures.result(), record);
+        record.includeReadFailure(failures);
+        if (failedTermination)
+          failures.record("the leader's exit was not confirmed", undefined, []);
+        const failure = failures.result();
+        if (failure !== undefined) keep(failure, record);
       }
     },
   };
