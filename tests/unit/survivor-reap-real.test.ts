@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
+import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { osProcessTreeOps } from "../../src/runtime/shutdown/reap-tree.ts";
 import { markingLateSeen } from "../helpers/detached-tree/observed-late.ts";
@@ -19,6 +19,7 @@ import {
 import { delay, pollGone, processRows } from "../helpers/process-liveness.ts";
 import { DISTINCT_PROCESS_START_DELAY_MS } from "../helpers/process-start-time.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
+import { survivorGuard } from "../helpers/survivor-guard.ts";
 
 const realOps = osProcessTreeOps;
 const RUNNING = { zombie: false, stopped: false };
@@ -40,6 +41,7 @@ async function stopWatched(tree: DetachedTree, afterExit: () => Promise<void> = 
     (outcome) => {
       outcomes.push(outcome);
     },
+    survivorGuard(),
   );
   await watch.firstRead;
   tree.pty.kill("SIGTERM");

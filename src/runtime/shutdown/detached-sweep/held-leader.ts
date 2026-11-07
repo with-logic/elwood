@@ -1,6 +1,7 @@
 /** Private held-leader signal foundation; no lifecycle caller yet (PRD §5.3/§9.4, C-LIFE-10). */
 import { scheduler } from "node:timers/promises";
-import { errnoCode, toError } from "../../../core/errors.ts";
+import { errnoCode } from "../../../core/errors.ts";
+import { aggregateSignalFailures, throwSignalFailures } from "../merge-sweep-errors.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
 import { processReadTimeout } from "../read-timeout.ts";
 import type { ReapQueue } from "../reap-queue.ts";
@@ -20,7 +21,7 @@ export type LeaderSignalOutcome = "signal-sent" | "leader-group-gone";
 type HeldLeader = {
   readonly pid: number;
   readonly record: DescendantRecord;
-  readonly observation: LeaderObservation;
+  readonly observation: LeaderObservation | Promise<LeaderObservation>;
   readonly ops: SweepOps;
   readonly leaderExited: () => boolean;
   readonly deadline: number;
@@ -34,13 +35,14 @@ export function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOu
 }
 
 async function sendSerializedLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOutcome> {
-  const { guard, observation } = signal;
+  const { guard } = signal;
   let stoppedIdentity: string | undefined;
   let authorized = false;
   let groupGone = false;
   const read: HeldRead = { table: undefined };
   const failures: unknown[] = [];
   try {
+    const observation = await signal.observation;
     guard.assertRetainedAuthority();
     assertLeaderObservation(observation);
     if (observation.kind === "gone" || signal.leaderExited())
@@ -63,15 +65,8 @@ async function sendSerializedLeaderSignal(signal: HeldLeader): Promise<LeaderSig
     failures.push(error);
   }
   if (stoppedIdentity !== undefined && !groupGone)
-    groupGone = restoreHold(signal, stoppedIdentity, read.table, failures);
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) {
-    const code = errnoCode(failures[0]);
-    throw Object.assign(
-      new AggregateError(failures, failures.map((error) => toError(error).message).join("; ")),
-      code === undefined ? {} : { code },
-    );
-  }
+    groupGone = await restoreHold(signal, stoppedIdentity, read.table, failures);
+  throwSignalFailures(failures);
   return groupGone ? "leader-group-gone" : "signal-sent";
 }
 
@@ -91,13 +86,7 @@ async function stopLeaderGroup(signal: HeldLeader): Promise<boolean> {
     try {
       table = await ops.listProcesses(remainingMs(deadline));
     } catch (readError) {
-      throw Object.assign(
-        new AggregateError(
-          [error, readError],
-          `${toError(error).message}; ${toError(readError).message}`,
-        ),
-        { code: "EPERM" },
-      );
+      throw aggregateSignalFailures([error, readError]);
     }
     if (!table.some((row) => row.pgid === pid && !row.zombie)) return false;
     throw error;
@@ -126,13 +115,17 @@ async function verifyHeldLeader(
   }
 }
 
-/** Restore only a freshly held original identity; unreadable holds retain original debt. */
-function restoreHold(
+/**
+ * Restore only the original hold. Darwin can refuse CONT during TERM exit; one fresh
+ * read must prove the whole group gone, or the original running with no live member
+ * still stopped, before discarding debt.
+ */
+async function restoreHold(
   signal: HeldLeader,
   identity: string,
   table: readonly ProcessEntry[] | undefined,
   failures: unknown[],
-): boolean {
+): Promise<boolean> {
   const { pid, ops, record } = signal;
   if (table === undefined) {
     record.markUnknownResume();
@@ -155,8 +148,30 @@ function restoreHold(
       signal.guard.gone();
       return true;
     }
-    record.resumes.remember([original], pid);
+    let confirmationError: unknown;
+    if (errnoCode(error) === "EPERM") {
+      try {
+        const fresh = await ops.listProcesses(remainingMs(signal.deadline));
+        remainingMs(signal.deadline);
+        if (!fresh.some((row) => row.pgid === pid && !row.zombie)) {
+          signal.guard.gone();
+          return true;
+        }
+        const originalLeaderIsRunning = fresh.some(
+          (row) =>
+            !(row.zombie || row.stopped) && row.pgid === pid && processIdentity(row) === identity,
+        );
+        const hasStoppedLiveGroupMember = fresh.some(
+          (row) => !row.zombie && row.stopped && row.pgid === pid,
+        );
+        if (originalLeaderIsRunning && !hasStoppedLiveGroupMember) return false;
+      } catch (readError) {
+        confirmationError = readError;
+      }
+    }
+    record.resumes.remember(table, pid);
     failures.push(error);
+    if (confirmationError !== undefined) failures.push(confirmationError);
   }
   return false;
 }

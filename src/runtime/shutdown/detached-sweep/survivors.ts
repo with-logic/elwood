@@ -33,41 +33,6 @@ import {
 import { SurvivorAnchors } from "./survivor-anchors.ts";
 import { survivorAndDescendantGroups } from "./survivor-groups.ts";
 
-import { watchDescendants } from "./watch-descendants.ts";
-
-/** A graceful stop's watch for survivors, from the first recording read to the reap. */
-export type SurvivorWatch = {
-  /** Settles once the read before the SIGTERM has finished, whether or not it succeeded. */
-  readonly firstRead: Promise<void>;
-  /**
-   * Stops recording, then, if `leaderExited` reports the exit, reaps the recorded
-   * processes still alive and hands the outcome, a failure or `undefined`, to `keep`.
-   */
-  readonly finish: () => Promise<void>;
-};
-
-/**
- * Records `leaderPid`'s detached descendants (`watchDescendants`) until `finish`. Records
- * nothing for an `undefined` leader, one whose id the group reap refuses.
- */
-export function watchSurvivors(
-  leaderPid: number | undefined,
-  ops: SweepOps,
-  leaderExited: () => boolean,
-  keep: (failure: SweepFailure | undefined) => void,
-): SurvivorWatch {
-  if (leaderPid === undefined)
-    return { firstRead: Promise.resolve(), finish: () => Promise.resolve() };
-  const watch = watchDescendants(leaderPid, ops, leaderExited);
-  return {
-    firstRead: watch.firstRead,
-    finish: async () => {
-      const record = await watch.finish();
-      if (leaderExited()) keep(await reapRecordedSurvivors(record, ops));
-    },
-  };
-}
-
 /**
  * Stops and SIGKILLs the groups holding `record`'s processes that are still alive, and
  * any group they anchor, within the sweep's budget. Resolves to the unresolved failure,

@@ -10,6 +10,7 @@ export const RECORD_READ_MS = DETACHED_SWEEP_BUDGET_MS;
 
 /** A recording in progress. */
 export type DescendantWatch = {
+  readonly record: DescendantRecord;
   /** Settles once the first read has finished, whether or not it succeeded. */
   readonly firstRead: Promise<void>;
   /** Eligible original identity, already gone, or permanently refused. */
@@ -61,6 +62,7 @@ export function watchDescendants(
     }
   })();
   return {
+    record,
     firstRead,
     firstObservation,
     finish: async () => {

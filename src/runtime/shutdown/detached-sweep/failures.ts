@@ -28,6 +28,7 @@ export type FailureReason =
   | "a survivor group could not be safely confirmed stopped"
   | "a survivor group has an ambiguous identity"
   | "could not resume an unconfirmed survivor group"
+  | "the leader's exit was not confirmed"
   | "no read showed the leader's tree";
 
 /** Collects one sweep's failures: each reason once, the first errno token, the group ids. */
