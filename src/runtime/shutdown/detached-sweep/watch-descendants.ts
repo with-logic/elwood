@@ -38,7 +38,10 @@ export function watchDescendants(
   const readOnce = () => {
     const started = Date.now();
     return ops.listProcesses(RECORD_READ_MS, scope).then(
-      (table) => record.observe(table, leaderPid, started),
+      (table) => {
+        record.observe(table, leaderPid, started);
+        record.observeLeaderGroup(table, leaderPid, started);
+      },
       (error: unknown) => record.noteReadFailure(error),
     );
   };
@@ -47,6 +50,7 @@ export function watchDescendants(
     (table) => {
       const observation = record.observeFirst(table, leaderPid, started);
       record.observe(table, leaderPid, started);
+      record.observeLeaderGroup(table, leaderPid, started);
       return observation;
     },
     (error: unknown) => record.refuseFirstObservation(error),

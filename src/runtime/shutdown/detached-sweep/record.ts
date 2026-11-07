@@ -23,7 +23,7 @@ import {
 } from "./leader-observation.ts";
 import { ResumeDebt } from "./resume-debt.ts";
 
-/** The detached descendants seen so far, by pid and start time. */
+/** Recorded graceful-shutdown processes, by pid and start time. */
 export class DescendantRecord {
   private readonly identities = new Set<string>();
   private readonly ambiguous = new Set<string>();
@@ -58,6 +58,28 @@ export class DescendantRecord {
     this.known = true;
     const observed = groups ?? detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
     this.observeGroups(table, observed, readStartedAtEpochMs);
+  }
+
+  /** Graceful cleanup also owns members of the frozen original leader's group. */
+  observeLeaderGroup(
+    table: readonly ProcessEntry[],
+    leaderPid: number,
+    readStartedAtEpochMs: number,
+  ): void {
+    const first = this.firstLeaderObservation;
+    const leader = table.find((row) => row.pid === leaderPid && !row.zombie);
+    if (
+      first?.kind !== "observed" ||
+      leader?.pgid !== leaderPid ||
+      identity(leader) !== first.identity
+    )
+      return;
+    this.known = true;
+    this.observeGroups(
+      table,
+      new Map([[leaderPid, new Set<ProcessEntry>()]]),
+      readStartedAtEpochMs,
+    );
   }
 
   /** Retain first-observation ambiguity for owned group members across later reads. */

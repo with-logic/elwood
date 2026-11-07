@@ -17,6 +17,8 @@ export type SurvivorWatch = {
   /** Freezes the first read's evidence; a missing target settles immediately as refused. */
   readonly firstObservation: Promise<LeaderObservation>;
   readonly sendSignal: (send: () => void) => Promise<LeaderSignalOutcome>;
+  /** Stop recording and verify/reap every recorded group, including a still-live leader. */
+  readonly reap: () => Promise<void>;
   /** Retain read failures regardless of the flag; true also records an unconfirmed exit. */
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
@@ -37,6 +39,7 @@ export function watchSurvivors(
       firstRead: Promise.resolve(),
       firstObservation: Promise.resolve({ kind: "refused", error }),
       sendSignal: () => Promise.reject(error),
+      reap: () => Promise.reject(error),
       finish: (failedTermination = false) =>
         Promise.resolve().then(() => {
           if (!failedTermination) return;
@@ -55,6 +58,14 @@ export function watchSurvivors(
       guard.forbid(new Error("No original leader before SIGTERM."));
     return observation;
   });
+  let reaping: Promise<void> | undefined;
+  const reap = () => {
+    reaping ??= (async () => {
+      const record = await watch.finish();
+      keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
+    })();
+    return reaping;
+  };
   return {
     firstRead: firstObservation.then(() => undefined),
     firstObservation,
@@ -72,10 +83,11 @@ export function watchSurvivors(
         groupGone = outcome === "leader-group-gone";
         return outcome;
       }),
+    reap,
     finish: async (failedTermination = false) => {
       const record = await watch.finish();
-      if (groupGone || leaderExited())
-        keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
+      if (reaping !== undefined) return reaping;
+      if (groupGone || leaderExited()) return reap();
       else {
         const failures = new SweepFailures();
         record.includeReadFailure(failures);
