@@ -76,7 +76,8 @@ const {SerialDetachedSweepQueue} = await import(process.env.SHUTDOWN+"/reap-queu
 const record = new DescendantRecord();
 const leader = {pid:10000001,pgid:10000001,ppid:1,zombie:false,stopped:false,startedAt:"Fri Jan 1 00:00:00 1960",name:"sh",shared:false};
 const child = {...leader,pid:10000002,pgid:10000002,ppid:leader.pid};
-record.observe([leader,child],leader.pid,true);
+record.observeFirst([leader],leader.pid,Date.now());
+record.observe([leader,child],leader.pid);
 let clock = 0;
 Object.defineProperty(performance,"now",{value:()=>clock});
 const queue = new SerialDetachedSweepQueue();

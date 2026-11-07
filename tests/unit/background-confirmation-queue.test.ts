@@ -27,7 +27,8 @@ afterEach(() => {
 });
 function recorded() {
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(5002)], LEADER, true);
+  record.observeFirst([leaderRow], LEADER, Date.now());
+  record.observe([leaderRow, hook(5002)], LEADER);
   return record;
 }
 const expiry = () => {

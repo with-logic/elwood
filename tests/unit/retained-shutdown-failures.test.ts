@@ -26,7 +26,8 @@ afterEach(() => {
 });
 function recorded(pid = 5002) {
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(pid)], LEADER, true);
+  record.observeFirst([leaderRow], LEADER, Date.now());
+  record.observe([leaderRow, hook(pid)], LEADER);
   return record;
 }
 function manager(ops: ConstructorParameters<typeof RetainedShutdownFailures>[0]) {

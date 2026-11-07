@@ -29,7 +29,8 @@ afterEach(() => {
 });
 function recorded() {
   const record = new DescendantRecord();
-  record.observe([leaderRow, hook(5002)], LEADER, true);
+  record.observeFirst([leaderRow], LEADER, Date.now());
+  record.observe([leaderRow, hook(5002)], LEADER);
   return record;
 }
 const serialize = () => {
@@ -122,7 +123,8 @@ test("C-LIFE-10 concurrent confirmations reuse conclusive evidence and retain ne
 
 test("C-LIFE-10 expired confirmation retries matching stopped restoration without restarting kills", async () => {
   const record = new DescendantRecord();
-  record.observe([leaderRow], LEADER, true);
+  record.observeFirst([leaderRow], LEADER, Date.now());
+  record.observe([leaderRow], LEADER);
   const held = { ...leaderRow, stopped: true };
   record.resumes.remember([held], LEADER);
   const fake = scripted([[held]], {
