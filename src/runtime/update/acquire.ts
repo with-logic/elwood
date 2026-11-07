@@ -18,7 +18,7 @@ type Acquisition = {
   readonly claim: () => Promise<boolean>;
 };
 
-/** Ownership records whether any peer activity preceded this claim; false skips the update. */
+/** "uncontended" attests no observed peer or recorded outcome; false skips the update. */
 export async function acquireUpdateLease({
   adapter,
   leasePath,
@@ -29,7 +29,7 @@ export async function acquireUpdateLease({
   staleMs,
   waitUntilMs,
   claim,
-}: Acquisition): Promise<false | "uncontended" | "recovered"> {
+}: Acquisition): Promise<false | "uncontended" | "uncertain"> {
   const {
     ownerGeneration: observedGeneration,
     priorCompletionGeneration,
@@ -99,12 +99,16 @@ export async function acquireUpdateLease({
     if (!(observedOwnerCompleted || completionAdvanced)) await rejectRefusal();
     return false;
   }
-  await unlink(refusalMarkerPath).catch(async (error: unknown) => {
-    if (errnoCode(error) === "ENOENT") return;
-    await releaseLease(leasePath, owner);
-    throw error;
-  });
-  return observedActive ? "recovered" : "uncontended";
+  const clearedRefusal = await unlink(refusalMarkerPath)
+    .then(() => true)
+    .catch(async (error: unknown) => {
+      if (errnoCode(error) === "ENOENT") return false;
+      await releaseLease(leasePath, owner);
+      throw error;
+    });
+  return observedActive || priorCompletionGeneration !== undefined || clearedRefusal
+    ? "uncertain"
+    : "uncontended";
 }
 
 /** A nonoptional return and no default make future wait variants a compile-time error. */

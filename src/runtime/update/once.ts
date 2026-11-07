@@ -32,8 +32,9 @@ const autoupdates = new Map<UpdateAdapter, Promise<AutoupdateOutcome>>();
  * Concurrent callers share the single
  * in-flight attempt. NEVER rejects — a throwing `runUpdate` resolves to `{ok:false, error}` so the
  * caller can contain it (warn + continue). The cross-process coordinator invalidates the local
- * version cache after actual, peer-owned, or uncertain attempts. A positively uncontended
- * local verification refusal preserves caches after cleanup. The one exception
+ * version cache after actual attempts, observed peers, recovery, or uncertain outcomes.
+ * Only an uncontended local refusal with no completion or refusal record and completed
+ * cleanup preserves caches. The one exception
  * is test-only: after `resetAutoupdateForTests()`, until a test sets a coordinator, it throws
  * at once instead of returning.
  */
@@ -94,7 +95,9 @@ const isCacheableVersionResult = (result: CommandResult): boolean =>
   result.stderr.length <= maxKeptVersionStreamCodeUnits;
 
 // Matching directory reads share a run; retain at most 32 successful directory identities
-// per adapter. Every update attempt invalidates all of that adapter's directory entries.
+// per adapter. Actual updater attempts, observed peers, recovery, and uncertain outcomes
+// invalidate all entries. Only an uncontended local refusal with no completion or refusal
+// record and completed cleanup may preserve them.
 const versionReads: Record<UpdateAdapter, DirectoryProbeCache<CommandResult>> = {
   claude: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, isCacheableVersionResult),
   codex: createDirectoryProbeCache(maxSettledPreflightDirectoryResults, isCacheableVersionResult),
@@ -105,8 +108,10 @@ const versionReads: Record<UpdateAdapter, DirectoryProbeCache<CommandResult>> = 
  * in-flight read and its outcome. Retain up to 32 successful directory results whose stdout
  * and stderr each contain at most 65,536 UTF-16 units. Oversized successes are returned
  * without retention. Rejections and failed probes (nonzero exit, timeout, spawn error) are
- * not retained, so the next caller after settlement reads again (C-LIFE-11). Every update
- * attempt invalidates all directory results before callers validate their installed version.
+ * not retained, so the next caller after settlement reads again (C-LIFE-11). Actual updates,
+ * observed peers, recovery, and uncertain outcomes invalidate all directory results. Only
+ * an uncontended local refusal with no completion or refusal record and completed cleanup
+ * may retain them.
  */
 export function cachedVersionRead(
   adapter: UpdateAdapter,

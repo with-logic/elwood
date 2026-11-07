@@ -128,9 +128,10 @@ The cached version and adapter-capability reads are invalidated after every
 coordinated update attempt, including a failed or peer-owned attempt, because a
 failed installer may still have partially changed the binary. A local prerequisite
 verification refusal may retain these caches only when coordination positively
-establishes uncontended ownership without observing or recovering a peer and probe
-cleanup is complete. Recovered, peer-owned, and uncertain outcomes still invalidate
-caches, even when this caller invokes no updater. Update coordination
+establishes uncontended ownership without observing or recovering a peer, finds no
+existing completion generation or refusal receipt, and probe cleanup is complete.
+Recovered, peer-owned, and uncertain outcomes still invalidate caches, even when
+this caller invokes no updater. Update coordination
 remains once per parent process and adapter across workspaces (C-LIFE-09): its
 owner verifies and updates from that caller's captured directory, and each caller
 validates its own workspace's post-attempt version without racing a second update. This mutual exclusion also applies across separate Elwood parent
