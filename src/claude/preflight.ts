@@ -12,7 +12,11 @@ import { type ProbeDirectory, probeCommandOptions } from "../runtime/probe/direc
 import { isProbeSetupError } from "../runtime/probe/setup-error.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
+import {
+  type AutoupdateOutcome,
+  cachedAutoupdate,
+  cachedVersionRead,
+} from "../runtime/update/once.ts";
 
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
@@ -33,19 +37,18 @@ export async function preflightClaude(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   const workspace = directory ?? { cwd: process.cwd() };
-  let updateError: unknown;
+  let updateOutcome: AutoupdateOutcome | undefined;
   if (autoupdate) {
     // Best-effort: current callers share one outcome; a local non-attempt allows a later retry.
     // On failure we re-read the installed version and apply the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11). Only a test
     // that reset the update module without setting a coordinator sees a throw here instead.
-    const outcome = await cachedAutoupdate("claude", () =>
+    updateOutcome = await cachedAutoupdate("claude", () =>
       verifyBeforeUpdate(
         () => readClaudeVersion(workspace),
         () => runClaudeUpdate(workspace),
       ),
     );
-    if (!outcome.ok) updateError = outcome.error;
   }
   const result = await readClaudeVersion(workspace);
   const version = parseVersion(result.stdout);
@@ -67,7 +70,9 @@ export async function preflightClaude(
   }
   // Installed CLI is compatible: a failed best-effort update is a warning (naming the installed
   // version that will be used), not a start failure.
-  return updateError === undefined ? undefined : buildUpdateWarning("claude", version, updateError);
+  return updateOutcome?.ok === false
+    ? buildUpdateWarning("claude", version, updateOutcome.error)
+    : undefined;
 }
 
 async function runClaudeUpdate(directory: ProbeDirectory): Promise<void> {
