@@ -10,19 +10,27 @@ test("C-LIFE-14 real retained descendants recover after the original forced walk
   const tree = startDetachedTree();
   const descendants = await detachedDescendantPids(tree);
   await delay(DISTINCT_PROCESS_START_DELAY_MS);
-  let reads = 0;
+  let failureInjected = false;
   const reaper = new SessionReaper(tree.pty.pid, {
     ...osProcessTreeOps,
-    listProcesses: (ms, scope) =>
-      ++reads === 1
-        ? osProcessTreeOps.listProcesses(ms, scope)
-        : Promise.reject(Object.assign(new Error("controlled read failure"), { code: "EIO" })),
+    killGroup: (group) => {
+      if (!failureInjected && group !== tree.pty.pid) {
+        failureInjected = true;
+        throw Object.assign(new Error("controlled detached-group KILL failure"), { code: "EIO" });
+      }
+      osProcessTreeOps.killGroup(group);
+    },
   });
   await expect(terminatePty(tree.pty, "SIGKILL", reaper)).rejects.toMatchObject({
     code: "termination_failed",
   });
+  expect(failureInjected).toBe(true);
   for (const pid of descendants) expect(await pollGone({ pid, timeoutMs: 15_000 })).toBe(true);
-  await vi.waitFor(() => expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).not.toThrow(), {
-    timeout: 10_000,
-  });
+  await vi.waitFor(
+    () =>
+      expect(
+        Promise.resolve().then(() => reaper.reapAndThrowOnDetachedSweepFailure()),
+      ).resolves.toBeUndefined(),
+    { timeout: 10_000 },
+  );
 }, 60_000);

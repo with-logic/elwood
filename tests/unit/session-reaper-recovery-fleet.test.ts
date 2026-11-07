@@ -1,14 +1,13 @@
 /** Fifty live owners confirm through production coalescing/admission/parser (C-LIFE-14). */
 import { setImmediate } from "node:timers/promises";
 import { expect, test, vi } from "vitest";
-import { coalesceUnstarted } from "../../src/runtime/shutdown/coalesce.ts";
 import { BACKGROUND_REAP_RETRY_WINDOW_MS } from "../../src/runtime/shutdown/detached-sweep/background.ts";
 import {
   admitNativeProcessRead,
   createAdmittedPsRunner,
 } from "../../src/runtime/shutdown/native-read-admission.ts";
-import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { createUnreferencedProcessTableReader } from "../../src/runtime/shutdown/unreferenced-read.ts";
 import {
   errno,
   hook,
@@ -28,7 +27,7 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
     stdout: "11 1 11 S Sun Oct 25 22:00:00 2026 unrelated 11\n",
   }));
   const runner = createAdmittedPsRunner(native);
-  const read = coalesceUnstarted((ms) => listProcessTable(ms, runner));
+  const read = createUnreferencedProcessTableReader(runner);
   const fake = scripted([]);
   const owners = Array.from({ length: 50 }, (_, index) => {
     const leader = 10_001_000 + index;
