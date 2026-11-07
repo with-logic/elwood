@@ -64,8 +64,9 @@ describe("C-CLI-09 cleanupFailureMessage", () => {
         errno: "EIO",
         reapErrno: "EPERM",
         sweepErrno: "EAGAIN",
+        unconfirmedProcessGroupIds: [4242, 4243],
       }),
-      "Cleanup failed (termination_failed EIO reap EPERM sweep EAGAIN).",
+      "Cleanup failed (termination_failed EIO reap EPERM sweep EAGAIN process groups 4242 4243).",
     ],
     [
       "a sweep errno that is not an errno token",

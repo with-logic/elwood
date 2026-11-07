@@ -37,8 +37,9 @@ export type StartupCleanupResources = {
 export type SessionStartupCleanup = Required<Pick<StartupCleanupResources, "before" | "pty">>;
 
 /**
- * A failed startup's PTY termination or group reap that could not be confirmed (§9.1),
- * so part of the CLI's process tree may still be running. The errno token is
+ * A failed startup's PTY termination, process-tree sweep or group reap that could not
+ * be confirmed (§9.1), so part of the CLI's process tree may still be running.
+ * The errno token is
  * allowlisted, so it is content-free. The group id is diagnostic only: once the leader is
  * gone the number may be reissued to an unrelated group, so it is never signaled. This
  * covers the PTY only; the other cleanup steps stay best-effort and unreported.
@@ -80,8 +81,8 @@ const startupTermination: StartupTerminationTimeouts = { gracefulMs: 5_000, forc
 
 /**
  * Runs every cleanup step, each best-effort. Resolves to the unconfirmed PTY cleanup, or
- * `undefined` when there was no PTY or its termination and group reap were both
- * confirmed. Failures of the other steps never surface here.
+ * `undefined` when there was no PTY or its termination, process-tree sweep and
+ * group reap were all confirmed. Failures of the other steps never surface here.
  */
 export async function cleanupStartupResources(
   resources: StartupCleanupResources,
@@ -119,8 +120,8 @@ async function endPty(
 
 /**
  * The errno to report: the failed group reap's errno when there is one, because that
- * reap decides whether descendants may still be running; otherwise the sweep's, then
- * the termination's.
+ * reap decides whether descendants may still be running; otherwise the process-tree
+ * sweep's errno, then the termination's.
  */
 function cleanupErrno(error: unknown): string | undefined {
   const reapErrno = error instanceof ElwoodError ? error.details["reapErrno"] : undefined;
@@ -134,8 +135,9 @@ function cleanupErrno(error: unknown): string | undefined {
  * (PRD §9.1, §9.4): if `region` rejects — a failed startup assertion, a PTY write
  * fault, anything — the now-live PTY, bridge, terminal, and any watcher are torn down
  * via `cleanupStartupResources` before the original error rethrows. That teardown is
- * best-effort: when the PTY's termination or group reap could not be confirmed, part of
- * the process tree may remain, and a typed startup error names that in its details.
+ * best-effort: when PTY termination, the process-tree sweep or group reap could not
+ * be confirmed, part of the process tree may remain. A typed startup error names
+ * that failure in its details.
  */
 export async function guardStartupRegion(
   region: () => Promise<void>,

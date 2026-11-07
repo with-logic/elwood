@@ -81,7 +81,11 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
   test("a sweep failure rides along on a typed PTY signaling failure too", async () => {
     const { pty, reaper } = harness({
       sweepError: sweepFailure("could not kill a signaled descendant group", [7003], "EPERM"),
-      killError: new Error("kill exploded"),
+      killError: Object.assign(new Error("kill exploded"), {
+        code: "EIO",
+        syscall: "ioctl",
+        path: "/dev/pty-test",
+      }),
     });
     const failed = terminatePty(pty, "SIGKILL", reaper, timeouts);
     await expect(failed).rejects.not.toHaveProperty("details.reapErrno");
@@ -90,6 +94,9 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
       message: "Could not terminate the PTY: kill exploded",
       details: {
         cause: "kill exploded",
+        errno: "EIO",
+        syscall: "ioctl",
+        path: "/dev/pty-test",
         sweepErrno: "EPERM",
         sweepError:
           "Could not reap process-tree groups: could not kill a signaled descendant group (EPERM)",

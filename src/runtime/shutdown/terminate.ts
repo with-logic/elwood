@@ -118,25 +118,23 @@ async function reapAfterTermination(
   }
 }
 
-/**
- * Builds one error preserving BOTH the termination failure and a secondary cause:
- * the reap failure (`reapError`, with its errno in `reapErrno`) or the
- * process-tree sweep failure (`sweepError`, with its errno in `sweepErrno`).
- * The secondary cause is carried in
- * `details` under its own keys (NOT `details.cause`/`errno`, which the termination
- * error may already use for its own root cause), so neither cause is dropped
- * (C-LIFE-10).
- */
+type SecondaryErrorKey = "reapError" | "sweepError";
+const secondaryErrnoKey: Readonly<Record<SecondaryErrorKey, string>> = {
+  reapError: "reapErrno",
+  sweepError: "sweepErrno",
+};
+
+/** Preserve primary diagnostics and label secondary cleanup details by phase (C-LIFE-10). */
 function withCause(
   terminationError: ElwoodError,
-  key: "reapError" | "sweepError",
+  key: SecondaryErrorKey,
   secondary: unknown,
 ): ElwoodError {
   const errno = errnoCode(secondary);
   return elwoodError(terminationError.code, terminationError.message, {
     ...terminationError.details,
     [key]: toError(secondary).message,
-    ...(errno === undefined ? {} : { [key === "reapError" ? "reapErrno" : "sweepErrno"]: errno }),
+    ...(errno === undefined ? {} : { [secondaryErrnoKey[key]]: errno }),
     ...(key === "sweepError" ? unconfirmedGroupsDetail(toError(secondary)) : {}),
   });
 }
