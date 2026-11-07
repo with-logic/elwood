@@ -48,6 +48,15 @@ and both cold and resumed sessions reached ready and delivered exactly one
 invalid-model submission with one `UserPromptSubmit` each. No valid model was
 used. C-API-28, C-TRUST-01.
 
+**Codex 0.167.0 prefixes its shortcuts footer with `← for agents ·`
+(2026-11-07).** A real invalid-model launch showed an empty composer, native model
+footer and `← for agents · ? for shortcuts`, followed by the right-aligned warning
+counter. The first submission was still pending at 15 seconds because the configured
+composer check rejected the new hint. The exact prefix is now accepted while native
+model evidence, warning suffix validation, live cursor and dialog guards remain.
+Footer capture: `tests/fixtures/codex-0.167.0/agents-footer.txt`.
+C-API-28, C-TRUST-01.
+
 **Codex fires its `SessionStart` hook lazily — on the first turn, not at boot.**
 Any experiment that waits for a boot-time Codex hook *without running a turn* is
 invalid and will conclude the hook "never fires". (This once produced a false

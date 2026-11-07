@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recognize Codex 0.167.0’s agents footer as a configured composer, so startup and
+  queued input do not wait for the readiness fallback.
+
 ## [0.2.4] - 2026-11-06
 
 - Preserve healthy workspace version and capability caches after uncontended local
