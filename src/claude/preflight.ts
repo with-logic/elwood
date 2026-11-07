@@ -5,6 +5,7 @@
 
 import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { verifyBeforeUpdate } from "../core/update-verification.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { type ProbeDirectory, probeCommandOptions } from "../runtime/probe/directory-key.ts";
@@ -34,14 +35,16 @@ export async function preflightClaude(
   const workspace = directory ?? { cwd: process.cwd() };
   let updateError: unknown;
   if (autoupdate) {
-    // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
-    // we re-read the installed version and fall through to the compatibility gate — a failed
+    // Best-effort: current callers share one outcome; a local non-attempt allows a later retry.
+    // On failure we re-read the installed version and apply the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11). Only a test
     // that reset the update module without setting a coordinator sees a throw here instead.
-    const outcome = await cachedAutoupdate("claude", async () => {
-      await readClaudeVersion(workspace); // verify existence only after owning the cross-process lease
-      await runClaudeUpdate(workspace);
-    });
+    const outcome = await cachedAutoupdate("claude", () =>
+      verifyBeforeUpdate(
+        () => readClaudeVersion(workspace),
+        () => runClaudeUpdate(workspace),
+      ),
+    );
     if (!outcome.ok) updateError = outcome.error;
   }
   const result = await readClaudeVersion(workspace);

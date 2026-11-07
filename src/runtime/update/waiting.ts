@@ -17,8 +17,8 @@ import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.
 export const defaultWaitMs = 2 * (probeLaunchTimeoutMs + probeCommandTimeoutMs) + 15_000;
 
 export type UpdateWaitResult =
-  | { readonly status: "released" | "wait_expired" | "cleanup_pending" }
-  | { readonly status: "stale_removed"; readonly generation: string | undefined };
+  | { readonly status: "wait_expired" | "cleanup_pending" }
+  | { readonly status: "released" | "stale_removed"; readonly generation: string | undefined };
 type RecoveryResult =
   | { readonly status: "alive" | "unrecoverable" }
   | { readonly status: "removed"; readonly generation: string | undefined };
@@ -28,7 +28,9 @@ export async function waitForOwner(
   pollMs: number,
   staleMs: number,
   waitUntilMs: number,
+  initialGeneration?: string,
 ): Promise<UpdateWaitResult> {
+  let generation = initialGeneration;
   for (;;) {
     if (performance.now() >= waitUntilMs) return { status: "wait_expired" };
     let lease: Awaited<ReturnType<typeof stat>>;
@@ -36,9 +38,10 @@ export async function waitForOwner(
       lease = await stat(path);
     } catch {
       if (await restoreRecovery(path)) continue;
-      return { status: "released" };
+      return { status: "released", generation };
     }
     const current = await readOwner(path);
+    generation = current?.token;
     // Presence of the record only, not proof that any of those groups still runs; the
     // liveness question is asked separately below.
     const hasRecordedProcessGroups = current?.ownedProcessGroupIds !== undefined;
@@ -52,7 +55,7 @@ export async function waitForOwner(
       const recovered = await recoverStaleLease(path);
       if (recovered.status === "removed")
         return { status: "stale_removed", generation: recovered.generation };
-      if (recovered.status === "unrecoverable") return { status: "released" };
+      if (recovered.status === "unrecoverable") return { status: "released", generation };
     }
     await delay(pollMs);
   }
