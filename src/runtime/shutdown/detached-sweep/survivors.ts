@@ -10,6 +10,7 @@
  */
 
 import { errnoCode } from "../../../core/errors.ts";
+import type { ProcessEntry } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import { DETACHED_SWEEP_BUDGET_MS } from "./index.ts";
@@ -30,6 +31,12 @@ import {
 import { SurvivorAnchors } from "./survivor-anchors.ts";
 import { survivorAndDescendantGroups } from "./survivor-groups.ts";
 
+/** A fresh pre-stop read, reusable only as the first survivor pass observation. */
+type SurvivorSeed = {
+  readonly table: readonly ProcessEntry[];
+  readonly readStartedAtEpochMs: number;
+};
+
 /**
  * Stops and SIGKILLs groups holding `record`'s original processes that are still alive, and
  * any group they anchor, within the sweep's budget. Resolves to the unresolved failure,
@@ -41,6 +48,7 @@ export async function reapRecordedSurvivors(
   record: DescendantRecord,
   ops: SweepOps,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
+  initial?: SurvivorSeed,
 ): Promise<SweepFailure | undefined> {
   const state = newSweepState(new SweepFailures());
   record.includeReadFailure(state.failures);
@@ -53,7 +61,7 @@ export async function reapRecordedSurvivors(
   if (record.pids.length === 0) return state.failures.result();
   const deadline = performance.now() + budgetMs;
   const anchors = new SurvivorAnchors(state, record, ops);
-  await stopSurvivorGroups(record, anchors.stoppingOps(), deadline, state, anchors);
+  await stopSurvivorGroups(record, anchors.stoppingOps(), deadline, state, anchors, initial);
   anchors.restoreUnconfirmed();
   await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
@@ -66,20 +74,23 @@ async function stopSurvivorGroups(
   deadline: number,
   state: SweepState,
   anchors: SurvivorAnchors,
+  initial: SurvivorSeed | undefined,
 ): Promise<void> {
   // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
   // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
   // can leave the daemon in it under PID 1, under no recorded pid.
   const scopeRoots = new Set(record.pids);
   const scope = daemonScope(scopeRoots);
+  let firstRead = initial;
   try {
     while (true) {
       for (const group of state.signaledGroupIds) scopeRoots.add(group);
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
-      const readStartedAtEpochMs = Date.now();
-      const table = await ops.listProcesses(remainingMs, scope);
+      const readStartedAtEpochMs = firstRead?.readStartedAtEpochMs ?? Date.now();
+      const table = firstRead?.table ?? (await ops.listProcesses(remainingMs, scope));
+      firstRead = undefined;
       state.latest = table;
       record.resumes.retry(table, {
         continueGroup: (group) => {
