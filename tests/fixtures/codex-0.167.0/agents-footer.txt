@@ -1,0 +1,4 @@
+› Ask Codex to do anything
+ 
+  gpt-elwood-nonexistent-acceptance-probe default · /tmp/elwood_e2e_codex-CAPTURE
+  ← for agents · ? for shortcuts                                                                                                                                   ⚠ 3 warnings · f2 to view

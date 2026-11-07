@@ -1,7 +1,10 @@
-/** Captured Codex 0.159.2 warning footer clears trust only at live idle (C-TRUST-01/C-API-28). */
+/** Captured Codex warning/agents footers clear trust only at live idle (C-TRUST-01/C-API-28). */
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
-import { codexComposerClearance } from "../../src/codex/screen/clearance.ts";
+import {
+  codexComposerClearance,
+  codexComposerConfigured,
+} from "../../src/codex/screen/clearance.ts";
 import { startCodex } from "../../src/index.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -14,9 +17,14 @@ const trust = readFileSync(
   new URL("../fixtures/codex-0.154.0/directory.txt", import.meta.url),
   "utf8",
 );
-const cursorRow = captured.split("\n").findIndex((row) => row.startsWith("› ")) + 1;
-const paint = (text: string, visible = true) =>
-  `${asScreen(text)}\u001b[${cursorRow};3H\u001b[?25${visible ? "h" : "l"}`;
+const agents = readFileSync(
+  new URL("../fixtures/codex-0.167.0/agents-footer.txt", import.meta.url),
+  "utf8",
+);
+const paint = (text: string, visible = true) => {
+  const cursorRow = text.split("\n").findIndex((row) => row.startsWith("› ")) + 1;
+  return `${asScreen(text)}\u001b[${cursorRow};3H\u001b[?25${visible ? "h" : "l"}`;
+};
 
 afterEach(() => {
   vi.useRealTimers();
@@ -36,12 +44,34 @@ test("C-TRUST-01 captured warning footer requires native chrome and an exact suf
   );
 });
 
-test("C-API-28 a live warning footer releases deferred trust readiness, not hidden or dialog frames", async () => {
+test("C-API-28 C-TRUST-01 the captured agents hint preserves exact native footer evidence", () => {
+  for (const frame of [agents, agents.replace(/ +⚠ 3 warnings · f2 to view/, "")]) {
+    expect(codexComposerConfigured(frame)).toBe(true);
+    expect(codexComposerClearance(frame)).toBe(true);
+  }
+  for (const hint of ["for agents", "← for agents", "← for agents -", "← for agents · extra"]) {
+    const frame = agents.replace("← for agents ·", hint);
+    expect(codexComposerConfigured(frame)).toBe(false);
+    expect(codexComposerClearance(frame)).toBe(false);
+  }
+  expect(codexComposerClearance(agents.replace("3 warnings", "3 warnings · press Enter"))).toBe(
+    false,
+  );
+  expect(codexComposerClearance(agents.replace(/ {2}gpt-[^\n]+\n/, ""))).toBe(false);
+  expect(codexComposerClearance(`Would you like to run the following command?\n${agents}`)).toBe(
+    false,
+  );
+});
+
+test.each([
+  captured,
+  agents,
+])("C-API-28 a live warning footer releases deferred trust readiness, not hidden or dialog frames", async (frame) => {
   installFakes();
   const session = await startCodex({
     cwd: tempDir(),
     autotrust: true,
-    initialSize: { cols: 140, rows: 35 },
+    initialSize: { cols: 220, rows: 35 },
   });
   const queued = session.sendMessage("after trust");
   // Teardown rejects pending input if an assertion fails.
@@ -53,23 +83,16 @@ test("C-API-28 a live warning footer releases deferred trust readiness, not hidd
     await vi.advanceTimersByTimeAsync(10_500);
     expect(session.status).toBe("blocked");
     expect(pty.writes).not.toContain("\u001b[200~after trust\u001b[201~");
-    pty.emitData(paint(captured, false));
+    pty.emitData(paint(frame, false));
     await vi.advanceTimersByTimeAsync(100);
     expect(session.status).toBe("blocked");
-    pty.emitData(paint(captured.replace("3 warnings", "3 warnings · press Enter")));
+    pty.emitData(paint(frame.replace("3 warnings", "3 warnings · press Enter")));
     await vi.advanceTimersByTimeAsync(100);
     expect(session.status).toBe("blocked");
-    pty.emitData(
-      paint(
-        captured.replace(
-          "  Follow the white cursor.",
-          "Would you like to run the following command?",
-        ),
-      ),
-    );
+    pty.emitData(paint(`Would you like to run the following command?\n${frame}`));
     await vi.advanceTimersByTimeAsync(100);
     expect(session.status).toBe("blocked");
-    pty.emitData(`\u001b[?2026h${paint(captured)}`);
+    pty.emitData(`\u001b[?2026h${paint(frame)}`);
     await vi.advanceTimersByTimeAsync(100);
     expect(session.status).toBe("blocked");
     expect(pty.writes).not.toContain("\u001b[200~after trust\u001b[201~");
