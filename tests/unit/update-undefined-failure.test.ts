@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
+import type { UpdateFailedWarning } from "../../src/core/warnings/update.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import { setUpdateCoordinatorForTests } from "../../src/runtime/update/once.ts";
 
@@ -33,8 +34,10 @@ test.each([
     errorCode: "update_failed",
     raw: "",
     message: `\`${agent} update\` failed; continuing with the installed CLI ${version}.`,
-  };
-  await expect(preflight(false, true)).resolves.toEqual(warning);
-  await expect(preflight(false, true)).resolves.toEqual(warning);
+  } satisfies UpdateFailedWarning;
+  const strictVersionCheck = false;
+  const autoupdate = true;
+  await expect(preflight(strictVersionCheck, autoupdate)).resolves.toEqual(warning);
+  await expect(preflight(strictVersionCheck, autoupdate)).resolves.toEqual(warning);
   expect(updates).toBe(1);
 });
