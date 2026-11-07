@@ -17,6 +17,9 @@ export type BackgroundReap = {
    * unresolved recovery; it does not report loop completion.
    */
   readonly resolved: () => boolean;
+  /** Fulfillment ends the bounded check, not cleanup. Manager callers must then use
+   * throwIfUnresolved(); direct callers must inspect resolved(). */
+  readonly confirm: () => Promise<void> | undefined;
 };
 
 /** Never restart ancestry traversal from the dead leader's numeric PID. */
@@ -24,18 +27,38 @@ export function reapInBackground(
   record: DescendantRecord,
   ops: SweepOps,
   serialize: ReapQueue,
+  confirmationOps: SweepOps = ops,
 ): BackgroundReap {
   let resolved = false;
-  const recovery = { resolved: () => resolved };
-  if (record.pids.length === 0) return recovery;
+  if (record.pids.length === 0) return { resolved: () => resolved, confirm: () => undefined };
   const roots = new Set(record.pids);
   const scope = daemonScope(roots);
   const recoveryOps = withKnownPaths(ops, scope, record);
+  const foregroundOps = withKnownPaths(confirmationOps, scope, record);
   const until = performance.now() + BACKGROUND_REAP_RETRY_WINDOW_MS;
+  const recovery: BackgroundReap = {
+    resolved: () => resolved,
+    confirm: () => {
+      if (resolved || performance.now() < until) return undefined;
+      const deadline = performance.now() + DETACHED_SWEEP_BUDGET_MS;
+      let timer: NodeJS.Timeout;
+      // This reference owns the foreground request even while an unreferenced pass holds the queue.
+      const expired = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, DETACHED_SWEEP_BUDGET_MS);
+      });
+      const checking = serialize(async () => {
+        if (resolved || performance.now() >= deadline) return;
+        for (const pid of record.pids) roots.add(pid);
+        const outcome = await attempt(record, foregroundOps, scope, deadline, false);
+        if (performance.now() < deadline) resolved = outcome === "resolved";
+      });
+      return Promise.race([checking, expired]).finally(() => clearTimeout(timer));
+    },
+  };
   void (async () => {
     while (performance.now() < until) {
       for (const pid of record.pids) roots.add(pid);
-      const outcome = await serialize(() => attempt(record, recoveryOps, scope, until));
+      const outcome = await serialize(() => attempt(record, recoveryOps, scope, until, true));
       resolved = outcome === "resolved";
       if (outcome !== "retry" || performance.now() >= until) return;
       await new Promise<void>((resolve) => setTimeout(resolve, BACKGROUND_REAP_RETRY_MS).unref());
@@ -59,19 +82,26 @@ function withKnownPaths(ops: SweepOps, scope: DaemonScope, record: DescendantRec
   };
 }
 
-/** One fresh read seeds the safe survivor reap; success still needs a later empty read. */
+/**
+ * Background reads seed a survivor reap and require later empty evidence. Confirmation
+ * skips reaping; one fresh empty read can resolve known evidence within its total budget.
+ */
 async function attempt(
   record: DescendantRecord,
   ops: SweepOps,
   scope: DaemonScope,
   until: number,
+  mayReap: boolean,
 ): Promise<AttemptOutcome> {
   if (performance.now() >= until) return "blocked";
   try {
     const readStartedAtEpochMs = Date.now();
-    const table = await ops.listProcesses(DETACHED_SWEEP_BUDGET_MS, scope);
-    const resumeDebtCleared = record.resumes.retry(table, ops);
+    const readTimeoutMs = mayReap ? DETACHED_SWEEP_BUDGET_MS : Math.ceil(until - performance.now());
+    const table = await ops.listProcesses(readTimeoutMs, scope);
+    if (!mayReap && performance.now() >= until) return "blocked";
+    const resumeDebtCleared = record.resumes.retry(table, ops, mayReap ? undefined : until);
     const survivors = record.survivors(table);
+    if (!mayReap && performance.now() >= until) return "blocked";
     if (survivors.length === 0) {
       const knownEvidenceResolved =
         record.known &&
@@ -82,7 +112,7 @@ async function attempt(
       return resumeDebtCleared ? "blocked" : "retry";
     }
     if (!record.known) return resumeDebtCleared ? "blocked" : "retry";
-    if (performance.now() < until)
+    if (mayReap && performance.now() < until)
       await reapRecordedSurvivors(record, ops, DETACHED_SWEEP_BUDGET_MS, {
         table,
         readStartedAtEpochMs,

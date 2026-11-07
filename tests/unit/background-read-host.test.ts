@@ -69,6 +69,24 @@ reapInBackground(record,{
   stopGroup:()=>{},killGroup:()=>{},continueGroup:()=>{}
 },attempt=>attempt());
 `;
+const CONFIRMATION = `
+const {reapInBackground,BACKGROUND_REAP_RETRY_WINDOW_MS} = await import(process.env.SHUTDOWN+"/detached-sweep/background.ts");
+const {DescendantRecord} = await import(process.env.SHUTDOWN+"/detached-sweep/record.ts");
+const {SerialDetachedSweepQueue} = await import(process.env.SHUTDOWN+"/reap-queue.ts");
+const record = new DescendantRecord();
+const leader = {pid:10000001,pgid:10000001,ppid:1,zombie:false,stopped:false,startedAt:"Fri Jan 1 00:00:00 1960",name:"sh",shared:false};
+const child = {...leader,pid:10000002,pgid:10000002,ppid:leader.pid};
+record.observeFirst([leader],leader.pid,Date.now());
+record.observe([leader,child],leader.pid);
+let clock = 0;
+Object.defineProperty(performance,"now",{value:()=>clock});
+const queue = new SerialDetachedSweepQueue();
+const ops = {listProcesses:()=>new Promise(resolve=>setTimeout(()=>resolve([child]),500).unref()),stopGroup:()=>{},killGroup:()=>{},continueGroup:()=>{}};
+const recovery = reapInBackground(record,ops,attempt=>queue.run(attempt),{...ops,listProcesses:async()=>[]});
+clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
+console.log("ready");
+void recovery.confirm().then(()=>console.log("foreground completed"));
+`;
 
 test.each([
   {
@@ -105,6 +123,12 @@ test.each([
     name: "retained retry timer",
     source: RECOVERY,
     expectedStdout: "ready\nqueued\n",
+    hasChildMarker: false,
+  },
+  {
+    name: "foreground confirmation behind an unreferenced read",
+    source: CONFIRMATION,
+    expectedStdout: "ready\nforeground completed\n",
     hasChildMarker: false,
   },
 ])("C-LIFE-10 host lifetime follows the references during $name", async ({
