@@ -97,5 +97,5 @@ test("C-LIFE-10 live leader groups preserve the shared table without copying it"
     () => {},
   );
   expect(await ops.listProcesses(1000)).toBe(table);
-  expect(await ops.listProcessesUnreferenced!(1000)).toBe(table);
+  expect(await ops.listProcessesUnreferenced?.(1000)).toBe(table);
 });
