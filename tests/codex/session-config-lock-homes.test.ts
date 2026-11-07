@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, onTestFinished, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { codexHomeReportPath } from "../helpers/codex-home.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
@@ -18,13 +18,19 @@ import {
   driveUntilConfigWritten,
   restoreCodexHome,
   sandboxCodexHome,
+  stopModelSessions,
+  trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(() => {
-  resetFakes();
-  restoreCodexHome();
+afterEach(async () => {
+  try {
+    await stopModelSessions();
+  } finally {
+    resetFakes();
+    restoreCodexHome();
+  }
 });
 
 /** Starts a session whose launch shell reports `home`, not Elwood's `CODEX_HOME`. */
@@ -33,8 +39,7 @@ async function startReportingHome(name: string, ptyIndex: number) {
   const home = join(cwd, name);
   mkdirSync(home);
   writeFileSync(join(home, "config.toml"), userConfig);
-  const session = await startCodex({ cwd });
-  onTestFinished(() => session.stop());
+  const session = trackModelSession(await startCodex({ cwd }));
   const report = codexHomeReportPath(ptys[ptyIndex]!.options.args);
   if (report === undefined) throw new Error(`launch ${ptyIndex} has no CODEX_HOME report step`);
   writeFileSync(report, `${home}\0${process.env["HOME"]}\0${cwd}\0`);

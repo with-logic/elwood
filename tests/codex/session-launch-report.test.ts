@@ -19,13 +19,19 @@ import {
   driveSetModel,
   restoreCodexHome,
   sandboxCodexHome,
+  stopModelSessions,
+  trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(() => {
-  resetFakes();
-  restoreCodexHome();
+afterEach(async () => {
+  try {
+    await stopModelSessions();
+  } finally {
+    resetFakes();
+    restoreCodexHome();
+  }
 });
 
 /** The report path of the first Codex launch. */
@@ -39,8 +45,7 @@ async function readySession() {
   const cwd = tempDir();
   const configPath = sandboxCodexHome(cwd);
   installFakes();
-  const session = await startCodex({ cwd });
-  onTestFinished(() => session.stop());
+  const session = trackModelSession(await startCodex({ cwd }));
   await becomeReady(session.elwoodSessionId, cwd);
   await until(() => session.status === "ready", { label: "codex ready" });
   return { session, configPath };

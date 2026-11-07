@@ -5,6 +5,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { CodexSessionApi } from "../../src/index.ts";
 import { useCodexHome } from "../helpers/codex-home.ts";
 import {
   asScreen,
@@ -17,6 +18,20 @@ import { ptys } from "./helpers.ts";
 
 export { restoreCodexHome } from "../helpers/codex-home.ts";
 export { until };
+
+const modelSessions: CodexSessionApi[] = [];
+
+/** Stop sessions before the adapter resets the process rows they still need. */
+export function trackModelSession(session: CodexSessionApi): CodexSessionApi {
+  modelSessions.push(session);
+  return session;
+}
+
+export function stopModelSessions(): Promise<void> {
+  return Promise.all(modelSessions.splice(0).map((session) => session.stop())).then(
+    () => undefined,
+  );
+}
 
 export const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[hooks]\n';
 

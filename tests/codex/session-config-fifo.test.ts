@@ -4,7 +4,7 @@
  */
 
 import { rmSync } from "node:fs";
-import { afterEach, expect, onTestFinished, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { fifoWithLateWriter } from "../helpers/fifo.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
@@ -13,21 +13,26 @@ import {
   driveUntilConfigWritten,
   restoreCodexHome,
   sandboxCodexHome,
+  stopModelSessions,
+  trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(() => {
-  resetFakes();
-  restoreCodexHome();
+afterEach(async () => {
+  try {
+    await stopModelSessions();
+  } finally {
+    resetFakes();
+    restoreCodexHome();
+  }
 });
 
 async function readySession() {
   const cwd = tempDir();
   const configPath = sandboxCodexHome(cwd);
   installFakes();
-  const session = await startCodex({ cwd });
-  onTestFinished(() => session.stop());
+  const session = trackModelSession(await startCodex({ cwd }));
   await becomeReady(session.elwoodSessionId, cwd);
   await until(() => session.status === "ready");
   return { session, configPath };

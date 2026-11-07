@@ -7,7 +7,7 @@
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, onTestFinished, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { codexHomeReportPath } from "../helpers/codex-home.ts";
@@ -17,13 +17,19 @@ import {
   driveSetModel,
   restoreCodexHome,
   sandboxCodexHome,
+  stopModelSessions,
+  trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(() => {
-  resetFakes();
-  restoreCodexHome();
+afterEach(async () => {
+  try {
+    await stopModelSessions();
+  } finally {
+    resetFakes();
+    restoreCodexHome();
+  }
 });
 
 const shellConfigText = 'model = "gpt-5.4"\nmodel_reasoning_effort = "low"\n\n[hooks]\n';
@@ -53,8 +59,7 @@ async function startUnderShellHome(
     }
     return pty;
   });
-  const session = await startCodex({ cwd });
-  onTestFinished(() => session.stop());
+  const session = trackModelSession(await startCodex({ cwd }));
   await becomeReady(session.elwoodSessionId, cwd);
   await until(() => session.status === "ready", { label: "codex ready" });
   return { session, cwd, elwoodConfig, shellConfig, reports };
@@ -118,8 +123,9 @@ test("C-CODEX-24 a resumed session reads its default from the CODEX_HOME its own
   });
   expect(await listDefaults(session)).toEqual(["gpt-5.4"]);
   await session.stop();
-  const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
-  onTestFinished(() => resumed.stop());
+  const resumed = trackModelSession(
+    await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId }),
+  );
   ptys[1]!.emitData(asScreen("› "));
   await until(() => resumed.status === "ready", { label: "resumed codex ready" });
   expect(await listDefaults(resumed, ptys[1]!)).toEqual(["gpt-5.4-mini"]);
