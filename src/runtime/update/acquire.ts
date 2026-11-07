@@ -11,6 +11,7 @@ type Acquisition = {
   readonly leasePath: string;
   readonly owner: LeaseOwner;
   readonly completionMarkerPath: string;
+  readonly refusalMarkerPath: string;
   readonly pollMs: number;
   readonly staleMs: number;
   readonly waitUntilMs: number;
@@ -23,6 +24,7 @@ export async function acquireUpdateLease({
   leasePath,
   owner,
   completionMarkerPath,
+  refusalMarkerPath,
   pollMs,
   staleMs,
   waitUntilMs,
@@ -36,14 +38,17 @@ export async function acquireUpdateLease({
   let latestGeneration = observedGeneration;
   // Refusal authority belongs only to the latest observed owner.
   const rejectRefusal = async () => {
-    if (
+    const matchesReceipt =
       latestGeneration !== undefined &&
-      (await readOptionalText(`${completionMarkerPath}.refused`)) === latestGeneration &&
-      (await readCompletionGeneration(completionMarkerPath)) === priorCompletionGeneration
-    ) {
+      (await readOptionalText(refusalMarkerPath)) === latestGeneration;
+    const completionUnchanged =
+      matchesReceipt &&
+      (await readCompletionGeneration(completionMarkerPath)) === priorCompletionGeneration;
+    if (completionUnchanged) {
       throw elwoodError(
         `${adapter}_update_failed`,
         "Another updater refused prerequisite verification.",
+        { updateReason: "peer_verification_refused" },
       );
     }
   };
@@ -67,8 +72,10 @@ export async function acquireUpdateLease({
       waitUntilMs,
       latestGeneration,
     );
-    if ("generation" in observation) latestGeneration = observation.generation;
-    if (observation.status === "released") await rejectRefusal();
+    if ("generation" in observation) {
+      latestGeneration = observation.generation;
+      await rejectRefusal();
+    }
     const waited = recoveredWait(adapter, observation);
     if (waited === false) return false;
     if (waited.generation !== undefined) observedGenerations.add(waited.generation);
@@ -92,7 +99,7 @@ export async function acquireUpdateLease({
     if (!(observedOwnerCompleted || completionAdvanced)) await rejectRefusal();
     return false;
   }
-  await unlink(`${completionMarkerPath}.refused`).catch(async (error: unknown) => {
+  await unlink(refusalMarkerPath).catch(async (error: unknown) => {
     if (errnoCode(error) === "ENOENT") return;
     await releaseLease(leasePath, owner);
     throw error;

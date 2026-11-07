@@ -23,6 +23,10 @@ type RecoveryResult =
   | { readonly status: "alive" | "unrecoverable" }
   | { readonly status: "removed"; readonly generation: string | undefined };
 
+/**
+ * Seeds the token from the acquisition snapshot if the lease vanishes before the first
+ * poll; returns the latest token observed during the wait.
+ */
 export async function waitForOwner(
   path: string,
   pollMs: number,

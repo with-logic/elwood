@@ -46,8 +46,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
 
 /**
  * Runs `update` only for the lease owner. A contender waits until that owner
- * settles and then returns without a duplicate update; callers re-read version
- * state after this resolves.
+ * completes and then returns without a duplicate update; callers re-read version state.
+ * A matching refusal rejects current contenders; a later independent call may retry.
  * Owned verification failures release without completion after probe cleanup.
  * Failed completion publication retains the lease until ordinary dead-owner recovery.
  * After 165 seconds by default, a still-active owner rejects with the adapter's
@@ -79,6 +79,7 @@ export async function coordinatedAutoupdate(
       leasePath,
       owner,
       completionMarkerPath,
+      refusalMarkerPath,
       pollMs,
       staleMs,
       waitUntilMs,
@@ -176,7 +177,6 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
  */
 async function sweepLeaseLeftovers(path: string): Promise<void> {
   const root = dirname(path);
-  // Claim staging AND leases already retired by their owner: both are this adapter's debris.
   const leftovers = [".claim.", retiredLeaseInfix].map((infix) => `${basename(path)}${infix}`);
   let swept = 0;
   let inspected = 0;

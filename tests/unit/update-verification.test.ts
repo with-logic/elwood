@@ -72,7 +72,7 @@ test.each(
   expect(updates).toBe(0);
   expect.soft(readFileSync(marker, "utf8")).toBe(previous);
   expect(existsSync(updateLockPath(agent, root))).toBe(false);
-  const expected = persistent
+  const expected: PromiseSettledResult<Awaited<ReturnType<typeof preflight>>> = persistent
     ? { status: "rejected", reason: expect.objectContaining({ code: `${agent}_start_failed` }) }
     : {
         status: "fulfilled",
@@ -87,7 +87,7 @@ test.each(
           message: `\`${agent} update\` skipped before invocation; continuing with the installed CLI ${version.replace("codex-cli ", "")}.`,
         },
       };
-  expect.soft(outcomes).toEqual(new Array(50).fill(expected));
+  expect.soft(outcomes).toEqual(Array.from({ length: 50 }, () => expected));
   refusing = false;
   await expect.soft(preflight(false, true)).resolves.toBeUndefined();
   expect.soft(coordinations).toBe(2);
@@ -115,19 +115,18 @@ test("C-LIFE-09 a pre-callback coordination rejection is shared once, then retri
     release.resolve();
     await cohort;
   }
-  expect(await cohort).toEqual(
-    new Array(50).fill({
-      agent: "claude",
-      source: "lifecycle",
-      code: "agent_update_failed",
-      severity: "warning",
-      installedVersion: "2.1.305",
-      errorCode: "update_active",
-      raw: "",
-      message:
-        "`claude update` skipped: another updater is still active; continuing with the installed CLI 2.1.305.",
-    }),
-  );
+  const expected: NonNullable<Awaited<ReturnType<typeof preflightClaude>>> = {
+    agent: "claude",
+    source: "lifecycle",
+    code: "agent_update_failed",
+    severity: "warning",
+    installedVersion: "2.1.305",
+    errorCode: "update_active",
+    raw: "",
+    message:
+      "`claude update` skipped: another updater is still active; continuing with the installed CLI 2.1.305.",
+  };
+  expect(await cohort).toEqual(Array.from({ length: 50 }, () => expected));
   expect(calls).toBe(1);
   await expect(preflightClaude(false, true)).resolves.toBeUndefined();
   expect(calls).toBe(2);

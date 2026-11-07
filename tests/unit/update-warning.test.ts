@@ -84,3 +84,34 @@ test.each([
   // No local updater ran, so there is no errno to surface and no updater stderr to bound.
   expect(warning.raw).toBe("");
 });
+
+test.each([
+  "claude",
+  "codex",
+] as const)("C-LIFE-11 a known %s peer verification refusal skips invocation without diagnostics", (agent) => {
+  const verifierOutput = "unknown verifier payload /private/workspace";
+  const warning = buildUpdateWarning(
+    agent,
+    "1.2.3",
+    elwoodError(`${agent}_update_failed`, verifierOutput, {
+      updateReason: "peer_verification_refused",
+      cause: verifierOutput,
+      stderr: verifierOutput,
+      errno: "ETIMEDOUT",
+      exitStatus: 42,
+      phase: "login_shell",
+    }),
+  );
+  expect(warning).toEqual({
+    agent,
+    source: "lifecycle",
+    code: "agent_update_failed",
+    severity: "warning",
+    message: `\`${agent} update\` skipped before invocation; continuing with the installed CLI 1.2.3.`,
+    installedVersion: "1.2.3",
+    errorCode: "update_failed",
+    raw: "",
+  });
+  expect(warning).not.toHaveProperty("exitStatus");
+  expect(JSON.stringify(warning)).not.toContain(verifierOutput);
+});
