@@ -17,10 +17,9 @@ test("C-LIFE-10 TERM is delivered only after holding and verifying the original 
 test.each([
   { ...leaderRow, startedAt: "Sun Oct 25 22:00:09 2026", stopped: true },
   { ...leaderRow, pgid: LEADER + 1, stopped: true },
-  { ...leaderRow, stopped: false },
   { ...leaderRow, pid: LEADER + 1, stopped: true },
   { ...leaderRow, zombie: true, stopped: true },
-])("C-LIFE-10 a changed or running leader %j receives no TERM or CONT", async (row) => {
+])("C-LIFE-10 a changed leader %j receives no TERM or CONT", async (row) => {
   const continueGroup = vi.fn(() => {
     throw errno("EPERM");
   });
@@ -81,36 +80,69 @@ test.each(["EPERM", "EIO"])("C-LIFE-10 a refused stop %s never delivers TERM", a
 test("C-LIFE-10 deadline expiry before SIGSTOP has no signal effects", async () => {
   const fake = scripted([[leaderRow]]);
   const run = heldLeader(fake.ops);
+  const admitted = Promise.withResolvers<void>();
+  run.signal.guard.serialize = async (attempt) => {
+    await admitted.promise;
+    return attempt();
+  };
+  const pending = run.run();
+  void pending.catch(() => undefined);
+  expect(fake.calls).toEqual([]);
   run.signal.deadline = 0;
-  await expect(run.run()).rejects.toMatchObject({ code: "ETIMEDOUT" });
+  admitted.resolve();
+  await expect(pending).rejects.toMatchObject({ code: "ETIMEDOUT" });
   expect(run.delivered).toEqual([]);
   expect(fake.calls).toEqual([]);
 });
 
-test("C-LIFE-10 verification spends only the deadline remaining after admission", async () => {
+test.each([
+  { next: [{ ...leaderRow, stopped: true }], outcome: "signal-sent", delivered: ["TERM"] },
+  { next: [], outcome: "leader-group-gone", delivered: [] },
+])("C-LIFE-10 delayed STOP verification reaches $outcome within its deadline", async ({
+  next,
+  outcome,
+  delivered,
+}) => {
   let clock = 0;
+  let reads = 0;
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   const fake = scripted([[leaderRow]], {
     stopGroup: () => {
       clock = 4_000;
     },
   });
-  const run = heldLeader(fake.ops);
-  await run.run();
-  expect(fake.timeouts).toEqual([6_000]);
+  const list = fake.ops.listProcesses;
+  const run = heldLeader({
+    ...fake.ops,
+    listProcesses: async (ms) => {
+      await list(ms);
+      return ++reads === 1 ? [leaderRow] : next;
+    },
+  });
+  await expect(run.run()).resolves.toBe(outcome);
+  expect(run.delivered).toEqual(delivered);
+  expect(fake.timeouts).toEqual([6_000, 6_000]);
 });
 
-test("C-LIFE-10 expiry during the fresh read restores the hold without TERM", async () => {
+test.each([
+  { stopped: true, calls: [`cont ${LEADER}`], debt: [] },
+  { stopped: false, calls: [], debt: [LEADER] },
+])("C-LIFE-10 expiry during the fresh read retains or restores the hold ($stopped)", async ({
+  stopped,
+  calls,
+  debt,
+}) => {
   let clock = 0;
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   const fake = scripted([], {
     listProcesses: () => {
       clock = 10_001;
-      return Promise.resolve([{ ...leaderRow, stopped: true }]);
+      return Promise.resolve([{ ...leaderRow, stopped }]);
     },
   });
   const run = heldLeader(fake.ops);
   await expect(run.run()).rejects.toMatchObject({ code: "ETIMEDOUT" });
   expect(run.delivered).toEqual([]);
-  expect(fake.calls).toContain(`cont ${LEADER}`);
+  expect(fake.calls.filter((call) => call.startsWith("cont "))).toEqual(calls);
+  expect(run.record.resumes.pids).toEqual(debt);
 });

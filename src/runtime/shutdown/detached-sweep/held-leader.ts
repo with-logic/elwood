@@ -1,6 +1,8 @@
 /** Private held-leader signal foundation; no lifecycle caller yet (PRD §5.3/§9.4, C-LIFE-10). */
+import { scheduler } from "node:timers/promises";
 import { errnoCode, toError } from "../../../core/errors.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
+import { processReadTimeout } from "../read-timeout.ts";
 import type { ReapQueue } from "../reap-queue.ts";
 import type { LeaderObservation } from "./leader-observation.ts";
 import type { DescendantRecord } from "./record.ts";
@@ -27,7 +29,11 @@ type HeldLeader = {
 };
 
 /** No signal after lost authority; only restore a hold this pass already sent. */
-export async function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOutcome> {
+export function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOutcome> {
+  return signal.guard.serialize(() => sendSerializedLeaderSignal(signal));
+}
+
+async function sendSerializedLeaderSignal(signal: HeldLeader): Promise<LeaderSignalOutcome> {
   const { guard, observation } = signal;
   let stoppedIdentity: string | undefined;
   let authorized = false;
@@ -39,9 +45,13 @@ export async function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSi
     assertLeaderObservation(observation);
     if (observation.kind === "gone" || signal.leaderExited())
       throw new Error("The original leader exited before graceful signal authorization.");
-    const stopSent = await stopLeader(signal);
+    if (!observation.identity.startsWith(`${signal.pid} `))
+      throw new Error("The original leader identity does not match the signal target.");
+    const stopSent = await stopLeaderGroup(signal);
     if (stopSent) stoppedIdentity = observation.identity;
-    groupGone = !stopSent || (await verifyHeldLeader(signal, observation.identity, read));
+    groupGone =
+      !stopSent ||
+      (await verifyHeldLeader(signal, observation.identity, read)) === "leader-group-gone";
     if (groupGone) guard.gone();
     else {
       guard.authorize();
@@ -68,16 +78,27 @@ export async function sendHeldLeaderSignal(signal: HeldLeader): Promise<LeaderSi
 type HeldRead = { table: readonly ProcessEntry[] | undefined };
 
 /** ESRCH or a bounded fresh empty-group read is terminal whole-group evidence. */
-async function stopLeader(signal: HeldLeader): Promise<boolean> {
+async function stopLeaderGroup(signal: HeldLeader): Promise<boolean> {
   const { pid, ops, deadline } = signal;
-  remaining(deadline);
+  remainingMs(deadline);
   try {
     ops.stopGroup(pid);
     return true;
   } catch (error) {
     if (errnoCode(error) === "ESRCH") return false;
     if (errnoCode(error) !== "EPERM") throw error;
-    const table = await ops.listProcesses(remaining(deadline));
+    let table: readonly ProcessEntry[];
+    try {
+      table = await ops.listProcesses(remainingMs(deadline));
+    } catch (readError) {
+      throw Object.assign(
+        new AggregateError(
+          [error, readError],
+          `${toError(error).message}; ${toError(readError).message}`,
+        ),
+        { code: "EPERM" },
+      );
+    }
     if (!table.some((row) => row.pgid === pid && !row.zombie)) return false;
     throw error;
   }
@@ -88,19 +109,21 @@ async function verifyHeldLeader(
   signal: HeldLeader,
   identity: string,
   read: HeldRead,
-): Promise<boolean> {
+): Promise<"leader-held" | "leader-group-gone"> {
   const { pid, ops, deadline } = signal;
-  const table = await ops.listProcesses(remaining(deadline));
-  read.table = table;
-  if (!table.some((row) => row.pgid === pid && !row.zombie)) return true;
-  const leader = table.find((row) => row.pid === pid && !row.zombie);
-  const originalIdentity = leader !== undefined && processIdentity(leader) === identity;
-  const originalGroup = leader?.pgid === pid;
-  const confirmedStopped = leader?.stopped === true;
-  if (!(originalIdentity && originalGroup && confirmedStopped) || signal.leaderExited())
-    throw new Error("The original leader was not confirmed held before SIGTERM.");
-  remaining(deadline);
-  return false;
+  while (true) {
+    const table = await ops.listProcesses(remainingMs(deadline));
+    read.table = table;
+    if (!table.some((row) => row.pgid === pid && !row.zombie)) return "leader-group-gone";
+    const leader = table.find((row) => row.pid === pid && !row.zombie);
+    const originalIdentity = leader !== undefined && processIdentity(leader) === identity;
+    const originalGroup = leader?.pgid === pid;
+    if (!(originalIdentity && originalGroup) || signal.leaderExited())
+      throw new Error("The original leader was not confirmed held before SIGTERM.");
+    remainingMs(deadline);
+    if (leader.stopped) return "leader-held";
+    await scheduler.yield();
+  }
 }
 
 /** Restore only a freshly held original identity; unreadable holds retain original debt. */
@@ -113,13 +136,18 @@ function restoreHold(
   const { pid, ops, record } = signal;
   if (table === undefined) {
     record.markUnknownResume();
-    record.resumes.rememberIdentity(identity, pid, pid);
+    record.resumes.rememberIdentity({ identity, pid, pgid: pid });
     return false;
   }
   const original = table.find(
     (row) => !row.zombie && row.pgid === pid && processIdentity(row) === identity,
   );
-  if (original?.stopped !== true) return false;
+  if (original === undefined) return false;
+  if (!original.stopped) {
+    record.markUnknownResume();
+    record.resumes.rememberIdentity({ identity, pid, pgid: pid });
+    return false;
+  }
   try {
     ops.continueGroup(pid);
   } catch (error) {
@@ -133,12 +161,9 @@ function restoreHold(
   return false;
 }
 
-function remaining(deadline: number): number {
+function remainingMs(deadline: number): number {
   const left = Math.ceil(deadline - performance.now());
-  if (left <= 0)
-    throw Object.assign(new Error("Graceful leader verification deadline expired."), {
-      code: "ETIMEDOUT",
-    });
+  if (left <= 0) throw processReadTimeout("Graceful leader verification deadline expired.");
   return left;
 }
 

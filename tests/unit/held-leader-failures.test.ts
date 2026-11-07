@@ -1,32 +1,35 @@
 /** Held-leader refusals and restoration debt preserve every failure (PRD §5.3, C-LIFE-10). */
 import { expect, test, vi } from "vitest";
+import {
+  authorizationError,
+  pendingRestorationCases,
+  priorRefusalCases,
+  signalFailureCases,
+} from "../fixtures/held-leader/cases.ts";
 import { heldLeader } from "../helpers/held-leader.ts";
 import { errno, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
 
-test("C-LIFE-10 a refused first observation preserves its original failure without signals", async () => {
+test.each([
+  false,
+  true,
+])("C-LIFE-10 a refused first observation survives exit=%s without signals", async (exited) => {
   const fake = scripted([[leaderRow]]);
   const run = heldLeader(fake.ops);
   const error = errno("EIO");
   run.signal.observation = { kind: "refused", error };
+  run.signal.leaderExited = () => exited;
   await expect(run.run()).rejects.toBe(error);
   expect(run.refused).toEqual([error]);
   expect(fake.calls).toEqual([]);
   expect(run.delivered).toEqual([]);
 });
 
-test.each([
-  "gone",
-  "exited",
-  "retained refusal",
-])("C-LIFE-10 prior %s forbids even a leader SIGSTOP", async (reason) => {
+test.each(priorRefusalCases)("C-LIFE-10 prior $reason forbids even a leader SIGSTOP", async ({
+  setup,
+}) => {
   const fake = scripted([[leaderRow]]);
   const run = heldLeader(fake.ops);
-  if (reason === "gone") run.signal.observation = { kind: "gone" };
-  if (reason === "exited") run.signal.leaderExited = () => true;
-  if (reason === "retained refusal")
-    run.signal.guard.assertRetainedAuthority = () => {
-      throw errno("EPERM");
-    };
+  setup(run);
   await expect(run.run()).rejects.toBeInstanceOf(Error);
   expect(run.refused).toHaveLength(1);
   expect(fake.calls).toEqual([]);
@@ -47,12 +50,15 @@ test("C-LIFE-10 exit during verification restores only the already-sent hold", a
   expect(fake.calls).toEqual(["list", `cont ${LEADER}`]);
 });
 
-test.each([
-  { ...leaderRow, stopped: true },
-  { ...leaderRow, stopped: true, startedAt: "Sun Oct 25 22:00:09 2026" },
-  { ...leaderRow, stopped: true, pgid: LEADER + 1 },
-  leaderRow,
-])("C-LIFE-10 a failed fresh read retains original debt for a safe retry (%j)", async (row) => {
+test.each(
+  pendingRestorationCases,
+)("C-LIFE-10 a failed fresh read retains original debt for a safe retry (%#)", async ({
+  row,
+  done,
+  calls,
+  debt,
+  afterStoppedCalls,
+}) => {
   const error = errno("EIO");
   const fake = scripted([], { listProcesses: () => Promise.reject(error) });
   const run = heldLeader(fake.ops);
@@ -62,10 +68,11 @@ test.each([
   expect(run.record.hasUnknownResume).toBe(true);
   expect(run.record.resumes.pids).toEqual([LEADER]);
   const continueGroup = vi.fn();
-  expect(run.record.resumes.retry([row], { continueGroup })).toBe(true);
-  expect(continueGroup.mock.calls).toEqual(
-    row.stopped && row.startedAt === leaderRow.startedAt && row.pgid === LEADER ? [[LEADER]] : [],
-  );
+  expect(run.record.resumes.retry([row], { continueGroup })).toBe(done);
+  expect(continueGroup.mock.calls).toEqual(calls);
+  expect(run.record.resumes.pids).toEqual(debt);
+  expect(run.record.resumes.retry([{ ...leaderRow, stopped: true }], { continueGroup })).toBe(true);
+  expect(continueGroup.mock.calls).toEqual(afterStoppedCalls);
   expect(run.record.resumes.pids).toEqual([]);
   expect(run.record.hasUnknownResume).toBe(true);
 });
@@ -150,14 +157,36 @@ test.each([
   expect(run.record.resumes.pids).toEqual([LEADER]);
 });
 
-test("C-LIFE-10 failed TERM alone preserves its cause after restoring the hold", async () => {
+test.each(
+  signalFailureCases,
+)("C-LIFE-10 failed $phase preserves its cause after restoring the hold", async ({
+  setup,
+  refused,
+}) => {
   const fake = scripted([[leaderRow]]);
   const run = heldLeader(fake.ops);
-  const error = new Error("TERM refused");
-  run.signal.send = () => {
-    throw error;
-  };
-  await expect(run.run()).rejects.toBe(error);
+  setup(run);
+  await expect(run.run()).rejects.toBe(authorizationError);
   expect(fake.calls).toContain(`cont ${LEADER}`);
-  expect(run.refused).toEqual([]);
+  expect(run.refused).toEqual(refused);
+  expect(run.delivered).toEqual([]);
+});
+
+test("C-LIFE-10 refused STOP and unreadable confirmation preserve both causes", async () => {
+  const stopped = errno("EPERM");
+  const unreadable = errno("EIO");
+  const run = heldLeader(
+    scripted([], {
+      stopGroup: () => {
+        throw stopped;
+      },
+      listProcesses: () => Promise.reject(unreadable),
+    }).ops,
+  );
+  await expect(run.run()).rejects.toMatchObject({
+    code: "EPERM",
+    errors: [stopped, unreadable],
+    message: "raw EPERM detail; raw EIO detail",
+  });
+  expect(run.delivered).toEqual([]);
 });

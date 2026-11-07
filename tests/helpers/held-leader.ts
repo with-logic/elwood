@@ -2,11 +2,15 @@
 import { sendHeldLeaderSignal } from "../../src/runtime/shutdown/detached-sweep/held-leader.ts";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/rounds.ts";
-import { LEADER, leaderRow, scripted } from "./scripted-process-tree.ts";
+import { LEADER, leaderRow, STARTED_AT, scripted } from "./scripted-process-tree.ts";
 
 export function heldLeader(ops: SweepOps = scripted([[leaderRow]]).ops) {
   const record = new DescendantRecord();
-  const observation = record.observeFirst([leaderRow], LEADER, Date.now());
+  const observation = record.observeFirst(
+    [leaderRow],
+    LEADER,
+    Date.parse(`${STARTED_AT} UTC`) + 1_001,
+  );
   const delivered: string[] = [];
   const refused: unknown[] = [];
   let authorized = false;

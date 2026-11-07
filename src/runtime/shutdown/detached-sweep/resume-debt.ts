@@ -17,7 +17,10 @@ function processEntriesByIdentity(
 
 /** Live identities from a failed group restoration; retry only those still stopped there. */
 export class ResumeDebt {
-  private readonly rows = new Map<string, Pick<ProcessEntry, "pid" | "pgid">>();
+  private readonly rows = new Map<
+    string,
+    Pick<ProcessEntry, "pid" | "pgid"> & { readonly pendingStop?: true }
+  >();
 
   remember(table: readonly ProcessEntry[], group: number): void {
     for (const row of table) {
@@ -25,9 +28,17 @@ export class ResumeDebt {
     }
   }
 
-  /** Preserve a known identity when no post-stop table was readable. */
-  rememberIdentity(identity: string, pid: number, pgid: number): void {
-    this.rows.set(identity, { pid, pgid });
+  /** Preserve an unconfirmed STOP until its original member is stopped or gone. */
+  rememberIdentity({
+    identity,
+    pid,
+    pgid,
+  }: {
+    readonly identity: string;
+    readonly pid: number;
+    readonly pgid: number;
+  }): void {
+    this.rows.set(identity, { pid, pgid, pendingStop: true });
   }
 
   get pids(): readonly number[] {
@@ -41,6 +52,14 @@ export class ResumeDebt {
     const pending = new Map<number, string[]>();
     for (const [id, held] of this.rows) {
       const row = current.get(id);
+      if (
+        held.pendingStop &&
+        row !== undefined &&
+        !row.zombie &&
+        row.pgid === held.pgid &&
+        !row.stopped
+      )
+        continue;
       if (!isOriginalStoppedMember(row, held.pgid)) {
         this.rows.delete(id);
         continue;
