@@ -2,6 +2,9 @@
  * Per-session descendant signal passes (PRD §5.3 and §9.4, C-LIFE-10):
  * begin an idle pass in the caller's tick, and serialize every later pass behind it.
  */
+/** Serialize an identity verification/signal pass, returning its outcome. */
+export type ReapQueue = <T>(attempt: () => Promise<T>) => Promise<T>;
+
 export class SerialDetachedSweepQueue {
   private tail: Promise<void> | undefined;
 
