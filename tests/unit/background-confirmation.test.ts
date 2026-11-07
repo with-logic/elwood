@@ -33,6 +33,15 @@ function recorded() {
   record.observe([leaderRow, hook(5002)], LEADER);
   return record;
 }
+/** Keep owned live evidence waiting on a signal failure, without inventing a read gap. */
+function parked() {
+  return scripted([], {
+    listProcesses: () => Promise.resolve([hook(5002)]),
+    stopGroup: () => {
+      throw errno("EIO");
+    },
+  });
+}
 const serialize = () => {
   const queue = new SerialDetachedSweepQueue();
   return <T>(attempt: () => Promise<T>) => queue.run(attempt);
@@ -54,8 +63,8 @@ test("C-LIFE-10 confirmation starts only after expiry, and never for empty or re
   expect(empty.resolved()).toBe(false);
 });
 
-test("C-LIFE-10 fresh live or unreadable confirmation stays unresolved until matching identities disappear", async () => {
-  const fake = scripted([], { listProcesses: () => Promise.reject(errno("EIO")) });
+test("C-LIFE-10 an unreadable confirmation remains unresolved after matching identities disappear", async () => {
+  const fake = parked();
   let rows = [hook(5002)];
   let unreadable = false;
   const read = vi.fn(() => (unreadable ? Promise.reject(errno("EIO")) : Promise.resolve(rows)));
@@ -73,7 +82,7 @@ test("C-LIFE-10 fresh live or unreadable confirmation stays unresolved until mat
   unreadable = false;
   rows = [{ ...hook(5002), startedAt: "Mon Jan 1 00:00:00 2001" }];
   await recovery.confirm();
-  expect(recovery.resolved()).toBe(true);
+  expect(recovery.resolved()).toBe(false);
   expect(read).toHaveBeenCalledTimes(3);
   expect(fake.calls).toEqual([]);
 });
@@ -85,7 +94,7 @@ test.each([
   const record = recorded();
   if (unknownResume) record.markUnknownResume();
   else record.known = false;
-  const fake = scripted([], { listProcesses: () => Promise.reject(errno("EIO")) });
+  const fake = parked();
   const recovery = reapInBackground(record, fake.ops, serialize(), {
     ...fake.ops,
     listProcesses: () => Promise.resolve([]),
@@ -101,7 +110,10 @@ test("C-LIFE-10 concurrent confirmations reuse conclusive evidence and retain ne
   const fake = scripted([], {
     listProcesses: (_ms, scope) => {
       scope?.known.add("confirmed daemon path");
-      return Promise.reject(errno("EIO"));
+      return Promise.resolve([hook(5002)]);
+    },
+    stopGroup: () => {
+      throw errno("EIO");
     },
   });
   const read = vi.fn<SweepOps["listProcesses"]>((_ms, scope) => {
@@ -155,7 +167,7 @@ test("C-LIFE-10 an ambiguous recorded survivor stays unresolved until it disappe
     new Map([[5003, new Set()]]),
     Date.parse(`${ambiguous.startedAt} UTC`),
   );
-  const fake = scripted([], { listProcesses: () => Promise.reject(errno("EIO")) });
+  const fake = parked();
   let rows = [ambiguous];
   const recovery = reapInBackground(record, fake.ops, serialize(), {
     ...fake.ops,

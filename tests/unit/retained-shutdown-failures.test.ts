@@ -51,13 +51,16 @@ test("C-LIFE-10 the original attempt rejects even when automatic recovery resolv
 });
 
 test("C-LIFE-10 separate background and referenced readers confirm all retained records", async () => {
-  const background = vi.fn(() => Promise.reject(errno("EIO")));
+  const background = vi.fn(() => Promise.resolve([hook(5002), hook(5003)]));
   let live = [hook(5003)];
   const foreground = vi.fn(() => Promise.resolve(live));
   const failures = manager({
     ...scripted([]).ops,
     listProcesses: foreground,
     listProcessesUnreferenced: background,
+    stopGroup: () => {
+      throw errno("EIO");
+    },
   });
   expect(() => failures.keep(failure, recorded())).toThrow(failure);
   const second = Object.assign(new Error("second failed"), { processGroupIds: [5003] });
@@ -70,7 +73,7 @@ test("C-LIFE-10 separate background and referenced readers confirm all retained 
   live = [];
   await failures.confirm();
   expect(() => failures.throwIfUnresolved()).not.toThrow();
-  expect(background).toHaveBeenCalledTimes(2);
+  expect(background).toHaveBeenCalledTimes(4);
   expect(foreground).toHaveBeenCalledTimes(3);
 });
 
@@ -113,7 +116,10 @@ test("C-LIFE-10 expired confirmation cannot clear lost original-group authority"
   const failures = manager({
     ...scripted([]).ops,
     listProcesses: read,
-    listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+    listProcessesUnreferenced: () => Promise.resolve([hook(5002)]),
+    stopGroup: () => {
+      throw errno("EIO");
+    },
   });
   expect(() => failures.keep(failure, record)).toThrow(failure);
   await vi.advanceTimersByTimeAsync(0);
