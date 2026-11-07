@@ -5,7 +5,7 @@
  * observation freezes leader authority: a missing leader stays gone, and a failed,
  * unparseable, same-second, or wrong-group identity cannot be replaced by a later row.
  * Later reads record only descendants of that original identity. Each recorded pid
- * retains its start time, so a reused pid is never taken for the original process.
+ * retains its second-resolution start time, so distinguishable PID reuse is rejected.
  * A failed later read records nothing and preserves the baseline for the next read.
  */
 
@@ -23,31 +23,25 @@ import {
 /** The detached descendants seen so far, by pid and start time. */
 export class DescendantRecord {
   private readonly identities = new Set<string>();
-  /** The leader's identity, from the first read that showed it. */
-  private leader: LeaderObservation | undefined;
+  /** Frozen first-read result: an accepted identity, confirmed absence, or refusal. */
+  private firstLeaderObservation: LeaderObservation | undefined;
   /**
-   * Whether the leader's tree is known: a read showed the leader live, or the read before
-   * the SIGTERM showed it already gone, with nothing left linked to it. A later read that
-   * does not show the leader says nothing of what it left.
+   * Whether a read matched the validated original leader identity, or the first read
+   * confirmed it already gone, with nothing left linked to it. Later absence does not
+   * establish the tree; an ambiguous or refused first identity never does.
    */
   known = false;
 
-  /**
-   * Records every live member of each group, other than the leader's, that holds a
-   * descendant, if `table` shows the leader live as the first such read did. `beforeSignal`
-   * marks the read before the SIGTERM, whose not showing the leader is knowledge too.
-   */
-  observe(
-    table: readonly ProcessEntry[],
-    leaderPid: number,
-    beforeSignal = false,
-    readStartedAtEpochMs = Date.now(),
-  ): void {
+  /** Record detached group members only while the frozen original leader is still live. */
+  observe(table: readonly ProcessEntry[], leaderPid: number): void {
     const leaderRow = table.find((row) => row.pid === leaderPid && !row.zombie);
-    if (beforeSignal) this.observeFirst(table, leaderPid, readStartedAtEpochMs);
-    if (leaderRow === undefined) return;
-    this.leader ??= observeLeader(leaderRow, leaderPid, readStartedAtEpochMs);
-    if (this.leader.kind !== "observed" || identity(leaderRow) !== this.leader.identity) return;
+    const first = this.firstLeaderObservation;
+    if (
+      leaderRow === undefined ||
+      first?.kind !== "observed" ||
+      identity(leaderRow) !== first.identity
+    )
+      return;
     this.known = true;
     const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
     for (const row of table) {
@@ -62,15 +56,15 @@ export class DescendantRecord {
     readStartedAtEpochMs: number,
   ): LeaderObservation {
     const row = table.find((entry) => entry.pid === leaderPid && !entry.zombie);
-    this.leader ??= observeLeader(row, leaderPid, readStartedAtEpochMs);
-    if (this.leader.kind === "gone") this.known = true;
-    return this.leader;
+    this.firstLeaderObservation ??= observeLeader(row, leaderPid, readStartedAtEpochMs);
+    if (this.firstLeaderObservation.kind === "gone") this.known = true;
+    return this.firstLeaderObservation;
   }
 
   /** A failed initial read cannot be healed by observing a later owner of the same PID. */
   refuseFirstObservation(error: unknown): LeaderObservation {
-    this.leader ??= refuseLeaderObservation(error);
-    return this.leader;
+    this.firstLeaderObservation ??= refuseLeaderObservation(error);
+    return this.firstLeaderObservation;
   }
 
   /** The pid of each process recorded, whatever it runs now. */

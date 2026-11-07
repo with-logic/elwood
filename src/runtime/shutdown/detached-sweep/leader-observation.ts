@@ -12,7 +12,7 @@ export type LeaderObservation =
 
 export const PROCESS_START_TIME_RESOLUTION_MS = 1_000;
 
-/** Authorize only an older, parseable original group leader; retain safe read errno only. */
+/** Authorize only an older, parseable original group leader. */
 export function observeLeader(
   row: ProcessEntry | undefined,
   leaderPid: number,

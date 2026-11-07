@@ -97,6 +97,7 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
   test("the reap of a stop's survivors resumes a group that became the daemon too", async () => {
     // Recorded as the TUI's fork; once the TUI exits it hangs off PID 1, then `exec`s.
     const record = new DescendantRecord();
+    record.observeFirst([leaderRow], LEADER, Date.now());
     record.observe([leaderRow, forked], LEADER);
     const orphan = { ...forked, ppid: 1 };
     const { ops, calls } = scripted([[orphan], [{ ...orphan, shared: true }]]);
@@ -107,6 +108,7 @@ describe("C-LIFE-10 the kill pass and Codex's shared daemon", () => {
   test("the reap of a stop's survivors reads each group it stopped, wherever its parent is", async () => {
     // 5010, which a recorded hook started after the last recording read, is no recorded pid.
     const record = new DescendantRecord();
+    record.observeFirst([leaderRow], LEADER, Date.now());
     record.observe([leaderRow, hook(5002)], LEADER);
     const { ops } = scripted([[hook(5002, { ppid: 1 }), hook(5010, { ppid: 5002 })]]);
     const roots: number[][] = [];

@@ -24,7 +24,7 @@ test.each([
   expect(record.observeFirst([row, hook(5002)], LEADER, started)).toMatchObject({
     kind: "refused",
   });
-  record.observe([leaderRow, hook(5002)], LEADER, true, epoch + 5_000);
+  record.observe([leaderRow, hook(5002)], LEADER);
   expect(record.known).toBe(false);
   expect(record.pids).toEqual([]);
 });
@@ -35,7 +35,7 @@ test("C-LIFE-10 exact start-second boundary is old enough and freezes authority"
   expect(observed).toEqual({ kind: "observed", identity: `${LEADER} ${leaderRow.startedAt}` });
   expect(record.refuseFirstObservation(errno("EIO"))).toBe(observed);
   expect(record.observeFirst([], LEADER, epoch + 2_000)).toBe(observed);
-  record.observe([leaderRow, hook(5002)], LEADER, false, epoch + 2_000);
+  record.observe([leaderRow, hook(5002)], LEADER);
   expect(record.pids).toEqual([5002]);
 });
 
@@ -50,9 +50,16 @@ test("C-LIFE-10 capture observation epoch before awaiting a slow first process r
 });
 
 test.each([
-  errno("EIO"),
-  Object.assign(new Error("secret path"), { code: "secret" }),
-])("C-LIFE-10 a failed first read preserves safe errno without raw diagnostics", async (failure) => {
+  { failure: errno("EIO"), expectedCode: "EIO" },
+  { failure: Object.assign(new Error("secret path"), { code: "secret" }), expectedCode: undefined },
+  {
+    failure: Object.assign(new Error("EIO diagnostic"), { code: "invalid" }),
+    expectedCode: undefined,
+  },
+])("C-LIFE-10 a failed first read preserves safe errno without raw diagnostics", async ({
+  failure,
+  expectedCode,
+}) => {
   const watch = watchDescendants(
     LEADER,
     { listProcesses: () => Promise.reject(failure) },
@@ -62,9 +69,7 @@ test.each([
   expect(first.kind).toBe("refused");
   if (first.kind !== "refused") throw new Error("Expected refusal");
   expect(first.error.message).toBe("First leader process-table read failed.");
-  expect("code" in first.error ? first.error.code : undefined).toBe(
-    failure.message.includes("EIO") ? "EIO" : undefined,
-  );
+  expect("code" in first.error ? first.error.code : undefined).toBe(expectedCode);
   expect((await watch.finish()).known).toBe(false);
 });
 
@@ -77,13 +82,14 @@ test("C-LIFE-10 confirmed missing leader remains gone after a replacement appear
   expect(record.pids).toEqual([]);
 });
 
-test("C-LIFE-10 the existing recording API never adopts an ambiguous initial leader", () => {
+test("C-LIFE-10 later recording cannot establish the first leader observation", () => {
   const record = new DescendantRecord();
-  vi.spyOn(Date, "now").mockReturnValue(epoch + 999);
-  record.observe([leaderRow, hook(5002)], LEADER, true);
-  expect(record.known).toBe(false);
   vi.spyOn(Date, "now").mockReturnValue(epoch + 5_000);
   record.observe([leaderRow, hook(5002)], LEADER);
   expect(record.known).toBe(false);
   expect(record.pids).toEqual([]);
+  record.observeFirst([leaderRow], LEADER, epoch + 5_000);
+  record.observe([leaderRow, hook(5002)], LEADER);
+  expect(record.known).toBe(true);
+  expect(record.pids).toEqual([5002]);
 });

@@ -11,6 +11,7 @@ import { watchDescendants } from "../../src/runtime/shutdown/detached-sweep/watc
 import { listProcessTable } from "../../src/runtime/shutdown/process-table.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
 import { delay } from "../helpers/process-liveness.ts";
+import { DISTINCT_PROCESS_START_DELAY_MS } from "../helpers/process-start-time.ts";
 import { lateRealReads } from "../helpers/table-reads.ts";
 
 /** How late each read starts: longer than one second, as a read under load can take. */
@@ -20,7 +21,7 @@ test("C-LIFE-10 a stop's record knows the leader's tree when each read takes ove
   const tree = startDetachedTree();
   const [child, grandchild] = await detachedDescendantPids(tree);
   // The read-start epoch must distinguish the leader before the slow native read.
-  await delay(1_100);
+  await delay(DISTINCT_PROCESS_START_DELAY_MS);
   const slowReads = { listProcesses: lateRealReads(SLOW_READ_MS) };
   let exited = false;
   const exit = new Promise<void>((resolve) => {

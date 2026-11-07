@@ -29,6 +29,7 @@ afterEach(() => {
 /** A setsid hook (5002) and its child (5003) in its group, as the leader's last read showed. */
 const recorded = () => {
   const record = new DescendantRecord();
+  record.observeFirst([leaderRow], LEADER, Date.now());
   record.observe([leaderRow, hook(5002), hook(5003, { ppid: 5002, pgid: 5002 })], LEADER);
   return record;
 };
@@ -89,6 +90,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
   test("never signals the host's group or an id kill(-pgid) would misroute", async () => {
     const host = process.pid;
     const record = new DescendantRecord();
+    record.observeFirst([leaderRow], LEADER, Date.now());
     record.observe([leaderRow, hook(5002), hook(5003), hook(5004)], LEADER);
     const table = [
       { ...hook(host, { ppid: 1 }), pgid: 7000 },
@@ -105,6 +107,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     // A leader whose reads showed no descendant: every detached process on the host,
     // orphans under PID 1 included, belongs to something else.
     const record = new DescendantRecord();
+    record.observeFirst([leaderRow], LEADER, Date.now());
     record.observe([leaderRow], LEADER);
     const { ops, calls } = scripted([[...orphaned, hook(6000, { ppid: 1 }), hook(1, { ppid: 0 })]]);
     await expect(reapRecordedSurvivors(record, ops)).resolves.toBeUndefined();

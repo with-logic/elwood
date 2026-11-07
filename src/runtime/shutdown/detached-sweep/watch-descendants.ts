@@ -33,9 +33,8 @@ export function watchDescendants(
   let watching = true;
   const scope = daemonScope(new Set([leaderPid]));
   const readOnce = () => {
-    const started = Date.now();
     return ops.listProcesses(RECORD_READ_MS, scope).then(
-      (table) => record.observe(table, leaderPid, false, started),
+      (table) => record.observe(table, leaderPid),
       () => undefined,
     );
   };
@@ -43,7 +42,7 @@ export function watchDescendants(
   const firstObservation = ops.listProcesses(RECORD_READ_MS, scope).then(
     (table) => {
       const observation = record.observeFirst(table, leaderPid, started);
-      record.observe(table, leaderPid, false, started);
+      record.observe(table, leaderPid);
       return observation;
     },
     (error: unknown) => record.refuseFirstObservation(error),
