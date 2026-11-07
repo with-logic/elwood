@@ -6,12 +6,13 @@
  * From there the sweep's rules hold (`index.ts`), less the live leader: a held process
  * anchors the groups it started, a group read with a member running is stopped again,
  * and once a read converges the signaled groups are SIGKILLed deepest first, but one
- * holding Codex's daemon, which is resumed (`kill.ts`). A group stops counting as a
- * survivor once no recorded process is alive in it. The one exposure the identity leaves
- * is a recorded process that exits between the read that shows it and the SIGSTOP, its
- * group id reused within that moment; anchors rule that out only for a live leader.
+ * holding Codex's daemon, which is resumed (`kill.ts`). A fresh post-stop read must
+ * confirm an original stopped member before the kill pass. Unconfirmed holds fail;
+ * restoration requires a fresh original identity, otherwise only owned debt is retained.
+ * This private foundation has no production lifecycle caller yet.
  */
 
+import { errnoCode } from "../../../core/errors.ts";
 import { detachedDescendantGroups, type ProcessEntry } from "../process-table.ts";
 import { daemonScope } from "../shared-daemon.ts";
 import { type SweepFailure, SweepFailures } from "./failures.ts";
@@ -30,6 +31,7 @@ import {
   unheldGroups,
   unreachedGroups,
 } from "./rounds.ts";
+import { SurvivorAnchors } from "./survivor-anchors.ts";
 
 import { watchDescendants } from "./watch-descendants.ts";
 
@@ -83,10 +85,14 @@ export async function reapRecordedSurvivors(
     state.failures.record("no read showed the leader's tree", undefined, []);
     return state.failures.result();
   }
-  if (record.pids.length === 0) return undefined;
+  if (record.hasUnknownResume)
+    state.failures.record("a stopped group has unresolved restoration", undefined, []);
+  if (record.pids.length === 0) return state.failures.result();
   const deadline = performance.now() + budgetMs;
-  await stopSurvivorGroups(record, ops, deadline, state);
-  await killOrResumeSignaledGroups(ops, state, deadline);
+  const anchors = new SurvivorAnchors(state, record, ops);
+  await stopSurvivorGroups(record, anchors.stoppingOps(), deadline, state, anchors);
+  anchors.restoreUnconfirmed();
+  await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
 
@@ -96,6 +102,7 @@ async function stopSurvivorGroups(
   ops: SweepOps,
   deadline: number,
   state: SweepState,
+  anchors: SurvivorAnchors,
 ): Promise<void> {
   // Codex's daemon is marked under two kinds of root. A recorded pid: a recorded process
   // may have `exec`'d the daemon since it was recorded. A stopped group: its parent's exit
@@ -108,10 +115,34 @@ async function stopSurvivorGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      const readStartedAtEpochMs = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
-      const roots = survivorGroups(record.survivors(table), table);
-      state.live = liveGroups(table, roots);
+      record.resumes.retry(table, {
+        continueGroup: (group) => {
+          try {
+            ops.continueGroup(group);
+          } catch (error) {
+            if (errnoCode(error) !== "ESRCH")
+              state.failures.record("a stopped group has unresolved restoration", error, [group]);
+            throw error;
+          }
+        },
+      });
+      const blocked = record.unsafeSurvivorGroups(table);
+      const roots = survivorGroups(
+        record.survivors(table).filter((row) => !blocked.has(row.pgid)),
+        table,
+      );
+      const discovered = liveGroups(table, roots);
+      record.observeGroups(table, discovered, readStartedAtEpochMs);
+      anchors.afterRead(table);
+      const unsafe = record.unsafeSurvivorGroups(table);
+      if (unsafe.size > 0)
+        state.failures.record("a survivor group has an ambiguous identity", undefined, [...unsafe]);
+      state.live = new Map(
+        [...discovered].filter(([group]) => !(unsafe.has(group) || anchors.rejected.has(group))),
+      );
       state.unheld = unheldGroups(table, state);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       restopEscapedGroups(table, ops, state);

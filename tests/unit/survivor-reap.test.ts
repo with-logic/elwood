@@ -72,7 +72,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     const { ops, calls } = scripted([[...orphaned, hook(5010, { ppid: 5002 })]]);
     await expect(reapRecordedSurvivors(recorded(), ops)).resolves.toBeUndefined();
     expect(calls.join(", ")).toBe(
-      "list, stop 5002, list, list, stop 5010, list, list, kill 5010, kill 5002",
+      "list, stop 5002, list, stop 5010, list, list, kill 5010, kill 5002",
     );
   });
 
@@ -124,7 +124,7 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     expect(calls).toEqual([]);
   });
 
-  test("an unreadable table fails against the groups not yet held, which are still killed", async () => {
+  test("an unreadable table retains only identity-bound restoration debt", async () => {
     const { ops, calls } = scripted([orphaned], {
       listProcesses: () => {
         calls.push("list");
@@ -134,13 +134,14 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     });
     const failure = await reapRecordedSurvivors(recorded(), ops);
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: process table unreadable (EAGAIN)",
+      "Could not reap detached descendants: process table unreadable (EAGAIN); " +
+        "a survivor group could not be safely confirmed stopped",
     );
     expect(failure?.processGroupIds).toEqual([5002]);
-    expect(calls.join(", ")).toBe("list, stop 5002, list, kill 5002");
+    expect(calls.join(", ")).toBe("list, stop 5002, list");
   });
 
-  test("a group never held by the deadline fails, and is still killed", async () => {
+  test("a group never held by the deadline fails and is resumed", async () => {
     const timeouts: number[] = [];
     const listProcesses = (timeoutMs: number) => {
       timeouts.push(timeoutMs);
@@ -150,10 +151,12 @@ describe("C-LIFE-10 reaping a graceful stop's surviving descendants", () => {
     const failure = await reapRecordedSurvivors(recorded(), ticking(run.ops), 250);
     expect(timeouts).toEqual([250, 150, 50]); // Each read gets what is left of the deadline.
     expect(failure?.message).toBe(
-      "Could not reap detached descendants: process groups not confirmed stopped by the deadline",
+      "Could not reap detached descendants: process groups not confirmed stopped by the deadline; " +
+        "a survivor group could not be safely confirmed stopped",
     );
     expect(failure?.processGroupIds).toEqual([5002]);
-    expect(run.calls.at(-1)).toBe("kill 5002");
+    expect(run.calls.at(-1)).toBe("cont 5002");
+    expect(run.calls).not.toContain("kill 5002");
   });
 
   test("a recorded group that refuses its stop fails while it lives", async () => {

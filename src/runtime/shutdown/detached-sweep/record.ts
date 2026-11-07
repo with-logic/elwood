@@ -17,12 +17,17 @@ import {
 import {
   type LeaderObservation,
   observeLeader,
+  PROCESS_START_TIME_RESOLUTION_MS,
   refuseLeaderObservation,
 } from "./leader-observation.ts";
+import { ResumeDebt } from "./resume-debt.ts";
 
 /** The detached descendants seen so far, by pid and start time. */
 export class DescendantRecord {
   private readonly identities = new Set<string>();
+  private readonly ambiguous = new Set<string>();
+  private unknownResume = false;
+  readonly resumes = new ResumeDebt();
   /** Frozen first-read result: an accepted identity, confirmed absence, or refusal. */
   private firstLeaderObservation: LeaderObservation | undefined;
   /**
@@ -33,7 +38,11 @@ export class DescendantRecord {
   known = false;
 
   /** Record detached group members only while the frozen original leader is still live. */
-  observe(table: readonly ProcessEntry[], leaderPid: number): void {
+  observe(
+    table: readonly ProcessEntry[],
+    leaderPid: number,
+    readStartedAtEpochMs = Date.now(),
+  ): void {
     const leaderRow = table.find((row) => row.pid === leaderPid && !row.zombie);
     const first = this.firstLeaderObservation;
     if (
@@ -44,9 +53,37 @@ export class DescendantRecord {
       return;
     this.known = true;
     const groups = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+    this.observeGroups(table, groups, readStartedAtEpochMs);
+  }
+
+  /** Retain first-observation ambiguity for owned group members across later reads. */
+  observeGroups(
+    table: readonly ProcessEntry[],
+    groups: ReadonlyMap<number, ReadonlySet<ProcessEntry>>,
+    readStartedAtEpochMs: number,
+  ): void {
     for (const row of table) {
-      if (!row.zombie && groups.has(row.pgid)) this.identities.add(identity(row));
+      if (row.zombie || !groups.has(row.pgid)) continue;
+      const id = identity(row);
+      if (!this.identities.has(id)) {
+        const started = Date.parse(`${row.startedAt} UTC`);
+        if (
+          !Number.isFinite(started) ||
+          started + PROCESS_START_TIME_RESOLUTION_MS > readStartedAtEpochMs
+        )
+          this.ambiguous.add(id);
+      }
+      this.identities.add(id);
     }
+  }
+
+  /** Only a matching live ambiguous identity blocks its group. */
+  unsafeSurvivorGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
+    return new Set(
+      this.survivors(table)
+        .filter((row) => this.ambiguous.has(identity(row)))
+        .map((row) => row.pgid),
+    );
   }
 
   /** Freeze the first read before signaling; no later row can replace its authority. */
@@ -67,9 +104,22 @@ export class DescendantRecord {
     return this.firstLeaderObservation;
   }
 
+  /** A failed restoration without a fresh process identity cannot be retried safely. */
+  markUnknownResume(): void {
+    this.unknownResume = true;
+  }
+
+  get hasUnknownResume(): boolean {
+    return this.unknownResume;
+  }
+
   /** The pid of each process recorded, whatever it runs now. */
   get pids(): readonly number[] {
-    return [...this.identities].map((id) => Number.parseInt(id, 10));
+    return [
+      ...new Set(
+        [...this.identities].map((id) => Number.parseInt(id, 10)).concat(this.resumes.pids),
+      ),
+    ];
   }
 
   /**

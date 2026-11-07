@@ -31,6 +31,7 @@ export class ResumeDebt {
 
   /** Resolve only a matching stopped identity, preserving failures independently per group. */
   retry(table: readonly ProcessEntry[], ops: Pick<SweepOps, "continueGroup">): boolean {
+    if (this.rows.size === 0) return true;
     const current = processEntriesByIdentity(table);
     const pending = new Map<number, string[]>();
     for (const [id, held] of this.rows) {

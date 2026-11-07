@@ -93,3 +93,11 @@ test("C-LIFE-10 one read's identity index is shared across retained resume recor
   expect(inspected).toBeLessThanOrEqual(table.length);
   expect(continueGroup).toHaveBeenCalledTimes(200);
 });
+
+test("C-LIFE-10 no restoration debt reads no identity fields", () => {
+  const row = { ...held };
+  const read = vi.fn(() => held.startedAt);
+  Object.defineProperty(row, "startedAt", { get: read });
+  expect(new ResumeDebt().retry([row], { continueGroup: vi.fn() })).toBe(true);
+  expect(read).not.toHaveBeenCalled();
+});

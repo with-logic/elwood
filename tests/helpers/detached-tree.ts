@@ -33,6 +33,8 @@ const DAEMON_BINARY = "packages/app-server-daemon/releases/0.164.0/bin/codex";
 const NODE = realpathSync(process.execPath);
 /** How long a test waits for a process of the tree to record its pid. */
 const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
+/** Yield between marker checks while keeping exit below the native-read cadence. */
+const LATE_OBSERVATION_POLL_MS = 2;
 
 // `hold.cjs <dir> <name> [next] [mode] [...]`: records its pid as <dir>/<name>.pid,
 // optionally starts `next` DETACHED from plain Node (Node's `detached` is `setsid()`, as
@@ -40,10 +42,10 @@ const PID_FILE_WAIT_TIMEOUT_MS = 10_000;
 // makes the PTY leader ignore SIGTERM, like a CLI whose graceful shutdown is stuck.
 // `late-on-term` makes it answer SIGTERM by starting a detached `late` process and
 // exiting half a second later, as Codex can start its snapshot shell during a stop.
-// `with-daemon` runs the leader from a copy of
-// Node named `codex` and has it start, detached and with their real arguments, the
-// Codex 0.164 TUI's app-server `daemon` (which starts an `mcp` server from plain Node)
-// and its `updater` loop, from a copy at the daemon's install (docs/cli-behavior.md).
+// `late-until-seen` waits for a verified late-child table read before exiting.
+// `with-daemon` runs the leader from Node named `codex`, starting the Codex 0.164
+// app-server daemon (and its plain-Node MCP) and updater from their install,
+// with the real daemon argv (docs/cli-behavior.md).
 // `becomes-daemon` runs the leader from that `codex` copy too, and has it start a setsid
 // `becoming` child from it, which, once `<dir>/exec` exists, sets its title to the
 // daemon's path, which macOS `ps` reads as its `comm`, as an `exec` of the daemon would.
@@ -53,9 +55,13 @@ const { existsSync, writeFileSync } = require("node:fs");
 const [dir, name, next, mode] = process.argv.slice(2);
 const start = (binary, args) => spawn(binary, [__filename, dir, ...args], { detached: true, stdio: "ignore" });
 if (mode === "ignore-term") process.on("SIGTERM", () => {});
-if (mode === "late-on-term") process.on("SIGTERM", () => {
+if (mode === "late-on-term" || mode === "late-until-seen") process.on("SIGTERM", () => {
   start(process.execPath, ["late"]);
-  setTimeout(() => process.exit(0), 500);
+  if (mode === "late-on-term") setTimeout(() => process.exit(0), 500);
+  else {
+    const exitOnceSeen = () => existsSync(dir + "/seen") ? process.exit(0) : setTimeout(exitOnceSeen, ${LATE_OBSERVATION_POLL_MS});
+    exitOnceSeen();
+  }
 });
 if (next) start(${JSON.stringify(NODE)}, [next, next === "child" ? "grandchild" : ""]);
 if (mode === "with-daemon") {
@@ -74,10 +80,11 @@ setInterval(() => {}, 1e9);
 `;
 
 export type DetachedTree = { readonly pty: PtyProcess; readonly dir: string };
+type LateTermMode = "late-on-term" | "late-until-seen";
 
 /** Starts the leader under a real PTY; it starts the detached child, which starts the grandchild. */
 export function startDetachedTree(
-  mode: "" | "ignore-term" | "late-on-term" | "with-daemon" | "becomes-daemon" = "",
+  mode: "" | "ignore-term" | LateTermMode | "with-daemon" | "becomes-daemon" = "",
 ): DetachedTree {
   const dir = holdDir("elwood-detached-");
   const asCodex = mode === "with-daemon" || mode === "becomes-daemon";
