@@ -99,3 +99,22 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
     expect(() => finishSafely()).not.toThrow();
   });
 });
+
+test("C-LIFE-10 finishing from raw delivery preserves both channels for the full batch", async () => {
+  const order: string[] = [];
+  const built = wired(() => undefined);
+  built.emitter.on("codex:transcript", () => {
+    order.push("raw");
+    if (order.length === 1) built.finishSafely(() => order.push("exit"));
+  });
+  built.emitter.on("activity", () => order.push("activity"));
+  const rows = ["first", "second"].map((id) => ({
+    type: "response_item",
+    payload: { type: "reasoning", id },
+  }));
+  writeFileSync(built.path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  built.watcher.flush();
+  expect(order).toEqual(["raw", "activity", "raw", "activity"]);
+  await Promise.resolve();
+  expect(order).toEqual(["raw", "activity", "raw", "activity", "exit"]);
+});
