@@ -68,6 +68,8 @@ export const DETACHED_SWEEP_BUDGET_MS = 10_000;
  * pid may be reused, so the sweep stops no further group and never signals the leader's
  * group again, though it still SIGKILLs the groups it already signaled (resuming any
  * that hold Codex's daemon).
+ * Pass `record` when a failed walk needs recovery after leader exit: it retains
+ * observed identities and failed restoration debt for identity-bound survivor cleanup.
  * `onLeaderGroupGone` publishes only whole-group ESRCH or fresh empty-group evidence,
  * never merely a leader exit notification. These are
  * failures: a leader's group that refuses its stop, so no descendant group is signaled;

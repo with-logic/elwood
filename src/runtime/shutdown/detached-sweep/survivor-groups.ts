@@ -3,12 +3,16 @@ import { processIndex } from "../process-index.ts";
 import type { ProcessEntry } from "../process-table.ts";
 
 /** The safe survivor groups and every detached descendant group their members anchor. */
-export function survivorDescendantGroups(
+export function survivorAndDescendantGroups(
   survivors: readonly ProcessEntry[],
   table: readonly ProcessEntry[],
-): ReadonlyMap<number, ReadonlySet<ProcessEntry>> {
+  hostPid: number,
+): {
+  readonly roots: ReadonlySet<number>;
+  readonly groups: ReadonlyMap<number, ReadonlySet<ProcessEntry>>;
+} {
   const { byPid, byGroup, children } = processIndex(table);
-  const hostGroup = byPid.get(process.pid)?.pgid;
+  const hostGroup = byPid.get(hostPid)?.pgid;
   const roots = new Set(
     survivors.map((row) => row.pgid).filter((group) => group > 1 && group !== hostGroup),
   );
@@ -29,5 +33,5 @@ export function survivorDescendantGroups(
       groups.set(child.pgid, parents);
     }
   }
-  return groups;
+  return { roots, groups };
 }

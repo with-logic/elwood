@@ -12,6 +12,9 @@ import {
 
 useScriptedHost();
 
+// Includes verification and kill-pass scans; per-member traversal exceeds 40,000 for 500 rows.
+const MAX_REAP_PID_INSPECTIONS_PER_ROW = 80;
+
 test("C-LIFE-10 a survivor group is traversed once rather than once per member", async () => {
   let inspected = 0;
   const rows = Array.from({ length: 500 }, (_, index) => {
@@ -32,5 +35,5 @@ test("C-LIFE-10 a survivor group is traversed once rather than once per member",
   inspected = 0;
   expect(await reapRecordedSurvivors(record, fake.ops)).toBeUndefined();
   expect(fake.calls).toContain("kill 6000");
-  expect(inspected).toBeLessThanOrEqual(rows.length * 80);
+  expect(inspected).toBeLessThanOrEqual(rows.length * MAX_REAP_PID_INSPECTIONS_PER_ROW);
 });

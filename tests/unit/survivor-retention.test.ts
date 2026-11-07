@@ -58,10 +58,12 @@ test.each([
   expect((await reapRecordedSurvivors(record, ops))?.processGroupIds).toEqual([5002]);
   expect(calls).not.toContain("stop 5002");
   expect(calls).toContain("kill 5003");
-  expect(
-    await reapRecordedSurvivors(record, scripted([[{ ...ambiguous, zombie: true }]]).ops),
-  ).toBeUndefined();
-  expect(await reapRecordedSurvivors(record, scripted([[]]).ops)).toBeUndefined();
+  const zombie = scripted([[{ ...ambiguous, zombie: true }]]);
+  expect(await reapRecordedSurvivors(record, zombie.ops)).toBeUndefined();
+  expect(zombie.calls).toEqual(["list"]);
+  const absent = scripted([[]]);
+  expect(await reapRecordedSurvivors(record, absent.ops)).toBeUndefined();
+  expect(absent.calls).toEqual(["list"]);
   const reused = { ...ambiguous, startedAt: "Sun Oct 25 22:01:00 2026" };
   const replacement = scripted([[reused]]);
   expect(await reapRecordedSurvivors(record, replacement.ops)).toBeUndefined();
