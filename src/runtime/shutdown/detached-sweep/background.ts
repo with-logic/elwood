@@ -6,11 +6,18 @@ import type { DescendantRecord } from "./record.ts";
 import type { SweepOps } from "./rounds.ts";
 import { reapRecordedSurvivors } from "./survivors.ts";
 
-/** Automatic retries end, while their identity-bound evidence remains available. */
+/** Sixty seconds allows delayed cleanup without scanning the host indefinitely. */
 export const BACKGROUND_REAP_RETRY_WINDOW_MS = 60_000;
+/** One-second gaps limit repeated full-table scans while still observing delayed exit. */
 export const BACKGROUND_REAP_RETRY_MS = 1_000;
 type AttemptOutcome = "resolved" | "retry" | "blocked";
-export type BackgroundReap = { readonly resolved: () => boolean };
+export type BackgroundReap = {
+  /**
+   * True once known evidence resolves. False includes active retries and stopped,
+   * unresolved recovery; it does not report loop completion.
+   */
+  readonly resolved: () => boolean;
+};
 
 /** Never restart ancestry traversal from the dead leader's numeric PID. */
 export function reapInBackground(
@@ -23,7 +30,7 @@ export function reapInBackground(
   if (record.pids.length === 0) return recovery;
   const roots = new Set(record.pids);
   const scope = daemonScope(roots);
-  const recoveryOps = withKnownPaths(ops, scope);
+  const recoveryOps = withKnownPaths(ops, scope, record);
   const until = performance.now() + BACKGROUND_REAP_RETRY_WINDOW_MS;
   void (async () => {
     while (performance.now() < until) {
@@ -37,12 +44,18 @@ export function reapInBackground(
   return recovery;
 }
 
-/** Keep confirmed daemon paths for this recovery, including nested survivor reads. */
-function withKnownPaths(ops: SweepOps, scope: DaemonScope): SweepOps {
+/** Retain paths and unreadable gaps for every recovery read, including nested survivor reads. */
+function withKnownPaths(ops: SweepOps, scope: DaemonScope, record: DescendantRecord): SweepOps {
   return {
     ...ops,
-    listProcesses: (timeoutMs, innerScope) =>
-      ops.listProcesses(timeoutMs, { ...scope, ...innerScope, known: scope.known }),
+    listProcesses: async (timeoutMs, innerScope) => {
+      try {
+        return await ops.listProcesses(timeoutMs, { ...scope, ...innerScope, known: scope.known });
+      } catch (error) {
+        record.noteReadFailure(error);
+        throw error;
+      }
+    },
   };
 }
 
@@ -57,14 +70,18 @@ async function attempt(
   try {
     const readStartedAtEpochMs = Date.now();
     const table = await ops.listProcesses(DETACHED_SWEEP_BUDGET_MS, scope);
-    const resumed = record.resumes.retry(table, ops);
+    const resumeDebtCleared = record.resumes.retry(table, ops);
     const survivors = record.survivors(table);
     if (survivors.length === 0) {
-      if (record.known && resumed && !record.hasUnknownResume && !record.hasObservationUncertainty)
-        return "resolved";
-      return resumed ? "blocked" : "retry";
+      const knownEvidenceResolved =
+        record.known &&
+        resumeDebtCleared &&
+        !record.hasUnknownResume &&
+        !record.hasObservationUncertainty;
+      if (knownEvidenceResolved) return "resolved";
+      return resumeDebtCleared ? "blocked" : "retry";
     }
-    if (!record.known) return resumed ? "blocked" : "retry";
+    if (!record.known) return resumeDebtCleared ? "blocked" : "retry";
     if (performance.now() < until)
       await reapRecordedSurvivors(record, ops, DETACHED_SWEEP_BUDGET_MS, {
         table,
