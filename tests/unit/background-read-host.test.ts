@@ -57,6 +57,18 @@ void runFileUnreferenced(process.execPath,["-e",process.env.READER,process.env.M
 console.log("ready\\nqueued");
 `;
 
+const RECOVERY = `
+const {reapInBackground} = await import(process.env.SHUTDOWN+"/detached-sweep/background.ts");
+const {DescendantRecord} = await import(process.env.SHUTDOWN+"/detached-sweep/record.ts");
+const record = new DescendantRecord();
+const leader = {pid:10000001,pgid:10000001,ppid:1,zombie:false,stopped:false,startedAt:"Fri Jan 1 00:00:00 1960",name:"sh",shared:false};
+record.observe([leader,{...leader,pid:10000002,pgid:10000002,ppid:leader.pid}],leader.pid,true);
+reapInBackground(record,{
+  listProcesses:async()=>{console.log("ready\\nqueued");throw new Error("unreadable");},
+  stopGroup:()=>{},killGroup:()=>{},continueGroup:()=>{}
+},attempt=>attempt());
+`;
+
 test.each([
   {
     name: "unstarted coalescing",
@@ -85,6 +97,12 @@ test.each([
   {
     name: "queued native read",
     source: QUEUED,
+    expectedStdout: "ready\nqueued\n",
+    hasChildMarker: false,
+  },
+  {
+    name: "retained retry timer",
+    source: RECOVERY,
     expectedStdout: "ready\nqueued\n",
     hasChildMarker: false,
   },
