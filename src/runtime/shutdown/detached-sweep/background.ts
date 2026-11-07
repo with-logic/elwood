@@ -60,7 +60,8 @@ async function attempt(
     const resumed = record.resumes.retry(table, ops);
     const survivors = record.survivors(table);
     if (survivors.length === 0) {
-      if (record.known && resumed && !record.hasUnknownResume) return "resolved";
+      if (record.known && resumed && !record.hasUnknownResume && !record.hasObservationUncertainty)
+        return "resolved";
       return resumed ? "blocked" : "retry";
     }
     if (!record.known) return resumed ? "blocked" : "retry";

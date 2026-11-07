@@ -125,3 +125,41 @@ test("C-LIFE-10 a newly recorded child's root remains in later automatic reads",
   expect(scopes.at(-1)).toContain(5003);
   expect(recovery.resolved()).toBe(true);
 });
+
+test("C-LIFE-10 empty recovery reads cannot retire an unreadable observation gap", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+  const record = new DescendantRecord();
+  const tree = [leaderRow, hook(5002)];
+  record.observeFirst(tree, LEADER, Date.now());
+  record.observe(tree, LEADER, Date.now());
+  record.noteReadFailure(errno("EIO"));
+  const fake = scripted([[]]);
+  const first = reapInBackground(record, fake.ops, serialized());
+  await vi.advanceTimersByTimeAsync(0);
+  expect(first.resolved()).toBe(false);
+  const second = reapInBackground(record, fake.ops, serialized());
+  await vi.advanceTimersByTimeAsync(BACKGROUND_REAP_RETRY_WINDOW_MS + 1);
+  expect(first.resolved()).toBe(false);
+  expect(second.resolved()).toBe(false);
+  expect(fake.calls).toEqual(["list", "list"]);
+});
+
+test("C-LIFE-10 empty recovery reads cannot restore lost original-group authority", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(performance, "now").mockImplementation(() => Date.now());
+  const record = new DescendantRecord();
+  const tree = [leaderRow, hook(5002, { pgid: LEADER })];
+  record.observeFirst(tree, LEADER, Date.now());
+  record.observeLeaderGroup(tree, LEADER, Date.now());
+  record.markLeaderAuthorityLost(LEADER);
+  const fake = scripted([[]]);
+  const first = reapInBackground(record, fake.ops, serialized());
+  await vi.advanceTimersByTimeAsync(0);
+  expect(first.resolved()).toBe(false);
+  const second = reapInBackground(record, fake.ops, serialized());
+  await vi.advanceTimersByTimeAsync(BACKGROUND_REAP_RETRY_WINDOW_MS + 1);
+  expect(first.resolved()).toBe(false);
+  expect(second.resolved()).toBe(false);
+  expect(fake.calls).toEqual(["list", "list"]);
+});

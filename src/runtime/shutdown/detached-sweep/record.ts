@@ -154,6 +154,11 @@ export class DescendantRecord {
     this.unknownResume = true;
   }
 
+  /** Missing observations and lost original-group authority cannot be disproved by empty reads. */
+  get hasObservationUncertainty(): boolean {
+    return this.missedRead || this.unknownLeaderGroup !== undefined;
+  }
+
   get hasUnknownResume(): boolean {
     return this.unknownResume;
   }
