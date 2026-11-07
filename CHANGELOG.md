@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recover known retained shutdown failures in the background without holding the host alive; later shutdown calls can confirm cleanup after automatic retries expire, without re-signaling the agent.
+
 - Avoid unused process-table indexes when cleanup has no survivors or signaled
   descendant groups, and reuse group indexes when restoring unconfirmed survivors.
 
