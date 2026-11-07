@@ -21,13 +21,13 @@ test.each([
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   const fake = scripted([]);
   let reads = 0;
+  let recovering = false;
   const confirmation = Promise.withResolvers<[]>();
   setProcessTreeOpsForTests({
     ...fake.ops,
     listProcesses: () => {
       reads += 1;
-      if (reads === 2) return Promise.reject(errno("EIO"));
-      if (reads > 2) return confirmation.promise;
+      if (recovering) return confirmation.promise;
       const leader = ptys.at(-1)!.pid;
       return Promise.resolve(
         fake.asRead([
@@ -37,15 +37,24 @@ test.each([
       );
     },
     listProcessesUnreferenced: () => Promise.resolve([hook(10_000_002, { ppid: 1 })]),
+    killGroup: (group) => {
+      if (group === 10_000_002) {
+        recovering = true;
+        throw errno("EIO");
+      }
+      fake.ops.killGroup(group);
+    },
     stopGroup: (group) => {
-      if (group === 10_000_002) throw errno("EIO");
+      if (recovering && group === 10_000_002) throw errno("EIO");
       fake.ops.stopGroup(group);
     },
   });
   const session = await startClaude({ cwd: tempDir() });
   const pty = ptys.at(-1)!;
   await expect(session.kill()).rejects.toMatchObject({ code: "termination_failed" });
+  expect(recovering).toBe(true);
   const signals = [...pty.killSignals];
+  const readsBeforeRetry = reads;
   clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
   let settled = false;
   const retry = session[verb]().then(
@@ -58,7 +67,7 @@ test.each([
       return error;
     },
   );
-  await vi.waitFor(() => expect(reads).toBe(3));
+  await vi.waitFor(() => expect(reads).toBe(readsBeforeRetry + 1));
   expect(settled).toBe(false);
   confirmation.resolve([]);
   expect(await retry).toBeUndefined();

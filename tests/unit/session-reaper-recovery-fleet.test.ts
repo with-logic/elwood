@@ -31,24 +31,29 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
   const fake = scripted([]);
   const owners = Array.from({ length: 50 }, (_, index) => {
     const leader = 10_001_000 + index;
-    let reads = 0;
+    let recovering = false;
     return new SessionReaper(leader, {
       ...fake.ops,
       listProcesses: (ms) => {
-        reads += 1;
-        if (reads === 1)
+        if (!recovering)
           return Promise.resolve(
             fake.asRead([
               { ...leaderRow, pid: leader, pgid: leader },
               hook(10_002_000 + index, { ppid: leader }),
             ]),
           );
-        if (reads === 2) return Promise.reject(errno("EIO"));
         return read(ms);
       },
       listProcessesUnreferenced: () => Promise.resolve([hook(10_002_000 + index, { ppid: 1 })]),
+      killGroup: (group) => {
+        if (group === 10_002_000 + index) {
+          recovering = true;
+          throw errno("EIO");
+        }
+        fake.ops.killGroup(group);
+      },
       stopGroup: (group) => {
-        if (group === 10_002_000 + index) throw errno("EIO");
+        if (recovering && group === 10_002_000 + index) throw errno("EIO");
         fake.ops.stopGroup(group);
       },
     });
@@ -68,7 +73,7 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
     await confirmed;
     expect(native).toHaveBeenCalledOnce();
     expect(fake.calls.filter((call) => call.startsWith("kill "))).toHaveLength(50);
-    expect(fake.calls.filter((call) => call.startsWith("stop "))).toHaveLength(50);
+    expect(fake.calls.filter((call) => call.startsWith("stop "))).toHaveLength(100);
   } finally {
     for (const gate of gates) gate.resolve();
     await Promise.all(foreground);
