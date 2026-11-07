@@ -3,8 +3,8 @@ import { scheduler } from "node:timers/promises";
 import { errnoCode } from "../../../core/errors.ts";
 import { aggregateSignalFailures, throwSignalFailures } from "../merge-sweep-errors.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
-import { processReadTimeout } from "../read-timeout.ts";
 import type { ReapQueue } from "../reap-queue.ts";
+import { confirmRestoration, remainingMs } from "./hold-restoration.ts";
 import type { LeaderObservation } from "./leader-observation.ts";
 import type { DescendantRecord } from "./record.ts";
 import type { SweepOps } from "./rounds.ts";
@@ -120,11 +120,7 @@ async function verifyHeldLeader(
   }
 }
 
-/**
- * Restore only the original hold. Darwin can refuse CONT during TERM exit; one fresh
- * read must prove the whole group gone, or the original running with no live member
- * still stopped, before discarding debt.
- */
+/** Restore only freshly matched original stopped members after the signal attempt. */
 async function restoreHold(
   signal: HeldLeader,
   identity: string,
@@ -137,15 +133,39 @@ async function restoreHold(
     record.resumes.rememberIdentity({ identity, pid, pgid: pid });
     return false;
   }
-  const original = table.find(
-    (row) => !row.zombie && row.pgid === pid && processIdentity(row) === identity,
+  const identities = new Set([
+    identity,
+    ...record
+      .restorableMembers(table)
+      .filter((row) => row.pgid === pid)
+      .map(processIdentity),
+  ]);
+  const owned = table.filter(
+    (row) => !row.zombie && row.pgid === pid && identities.has(processIdentity(row)),
   );
-  if (original === undefined) return false;
-  if (!original.stopped) {
+  if (!owned.some((row) => row.stopped)) {
     record.markUnknownResume();
     record.resumes.rememberIdentity({ identity, pid, pgid: pid });
     return false;
   }
+  let fresh: readonly ProcessEntry[];
+  try {
+    fresh = await ops.listProcesses(remainingMs(signal.deadline));
+    remainingMs(signal.deadline);
+  } catch (error) {
+    record.markUnknownResume();
+    record.resumes.remember(owned, pid);
+    failures.push(error);
+    return false;
+  }
+  if (!fresh.some((row) => !row.zombie && row.pgid === pid)) {
+    signal.guard.gone();
+    return true;
+  }
+  const originalMembers = fresh.filter(
+    (row) => !row.zombie && row.pgid === pid && identities.has(processIdentity(row)),
+  );
+  if (!originalMembers.some((row) => row.stopped)) return false;
   try {
     ops.continueGroup(pid);
   } catch (error) {
@@ -156,35 +176,17 @@ async function restoreHold(
     let confirmationError: unknown;
     if (errnoCode(error) === "EPERM") {
       try {
-        const fresh = await ops.listProcesses(remainingMs(signal.deadline));
-        remainingMs(signal.deadline);
-        if (!fresh.some((row) => row.pgid === pid && !row.zombie)) {
-          signal.guard.gone();
-          return true;
-        }
-        const originalLeaderIsRunning = fresh.some(
-          (row) =>
-            !(row.zombie || row.stopped) && row.pgid === pid && processIdentity(row) === identity,
-        );
-        const hasStoppedLiveGroupMember = fresh.some(
-          (row) => !row.zombie && row.stopped && row.pgid === pid,
-        );
-        if (originalLeaderIsRunning && !hasStoppedLiveGroupMember) return false;
+        const confirmed = await confirmRestoration(signal, identities);
+        if (confirmed !== undefined) return confirmed;
       } catch (readError) {
         confirmationError = readError;
       }
     }
-    record.resumes.remember(table, pid);
+    record.resumes.remember(originalMembers, pid);
     failures.push(error);
     if (confirmationError !== undefined) failures.push(confirmationError);
   }
   return false;
-}
-
-function remainingMs(deadline: number): number {
-  const left = Math.ceil(deadline - performance.now());
-  if (left <= 0) throw processReadTimeout("Graceful leader verification deadline expired.");
-  return left;
 }
 
 /** Preserve a failed first read even if native exit arrived before its result. */

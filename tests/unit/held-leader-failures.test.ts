@@ -47,7 +47,7 @@ test("C-LIFE-10 exit during verification restores only the already-sent hold", a
   run.signal.leaderExited = () => exited;
   await expect(run.run()).rejects.toThrow("not confirmed held");
   expect(run.delivered).toEqual([]);
-  expect(fake.calls).toEqual(["list", `cont ${LEADER}`]);
+  expect(fake.calls).toEqual(["list", "list", `cont ${LEADER}`]);
 });
 
 test.each(

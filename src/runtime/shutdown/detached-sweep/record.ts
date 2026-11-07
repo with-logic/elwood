@@ -167,6 +167,14 @@ export class DescendantRecord {
     ];
   }
 
+  /** Original unambiguous members, including shared processes whose holds need restoration. */
+  restorableMembers(table: readonly ProcessEntry[]): readonly ProcessEntry[] {
+    return table.filter(
+      (row) =>
+        !row.zombie && this.identities.has(identity(row)) && !this.ambiguous.has(identity(row)),
+    );
+  }
+
   /**
    * The rows of `table` that are recorded processes still alive: same pid, same start.
    * Never Codex's shared daemon, which one may have become by `exec` since it was recorded.
