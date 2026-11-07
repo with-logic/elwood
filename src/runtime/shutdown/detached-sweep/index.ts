@@ -122,8 +122,10 @@ async function stopDescendantGroups(
   try {
     while (true) {
       const remainingMs = Math.ceil(deadline - performance.now());
-      if (remainingMs <= 0)
+      if (remainingMs <= 0) {
+        record?.markObservationGap();
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      }
       const readStartedAtEpochMs = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
@@ -132,15 +134,18 @@ async function stopDescendantGroups(
       record?.observe(table, leaderPid, readStartedAtEpochMs, state.live);
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
-      if (leaderExited())
+      if (leaderExited()) {
+        record?.markObservationGap();
         return recordUnconfirmed(
           state,
           "the leader exited before every group was confirmed stopped",
         );
+      }
       restopEscapedGroups(table, ops, state);
       stopAnchoredGroups(table, ops, state);
     }
   } catch (error) {
+    record?.markObservationGap();
     recordUnconfirmed(state, "process table unreadable", error);
   }
 }

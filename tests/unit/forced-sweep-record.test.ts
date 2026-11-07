@@ -68,6 +68,7 @@ test("C-LIFE-10 a forced walk retains failed shared-daemon restoration debt", as
     await sweepDetachedGroups(LEADER, fake.ops, leaderNeverExits, undefined, undefined, record),
   ).toBeInstanceOf(Error);
   expect(record.resumes.pids).toEqual([5002]);
+  expect(record.hasObservationUncertainty).toBe(false);
   const continued: number[] = [];
   expect(
     record.resumes.retry([{ ...child, stopped: true }], {

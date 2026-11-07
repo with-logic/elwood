@@ -1,5 +1,4 @@
-/**
- * Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10).
+/** Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10).
  * Frozen identities exclude replacements; failed observations retain uncertainty.
  */
 
@@ -137,6 +136,11 @@ export class DescendantRecord {
   refuseFirstObservation(error: unknown): LeaderObservation {
     this.firstLeaderObservation ??= refuseLeaderObservation(error);
     return this.firstLeaderObservation;
+  }
+
+  /** An incomplete walk can miss children that orphan before another observation. */
+  markObservationGap(): void {
+    this.missedRead = true;
   }
 
   /** A failed observation can hide an orphan; later readable tables cannot disprove it. */
