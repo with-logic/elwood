@@ -1435,6 +1435,14 @@ holds and freshly verifies the original leader, then restores the hold. `ps lsta
 has second resolution, so ambiguous first identities and failed first reads refuse
 leader signaling rather than adopting a later process with the same PID.
 
+Codex 0.167.0 on macOS can exit between TERM and the hold's CONT, before the
+terminal exit notification arrives. Darwin then returns `EPERM` for CONT. One
+fresh read within the existing deadline must confirm either the same original
+leader is no longer stopped or the whole group has no live members. A stopped
+original, replacement identity, failed read, or expired deadline preserves the
+restoration failure and debt. The real snapshot-shell stop test reproduces the
+failure without this confirmation and passes with it (2026-11-07).
+
 ## Codex 0.164 starts an app-server daemon per `CODEX_HOME` (2026-10-25)
 
 Codex 0.158.0 and later list the feature `daemon_auto_start` as stable and on (0.156.1
