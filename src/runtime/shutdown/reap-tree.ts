@@ -1,7 +1,4 @@
-/**
- * Reaps PTY descendants except Codex's shared daemon/updater tree (PRD §5.3/§9.4,
- * C-LIFE-10/14). Retained identities protect cleanup after the leader exits.
- */
+/** Identity-bound PTY descendant cleanup, sparing shared Codex daemons (PRD §9.4, C-LIFE-10/14). */
 
 import { toError } from "../../core/errors.ts";
 import { sweepDetachedGroups } from "./detached-sweep/index.ts";
@@ -29,7 +26,6 @@ export {
 } from "./process-tree-ops.ts";
 
 export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
-
 /** Completion retires numeric signals; only the termination owner confirms PTY exit. */
 export class SessionReaper {
   private readonly leaderPid: number;
@@ -41,9 +37,9 @@ export class SessionReaper {
   private leaderVerificationPending = false;
   private leaderSignalAuthorizationError: Error | undefined;
   private leaderGroupGone = false;
+  private leaderReapError: Error | undefined;
   private readonly detachedSweepQueue = new SerialDetachedSweepQueue();
   private readonly retainedFailures: RetainedShutdownFailures;
-
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
     this.ops = withLeaderGroupDisappearanceGuard(
@@ -65,8 +61,14 @@ export class SessionReaper {
     if (this.done || this.leaderGroupGone || this.pendingSweeps > 0) return;
     this.assertLeaderSignalsAllowed();
     if (this.gracefulWatch !== undefined) return;
-    reapProcessGroup(this.leaderPid, this.ops);
-    this.done = true;
+    try {
+      reapProcessGroup(this.leaderPid, this.ops);
+      this.leaderReapError = undefined;
+      this.done = true;
+    } catch (error) {
+      this.leaderReapError = toError(error);
+      throw error;
+    }
   }
 
   /** Dispatch a PTY signal only while this session has not confirmed its group gone. */
@@ -136,17 +138,14 @@ export class SessionReaper {
     );
     return this.gracefulWatch;
   }
-
   private forbidLeaderSignals(error: unknown): void {
     this.leaderSignalAuthorizationError ??= toError(error);
     this.leaderVerificationPending = false;
   }
-
   private assertNoAuthorizationFailure(): void {
     if (this.leaderSignalAuthorizationError !== undefined)
       throw this.leaderSignalAuthorizationError;
   }
-
   private assertLeaderSignalsAllowed(): void {
     if (this.leaderVerificationPending)
       this.forbidLeaderSignals(
@@ -155,19 +154,24 @@ export class SessionReaper {
     this.assertNoAuthorizationFailure();
   }
 
-  /** Explicit lifecycle retries await expired confirmation independently of the cached watch. */
+  /** Retained-history retries confirm evidence without restarting numeric leader signals. */
   reapAndThrowOnDetachedSweepFailure(): void | Promise<void> {
+    if (!this.retainedFailures.hasRetainedHistory) return this.reap();
+    if (this.leaderReapError !== undefined) this.forbidLeaderSignals(this.leaderReapError);
     const confirmation = this.retainedFailures.confirm();
     const finish = () => {
-      this.reap();
+      this.assertNoAuthorizationFailure();
       this.retainedFailures.throwIfUnresolved();
     };
     if (confirmation !== undefined) return confirmation.then(finish);
     finish();
   }
 
+  /** Join graceful cleanup, or walk a live leader before forced termination.
+   * A gone group still joins unfinished restoration; completed cleanup never restarts ancestry. */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
-    if (this.done || (this.leaderGroupGone && this.gracefulCleanupFinished)) return;
+    const cleanupComplete = this.done || (this.leaderGroupGone && this.gracefulCleanupFinished);
+    if (cleanupComplete) return;
     if (this.gracefulWatch !== undefined) return this.gracefulWatch.reap();
     if (!isReapableGroupId(this.leaderPid)) return;
     this.pendingSweeps += 1;

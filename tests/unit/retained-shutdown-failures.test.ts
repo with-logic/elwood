@@ -40,13 +40,16 @@ test("C-LIFE-10 the original attempt rejects even when automatic recovery resolv
   const fake = scripted([[]]);
   const failures = manager(fake.ops);
   failures.keep(undefined, recorded());
+  expect(failures.hasRetainedHistory).toBe(false);
   expect(failures.confirm()).toBeUndefined();
   expect(() => failures.throwIfUnresolved()).not.toThrow();
   expect(() => failures.keep(failure, recorded())).toThrow(failure);
+  expect(failures.hasRetainedHistory).toBe(true);
   expect(() => failures.throwIfUnresolved()).toThrow(failure);
   await vi.advanceTimersByTimeAsync(0);
   expect(() => failures.throwIfUnresolved()).not.toThrow();
   expect(failures.confirm()).toBeUndefined();
+  expect(failures.hasRetainedHistory).toBe(true);
 });
 
 test("C-LIFE-10 separate background and referenced readers confirm all retained records", async () => {
