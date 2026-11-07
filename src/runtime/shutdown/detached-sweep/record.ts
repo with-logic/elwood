@@ -19,10 +19,13 @@ import {
   observeLeader,
   refuseLeaderObservation,
 } from "./leader-observation.ts";
+import { ResumeDebt } from "./resume-debt.ts";
 
 /** The detached descendants seen so far, by pid and start time. */
 export class DescendantRecord {
   private readonly identities = new Set<string>();
+  private unknownResume = false;
+  readonly resumes = new ResumeDebt();
   /** Frozen first-read result: an accepted identity, confirmed absence, or refusal. */
   private firstLeaderObservation: LeaderObservation | undefined;
   /**
@@ -67,9 +70,22 @@ export class DescendantRecord {
     return this.firstLeaderObservation;
   }
 
+  /** A failed restoration without a fresh process identity cannot be retried safely. */
+  markUnknownResume(): void {
+    this.unknownResume = true;
+  }
+
+  get hasUnknownResume(): boolean {
+    return this.unknownResume;
+  }
+
   /** The pid of each process recorded, whatever it runs now. */
   get pids(): readonly number[] {
-    return [...this.identities].map((id) => Number.parseInt(id, 10));
+    return [
+      ...new Set(
+        [...this.identities].map((id) => Number.parseInt(id, 10)).concat(this.resumes.pids),
+      ),
+    ];
   }
 
   /**
