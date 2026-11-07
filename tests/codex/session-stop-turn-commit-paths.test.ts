@@ -46,12 +46,17 @@ test.each<[string, Observer]>([
   unboundedCommitWait();
   const cwd = tempDir();
   const { session, path } = await runningTurn(cwd);
+  // Publish after the Stop wait is armed, before its scan notifies transcript observers.
+  session.on("hook", (event) => {
+    if (event.hook_event_name === "Stop") appendRecord(path, "agent_message", "turn-1");
+  });
   let shutdown: Promise<void> | undefined;
   observe(session, () => {
     shutdown ??= tracked(session.stop());
   });
-  // The hook-time scan delivers this turn's last committed record to transcript observers.
-  appendRecord(path, "agent_message", "turn-1");
+  // An earlier background poll must not deliver the fixture's hook-time record.
+  await transcriptReads(1);
+  expect(shutdown).toBeUndefined();
   await stopHookUntilClosed(session, cwd, path);
   if (!shutdown) throw new Error("the observer did not stop the session");
   await transcriptReads(2);
