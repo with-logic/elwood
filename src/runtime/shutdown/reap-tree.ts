@@ -13,7 +13,7 @@ import {
   watchSurvivors,
 } from "./detached-sweep/survivor-watch.ts";
 import { isReapableGroupId, reapProcessGroup } from "./leader-group.ts";
-import { withTerminalLeaderGroup } from "./leader-group-evidence.ts";
+import { withLeaderGroupDisappearanceGuard } from "./leader-group-evidence.ts";
 import { mergeSweepErrors } from "./merge-sweep-errors.ts";
 import { activeProcessTreeOps, type ProcessTreeOps } from "./process-tree-ops.ts";
 import { SerialDetachedSweepQueue } from "./reap-queue.ts";
@@ -46,7 +46,7 @@ export class SessionReaper {
 
   constructor(leaderPid: number, ops: ProcessTreeOps = activeProcessTreeOps()) {
     this.leaderPid = leaderPid;
-    this.ops = withTerminalLeaderGroup(
+    this.ops = withLeaderGroupDisappearanceGuard(
       leaderPid,
       ops,
       () => this.leaderGroupGone,
