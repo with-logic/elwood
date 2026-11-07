@@ -24,7 +24,13 @@ import {
   startDetachedTree,
   waitForTreeProcessPid,
 } from "../helpers/detached-tree.ts";
-import { killGroupsWhoseCommandHas, pollGone, processRows } from "../helpers/process-liveness.ts";
+import {
+  delay,
+  killGroupsWhoseCommandHas,
+  pollGone,
+  processRows,
+} from "../helpers/process-liveness.ts";
+import { DISTINCT_PROCESS_START_DELAY_MS } from "../helpers/process-start-time.ts";
 import { startBystander, stopBystander } from "../helpers/setsid-pair.ts";
 
 describe("C-LIFE-10 detached descendants (real processes)", () => {
@@ -56,6 +62,8 @@ describe("C-LIFE-10 detached descendants (real processes)", () => {
     expect(await observedProcessShape([tree.pty.pid, child, grandchild])).toEqual(
       detachedShape(tree.pty.pid, child, grandchild),
     );
+    // Reach ignored-TERM escalation with a distinguishable original leader identity.
+    await delay(DISTINCT_PROCESS_START_DELAY_MS);
     await terminatePty(tree.pty, "SIGTERM", new SessionReaper(tree.pty.pid), {
       gracefulMs: 300,
       forceMs: 5_000,
