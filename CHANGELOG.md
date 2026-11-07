@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Retry optional CLI updates on a later independent start after local or peer
+  prerequisite verification refuses, without recording a completed update or exposing verifier output.
+
 - Keep the owned update lease when completion cannot be recorded, preventing a
   second updater from racing an attempt whose completion was not published.
 

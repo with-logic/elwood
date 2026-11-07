@@ -1,21 +1,18 @@
 /**
- * Builds the best-effort `agent_update_failed` warning (PRD §9.2, C-LIFE-11) shared by both
- * adapter preflights. A `claude update` / `codex update` that fails is contained (never fatal
- * when the installed CLI is compatible) and surfaced as this live warning with the diagnostics
- * the PRD allows — the installed version in use, the update probe's exit status and errno, and
- * the updater's own stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
- * prompts). Contention is not a failed update and reports differently: an error carrying
- * `updateReason: "active_owner"` — another process held the update lease until this caller's
- * wait expired — becomes `errorCode: "update_active"` with a message saying the update was
- * skipped, and no diagnostics, because no local updater ran to produce an errno or stderr.
- * The user's login shell can also fail before the update command runs (§9.2): that reports
- * `errorCode: "login_shell_failed"` with empty `raw`, since its stderr would be only the
- * profile's startup output.
+ * Builds best-effort `agent_update_failed` warnings for adapter preflights (PRD §9.2,
+ * C-LIFE-11). Attempted updates report their allowed diagnostics: the installed version,
+ * probe exit status and errno, and updater stderr capped at 2 KB in `raw`.
+ * Local prerequisite-verification refusals and known peer verification refusals instead
+ * report that the update was skipped before invocation, without updater diagnostics or
+ * verifier output. Contention reports `update_active` without updater diagnostics.
+ * A login-shell failure before invocation reports `login_shell_failed` with empty `raw`,
+ * withholding profile startup output.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { ElwoodError } from "../errors.ts";
 import { probeRefusalContext } from "../probe-refusal.ts";
+import { UpdateVerificationFailure } from "../update-verification.ts";
 import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
 
 /**
@@ -45,39 +42,42 @@ const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
 ]);
 
 /**
- * Build the warning from the contained update error. `installedVersion` is the parsed version the
- * session will actually run (the preflight re-read it after the failed update). `errorCode` is
- * `login_shell_failed` when the login shell failed before the update ran, else the update
- * probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
- *
- * An error carrying `updateReason: "active_owner"` is contention, not failure: another process
- * held the update lease until this caller's wait expired, so no local update command ran. That
- * yields `errorCode: "update_active"` and a message saying the update was skipped, with empty
- * diagnostics — there is no errno or updater stderr to report, and retrying is the caller's
- * next startup, not something to drive off this warning.
+ * Build a contained update warning using the installed version the session will run.
+ * Attempted updates report the probe's allowlisted errno or a generic failure token.
+ * Local prerequisite-verification and known peer refusals report `update_failed` with
+ * fixed skipped-before-invocation wording and no diagnostics. Contention instead reports
+ * `update_active`; a pre-command login-shell failure reports `login_shell_failed`.
  */
 export function buildUpdateWarning(
   agent: ElwoodAgentKind,
   installedVersion: string,
   error: unknown,
 ): UpdateFailedWarning {
-  const details = error instanceof ElwoodError ? error.details : {};
+  const isVerificationRefusal =
+    error instanceof UpdateVerificationFailure ||
+    (error instanceof ElwoodError && error.details["updateReason"] === "peer_verification_refused");
+  const details = !isVerificationRefusal && error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
   const exitStatus = typeof details["exitStatus"] === "number" ? details["exitStatus"] : undefined;
   const skipped = skippedUpdates.get(details["updateReason"]);
   const refusal = probeRefusalContext(error);
+  let message: string;
+  if (isVerificationRefusal) {
+    message = `\`${agent} update\` skipped before invocation; continuing with the installed CLI ${installedVersion}.`;
+  } else if (skipped !== undefined) {
+    message = `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`;
+  } else if (typeof refusal === "string") {
+    message = `${refusal} Continuing with the installed CLI ${installedVersion}.`;
+  } else {
+    message = `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`;
+  }
   return {
     agent,
     source: "lifecycle",
     code: "agent_update_failed",
     severity: "warning",
-    message:
-      skipped === undefined
-        ? refusal === undefined
-          ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
-          : `${refusal} Continuing with the installed CLI ${installedVersion}.`
-        : `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`,
+    message,
     installedVersion,
     errorCode: skipped === undefined ? failureCode(details, errno) : "update_active",
     raw: stderr.slice(0, maxStderr),

@@ -1,8 +1,9 @@
 /** Completion-aware acquisition of the global update lease (PRD §9.2, C-PERF-04). */
-import { elwoodError } from "../../core/errors.ts";
+import { unlink } from "node:fs/promises";
+import { elwoodError, errnoCode } from "../../core/errors.ts";
 import { completionSnapshot, readCompletionGeneration } from "./completion.ts";
 import type { UpdateAdapter } from "./lock.ts";
-import { type LeaseOwner, releaseLease } from "./owner.ts";
+import { type LeaseOwner, readOptionalText, releaseLease } from "./owner.ts";
 import { pathExists, recoveryPath, type UpdateWaitResult, waitForOwner } from "./waiting.ts";
 
 type Acquisition = {
@@ -10,6 +11,7 @@ type Acquisition = {
   readonly leasePath: string;
   readonly owner: LeaseOwner;
   readonly completionMarkerPath: string;
+  readonly refusalMarkerPath: string;
   readonly pollMs: number;
   readonly staleMs: number;
   readonly waitUntilMs: number;
@@ -22,6 +24,7 @@ export async function acquireUpdateLease({
   leasePath,
   owner,
   completionMarkerPath,
+  refusalMarkerPath,
   pollMs,
   staleMs,
   waitUntilMs,
@@ -32,6 +35,23 @@ export async function acquireUpdateLease({
     priorCompletionGeneration,
     ownerAlreadyCompleted,
   } = await completionSnapshot(leasePath, completionMarkerPath);
+  let latestGeneration = observedGeneration;
+  // Refusal authority belongs only to the latest observed owner.
+  const rejectRefusal = async () => {
+    const matchesReceipt =
+      latestGeneration !== undefined &&
+      (await readOptionalText(refusalMarkerPath)) === latestGeneration;
+    const completionUnchanged =
+      matchesReceipt &&
+      (await readCompletionGeneration(completionMarkerPath)) === priorCompletionGeneration;
+    if (completionUnchanged) {
+      throw elwoodError(
+        `${adapter}_update_failed`,
+        "Another updater refused prerequisite verification.",
+        { updateReason: "peer_verification_refused" },
+      );
+    }
+  };
   const observedGenerations = new Set(observedGeneration === undefined ? [] : [observedGeneration]);
   let observedActive =
     observedGeneration !== undefined ||
@@ -45,10 +65,18 @@ export async function acquireUpdateLease({
     // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
-    const waited = recoveredWait(
-      adapter,
-      await waitForOwner(leasePath, pollMs, staleMs, waitUntilMs),
+    const observation = await waitForOwner(
+      leasePath,
+      pollMs,
+      staleMs,
+      waitUntilMs,
+      latestGeneration,
     );
+    if ("generation" in observation) {
+      latestGeneration = observation.generation;
+      await rejectRefusal();
+    }
+    const waited = recoveredWait(adapter, observation);
     if (waited === false) return false;
     if (waited.generation !== undefined) observedGenerations.add(waited.generation);
     recoveredStale = true;
@@ -68,8 +96,14 @@ export async function acquireUpdateLease({
   const unrecoveredContention = !recoveredStale && observedActive;
   if (observedOwnerCompleted || completionAdvanced || unrecoveredContention) {
     await releaseLease(leasePath, owner);
+    if (!(observedOwnerCompleted || completionAdvanced)) await rejectRefusal();
     return false;
   }
+  await unlink(refusalMarkerPath).catch(async (error: unknown) => {
+    if (errnoCode(error) === "ENOENT") return;
+    await releaseLease(leasePath, owner);
+    throw error;
+  });
   return true;
 }
 
@@ -77,7 +111,7 @@ export async function acquireUpdateLease({
 function recoveredWait(
   adapter: UpdateAdapter,
   result: UpdateWaitResult,
-): false | Extract<UpdateWaitResult, { readonly status: "stale_removed" }> {
+): false | Extract<UpdateWaitResult, { readonly generation: string | undefined }> {
   switch (result.status) {
     case "released":
       return false;

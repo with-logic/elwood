@@ -1,14 +1,10 @@
-/**
- * Cross-process lease for globally mutating agent updates.
- * Implements PRD §9.2, C-LIFE-09, and C-PERF-04: separate Elwood hosts for
- * one macOS user serialize per-adapter updates and recover a killed owner's lease.
- */
-
+/** Cross-process update ownership and recovery (PRD §9.2, C-LIFE-09, C-PERF-04). */
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError, errnoCode } from "../../core/errors.ts";
+import { UpdateVerificationFailure } from "../../core/update-verification.ts";
 import { waitForProbeGroups } from "../probe/cleanup.ts";
 import { acquireUpdateLease } from "./acquire.ts";
 import { publishCompletionGeneration } from "./completion.ts";
@@ -50,10 +46,10 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
 
 /**
  * Runs `update` only for the lease owner. A contender waits until that owner
- * settles and then returns without a duplicate update; callers re-read version
- * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
- * Failed completion publication retains the owned lease; ordinary dead-owner
- * recovery may later permit a retry.
+ * completes and then returns without a duplicate update; callers re-read version state.
+ * A matching refusal rejects current contenders; a later independent call may retry.
+ * Owned verification failures release without completion after probe cleanup.
+ * Failed completion publication retains the lease until ordinary dead-owner recovery.
  * After 165 seconds by default, a still-active owner rejects with the adapter's
  * update_failed error and updateReason active_owner; preflight warns and continues.
  * A lease held by a surviving updater group skips that wait and rejects immediately with
@@ -76,12 +72,14 @@ export async function coordinatedAutoupdate(
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completionMarkerPath = join(root, `${adapter}.completed`);
+  const refusalMarkerPath = `${completionMarkerPath}.refused`;
   if (
     !(await acquireUpdateLease({
       adapter,
       leasePath,
       owner,
       completionMarkerPath,
+      refusalMarkerPath,
       pollMs,
       staleMs,
       waitUntilMs,
@@ -101,12 +99,21 @@ export async function coordinatedAutoupdate(
     );
   // An aborted probe's unresolved group is observed once more: only a group still live
   // after that window keeps the lease, and then the lease outlives this process.
-  const abortedGroupId = unresolvedProbeGroup(outcome?.error);
+  const refusal = outcome?.error instanceof UpdateVerificationFailure ? outcome.error : undefined;
+  const abortedGroupId = unresolvedProbeGroup(
+    refusal === undefined ? outcome?.error : refusal.error,
+  );
   const unfinishedGroupIds =
     abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
   if (unfinishedGroupIds.length === 0) {
     try {
-      await publishCompletionGeneration(leasePath, completionMarkerPath, owner);
+      if (refusal === undefined) {
+        await publishCompletionGeneration(leasePath, completionMarkerPath, owner);
+      } else {
+        await publishCompletionGeneration(leasePath, refusalMarkerPath, owner).catch(
+          () => undefined,
+        );
+      }
     } catch (error) {
       // Retain the durable owner: releasing without completion lets a pinned contender update again.
       if (outcome !== undefined) throw outcome.error;
@@ -170,7 +177,6 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
  */
 async function sweepLeaseLeftovers(path: string): Promise<void> {
   const root = dirname(path);
-  // Claim staging AND leases already retired by their owner: both are this adapter's debris.
   const leftovers = [".claim.", retiredLeaseInfix].map((infix) => `${basename(path)}${infix}`);
   let swept = 0;
   let inspected = 0;

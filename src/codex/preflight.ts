@@ -5,6 +5,7 @@
 
 import { elwoodError, notFoundDetails, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { verifyBeforeUpdate } from "../core/update-verification.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
 import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import {
@@ -60,10 +61,11 @@ export async function preflightCodex(
     // Only a test that reset the update module without setting a coordinator sees a throw here.
     const outcome = await cachedAutoupdate(
       "codex",
-      async () => {
-        await readCodexVersion(workspace); // verify existence only after owning the cross-process lease
-        await runCodexUpdate(workspace);
-      },
+      () =>
+        verifyBeforeUpdate(
+          () => readCodexVersion(workspace),
+          () => runCodexUpdate(workspace),
+        ),
       () => capabilityProbe.clear(),
     );
     if (!outcome.ok) updateError = outcome.error;

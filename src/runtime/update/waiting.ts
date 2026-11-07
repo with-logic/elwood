@@ -6,7 +6,13 @@ import { opendir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../probe/index.ts";
-import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.ts";
+import {
+  type LeaseOwner,
+  leaseIsAlive,
+  ownerFile,
+  pendingOwnerPrefix,
+  readOwner,
+} from "./owner.ts";
 
 /**
  * A contender's default wait: longer than an owner can hold the lease while its two probes,
@@ -17,18 +23,24 @@ import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.
 export const defaultWaitMs = 2 * (probeLaunchTimeoutMs + probeCommandTimeoutMs) + 15_000;
 
 export type UpdateWaitResult =
-  | { readonly status: "released" | "wait_expired" | "cleanup_pending" }
-  | { readonly status: "stale_removed"; readonly generation: string | undefined };
+  | { readonly status: "wait_expired" | "cleanup_pending" }
+  | { readonly status: "released" | "stale_removed"; readonly generation: string | undefined };
 type RecoveryResult =
   | { readonly status: "alive" | "unrecoverable" }
   | { readonly status: "removed"; readonly generation: string | undefined };
 
+/**
+ * Seeds the token from the acquisition snapshot if the lease vanishes before the first
+ * poll; returns the latest token observed during the wait.
+ */
 export async function waitForOwner(
   path: string,
   pollMs: number,
   staleMs: number,
   waitUntilMs: number,
+  initialGeneration?: string,
 ): Promise<UpdateWaitResult> {
+  let generation = initialGeneration;
   for (;;) {
     if (performance.now() >= waitUntilMs) return { status: "wait_expired" };
     let lease: Awaited<ReturnType<typeof stat>>;
@@ -36,9 +48,10 @@ export async function waitForOwner(
       lease = await stat(path);
     } catch {
       if (await restoreRecovery(path)) continue;
-      return { status: "released" };
+      return { status: "released", generation };
     }
     const current = await readOwner(path);
+    generation = await observedOwnerGeneration(path, current, generation);
     // Presence of the record only, not proof that any of those groups still runs; the
     // liveness question is asked separately below.
     const hasRecordedProcessGroups = current?.ownedProcessGroupIds !== undefined;
@@ -52,10 +65,20 @@ export async function waitForOwner(
       const recovered = await recoverStaleLease(path);
       if (recovered.status === "removed")
         return { status: "stale_removed", generation: recovered.generation };
-      if (recovered.status === "unrecoverable") return { status: "released" };
+      if (recovered.status === "unrecoverable") return { status: "released", generation };
     }
     await delay(pollMs);
   }
+}
+
+/** Keep the last token only when a missing record belongs to a lease that disappeared. */
+async function observedOwnerGeneration(
+  path: string,
+  current: LeaseOwner | undefined,
+  previous: string | undefined,
+): Promise<string | undefined> {
+  if (current !== undefined) return current.token;
+  return (await pathExists(path)) ? undefined : previous;
 }
 
 async function recoverStaleLease(path: string): Promise<RecoveryResult> {

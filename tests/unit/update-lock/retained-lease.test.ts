@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { expect, test } from "vitest";
 import { elwoodError } from "../../../src/core/errors.ts";
+import { UpdateVerificationFailure } from "../../../src/core/update-verification.ts";
 import { processGroupGone } from "../../../src/runtime/probe/cleanup.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../../src/runtime/update/lock.ts";
 import { readOwner } from "../../../src/runtime/update/owner.ts";
@@ -37,14 +38,19 @@ const abortedWith = (processGroupId: number): Error =>
     cleanupProcessGroupId: processGroupId,
   });
 
-test("C-PERF-04 an aborted update whose group survives hands the lease to that group", async () => {
+test.each([
+  false,
+  true,
+])("C-PERF-04 an aborted probe retains its group (verification=%s)", async (verification) => {
   const group = spawnGroup();
   const root = tempDir("elwood-retain-");
   const path = updateLockPath("codex", root);
   try {
+    const failure = abortedWith(group.id);
+    const error = verification ? new UpdateVerificationFailure(failure) : failure;
     await expect(
-      coordinatedAutoupdate("codex", () => Promise.reject(abortedWith(group.id)), { root }),
-    ).rejects.toThrow("was aborted");
+      coordinatedAutoupdate("codex", () => Promise.reject(error), { root }),
+    ).rejects.toBe(error);
     // The lease outlives this process, recorded as held by the surviving group alone.
     expect(await readOwner(path)).toMatchObject({ ownedProcessGroupIds: [group.id] });
     // A contender sees a live group and says so rather than installing over it.
