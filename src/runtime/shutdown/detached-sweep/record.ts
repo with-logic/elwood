@@ -16,7 +16,7 @@ import { SweepFailures } from "./failures.ts";
 import {
   type LeaderObservation,
   observeLeader,
-  PROCESS_START_TIME_RESOLUTION_MS,
+  processStartTimeUncertaintyMs,
   refuseLeaderObservation,
 } from "./leader-observation.ts";
 import { ResumeDebt } from "./resume-debt.ts";
@@ -89,15 +89,13 @@ export class DescendantRecord {
     groups: ReadonlyMap<number, ReadonlySet<ProcessEntry>>,
     readStartedAtEpochMs: number,
   ): void {
+    const startTimeUncertaintyMs = processStartTimeUncertaintyMs();
     for (const row of table) {
       if (row.zombie || !groups.has(row.pgid)) continue;
       const id = identity(row);
       if (!this.identities.has(id)) {
         const started = Date.parse(`${row.startedAt} UTC`);
-        if (
-          !Number.isFinite(started) ||
-          started + PROCESS_START_TIME_RESOLUTION_MS > readStartedAtEpochMs
-        )
+        if (!Number.isFinite(started) || started + startTimeUncertaintyMs > readStartedAtEpochMs)
           this.ambiguous.add(id);
       }
       this.identities.add(id);

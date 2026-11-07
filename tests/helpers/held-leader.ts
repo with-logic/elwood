@@ -1,5 +1,6 @@
 /** Scripted held-leader boundary, without PTYs or native signals (PRD §5.3, C-LIFE-10). */
 import { sendHeldLeaderSignal } from "../../src/runtime/shutdown/detached-sweep/held-leader.ts";
+import { processStartTimeUncertaintyMs } from "../../src/runtime/shutdown/detached-sweep/leader-observation.ts";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/rounds.ts";
 import { LEADER, leaderRow, STARTED_AT, scripted } from "./scripted-process-tree.ts";
@@ -9,7 +10,7 @@ export function heldLeader(ops: SweepOps = scripted([[leaderRow]]).ops) {
   const observation = record.observeFirst(
     [leaderRow],
     LEADER,
-    Date.parse(`${STARTED_AT} UTC`) + 1_001,
+    Date.parse(`${STARTED_AT} UTC`) + processStartTimeUncertaintyMs(),
   );
   const delivered: string[] = [];
   const refused: unknown[] = [];

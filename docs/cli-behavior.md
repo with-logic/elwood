@@ -2601,3 +2601,19 @@ and reported the handler's status. macOS's bash 3.2 predates the hook. The probe
 script now runs `unset -f command_not_found_handler command_not_found_handle
 2>/dev/null || :` before its command. Each shell ignores the other's name. With it,
 both shells exit 127 and capture no marker.
+
+## Linux process start timestamps can lag birth by nearly two seconds (2026-11-07)
+
+Linux procps computes `ps lstart` from integer boot seconds plus integer process
+uptime seconds ([procps 4.0.4 output.c](https://gitlab.com/procps-ng/procps/-/blob/v4.0.4/src/ps/output.c),
+[library/stat.c](https://gitlab.com/procps-ng/procps/-/blob/v4.0.4/library/stat.c)).
+The two truncations can together underreport birth by almost two seconds. Darwin
+formats the process’s start-time seconds directly, truncating only once
+([Apple ps/print.c](https://github.com/apple-oss-distributions/adv_cmds/blob/main/ps/print.c)).
+
+A first-seen retained identity therefore needs its reported start plus two seconds
+on Linux, or one on Darwin, no later than the process-read start epoch. Equality
+is sufficient: the actual birth lies strictly before that upper boundary. This
+excludes births during the read; it does not prove an atomic association with the
+original native PTY spawn. Scripted boundary tests cover both platforms; native
+fixtures age owned children beyond the matching interval before observing them.

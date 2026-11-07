@@ -1,5 +1,6 @@
 /** Recorded ownership and ambiguity survive later reads (PRD §5.3, C-LIFE-10). */
 import { afterEach, expect, test, vi } from "vitest";
+import { processStartTimeUncertaintyMs } from "../../src/runtime/shutdown/detached-sweep/leader-observation.ts";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { reapRecordedSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
 import {
@@ -117,11 +118,12 @@ test("C-LIFE-10 a newly observed child's ambiguity uses its process-read start e
   expect(calls).toContain("kill 5002");
 });
 
-test("C-LIFE-10 an exact start-second boundary supplies distinguishable descendant identity", async () => {
+test("C-LIFE-10 an exact platform uncertainty boundary supplies distinguishable descendant identity", async () => {
   const child = hook(5002);
   const record = new DescendantRecord();
-  record.observeFirst([{ ...leaderRow, startedAt: older }, child], LEADER, epoch + 500);
-  record.observe([{ ...leaderRow, startedAt: older }, child], LEADER, epoch + 500);
+  const readStartedAt = epoch - 500 + processStartTimeUncertaintyMs();
+  record.observeFirst([{ ...leaderRow, startedAt: older }, child], LEADER, readStartedAt);
+  record.observe([{ ...leaderRow, startedAt: older }, child], LEADER, readStartedAt);
   const { ops, calls } = scripted([[{ ...child, ppid: 1 }]]);
   expect(await reapRecordedSurvivors(record, ops)).toBeUndefined();
   expect(calls).toContain("kill 5002");
