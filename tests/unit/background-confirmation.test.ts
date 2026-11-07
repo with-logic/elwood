@@ -6,7 +6,8 @@ import {
 } from "../../src/runtime/shutdown/detached-sweep/background.ts";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/rounds.ts";
-import { SerialDetachedSweepQueue } from "../../src/runtime/shutdown/reap-queue.ts";
+import { serializedReapQueue } from "../helpers/reap-queue.ts";
+import { recordedDescendants } from "../helpers/recorded-descendants.ts";
 import {
   errno,
   hook,
@@ -27,12 +28,6 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-function recorded() {
-  const record = new DescendantRecord();
-  record.observeFirst([leaderRow], LEADER, Date.now());
-  record.observe([leaderRow, hook(5002)], LEADER);
-  return record;
-}
 /** Keep owned live evidence waiting on a signal failure, without inventing a read gap. */
 function parked() {
   return scripted([], {
@@ -42,18 +37,14 @@ function parked() {
     },
   });
 }
-const serialize = () => {
-  const queue = new SerialDetachedSweepQueue();
-  return <T>(attempt: () => Promise<T>) => queue.run(attempt);
-};
 const expiry = () => {
   clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
 };
 
 test("C-LIFE-10 confirmation starts only after expiry, and never for empty or resolved records", async () => {
   const fake = scripted([[]]);
-  const empty = reapInBackground(new DescendantRecord(), fake.ops, serialize());
-  const resolved = reapInBackground(recorded(), fake.ops, serialize());
+  const empty = reapInBackground(new DescendantRecord(), fake.ops, serializedReapQueue());
+  const resolved = reapInBackground(recordedDescendants(), fake.ops, serializedReapQueue());
   expect(resolved.confirm()).toBeUndefined();
   await vi.advanceTimersByTimeAsync(0);
   expect(resolved.resolved()).toBe(true);
@@ -65,16 +56,22 @@ test("C-LIFE-10 confirmation starts only after expiry, and never for empty or re
 
 test("C-LIFE-10 an unreadable confirmation remains unresolved after matching identities disappear", async () => {
   const fake = parked();
-  let rows = [hook(5002)];
+  let rows = [hook(5002, { stopped: true })];
   let unreadable = false;
   const read = vi.fn(() => (unreadable ? Promise.reject(errno("EIO")) : Promise.resolve(rows)));
-  const recovery = reapInBackground(recorded(), fake.ops, serialize(), {
+  const stopGroup = vi.fn();
+  const killGroup = vi.fn();
+  const recovery = reapInBackground(recordedDescendants(), fake.ops, serializedReapQueue(), {
     ...fake.ops,
     listProcesses: read,
+    stopGroup,
+    killGroup,
   });
   await vi.advanceTimersByTimeAsync(0);
   expiry();
   await recovery.confirm();
+  expect(stopGroup).not.toHaveBeenCalled();
+  expect(killGroup).not.toHaveBeenCalled();
   expect(recovery.resolved()).toBe(false);
   unreadable = true;
   await recovery.confirm();
@@ -84,18 +81,29 @@ test("C-LIFE-10 an unreadable confirmation remains unresolved after matching ide
   await recovery.confirm();
   expect(recovery.resolved()).toBe(false);
   expect(read).toHaveBeenCalledTimes(3);
-  expect(fake.calls).toEqual([]);
+  expect(stopGroup).not.toHaveBeenCalled();
+  expect(killGroup).not.toHaveBeenCalled();
 });
 
-test.each([
-  false,
-  true,
-])("C-LIFE-10 unknown ownership or restoration cannot be confirmed (%s)", async (unknownResume) => {
-  const record = recorded();
-  if (unknownResume) record.markUnknownResume();
-  else record.known = false;
+test("C-LIFE-10 unknown ownership cannot be confirmed", async () => {
+  const record = recordedDescendants();
+  record.known = false;
   const fake = parked();
-  const recovery = reapInBackground(record, fake.ops, serialize(), {
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
+    ...fake.ops,
+    listProcesses: () => Promise.resolve([]),
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expiry();
+  await recovery.confirm();
+  expect(recovery.resolved()).toBe(false);
+});
+
+test("C-LIFE-10 unknown restoration cannot be confirmed", async () => {
+  const record = recordedDescendants();
+  record.markUnknownResume();
+  const fake = parked();
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
     ...fake.ops,
     listProcesses: () => Promise.resolve([]),
   });
@@ -106,7 +114,7 @@ test.each([
 });
 
 test("C-LIFE-10 concurrent confirmations reuse conclusive evidence and retain new roots and daemon paths", async () => {
-  const record = recorded();
+  const record = recordedDescendants();
   const fake = scripted([], {
     listProcesses: (_ms, scope) => {
       scope?.known.add("confirmed daemon path");
@@ -121,7 +129,7 @@ test("C-LIFE-10 concurrent confirmations reuse conclusive evidence and retain ne
     expect(scope?.known.has("confirmed daemon path")).toBe(true);
     return Promise.resolve([]);
   });
-  const recovery = reapInBackground(record, fake.ops, serialize(), {
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
     ...fake.ops,
     listProcesses: read,
   });
@@ -145,7 +153,7 @@ test("C-LIFE-10 expired confirmation retries matching stopped restoration withou
     },
   });
   const restored: number[] = [];
-  const recovery = reapInBackground(record, fake.ops, serialize(), {
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
     ...fake.ops,
     continueGroup: (group) => {
       restored.push(group);
@@ -160,7 +168,7 @@ test("C-LIFE-10 expired confirmation retries matching stopped restoration withou
 });
 
 test("C-LIFE-10 an ambiguous recorded survivor stays unresolved until it disappears", async () => {
-  const record = recorded();
+  const record = recordedDescendants();
   const ambiguous = hook(5003);
   record.observeGroups(
     [ambiguous],
@@ -169,7 +177,7 @@ test("C-LIFE-10 an ambiguous recorded survivor stays unresolved until it disappe
   );
   const fake = parked();
   let rows = [ambiguous];
-  const recovery = reapInBackground(record, fake.ops, serialize(), {
+  const recovery = reapInBackground(record, fake.ops, serializedReapQueue(), {
     ...fake.ops,
     listProcesses: () => Promise.resolve(rows),
   });

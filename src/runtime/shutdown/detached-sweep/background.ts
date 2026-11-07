@@ -17,6 +17,8 @@ export type BackgroundReap = {
    * unresolved recovery; it does not report loop completion.
    */
   readonly resolved: () => boolean;
+  /** Fulfillment ends the bounded check, not cleanup. Manager callers must then use
+   * throwIfUnresolved(); direct callers must inspect resolved(). */
   readonly confirm: () => Promise<void> | undefined;
 };
 
@@ -47,7 +49,8 @@ export function reapInBackground(
       const checking = serialize(async () => {
         if (resolved || performance.now() >= deadline) return;
         for (const pid of record.pids) roots.add(pid);
-        resolved = (await attempt(record, foregroundOps, scope, deadline, false)) === "resolved";
+        const outcome = await attempt(record, foregroundOps, scope, deadline, false);
+        if (performance.now() < deadline) resolved = outcome === "resolved";
       });
       return Promise.race([checking, expired]).finally(() => clearTimeout(timer));
     },
@@ -79,7 +82,10 @@ function withKnownPaths(ops: SweepOps, scope: DaemonScope, record: DescendantRec
   };
 }
 
-/** One fresh read seeds the safe survivor reap; success still needs a later empty read. */
+/**
+ * Background reads seed a survivor reap and require later empty evidence. Confirmation
+ * skips reaping; one fresh empty read can resolve known evidence within its total budget.
+ */
 async function attempt(
   record: DescendantRecord,
   ops: SweepOps,
@@ -90,11 +96,12 @@ async function attempt(
   if (performance.now() >= until) return "blocked";
   try {
     const readStartedAtEpochMs = Date.now();
-    const budget = mayReap ? DETACHED_SWEEP_BUDGET_MS : Math.ceil(until - performance.now());
-    const table = await ops.listProcesses(budget, scope);
+    const readTimeoutMs = mayReap ? DETACHED_SWEEP_BUDGET_MS : Math.ceil(until - performance.now());
+    const table = await ops.listProcesses(readTimeoutMs, scope);
     if (!mayReap && performance.now() >= until) return "blocked";
-    const resumeDebtCleared = record.resumes.retry(table, ops);
+    const resumeDebtCleared = record.resumes.retry(table, ops, mayReap ? undefined : until);
     const survivors = record.survivors(table);
+    if (!mayReap && performance.now() >= until) return "blocked";
     if (survivors.length === 0) {
       const knownEvidenceResolved =
         record.known &&

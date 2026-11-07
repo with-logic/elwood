@@ -34,7 +34,10 @@ export class RetainedShutdownFailures {
     throw failure;
   }
 
-  /** Only expired records admit a fresh, referenced confirmation. */
+  /**
+   * Only expired records admit fresh referenced checks. Fulfillment means checking
+   * finished or timed out; callers must use throwIfUnresolved() before reporting success.
+   */
   confirm(): Promise<void> | undefined {
     const pending = this.recoveries
       .map((recovery) => recovery.confirm())

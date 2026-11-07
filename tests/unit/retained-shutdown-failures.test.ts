@@ -4,7 +4,7 @@ import { BACKGROUND_REAP_RETRY_WINDOW_MS } from "../../src/runtime/shutdown/deta
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { RetainedShutdownFailures } from "../../src/runtime/shutdown/detached-sweep/retained-failures.ts";
 import type { SweepOps } from "../../src/runtime/shutdown/detached-sweep/rounds.ts";
-import { SerialDetachedSweepQueue } from "../../src/runtime/shutdown/reap-queue.ts";
+import { serializedReapQueue } from "../helpers/reap-queue.ts";
 import {
   errno,
   hook,
@@ -32,8 +32,7 @@ function recorded(pid = 5002) {
   return record;
 }
 function manager(ops: ConstructorParameters<typeof RetainedShutdownFailures>[0]) {
-  const queue = new SerialDetachedSweepQueue();
-  return new RetainedShutdownFailures(ops, (attempt) => queue.run(attempt));
+  return new RetainedShutdownFailures(ops, serializedReapQueue());
 }
 const failure = Object.assign(new Error("original cleanup failed"), { processGroupIds: [5002] });
 

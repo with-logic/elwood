@@ -4,15 +4,9 @@ import {
   BACKGROUND_REAP_RETRY_WINDOW_MS,
   reapInBackground,
 } from "../../src/runtime/shutdown/detached-sweep/background.ts";
-import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
-import { SerialDetachedSweepQueue } from "../../src/runtime/shutdown/reap-queue.ts";
-import {
-  hook,
-  LEADER,
-  leaderRow,
-  scripted,
-  useScriptedHost,
-} from "../helpers/scripted-process-tree.ts";
+import { serializedReapQueue } from "../helpers/reap-queue.ts";
+import { recordedDescendants } from "../helpers/recorded-descendants.ts";
+import { LEADER, leaderRow, scripted, useScriptedHost } from "../helpers/scripted-process-tree.ts";
 
 useScriptedHost();
 let clock = 0;
@@ -25,22 +19,16 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-function recorded() {
-  const record = new DescendantRecord();
-  record.observeFirst([leaderRow], LEADER, Date.now());
-  record.observe([leaderRow, hook(5002)], LEADER);
-  return record;
-}
 const expiry = () => {
   clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
 };
 
 test("C-LIFE-10 confirmation expiry while queued starts no late process read", async () => {
-  const queue = new SerialDetachedSweepQueue();
+  const queue = serializedReapQueue();
   const gate = Promise.withResolvers<void>();
-  const held = queue.run(() => gate.promise);
+  const held = queue(() => gate.promise);
   const fake = scripted([[]]);
-  const recovery = reapInBackground(recorded(), fake.ops, (attempt) => queue.run(attempt));
+  const recovery = reapInBackground(recordedDescendants(), fake.ops, queue);
   expiry();
   const confirmation = recovery.confirm();
   clock += 10_000;
@@ -54,17 +42,17 @@ test("C-LIFE-10 confirmation expiry while queued starts no late process read", a
 });
 
 test("C-LIFE-10 queue time reduces the confirmation budget and tardy results cannot resolve it", async () => {
-  const queue = new SerialDetachedSweepQueue();
+  const queue = serializedReapQueue();
   const gate = Promise.withResolvers<void>();
-  const held = queue.run(() => gate.promise);
+  const held = queue(() => gate.promise);
   const table = Promise.withResolvers<readonly (typeof leaderRow)[]>();
   const fake = scripted([[]]);
   const read = vi.fn((_ms: number) => table.promise);
-  const record = recorded();
+  const record = recordedDescendants();
   const stopped = { ...leaderRow, stopped: true };
   record.resumes.remember([stopped], LEADER);
   const restore = vi.fn();
-  const recovery = reapInBackground(record, fake.ops, (attempt) => queue.run(attempt), {
+  const recovery = reapInBackground(record, fake.ops, queue, {
     ...fake.ops,
     listProcesses: read,
     continueGroup: restore,
@@ -86,4 +74,19 @@ test("C-LIFE-10 queue time reduces the confirmation budget and tardy results can
   await recovery.confirm();
   expect(recovery.resolved()).toBe(true);
   expect(restore).toHaveBeenCalledExactlyOnceWith(LEADER);
+});
+
+test("C-LIFE-10 expired three-argument confirmation uses its original reader", async () => {
+  const queue = serializedReapQueue();
+  const gate = Promise.withResolvers<void>();
+  const held = queue(() => gate.promise);
+  const fake = scripted([[]]);
+  const recovery = reapInBackground(recordedDescendants(), fake.ops, queue);
+  expiry();
+  const checking = recovery.confirm();
+  gate.resolve();
+  await held;
+  await checking;
+  expect(fake.calls).toEqual(["list"]);
+  expect(recovery.resolved()).toBe(true);
 });
