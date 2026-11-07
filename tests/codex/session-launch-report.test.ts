@@ -14,19 +14,17 @@ import { codexHomeReportPath } from "../helpers/codex-home.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { FakePty } from "../helpers/fake-pty.ts";
 import { exitingDuringStartup, rejection, startupExit } from "../helpers/startup-exit.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, tempDir } from "./helpers.ts";
 import {
+  cleanupModelSessions,
   driveSetModel,
-  restoreCodexHome,
   sandboxCodexHome,
+  trackModelSession,
   until,
   userConfig,
 } from "./session-models-helpers.ts";
 
-afterEach(() => {
-  resetFakes();
-  restoreCodexHome();
-});
+afterEach(cleanupModelSessions);
 
 /** The report path of the first Codex launch. */
 function firstReport(): string {
@@ -39,8 +37,7 @@ async function readySession() {
   const cwd = tempDir();
   const configPath = sandboxCodexHome(cwd);
   installFakes();
-  const session = await startCodex({ cwd });
-  onTestFinished(() => session.stop());
+  const session = trackModelSession(await startCodex({ cwd }));
   await becomeReady(session.elwoodSessionId, cwd);
   await until(() => session.status === "ready", { label: "codex ready" });
   return { session, configPath };

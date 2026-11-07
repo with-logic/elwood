@@ -84,3 +84,24 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     expect(afterFlushRan).toBe(true); // afterFlush still ran despite both throws
   });
 });
+
+test("C-LIFE-10 finishing from a transcript callback preserves the current record batch", async () => {
+  const order: string[] = [];
+  const emitter = fakeEmitter((event) => {
+    if (event.kind !== "assistant_message") return;
+    order.push(event.text ?? "");
+    if (order.length === 1) built.finishSafely(() => order.push("exit"));
+  });
+  const built = createTranscriptWatcher("reentrant", emitter);
+  const path = tmpFile();
+  writeFileSync(path, "");
+  built.watcher.observe(path);
+  writeFileSync(
+    path,
+    `${[assistant("first"), assistant("second")].map((row) => JSON.stringify(row)).join("\n")}\n`,
+  );
+  built.watcher.scan();
+  expect(order).toEqual(["first", "second"]);
+  await Promise.resolve();
+  expect(order).toEqual(["first", "second", "exit"]);
+});
