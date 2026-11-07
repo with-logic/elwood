@@ -17,6 +17,7 @@ export type BackgroundReap = {
    * unresolved recovery; it does not report loop completion.
    */
   readonly resolved: () => boolean;
+  readonly confirm: () => Promise<void> | undefined;
 };
 
 /** Never restart ancestry traversal from the dead leader's numeric PID. */
@@ -24,18 +25,37 @@ export function reapInBackground(
   record: DescendantRecord,
   ops: SweepOps,
   serialize: ReapQueue,
+  confirmationOps: SweepOps = ops,
 ): BackgroundReap {
   let resolved = false;
-  const recovery = { resolved: () => resolved };
-  if (record.pids.length === 0) return recovery;
+  if (record.pids.length === 0) return { resolved: () => resolved, confirm: () => undefined };
   const roots = new Set(record.pids);
   const scope = daemonScope(roots);
   const recoveryOps = withKnownPaths(ops, scope, record);
+  const foregroundOps = withKnownPaths(confirmationOps, scope, record);
   const until = performance.now() + BACKGROUND_REAP_RETRY_WINDOW_MS;
+  const recovery: BackgroundReap = {
+    resolved: () => resolved,
+    confirm: () => {
+      if (resolved || performance.now() < until) return undefined;
+      const deadline = performance.now() + DETACHED_SWEEP_BUDGET_MS;
+      let timer: NodeJS.Timeout;
+      // This reference owns the foreground request even while an unreferenced pass holds the queue.
+      const expired = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, DETACHED_SWEEP_BUDGET_MS);
+      });
+      const checking = serialize(async () => {
+        if (resolved || performance.now() >= deadline) return;
+        for (const pid of record.pids) roots.add(pid);
+        resolved = (await attempt(record, foregroundOps, scope, deadline, false)) === "resolved";
+      });
+      return Promise.race([checking, expired]).finally(() => clearTimeout(timer));
+    },
+  };
   void (async () => {
     while (performance.now() < until) {
       for (const pid of record.pids) roots.add(pid);
-      const outcome = await serialize(() => attempt(record, recoveryOps, scope, until));
+      const outcome = await serialize(() => attempt(record, recoveryOps, scope, until, true));
       resolved = outcome === "resolved";
       if (outcome !== "retry" || performance.now() >= until) return;
       await new Promise<void>((resolve) => setTimeout(resolve, BACKGROUND_REAP_RETRY_MS).unref());
@@ -65,11 +85,14 @@ async function attempt(
   ops: SweepOps,
   scope: DaemonScope,
   until: number,
+  mayReap: boolean,
 ): Promise<AttemptOutcome> {
   if (performance.now() >= until) return "blocked";
   try {
     const readStartedAtEpochMs = Date.now();
-    const table = await ops.listProcesses(DETACHED_SWEEP_BUDGET_MS, scope);
+    const budget = mayReap ? DETACHED_SWEEP_BUDGET_MS : Math.ceil(until - performance.now());
+    const table = await ops.listProcesses(budget, scope);
+    if (!mayReap && performance.now() >= until) return "blocked";
     const resumeDebtCleared = record.resumes.retry(table, ops);
     const survivors = record.survivors(table);
     if (survivors.length === 0) {
@@ -82,7 +105,7 @@ async function attempt(
       return resumeDebtCleared ? "blocked" : "retry";
     }
     if (!record.known) return resumeDebtCleared ? "blocked" : "retry";
-    if (performance.now() < until)
+    if (mayReap && performance.now() < until)
       await reapRecordedSurvivors(record, ops, DETACHED_SWEEP_BUDGET_MS, {
         table,
         readStartedAtEpochMs,
