@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Avoid unused process-table indexes when cleanup has no survivors or signaled
+  descendant groups, and reuse group indexes when restoring unconfirmed survivors.
+
 - Recognize Codex 0.167.0’s agents footer as a configured composer, so startup and
   queued input do not wait for the readiness fallback.
 

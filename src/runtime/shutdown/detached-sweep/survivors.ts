@@ -94,6 +94,11 @@ async function stopSurvivorGroups(
       });
       const blocked = record.unsafeSurvivorGroups(table);
       const survivors = record.survivors(table).filter((row) => !blocked.has(row.pgid));
+      if (survivors.length === 0 && state.signaledGroupIds.size === 0) {
+        recordAmbiguousGroups(blocked, state);
+        state.live = new Map();
+        return;
+      }
       const { roots, groups: discovered } = survivorAndDescendantGroups(
         survivors,
         table,
@@ -103,8 +108,7 @@ async function stopSurvivorGroups(
       record.observeGroups(table, discovered, readStartedAtEpochMs);
       anchors.afterRead(table);
       const unsafe = record.unsafeSurvivorGroups(table);
-      if (unsafe.size > 0)
-        state.failures.record("a survivor group has an ambiguous identity", undefined, [...unsafe]);
+      recordAmbiguousGroups(unsafe, state);
       state.live = new Map(
         [...discovered].filter(([group]) => !(unsafe.has(group) || anchors.rejected.has(group))),
       );
@@ -119,4 +123,10 @@ async function stopSurvivorGroups(
   } catch (error) {
     recordUnconfirmed(state, "process table unreadable", error);
   }
+}
+
+/** Preserve unknown original-group ownership even when no survivor remains to traverse. */
+function recordAmbiguousGroups(groups: ReadonlySet<number>, state: SweepState): void {
+  if (groups.size > 0)
+    state.failures.record("a survivor group has an ambiguous identity", undefined, [...groups]);
 }

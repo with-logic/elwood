@@ -89,8 +89,8 @@ export class SurvivorAnchors {
       this.record.resumes.remember([...identities.values()], group);
       return;
     }
-    const original = this.state.latest.filter(
-      (row) => !row.zombie && row.pgid === group && identities.has(processIdentity(row)),
+    const original = [...(this.byGroup.get(group)?.values() ?? [])].filter((row) =>
+      identities.has(processIdentity(row)),
     );
     if (original.length === 0) return;
     try {
