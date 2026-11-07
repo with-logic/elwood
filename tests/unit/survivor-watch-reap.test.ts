@@ -32,8 +32,13 @@ test("C-LIFE-10 replacement leader-group owners are spared while detached origin
     [leaderRow, originalHelper, child],
     [replacement, { ...child, ppid: 1 }],
   ]);
-  const watch = watchSurvivors(LEADER, fake.ops, () => true, vi.fn(), survivorGuard());
+  const keep = vi.fn();
+  const watch = watchSurvivors(LEADER, fake.ops, () => true, keep, survivorGuard());
   await watch.finish();
+  expect(keep).toHaveBeenCalledWith(
+    expect.objectContaining({ processGroupIds: [LEADER] }),
+    expect.anything(),
+  );
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).not.toContain(`stop ${LEADER}`);
   expect(fake.calls).not.toContain(`kill ${LEADER}`);

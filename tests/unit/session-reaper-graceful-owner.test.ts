@@ -35,14 +35,20 @@ test("C-LIFE-10 the cached graceful owner spares replacements through exit and f
     "verified leader-group cleanup",
   );
   const afterTerm = fake.calls.length;
-  await reaper.sweepDetached(() => false);
-  await watch.finish();
+  await expect(reaper.sweepDetached(() => false)).rejects.toMatchObject({
+    processGroupIds: [LEADER],
+  });
+  await expect(watch.finish()).rejects.toMatchObject({ processGroupIds: [LEADER] });
   expect(fake.calls.slice(afterTerm)).not.toContain(`stop ${LEADER}`);
   const completed = [...fake.calls];
   reaper.reap();
-  await reaper.sweepDetached(() => false);
+  await expect(reaper.sweepDetached(() => false)).rejects.toMatchObject({
+    processGroupIds: [LEADER],
+  });
   expect(reaper.watchSurvivors(() => false)).toBe(watch);
-  expect(await watch.sendSignal(() => fake.calls.push("late TERM"))).toBe("leader-group-gone");
+  await expect(watch.sendSignal(() => fake.calls.push("late TERM"))).rejects.toMatchObject({
+    processGroupIds: [LEADER],
+  });
   expect(fake.calls).toEqual(completed);
   expect(fake.calls).toContain("kill 5002");
   expect(fake.calls).not.toContain(`kill ${LEADER}`);
@@ -101,30 +107,65 @@ test("C-LIFE-10 an earlier forced-sweep failure survives verified graceful clean
   expect(fake.calls).toEqual(completed);
 });
 
-test.each([
-  "reaped",
-  "gone",
-  "graceful ESRCH",
-])("C-LIFE-10 an already %s group exposes an inert completed watch", async (kind) => {
-  const fake = scripted(kind === "graceful ESRCH" ? [[leaderRow], []] : [], {
+async function completedWatchOutcome(reaper: SessionReaper, fake: ReturnType<typeof scripted>) {
+  const group = reaper.signalLeaderPty(() => fake.calls.push("unsafe KILL"));
+  await reaper.sweepDetached(() => false);
+  const completed = fake.calls.length;
+  const watch = reaper.watchSurvivors(() => false);
+  await watch.firstRead;
+  const signal = await watch.sendSignal(() => fake.calls.push("unsafe TERM"));
+  await watch.reap();
+  await watch.finish();
+  return {
+    group,
+    signal,
+    observation: (await watch.firstObservation).kind,
+    extra: fake.calls.slice(completed),
+  };
+}
+
+test("C-LIFE-10 a successfully reaped group exposes an inert completed watch", async () => {
+  const fake = scripted([]);
+  const reaper = new SessionReaper(LEADER, fake.ops);
+  reaper.reap();
+  expect(await completedWatchOutcome(reaper, fake)).toEqual({
+    group: "leader-group-gone",
+    signal: "leader-group-gone",
+    observation: "gone",
+    extra: [],
+  });
+});
+
+test("C-LIFE-10 a confirmed-gone group exposes an inert completed watch", async () => {
+  const fake = scripted([], {
     stopGroup: () => {
       throw errno("ESRCH");
     },
   });
   const reaper = new SessionReaper(LEADER, fake.ops);
-  if (kind === "reaped") reaper.reap();
-  else if (kind === "gone") await reaper.sweepDetached(() => false);
-  else await reaper.watchSurvivors(() => false).sendSignal(() => fake.calls.push("unsafe TERM"));
-  expect(reaper.signalLeaderPty(() => fake.calls.push("unsafe KILL"))).toBe("leader-group-gone");
   await reaper.sweepDetached(() => false);
-  const completed = [...fake.calls];
-  const watch = reaper.watchSurvivors(() => false);
-  await watch.firstRead;
-  expect((await watch.firstObservation).kind).toBe(kind === "graceful ESRCH" ? "observed" : "gone");
-  expect(await watch.sendSignal(() => fake.calls.push("unsafe TERM"))).toBe("leader-group-gone");
-  await watch.reap();
-  await watch.finish();
-  expect(fake.calls).toEqual(completed);
+  expect(await completedWatchOutcome(reaper, fake)).toEqual({
+    group: "leader-group-gone",
+    signal: "leader-group-gone",
+    observation: "gone",
+    extra: [],
+  });
+});
+
+test("C-LIFE-10 graceful ESRCH keeps its original observation and an inert cleanup", async () => {
+  const fake = scripted([[leaderRow], []], {
+    stopGroup: () => {
+      throw errno("ESRCH");
+    },
+  });
+  const reaper = new SessionReaper(LEADER, fake.ops);
+  await reaper.watchSurvivors(() => false).sendSignal(() => fake.calls.push("unsafe TERM"));
+  expect(await completedWatchOutcome(reaper, fake)).toEqual({
+    group: "leader-group-gone",
+    signal: "leader-group-gone",
+    observation: "observed",
+    extra: [],
+  });
 });
 
 test("C-LIFE-10 a completed watch still reports earlier unresolved sweep errors", async () => {

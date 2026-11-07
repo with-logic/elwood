@@ -1,4 +1,4 @@
-/** Private graceful recording, held signaling and retained outcomes (PRD §5.3, C-LIFE-10). */
+/** Owns one verified cleanup of original groups and detached helpers (PRD §5.3, C-LIFE-10). */
 import { type SweepFailure, SweepFailures } from "./failures.ts";
 import {
   type LeaderSignalGuard,
@@ -17,9 +17,10 @@ export type SurvivorWatch = {
   /** Freezes the first read's evidence; a missing target settles immediately as refused. */
   readonly firstObservation: Promise<LeaderObservation>;
   readonly sendSignal: (send: () => void) => Promise<LeaderSignalOutcome>;
-  /** Stop recording and verify/reap every recorded group, including a still-live leader. */
+  /** Stop recording and memoize one verified cleanup, while the leader lives or after exit. */
   readonly reap: () => Promise<void>;
-  /** Retain read failures regardless of the flag; true also records an unconfirmed exit. */
+  /** Join started cleanup, or start it after exit; retain read failures for either flag.
+   * True also records an unconfirmed exit when cleanup has not started. */
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
 

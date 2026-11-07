@@ -44,14 +44,11 @@ export {
 export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
 
 /**
- * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
- * once: `stop()` then a later `teardown()` both want to guarantee the group is
- * gone, but signaling the same numeric pgid twice is unsafe — once the group is
- * empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit an
- * unrelated group. So the latch is set only AFTER the kill succeeds (an already
- * empty group's `ESRCH` is normalized to success by `reapProcessGroup`). A real
- * failure (e.g. EPERM) leaves the latch OPEN and rethrows, so a later teardown
- * call can retry. An ownership veto instead permanently blocks later leader signals.
+ * Owns one successful group cleanup: a numeric forced reap or a verified graceful walk.
+ * Completion prevents another numeric kill after PID reuse; it does not prove that
+ * node-pty delivered exit. The termination owner separately awaits that observation.
+ * Syscall reap failures stay retryable; an ownership veto permanently blocks later
+ * leader signals. Graceful cleanup retains its original record and first outcome.
  */
 export class SessionReaper {
   private readonly leaderPid: number;
@@ -160,8 +157,9 @@ export class SessionReaper {
   }
 
   /**
-   * Throw an earlier unresolved detached sweep after the explicit group reap.
-   * The caller sweeps before SIGKILL; this check cannot discover unobserved helpers.
+   * Synchronous failure check, not an owner of the asynchronous graceful wait.
+   * ShutdownCoordinator joins/chains explicit shutdown before this check; native exit
+   * callbacks only attempt the synchronous reap. Unobserved helpers cannot be discovered.
    */
   reapAndThrowOnDetachedSweepFailure(): void {
     this.reap();
@@ -169,13 +167,11 @@ export class SessionReaper {
   }
 
   /**
-   * Kill the process groups the leader's descendants moved into. Valid only while
-   * the leader is alive — afterwards its detached descendants are reparented to
-   * PID 1 and cannot be found — so it runs just before the leader is SIGKILLed, with
-   * `leaderExited` reporting whether the caller has seen the leader exit. A failure,
-   * including a leader exit that left a found group unreached, is kept for
-   * `reapAndThrowOnDetachedSweepFailure`, then thrown. Refuses the same misrouted ids
-   * as the group reap.
+   * With a graceful owner, joins its retained identity-verified cleanup before or after
+   * leader exit. Otherwise uses the legacy live-leader sweep before forced SIGKILL,
+   * while parent links can still identify detached descendants. That sweep records
+   * failed or unconfirmed groups for the later synchronous failure check and refuses
+   * the same unsafe numeric IDs as the group reap.
    */
   async sweepDetached(leaderExited: () => boolean): Promise<void> {
     if (this.gracefulWatch !== undefined) return this.gracefulWatch.reap();

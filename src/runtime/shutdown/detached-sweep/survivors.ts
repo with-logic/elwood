@@ -1,15 +1,12 @@
 /**
- * Reaps the recorded detached descendants that outlived a PTY leader's graceful exit
- * (PRD §5.3 and §9.4, C-LIFE-10), with the detached sweep's rounds and kill pass. With
- * the leader gone no parent pid links them to the session, so a group is first stopped
- * because a read shows a recorded process in it: same pid, same start time (`record.ts`).
- * From there the sweep's rules hold (`index.ts`), less the live leader: a held process
- * anchors the groups it started, a group read with a member running is stopped again,
- * and once a read converges the signaled groups are SIGKILLed deepest first, but one
- * holding Codex's daemon, which is resumed (`kill.ts`). A fresh post-stop read must
- * confirm an original stopped member before the kill pass. Unconfirmed holds fail;
- * restoration requires a fresh original identity, otherwise only owned debt is retained.
- * This private foundation has no production lifecycle caller yet.
+ * Verifies and reaps recorded original leader-group members and detached helpers
+ * (PRD §5.3/§9.4, C-LIFE-10), while the leader lives or after exit reparents helpers.
+ * A recorded PID and start time permit SIGSTOP; only a fresh original stopped member
+ * in the same group authorizes SIGKILL. The existing sweep rounds handle children
+ * forked during STOP and preserve Codex's shared daemon (`kill.ts`). Unattributable
+ * live members of the original group retain failure without authorizing any signal.
+ * Unconfirmed holds require fresh original identity for restoration; otherwise only
+ * owned restoration debt remains eligible for a later verified attempt.
  */
 
 import { errnoCode } from "../../../core/errors.ts";
@@ -34,7 +31,7 @@ import { SurvivorAnchors } from "./survivor-anchors.ts";
 import { survivorAndDescendantGroups } from "./survivor-groups.ts";
 
 /**
- * Stops and SIGKILLs the groups holding `record`'s processes that are still alive, and
+ * Stops and SIGKILLs groups holding `record`'s original processes that are still alive, and
  * any group they anchor, within the sweep's budget. Resolves to the unresolved failure,
  * or `undefined` once a read converged and every signaled group was killed, or resumed as
  * holding Codex's daemon. A record that does not know the leader's tree fails, and one

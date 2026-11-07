@@ -101,6 +101,7 @@ async function verifyHeldLeader(
 ): Promise<"leader-held" | "leader-group-gone"> {
   const { pid, ops, deadline } = signal;
   while (true) {
+    const readStartedAtEpochMs = Date.now();
     const table = await ops.listProcesses(remainingMs(deadline));
     read.table = table;
     if (!table.some((row) => row.pgid === pid && !row.zombie)) return "leader-group-gone";
@@ -110,7 +111,11 @@ async function verifyHeldLeader(
     if (!(originalIdentity && originalGroup) || signal.leaderExited())
       throw new Error("The original leader was not confirmed held before SIGTERM.");
     remainingMs(deadline);
-    if (leader.stopped) return "leader-held";
+    if (leader.stopped) {
+      signal.record.observeLeaderGroup(table, pid, readStartedAtEpochMs);
+      signal.record.observe(table, pid, readStartedAtEpochMs);
+      return "leader-held";
+    }
     await scheduler.yield();
   }
 }
