@@ -36,7 +36,11 @@ test.each([
         ]),
       );
     },
-    listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+    listProcessesUnreferenced: () => Promise.resolve([hook(10_000_002, { ppid: 1 })]),
+    stopGroup: (group) => {
+      if (group === 10_000_002) throw errno("EIO");
+      fake.ops.stopGroup(group);
+    },
   });
   const session = await startClaude({ cwd: tempDir() });
   const pty = ptys.at(-1)!;

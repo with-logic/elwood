@@ -55,7 +55,7 @@ test("C-LIFE-14 forced records recover automatically while their original attemp
   expect(fake.calls.filter((call) => call === `kill ${LEADER}`)).toHaveLength(1);
 });
 
-test("C-LIFE-14 expired confirmation is awaited and typed, while terminal checks start no reads", async () => {
+test("C-LIFE-14 expired confirmation is awaited and keeps read gaps, while terminal checks start no reads", async () => {
   const fake = scripted([]);
   let reads = 0;
   let gone = false;
@@ -69,7 +69,11 @@ test("C-LIFE-14 expired confirmation is awaited and typed, while terminal checks
         fake.asRead(reads === 1 ? [leaderRow, hook(5002)] : gone ? [] : [hook(5002, { ppid: 1 })]),
       );
     },
-    listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+    listProcessesUnreferenced: () => Promise.resolve([hook(5002, { ppid: 1 })]),
+    stopGroup: (group) => {
+      if (group === 5002) throw errno("EIO");
+      fake.ops.stopGroup(group);
+    },
   });
   const policy = new SessionReapPolicy("codex", "retained", LEADER);
   await expect(policy.reaper.sweepDetached(leaderNeverExits)).rejects.toThrow();
@@ -92,7 +96,9 @@ test("C-LIFE-14 expired confirmation is awaited and typed, while terminal checks
     code: "termination_failed",
   });
   unreadable = false;
-  await expect(Promise.resolve().then(() => policy.orThrow())).resolves.toBeUndefined();
+  await expect(Promise.resolve().then(() => policy.orThrow())).rejects.toMatchObject({
+    code: "termination_failed",
+  });
   expect(fake.calls.filter((call) => call === `kill ${LEADER}`)).toHaveLength(1);
   expect(fake.calls).not.toContain("stop 5002");
 });
@@ -145,7 +151,11 @@ test("C-LIFE-14 a second unknown record keeps the original failure after known r
       if (reads < 4) return Promise.reject(errno("EIO"));
       return Promise.resolve([]);
     },
-    listProcessesUnreferenced: () => Promise.reject(errno("EIO")),
+    listProcessesUnreferenced: () => Promise.resolve([hook(5002, { ppid: 1 })]),
+    stopGroup: (group) => {
+      if (group === 5002) throw errno("EIO");
+      fake.ops.stopGroup(group);
+    },
   });
   const original = await reaper.sweepDetached(leaderNeverExits).catch((error: unknown) => error);
   await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow();
