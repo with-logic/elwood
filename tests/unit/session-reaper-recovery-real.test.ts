@@ -4,11 +4,12 @@ import { osProcessTreeOps, SessionReaper } from "../../src/runtime/shutdown/reap
 import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 import { detachedDescendantPids, startDetachedTree } from "../helpers/detached-tree.ts";
 import { delay, pollGone } from "../helpers/process-liveness.ts";
+import { DISTINCT_PROCESS_START_DELAY_MS } from "../helpers/process-start-time.ts";
 
 test("C-LIFE-14 real retained descendants recover after the original forced walk fails", async () => {
   const tree = startDetachedTree();
   const descendants = await detachedDescendantPids(tree);
-  await delay(1100); // Identities must predate the first observation's whole start second.
+  await delay(DISTINCT_PROCESS_START_DELAY_MS);
   let reads = 0;
   const reaper = new SessionReaper(tree.pty.pid, {
     ...osProcessTreeOps,

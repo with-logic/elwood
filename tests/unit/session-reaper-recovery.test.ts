@@ -100,12 +100,15 @@ test("C-LIFE-14 expired confirmation is awaited and typed, while terminal checks
 test("C-LIFE-14 graceful restoration debt retires the leader owner on recovery CONT ESRCH", async () => {
   const fake = scripted([]);
   let resumes = 0;
+  let terminalSignalIndex = -1;
   let exited = false;
   const reaper = new SessionReaper(LEADER, {
     ...fake.ops,
     listProcesses: () => Promise.resolve(fake.asRead([leaderRow])),
     continueGroup: () => {
       resumes += 1;
+      fake.calls.push(`cont ${LEADER}`);
+      if (resumes === 3) terminalSignalIndex = fake.calls.length;
       throw errno(resumes < 3 ? "EPERM" : "ESRCH");
     },
   });
@@ -124,7 +127,11 @@ test("C-LIFE-14 graceful restoration debt retires the leader owner on recovery C
   reaper.reap();
   await reaper.sweepDetached(leaderNeverExits);
   expect(sent).not.toHaveBeenCalled();
-  expect(fake.calls).toEqual([`stop ${LEADER}`]);
+  expect(fake.calls[0]).toBe(`stop ${LEADER}`);
+  expect(
+    fake.calls.slice(0, terminalSignalIndex).filter((call) => call.startsWith("cont ")),
+  ).toHaveLength(3);
+  expect(fake.calls.slice(terminalSignalIndex)).toEqual([]);
 });
 
 test("C-LIFE-14 a second unknown record keeps the original failure after known records resolve", async () => {
