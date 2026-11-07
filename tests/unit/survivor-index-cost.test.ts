@@ -17,14 +17,14 @@ import {
 
 useScriptedHost();
 
-function countedRows(count = 500) {
-  let inspections = 0;
+function createPgidReadCountingTable(count = 500) {
+  let pgidReads = 0;
   const rows = Array.from({ length: count }, (_, index) => {
     const pid = 6000 + index;
     const row = hook(pid, { ppid: 1 });
     Object.defineProperty(row, "pgid", {
       get: () => {
-        inspections += 1;
+        pgidReads += 1;
         return pid;
       },
     });
@@ -32,29 +32,29 @@ function countedRows(count = 500) {
   });
   return {
     rows,
-    inspections: () => inspections,
-    reset: () => {
-      inspections = 0;
+    pgidReads: () => pgidReads,
+    resetPgidReads: () => {
+      pgidReads = 0;
     },
   };
 }
 
 test("C-LIFE-10 empty survivor roots inspect no process groups", () => {
-  const table = countedRows();
+  const table = createPgidReadCountingTable();
   expect(survivorAndDescendantGroups([], table.rows, process.pid)).toEqual({
     roots: new Set(),
     groups: new Map(),
   });
-  expect(table.inspections()).toBe(0);
+  expect(table.pgidReads()).toBe(0);
 });
 
 test("C-LIFE-10 an empty kill pass builds no daemon resume index", async () => {
-  const table = countedRows();
+  const table = createPgidReadCountingTable();
   const state = newSweepState(new SweepFailures());
   state.latest = table.rows;
   const fake = scripted([]);
   await killOrResumeSignaledGroups(fake.ops, state, performance.now() + 1000);
-  expect(table.inspections()).toBe(0);
+  expect(table.pgidReads()).toBe(0);
   expect(fake.calls).toEqual([]);
 });
 
@@ -62,15 +62,15 @@ test("C-LIFE-10 vanished recorded survivors build no group indexes", async () =>
   const record = new DescendantRecord();
   record.observeFirst([leaderRow], LEADER, Date.now());
   record.observe([leaderRow, hook(5002)], LEADER, Date.now());
-  const table = countedRows();
+  const table = createPgidReadCountingTable();
   const fake = scripted([], { listProcesses: () => Promise.resolve(table.rows) });
   expect(await reapRecordedSurvivors(record, fake.ops)).toBeUndefined();
-  expect(table.inspections()).toBe(0);
+  expect(table.pgidReads()).toBe(0);
   expect(fake.calls).toEqual([]);
 });
 
 test("C-LIFE-10 restoring many unconfirmed groups reuses the latest read index", () => {
-  const table = countedRows();
+  const table = createPgidReadCountingTable();
   const originals = table.rows.slice(0, 50);
   const record = new DescendantRecord();
   const state = newSweepState(new SweepFailures());
@@ -82,12 +82,12 @@ test("C-LIFE-10 restoring many unconfirmed groups reuses the latest read index",
   // A fresh read still shows running originals: restore them without rescanning unrelated rows.
   state.latest = table.rows;
   anchors.afterRead(table.rows);
-  table.reset();
+  table.resetPgidReads();
   anchors.restoreUnconfirmed();
   expect(fake.calls.filter((call) => call.startsWith("cont"))).toEqual(
     originals.map((row) => `cont ${row.pid}`),
   );
-  expect(table.inspections()).toBe(0);
+  expect(table.pgidReads()).toBe(0);
   expect(state.signaledDescendantGroupIds).toEqual([]);
   expect(anchors.rejected).toEqual(new Set(originals.map((row) => row.pid)));
   expect(state.failures.result()?.message).toContain("could not be safely confirmed stopped");
