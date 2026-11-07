@@ -2,7 +2,16 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import { reapRecordedSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivors.ts";
-import { errno, hook, LEADER, leaderRow, scripted } from "../helpers/scripted-process-tree.ts";
+import {
+  errno,
+  hook,
+  LEADER,
+  leaderRow,
+  scripted,
+  useScriptedHost,
+} from "../helpers/scripted-process-tree.ts";
+
+useScriptedHost();
 
 const older = "Sun Oct 25 21:59:00 2026";
 const epoch = Date.parse("2026-10-25T22:00:00.500Z");

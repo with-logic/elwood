@@ -35,6 +35,7 @@ import {
   killOrResumeSignaledGroups,
   recordFailedRead,
 } from "./kill.ts";
+import type { DescendantRecord } from "./record.ts";
 import {
   newSweepState,
   recordUnconfirmed,
@@ -80,6 +81,7 @@ export async function sweepDetachedGroups(
   leaderExited: () => boolean,
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
   onLeaderGroupGone: () => void = () => undefined,
+  record?: DescendantRecord,
 ): Promise<SweepFailure | undefined> {
   if (leaderExited()) return undefined;
   const deadline = performance.now() + budgetMs;
@@ -91,8 +93,8 @@ export async function sweepDetachedGroups(
   }
   state.signaledGroupIds.add(leaderPid);
   state.unheld = [leaderPid];
-  await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state);
-  await killOrResumeSignaledGroups(ops, state, deadline);
+  await stopDescendantGroups(leaderPid, ops, leaderExited, deadline, state, record);
+  await killOrResumeSignaledGroups(ops, state, deadline, record);
   return sweepOutcome(state);
 }
 
@@ -111,6 +113,7 @@ async function stopDescendantGroups(
   leaderExited: () => boolean,
   deadline: number,
   state: SweepState,
+  record: DescendantRecord | undefined,
 ): Promise<void> {
   // Each group the walk stops is a root too: its exit can leave one under PID 1.
   const scope = daemonScope(state.signaledGroupIds);
@@ -119,9 +122,11 @@ async function stopDescendantGroups(
       const remainingMs = Math.ceil(deadline - performance.now());
       if (remainingMs <= 0)
         return recordUnconfirmed(state, "process groups not confirmed stopped by the deadline");
+      const readStartedAtEpochMs = Date.now();
       const table = await ops.listProcesses(remainingMs, scope);
       state.latest = table;
       state.live = detachedDescendantGroups(table, { leaderPid, hostPid: process.pid });
+      record?.observe(table, leaderPid, false, readStartedAtEpochMs, state.live);
       state.unheld = unheldGroups(table, state, leaderPid);
       if (unreachedGroups(state).length === 0 && state.unheld.length === 0) return;
       if (leaderExited())
