@@ -113,7 +113,8 @@ test("C-LIFE-10 a newly recorded child's root remains in later automatic reads",
       ...fake.ops,
       listProcesses: (_ms, scope) => {
         scopes.push([...(scope?.roots ?? [])]);
-        clock += 5000;
+        // Leave budget for the mandatory post-stop identity read.
+        clock += 1000;
         return Promise.resolve(fake.asRead(tables[reads++] ?? []));
       },
     },

@@ -16,6 +16,7 @@ afterEach(() => vi.restoreAllMocks());
 const orphan = hook(5002, { ppid: 1 });
 function recorded() {
   const record = new DescendantRecord();
+  record.observeFirst([leaderRow, hook(5002)], LEADER, Date.now());
   record.observe([leaderRow, hook(5002)], LEADER);
   return record;
 }
@@ -34,24 +35,29 @@ test("C-LIFE-10 a fresh initial table replaces only the pre-stop scan", async ()
 test("C-LIFE-10 a seed cannot replace the fresh identity read after SIGSTOP", async () => {
   const replacement = { ...orphan, startedAt: "Sun Oct 25 22:00:09 2026" };
   const fake = scripted([[replacement]]);
+  const record = recorded();
   expect(
-    await reapRecordedSurvivors(recorded(), fake.ops, undefined, {
+    await reapRecordedSurvivors(record, fake.ops, undefined, {
       table: [orphan],
       readStartedAtEpochMs: Date.now(),
     }),
   ).toBeDefined();
-  expect(fake.calls).toEqual(["stop 5002", "list", "cont 5002"]);
+  expect(fake.calls).toEqual(["stop 5002", "list"]);
+  expect(record.resumes.pids).toEqual([]);
 });
 
-test("C-LIFE-10 an unreadable first post-stop table restores the seeded hold", async () => {
+test("C-LIFE-10 an unreadable first post-stop table retains the unknown seeded hold", async () => {
   const fake = scripted([], { listProcesses: () => Promise.reject(errno("EIO")) });
+  const record = recorded();
   expect(
-    await reapRecordedSurvivors(recorded(), fake.ops, undefined, {
+    await reapRecordedSurvivors(record, fake.ops, undefined, {
       table: [orphan],
       readStartedAtEpochMs: Date.now(),
     }),
   ).toBeDefined();
-  expect(fake.calls).toEqual(["stop 5002", "cont 5002"]);
+  expect(fake.calls).toEqual(["stop 5002"]);
+  expect(record.resumes.pids).toEqual([5002]);
+  expect(record.hasUnknownResume).toBe(true);
 });
 
 test("C-LIFE-10 new child ambiguity uses the seed's read-start epoch", async () => {
@@ -60,13 +66,12 @@ test("C-LIFE-10 new child ambiguity uses the seed's read-start epoch", async () 
   const parent = { ...orphan, startedAt: older };
   const child = hook(5003, { ppid: 5002 });
   const record = new DescendantRecord();
-  record.observe(
-    [
-      { ...leaderRow, startedAt: older },
-      { ...parent, ppid: LEADER },
-    ],
-    LEADER,
-  );
+  const initial = [
+    { ...leaderRow, startedAt: older },
+    { ...parent, ppid: LEADER },
+  ];
+  record.observeFirst(initial, LEADER, Date.now());
+  record.observe(initial, LEADER);
   vi.spyOn(Date, "now").mockReturnValue(epoch + 5000);
   const fake = scripted([[parent, child]]);
   const failure = await reapRecordedSurvivors(record, fake.ops, undefined, {
