@@ -6,15 +6,18 @@ import {
   sendHeldLeaderSignal,
 } from "./held-leader.ts";
 import type { LeaderObservation } from "./leader-observation.ts";
-import type { DescendantRecord } from "./record.ts";
+import { DescendantRecord } from "./record.ts";
 import type { SweepOps } from "./rounds.ts";
 import { reapRecordedSurvivors } from "./survivors.ts";
 import { RECORD_READ_MS, watchDescendants } from "./watch-descendants.ts";
 
 export type SurvivorWatch = {
+  /** Settles after the first observation attempt, including refusal or a missing target. */
   readonly firstRead: Promise<void>;
+  /** Freezes the first read's evidence; a missing target settles immediately as refused. */
   readonly firstObservation: Promise<LeaderObservation>;
   readonly sendSignal: (send: () => void) => Promise<LeaderSignalOutcome>;
+  /** Stop recording; true retains failure and record if termination failed before exit. */
   readonly finish: (failedTermination?: boolean) => Promise<void>;
 };
 
@@ -26,13 +29,23 @@ export function watchSurvivors(
   keep: (failure: SweepFailure | undefined, record: DescendantRecord) => void,
   guard: LeaderSignalGuard,
 ): SurvivorWatch {
-  if (leaderPid === undefined)
+  if (leaderPid === undefined) {
+    const error = new Error("No safe leader signal target.");
+    const record = new DescendantRecord();
+    guard.forbid(error);
     return {
       firstRead: Promise.resolve(),
-      firstObservation: Promise.resolve({ kind: "gone" }),
-      sendSignal: () => Promise.resolve("leader-group-gone"),
-      finish: () => Promise.resolve(),
+      firstObservation: Promise.resolve({ kind: "refused", error }),
+      sendSignal: () => Promise.reject(error),
+      finish: (failedTermination = false) =>
+        Promise.resolve().then(() => {
+          if (!failedTermination) return;
+          const failures = new SweepFailures();
+          failures.record("no read showed the leader's tree", error, []);
+          keep(failures.result(), record);
+        }),
     };
+  }
   const deadline = performance.now() + RECORD_READ_MS;
   const watch = watchDescendants(leaderPid, ops, leaderExited);
   let groupGone = false;

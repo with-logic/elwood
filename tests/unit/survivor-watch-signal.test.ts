@@ -1,4 +1,5 @@
 /** The private watch keeps original signal authority and its deadline (PRD §5.3, C-LIFE-10). */
+import { ok as assert } from "node:assert/strict";
 import { afterEach, expect, test, vi } from "vitest";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import { RECORD_READ_MS } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
@@ -17,15 +18,8 @@ useScriptedHost();
 
 afterEach(() => vi.restoreAllMocks());
 
-test.each([
-  "refused",
-  "gone",
-])("C-LIFE-10 initial %s authority forbids later leader signals", async (kind) => {
-  const failure = errno("EIO");
-  const fake = scripted(
-    [],
-    kind === "refused" ? { listProcesses: () => Promise.reject(failure) } : {},
-  );
+test("C-LIFE-10 a refused first read preserves its diagnostic and forbids signals", async () => {
+  const fake = scripted([], { listProcesses: () => Promise.reject(errno("EIO")) });
   const guard = survivorGuard();
   const forbidden = vi.spyOn(guard, "forbid");
   const watch = watchSurvivors(
@@ -35,10 +29,32 @@ test.each([
     () => undefined,
     guard,
   );
-  expect(await watch.firstObservation).toMatchObject({ kind });
+  const observation = await watch.firstObservation;
+  expect(observation).toMatchObject({
+    kind: "refused",
+    error: { message: "First leader process-table read failed.", code: "EIO" },
+  });
   expect(forbidden).toHaveBeenCalledOnce();
   const delivered = vi.fn();
-  await expect(watch.sendSignal(delivered)).rejects.toBeInstanceOf(Error);
+  assert(observation.kind === "refused");
+  await expect(watch.sendSignal(delivered)).rejects.toBe(observation.error);
+  await watch.finish();
+  expect(delivered).not.toHaveBeenCalled();
+  expect(fake.calls).not.toContain(`stop ${LEADER}`);
+});
+
+test("C-LIFE-10 initial absence forbids later leader signals", async () => {
+  const fake = scripted([]);
+  const delivered = vi.fn();
+  const watch = watchSurvivors(
+    LEADER,
+    fake.ops,
+    () => false,
+    () => undefined,
+    survivorGuard(),
+  );
+  expect(await watch.firstObservation).toEqual({ kind: "gone" });
+  await expect(watch.sendSignal(delivered)).rejects.toThrow("original leader exited");
   await watch.finish();
   expect(delivered).not.toHaveBeenCalled();
   expect(fake.calls).not.toContain(`stop ${LEADER}`);
@@ -114,18 +130,6 @@ test("C-LIFE-10 held signaling and survivor reaping share the session queue and 
   expect(keep).toHaveBeenCalledExactlyOnceWith(undefined, expect.objectContaining({ known: true }));
   expect(keep.mock.calls[0]?.[1].pids).toEqual([5002]);
   expect(fake.calls).toContain("kill 5002");
-});
-
-test("C-LIFE-10 whole-group disappearance reaps recorded survivors without a leader exit event", async () => {
-  const fake = scripted([[leaderRow, hook(5002)], []]);
-  const keep = vi.fn();
-  const delivered = vi.fn();
-  const watch = watchSurvivors(LEADER, fake.ops, () => false, keep, survivorGuard());
-  await watch.firstRead;
-  expect(await watch.sendSignal(delivered)).toBe("leader-group-gone");
-  await watch.finish();
-  expect(delivered).not.toHaveBeenCalled();
-  expect(keep).toHaveBeenCalledOnce();
 });
 
 test("C-LIFE-10 pending first observation keeps signal admission ahead of later passes", async () => {

@@ -1,7 +1,7 @@
 /** Private held-leader signal foundation; no lifecycle caller yet (PRD §5.3/§9.4, C-LIFE-10). */
 import { scheduler } from "node:timers/promises";
-import { errnoCode, toError } from "../../../core/errors.ts";
-import { throwSignalFailures } from "../merge-sweep-errors.ts";
+import { errnoCode } from "../../../core/errors.ts";
+import { aggregateSignalFailures, throwSignalFailures } from "../merge-sweep-errors.ts";
 import { type ProcessEntry, processIdentity } from "../process-table.ts";
 import { processReadTimeout } from "../read-timeout.ts";
 import type { ReapQueue } from "../reap-queue.ts";
@@ -86,13 +86,7 @@ async function stopLeaderGroup(signal: HeldLeader): Promise<boolean> {
     try {
       table = await ops.listProcesses(remainingMs(deadline));
     } catch (readError) {
-      throw Object.assign(
-        new AggregateError(
-          [error, readError],
-          `${toError(error).message}; ${toError(readError).message}`,
-        ),
-        { code: "EPERM" },
-      );
+      throw aggregateSignalFailures([error, readError]);
     }
     if (!table.some((row) => row.pgid === pid && !row.zombie)) return false;
     throw error;
@@ -123,7 +117,8 @@ async function verifyHeldLeader(
 
 /**
  * Restore only the original hold. Darwin can refuse CONT during TERM exit; one fresh
- * read must prove the original running or the whole group gone before discarding debt.
+ * read must prove the whole group gone, or the original running with no live member
+ * still stopped, before discarding debt.
  */
 async function restoreHold(
   signal: HeldLeader,
@@ -162,14 +157,14 @@ async function restoreHold(
           signal.guard.gone();
           return true;
         }
-        if (
-          fresh.some(
-            (row) =>
-              !(row.zombie || row.stopped) && row.pgid === pid && processIdentity(row) === identity,
-          ) &&
-          !fresh.some((row) => !row.zombie && row.stopped && row.pgid === pid)
-        )
-          return false;
+        const originalLeaderIsRunning = fresh.some(
+          (row) =>
+            !(row.zombie || row.stopped) && row.pgid === pid && processIdentity(row) === identity,
+        );
+        const hasStoppedLiveGroupMember = fresh.some(
+          (row) => !row.zombie && row.stopped && row.pgid === pid,
+        );
+        if (originalLeaderIsRunning && !hasStoppedLiveGroupMember) return false;
       } catch (readError) {
         confirmationError = readError;
       }
