@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound graceful descendant-observation frequency and retain unreadable observation
+  gaps as shutdown failures after attempting cleanup of recorded helpers.
+
 - Recognize Codex 0.167.0’s agents footer as a configured composer, so startup and
   queued input do not wait for the readiness fallback.
 

@@ -76,10 +76,13 @@ export function watchSurvivors(
       const record = await watch.finish();
       if (groupGone || leaderExited())
         keep(await guard.serialize(() => reapRecordedSurvivors(record, ops)), record);
-      else if (failedTermination) {
+      else {
         const failures = new SweepFailures();
-        failures.record("the leader's exit was not confirmed", undefined, []);
-        keep(failures.result(), record);
+        record.includeReadFailure(failures);
+        if (failedTermination)
+          failures.record("the leader's exit was not confirmed", undefined, []);
+        const failure = failures.result();
+        if (failure !== undefined) keep(failure, record);
       }
     },
   };

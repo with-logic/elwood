@@ -46,6 +46,7 @@ export async function reapRecordedSurvivors(
   budgetMs: number = DETACHED_SWEEP_BUDGET_MS,
 ): Promise<SweepFailure | undefined> {
   const state = newSweepState(new SweepFailures());
+  record.includeReadFailure(state.failures);
   if (!record.known) {
     state.failures.record("no read showed the leader's tree", undefined, []);
     return state.failures.result();

@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { DescendantRecord } from "../../src/runtime/shutdown/detached-sweep/record.ts";
 import {
+  RECORD_INTERVAL_MS,
   RECORD_READ_MS,
   watchDescendants,
 } from "../../src/runtime/shutdown/detached-sweep/watch-descendants.ts";
@@ -112,17 +113,18 @@ describe("C-LIFE-10 a graceful stop's descendant record", () => {
 
 describe("C-LIFE-10 a graceful stop's descendant watch", () => {
   test("reads until the leader's exit is observed, recording what each read shows", async () => {
+    vi.useFakeTimers();
     let exited = false;
     const ops = reads([[leaderRow], tree, [{ ...leaderRow, stopped: true }]]);
     const watch = watchDescendants(LEADER, ops, () => exited);
     await watch.firstRead;
     expect(ops.timeouts).toEqual([RECORD_READ_MS]);
-    while (ops.timeouts.length < 3) await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(RECORD_INTERVAL_MS * 2);
     exited = true;
     const record = await watch.finish();
     const count = ops.timeouts.length;
     expect(pids(record.survivors(tree))).toEqual([5002, 5003]);
-    await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(RECORD_INTERVAL_MS);
     expect(ops.timeouts.length).toBe(count);
     expect(new Set(ops.timeouts)).toEqual(new Set([RECORD_READ_MS]));
     // Each read marks Codex's shared daemon under the leader, so it is never recorded.
@@ -143,10 +145,11 @@ describe("C-LIFE-10 a graceful stop's descendant watch", () => {
   });
 
   test("a failed later read retains the baseline and the next read follows", async () => {
+    vi.useFakeTimers();
     const ops = reads([[leaderRow], new Error("ps failed"), tree]);
     const watch = watchDescendants(LEADER, ops, () => false);
     await watch.firstRead;
-    while (ops.timeouts.length < 3) await new Promise((resolve) => setImmediate(resolve));
+    await vi.advanceTimersByTimeAsync(RECORD_INTERVAL_MS * 2);
     expect(pids((await watch.finish()).survivors(tree))).toEqual([5002, 5003]);
   });
 
