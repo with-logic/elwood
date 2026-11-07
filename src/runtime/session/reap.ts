@@ -47,9 +47,9 @@ export class SessionReapPolicy {
    * Reap on explicit shutdown, including an unresolved detached sweep; wrap any failure
    * as a typed `termination_failed`.
    */
-  orThrow(): void {
+  async orThrow(): Promise<void> {
     try {
-      this.reaper.reapAndThrowOnDetachedSweepFailure();
+      await this.reaper.reapAndThrowOnDetachedSweepFailure();
     } catch (error) {
       throw elwoodError(
         "termination_failed",

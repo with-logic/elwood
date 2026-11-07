@@ -1,6 +1,6 @@
 /**
  * Unreferenced native process-table reads for retained recovery (PRD §5.3 and §9.4,
- * C-LIFE-10). This internal foundation is not yet used by session shutdown.
+ * C-LIFE-10/14). Shares admission with foreground shutdown without retaining the host.
  */
 
 import { execFile, type PromiseWithChild } from "node:child_process";
