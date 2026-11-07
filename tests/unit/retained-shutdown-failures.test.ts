@@ -110,7 +110,7 @@ test("C-LIFE-10 expired confirmation cannot clear an unreadable observation gap"
 test("C-LIFE-10 expired confirmation cannot clear lost original-group authority", async () => {
   const record = recorded();
   record.observeLeaderGroup([leaderRow], LEADER, Date.now());
-  record.unsafeSurvivorGroups([{ ...leaderRow, startedAt: "Sun Oct 25 22:00:09 2026" }]);
+  record.markLeaderAuthorityLost(LEADER);
   const read = vi.fn<SweepOps["listProcesses"]>(() => Promise.resolve([]));
   const failures = manager({
     ...scripted([]).ops,
