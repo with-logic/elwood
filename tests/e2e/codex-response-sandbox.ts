@@ -18,6 +18,7 @@ import { shellQuote } from "../../src/runtime/shell.ts";
 import { copyCodexAuth } from "./codex-home.ts";
 import { registerPrivateHome } from "./home-guard.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
+import { pinResponseLaunchCommand } from "./response/launch.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
 
 export const responseModel = "gpt-6-luna";
@@ -68,11 +69,10 @@ export async function nativeResponseSandbox() {
     let resumed = false;
     const writes = { enters: 0, pastes: 0 };
     setPtyFactoryForTests((options) => {
-      const command = options.args.at(-1);
-      if (command === undefined || !command.startsWith("exec codex "))
-        throw new Error("Unexpected native command");
-      const pinned = resumed ? `${command} --model '${responseModel}'` : command;
-      if (!pinned.includes(`--model '${responseModel}'`)) throw new Error("Missing pinned model");
+      const pinned = pinResponseLaunchCommand(options.args.at(-1), {
+        resumed,
+        model: responseModel,
+      });
       const pty = nodePtyFactory({
         ...options,
         args: pin([...options.args.slice(0, -1), pinned]),

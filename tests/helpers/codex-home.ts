@@ -7,6 +7,7 @@
 
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { reportFailedStatus } from "../../src/codex/config/home.ts";
 import type { PtySpawnOptions } from "../../src/pty/types.ts";
 
 const originalCodexHome = process.env["CODEX_HOME"];
@@ -40,6 +41,6 @@ export function answerCodexHomeReport(options: Pick<PtySpawnOptions, "args" | "c
 
 /** Where a Codex launch script's report step writes; undefined for any other launch. */
 export function codexHomeReportPath(args: readonly string[]): string | undefined {
-  const step = / > '((?:[^']|'\\'')*)' \|\| exit 73; exec codex /.exec(args.at(-1) ?? "");
-  return step?.[1]?.replaceAll("'\\''", "'");
+  const step = / > '((?:[^']|'\\'')*)' \|\| exit (\d+); exec codex /.exec(args.at(-1) ?? "");
+  return step?.[2] === String(reportFailedStatus) ? step[1]?.replaceAll("'\\''", "'") : undefined;
 }
