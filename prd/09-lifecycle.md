@@ -444,8 +444,8 @@ than returning the earlier rejection forever (C-LIFE-10 retry posture). The one
 exception is a detached-descendant walk that could not complete (§5.3): with the
 leader gone it cannot be retried from that numeric PID. Known retained observations
 can recover in the background under the same per-session signal queue. Automatic
-retries start for sixty seconds, at one-second intervals, with individual reads and
-survivor sweeps bounded to ten seconds; work already started can finish after the
+retries start for sixty seconds, with one-second gaps between attempts and individual
+reads and survivor sweeps bounded to ten seconds; work already started can finish after the
 sixty-second window. Background reads share the foreground native-read cap. Their
 queue timers, native children, pipes, coalescing handles and retry delays are
 unreferenced, so callbacks need not settle if the host exits.
@@ -454,6 +454,9 @@ Recovery clears the original failure only after every retained record has known
 ownership, no matching non-daemon survivors, no unresolved identity-bound restoration
 and no unidentified restoration. Missing process identities and unknown ownership
 or restoration stay unresolved. A separate signal-authorization veto never clears.
+A post-STOP table with live group members but no matching original member records
+unidentified restoration. That observation authorizes neither KILL nor CONT, and
+later empty reads cannot clear its uncertainty.
 After automatic expiry, a later explicit lifecycle call awaits fresh referenced
 confirmation with a ten-second total budget, including the per-session queue. No
 read, result or restoration is accepted after that deadline. Confirmation can retry
