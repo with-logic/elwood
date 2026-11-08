@@ -92,7 +92,12 @@ export class SurvivorAnchors {
     const original = [...(this.byGroup.get(group)?.values() ?? [])].filter((row) =>
       identities.has(processIdentity(row)),
     );
-    if (original.length === 0) return;
+    if (original.length === 0) {
+      // A raced STOP may hold unmatched members; without an original identity CONT is unsafe.
+      // Later empty scans cannot erase that unresolved restoration.
+      if (this.byGroup.has(group)) this.record.markUnknownResume();
+      return;
+    }
     try {
       this.ops.continueGroup(group);
     } catch (error) {
