@@ -68,9 +68,11 @@ test("C-LIFE-10 unreferenced readers coalesce only reads not yet started", async
   );
   const native = vi.fn(() => Promise.resolve({ stdout: "" }));
   const read = createUnreferencedProcessTableReader(native);
-  await expect(Promise.all([read(100), read(100)])).resolves.toEqual([[], []]);
+  // Batching is under test; leave room for scheduling on a loaded host.
+  const readBudgetMs = 5_000;
+  await expect(Promise.all([read(readBudgetMs), read(readBudgetMs)])).resolves.toEqual([[], []]);
   expect(native).toHaveBeenCalledOnce();
-  await expect(read(100)).resolves.toEqual([]);
+  await expect(read(readBudgetMs)).resolves.toEqual([]);
   expect(native).toHaveBeenCalledTimes(2);
 });
 
