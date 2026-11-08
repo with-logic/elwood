@@ -48,19 +48,27 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
     ],
     [
       "a sweep errno over the termination's",
-      elwoodError("termination_failed", "PTY did not exit after SIGKILL.", {
-        errno: "ESRCH",
-        sweepErrno: "EPERM",
-      }),
+      elwoodError(
+        "termination_failed",
+        "PTY exit was not observed within the termination window.",
+        {
+          errno: "ESRCH",
+          sweepErrno: "EPERM",
+        },
+      ),
     ],
     [
       "a reap errno over the termination's",
-      elwoodError("termination_failed", "PTY did not exit after SIGKILL.", {
-        errno: "ESRCH",
-        reapError: "kill EPERM",
-        reapErrno: "EPERM",
-        sweepErrno: "EIO",
-      }),
+      elwoodError(
+        "termination_failed",
+        "PTY exit was not observed within the termination window.",
+        {
+          errno: "ESRCH",
+          reapError: "kill EPERM",
+          reapErrno: "EPERM",
+          sweepErrno: "EIO",
+        },
+      ),
     ],
   ])("%s is named on the typed startup error", async (_case, failure) => {
     const original = startFailed();
@@ -107,7 +115,10 @@ describe("C-ERR-08 startup cleanup diagnostic", () => {
   // A PTY that never reported exit carries no errno; an errno outside the allowlist, or
   // a thrown non-error, is never echoed either.
   test.each([
-    ["an unexited PTY", elwoodError("termination_failed", "PTY did not exit after SIGKILL.")],
+    [
+      "an unexited PTY",
+      elwoodError("termination_failed", "PTY exit was not observed within the termination window."),
+    ],
     ["a non-allowlisted errno", Object.assign(new Error("odd"), { code: "ENOTALLOWLISTED" })],
     ["a thrown non-error", "not an error"],
   ])("%s is reported as UnknownError", async (_case, failure) => {

@@ -17,7 +17,7 @@ describe("C-CLI-09 cleanupFailureMessage", () => {
     ["a typed failure with its errno", reap, "Cleanup failed (termination_failed EPERM)."],
     [
       "a typed failure without an errno",
-      elwoodError("termination_failed", "PTY did not exit after SIGKILL."),
+      elwoodError("termination_failed", "PTY exit was not observed within the termination window."),
       "Cleanup failed (termination_failed).",
     ],
     [
@@ -42,10 +42,14 @@ describe("C-CLI-09 cleanupFailureMessage", () => {
     ],
     [
       "a timed-out termination whose reap failed too",
-      elwoodError("termination_failed", "PTY did not exit after SIGKILL.", {
-        reapError: "secret",
-        reapErrno: "EPERM",
-      }),
+      elwoodError(
+        "termination_failed",
+        "PTY exit was not observed within the termination window.",
+        {
+          reapError: "secret",
+          reapErrno: "EPERM",
+        },
+      ),
       "Cleanup failed (termination_failed reap EPERM).",
     ],
     [

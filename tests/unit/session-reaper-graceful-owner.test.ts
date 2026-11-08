@@ -1,5 +1,5 @@
 /** Graceful ownership survives exit, replacement and later force paths (C-LIFE-10). */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { ProcessEntry } from "../../src/runtime/shutdown/process-table.ts";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import {
@@ -108,7 +108,8 @@ test("C-LIFE-10 an earlier forced-sweep failure survives verified graceful clean
 });
 
 async function completedWatchOutcome(reaper: SessionReaper, fake: ReturnType<typeof scripted>) {
-  const group = reaper.signalLeaderPty(() => fake.calls.push("unsafe KILL"));
+  const send = vi.fn();
+  reaper.signalLeaderPty(send);
   await reaper.sweepDetached(() => false);
   const completed = fake.calls.length;
   const watch = reaper.watchSurvivors(() => false);
@@ -117,7 +118,7 @@ async function completedWatchOutcome(reaper: SessionReaper, fake: ReturnType<typ
   await watch.reap();
   await watch.finish();
   return {
-    group,
+    groupSignals: send.mock.calls,
     signal,
     observation: (await watch.firstObservation).kind,
     extra: fake.calls.slice(completed),
@@ -129,7 +130,7 @@ test("C-LIFE-10 a successfully reaped group exposes an inert completed watch", a
   const reaper = new SessionReaper(LEADER, fake.ops);
   reaper.reap();
   expect(await completedWatchOutcome(reaper, fake)).toEqual({
-    group: "leader-group-gone",
+    groupSignals: [],
     signal: "leader-group-gone",
     observation: "gone",
     extra: [],
@@ -145,7 +146,7 @@ test("C-LIFE-10 a confirmed-gone group exposes an inert completed watch", async 
   const reaper = new SessionReaper(LEADER, fake.ops);
   await reaper.sweepDetached(() => false);
   expect(await completedWatchOutcome(reaper, fake)).toEqual({
-    group: "leader-group-gone",
+    groupSignals: [],
     signal: "leader-group-gone",
     observation: "gone",
     extra: [],
@@ -161,7 +162,7 @@ test("C-LIFE-10 graceful ESRCH keeps its original observation and an inert clean
   const reaper = new SessionReaper(LEADER, fake.ops);
   await reaper.watchSurvivors(() => false).sendSignal(() => fake.calls.push("unsafe TERM"));
   expect(await completedWatchOutcome(reaper, fake)).toEqual({
-    group: "leader-group-gone",
+    groupSignals: [],
     signal: "leader-group-gone",
     observation: "observed",
     extra: [],

@@ -49,7 +49,7 @@ describe("C-LIFE-10 terminatePty", () => {
       ...quietProcessTree(),
       killGroup: (p) => killed.push(p),
     });
-    await terminatePty(killablePty(), "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
+    await terminatePty(killablePty(), "SIGKILL", reaper);
     expect(killed).toEqual([LEADER]);
   });
 
@@ -60,7 +60,7 @@ describe("C-LIFE-10 terminatePty", () => {
     const rejected = terminatePty(deadPty, "SIGKILL", throwingReaper("EPERM"), timeouts);
     await expect(rejected).rejects.toMatchObject({
       code: "termination_failed",
-      message: "PTY did not exit after SIGKILL.",
+      message: "PTY exit was not observed within the termination window.",
       details: { reapError: "reap failure", reapErrno: "EPERM" },
     });
     await expect(
@@ -144,7 +144,7 @@ describe("C-LIFE-10 terminatePty", () => {
           forceMs: 0,
         },
       ),
-    ).rejects.toThrow("PTY did not exit after SIGKILL.");
+    ).rejects.toThrow("PTY exit was not observed within the termination window.");
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
