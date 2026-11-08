@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-07
+
 - Wait for native PTY exit even after confirming its process group is gone; missing
   exit notifications now fail termination instead of reporting premature success.
 
