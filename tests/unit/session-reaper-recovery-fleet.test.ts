@@ -5,10 +5,7 @@ import {
   BACKGROUND_REAP_RETRY_MS,
   BACKGROUND_REAP_RETRY_WINDOW_MS,
 } from "../../src/runtime/shutdown/detached-sweep/background.ts";
-import {
-  admitNativeProcessRead,
-  createAdmittedPsRunner,
-} from "../../src/runtime/shutdown/native-read-admission.ts";
+import { admitNativeProcessRead } from "../../src/runtime/shutdown/native-read-admission.ts";
 import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
 import { createUnreferencedProcessTableReader } from "../../src/runtime/shutdown/unreferenced-read.ts";
 import {
@@ -30,8 +27,7 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
   const native = vi.fn(async () => ({
     stdout: "11 1 11 S Sun Oct 25 22:00:00 2026 unrelated 11\n",
   }));
-  const runner = createAdmittedPsRunner(native);
-  const read = createUnreferencedProcessTableReader(runner);
+  const read = createUnreferencedProcessTableReader(native);
   const fake = scripted([]);
   const owners = Array.from({ length: 50 }, (_, index) => {
     const leader = 10_001_000 + index;
