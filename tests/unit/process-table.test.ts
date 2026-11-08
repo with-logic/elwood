@@ -5,8 +5,7 @@
  * host's group or an id `kill(-pgid)` would misroute.
  */
 
-import { describe, expect, test, vi } from "vitest";
-import { coalesceUnstarted } from "../../src/runtime/shutdown/coalesce.ts";
+import { describe, expect, test } from "vitest";
 import {
   detachedDescendantGroups,
   listProcessTable,
@@ -148,53 +147,5 @@ describe("C-LIFE-10 detached descendant groups", () => {
       row({ pid: LEADER, ppid: 5002, pgid: LEADER }), // a duplicate row closing a cycle back to the leader
     ];
     expect(walk(table)).toEqual(new Map([[5002, new Set([leaderRow])]]));
-  });
-});
-
-describe("C-LIFE-10 coalesced process listing", () => {
-  test("requests made before a listing starts share it, run for the largest timeout", async () => {
-    const runs: number[] = [];
-    const list = coalesceUnstarted((timeoutMs) => {
-      runs.push(timeoutMs);
-      return Promise.resolve(runs.length);
-    });
-    const joined = [list(1_200), list(3_000), list(2_000)];
-    expect(runs).toEqual([]); // nothing starts in the requesting turn
-    expect(await Promise.all(joined)).toEqual([1, 1, 1]);
-    expect(runs).toEqual([3_000]);
-  });
-
-  test("each request still times out on its own deadline, not another's", async () => {
-    vi.useFakeTimers();
-    try {
-      const { promise: table, resolve } = Promise.withResolvers<string>();
-      const list = coalesceUnstarted(() => table);
-      // A sweep with 10 ms left joins a fresh sweep's read: only the first may time out.
-      const nearlySpent = list(10);
-      const fresh = list(3_000);
-      const timedOut = expect(nearlySpent).rejects.toMatchObject({ code: "ETIMEDOUT" });
-      await vi.advanceTimersByTimeAsync(10);
-      await timedOut;
-      resolve("table");
-      await expect(fresh).resolves.toBe("table");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("a request after its listing started gets a fresh one", async () => {
-    let runs = 0;
-    const { promise: release, resolve } = Promise.withResolvers<void>();
-    const list = coalesceUnstarted(async () => {
-      runs += 1;
-      const run = runs;
-      await release;
-      return run;
-    });
-    const first = list(1_000);
-    await new Promise((settled) => setImmediate(settled)); // the first listing starts
-    const second = list(1_000);
-    resolve();
-    expect(await Promise.all([first, second])).toEqual([1, 2]);
   });
 });

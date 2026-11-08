@@ -11,7 +11,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { coalesceUnstarted } from "./coalesce.ts";
+import { coalesceBeforeNativeAdmission } from "./coalesce-before-native-admission.ts";
 import { createAdmittedPsRunner } from "./native-read-admission.ts";
 
 /** One row of the host process table. */
@@ -74,8 +74,9 @@ export type PsRunner = (
   options: PsRunOptions,
 ) => Promise<{ readonly stdout: string }>;
 
-/** Full scans and daemon probes share admission without changing request coalescing. */
-export const runFile: PsRunner = createAdmittedPsRunner(promisify(execFile));
+/** Direct reads and daemon probes use admission; shared full scans batch before native launch. */
+const nativeRun = promisify(execFile);
+export const runFile: PsRunner = createAdmittedPsRunner(nativeRun);
 
 /** The bounds every `ps` run gets: `timeoutMs`, the output cap, SIGKILL, and `PS_ENV`. */
 export function psRunOptions(timeoutMs: number): PsRunOptions {
@@ -91,8 +92,10 @@ export async function listProcessTable(
   return parseProcessTable(stdout);
 }
 
-/** The production listing: concurrent shutdowns share one `ps` per event-loop turn. */
-export const listProcessTableShared = coalesceUnstarted(listProcessTable);
+/** Concurrent shutdowns share a snapshot until its native process actually starts. */
+export const listProcessTableShared = coalesceBeforeNativeAdmission((ms) =>
+  listProcessTable(ms, nativeRun),
+);
 
 /**
  * Parses a `PS_ARGS` read (C locale). Throws on a line that is not one whole row: one cut
