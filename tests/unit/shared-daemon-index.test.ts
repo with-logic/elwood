@@ -1,5 +1,8 @@
 /** Snapshot indexes reuse work without reusing daemon decisions (PRD §5.3, C-LIFE-10). */
 import { expect, test } from "vitest";
+import { survivorAndDescendantGroups } from "../../src/runtime/shutdown/detached-sweep/survivor-groups.ts";
+import { processIndex } from "../../src/runtime/shutdown/process-index.ts";
+import { processIndexBase } from "../../src/runtime/shutdown/process-index-base.ts";
 import type { ProcessEntry, PsRunner } from "../../src/runtime/shutdown/process-table.ts";
 import {
   daemonScope,
@@ -42,6 +45,10 @@ test("C-LIFE-10 shared snapshot indexes are reused while marking remains caller-
   const second = await mark(6000);
   // Each caller still builds its own marked output; only the snapshot index is reused.
   expect(iterations).toBe(traversals + 1);
+  const { byPid, children } = processIndexBase(table);
+  const repeated = processIndexBase(table);
+  expect(repeated.byPid).toBe(byPid);
+  expect(repeated.children).toBe(children);
   expect(first.filter((row) => row.shared).map((row) => row.pid)).toEqual([5000, 5001]);
   expect(second.filter((row) => row.shared).map((row) => row.pid)).toEqual([6000, 6001]);
   expect(table.every((row) => !row.shared)).toBe(true);
@@ -57,4 +64,38 @@ test("C-LIFE-10 shared snapshot indexes are reused while marking remains caller-
     run,
   );
   expect(absentRoot.filter((row) => row.shared).map((row) => row.pid)).toEqual([5001]);
+});
+
+test("C-LIFE-10 daemon and survivor consumers share a lazy snapshot base", async () => {
+  let groupReads = 0;
+  const root = Object.freeze({
+    ...hook(5002),
+    get pgid() {
+      groupReads += 1;
+      return 5002;
+    },
+  });
+  const child = Object.freeze(hook(5003, { ppid: 5002 }));
+  const table = Object.freeze([root, child]);
+  const base = processIndexBase(table);
+  expect(groupReads).toBe(0);
+  const raw = await listProcessTableMarkingDaemon(
+    3_000,
+    daemonScope(new Set([5002])),
+    () => Promise.resolve(table),
+    () => {
+      throw new Error("non-daemon snapshot must not probe paths");
+    },
+  );
+  expect(raw).toBe(table);
+  const groups = survivorAndDescendantGroups([root], raw, 9000);
+  expect([...groups.groups.keys()]).toEqual([5002, 5003]);
+  const survivors = processIndex(raw);
+  expect(survivors.byPid).toBe(base.byPid);
+  expect(survivors.children).toBe(base.children);
+  expect(survivors.byGroup.get(5002)).toEqual([root]);
+  const reads = groupReads;
+  expect(processIndex(raw)).toBe(survivors);
+  expect(processIndex(raw).byGroup).toBe(survivors.byGroup);
+  expect(groupReads).toBe(reads);
 });

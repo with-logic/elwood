@@ -1,14 +1,14 @@
-/** Immutable snapshot indexes for caller-specific daemon marking (PRD §5.3, C-LIFE-10). */
+/** Shared PID/name and ancestry indexes for one immutable process snapshot (PRD §5.3, C-LIFE-10). */
 import { childrenByParent, type ProcessEntry } from "./process-table.ts";
 
-type DaemonIndex = {
+type ProcessIndexBase = {
   readonly byPid: ReadonlyMap<number, ProcessEntry>;
   readonly children: ReturnType<typeof childrenByParent>;
 };
-const indexes = new WeakMap<readonly ProcessEntry[], DaemonIndex>();
+const indexes = new WeakMap<readonly ProcessEntry[], ProcessIndexBase>();
 
-/** Reuse row names and ancestry without sharing any caller's daemon decisions. */
-export function daemonIndex(table: readonly ProcessEntry[]): DaemonIndex {
+/** Reuse row names and ancestry; survivor group indexing remains a separate lazy step. */
+export function processIndexBase(table: readonly ProcessEntry[]): ProcessIndexBase {
   const cached = indexes.get(table);
   if (cached !== undefined) return cached;
   const byPid = new Map<number, ProcessEntry>();

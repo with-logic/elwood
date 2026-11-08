@@ -23,6 +23,7 @@
  * parent exits before the walk is out of its reach already (PRD §5.3).
  */
 
+import { processIndexBase } from "./process-index-base.ts";
 import {
   listProcessTableShared,
   type ProcessEntry,
@@ -32,7 +33,6 @@ import {
   runFile,
 } from "./process-table.ts";
 import { processReadTimeout } from "./read-timeout.ts";
-import { daemonIndex } from "./shared-daemon-index.ts";
 
 /** The directory Codex installs its daemon's copy of the CLI in, inside `CODEX_HOME`. */
 const DAEMON_INSTALL_DIR = "/packages/app-server-daemon/";
@@ -85,7 +85,7 @@ async function markShared(
   readPath: (pid: number) => Promise<string>,
 ): Promise<readonly ProcessEntry[]> {
   // A root a read missed is taken for a `codex`, as the TUI was: only a path read confirms.
-  const index = daemonIndex(table);
+  const index = processIndexBase(table);
   const candidates = reachable(index, roots).filter((row) => {
     const parent = index.byPid.get(row.ppid);
     const parentName = parent === undefined && roots.has(row.ppid) ? CODEX : parent?.name;
@@ -140,7 +140,7 @@ function couldBeFromInstall(row: ProcessEntry, parentName: string | undefined): 
  * missing from the read still parents its children, as in `detachedDescendantGroups`.
  */
 function reachable(
-  { byPid, children }: ReturnType<typeof daemonIndex>,
+  { byPid, children }: ReturnType<typeof processIndexBase>,
   roots: ReadonlySet<number>,
 ): ProcessEntry[] {
   const found = new Map<number, ProcessEntry>();
