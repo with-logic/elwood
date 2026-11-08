@@ -35,8 +35,9 @@ test("C-LIFE-10 lost original members after raced STOP cannot be healed by empty
   const child = hook(5002, { ppid: 1 });
   const replacement = { ...child, startedAt: "Sun Oct 25 22:01:00 2026" };
   const record = new DescendantRecord();
-  record.observeFirst([leaderRow], LEADER, Date.now());
-  record.observe([leaderRow, { ...child, ppid: LEADER }], LEADER);
+  const observedAt = Date.parse("2026-10-26T00:00:00.000Z");
+  record.observeFirst([leaderRow], LEADER, observedAt);
+  record.observe([leaderRow, { ...child, ppid: LEADER }], LEADER, observedAt);
   let originalPresent = true;
   let replacementWasStopped = false;
   const fake = scripted([], {
