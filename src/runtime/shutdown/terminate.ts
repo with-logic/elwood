@@ -13,17 +13,13 @@ import {
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SweepFailure } from "./detached-sweep/failures.ts";
-import type { LeaderPtySignalOutcome, SessionReaper } from "./reap-tree.ts";
+import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached" | "signalLeaderPty">;
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 const POST_EXIT_REAP_RETRIES = 4;
 const POST_EXIT_REAP_RETRY_MS = 25;
-const leaderGroupGoneForOutcome: Readonly<Record<LeaderPtySignalOutcome, boolean>> = {
-  "signal-sent": false,
-  "leader-group-gone": true,
-};
 
 /**
  * Signal the PTY, wait for exit, and reap the leader's process group. The reap is
@@ -43,6 +39,8 @@ const leaderGroupGoneForOutcome: Readonly<Record<LeaderPtySignalOutcome, boolean
  * cancels the SIGKILL. A sweep failure is reported like a reap failure, after the
  * leader is still killed and reaped unless its whole group was confirmed gone. That
  * terminal fact cancels all later PTY and group signals without clearing old failures.
+ * Group disappearance does not replace the native PTY exit notification: its existing
+ * bounded wait still applies, and a missing notification fails termination.
  */
 export async function terminatePty(
   pty: PtyProcess,
@@ -58,16 +56,13 @@ export async function terminatePty(
     const latch = new PtyExitLatch(pty);
     exit = latch;
     if (signal === "SIGTERM") {
-      const outcome = reaper.signalLeaderPty(() => pty.kill("SIGTERM"));
-      observedExit =
-        leaderGroupGoneForOutcome[outcome] || (await latch.within(timeouts.gracefulMs));
+      reaper.signalLeaderPty(() => pty.kill("SIGTERM"));
+      observedExit = await latch.within(timeouts.gracefulMs);
     }
     if (!observedExit) {
       sweepError = await reaper.sweepDetached(() => latch.exited).then(() => undefined, toError);
-      const leaderGroupGone =
-        !latch.exited &&
-        leaderGroupGoneForOutcome[reaper.signalLeaderPty(() => pty.kill("SIGKILL"))];
-      observedExit = leaderGroupGone || (await latch.within(timeouts.forceMs));
+      if (!latch.exited) reaper.signalLeaderPty(() => pty.kill("SIGKILL"));
+      observedExit = await latch.within(timeouts.forceMs);
       if (!observedExit) {
         terminationError = elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
       }

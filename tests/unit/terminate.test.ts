@@ -49,7 +49,7 @@ describe("C-LIFE-10 terminatePty", () => {
       ...quietProcessTree(),
       killGroup: (p) => killed.push(p),
     });
-    await terminatePty(killablePty(), "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
+    await terminatePty(killablePty(), "SIGKILL", reaper);
     expect(killed).toEqual([LEADER]);
   });
 
