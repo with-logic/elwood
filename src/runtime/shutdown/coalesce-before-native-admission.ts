@@ -3,7 +3,7 @@ import { type NativeReadReservation, reserveNativeProcessRead } from "./native-r
 import { processReadTimeout } from "./read-timeout.ts";
 
 /** Native capacity is acquired before the batch closes; every consumer owns its deadline. */
-export function coalesceAdmittedReads<T>(
+export function coalesceBeforeNativeAdmission<T>(
   run: (timeoutMs: number) => Promise<T>,
   { ref = true }: { readonly ref?: boolean } = {},
 ): (timeoutMs: number) => Promise<T> {

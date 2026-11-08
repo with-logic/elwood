@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { admitNativeProcessRead } from "../../src/runtime/shutdown/native-read-admission.ts";
 import {
   detachedDescendantGroups,
   listProcessTable,
@@ -31,6 +32,25 @@ describe("C-LIFE-10 real process table", () => {
   test("the production listing reads the real host table", async () => {
     const table = await listProcessTableShared(10_000);
     expect(table.some((row) => row.pid === process.pid)).toBe(true);
+  });
+
+  test("a late production caller shares the snapshot waiting for native admission", async () => {
+    const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()] as const;
+    const holders = gates.map((gate) => admitNativeProcessRead(10_000, () => gate.promise));
+    const reads: ReturnType<typeof listProcessTableShared>[] = [];
+    try {
+      reads.push(listProcessTableShared(10_000));
+      // The first batch has left its scheduling turn and now waits behind both holders.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      reads.push(listProcessTableShared(10_000));
+      gates[0].resolve();
+      const [first, late] = await Promise.all(reads);
+      expect(first).toBe(late);
+      expect(first?.find((row) => row.pid === process.pid)).toMatchObject({ ppid: process.ppid });
+    } finally {
+      for (const gate of gates) gate.resolve();
+      await Promise.allSettled([...holders, ...reads]);
+    }
   });
 
   test("finds a real setsid grandchild's group, linked to its leader's row", async () => {

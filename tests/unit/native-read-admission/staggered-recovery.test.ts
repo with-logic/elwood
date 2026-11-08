@@ -1,6 +1,6 @@
 /** Fifty staggered recovery owners share queued scans without starving a later read (C-LIFE-10). */
 import { afterEach, expect, test, vi } from "vitest";
-import { coalesceAdmittedReads } from "../../../src/runtime/shutdown/coalesce-admitted.ts";
+import { coalesceBeforeNativeAdmission } from "../../../src/runtime/shutdown/coalesce-before-native-admission.ts";
 import { reapInBackground } from "../../../src/runtime/shutdown/detached-sweep/background.ts";
 import { DescendantRecord } from "../../../src/runtime/shutdown/detached-sweep/record.ts";
 import { listProcessTable, type PsRunner } from "../../../src/runtime/shutdown/process-table.ts";
@@ -48,7 +48,7 @@ test.each([
     );
   };
   const background = createUnreferencedProcessTableReader(native);
-  const foreground = coalesceAdmittedReads((ms) => listProcessTable(ms, native));
+  const foreground = coalesceBeforeNativeAdmission((ms) => listProcessTable(ms, native));
   for (let i = 0; i < 50; i++)
     setTimeout(() => {
       const leader = 10_001_000 + i;
@@ -84,8 +84,8 @@ test.each([
         () => {
           outcome = "ok";
         },
-        (error) => {
-          outcome = error.code;
+        () => {
+          outcome = "error";
         },
       )
       .finally(() => {

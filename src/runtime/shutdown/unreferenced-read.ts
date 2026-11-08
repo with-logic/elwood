@@ -6,7 +6,7 @@
 import { execFile, type PromiseWithChild } from "node:child_process";
 import type { Socket } from "node:net";
 import { promisify } from "node:util";
-import { coalesceAdmittedReads } from "./coalesce-admitted.ts";
+import { coalesceBeforeNativeAdmission } from "./coalesce-before-native-admission.ts";
 import { createAdmittedPsRunner } from "./native-read-admission.ts";
 import { listProcessTable, type PsRunner } from "./process-table.ts";
 
@@ -51,7 +51,9 @@ export async function settleUnreferenced<T>(
 
 /** Shares queued scans; `run` launches directly because this reader owns native admission. */
 export function createUnreferencedProcessTableReader(run: PsRunner) {
-  return coalesceAdmittedReads((timeoutMs) => listProcessTable(timeoutMs, run), { ref: false });
+  return coalesceBeforeNativeAdmission((timeoutMs) => listProcessTable(timeoutMs, run), {
+    ref: false,
+  });
 }
 
 /** The listing for reaps in the background, shared the same way, never keeping the host alive. */

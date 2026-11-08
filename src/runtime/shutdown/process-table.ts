@@ -11,7 +11,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { coalesceAdmittedReads } from "./coalesce-admitted.ts";
+import { coalesceBeforeNativeAdmission } from "./coalesce-before-native-admission.ts";
 import { createAdmittedPsRunner } from "./native-read-admission.ts";
 
 /** One row of the host process table. */
@@ -93,7 +93,7 @@ export async function listProcessTable(
 }
 
 /** Concurrent shutdowns share a snapshot until its native process actually starts. */
-export const listProcessTableShared = coalesceAdmittedReads((ms) =>
+export const listProcessTableShared = coalesceBeforeNativeAdmission((ms) =>
   listProcessTable(ms, nativeRun),
 );
 

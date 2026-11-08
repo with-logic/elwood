@@ -1,7 +1,6 @@
 /** Pending snapshots share native capacity without weakening freshness or deadlines (C-LIFE-10). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { coalesceUnstarted } from "../../../src/runtime/shutdown/coalesce.ts";
-import { coalesceAdmittedReads } from "../../../src/runtime/shutdown/coalesce-admitted.ts";
+import { coalesceBeforeNativeAdmission } from "../../../src/runtime/shutdown/coalesce-before-native-admission.ts";
 import {
   admitNativeProcessRead as admit,
   reserveNativeProcessRead,
@@ -17,7 +16,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 function heldSlots() {
-  const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()] as const;
   const running = gates.map((gate) => admit(1_000, () => gate.promise));
   const release = async () => {
     for (const gate of gates) gate.resolve();
@@ -50,7 +49,7 @@ test("C-LIFE-10 a late queued consumer shares one snapshot; in-flight requests s
   });
   const joined = read(200);
   await vi.advanceTimersByTimeAsync(10);
-  held.gates[0]!.resolve();
+  held.gates[0].resolve();
   await vi.advanceTimersByTimeAsync(1);
   expect(native).toHaveBeenCalledOnce();
   const later = read(200);
@@ -74,7 +73,7 @@ test("C-LIFE-10 a later longer consumer extends the queued deadline without revi
   const longObserved = Promise.allSettled([long]);
   await vi.advanceTimersByTimeAsync(10);
   await expect(short).rejects.toMatchObject({ code: "ETIMEDOUT" });
-  held.gates[0]!.resolve();
+  held.gates[0].resolve();
   await expect(long).resolves.toEqual([]);
   expect(native.mock.calls[0]?.[2].timeout).toBe(90);
   expect(native).toHaveBeenCalledOnce();
@@ -103,17 +102,13 @@ test.each([
   const immediate = vi.spyOn(globalThis, "setImmediate");
   const timer = vi.spyOn(globalThis, "setTimeout");
   const run = vi.fn(() => Promise.resolve(42));
-  const read = coalesceAdmittedReads(run, { ref });
+  const read = coalesceBeforeNativeAdmission(run, { ref });
   const pending = read(0);
   const observed = Promise.allSettled([pending]);
-  const generic = coalesceUnstarted(() => Promise.resolve(84), { ref })(100);
   expect(immediate.mock.results[0]?.value.hasRef()).toBe(ref);
-  expect(immediate.mock.results[1]?.value.hasRef()).toBe(ref);
   expect(timer.mock.results[0]?.value.hasRef()).toBe(ref);
-  expect(timer.mock.results[1]?.value.hasRef()).toBe(ref);
   await vi.advanceTimersByTimeAsync(1);
   await expect(pending).rejects.toMatchObject({ code: "ETIMEDOUT" });
-  await expect(generic).resolves.toBe(84);
   expect(run).not.toHaveBeenCalled();
   await observed;
 });
@@ -123,7 +118,7 @@ test("C-LIFE-10 delayed timers cannot revive expired queue positions or accept l
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   const held = heldSlots();
   const snapshot = Promise.withResolvers<number>();
-  const read = coalesceAdmittedReads(() => snapshot.promise);
+  const read = coalesceBeforeNativeAdmission(() => snapshot.promise);
   const expired = read(10);
   const observed = Promise.allSettled([expired]);
   await vi.advanceTimersByTimeAsync(1);
@@ -131,7 +126,7 @@ test("C-LIFE-10 delayed timers cannot revive expired queue positions or accept l
   const fresh = read(100);
   const longer = read(200);
   await vi.advanceTimersByTimeAsync(1);
-  held.gates[0]!.resolve();
+  held.gates[0].resolve();
   await Promise.resolve();
   clock = 150;
   snapshot.resolve(42);
@@ -144,7 +139,7 @@ test("C-LIFE-10 delayed timers cannot revive expired queue positions or accept l
 
 test("C-LIFE-10 failed native batches reject their consumers and release capacity", async () => {
   const error = new Error("native failure");
-  const read = coalesceAdmittedReads(() => Promise.reject(error));
+  const read = coalesceBeforeNativeAdmission(() => Promise.reject(error));
   const pending = read(100);
   const observed = Promise.allSettled([pending]);
   await vi.advanceTimersByTimeAsync(1);

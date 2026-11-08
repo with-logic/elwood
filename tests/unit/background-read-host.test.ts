@@ -31,15 +31,16 @@ console.log("ready\\npending");
 clearInterval(keepAlive);
 `;
 const COALESCING = `
-const {coalesceUnstarted} = await import(process.env.SHUTDOWN+"/coalesce.ts");
-const read = coalesceUnstarted(()=>{console.log("unexpected launch");return new Promise(()=>{});},{ref:false});
+const {coalesceBeforeNativeAdmission} = await import(process.env.SHUTDOWN+"/coalesce-before-native-admission.ts");
+const read = coalesceBeforeNativeAdmission(()=>{console.log("unexpected launch");return new Promise(()=>{});},{ref:false});
 void read(5000).catch(()=>{});
 console.log("ready\\nqueued");
 `;
 const FOREGROUND = `
-const {coalesceUnstarted} = await import(process.env.SHUTDOWN+"/coalesce.ts");
-const {runFile, psRunOptions} = await import(process.env.SHUTDOWN+"/process-table.ts");
-const read = coalesceUnstarted(timeout=>runFile(process.execPath,["-e","setTimeout(()=>{},150)"],psRunOptions(timeout)));
+const {coalesceBeforeNativeAdmission} = await import(process.env.SHUTDOWN+"/coalesce-before-native-admission.ts");
+const {runFileUnreferencedNative} = await import(process.env.SHUTDOWN+"/unreferenced-read.ts");
+const {psRunOptions} = await import(process.env.SHUTDOWN+"/process-table.ts");
+const read = coalesceBeforeNativeAdmission(timeout=>runFileUnreferencedNative(process.execPath,["-e","setTimeout(()=>{},150)"],psRunOptions(timeout)));
 void read(5000).then(()=>console.log("foreground completed"));
 console.log("ready");
 `;
@@ -54,6 +55,16 @@ const {admitNativeProcessRead} = await import(process.env.SHUTDOWN+"/native-read
 const {runFileUnreferenced} = await import(process.env.SHUTDOWN+"/unreferenced-read.ts");
 for(let n=0;n<2;n++) void admitNativeProcessRead(5000,()=>new Promise(()=>{}));
 void runFileUnreferenced(process.execPath,["-e",process.env.READER,process.env.MARKER],JSON.parse(process.env.OPTIONS)).catch(()=>{});
+console.log("ready\\nqueued");
+`;
+
+const QUEUED_COALESCED = `
+const {admitNativeProcessRead} = await import(process.env.SHUTDOWN+"/native-read-admission.ts");
+const {createUnreferencedProcessTableReader} = await import(process.env.SHUTDOWN+"/unreferenced-read.ts");
+for(let n=0;n<2;n++) void admitNativeProcessRead(5000,()=>new Promise(()=>{}));
+const read = createUnreferencedProcessTableReader(()=>{console.log("unexpected launch");return Promise.resolve({stdout:""});});
+void read(5000).catch(()=>{});
+await new Promise(resolve=>setImmediate(resolve));
 console.log("ready\\nqueued");
 `;
 
@@ -116,6 +127,12 @@ test.each([
   {
     name: "queued native read",
     source: QUEUED,
+    expectedStdout: "ready\nqueued\n",
+    hasChildMarker: false,
+  },
+  {
+    name: "queued coalesced read",
+    source: QUEUED_COALESCED,
     expectedStdout: "ready\nqueued\n",
     hasChildMarker: false,
   },
