@@ -21,10 +21,10 @@ fs.writeFileSync(process.argv[1]+"/pid",String(process.pid));
 setInterval(()=>{},1000);
 `;
 const PENDING = `
-const {createUnreferencedProcessTableReader, runFileUnreferenced} = await import(process.env.SHUTDOWN+"/unreferenced-read.ts");
+const {createUnreferencedProcessTableReader, runFileUnreferencedNative} = await import(process.env.SHUTDOWN+"/unreferenced-read.ts");
 const fs = await import("node:fs");
 const keepAlive = setInterval(()=>{},1000);
-const read = createUnreferencedProcessTableReader((_,args,options)=>runFileUnreferenced(process.execPath,["-e",process.env.READER,process.env.MARKER],options));
+const read = createUnreferencedProcessTableReader((_,args,options)=>runFileUnreferencedNative(process.execPath,["-e",process.env.READER,process.env.MARKER],options));
 void read(5000).catch(()=>{});
 while (!fs.existsSync(process.env.MARKER+"/pid")) await new Promise(resolve=>setTimeout(resolve,5));
 console.log("ready\\npending");

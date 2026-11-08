@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Share process-table scans that are still waiting for native capacity, reducing queued reads during concurrent session cleanup.
+
 - Avoid unused process-table indexes when cleanup has no survivors or signaled
   descendant groups, and reuse group indexes when restoring unconfirmed survivors.
 

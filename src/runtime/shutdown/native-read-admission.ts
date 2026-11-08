@@ -31,42 +31,73 @@ export function admitNativeProcessRead<T>(
   launch: (remainingMs: number) => Promise<T>,
   { ref = true }: { readonly ref?: boolean } = {},
 ): Promise<T> {
-  const deadline = performance.now() + timeoutMs;
-  return new Promise<T>((resolve, reject) => {
-    const key = Symbol();
-    const timer = setTimeout(() => {
-      waiting.delete(key);
-      reject(timedOut());
-    }, timeoutMs);
+  return reserveNativeProcessRead(performance.now() + timeoutMs, launch, { ref }).result;
+}
+
+/** A pending FIFO position whose still-live consumers may extend its deadline. */
+export type NativeReadReservation<T> = {
+  readonly result: Promise<T>;
+  readonly extendUntil: (deadline: number) => void;
+  readonly cancel: () => void;
+};
+
+/** Reserve once; deadline updates never move the entry or affect an already-started runner. */
+export function reserveNativeProcessRead<T>(
+  until: number,
+  launch: (remainingMs: number) => Promise<T>,
+  { ref = true }: { readonly ref?: boolean } = {},
+): NativeReadReservation<T> {
+  let deadline = until;
+  const key = Symbol();
+  const { promise: result, resolve, reject } = Promise.withResolvers<T>();
+  let timer: NodeJS.Timeout;
+  const expire = () => {
+    waiting.delete(key);
+    reject(timedOut());
+  };
+  const arm = () => {
+    timer = setTimeout(expire, Math.max(0, deadline - performance.now()));
     if (!ref) timer.unref();
-    waiting.set(key, () => {
-      clearTimeout(timer);
-      const remainingMs = Math.ceil(deadline - performance.now());
-      if (remainingMs <= 0) {
-        reject(timedOut());
-        return;
-      }
-      active += 1;
-      try {
-        void launch(remainingMs).then(
-          (value) => {
-            active -= 1;
-            resolve(value);
-            drain();
-          },
-          (error: unknown) => {
-            active -= 1;
-            reject(error);
-            drain();
-          },
-        );
-      } catch (error) {
-        active -= 1;
-        reject(error);
-      }
-    });
-    drain();
+  };
+  arm();
+  waiting.set(key, () => {
+    clearTimeout(timer);
+    const remainingMs = Math.ceil(deadline - performance.now());
+    if (remainingMs <= 0) return reject(timedOut());
+    active += 1;
+    try {
+      void launch(remainingMs).then(
+        (value) => {
+          active -= 1;
+          resolve(value);
+          drain();
+        },
+        (error: unknown) => {
+          active -= 1;
+          reject(error);
+          drain();
+        },
+      );
+    } catch (error) {
+      active -= 1;
+      reject(error);
+    }
   });
+  drain();
+  return {
+    result,
+    extendUntil: (next) => {
+      if (!waiting.has(key)) return;
+      deadline = Math.max(deadline, next);
+      clearTimeout(timer);
+      arm();
+    },
+    cancel: () => {
+      if (!waiting.delete(key)) return;
+      clearTimeout(timer);
+      reject(timedOut());
+    },
+  };
 }
 
 /** FIFO admission; expired entries remove themselves without reserving capacity. */
