@@ -1,7 +1,10 @@
 /** Fifty live owners confirm through production coalescing/admission/parser (C-LIFE-14). */
 import { setImmediate } from "node:timers/promises";
 import { expect, test, vi } from "vitest";
-import { BACKGROUND_REAP_RETRY_WINDOW_MS } from "../../src/runtime/shutdown/detached-sweep/background.ts";
+import {
+  BACKGROUND_REAP_RETRY_MS,
+  BACKGROUND_REAP_RETRY_WINDOW_MS,
+} from "../../src/runtime/shutdown/detached-sweep/background.ts";
 import {
   admitNativeProcessRead,
   createAdmittedPsRunner,
@@ -19,6 +22,7 @@ import {
 
 useScriptedHost();
 test("C-LIFE-14 fifty expired session owners share a scan behind admitted foreground work", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   let clock = 0;
   const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
   const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
@@ -64,9 +68,7 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
     );
     for (const owner of owners) owner.reap();
     clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
-    const confirmed = Promise.all(
-      owners.map((owner) => owner.reapOrConfirmAndThrowIfUnresolved()),
-    );
+    const confirmed = Promise.all(owners.map((owner) => owner.reapOrConfirmAndThrowIfUnresolved()));
     await setImmediate();
     expect(native).not.toHaveBeenCalled();
     gates[0]!.resolve();
@@ -75,8 +77,16 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
     expect(fake.calls.filter((call) => call.startsWith("kill "))).toHaveLength(50);
     expect(fake.calls.filter((call) => call.startsWith("stop "))).toHaveLength(100);
   } finally {
-    for (const gate of gates) gate.resolve();
-    await Promise.all(foreground);
-    now.mockRestore();
+    try {
+      for (const gate of gates) gate.resolve();
+      await Promise.all(foreground);
+      clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
+      await vi.advanceTimersByTimeAsync(BACKGROUND_REAP_RETRY_MS);
+      await setImmediate();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      now.mockRestore();
+      vi.useRealTimers();
+    }
   }
 });
