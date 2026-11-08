@@ -65,7 +65,7 @@ test("C-LIFE-14 fifty expired session owners share a scan behind admitted foregr
     for (const owner of owners) owner.reap();
     clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
     const confirmed = Promise.all(
-      owners.map((owner) => owner.reapAndThrowOnDetachedSweepFailure()),
+      owners.map((owner) => owner.reapOrConfirmAndThrowIfUnresolved()),
     );
     await setImmediate();
     expect(native).not.toHaveBeenCalled();

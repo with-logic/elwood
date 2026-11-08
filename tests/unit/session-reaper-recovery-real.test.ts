@@ -29,7 +29,7 @@ test("C-LIFE-14 real retained descendants recover after the original forced walk
   await vi.waitFor(
     () =>
       expect(
-        Promise.resolve().then(() => reaper.reapAndThrowOnDetachedSweepFailure()),
+        Promise.resolve().then(() => reaper.reapOrConfirmAndThrowIfUnresolved()),
       ).resolves.toBeUndefined(),
     { timeout: 10_000 },
   );

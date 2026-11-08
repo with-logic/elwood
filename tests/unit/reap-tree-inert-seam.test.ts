@@ -43,7 +43,7 @@ test("C-LIFE-10 ops left out of the seam never reach a real signal or table read
   setProcessTreeOpsForTests({ killGroup: (pgid) => void killed.push(pgid) });
   const reaper = new SessionReaper(LEADER);
   await expect(reaper.sweepDetached(() => false)).resolves.toBeUndefined();
-  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).not.toThrow();
+  expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).not.toThrow();
   expect(signals).toEqual([]); // no real SIGSTOP
   expect(listing.calls).toBe(0); // no real `ps`
   expect(killed).toEqual([LEADER]); // only the faked group reap

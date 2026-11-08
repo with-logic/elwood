@@ -50,11 +50,11 @@ test("C-LIFE-14 forced records recover automatically while their original attemp
   await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toThrow("could not kill");
   expect(() => reaper.reap()).toThrow("raw EPERM detail");
   reaper.reap();
-  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow("could not kill");
+  expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow("could not kill");
   gate.resolve();
   await vi.advanceTimersByTimeAsync(0);
   await expect(
-    Promise.resolve().then(() => reaper.reapAndThrowOnDetachedSweepFailure()),
+    Promise.resolve().then(() => reaper.reapOrConfirmAndThrowIfUnresolved()),
   ).resolves.toBeUndefined();
   expect(fake.calls.filter((call) => call === `kill ${LEADER}`)).toHaveLength(1);
 });
@@ -167,6 +167,6 @@ test("C-LIFE-14 a second unknown record keeps the original failure after known r
   clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
   // The known record disappears; the second failed walk captured no identity.
   await expect(
-    Promise.resolve().then(() => reaper.reapAndThrowOnDetachedSweepFailure()),
+    Promise.resolve().then(() => reaper.reapOrConfirmAndThrowIfUnresolved()),
   ).rejects.toBe(original);
 });

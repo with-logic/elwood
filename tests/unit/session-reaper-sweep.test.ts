@@ -37,9 +37,9 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
     await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toMatchObject({ code: "EAGAIN" });
     reaper.reap(); // The original termination owns this initial numeric group signal.
     const unreadable = "process table unreadable (EAGAIN)";
-    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreadable);
+    expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(unreadable);
     expect(calls).toEqual([`stop ${LEADER}`, `kill ${LEADER}`]); // confirmation sends nothing
-    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreadable);
+    expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(unreadable);
     expect(() => reaper.reap()).not.toThrow();
     expect(calls).toEqual([`stop ${LEADER}`, `kill ${LEADER}`]); // latched: reaped once
   });
@@ -57,6 +57,6 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
     await expect(reaper.sweepDetached(() => exited)).rejects.toMatchObject({
       processGroupIds: [5002, LEADER], // the hook unreached, the leader's group not yet held
     });
-    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreached);
+    expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(unreached);
   });
 });

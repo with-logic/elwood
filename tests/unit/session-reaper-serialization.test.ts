@@ -55,5 +55,5 @@ test("C-LIFE-10 a failed queued sweep rejects and stays unresolved", async () =>
   firstRead.resolve();
   await first;
   await failed;
-  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow("process table unreadable");
+  expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow("process table unreadable");
 });
