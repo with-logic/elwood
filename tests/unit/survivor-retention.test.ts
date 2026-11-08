@@ -38,7 +38,10 @@ test("C-LIFE-10 retains a newly owned child across another anchor failure and pa
   expect(calls).toContain("refused kill 5003");
   expect(calls).not.toContain("refused kill 5004");
   const retry = scripted([[orphan]]);
-  expect(await reapRecordedSurvivors(record, retry.ops)).toBeUndefined();
+  expect(await reapRecordedSurvivors(record, retry.ops)).toMatchObject({
+    message: expect.stringContaining("unresolved restoration"),
+  });
+  expect(record.hasUnknownResume).toBe(true);
   expect(retry.calls).toContain("kill 5003");
 });
 
