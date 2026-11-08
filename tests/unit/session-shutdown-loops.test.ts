@@ -49,7 +49,7 @@ function recordingReap(calls: string[]): ShutdownReapPolicy {
         return "signal-sent" as const;
       },
       reap: () => void calls.push("reap"),
-      reapOrConfirmAndThrowIfUnresolved: () => void calls.push("reap"),
+      reapAndThrowOnDetachedSweepFailure: () => void calls.push("reap"),
       sweepDetached: async () => {},
     },
   };
@@ -73,7 +73,7 @@ function host(
           return "signal-sent" as const;
         },
         reap: () => undefined,
-        reapOrConfirmAndThrowIfUnresolved: () => undefined,
+        reapAndThrowOnDetachedSweepFailure: () => undefined,
         sweepDetached: async () => {},
       },
     },

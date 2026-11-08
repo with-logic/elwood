@@ -6,9 +6,9 @@
  *     live `reap_failed` warning (emitted once when observed), never silently dropped.
  *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session
  *     and for `teardown`'s retry step: it must NOT swallow — it throws a typed
- *     `termination_failed` (with errno and the leader's process-group id).
- *     Original syscall reaps stay retryable until authority is retired; retained
- *     history instead awaits confirmation without renewing numeric signal authority.
+ *     `termination_failed` (with its errno and the leader's process-group id) so
+ *     the caller rejects with an ElwoodError (C-ERR-01), and the reap stays
+ *     unlatched for a later retry.
  * `reaper` exposes the underlying one-shot for the `terminatePty` termination path,
  * which owns its own failure handling.
  */
@@ -44,12 +44,12 @@ export class SessionReapPolicy {
   }
 
   /**
-   * Retry an eligible original reap or confirm retained cleanup evidence; preserve
-   * unresolved ownership and wrap failures as typed `termination_failed`.
+   * Reap on explicit shutdown, including an unresolved detached sweep; wrap any failure
+   * as a typed `termination_failed`.
    */
-  async orThrow(): Promise<void> {
+  orThrow(): void {
     try {
-      await this.reaper.reapOrConfirmAndThrowIfUnresolved();
+      this.reaper.reapAndThrowOnDetachedSweepFailure();
     } catch (error) {
       throw elwoodError(
         "termination_failed",

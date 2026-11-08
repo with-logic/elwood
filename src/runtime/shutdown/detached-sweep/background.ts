@@ -102,6 +102,7 @@ async function attempt(
     const resumeDebtCleared = record.resumes.retry(table, ops, mayReap ? undefined : until);
     const survivors = record.survivors(table);
     if (!mayReap && performance.now() >= until) return "blocked";
+    record.unsafeSurvivorGroups(table);
     if (survivors.length === 0) {
       const knownEvidenceResolved =
         record.known &&

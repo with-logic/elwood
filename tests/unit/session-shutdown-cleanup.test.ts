@@ -31,7 +31,7 @@ const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
     return "signal-sent" as const;
   },
   reap: () => undefined,
-  reapOrConfirmAndThrowIfUnresolved: () => undefined,
+  reapAndThrowOnDetachedSweepFailure: () => undefined,
   sweepDetached: async () => {},
 };
 

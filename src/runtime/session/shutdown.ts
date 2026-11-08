@@ -1,9 +1,9 @@
 /**
  * Explicit shutdown/teardown orchestration for AgentSessionBase, extracted to keep
  * the base within the file-size cap. Implements PRD §5.3/§9.4 (C-LIFE-10): every
- * path attempts an eligible original reap or confirms retained cleanup evidence and
- * propagates failure as a typed error. A previously signaled or terminal PTY is never
- * re-signaled: node-pty does not replay exit, and the pid may be recycled.
+ * path ATTEMPTS/RETRIES the leader's process-group reap and propagates a reap failure
+ * as a typed error (never swallows it), while an already-terminal session is never
+ * re-signaled — node-pty does not replay the exit and the pid may be recycled.
  */
 
 import { terminalStatuses } from "../../core/status-categories.ts";
@@ -19,12 +19,11 @@ import { shutdownAttemptThenCleanUp } from "./shutdown-cleanup.ts";
 /** Evidence kinds an explicit shutdown submits once it drives the PTY to exit. */
 export type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
 
-/** Explicit confirmation/reap checks plus the original termination owner's one-shot reap. */
-export type ShutdownReapPolicy = {
-  readonly orThrow: () => void | Promise<void>;
+/** The reap surface shutdown drives: the typed-throw reap plus the retryable one-shot. */
+export type ShutdownReapPolicy = Pick<SessionReapPolicy, "orThrow"> & {
   readonly reaper: Pick<
     SessionReapPolicy["reaper"],
-    "reap" | "reapOrConfirmAndThrowIfUnresolved" | "sweepDetached" | "signalLeaderPty"
+    "reap" | "reapAndThrowOnDetachedSweepFailure" | "sweepDetached" | "signalLeaderPty"
   >;
 };
 
@@ -101,9 +100,9 @@ function mustNotSignal(host: ShutdownHost, ctx: ShutdownContext): boolean {
  * Graceful stop / force kill. Does NOT re-signal when the PTY was already signaled
  * (by a prior shutdown, even one that threw before going terminal) or the session is
  * already terminal — node-pty won't replay exit (the wait would time out) and the pid
- * may be recycled. That path confirms retained history, or retries an eligible original
- * reap when no history exists, and rejects unresolved evidence with a typed error.
- * A first live shutdown marks signal ownership, terminates the PTY, and records
+ * may be recycled. In that case it performs a one-shot survivor reap that rejects with
+ * a typed error on failure and leaves the reap retryable; a first, live shutdown marks
+ * signal ownership, terminates the PTY (which reaps on every path), and records
  * shutdown evidence (C-LIFE-10). Either way runtime cleanup follows, even after a
  * failed termination or reap (see `shutdownAttemptThenCleanUp`).
  */
@@ -126,10 +125,10 @@ export async function runShutdown(
 }
 
 /**
- * Teardown: terminate a still-live PTY (unless already signaled), retry an eligible
- * original reap or confirm retained evidence, stop the runtime, record evidence, and
+ * Teardown: terminate a still-live PTY (unless it was already signaled), reap
+ * (retrying a prior failed reap), stop the runtime, record teardown evidence, and
  * remove owned session files. Each step runs even if an earlier one rejected, so a
- * eligible cleanup is always attempted; retained confirmation cannot renew signal authority.
+ * leaked group is always reaped; a re-signal is refused once signal ownership is held.
  */
 export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Promise<void> {
   host.claimShutdown("teardown_completed");
@@ -142,8 +141,8 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
         ctx.markSignaled();
         return terminatePty(host.pty, "SIGKILL", host.reapPolicy.reaper);
       },
-      // Retry eligible original reaps; otherwise confirm retained history and keep
-      // rejecting unresolved cleanup without renewing numeric leader signal authority.
+      // No-op once latched; retries a failed reap, and keeps failing while a detached
+      // sweep is unresolved, so a retry never reports a possibly running hook as reaped.
       // Typed, so `teardown_failed` keeps its errno, the leader's process-group id, and
       // any unconfirmed process-group ids (§10).
       () => host.reapPolicy.orThrow(),

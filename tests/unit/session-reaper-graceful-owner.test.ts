@@ -78,7 +78,7 @@ test("C-LIFE-10 failed first ownership remains refused for cached retries and fo
   await expect(watch.finish(true)).rejects.toMatchObject({ processGroupIds: [] });
   expect(reaper.watchSurvivors(() => true)).toBe(watch);
   await expect(reaper.sweepDetached(() => false)).rejects.toMatchObject({ processGroupIds: [] });
-  expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(
+  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(
     "First leader process-table read failed",
   );
   expect(fake.calls).toEqual([]);

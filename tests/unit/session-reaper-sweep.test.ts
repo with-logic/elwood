@@ -1,7 +1,7 @@
 /**
  * `SessionReaper`'s handle on the detached sweep (PRD §5.3 and §9.4, C-LIFE-10): it
  * sweeps through the session's ops, refuses misrouted leader ids, and keeps a failed
- * sweep so later confirmation still fails without restarting leader-group signals.
+ * sweep so every later confirmed reap still fails after reaping the leader's group.
  * Injected process operations only; no real group is signaled here.
  */
 
@@ -31,15 +31,14 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
     }
   });
 
-  test("keeps a failed sweep after the initial reap without renewing numeric signals", async () => {
+  test("keeps a failed sweep: each confirmed reap reaps the group, then fails", async () => {
     const { ops, calls } = scripted([], { listProcesses: () => Promise.reject(errno("EAGAIN")) });
     const reaper = new SessionReaper(LEADER, ops);
     await expect(reaper.sweepDetached(leaderNeverExits)).rejects.toMatchObject({ code: "EAGAIN" });
-    reaper.reap(); // The original termination owns this initial numeric group signal.
     const unreadable = "process table unreadable (EAGAIN)";
-    expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(unreadable);
-    expect(calls).toEqual([`stop ${LEADER}`, `kill ${LEADER}`]); // confirmation sends nothing
-    expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(unreadable);
+    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreadable);
+    expect(calls).toEqual([`stop ${LEADER}`, `kill ${LEADER}`]); // reaped before it threw
+    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreadable);
     expect(() => reaper.reap()).not.toThrow();
     expect(calls).toEqual([`stop ${LEADER}`, `kill ${LEADER}`]); // latched: reaped once
   });
@@ -57,6 +56,6 @@ describe("C-LIFE-10 SessionReaper detached sweep", () => {
     await expect(reaper.sweepDetached(() => exited)).rejects.toMatchObject({
       processGroupIds: [5002, LEADER], // the hook unreached, the leader's group not yet held
     });
-    expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(unreached);
+    expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(unreached);
   });
 });

@@ -9,7 +9,6 @@ import type { DescendantRecord } from "./record.ts";
 export class RetainedShutdownFailures {
   private readonly recoveries: BackgroundReap[] = [];
   private failure: SweepFailure | undefined;
-  private retainedHistory = false;
   private readonly ops: ProcessTreeOps;
   private readonly serialize: ReapQueue;
 
@@ -18,15 +17,9 @@ export class RetainedShutdownFailures {
     this.serialize = serialize;
   }
 
-  /** History survives resolution, so confirmation cannot regain numeric signal authority. */
-  get hasRetainedHistory(): boolean {
-    return this.retainedHistory;
-  }
-
   /** The attempt that failed still rejects, even when its recovery finishes immediately. */
   keep(failure: SweepFailure | undefined, record: DescendantRecord): void {
     if (failure === undefined) return;
-    this.retainedHistory = true;
     this.failure ??= failure;
     const ops = {
       ...this.ops,

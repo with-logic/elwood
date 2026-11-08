@@ -1,5 +1,7 @@
 /** A graceful owner reaps original groups through one verified cleanup (C-LIFE-10). */
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { BACKGROUND_REAP_RETRY_WINDOW_MS } from "../../src/runtime/shutdown/detached-sweep/background.ts";
+import { RetainedShutdownFailures } from "../../src/runtime/shutdown/detached-sweep/retained-failures.ts";
 import { watchSurvivors } from "../../src/runtime/shutdown/detached-sweep/survivor-watch.ts";
 import {
   hook,
@@ -11,6 +13,10 @@ import {
 import { survivorGuard } from "../helpers/survivor-guard.ts";
 
 useScriptedHost();
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 test("C-LIFE-10 explicit reaping verifies a live original leader and same-group helper", async () => {
   const fake = scripted([[leaderRow, hook(5001, { pgid: LEADER }), hook(5002)]]);
@@ -91,4 +97,45 @@ test("C-LIFE-10 a rejected retained cleanup is not repeated by finish", async ()
   await expect(watch.finish(true)).rejects.toBe(failure);
   expect(keep).toHaveBeenCalledOnce();
   expect(fake.calls).toEqual(completed);
+});
+
+test("C-LIFE-10 failed graceful finish retains unmatched original-group ownership", async () => {
+  vi.useFakeTimers();
+  let clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
+  const fake = scripted([]);
+  let recording = true;
+  let later = [hook(5003, { pgid: LEADER, ppid: 1 })];
+  const ops = {
+    ...fake.ops,
+    listProcesses: () => Promise.resolve(recording ? fake.asRead([leaderRow]) : later),
+    listProcessesUnreferenced: () => Promise.resolve(later),
+  };
+  const guard = survivorGuard();
+  const failures = new RetainedShutdownFailures(ops, guard.serialize);
+  const watch = watchSurvivors(
+    LEADER,
+    ops,
+    () => false,
+    (failure, record) => failures.keep(failure, record),
+    guard,
+  );
+  await watch.firstRead;
+  await expect(
+    watch.sendSignal(() => {
+      throw new Error("PTY send failed");
+    }),
+  ).rejects.toThrow("PTY send failed");
+  const originalSignals = [...fake.calls];
+  recording = false;
+  const original = await watch.finish(true).catch((error: unknown) => error);
+  expect(original).toBeInstanceOf(Error);
+  await vi.advanceTimersByTimeAsync(0);
+  await expect(Promise.resolve().then(() => failures.throwIfUnresolved())).rejects.toBe(original);
+  later = [];
+  clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
+  await failures.confirm();
+  await expect(Promise.resolve().then(() => failures.throwIfUnresolved())).rejects.toBe(original);
+  expect(originalSignals).toEqual([`stop ${LEADER}`, `cont ${LEADER}`]);
+  expect(fake.calls).toEqual(originalSignals);
 });

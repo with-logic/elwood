@@ -42,7 +42,7 @@ test.each([
     await expect(terminatePty(pty(send), signal, reaper, timeouts)).resolves.toBeUndefined();
   await reaper.sweepDetached(() => false);
   reaper.reap();
-  reaper.reapOrConfirmAndThrowIfUnresolved();
+  reaper.reapAndThrowOnDetachedSweepFailure();
   expect(send).not.toHaveBeenCalled();
   expect(stop).toHaveBeenCalledOnce();
   expect(fake.calls.filter((call) => call.startsWith("kill"))).toEqual([]);
@@ -83,7 +83,7 @@ test("C-LIFE-10 confirmed group exit does not clear an earlier unresolved descen
       ],
     },
   });
-  expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(
+  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(
     "could not stop the leader's group",
   );
   expect(send).not.toHaveBeenCalled();
@@ -131,7 +131,7 @@ test.each([
   });
   expect(send).toHaveBeenCalledExactlyOnceWith("SIGKILL");
   expect(fake.calls).toEqual(["list", `kill ${LEADER}`]);
-  expect(() => reaper.reapOrConfirmAndThrowIfUnresolved()).toThrow(
+  expect(() => reaper.reapAndThrowOnDetachedSweepFailure()).toThrow(
     "could not stop the leader's group (EPERM)",
   );
 });
