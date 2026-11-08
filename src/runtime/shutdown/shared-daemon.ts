@@ -23,8 +23,8 @@
  * parent exits before the walk is out of its reach already (PRD §5.3).
  */
 
+import { processIndexBase } from "./process-index-base.ts";
 import {
-  childrenByParent,
   listProcessTableShared,
   type ProcessEntry,
   PS_PATH,
@@ -85,8 +85,12 @@ async function markShared(
   readPath: (pid: number) => Promise<string>,
 ): Promise<readonly ProcessEntry[]> {
   // A root a read missed is taken for a `codex`, as the TUI was: only a path read confirms.
-  const names = new Map([...[...roots].map((root) => [root, CODEX] as const), ...nameMap(table)]);
-  const candidates = reachable(table, roots).filter((row) => couldBeFromInstall(row, names));
+  const index = processIndexBase(table);
+  const candidates = reachable(index, roots).filter((row) => {
+    const parent = index.byPid.get(row.ppid);
+    const parentName = parent === undefined && roots.has(row.ppid) ? CODEX : parent?.name;
+    return couldBeFromInstall(row, parentName);
+  });
   const key = (row: ProcessEntry) => `${row.pid} ${row.ppid} ${row.pgid}`;
   const unknown = candidates.filter((row) => !known.has(key(row)));
   const probe = async (row: ProcessEntry) => ({ row, path: await readPath(row.pid) });
@@ -109,12 +113,12 @@ async function markShared(
 export function groupIdsToResume(table: readonly ProcessEntry[]): ReadonlySet<number> {
   const names = nameMap(table);
   const rows = table.filter(
-    (row) => row.shared || (!row.stopped && couldBeFromInstall(row, names)),
+    (row) => row.shared || (!row.stopped && couldBeFromInstall(row, names.get(row.ppid))),
   );
   return new Set(rows.map((row) => row.pgid));
 }
 
-/** Each process's short name, by pid, as `couldBeFromInstall` takes them. */
+/** Each process's short name for the independent stopped-group resume check. */
 function nameMap(table: readonly ProcessEntry[]): ReadonlyMap<number, string> {
   return new Map(table.map((row) => [row.pid, row.name]));
 }
@@ -123,11 +127,11 @@ function nameMap(table: readonly ProcessEntry[]): ReadonlyMap<number, string> {
  * Whether `row` has the shape of the daemon or its updater in a table read; only its path
  * can confirm it.
  */
-function couldBeFromInstall(row: ProcessEntry, names: ReadonlyMap<number, string>): boolean {
+function couldBeFromInstall(row: ProcessEntry, parentName: string | undefined): boolean {
   const live = !row.zombie;
   const runsCodex = row.name === CODEX;
   const leadsOwnGroup = row.pgid === row.pid;
-  const parentIsCodexOrInit = row.ppid === 1 || names.get(row.ppid) === CODEX;
+  const parentIsCodexOrInit = row.ppid === 1 || parentName === CODEX;
   return live && runsCodex && leadsOwnGroup && parentIsCodexOrInit;
 }
 
@@ -135,10 +139,17 @@ function couldBeFromInstall(row: ProcessEntry, names: ReadonlyMap<number, string
  * The rows of `roots` and of every process descending from one, by parent pid. A root
  * missing from the read still parents its children, as in `detachedDescendantGroups`.
  */
-function reachable(table: readonly ProcessEntry[], roots: ReadonlySet<number>): ProcessEntry[] {
-  const children = childrenByParent(table);
+function reachable(
+  { byPid, children }: ReturnType<typeof processIndexBase>,
+  roots: ReadonlySet<number>,
+): ProcessEntry[] {
   const found = new Map<number, ProcessEntry>();
-  const pending = table.filter((row) => roots.has(row.pid) || roots.has(row.ppid));
+  const pending: ProcessEntry[] = [];
+  for (const root of roots) {
+    const row = byPid.get(root);
+    if (row !== undefined) pending.push(row);
+    for (const child of children.get(root) ?? []) pending.push(child);
+  }
   for (let row = pending.pop(); row !== undefined; row = pending.pop()) {
     if (found.has(row.pid)) continue;
     found.set(row.pid, row);

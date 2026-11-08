@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reuse process snapshot indexes across cleanup callers, reducing CPU and allocation
+  while keeping Codex shared daemon decisions specific to each session.
+
 ## [0.2.5] - 2026-11-07
 
 - Wait for native PTY exit even after confirming its process group is gone; missing
