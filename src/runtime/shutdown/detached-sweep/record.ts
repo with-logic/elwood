@@ -1,5 +1,4 @@
-/**
- * Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10).
+/** Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10).
  * Frozen identities exclude replacements; failed observations retain uncertainty.
  */
 
@@ -26,7 +25,7 @@ export class DescendantRecord {
   private unknownLeaderGroup: number | undefined;
   private unknownResume = false;
   private readonly readFailures = new SweepFailures();
-  private missedRead = false;
+  private observationGapRecorded = false;
   readonly resumes = new ResumeDebt();
   /** Frozen first-read result: an accepted identity, confirmed absence, or refusal. */
   private firstLeaderObservation: LeaderObservation | undefined;
@@ -139,10 +138,15 @@ export class DescendantRecord {
     return this.firstLeaderObservation;
   }
 
+  /** An incomplete walk can miss children that orphan before another observation. */
+  markObservationGap(): void {
+    this.observationGapRecorded = true;
+  }
+
   /** A failed observation can hide an orphan; later readable tables cannot disprove it. */
   noteReadFailure(error: unknown): void {
-    if (this.missedRead) return;
-    this.missedRead = true;
+    if (this.observationGapRecorded) return;
+    this.observationGapRecorded = true;
     this.readFailures.record("process table unreadable", error, []);
   }
 
@@ -159,7 +163,7 @@ export class DescendantRecord {
 
   /** Missing observations and lost original-group authority cannot be disproved by empty reads. */
   get hasObservationUncertainty(): boolean {
-    return this.missedRead || this.unknownLeaderGroup !== undefined;
+    return this.observationGapRecorded || this.unknownLeaderGroup !== undefined;
   }
 
   get hasUnknownResume(): boolean {
