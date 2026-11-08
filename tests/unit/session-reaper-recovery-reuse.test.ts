@@ -57,7 +57,7 @@ test.each([
   if (phase === "expired confirmation") {
     clock = BACKGROUND_REAP_RETRY_WINDOW_MS;
     confirming = true;
-    const pending = Promise.resolve().then(() => reaper.reapAndThrowOnDetachedSweepFailure());
+    const pending = Promise.resolve().then(() => reaper.reapOrConfirmAndThrowIfUnresolved());
     const settled = pending.then(
       () => undefined,
       (error: unknown) => error,
@@ -73,7 +73,7 @@ test.each([
     await vi.advanceTimersByTimeAsync(0);
     replacementAlive = true;
     await expect(
-      Promise.resolve().then(() => reaper.reapAndThrowOnDetachedSweepFailure()),
+      Promise.resolve().then(() => reaper.reapOrConfirmAndThrowIfUnresolved()),
     ).rejects.toBe(rootFailure);
     expect(confirmationReads).toBe(0);
   }

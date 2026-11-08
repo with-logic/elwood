@@ -155,7 +155,7 @@ export class SessionReaper {
   }
 
   /** Retained-history retries confirm evidence without restarting numeric leader signals. */
-  reapAndThrowOnDetachedSweepFailure(): void | Promise<void> {
+  reapOrConfirmAndThrowIfUnresolved(): void | Promise<void> {
     if (!this.retainedFailures.hasRetainedHistory) return this.reap();
     if (this.leaderReapError !== undefined) this.forbidLeaderSignals(this.leaderReapError);
     const confirmation = this.retainedFailures.confirm();
