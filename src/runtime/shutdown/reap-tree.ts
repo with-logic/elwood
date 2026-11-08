@@ -41,8 +41,6 @@ export {
   setProcessTreeOpsForTests,
 } from "./process-tree-ops.ts";
 
-export type LeaderPtySignalOutcome = "signal-sent" | "leader-group-gone";
-
 /**
  * Owns one successful group cleanup: a numeric forced reap or a verified graceful walk.
  * Completion prevents another numeric kill after PID reuse; it does not prove that
@@ -85,16 +83,15 @@ export class SessionReaper {
   }
 
   /** Dispatch a PTY signal only while this session has not confirmed its group gone. */
-  signalLeaderPty(send: () => void): LeaderPtySignalOutcome {
+  signalLeaderPty(send: () => void): void {
     if (this.leaderGroupGone || this.done) {
       this.reapAndThrowOnDetachedSweepFailure();
-      return "leader-group-gone";
+      return;
     }
     this.assertLeaderSignalsAllowed();
     if (this.gracefulWatch !== undefined)
       throw new Error("Graceful shutdown owns verified leader-group cleanup.");
     send();
-    return "signal-sent";
   }
 
   /** Verify graceful authority before any exit callback can reap the numeric leader group. */

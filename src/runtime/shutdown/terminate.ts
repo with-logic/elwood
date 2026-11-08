@@ -64,7 +64,10 @@ export async function terminatePty(
       if (!latch.exited) reaper.signalLeaderPty(() => pty.kill("SIGKILL"));
       observedExit = await latch.within(timeouts.forceMs);
       if (!observedExit) {
-        terminationError = elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
+        terminationError = elwoodError(
+          "termination_failed",
+          "PTY exit was not observed within the termination window.",
+        );
       }
     }
   } catch (error) {

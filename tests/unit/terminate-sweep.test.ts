@@ -72,7 +72,7 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     if (!(rejected instanceof ElwoodError)) throw new Error("expected an ElwoodError");
     expect(rejected).toMatchObject({
       code: "termination_failed",
-      message: "PTY did not exit after SIGKILL.",
+      message: "PTY exit was not observed within the termination window.",
       details: { sweepError: "sweep exploded" },
     });
     expect(rejected.details).not.toHaveProperty("unconfirmedProcessGroupIds"); // none were named

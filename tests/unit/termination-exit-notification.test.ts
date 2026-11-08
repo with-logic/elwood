@@ -62,10 +62,10 @@ test.each([
     () => undefined,
     (error: unknown) => error,
   );
-  await vi.advanceTimersByTimeAsync(40);
+  await vi.advanceTimersByTimeAsync(bounds.gracefulMs + bounds.forceMs);
   expect(await pending).toMatchObject({
     code: "termination_failed",
-    message: "PTY did not exit after SIGKILL.",
+    message: "PTY exit was not observed within the termination window.",
   });
   expect(fixture.kill).not.toHaveBeenCalled();
   expect(fixture.calls).toEqual([]);

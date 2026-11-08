@@ -37,7 +37,10 @@ test.each([
   const fake = scripted([rows], { stopGroup: stop });
   const reaper = new SessionReaper(LEADER, fake.ops);
   const send = vi.fn();
-  const missingExit = { code: "termination_failed", message: "PTY did not exit after SIGKILL." };
+  const missingExit = {
+    code: "termination_failed",
+    message: "PTY exit was not observed within the termination window.",
+  };
   await expect(terminatePty(pty(send), "SIGKILL", reaper, timeouts)).rejects.toMatchObject(
     missingExit,
   );

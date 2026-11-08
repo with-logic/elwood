@@ -71,6 +71,6 @@ test("C-CODEX-14 a CLI that never reports exit cannot hold the restore past its 
   await expect
     .poll(() => readFileSync(configPath, "utf8"), { timeout: 8_000, interval: 100 })
     .toBe(userConfig);
-  expect(await killed).toContain("did not exit");
+  expect(await killed).toBe("PTY exit was not observed within the termination window.");
   ptys[0]!.emitExit({ exitCode: 0 });
 }, 30_000);

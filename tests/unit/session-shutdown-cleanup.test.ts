@@ -28,7 +28,6 @@ const untouchedPty: PtyProcess = {
 const quietReaper: ShutdownHost["reapPolicy"]["reaper"] = {
   signalLeaderPty: (send: () => void) => {
     send();
-    return "signal-sent" as const;
   },
   reap: () => undefined,
   reapAndThrowOnDetachedSweepFailure: () => undefined,
