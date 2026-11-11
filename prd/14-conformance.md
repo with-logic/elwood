@@ -374,7 +374,7 @@ Each criterion has:
 | C-REVIEW-01 | §16 | Opening a same-repository PR produces one automatic review; pushes, edits, reopenings, and ready transitions do not start another review. |
 | C-REVIEW-02 | §16 | An already-approved head is skipped; minors and nits may be fixed without another review. |
 | C-REVIEW-03 | §16 | Only exact newly-created `/review` PR comments from current human writers qualify; authorization checks both author and requester before secrets, checkout, or review cancellation. |
-| C-REVIEW-04 | §16 | A complete validated twelve-dimension report with zero blockers and majors can approve. Publication preserves existing approvals, includes the run link and `/review`, and does not suppress a report or verdict when the head or base changes. |
+| C-REVIEW-04 | §16 | A complete validated report for the discovered lens roster with zero blockers and majors can approve. Publication preserves existing approvals, includes the run link and `/review`, and does not suppress a report or verdict when the head or base changes. |
 | C-REVIEW-05 | §16 | Both head and base must belong to this repository, with no base-branch trigger filter; current human writers and the official Dependabot author qualify, while forks and outside contributors do not. |
 
 ### Launch hardening

@@ -27,9 +27,12 @@ transitions, edits, and reopenings do not repeat review. A maintainer can post
 exactly `/review` as a new PR comment. The comment trigger is available after
 the workflow reaches the default branch.
 
-The shared action runs twelve independent review lenses, validates their
-reports, and merges the findings. An approved head is skipped. A complete
-successful report with zero blockers and majors can approve; minors and nits
+The shared action fetches the canonical collection from
+`with-logic/skills//skills/code-review` at `main` through Crew. It runs every
+discovered lens, validates the reports, and merges the findings. Each report
+records the Skills commit and the expected and reported lens rosters.
+Acquisition failure stops the review without a fallback. An approved head is
+skipped. A complete successful report with zero blockers and majors can approve; minors and nits
 remain visible and may be fixed without another review. Existing approvals
 are preserved. Review does not merge PRs or bypass CI and branch protection.
 A later head or base change does not discard the captured report or its verdict.
@@ -65,12 +68,18 @@ No local Slack interaction is needed to operate these workflows.
 
 ## Credentials and permissions
 
-The private source reader is a dedicated GitHub App installed only on
-`with-logic/pipeline`, with Contents read permission. Its client ID is
+The private source reader is a dedicated GitHub App with Contents read access
+to `with-logic/pipeline` and `with-logic/skills`. Its client ID is
 `vars.PIPELINE_SOURCE_APP_CLIENT_ID`; its private key is
 `secrets.PIPELINE_SOURCE_APP_PRIVATE_KEY`. The official token action issues a
 short-lived token only to download the shared actions. Checkout does not persist
-that token. A shared preparation helper adjusts nested action paths in the
+that token. Review acquisition mints a separate token limited to `skills` with
+Contents read permission. It revokes that token before npm installs caller
+dependencies or runs package scripts, and before model execution. Acquired
+instructions stay fixed until all readers finish, then they are removed.
+Cache preparation does not acquire review instructions.
+
+A shared preparation helper adjusts nested action paths in the
 downloaded copy so local composites resolve their shared runtime correctly.
 
 Organization secrets `OPENAI_API_KEY`, `LINEAR_API_KEY`, and `SLACK_BOT_TOKEN`

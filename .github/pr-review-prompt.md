@@ -718,7 +718,7 @@ file is safe just because it is in Git.
   For `pull_request_target` or follow-up privileged workflows, trace exactly which
   revision supplies scripts, configuration, and review instructions.
 - Treat model output as untrusted structured data. Validate the schema, full
-  twelve-lens coverage and severity/verdict consistency before an approval is
+  complete coverage of the discovered lens roster and severity/verdict consistency before an approval is
   published. Missing/failed lenses must fail closed.
 - Gate publishing on trusted run provenance, repository, and PR identity.
   Artifact names alone do not establish provenance. A later head or base change

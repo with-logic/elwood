@@ -1,8 +1,11 @@
 # §16 Maintainer review automation
 
 Elwood uses the shared actions in `with-logic/pipeline` at `main`. The private
-source is read through a dedicated GitHub App installed only on `pipeline`,
-with Contents read permission. Review, ticket creation, merged announcements,
+automation source is read through a dedicated GitHub App with Contents read
+access to `pipeline` and `skills`. The automation download token is limited to
+`pipeline`. Review acquisition uses a separate token limited to `skills`, which
+is revoked before npm installs caller dependencies or runs package scripts, and
+before model execution. Review, ticket creation, merged announcements,
 and cache preparation use the same shared implementations as the other repos.
 
 ## Review eligibility and requests
@@ -30,8 +33,12 @@ approval, or bypasses repository protections.
 
 ## Review substance and publication
 
-Every review runs all twelve shared dimensions, including simplicity, then
-merges their findings. Elwood-specific criteria remain in
+Each review fetches `with-logic/skills//skills/code-review` at `main` through
+Crew and runs every discovered lens, then merges their findings. The report
+records the source commit and expected and reported lens rosters. Instructions
+stay fixed until all readers finish, then the acquired files are removed.
+Acquisition failure stops review without a fallback to Pipeline instructions.
+Elwood-specific criteria remain in
 `.github/pr-review-prompt.md`, including filesystem persistence, terminal and
 hook ordering, process ownership, both adapters, and the real-CLI lessons in
 `docs/cli-behavior.md`. The caller's `AGENTS.md`, PRD, strict TypeScript, Biome,
@@ -40,7 +47,7 @@ The shared action installs its canonical skills into agent-specific directories
 for the run without changing the committed local skills.
 
 The model comes from the organization variable `REVIEW_MODEL`. Approval requires
-a successful, complete, validated twelve-dimension report with zero blockers
+a successful, complete report for the discovered roster with zero blockers
 and zero majors. Minors and nits remain visible. Incomplete or failed evidence
 cannot approve a PR. If the PR is already approved, new non-approving findings
 are comments that preserve the approval. Reports include the workflow run link
