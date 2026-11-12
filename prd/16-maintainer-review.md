@@ -44,7 +44,7 @@ hook ordering, process ownership, both adapters, and the real-CLI lessons in
 `docs/cli-behavior.md`. The caller's `AGENTS.md`, PRD, strict TypeScript, Biome,
 200-line code limit, and 100% runtime coverage remain authoritative contracts.
 The shared action installs its canonical skills into agent-specific directories
-for the run without changing the committed local skills.
+for the run without changing tracked files.
 
 The model comes from the organization variable `REVIEW_MODEL`. Approval requires
 a successful, complete report for the discovered roster with zero blockers
