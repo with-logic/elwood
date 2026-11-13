@@ -221,9 +221,9 @@ updated project `review/SKILL.md`: `.agents/skills/review/SKILL.md` for Codex or
 procedure to verify this agent's full roster, helper and source records, then
 continue `/review` in this session. Refresh once per invocation.
 
-Failed preparation stops required review. A successful `npm install`, a
-`no_agents` result, or another agent's install does not prove readiness. Do not
-use stale or personal skills as a fallback. See
+Failed preparation stops required review. `npm install` does not run Crew, so
+it does not prove readiness. A `no_agents` result or another agent's install
+does not prove it either. Do not use stale or personal skills as a fallback. See
 [CONTRIBUTING.md](CONTRIBUTING.md#shared-local-review) for setup and recovery.
 
 The shared procedure includes proposed PR title and body text from the separately

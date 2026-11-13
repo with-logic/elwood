@@ -33,8 +33,8 @@ site/**/__pycache__/
 site/assets/frame.png
 
 # Crew-managed project copies. The names review, review-* and
-# pull-request-description are reserved for Crew; authored skills with other
-# names stay tracked.
+# pull-request-description are reserved for Crew; skills with other names are
+# not ignored.
 /.*/skills/pull-request-description/
 /.*/skills/review/
 /.*/skills/review-*/

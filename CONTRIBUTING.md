@@ -38,6 +38,10 @@ npm run check
 5. `vitest run --coverage` with 100% line, branch, function, and statement
    coverage.
 
+CI also runs `node --test tests/workflows/*.test.mjs`, the checks of the review
+workflow triggers. `npm run check` does not include them; run that command
+after a change to `.github/workflows/code-review.yml`.
+
 Useful narrower commands:
 
 ```sh
@@ -114,7 +118,7 @@ like everything else but are excluded from the coverage gate.
 | `src/bridge/`               | Local hook bridge server and generated bridge script.                                               |
 | `src/terminal/`, `src/pty/` | Headless xterm.js model and node-pty adapter.                                                       |
 | `dev/`                      | Local terminal and browser dev apps (not published, not coverage-gated).                            |
-| `tests/`                    | Unit, conformance, and e2e suites.                                                                  |
+| `tests/`                    | Unit, conformance, and e2e suites; `tests/workflows/` holds the `node --test` review workflow checks. |
 | `docs/`                     | Guides and the record of empirically learned CLI behavior.                                          |
 
 ## Shared local review

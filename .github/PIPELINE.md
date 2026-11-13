@@ -96,9 +96,10 @@ and approve pull requests must be enabled. No job uses `pull_request_target`.
 
 ## Local verification
 
-`tests/workflows/workflow-trigger.test.mjs` checks the triggers and the
+`tests/workflows/code-review-workflow.test.mjs` checks the triggers and the
 authorization gate of the active [`workflows/code-review.yml`](workflows/code-review.yml).
-CI runs it in the `check` job:
+CI runs it as a separate step of the `check` job in `ci.yml`; `npm run check`
+does not include it:
 
 ```sh
 node --test tests/workflows/*.test.mjs
