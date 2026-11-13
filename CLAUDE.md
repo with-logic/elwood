@@ -217,7 +217,9 @@ repository root, run `crew version` and `crew install --latest --json` with a
 command timeout. Require a published Crew release at or above the minimum that
 [CONTRIBUTING.md](CONTRIBUTING.md#shared-local-review) names. Then read the
 updated project `review/SKILL.md`: `.agents/skills/review/SKILL.md` for Codex or
-`.claude/skills/review/SKILL.md` for Claude Code. Follow its shared preparation
+`.claude/skills/review/SKILL.md` for Claude Code. The shared procedure supports
+these two agents only; with another agent, such as OpenCode, report the local
+review as not run. Follow its shared preparation
 procedure to verify this agent's full roster, helper and source records, then
 continue `/review` in this session. Refresh once per invocation.
 
