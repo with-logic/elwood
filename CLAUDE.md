@@ -231,9 +231,9 @@ continue `/review` in this session. Refresh once per invocation.
 
 Failed preparation stops required review. If you cannot recover the preparation
 for any other reason, report the local review as not run and ask the user before
-you open the pull request. `npm install` does not run Crew, so it does not prove readiness. A
-`no_agents` result or another agent's install does not prove it either. Do not
-use stale or personal skills as a fallback. See
+you open the pull request. `npm install` does not run Crew, so it does not prove
+readiness. A `no_agents` result or another agent's install does not prove it
+either. Do not use stale or personal skills as a fallback. See
 [CONTRIBUTING.md](CONTRIBUTING.md#shared-local-review) for setup and recovery.
 
 The shared procedure includes proposed PR title and body text from the separately
