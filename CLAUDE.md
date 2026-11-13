@@ -206,6 +206,12 @@ test or used a single event where the behavior being tested could not apply.
 
 ## Required local review
 
+This step needs read access to `with-logic/skills`, which is private to Logic. If
+you do not have that access (Crew reports that it cannot reach
+`with-logic/skills`), skip the local review. This is not a failed preparation: do
+not ask the user about it, and say in the pull request that the local review was
+skipped.
+
 This section applies to local coding-agent sessions only. A hosted CI review
 gets its instructions from the workflow. In hosted CI, do not run Crew and do not
 treat missing Crew as a failed review. Run the local review before you open a
@@ -223,9 +229,9 @@ review as not run. Follow its shared preparation
 procedure to verify this agent's full roster, helper and source records, then
 continue `/review` in this session. Refresh once per invocation.
 
-Failed preparation stops required review. If you cannot recover the preparation,
-report the local review as not run and ask the user before you open the pull
-request. `npm install` does not run Crew, so it does not prove readiness. A
+Failed preparation stops required review. If you cannot recover the preparation
+for any other reason, report the local review as not run and ask the user before
+you open the pull request. `npm install` does not run Crew, so it does not prove readiness. A
 `no_agents` result or another agent's install does not prove it either. Do not
 use stale or personal skills as a fallback. See
 [CONTRIBUTING.md](CONTRIBUTING.md#shared-local-review) for setup and recovery.
