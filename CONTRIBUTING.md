@@ -129,11 +129,10 @@ install must run no scripts of its own.
 
 Use a published [Crew release](https://crew.logic.inc/) with project manifests
 (0.13+; 0.14.0 verified). Check `crew version` and Git read access to
-`with-logic/skills`. Without that access, the shared local review is not
-available: report the review as not run. The shared procedure supports Codex
-and Claude Code only. With another coding agent, such as OpenCode, the shared
-local review is also not available: report it as not run. The hosted review
-stays the merge requirement. Enable the agent if needed with
+`with-logic/skills`. The shared procedure supports Codex and Claude Code only.
+With another coding agent, such as OpenCode, the shared local review is not
+available: report it as not run. The hosted review stays the merge requirement.
+Enable the agent if needed with
 `crew agents enable codex` or `crew agents enable claude-code`, then run this
 from the repository root:
 
