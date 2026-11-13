@@ -42,8 +42,7 @@ Elwood's specialized lens criteria are preserved in
 writes, resume compatibility, PTY lifecycle and hook ordering, typed warnings,
 both adapters, and real-CLI evidence. `AGENTS.md`, `prd/`, and
 `docs/cli-behavior.md` remain the caller contracts. The shared action installs
-canonical skills in its temporary checkout, without changing the committed
-local skills.
+canonical skills in its temporary checkout, without changing tracked files.
 
 The review uses Node 24, matching `.node-version`, and `vars.REVIEW_MODEL`.
 Default-branch pushes and manual runs of
@@ -97,18 +96,19 @@ and approve pull requests must be enabled. No job uses `pull_request_target`.
 
 ## Local verification
 
-The checked-in `scripts/review/`, `opencode.json`, and `.claude/skills/` remain
-available as a separate eleven-lens local harness. They no longer implement
-hosted review or its request/publication policy. Their deterministic regression
-suite remains in CI alongside checks of the active shared workflow triggers:
+`tests/workflows/code-review-workflow.test.mjs` checks the triggers and the
+authorization gate of the active [`workflows/code-review.yml`](workflows/code-review.yml).
+CI runs it as a separate step of the `check` job in `ci.yml`; `npm run check`
+does not include it:
 
 ```sh
-node --test scripts/review/tests/*.test.mjs
-python3 -m unittest discover -s scripts/review/tests -p '*_test.py' -v
+node --test tests/workflows/*.test.mjs
 ```
 
-These tests use local fixtures and fake OpenCode output; they make no model
+The test reads the workflow file and uses local fixtures; it makes no model
 calls. The shared implementation owns hosted reviewer regression coverage.
-Real local `bash scripts/review/run.sh origin/main` uses provider quota and
-is not part of these checks. It uses `REVIEW_MODEL`, with an optional explicit
-`ELWOOD_REVIEW_MODEL` override and a GPT-6.1 Sol fallback for local use.
+
+Required local review uses Crew-managed project skills; see
+[CONTRIBUTING.md](../CONTRIBUTING.md#shared-local-review). Elwood has no
+separate local review runner. The Elwood review criteria are in
+[`pr-review-prompt.md`](pr-review-prompt.md).

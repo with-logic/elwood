@@ -38,6 +38,10 @@ npm run check
 5. `vitest run --coverage` with 100% line, branch, function, and statement
    coverage.
 
+CI also runs `node --test tests/workflows/*.test.mjs`, the checks of the review
+workflow triggers. `npm run check` does not include them; run that command
+after a change to `.github/workflows/code-review.yml`.
+
 Useful narrower commands:
 
 ```sh
@@ -114,5 +118,46 @@ like everything else but are excluded from the coverage gate.
 | `src/bridge/`               | Local hook bridge server and generated bridge script.                                               |
 | `src/terminal/`, `src/pty/` | Headless xterm.js model and node-pty adapter.                                                       |
 | `dev/`                      | Local terminal and browser dev apps (not published, not coverage-gated).                            |
-| `tests/`                    | Unit, conformance, and e2e suites.                                                                  |
+| `tests/`                    | Unit, conformance, and e2e suites; `tests/workflows/` holds the `node --test` review workflow checks. |
 | `docs/`                     | Guides and the record of empirically learned CLI behavior.                                          |
+
+## Shared local review
+
+Shared review skills and the PR-description helper come from `.crewrc` through
+Crew. `npm install` does not run Crew: this package is published, and its
+install must run no scripts of its own.
+
+Use a published [Crew release](https://crew.logic.inc/) with project manifests
+(0.13+; 0.14.0 verified). Check `crew version` and Git read access to
+`with-logic/skills`. Without that access, the shared local review is not
+available: report the review as not run. The shared procedure supports Codex
+and Claude Code only. With another coding agent, such as OpenCode, the shared
+local review is also not available: report it as not run. The hosted review
+stays the merge requirement. Enable the agent if needed with
+`crew agents enable codex` or `crew agents enable claude-code`, then run this
+from the repository root:
+
+```sh
+crew install --latest --json
+```
+
+A failure exits nonzero; fix the reported cause and run it again. For a
+`no_agents` result, enable your agent with the command above. A zero exit does
+not prove that your agent is ready. The preparation checks of each review
+confirm it.
+
+Before **each required local review**, the coding agent refreshes again and
+verifies the result. The "Required local review" section of `CLAUDE.md` holds
+that procedure.
+
+Commit `.crewrc` and its Crew-generated `.crewrc.lock`. Plain `crew install`
+retains the locked revision; `--latest` can advance it. Each refresh installs
+the current `main` of `with-logic/skills` before this repository reviews the
+lock change; the lock then names the revision that ran. The agent does not
+discard a lock advance. The author commits it in the pull request under review,
+so that reviewers see it, or discards it after the review with
+`git restore .crewrc.lock`. After a discard, the installed copies are newer than
+the lock until the next `crew install`. If `.crewrc.lock` conflicts with the
+base branch, keep the base branch's lock; the next refresh can advance it again.
+Downloaded project skills stay ignored; authored and personal skills remain
+owned by their authors.

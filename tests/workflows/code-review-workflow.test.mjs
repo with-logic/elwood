@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const workflow = readFileSync(
-  fileURLToPath(new URL("../../../.github/workflows/code-review.yml", import.meta.url)),
+  fileURLToPath(new URL("../../.github/workflows/code-review.yml", import.meta.url)),
   "utf8",
 );
 
