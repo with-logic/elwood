@@ -1,6 +1,7 @@
 /** Connects poster layout, loading and input to the page; docs/design/landing.md. */
 import { fitTitle, layoutPoster } from "./landing/layout.mjs";
 import { LandingScene } from "./landing-scene.mjs";
+import { bindPickupIntent, warmLanding } from "./landing/warmup.mjs";
 import { bindRobotDrag } from "./robot-drag.mjs";
 
 const hero = document.querySelector(".hero");
@@ -22,6 +23,7 @@ let resizing = false;
 let booted = false;
 let visible = true;
 let previousFocus = null;
+let warmup = null;
 
 const scene = new LandingScene(canvas, {
   onPaint() {
@@ -30,6 +32,7 @@ const scene = new LandingScene(canvas, {
   onReady() {
     grip.hidden = false;
     resize();
+    warmup = warmLanding(scene);
   },
   onBounds(box) {
     grip.style.transform = `translate(${box.x}px, ${box.y}px)`;
@@ -48,6 +51,7 @@ const scene = new LandingScene(canvas, {
 });
 
 bindRobotDrag(scene, grip);
+bindPickupIntent(scene, grip);
 
 function resize() {
   if (resizing) return;
@@ -257,7 +261,9 @@ window.addEventListener("blur", () => {
 });
 window.addEventListener("focus", () => scene.pause("blur", false));
 window.addEventListener("pagehide", (event) => {
-  if (!event.persisted) scene.dispose();
+  if (event.persisted) return;
+  warmup?.abort();
+  scene.dispose();
 });
 document.addEventListener("visibilitychange", () => {
   codes.clear();

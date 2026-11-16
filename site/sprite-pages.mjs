@@ -1,10 +1,12 @@
 /** Bound cache, load-lease and pose ownership of decoded pages (PRD §13; docs/design/landing.md). */
 import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
+import { decodedPageBytes, spriteLimits } from "./sprite-limits.mjs";
 
 export class SpritePages {
   #retained = new Set();
   #evicted = new Set();
   #leased = new Map();
+  #limitBytes = spriteLimits.cacheLimitBytes;
   constructor() { this.cached = new Map(); }
 
   acquirePage(key, signal) {
@@ -20,10 +22,14 @@ export class SpritePages {
     this.#evicted.delete(image);
     this.cached.delete(key);
     this.cached.set(key, image);
-    while (this.cached.size > 4) {
+    let bytes = 0;
+    for (const page of this.cached.values()) bytes += decodedPageBytes(page);
+    // The newest page always stays, even when it alone exceeds the budget.
+    while (bytes > this.#limitBytes && this.cached.size > 1) {
       const oldest = this.cached.keys().next().value;
       const evicted = this.cached.get(oldest);
       this.cached.delete(oldest);
+      bytes -= decodedPageBytes(evicted);
       if (this.#owns(evicted)) this.#evicted.add(evicted);
       else releaseSpriteImage(evicted);
     }

@@ -1,4 +1,5 @@
 /** World acceptance determines delivered animation ownership (PRD §13). */
+import "./helpers/four-sheet-cache.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NO_INPUT } from "../autonomy.mjs";

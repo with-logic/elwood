@@ -13,6 +13,9 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Decode landing-page sprite sheets in up to four workers instead of one.
+- Bound the landing page's decoded sprite cache by memory (about 200 MB, half on
+  low-memory devices) instead of four pages, and load the first-reached clips ahead
+  of use: about 8 MB decoded and 10 MB downloaded after the first live paint.
 
 - Reuse process snapshot indexes across cleanup callers, reducing CPU and allocation
   while keeping Codex shared daemon decisions specific to each session.

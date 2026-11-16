@@ -1,4 +1,5 @@
 /** Bounded preparation and completed clip leases (PRD §13; internal sprite ownership). */
+import "./helpers/four-sheet-cache.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture, turn, waitFor } from "./animation-fixture.mjs";

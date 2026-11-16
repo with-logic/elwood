@@ -1,4 +1,5 @@
 /** Landing lifecycle and animation behavior (PRD §13; initial handoff C-SITE-02). */
+import "./helpers/four-sheet-cache.mjs";
 import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";

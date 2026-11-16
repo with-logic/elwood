@@ -189,7 +189,10 @@ const manifestRequested = new Promise((resolve) => {
 const manifestReady = new Promise((resolve) => {
   releaseManifest = resolve;
 });
-globalThis.fetch = async (url) => {
+const requests = [];
+const requestedClip = (name) => requests.filter((request) => request.path.startsWith(`${name}/`));
+globalThis.fetch = async (url, options = {}) => {
+  requests.push({ path: new URL(String(url), root).pathname.split("/assets/game/").at(-1), ...options });
   if (new URL(String(url), root).pathname.endsWith("/manifest.json")) {
     notifyManifest();
     await manifestReady;
@@ -245,7 +248,26 @@ test("the connected HTML poster is laid out while animation metadata is still do
     "The lightweight cable must reach the poster without any sprite data",
   );
   assert.match(html, /<svg class="robot-rope"[^>]*>[\s\S]*?<path[^>]+d="M20 0 C4 35 36 65 20 100"/);
+  assert.deepEqual(requests.map((request) => request.path), ["manifest.json"], "nothing loads ahead before the handoff");
   releaseManifest();
+});
+
+test("C-SITE-06 the live handoff starts loading ahead, hover decodes the pickup, and departure stops the downloads", async () => {
+  for (let i = 0; i < 200 && !scene.ready; i++)
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(element(".hero").dataset.ready, "");
+  const eventually = async (check, message) => {
+    for (let i = 0; i < 400 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(check(), message);
+  };
+  await eventually(() => scene.bank.pages.has("walk-left/0") && scene.bank.pages.has("rotation/2"),
+    "movement clips decode without any input");
+  await eventually(() => requestedClip("pickup-wriggle").some((request) => request.priority === "low"),
+    "pickup footage downloads at low priority");
+  assert.equal(scene.bank.pages.has("pickup-wriggle/0"), false, "and is not decoded until intent");
+  element(".robot-grip").fire("pointerenter");
+  await eventually(() => [0, 1, 2, 3, 4, 5].every((page) => scene.bank.pages.has(`pickup-wriggle/${page}`)),
+    "hover decodes every suspended pickup sheet");
 });
 
 test("landing keyboard aliases, shortcut dialog and focus recovery work through the real page handlers", async () => {
@@ -376,7 +398,10 @@ test("pointer and keyboard pickup route through the real scene and release witho
 test("permanent departure disposes the scene while bfcache preserves it", () => {
   listeners.get("pagehide")({ persisted: true });
   assert.equal(scene.bank.disposed, false);
+  const download = requests.find((request) => request.priority === "low").signal;
+  assert.equal(download.aborted, false);
   listeners.get("pagehide")({ persisted: false });
+  assert.equal(download.aborted, true, "departure stops loading ahead");
   assert.equal(scene.bank.disposed, true);
   assert.equal(scene.bank.pages.size, 0);
   assert.equal(scene.lastPose, null);

@@ -1,4 +1,5 @@
 /** Failed and HTML sprite ownership cleanup (PRD §13; docs/design/landing.md). */
+import "./helpers/four-sheet-cache.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
