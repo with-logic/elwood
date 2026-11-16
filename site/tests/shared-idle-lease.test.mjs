@@ -1,4 +1,5 @@
 /** Common idle sheets survive complete-animation churn (PRD §13, C-SITE-02). */
+import "./helpers/four-sheet-cache.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture, waitFor } from "./animation-fixture.mjs";

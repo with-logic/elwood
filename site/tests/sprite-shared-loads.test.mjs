@@ -1,4 +1,5 @@
 /** Shared asset leases release cancellation without losing another owner (PRD §13). */
+import "./helpers/four-sheet-cache.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getEventListeners } from "node:events";

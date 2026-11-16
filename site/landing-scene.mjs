@@ -5,6 +5,7 @@ import { prepareDrag } from "./drag/preparation.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
+import { decodedClipBytes, spriteLimits } from "./sprite-limits.mjs";
 import { withSpriteAssetErrorContext } from "./sprite-asset-error.mjs";
 import {
   blendAtSocket,
@@ -38,6 +39,8 @@ export class LandingScene {
     this.onBounds = onBounds;
     this.drag = null;
     this.pending = new Set();
+    // Decoded size of idle plus the clips kept from the handoff (PRD §13.5).
+    this.keptBytes = 0;
     this.pressed = NO_INPUT;
     this.axis = 0;
     this.climbHeld = false;
@@ -117,6 +120,7 @@ export class LandingScene {
       if (!idle || this.bank.disposed) return;
       this.bank.publishAnimation("idle");
       this.bank.activateAnimation("idle");
+      this.keptBytes = decodedClipBytes(idle);
       this.ready = true;
       this.configure(this.config, true);
       this.onReady?.();
@@ -147,6 +151,25 @@ export class LandingScene {
         .finally(() => this.pending.delete(name));
     }
     return false;
+  }
+  /** The clips a pickup plays: the suspended loop, then the fall and landing on release (PRD §13.4). */
+  pickupClips() {
+    const clips = this.world.clips;
+    return {
+      suspended: clips["pickup-wriggle"] ? "pickup-wriggle" : "zero-gravity",
+      release: clips["hero-land"] ? ["hero-land", "pickup-fall"] : ["land"],
+    };
+  }
+  /** Decode whole clips ahead of use, one clip at a time so a requested clip waits behind at
+   * most one of them (PRD §13.5). A clip is skipped when it would not fit the cache beside
+   * idle and the clips kept from the handoff, so loading ahead never evicts that set.
+   */
+  async warm(names, { keep = false } = {}) {
+    for (const name of names) {
+      if (!this.ready || !this.world.clips[name]) continue;
+      const bytes = await this.bank.loadAhead(name, (clipBytes) => this.keptBytes + clipBytes <= spriteLimits.cacheLimitBytes);
+      if (keep) this.keptBytes += bytes;
+    }
   }
   performanceFits(name, task) {
     const clip = this.bank.clips.get(name);
@@ -305,7 +328,7 @@ export class LandingScene {
     const socket = this.lastPose
       ? socketPosition(this.lastPose, HEIGHT / 384)
       : { x: p.x, y: p.y - HEIGHT };
-    const name = this.world.clips["pickup-wriggle"] ? "pickup-wriggle" : "zero-gravity";
+    const { suspended: name, release } = this.pickupClips();
     this.drag = { point, offset: { x: socket.x - point.x, y: socket.y - point.y }, socket, name };
     Object.assign(p, {
       mode: "drag",
@@ -324,8 +347,7 @@ export class LandingScene {
       restAnimation: null,
     });
     prepareDrag(this, this.drag);
-    for (const clip of this.world.clips["hero-land"] ? ["hero-land", "pickup-fall"] : ["land"])
-      this.prepare(clip);
+    for (const clip of release) this.prepare(clip);
     this.moveDrag(point);
     return true;
   }

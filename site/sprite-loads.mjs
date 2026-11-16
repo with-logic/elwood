@@ -19,7 +19,7 @@ export class SpriteLoads {
       if (this.automatic.get(key) === token) this.automatic.delete(key);
     });
   }
-  run(key, pending, load, { signal, automatic = false } = {}, delivery = {}) {
+  run(key, pending, load, { signal, automatic = false, speculative = false } = {}, delivery = {}) {
     signal?.throwIfAborted();
     let task = this.tasks.get(key);
     if (!task) {
@@ -34,7 +34,7 @@ export class SpriteLoads {
       );
     }
     return new Promise((resolve, reject) => {
-      const consumer = { signal, automatic, resolve, reject };
+      const consumer = { signal, automatic, speculative, resolve, reject };
       const release = () => {
         signal?.removeEventListener("abort", consumer.cancel);
         task.consumers.delete(consumer);
@@ -74,8 +74,9 @@ export class SpriteLoads {
         task.delivery.publish?.(value, pin);
         this.failed.delete(key);
       } else if (current && !this.bank.disposed) {
-        this.failed.add(key);
-        const owners = [...task.consumers];
+        // A load nobody asked for yet neither reports nor latches: first real use retries it.
+        const owners = [...task.consumers].filter((owner) => !owner.speculative);
+        if (owners.length) this.failed.add(key);
         const automaticOnly = owners.length > 0 && owners.every((owner) => owner.automatic);
         // Explicit callers own their rejected promise's UI error; report here only
         // when every remaining consumer is automatic, avoiding duplicate diagnostics.

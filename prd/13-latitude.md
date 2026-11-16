@@ -25,7 +25,11 @@ pages remain leased for that sprite bank's lifetime, so later actions reuse them
 without repeated fetching or decoding. Failed or cancelled preparations do not
 establish this lease. The shared lease is capped at two pages: an idle manifest
 with more pages falls back to ordinary animation/cache ownership.
-The ordinary cache remains capped at four pages; rotation and action pages receive
+The ordinary cache is bounded by decoded pixel memory instead of a page count:
+twelve full 2048-pixel RGBA sheets, or six when the browser reports at most 4 GB of
+device memory. Each page is charged its own width × height × 4 bytes, and a page of
+unknown size is charged as one full sheet. The least recently used pages are released
+first; the newest page always stays. Rotation and action pages receive
 no bank-lifetime lease. Disposal releases the shared idle lease together with all
 other resource owners.
 
@@ -107,3 +111,36 @@ teardown cancel pending pickup; a late completion cannot start obsolete playback
 Current/outgoing poses remain retained. Failure reports once for the current drag;
 movement and painting do not retry, but a new drag may retry. Falling and landing
 transitions retain their existing on-demand behavior.
+
+### 13.5 Landing-page loading ahead of use
+
+After the first live paint the landing page loads the clips a visitor reaches first, so
+movement and pickup do not wait for a download or a decode. Rotation, both walks,
+the side stances, landing, landing rest and jump are decoded into the ordinary
+cache, in that order and one clip at a time, so a clip the visitor asks for waits
+behind at most one of them. Suspended pickup footage, the pickup fall and landing,
+sprint and the front and rear stances are only downloaded, one request at a time at
+low priority. The page holds each downloaded file until the clip's first use, which
+then makes no request for it; a held sheet is released once it has been decoded. Pointer hover or keyboard
+focus on the robot decodes the suspended pickup clip before the press arrives; its
+fall and landing are decoded when the drag begins.
+
+A clip is decoded ahead only when it fits the cache budget beside idle and the clips
+already kept from the handoff, so loading ahead never evicts that set. A page whose
+metadata gives no valid size counts as one full sheet. With the
+shipped sheets, the twelve-sheet cache keeps every handoff clip and the hovered
+pickup. The six-sheet cache keeps every handoff clip except the jump and leaves the
+pickup to decode on the press.
+
+Loading ahead never changes ownership or readiness. Decoded pages enter the ordinary
+cache with no lease and leave it like any other page. Requests are shared with
+automatic and explicit loads. A failure reports nothing and sets no failure state,
+so the first real use of that clip makes the attempt that reports; a failure shared
+with an automatic or explicit load is reported by that load as usual. Download-only
+requests report nothing and stop a clip at its first failed, missing or invalid
+file; a sheet that is not a WebP file is invalid and is not held. Complete readiness under §13.1, §13.3 and §13.4 is unchanged.
+
+Visitors whose browser reports a data-saving preference, and visitors who ask for
+reduced motion, get no loading ahead at the handoff; hover and focus still decode
+the pickup clip. Browsers that expose no data-saving signal load ahead. Teardown
+stops remaining downloads.

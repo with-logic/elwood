@@ -2,10 +2,12 @@
 import { SpriteAnimations } from "./sprite-animations.mjs";
 import { SpritePages } from "./sprite-pages.mjs";
 import { SpriteLoads } from "./sprite-loads.mjs";
+import { SpriteDownloads } from "./sprite-downloads.mjs";
 import { validateSpriteClip } from "./sprite-metadata.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
-import { gameAssetUrl } from "./game-assets.mjs";
+import { clipMetadataPath, clipPagePath, gameAssetUrl } from "./game-assets.mjs";
+import { decodedClipBytes } from "./sprite-limits.mjs";
 import { withSpriteAssetErrorContext } from "./sprite-asset-error.mjs";
 
 export class SpriteBank {
@@ -19,15 +21,18 @@ export class SpriteBank {
     this.pendingPages = new Map();
     this.disposed = false;
     this.loads = new SpriteLoads(this, onError);
+    this.downloads = new SpriteDownloads();
   }
 
   async load(name, options = {}) {
     options.signal?.throwIfAborted();
     if (this.disposed) throw new Error("Sprite bank is disposed.");
     if (this.clips.has(name)) return this.clips.get(name);
+    const held = this.downloads.clip(name);
+    if (held) return this.clips.set(name, held).get(name);
     return this.loads.run(name, this.clipPromises, async (signal) => {
-      const clip = await withSpriteAssetErrorContext(`${name}/clip.json`, async () => {
-        const response = await fetch(gameAssetUrl(`${name}/clip.json`), { signal });
+      const clip = await withSpriteAssetErrorContext(clipMetadataPath(name), async () => {
+        const response = await fetch(gameAssetUrl(clipMetadataPath(name)), { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const value = await response.json();
         if (this.disposed) throw new Error("Sprite bank is disposed.");
@@ -48,11 +53,17 @@ export class SpriteBank {
     return this.loads.run(key, this.pendingPages, async (signal) => {
       const clip = await this.load(name, { signal });
       signal.throwIfAborted();
-      const path = `${name}/${clip.pages[index].file}`;
+      const path = clipPagePath(name, clip.pages[index]);
       const image = await withSpriteAssetErrorContext(path, async () => {
-        const response = await fetch(gameAssetUrl(path), { signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return this.decoder.decode(await response.blob(), signal);
+        const held = this.downloads.sheet(path);
+        if (!held) {
+          const response = await fetch(gameAssetUrl(path), { signal });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return this.decoder.decode(await response.blob(), signal);
+        }
+        // A cancelled decode keeps the file for the next attempt; a failed one must refetch.
+        try { return await this.decoder.decode(held, signal); }
+        finally { if (!signal.aborted) this.downloads.release(path); }
       });
       return image;
     }, options, {
@@ -106,6 +117,25 @@ export class SpriteBank {
     if (!this.clips.has(name)) this.loads.request(name, (options) => this.load(name, options));
   }
 
+  /** Decode a whole clip into the ordinary cache before anyone asks for it. `fits` receives
+   * the clip's decoded size and may decline. Requests are shared and nothing stays leased.
+   * A failure neither reports nor latches, so first real use makes the reported attempt.
+   * Resolves the decoded size, or 0 when the clip was declined or did not load.
+   */
+  async loadAhead(name, fits = () => true) {
+    const lease = new AbortController();
+    const options = { signal: lease.signal, speculative: true };
+    try {
+      const clip = await this.load(name, options);
+      const bytes = decodedClipBytes(clip);
+      if (!fits(bytes)) return 0;
+      await Promise.all([...clip.pages.keys()].map((index) => this.loadPage(name, index, options)));
+      return bytes;
+    } catch {
+      return 0;
+    } finally { lease.abort(); }
+  }
+
   #requestPage(name, index) {
     const key = `${name}/${index}`;
     if (!this.pages.has(key)) this.loads.request(key, (options) => this.loadPage(name, index, options));
@@ -139,6 +169,7 @@ export class SpriteBank {
     this.animations.dispose();
     this.resources.dispose();
     this.loads.dispose();
+    this.downloads.close();
     this.clips.clear();
     this.clipPromises.clear();
     this.pendingPages.clear();

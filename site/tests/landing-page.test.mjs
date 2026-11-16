@@ -189,7 +189,11 @@ const manifestRequested = new Promise((resolve) => {
 const manifestReady = new Promise((resolve) => {
   releaseManifest = resolve;
 });
-globalThis.fetch = async (url) => {
+const requests = [];
+const requestedClip = (name) => requests.filter((request) => request.path.startsWith(`${name}/`));
+globalThis.fetch = async (url, options = {}) => {
+  const painted = element(".hero").dataset.ready === "";
+  requests.push({ path: new URL(String(url), root).pathname.split("/assets/game/").at(-1), painted, ...options });
   if (new URL(String(url), root).pathname.endsWith("/manifest.json")) {
     notifyManifest();
     await manifestReady;
@@ -200,6 +204,13 @@ globalThis.Image = class {
   async decode() {
     assert.equal(Buffer.from(await resolveObjectURL(this.src).arrayBuffer()).subarray(8, 12).toString(), "WEBP");
   }
+};
+// Records whether the live robot had painted each time the page asked to load ahead.
+const warmedAfterPaint = [];
+const warm = LandingScene.prototype.warm;
+LandingScene.prototype.warm = function (...args) {
+  warmedAfterPaint.push(element(".hero").dataset.ready === "");
+  return warm.apply(this, args);
 };
 const configure = LandingScene.prototype.configure;
 LandingScene.prototype.configure = function (...args) {
@@ -245,7 +256,33 @@ test("the connected HTML poster is laid out while animation metadata is still do
     "The lightweight cable must reach the poster without any sprite data",
   );
   assert.match(html, /<svg class="robot-rope"[^>]*>[\s\S]*?<path[^>]+d="M20 0 C4 35 36 65 20 100"/);
+  assert.deepEqual(requests.map((request) => request.path), ["manifest.json"], "nothing loads ahead before the handoff");
   releaseManifest();
+});
+
+test("C-SITE-06 the live handoff starts loading ahead, hover decodes the pickup, and departure stops the downloads", async () => {
+  for (let i = 0; i < 200 && !scene.ready; i++)
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(element(".hero").dataset.ready, "");
+  const eventually = async (check, message) => {
+    for (let i = 0; i < 400 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(check(), message);
+  };
+  await eventually(() => scene.bank.pages.has("walk-left/0") && scene.bank.pages.has("rotation/2"),
+    "movement clips decode without any input");
+  const ahead = requests.filter((request) => request.priority === "low" || /^(rotation|walk-|land|jump)/.test(request.path));
+  assert.ok(ahead.length > 0);
+  assert.ok(ahead.every((request) => request.painted));
+  assert.deepEqual(warmedAfterPaint, [true], "loading ahead starts once, after the live robot has painted");
+  await eventually(() => requestedClip("hero-land").length > 0, "pickup footage downloads");
+  assert.equal(requestedClip("pickup-wriggle").length, 7, "its metadata and six sheets, once each");
+  assert.ok(requestedClip("pickup-wriggle").every((request) => request.priority === "low"));
+  assert.equal(scene.bank.pages.has("pickup-wriggle/0"), false, "and is not decoded until intent");
+  element(".robot-grip").fire("pointerenter");
+  await eventually(() => [0, 1, 2, 3, 4, 5].every((page) => scene.bank.pages.has(`pickup-wriggle/${page}`)),
+    "hover decodes every suspended pickup sheet");
+  assert.equal(requestedClip("pickup-wriggle").length, 7, "from the held downloads, with no further request");
+  assert.equal(scene.bank.downloads.sheet("pickup-wriggle/page-000.webp"), undefined, "which are then released");
 });
 
 test("landing keyboard aliases, shortcut dialog and focus recovery work through the real page handlers", async () => {
@@ -376,7 +413,10 @@ test("pointer and keyboard pickup route through the real scene and release witho
 test("permanent departure disposes the scene while bfcache preserves it", () => {
   listeners.get("pagehide")({ persisted: true });
   assert.equal(scene.bank.disposed, false);
+  const download = requests.find((request) => request.priority === "low").signal;
+  assert.equal(download.aborted, false);
   listeners.get("pagehide")({ persisted: false });
+  assert.equal(download.aborted, true, "departure stops loading ahead");
   assert.equal(scene.bank.disposed, true);
   assert.equal(scene.bank.pages.size, 0);
   assert.equal(scene.lastPose, null);

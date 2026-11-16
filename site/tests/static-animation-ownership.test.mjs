@@ -1,4 +1,5 @@
 /** Retained one-frame poses release dependency sheets without losing keyed rendering (PRD §13). */
+import "./helpers/four-sheet-cache.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture } from "./animation-fixture.mjs";
