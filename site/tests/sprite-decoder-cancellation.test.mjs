@@ -1,4 +1,5 @@
 /** Abort ownership across queued worker and uncancellable bitmap decodes (PRD §13). */
+import "./helpers/single-decode-worker.mjs";
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
 import test from "node:test";

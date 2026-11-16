@@ -40,7 +40,8 @@ busy. Aborting an active request does not release that worker's slot until the
 worker replies. A worker that cannot start leaves the running workers in service,
 whether its constructor throws or it reports an error before its first reply: its
 request returns to the front of the queue unless the caller already cancelled it,
-and it is not replaced. A failure of the only worker, or of a worker that has
+and it is not replaced. Each such loss logs one console warning naming the reason
+and the number of workers remaining. A failure of the only worker, or of a worker that has
 replied, moves every pending request to page decoding and stops all workers. In-flight
 browser bitmap decoding cannot be interrupted; its eventual image is released,
 without terminating the worker or cancelling other requests. Settled requests remove their abort listeners.
