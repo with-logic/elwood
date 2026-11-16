@@ -28,21 +28,30 @@ function fixture(t, { failFrom = Infinity } = {}) {
     Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
     t.after(() => original ? Object.defineProperty(globalThis, name, original) : delete globalThis[name]);
   }
+  const warnings = [];
+  t.mock.method(console, "warn", (message) => warnings.push(message));
   const pool = (workerLimit) => {
     const original = spriteLimits.maxDecodeWorkers;
     t.after(() => { spriteLimits.maxDecodeWorkers = original; });
     spriteLimits.maxDecodeWorkers = workerLimit;
     return new SpriteDecoder();
   };
-  return { workers, local, pool };
+  return { workers, local, pool, warnings };
 }
 const decodes = (worker) => worker.sent.filter((message) => message.blob).map((message) => message.id);
 
 for (const [hardwareConcurrency, workers] of [[undefined, 1], [1, 1], [2, 1], [3, 2], [4, 3], [5, 4], [16, 4]]) {
-  test(`C-SITE-05 ${hardwareConcurrency ?? "unreported"} cores decode in ${workers} worker(s), leaving one core for painting`, () => {
+  test(`C-SITE-05 a device reporting ${hardwareConcurrency ?? "no"} core(s) decodes in ${workers} worker(s)`, () => {
     assert.equal(limitsFor({ hardwareConcurrency }).maxDecodeWorkers, workers);
   });
 }
+
+test("C-SITE-05 the shared limit cannot raise a decoder above four workers", (t) => {
+  const { workers, pool } = fixture(t);
+  const decoder = pool(9);
+  for (let i = 0; i < 9; i++) decoder.decode(new Blob());
+  assert.equal(workers.length, 4);
+});
 
 test("C-SITE-05 busy workers add another up to the limit, then requests queue on the page", (t) => {
   const { workers, pool } = fixture(t);
@@ -51,42 +60,49 @@ test("C-SITE-05 busy workers add another up to the limit, then requests queue on
   const pending = [1, 2, 3, 4, 5].map(() => decoder.decode(new Blob()));
   assert.equal(workers.length, 3);
   assert.deepEqual(workers.map(decodes), [[1], [2], [3]]);
-  const second = { name: "second" };
-  workers[1].reply({ id: 2, image: second });
+  const image = (id) => ({ decoded: id });
+  workers[1].reply({ id: 2, image: image(2) });
   assert.deepEqual(workers.map(decodes), [[1], [2, 4], [3]], "the freed worker takes the oldest queued request");
-  workers[0].reply({ id: 1, image: {} });
-  workers[0].reply({ id: 5, image: {} });
+  workers[0].reply({ id: 1, image: image(1) });
+  workers[0].reply({ id: 5, image: image(5) });
   assert.deepEqual(workers.map(decodes), [[1, 5], [2, 4], [3]]);
   assert.equal(workers.length, 3, "an idle worker is reused before another starts");
-  workers[1].reply({ id: 4, image: {} });
-  workers[2].reply({ id: 3, image: {} });
-  return Promise.all(pending).then((images) => assert.equal(images[1], second));
+  workers[1].reply({ id: 4, image: image(4) });
+  workers[2].reply({ id: 3, image: image(3) });
+  return Promise.all(pending).then((images) => assert.deepEqual(images, [1, 2, 3, 4, 5].map(image)));
 });
 
 test("C-SITE-05 a sequence of single decodes keeps one worker", async (t) => {
   const { workers, pool } = fixture(t);
   const decoder = pool(4);
-  for (const id of [1, 2, 3]) {
-    const pending = decoder.decode(new Blob());
-    workers[0].reply({ id, image: { id } });
-    assert.equal((await pending).id, id);
-  }
+  const first = decoder.decode(new Blob());
+  workers[0].reply({ id: 1, image: { decoded: 1 } });
+  assert.deepEqual(await first, { decoded: 1 });
+  const second = decoder.decode(new Blob());
+  workers[0].reply({ id: 2, image: { decoded: 2 } });
+  assert.deepEqual(await second, { decoded: 2 });
+  const third = decoder.decode(new Blob());
+  workers[0].reply({ id: 3, image: { decoded: 3 } });
+  assert.deepEqual(await third, { decoded: 3 });
   assert.equal(workers.length, 1);
 });
 
 test("C-SITE-05 a worker that cannot start leaves the existing pool decoding", async (t) => {
-  const { workers, local, pool } = fixture(t, { failFrom: 2 });
+  const { workers, local, pool, warnings } = fixture(t, { failFrom: 2 });
   const decoder = pool(4);
+  const image = (id) => ({ decoded: id });
   const pending = [1, 2, 3, 4].map(() => decoder.decode(new Blob()));
   assert.equal(workers.length, 2);
   assert.deepEqual(workers.map(decodes), [[1], [2]]);
-  workers[0].reply({ id: 1, image: {} });
-  workers[1].reply({ id: 2, image: {} });
+  assert.deepEqual(warnings, ["Sprite decoder: a worker could not be constructed; 2 remaining."]);
+  workers[0].reply({ id: 1, image: image(1) });
+  workers[1].reply({ id: 2, image: image(2) });
   assert.deepEqual(workers.map(decodes), [[1, 3], [2, 4]], "queued requests wait for the workers that did start");
-  workers[0].reply({ id: 3, image: {} });
-  workers[1].reply({ id: 4, image: {} });
-  await Promise.all(pending);
+  workers[0].reply({ id: 3, image: image(3) });
+  workers[1].reply({ id: 4, image: image(4) });
+  assert.deepEqual(await Promise.all(pending), [1, 2, 3, 4].map(image));
   assert.deepEqual(local, [], "nothing falls back to the page while a worker remains");
+  assert.equal(warnings.length, 1, "the limit is lowered once, not on every later request");
 });
 
 test("C-SITE-05 cancelling an active decode tells only its own worker and holds that slot until it replies", async (t) => {
@@ -109,20 +125,22 @@ test("C-SITE-05 cancelling an active decode tells only its own worker and holds 
 });
 
 test("C-SITE-05 a later worker that fails before its first reply only shrinks the pool", async (t) => {
-  const { workers, local, pool } = fixture(t);
+  const { workers, local, pool, warnings } = fixture(t);
   const decoder = pool(3);
+  const image = (id) => ({ decoded: id });
   const pending = [1, 2, 3, 4].map(() => decoder.decode(new Blob()));
   assert.deepEqual(workers.map(decodes), [[1], [2], [3]]);
   // A worker script that cannot load reports asynchronously, after the constructor returned.
   workers[1].listeners.get("error")();
   assert.deepEqual(workers.map((worker) => worker.terminated), [false, true, false]);
-  workers[0].reply({ id: 1, image: {} });
+  assert.deepEqual(warnings, ["Sprite decoder: a worker failed before its first reply; 2 remaining."]);
+  workers[0].reply({ id: 1, image: image(1) });
   assert.deepEqual(decodes(workers[0]), [1, 2], "its request returns to the front of the queue");
-  workers[2].reply({ id: 3, image: {} });
+  workers[2].reply({ id: 3, image: image(3) });
   assert.deepEqual(decodes(workers[2]), [3, 4]);
-  workers[0].reply({ id: 2, image: {} });
-  workers[2].reply({ id: 4, image: {} });
-  await Promise.all(pending);
+  workers[0].reply({ id: 2, image: image(2) });
+  workers[2].reply({ id: 4, image: image(4) });
+  assert.deepEqual(await Promise.all(pending), [1, 2, 3, 4].map(image));
   const fifth = decoder.decode(new Blob());
   const sixth = decoder.decode(new Blob());
   const seventh = decoder.decode(new Blob());

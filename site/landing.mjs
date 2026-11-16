@@ -1,4 +1,6 @@
-/** Connects poster layout, loading and input to the page; docs/design/landing.md. */
+/** Connects poster layout, loading, loading ahead of use and input to the page
+ * (PRD §13 and §13.5, C-SITE-06; docs/design/landing.md).
+ */
 import { fitTitle, layoutPoster } from "./landing/layout.mjs";
 import { LandingScene } from "./landing-scene.mjs";
 import { bindPickupIntent, warmLanding } from "./landing/warmup.mjs";
@@ -28,11 +30,12 @@ let warmup = null;
 const scene = new LandingScene(canvas, {
   onPaint() {
     hero.dataset.ready = "";
+    // Only once the live robot is on screen, so loading ahead never delays the handoff.
+    warmup = warmLanding(scene);
   },
   onReady() {
     grip.hidden = false;
     resize();
-    warmup = warmLanding(scene);
   },
   onBounds(box) {
     grip.style.transform = `translate(${box.x}px, ${box.y}px)`;

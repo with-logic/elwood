@@ -44,7 +44,8 @@ busy. Aborting an active request does not release that worker's slot until the
 worker replies. A worker that cannot start leaves the running workers in service,
 whether its constructor throws or it reports an error before its first reply: its
 request returns to the front of the queue unless the caller already cancelled it,
-and it is not replaced. A failure of the only worker, or of a worker that has
+and it is not replaced. Each such loss logs one console warning naming the reason
+and the number of workers remaining. A failure of the only worker, or of a worker that has
 replied, moves every pending request to page decoding and stops all workers. In-flight
 browser bitmap decoding cannot be interrupted; its eventual image is released,
 without terminating the worker or cancelling other requests. Settled requests remove their abort listeners.
@@ -113,18 +114,20 @@ transitions retain their existing on-demand behavior.
 
 ### 13.5 Landing-page loading ahead of use
 
-After the live handoff the landing page loads the clips a visitor reaches first, so
+After the first live paint the landing page loads the clips a visitor reaches first, so
 movement and pickup do not wait for a download or a decode. Rotation, both walks,
 the side stances, landing, landing rest and jump are decoded into the ordinary
 cache, in that order and one clip at a time, so a clip the visitor asks for waits
 behind at most one of them. Suspended pickup footage, the pickup fall and landing,
 sprint and the front and rear stances are only downloaded, one request at a time at
-low priority, so the browser's HTTP cache holds them. Pointer hover or keyboard
+low priority. The page holds each downloaded file until the clip's first use, which
+then makes no request for it; a held sheet is released once it has been decoded. Pointer hover or keyboard
 focus on the robot decodes the suspended pickup clip before the press arrives; its
 fall and landing are decoded when the drag begins.
 
 A clip is decoded ahead only when it fits the cache budget beside idle and the clips
-already kept from the handoff, so loading ahead never evicts that set. With the
+already kept from the handoff, so loading ahead never evicts that set. A page whose
+metadata gives no valid size counts as one full sheet. With the
 shipped sheets, the twelve-sheet cache keeps every handoff clip and the hovered
 pickup. The six-sheet cache keeps every handoff clip except the jump and leaves the
 pickup to decode on the press.
@@ -135,7 +138,7 @@ automatic and explicit loads. A failure reports nothing and sets no failure stat
 so the first real use of that clip makes the attempt that reports; a failure shared
 with an automatic or explicit load is reported by that load as usual. Download-only
 requests report nothing and stop a clip at its first failed, missing or invalid
-file. Complete readiness under §13.1, §13.3 and §13.4 is unchanged.
+file; a sheet that is not a WebP file is invalid and is not held. Complete readiness under §13.1, §13.3 and §13.4 is unchanged.
 
 Visitors whose browser reports a data-saving preference, and visitors who ask for
 reduced motion, get no loading ahead at the handoff; hover and focus still decode

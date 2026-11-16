@@ -2,6 +2,7 @@
 import { SpriteAnimations } from "./sprite-animations.mjs";
 import { SpritePages } from "./sprite-pages.mjs";
 import { SpriteLoads } from "./sprite-loads.mjs";
+import { SpriteDownloads } from "./sprite-downloads.mjs";
 import { validateSpriteClip } from "./sprite-metadata.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
@@ -20,12 +21,15 @@ export class SpriteBank {
     this.pendingPages = new Map();
     this.disposed = false;
     this.loads = new SpriteLoads(this, onError);
+    this.downloads = new SpriteDownloads();
   }
 
   async load(name, options = {}) {
     options.signal?.throwIfAborted();
     if (this.disposed) throw new Error("Sprite bank is disposed.");
     if (this.clips.has(name)) return this.clips.get(name);
+    const held = this.downloads.clip(name);
+    if (held) return this.clips.set(name, held).get(name);
     return this.loads.run(name, this.clipPromises, async (signal) => {
       const clip = await withSpriteAssetErrorContext(clipMetadataPath(name), async () => {
         const response = await fetch(gameAssetUrl(clipMetadataPath(name)), { signal });
@@ -51,9 +55,15 @@ export class SpriteBank {
       signal.throwIfAborted();
       const path = clipPagePath(name, clip.pages[index]);
       const image = await withSpriteAssetErrorContext(path, async () => {
-        const response = await fetch(gameAssetUrl(path), { signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return this.decoder.decode(await response.blob(), signal);
+        const held = this.downloads.sheet(path);
+        if (!held) {
+          const response = await fetch(gameAssetUrl(path), { signal });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return this.decoder.decode(await response.blob(), signal);
+        }
+        // A cancelled decode keeps the file for the next attempt; a failed one must refetch.
+        try { return await this.decoder.decode(held, signal); }
+        finally { if (!signal.aborted) this.downloads.release(path); }
       });
       return image;
     }, options, {
@@ -159,6 +169,7 @@ export class SpriteBank {
     this.animations.dispose();
     this.resources.dispose();
     this.loads.dispose();
+    this.downloads.close();
     this.clips.clear();
     this.clipPromises.clear();
     this.pendingPages.clear();

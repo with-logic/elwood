@@ -27,6 +27,19 @@ test("C-SITE-06 a clip's decoded size comes from its page metadata, charging unk
   assert.equal(decodedClipBytes(clip), 1000 * 500 * 4 + 400 + 2 * DECODED_SHEET_BYTES);
 });
 
+for (const [reason, page] of [
+  ["a negative width", { width: -2048, height: 2048 }],
+  ["a zero height", { width: 2048, height: 0 }],
+  ["a string width", { width: "64", height: 64 }],
+  ["a fractional height", { width: 64, height: 0.5 }],
+  ["an infinite width", { width: Infinity, height: 64 }],
+]) {
+  test(`C-SITE-06 a page with ${reason} is charged as a full sheet, never as less`, () => {
+    assert.equal(decodedClipBytes({ pages: [page] }), DECODED_SHEET_BYTES);
+  });
+}
+
+
 test("C-SITE-06 single-frame pages do not evict working sheets", (t) => {
   const pages = pagesHolding(t, 4);
   const sheets = [0, 1, 2].map(() => image(2048, 2048));

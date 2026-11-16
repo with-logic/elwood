@@ -1,5 +1,5 @@
 /** Off-main-thread sprite decoding with a browser-compatible fallback (PRD §13; site/docs/design/landing.md). */
-import { spriteLimits } from "../sprite-limits.mjs";
+import { MAX_DECODE_WORKERS, spriteLimits } from "../sprite-limits.mjs";
 import { releaseSpriteImage } from "./release.mjs";
 
 async function decodeOnPage(blob) {
@@ -37,19 +37,20 @@ export class SpriteDecoder {
 
   constructor() {
     if (typeof Worker === "undefined") return;
-    this.#maxWorkers = spriteLimits.maxDecodeWorkers;
+    // The ceiling holds whatever a caller wrote to the shared limits.
+    this.#maxWorkers = Math.min(MAX_DECODE_WORKERS, spriteLimits.maxDecodeWorkers);
     this.#spawn();
   }
 
   /** Later workers start only when every existing one is busy. */
   #spawn() {
     try {
-      const slot = { active: undefined, started: false };
+      const slot = { active: undefined, hasReplied: false };
       slot.worker = new Worker(new URL("./worker.mjs", import.meta.url), {
         type: "module",
       });
       slot.worker.addEventListener("message", (event) => {
-        slot.started = true;
+        slot.hasReplied = true;
         if (slot.active === event.data.id) slot.active = undefined;
         this.#receive(event.data);
         this.#dispatch();
@@ -60,19 +61,28 @@ export class SpriteDecoder {
       return slot;
     } catch {
       // Keep whatever workers already started; an empty pool decodes on the page.
-      this.#maxWorkers = this.#slots.length;
+      this.#shrink("could not be constructed");
       return undefined;
     }
   }
 
-  /** A worker script that cannot load reports here, not from the constructor. Losing a
-   * worker that never replied only shrinks the pool; any other failure stops it.
+  /** The pool stops growing at its current size. Decoding still succeeds, so nothing reaches
+   * the asset-error path; this is the only sign that parallelism was lost.
+   */
+  #shrink(reason) {
+    this.#maxWorkers = this.#slots.length;
+    console.warn(`Sprite decoder: a worker ${reason}; ${this.#slots.length} remaining.`);
+  }
+
+  /** A worker script that cannot load reports here, not from the constructor. Two cases:
+   * an additional worker that has not replied yet is dropped and its request requeued;
+   * the only worker, or one that has replied, moves all decoding to the page.
    */
   #fail(slot) {
-    if (slot.started || this.#slots.length === 1) return this.#fallbackAll();
+    if (slot.hasReplied || this.#slots.length === 1) return this.#fallbackAll();
     slot.worker.terminate();
     this.#slots = this.#slots.filter((other) => other !== slot);
-    this.#maxWorkers = this.#slots.length;
+    this.#shrink("failed before its first reply");
     // Its request returns to the front of the queue unless the caller already left.
     if (this.#pending.has(slot.active)) this.#queued = new Set([slot.active, ...this.#queued]);
     this.#dispatch();

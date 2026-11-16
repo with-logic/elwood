@@ -1,3 +1,5 @@
+/** URLs and paths of the shipped game assets, shared by every loader (PRD §13 and §13.5). */
+
 // A new query key escapes previously immutable cached URLs. Stable URLs now revalidate.
 const ROOT = new URL("./assets/game/", import.meta.url);
 export function gameAssetUrl(path) {

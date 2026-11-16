@@ -167,7 +167,7 @@ export class LandingScene {
   async warm(names, { keep = false } = {}) {
     for (const name of names) {
       if (!this.ready || !this.world.clips[name]) continue;
-      const bytes = await this.bank.loadAhead(name, (size) => this.keptBytes + size <= spriteLimits.cacheLimitBytes);
+      const bytes = await this.bank.loadAhead(name, (clipBytes) => this.keptBytes + clipBytes <= spriteLimits.cacheLimitBytes);
       if (keep) this.keptBytes += bytes;
     }
   }

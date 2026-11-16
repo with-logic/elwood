@@ -192,7 +192,8 @@ const manifestReady = new Promise((resolve) => {
 const requests = [];
 const requestedClip = (name) => requests.filter((request) => request.path.startsWith(`${name}/`));
 globalThis.fetch = async (url, options = {}) => {
-  requests.push({ path: new URL(String(url), root).pathname.split("/assets/game/").at(-1), ...options });
+  const painted = element(".hero").dataset.ready === "";
+  requests.push({ path: new URL(String(url), root).pathname.split("/assets/game/").at(-1), painted, ...options });
   if (new URL(String(url), root).pathname.endsWith("/manifest.json")) {
     notifyManifest();
     await manifestReady;
@@ -203,6 +204,13 @@ globalThis.Image = class {
   async decode() {
     assert.equal(Buffer.from(await resolveObjectURL(this.src).arrayBuffer()).subarray(8, 12).toString(), "WEBP");
   }
+};
+// Records whether the live robot had painted each time the page asked to load ahead.
+const warmedAfterPaint = [];
+const warm = LandingScene.prototype.warm;
+LandingScene.prototype.warm = function (...args) {
+  warmedAfterPaint.push(element(".hero").dataset.ready === "");
+  return warm.apply(this, args);
 };
 const configure = LandingScene.prototype.configure;
 LandingScene.prototype.configure = function (...args) {
@@ -262,12 +270,19 @@ test("C-SITE-06 the live handoff starts loading ahead, hover decodes the pickup,
   };
   await eventually(() => scene.bank.pages.has("walk-left/0") && scene.bank.pages.has("rotation/2"),
     "movement clips decode without any input");
-  await eventually(() => requestedClip("pickup-wriggle").some((request) => request.priority === "low"),
-    "pickup footage downloads at low priority");
+  const ahead = requests.filter((request) => request.priority === "low" || /^(rotation|walk-|land|jump)/.test(request.path));
+  assert.ok(ahead.length > 0);
+  assert.ok(ahead.every((request) => request.painted));
+  assert.deepEqual(warmedAfterPaint, [true], "loading ahead starts once, after the live robot has painted");
+  await eventually(() => requestedClip("hero-land").length > 0, "pickup footage downloads");
+  assert.equal(requestedClip("pickup-wriggle").length, 7, "its metadata and six sheets, once each");
+  assert.ok(requestedClip("pickup-wriggle").every((request) => request.priority === "low"));
   assert.equal(scene.bank.pages.has("pickup-wriggle/0"), false, "and is not decoded until intent");
   element(".robot-grip").fire("pointerenter");
   await eventually(() => [0, 1, 2, 3, 4, 5].every((page) => scene.bank.pages.has(`pickup-wriggle/${page}`)),
     "hover decodes every suspended pickup sheet");
+  assert.equal(requestedClip("pickup-wriggle").length, 7, "from the held downloads, with no further request");
+  assert.equal(scene.bank.downloads.sheet("pickup-wriggle/page-000.webp"), undefined, "which are then released");
 });
 
 test("landing keyboard aliases, shortcut dialog and focus recovery work through the real page handlers", async () => {
