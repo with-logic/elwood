@@ -1,4 +1,5 @@
 /** Complete explicit gesture preparation and cancellation (PRD §13; docs/design/landing.md). */
+import "./helpers/single-decode-worker.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture, turn, waitFor } from "./animation-fixture.mjs";

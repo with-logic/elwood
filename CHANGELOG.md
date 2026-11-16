@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Decode landing-page sprite sheets in up to four workers instead of one.
+
 - Reuse process snapshot indexes across cleanup callers, reducing CPU and allocation
   while keeping Codex shared daemon decisions specific to each session.
 

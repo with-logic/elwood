@@ -1,4 +1,5 @@
 /** Page-owned decode dispatch survives worker message-task races (PRD §13). */
+import "./helpers/single-decode-worker.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture, flush, rejection } from "./helpers/decoder-cancellation.mjs";
