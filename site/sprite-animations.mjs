@@ -104,7 +104,7 @@ export class SpriteAnimations {
     }, { once: true });
     try {
       // Metadata is bounded by the three requested/dependency clips. Fetch up to
-      // four pages concurrently; SpriteDecoder still serializes worker decoding.
+      // four pages concurrently; SpriteDecoder runs up to four workers.
       await Promise.all(names.map(async (clipName) => {
         const clip = await this.bank.load(clipName, { signal: owner.leases.get(clipName).signal });
         signal.throwIfAborted();

@@ -1,4 +1,5 @@
 /** Browser fallback protocol, pending request settlement and URL lifetime (PRD §13). */
+import "./helpers/single-decode-worker.mjs";
 import assert from "node:assert/strict";
 import { resolveObjectURL } from "node:buffer";
 import test from "node:test";
