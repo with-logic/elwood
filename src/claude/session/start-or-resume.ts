@@ -33,6 +33,8 @@ function resumeOptions(elwoodSessionId: string, start: StartClaudeOptions): Resu
     hooks: start.hooks,
     initialSize: start.initialSize,
     reasoningEffort: start.reasoningEffort,
+    fastMode: start.fastMode,
+    settingsOverrides: start.settingsOverrides,
     permissionMode: start.permissionMode,
     allowedTools: start.allowedTools,
     disallowedTools: start.disallowedTools,

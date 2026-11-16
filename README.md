@@ -606,3 +606,23 @@ described in [SECURITY.md](SECURITY.md).
   Prompted with ❤️ by <a href="https://logic.inc">Logic, Inc</a> in Seattle, WA
   <img src="site/assets/landing/space-needle.svg" alt="" width="13" height="13" />
 </div>
+
+### Agent speed
+
+Speed options preserve the native agent's distinctions:
+
+```ts
+const codex = new CodexSession({ serviceTier: "ultrafast" });
+const claude = new ClaudeSession({ fastMode: true });
+```
+
+Codex accepts `default`, `fast`, or `ultrafast`; Claude accepts a Fast boolean.
+Omit the option to inherit native settings. Re-supply it on `resumeCodex` or
+`resumeClaude` to change speed between turns while retaining the conversation.
+Typed options take precedence over duplicate raw launch overrides.
+
+A selected mode is not proof of availability. Codex model listings may include
+`codexServiceTiers` with cached native capability evidence and its timestamp.
+Transcript activity may include `speed`, explicitly distinguishing Codex turn
+configuration from Claude response usage. Missing evidence stays unknown. See
+[the speed API contract](prd/05-api/5.11-speed.md) for scope and limitations.

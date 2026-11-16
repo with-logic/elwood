@@ -2617,3 +2617,35 @@ is sufficient: the actual birth lies strictly before that upper boundary. This
 excludes births during the read; it does not prove an atomic association with the
 original native PTY spawn. Scripted boundary tests cover both platforms; native
 fixtures age owned children beyond the matching interval before observing them.
+
+## Speed settings and native evidence (2026-11-16)
+
+Codex 0.169.0 accepts `-c service_tier="fast"` and `"ultrafast"`; with a
+model catalog advertising both tiers, a loopback Responses provider received
+`priority` and `ultrafast` respectively. Resuming the same conversation with
+`"default"` sent no accelerated tier. No speed preference was written to the
+native config. Codex can independently add `tui.screen_reader_detection_done`
+on first boot, so the fixture seeds that bookkeeping value before comparing the
+config. `tests/e2e/speed.e2e.ts` reproduces this with synthetic catalog data and
+no paid inference. Run it with `node --no-warnings --test tests/e2e/speed.e2e.ts`.
+
+The catalog matters: the same installed CLI without that fixture's advertised
+Ultrafast capability sent standard requests for the Ultrafast launch choice.
+A successful launch therefore does not prove the mode was applied. Cached model
+capabilities are exposed with their native timestamp, not as account entitlement.
+The 0.169.0 loopback transcripts omitted `service_tier` in `turn_context`; speed
+observations correctly stayed absent instead of echoing the launch preference.
+
+The configured Fast footer reads `GPT-6-Astra medium Fast · /path`. Elwood's
+old positive-composer grammar rejected that badge and held queued input even
+though the native CLI was ready. The grammar now accepts the known `Fast` and
+`Ultrafast` spellings while still rejecting unknown additions. The native
+request test verifies usable input, not just process startup.
+
+Claude Code 2.1.325 was separately exercised in a private config directory with
+a fixture API key and no inference. Launching with generated `fastMode: true`
+opened `/fast` showing `Fast mode ON`; launching with `false` showed that Fast
+was unavailable for that fixture account. The report was cancelled without
+confirming a toggle. This verifies that the native CLI reads the override, not
+that a real account is entitled to Fast or that a response used it. Claude speed
+usage is only reported when native assistant `usage.speed` supplies it.

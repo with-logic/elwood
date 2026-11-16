@@ -65,6 +65,10 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
           ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+          ...(options.serviceTier === undefined ? {} : { serviceTier: options.serviceTier }),
+          ...(options.configOverrides === undefined
+            ? {}
+            : { configOverrides: options.configOverrides }),
           // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CODEX-21).
           ...(options.reasoningEffort === undefined
             ? {}

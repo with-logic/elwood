@@ -1,0 +1,45 @@
+/** Bounded, best-effort native model capability evidence. Implements PRD §5.11, C-SPEED-02. */
+
+import { dirname, join } from "node:path";
+import type { AgentModelOption } from "../../core/models/rows.ts";
+import { isRecord } from "../../core/predicates.ts";
+import { type CodexServiceTier, codexServiceTier } from "../../core/speed/types.ts";
+import { readCodexConfigFile } from "./read.ts";
+
+/** Cache failures leave capability unknown, without making the model picker unusable. */
+export function withCodexServiceTiers(
+  options: readonly AgentModelOption[],
+  configPath: string,
+): readonly AgentModelOption[] {
+  try {
+    // Reuse the nonblocking regular-file reader and its 1 MiB limit.
+    const text = readCodexConfigFile(join(dirname(configPath), "models_cache.json"));
+    if (text === undefined) return options;
+    const cache = JSON.parse(text) as unknown;
+    if (
+      !isRecord(cache) ||
+      typeof cache["fetched_at"] !== "string" ||
+      !Number.isFinite(Date.parse(cache["fetched_at"])) ||
+      !Array.isArray(cache["models"])
+    )
+      return options;
+    const fetchedAt = cache["fetched_at"];
+    const models = cache["models"];
+    return options.map((option) => {
+      const model: unknown = models.find(
+        (value: unknown) => isRecord(value) && value["slug"] === option.id,
+      );
+      if (!(isRecord(model) && Array.isArray(model["service_tiers"]))) return option;
+      const values: CodexServiceTier[] = ["default"];
+      for (const tier of model["service_tiers"]) {
+        if (!isRecord(tier) || typeof tier["id"] !== "string" || tier["id"].length === 0)
+          return option;
+        const value = codexServiceTier(tier["id"]);
+        if (value !== undefined && !values.includes(value)) values.push(value);
+      }
+      return { ...option, codexServiceTiers: { fetchedAt, values } };
+    });
+  } catch {
+    return options;
+  }
+}

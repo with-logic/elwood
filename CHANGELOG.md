@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Add typed Codex `serviceTier` (default, fast, ultrafast) and Claude `fastMode`
+  options on start/resume, including lazy constructors and startOrResume helpers.
+  Explicit resume overrides now reach both CLIs without downstream patches.
+- Expose cached Codex model service tiers and provenance-labelled transcript speed
+  observations; requested settings are not reported as confirmed account eligibility.
+
 - Decode landing-page sprite sheets in up to four workers instead of one.
 - Bound the landing page's decoded sprite cache by memory (about 200 MB, half on
   low-memory devices) instead of four pages, and load the first-reached clips ahead

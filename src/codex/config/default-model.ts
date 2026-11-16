@@ -8,6 +8,7 @@ import { elwoodError, errnoCode } from "../../core/errors.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { withCodexConfigLock } from "./lock.ts";
 import { readCodexConfigFile } from "./read.ts";
+import { withCodexServiceTiers } from "./service-tiers.ts";
 
 const tableHeader = /^\s*\[/;
 const profileTable = /^\s*\[\s*profiles\.(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*\]/;
@@ -28,7 +29,8 @@ export async function withCodexDefault(
 ): Promise<readonly AgentModelOption[]> {
   // Resolved first: a report that cannot be read rejects without waiting for the lock.
   const path = await resolveConfigPath(signal);
-  const mark = async () => markCodexDefault(options, configuredCodexModel(path));
+  const mark = async () =>
+    withCodexServiceTiers(markCodexDefault(options, configuredCodexModel(path)), path);
   return await withCodexConfigLock(path, mark, {
     signal,
     error: () => signal.reason,

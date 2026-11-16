@@ -19,3 +19,5 @@ concepts in this section, including the stable `ElwoodErrorName` union.
 - [5.9 Recurring session loops](5.9-loops.md)
 
 - [5.10 Native questions](5.10-questions.md)
+
+- [5.11 Native speed controls](5.11-speed.md)

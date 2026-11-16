@@ -9,6 +9,7 @@ import type { LoopControls } from "../../core/loops/loop-controls.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import type { QuestionControls } from "../../core/questions/types.ts";
 import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
+import type { CodexServiceTier } from "../../core/speed/types.ts";
 import type {
   ActivityMatch,
   ElwoodCommonEventMap,
@@ -39,6 +40,7 @@ export type StartCodexOptions = {
   readonly persona?: string;
   readonly model?: string;
   readonly reasoningEffort?: CodexReasoningEffort;
+  readonly serviceTier?: CodexServiceTier;
   readonly profile?: string;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
@@ -52,12 +54,14 @@ export type StartCodexOptions = {
 };
 
 export type ResumeCodexOptions = {
+  readonly configOverrides?: readonly string[];
   readonly elwoodSessionId: string;
   readonly cwd?: string;
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly reasoningEffort?: CodexReasoningEffort;
+  readonly serviceTier?: CodexServiceTier;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly highTrust?: boolean;

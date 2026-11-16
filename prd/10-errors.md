@@ -67,3 +67,5 @@ Native question controls add `question_not_found` (no current request with this 
 Native question answer failures may include only the fixed `details.category` values
 `frame_wait`, `adapter`, `terminal_write`, `native_acceptance`, or `aborted`
 (§5.10). Raw native exceptions and submitted answer values are never retained.
+
+`invalid_speed`: an adapter-specific speed option is outside the values in §5.11; rejects before spawn.

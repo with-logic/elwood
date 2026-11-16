@@ -72,6 +72,7 @@ export type StartClaudeOptions = {
   readonly persona?: string;
   readonly model?: string;
   readonly reasoningEffort?: ClaudeReasoningEffort;
+  readonly fastMode?: boolean;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -86,12 +87,14 @@ export type StartClaudeOptions = {
 };
 
 export type ResumeClaudeOptions = {
+  readonly settingsOverrides?: ClaudeSettingsOverrides;
   readonly elwoodSessionId: string;
   readonly cwd?: string;
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly reasoningEffort?: ClaudeReasoningEffort;
+  readonly fastMode?: boolean;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];

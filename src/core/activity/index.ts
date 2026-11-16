@@ -7,6 +7,7 @@ import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
 import { hookResultLabel } from "../hook-result.ts";
 import type { ElwoodQuestionEvent } from "../questions/types.ts";
+import type { AgentSpeedObservation } from "../speed/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
 
@@ -50,6 +51,7 @@ type ActivityFields = {
   readonly failedOpen?: boolean;
   readonly transcriptPath?: string;
   readonly raw?: unknown;
+  readonly speed?: AgentSpeedObservation;
 };
 
 /** Distribute the agent-and-phase event union so the activity label, nested phase,

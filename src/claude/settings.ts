@@ -10,7 +10,7 @@ import { isToolHookEventName } from "./hooks/tool-events.ts";
 
 export type GeneratedSettingsInput = {
   readonly bridgeScriptPath: string;
-  readonly options: Pick<StartClaudeOptions, "settingsOverrides">;
+  readonly options: Pick<StartClaudeOptions, "settingsOverrides" | "fastMode">;
   /** The CLI-side per-hook timeout written into the settings (see session/runtime.ts). */
   readonly timeoutSeconds: number;
 };
@@ -21,6 +21,7 @@ export function generateClaudeSettings(
 ): Readonly<Record<string, unknown>> {
   return {
     ...input.options.settingsOverrides,
+    ...(input.options.fastMode === undefined ? {} : { fastMode: input.options.fastMode }),
     hooks: generateHooks(input.bridgeScriptPath, input.timeoutSeconds),
   };
 }
