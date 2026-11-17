@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
-import { markCodexDefault, withCodexDefault } from "../../src/codex/config/default-model.ts";
+import { enrichCodexModels, markCodexDefault } from "../../src/codex/config/default-model.ts";
 import { restoreCodexConfig, snapshotCodexConfig } from "../../src/codex/config/restore.ts";
 import { runCodexModelSwitch } from "../../src/codex/config/transaction.ts";
 import type { AgentModelOption } from "../../src/index.ts";
@@ -74,7 +74,7 @@ describe("Codex configured default under the config lock", () => {
       },
     });
     let settled = false;
-    const listing = withCodexDefault(rows, new AbortController().signal, async () => path).finally(
+    const listing = enrichCodexModels(rows, new AbortController().signal, async () => path).finally(
       () => {
         settled = true;
       },
@@ -105,7 +105,7 @@ describe("Codex configured default under the config lock", () => {
     });
     try {
       const deadline = new AbortController();
-      const listing = withCodexDefault(rows, deadline.signal, async () => path);
+      const listing = enrichCodexModels(rows, deadline.signal, async () => path);
       deadline.abort(new Error("Timed out waiting for model picker operation."));
       await expect(listing).rejects.toThrow("Timed out waiting for model picker operation.");
     } finally {

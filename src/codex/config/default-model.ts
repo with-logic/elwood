@@ -1,7 +1,7 @@
 /**
- * Marks the Codex configured default model on listed picker rows, read from config.toml,
- * because Codex 0.164 marks only the `(current)` row and names no default on screen.
- * Implements PRD §5.3 `isDefault` and C-API-23.
+ * Enriches Codex picker rows with configured defaults and cached speed capabilities.
+ * Codex 0.164 marks only the `(current)` row and names no default on screen.
+ * Implements PRD §5.3 `isDefault`, §5.11 speed evidence, and C-API-23.
  */
 
 import { elwoodError, errnoCode } from "../../core/errors.ts";
@@ -20,21 +20,22 @@ const profileKey = /^\s*profile\s*=\s*(?:"([^"]*)"|'([^']*)')/;
  * concurrent `setModel` on that file holds the lock while Codex's picker has written its selection
  * into config.toml, so the temporary selection is never read as the default. A deadline
  * or session close while waiting rejects without reading. `resolveConfigPath` resolves the
- * session's own config (C-CODEX-24), waiting for its launch report if need be.
+ * session's own config (C-CODEX-24), waiting for its launch report if need be. Cached speed
+ * capabilities are added after releasing the config lock; that separate file needs no lock.
  */
-export async function withCodexDefault(
+export async function enrichCodexModels(
   options: readonly AgentModelOption[],
   signal: AbortSignal,
   resolveConfigPath: (signal: AbortSignal) => Promise<string>,
 ): Promise<readonly AgentModelOption[]> {
   // Resolved first: a report that cannot be read rejects without waiting for the lock.
   const path = await resolveConfigPath(signal);
-  const mark = async () =>
-    withCodexServiceTiers(markCodexDefault(options, configuredCodexModel(path)), path);
-  return await withCodexConfigLock(path, mark, {
+  const mark = async () => markCodexDefault(options, configuredCodexModel(path));
+  const marked = await withCodexConfigLock(path, mark, {
     signal,
     error: () => signal.reason,
   });
+  return withCodexServiceTiers(marked, path);
 }
 
 /** A rendered `(default)` marker (older Codex) wins; otherwise the configured row is it. */

@@ -1,15 +1,17 @@
 /** Cached capabilities use the session home and degrade to unknown. C-SPEED-02. */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, afterEach, expect, test } from "vitest";
-import { withCodexDefault } from "../../src/codex/config/default-model.ts";
+import { expect, test, vi } from "vitest";
+import { enrichCodexModels } from "../../src/codex/config/default-model.ts";
+import { codexConfigLocksForTests } from "../../src/codex/config/lock.ts";
 import { maxTextFileBytes } from "../../src/codex/config/read.ts";
-import { withCodexServiceTiers } from "../../src/codex/config/service-tiers.ts";
+import * as tiers from "../../src/codex/config/service-tiers.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
-const root = mkdtempSync(join(tmpdir(), "speed-catalog-"));
-const config = join(root, "config.toml");
-const cachePath = join(root, "models_cache.json");
+function cacheFiles() {
+  const root = tempDir("speed-catalog-");
+  return { config: join(root, "config.toml"), cachePath: join(root, "models_cache.json") };
+}
 const row = Object.freeze({
   id: "gpt-6.1-sol",
   label: "Sol",
@@ -22,26 +24,42 @@ const cache = (service_tiers: unknown) => ({
   fetched_at,
   models: [null, { slug: row.id, service_tiers }],
 });
-const write = (value: unknown) => writeFileSync(cachePath, JSON.stringify(value));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
-afterEach(() => rmSync(cachePath, { recursive: true, force: true }));
+const write = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value));
 
 test("C-SPEED-02 public model-list decorator reads this session's catalog and preserves provenance", async () => {
-  write(cache([{ id: "priority" }, { id: "fast" }, { id: "ultrafast" }, { id: "future" }]));
-  const result = await withCodexDefault(
-    [row, { ...row, id: "unmatched" }],
-    new AbortController().signal,
-    async () => config,
+  const { config, cachePath } = cacheFiles();
+  write(
+    cachePath,
+    cache([{ id: "priority" }, { id: "fast" }, { id: "ultrafast" }, { id: "future" }]),
   );
-  expect(result[0]).toMatchObject({
-    codexServiceTiers: { fetchedAt: fetched_at, values: ["default", "fast", "ultrafast"] },
+  const decorate = tiers.withCodexServiceTiers;
+  const heldLocks: number[] = [];
+  const observation = vi.spyOn(tiers, "withCodexServiceTiers").mockImplementation((...args) => {
+    heldLocks.push(codexConfigLocksForTests());
+    return decorate(...args);
   });
-  expect(result[1]).not.toHaveProperty("codexServiceTiers");
+  try {
+    const result = await enrichCodexModels(
+      [row, { ...row, id: "unmatched" }],
+      new AbortController().signal,
+      async () => config,
+    );
+    expect(result[0]).toMatchObject({
+      codexServiceTiers: { fetchedAt: fetched_at, values: ["default", "fast", "ultrafast"] },
+    });
+    expect(result[1]).not.toHaveProperty("codexServiceTiers");
+    expect(heldLocks).toEqual([0]);
+  } finally {
+    observation.mockRestore();
+  }
 });
 
 test("C-SPEED-02 explicit empty tiers means only standard is advertised", () => {
-  write(cache([]));
-  expect(withCodexServiceTiers([row], config)[0]?.codexServiceTiers?.values).toEqual(["default"]);
+  const { config, cachePath } = cacheFiles();
+  write(cachePath, cache([]));
+  expect(tiers.withCodexServiceTiers([row], config)[0]?.codexServiceTiers?.values).toEqual([
+    "default",
+  ]);
 });
 
 test.each([
@@ -60,27 +78,31 @@ test.each([
   cache([[]]),
   { fetched_at, models: [{ slug: row.id, additional_speed_tiers: ["fast"] }] },
 ])("C-SPEED-02 invalid evidence remains unknown: %j", (value) => {
-  write(value);
+  const { config, cachePath } = cacheFiles();
+  write(cachePath, value);
   const expected = { ...row };
-  const result = withCodexServiceTiers([row], config);
+  const result = tiers.withCodexServiceTiers([row], config);
   expect(result).toEqual([expected]);
   expect(result[0]).not.toHaveProperty("codexServiceTiers");
 });
 
 test.each([
-  "missing",
-  "malformed",
-  "nonregular",
-  "oversized",
-])("C-SPEED-02 %s cache leaves discovery usable", (state) => {
-  if (state === "malformed") writeFileSync(cachePath, "{");
-  if (state === "nonregular") mkdirSync(cachePath);
-  if (state === "oversized") {
-    const valid = JSON.stringify(cache([{ id: "fast" }]));
-    writeFileSync(cachePath, valid.padEnd(maxTextFileBytes + 1, " "));
-  }
+  ["missing", (_path: string): void => undefined],
+  ["malformed", (path: string): void => writeFileSync(path, "{")],
+  ["nonregular", (path: string): void => mkdirSync(path)],
+  [
+    "oversized",
+    (path: string): void =>
+      writeFileSync(
+        path,
+        JSON.stringify(cache([{ id: "fast" }])).padEnd(maxTextFileBytes + 1, " "),
+      ),
+  ],
+] as const)("C-SPEED-02 %s cache leaves discovery usable", (_name, prepare) => {
+  const { config, cachePath } = cacheFiles();
+  prepare(cachePath);
   const expected = { ...row };
-  const result = withCodexServiceTiers([row], config);
+  const result = tiers.withCodexServiceTiers([row], config);
   expect(result).toEqual([expected]);
   expect(result[0]).not.toHaveProperty("codexServiceTiers");
 });

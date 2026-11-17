@@ -16,15 +16,11 @@ export function withCodexServiceTiers(
     const text = readBoundedTextFile(join(dirname(configPath), "models_cache.json"));
     if (text === undefined) return options;
     const cache = JSON.parse(text) as unknown;
-    if (
-      !isRecord(cache) ||
-      typeof cache["fetched_at"] !== "string" ||
-      !Number.isFinite(Date.parse(cache["fetched_at"])) ||
-      !Array.isArray(cache["models"])
-    )
-      return options;
+    if (!isRecord(cache)) return options;
     const fetchedAt = cache["fetched_at"];
+    if (typeof fetchedAt !== "string" || !Number.isFinite(Date.parse(fetchedAt))) return options;
     const models = cache["models"];
+    if (!Array.isArray(models)) return options;
     return options.map((option) => {
       const model: unknown = models.find(
         (value: unknown) => isRecord(value) && value["slug"] === option.id,

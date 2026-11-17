@@ -43,7 +43,7 @@ export const codexModelPicker: ModelPickerSpec = {
     return level > picker ? "follow-up" : "picker";
   },
   parse: parseCodexModelPicker,
-  // No `withDefaults` here: when Codex draws no `(default)` marker (0.164 never does), each
+  // No `enrichOptions` here: when Codex draws no `(default)` marker (0.164 never does), each
   // listing reads the configured default from the SESSION's config.toml, so the session
   // binds it (`CodexSessionImpl.picker`, PRD §5.3).
   // Enter confirms the model, then Codex asks for a reasoning level with the

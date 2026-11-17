@@ -12,11 +12,11 @@ const codex = (tier: unknown) => ({ type: "turn_context", payload: { service_tie
 const claude = (speed: unknown) => ({ type: "assistant", message: { usage: { speed } } });
 
 test.each([
-  "default",
-  "fast",
-  "priority",
-  "ultrafast",
-])("C-SPEED-03 Codex %s is turn configuration, not billed usage", (tier) => {
+  ["default", "default"],
+  ["fast", "fast"],
+  ["priority", "fast"],
+  ["ultrafast", "ultrafast"],
+])("C-SPEED-03 Codex %s is turn configuration, not billed usage", (tier, expected) => {
   const item = codex(tier);
   const event = activityFromCodexTranscript({
     elwoodSessionId: "session",
@@ -30,16 +30,16 @@ test.each([
     raw: item,
     speed: {
       agent: "codex",
-      serviceTier: tier === "priority" ? "fast" : tier,
+      serviceTier: expected,
       evidence: "turn_configuration",
     },
   });
 });
 
 test.each([
-  "standard",
-  "fast",
-])("C-SPEED-03 Claude %s carries response usage and subagent path", (speed) => {
+  ["standard", false],
+  ["fast", true],
+])("C-SPEED-03 Claude %s carries response usage and subagent path", (speed, fastMode) => {
   const item = claude(speed);
   const event = activityFromClaudeTranscript({
     elwoodSessionId: "session",
@@ -51,7 +51,7 @@ test.each([
     elwoodSessionId: "session",
     transcriptPath: "/native/subagent",
     raw: item,
-    speed: { agent: "claude", fastMode: speed === "fast", evidence: "response_usage" },
+    speed: { agent: "claude", fastMode, evidence: "response_usage" },
   });
 });
 
@@ -77,13 +77,25 @@ test.each([
 });
 
 test.each([
-  undefined,
-  "unknown",
-  null,
-])("C-SPEED-03 public activity leaves missing or unknown %s speed absent", (value) => {
+  {
+    name: "absent",
+    payload: { model: "gpt-6-astra" },
+    usage: { input_tokens: 1, output_tokens: 1 },
+  },
+  {
+    name: "unknown",
+    payload: { model: "gpt-6-astra", service_tier: "unknown" },
+    usage: { input_tokens: 1, output_tokens: 1, speed: "unknown" },
+  },
+  {
+    name: "null",
+    payload: { model: "gpt-6-astra", service_tier: null },
+    usage: { input_tokens: 1, output_tokens: 1, speed: null },
+  },
+])("C-SPEED-03 public activity leaves $name speed absent", ({ payload, usage }) => {
   const codexItem = {
     type: "turn_context",
-    payload: { model: "gpt-6-astra", ...(value === undefined ? {} : { service_tier: value }) },
+    payload,
   };
   const codexEvent = activityFromCodexTranscript({
     elwoodSessionId: "s",
@@ -97,11 +109,7 @@ test.each([
     message: {
       role: "assistant",
       content: [{ type: "text", text: "hello" }],
-      usage: {
-        input_tokens: 1,
-        output_tokens: 1,
-        ...(value === undefined ? {} : { speed: value }),
-      },
+      usage,
     },
   };
   const claudeEvent = activityFromClaudeTranscript({
