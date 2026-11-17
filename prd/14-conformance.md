@@ -410,3 +410,5 @@ Each criterion has:
 | ID | Section | Requirement |
 |---|---|---|
 | C-SPEED-01 | §5.11 | Adapter-specific typed speed options validate after directory/session checks and before preflight, state setup, or ownership changes; override duplicate raw settings; and reach start, lazy construction, resume and startOrResume without persistence or changing native user defaults. Resume forwards explicit raw overrides. |
+| C-SPEED-02 | §5.11 | Codex model enumeration exposes an Elwood-supplied `default` baseline plus recognized native cached tiers with their timestamp, using the session's own config home and bounded file reads; missing or invalid evidence leaves the entire field absent. |
+| C-SPEED-03 | §5.11 | Transcript activity distinguishes Codex turn configuration from Claude response usage, retains transcript ownership, and never infers speed from absent or unknown data. |

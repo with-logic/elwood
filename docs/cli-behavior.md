@@ -2645,7 +2645,7 @@ scripted regressions verify Elwood's response, not a new live capture.
   the exact text from a `<synthetic>` model record is omitted; ordinary assistant
   text with those words remains visible.
 
-## Native speed settings (2026-11-16)
+## Speed settings and native evidence (2026-11-16)
 
 Codex 0.169.0 accepts `-c service_tier="fast"` and `"ultrafast"`; with a
 model catalog advertising both tiers, a loopback Responses provider received
@@ -2658,7 +2658,10 @@ no paid inference. Run it with `node --no-warnings --test tests/e2e/speed.e2e.ts
 
 The catalog matters: the same installed CLI without that fixture's advertised
 Ultrafast capability sent standard requests for the Ultrafast launch choice.
-A successful launch therefore does not prove the mode was applied.
+A successful launch therefore does not prove the mode was applied. Cached model
+capabilities are exposed with their native timestamp, not as account entitlement.
+The 0.169.0 loopback transcripts omitted `service_tier` in `turn_context`; speed
+observations correctly stayed absent instead of echoing the launch preference.
 
 The configured Fast footer reads `GPT-6-Astra medium Fast · /path`. Elwood's
 old positive-composer grammar rejected that badge and held queued input even
@@ -2671,4 +2674,5 @@ a fixture API key and no inference. Launching with generated `fastMode: true`
 opened `/fast` showing `Fast mode ON`; launching with `false` showed that Fast
 was unavailable for that fixture account. The `/fast` screen was dismissed with
 Escape without confirming a toggle. This verifies that the native CLI reads the override, not
-that a real account is entitled to Fast or that a response used it.
+that a real account is entitled to Fast or that a response used it. Claude speed
+usage is only reported when native assistant `usage.speed` supplies it.
