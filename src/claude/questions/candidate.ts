@@ -15,6 +15,8 @@ export type Candidate = {
   awaitingNativeHookClosure: boolean;
   publishable: boolean;
   seenChrome: boolean;
+  /** Absolute monotonic milliseconds from `performance.now()` when input becomes ready. */
+  inputReadyAtMs: number | undefined;
   readonly requiresExactQuestionMatch: boolean;
 };
 export function createCandidate(
@@ -27,6 +29,7 @@ export function createCandidate(
     awaitingNativeHookClosure: false,
     publishable: true,
     seenChrome: false,
+    inputReadyAtMs: undefined,
     requiresExactQuestionMatch:
       lastNativeQuestions !== undefined && !matchesNativeQuestions(questions, lastNativeQuestions),
     questions: questions.map((question) => ({

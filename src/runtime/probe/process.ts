@@ -37,6 +37,7 @@ export class ProbeProcess {
         : [...args],
       {
         cwd: options.cwd,
+        env: options.env,
         detached: true,
         stdio: supervised
           ? ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe"]

@@ -142,7 +142,9 @@ export function observeTranscript(
   for (const key of ["transcript_path", "agent_transcript_path"]) {
     const path = event[key];
     if (typeof path !== "string" || path.length === 0) continue;
-    watcher.observe(path, recoverTail);
+    const promptId = event["prompt_id"];
+    const turnId = typeof promptId === "string" && promptId.length > 0 ? promptId : undefined;
+    watcher.observe(path, recoverTail, turnId);
     // A SubagentStop's agent transcript is a one-shot input: flush it now and
     // retire it from active polling so a long session with many subagents does
     // not accumulate cursors statted twice a second forever (PRD §5.4). The flush

@@ -107,7 +107,7 @@ describe("Codex shell/exec transcript summaries (C-CODEX-19)", () => {
           { type: "input_text", text: "total 8\n" },
         ],
       }),
-    ).toEqual({ kind: "tool_result", label: "c1", text: "Script completed\nOutput:\ntotal 8\n" });
+    ).toEqual({ kind: "tool_result", label: "c1", text: "total 8\n" });
     // A plain-string output (classic function_call_output) still works.
     expect(summary({ type: "function_call_output", call_id: "c2", output: "stdout here" })).toEqual(
       {

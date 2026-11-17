@@ -102,15 +102,20 @@ function toolResult(payload: Item): CodexTranscriptSummary {
 
 // Extracts a tool result's text. Accepts a plain string, or an
 // `{ type:"input_text", text }[]` array (custom_tool_call_output/modern exec) whose
-// entry texts are joined. Any other shape returns undefined, and the `toolResult`
-// caller simply omits the text (no generic serialization fallback) (C-CODEX-19).
+// recognized leading `Script completed` envelope (with optional wall time) is removed
+// before entry texts are joined. Any other shape returns undefined, and the
+// `toolResult` caller omits the text (no serialization fallback) (C-CODEX-19).
 export function toolOutputText(output: unknown): string | undefined {
   if (typeof output === "string") return output;
   if (!Array.isArray(output)) return undefined;
   const parts = output
     .map((entry) => stringValue(record(entry)?.["text"]))
     .filter((part): part is string => part !== undefined);
-  return parts.length > 0 ? parts.join("") : undefined;
+  const header = parts[0];
+  if (header === undefined) return undefined;
+  const nativeEnvelope = /^Script completed\n(?:Wall time [\d.]+ seconds\n)?Output:\n$/;
+  if (nativeEnvelope.test(header)) parts.shift();
+  return parts.join("");
 }
 
 function message(payload: Item): CodexTranscriptSummary {

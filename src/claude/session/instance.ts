@@ -34,6 +34,9 @@ import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
 
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
+  protected override get interruptRetryMs(): number {
+    return 250;
+  }
   protected readonly picker = {
     ...claudeModelPicker,
     isClear: liveClaudeClearance(() => this.terminal, claudeLastComposerClearance),

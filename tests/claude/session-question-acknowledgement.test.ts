@@ -50,7 +50,7 @@ test("C-QUESTION-03 unrelated and prior ID-less completions cannot settle public
       },
     );
   try {
-    await expect.poll(() => pty.writes).toContain("\r");
+    await expect.poll(() => pty.writes, { timeout: 5000 }).toContain("\r");
     await hook("PostToolUse", {
       tool_name: "Bash",
       tool_input: { command: "true" },

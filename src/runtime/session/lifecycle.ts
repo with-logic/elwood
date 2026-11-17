@@ -144,7 +144,10 @@ export abstract class SessionLifecycle {
   readonly startupCleanupResources = (cancelReadiness: () => void) =>
     this.shutdown.startupCleanupResources(() => this.closing.abort(), cancelReadiness);
   protected isInputBlocked(): boolean {
-    const held = this.inputBlocking || this.trustInputBlocking;
+    const held =
+      this.inputBlocking ||
+      this.trustInputBlocking ||
+      (!this.everReady && this.initialReadinessHeld?.() === true);
     return this.closing.signal.aborted || held || this.status === "blocked";
   }
   bindInitialReadinessHold(isHeld: () => boolean): void {

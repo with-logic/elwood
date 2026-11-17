@@ -52,8 +52,8 @@ export type InitialReadyObserverFailedWarning = {
 };
 
 /**
- * Codex's initial-readiness backstop released readiness while the latest frame showed no
- * configured composer (its model footer), for example after a footer layout change.
+ * Codex's initial-readiness backstop elapsed without a configured composer.
+ * Readiness and queued input remain held until positive readiness evidence.
  * Content-free (§5.3, C-API-28).
  */
 export type InitialReadyBackstopWarning = {

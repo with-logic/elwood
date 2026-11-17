@@ -6,6 +6,8 @@
 
 import { stringify } from "../../core/serialize.ts";
 
+const noResponsePlaceholder = "No response requested.";
+
 /**
  * A committed transcript item, discriminated by kind so each variant carries
  * only the fields it can have (an `assistant_message` always has `text`; a
@@ -44,10 +46,23 @@ export function summarizeClaudeRecord(item: unknown): readonly ClaudeTranscriptS
   const type = stringValue(record["type"]);
   if (type !== "assistant" && type !== "user") return [];
   const role: ClaudeTranscriptRole = type;
-  const content = asRecord(record["message"])["content"];
+  const message = asRecord(record["message"]);
+  const content = message["content"];
+  if (message["model"] === "<synthetic>" && isNoResponsePlaceholder(content)) return [];
   if (typeof content === "string") return assistantText(role, content);
   if (!Array.isArray(content)) return [];
   return content.flatMap((block) => summarizeBlock(role, block));
+}
+
+/** Native resume bookkeeping is not an assistant reply, even when written after boot. */
+function isNoResponsePlaceholder(content: unknown): boolean {
+  if (content === noResponsePlaceholder) return true;
+  return (
+    Array.isArray(content) &&
+    content.length === 1 &&
+    asRecord(content[0])["type"] === "text" &&
+    asRecord(content[0])["text"] === noResponsePlaceholder
+  );
 }
 
 function summarizeBlock(

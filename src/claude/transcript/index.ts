@@ -28,7 +28,6 @@ const pollMs = 500; // poll cadence: transcript activity is not latency-critical
 const scanChunksPerScan = 16;
 
 export class ClaudeTranscriptWatcher {
-  // One cursor per observed path so A→B→A never rewinds A to the start.
   private readonly cursors = new Map<string, TranscriptCursor>();
   private interval: ReturnType<typeof setInterval> | undefined;
   private polling = false;
@@ -70,12 +69,14 @@ export class ClaudeTranscriptWatcher {
   }
 
   // Begin watching `path`: baselines at EOF (history not replayed); a turn-boundary
-  // first-observe (recoverTail) replays the committed tail (§5.4). No observation
-  // after finish — a late hook must not emit past terminal:exit.
-  observe(path: string, recoverTail = false): void {
-    if (this.finished || this.cursors.has(path)) return;
-    const cursor = this.guard.read(path, () => new TranscriptCursor(path));
+  // first-observe (recoverTail) replays the tail. No observation after finish (§5.4).
+  observe(path: string, recoverTail = false, turnId?: string): void {
+    if (this.finished) return;
+    const cursor =
+      this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
+    this.lines.turns.seed(path, turnId, () => this.guard.read(path, () => cursor.baselinePrompt()));
+    if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {
       const tail = this.guard.read(path, () => cursor.baselineTail());
@@ -87,7 +88,6 @@ export class ClaudeTranscriptWatcher {
     }
     this.ensurePolling();
   }
-
   scan(): void {
     if (this.finished) return;
     const budget = { chunks: scanChunksPerScan };
@@ -106,6 +106,7 @@ export class ClaudeTranscriptWatcher {
     if (!cursor || this.finished) return;
     drainToBudget(this.drain, [cursor], this.terminalBudget);
     this.cursors.delete(path);
+    this.lines.turns.forget(path);
   }
 
   pollOnceForTests(): Promise<void> {
@@ -157,7 +158,6 @@ export class ClaudeTranscriptWatcher {
     if (this.interval) clearInterval(this.interval);
     this.interval = undefined;
   }
-
   private ensurePolling(): void {
     if (this.interval || this.finished) return;
     // scanCursor can throw a listener error after the poll's await, which on the

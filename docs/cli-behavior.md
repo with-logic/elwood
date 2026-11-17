@@ -64,10 +64,11 @@ invalid and will conclude the hook "never fires". (This once produced a false
 sandboxed homes, and user `config.toml` hooks merge additively with `-c` hooks.)
 Because `SessionStart` is Elwood's authoritative Codex readiness signal
 (`markInitialReadyFromHook`, `src/codex/session/hooks.ts`), cold-start readiness
-comes from that hook, bounded by a **two-stage starvation deadline** armed on the
+comes from that hook, with **timers that check readiness evidence** armed on the
 first render frame (`src/runtime/readiness/initial-ready.ts`): after 10 s
 (`initialDeadlineMs`) Codex readiness waits for a configured composer, described
-below, and after 60 s (`initialBackstopMs`) it is released without one. C-API-28.
+below, and after 60 s (`initialBackstopMs`) it warns if that evidence is still missing.
+Readiness and queued input remain held; the backstop cannot establish input safety. C-API-28.
 
 **Codex 0.164 paints a boot composer before its session is configured
 (2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
@@ -83,8 +84,8 @@ showing the boot composer without a footer. The other 8 painted their gate at
 3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
 composer with its model footer (`codexComposerConfigured`,
 `src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
-gate delay, releases readiness if no footer is ever recognized; a gate painting
-later than that would still follow `ready`. Fixtures:
+gate delay, reports missing evidence without releasing readiness or queued
+input. This avoids typing into an unrecognized late gate. Fixtures:
 `tests/fixtures/codex-0.164.0/boot/`. C-API-28.
 
 **Codex 0.153.3 can still swallow the deadline-released first paste under load.**
@@ -2617,3 +2618,29 @@ is sufficient: the actual birth lies strictly before that upper boundary. This
 excludes births during the read; it does not prove an atomic association with the
 original native PTY spawn. Scripted boundary tests cover both platforms; native
 fixtures age owned children beyond the matching interval before observing them.
+
+## Electron host observations on Claude 2.1.325 / Codex 0.167.2 (2026-11-16)
+
+An embedder running Elwood 0.2.5 in an Electron utility process on macOS / Node 26
+reported these real-run behaviors. The timings below come from that report;
+scripted regressions verify Elwood's response, not a new live capture.
+
+- Codex's update offer survived the 60-second readiness backstop. A queued prompt's
+  Enter chose `Update now`, upgrading Codex to 0.169.0. Elwood now retains startup
+  input at the backstop, including direct `sendPrompt` writes. Existing native update-menu recognition only selects safe
+  skip choices; ambiguous recognized menus remain blocked.
+- Claude swallowed the first Escape during every attempted turn interrupt; a
+  later Escape worked regardless of TERM or kitty keyboard protocol. Elwood
+  retries once after 250 ms while still running, cancelling on other statuses.
+- Claude's native question and trust dialogs needed roughly 1.2–1.5 seconds
+  before accepting keys. `answerQuestions` now waits until 1.5 seconds from its
+  first complete matching paint, with cancellation and live-layout checks. Raw
+  keys intentionally remain immediate.
+- Claude's final committed assistant record arrived roughly 0.6 seconds after
+  `ready`; startup and dialog status blips had no user turn. Native prompt IDs and
+  transcript UUID parent links correlate activity independently of these edges.
+- Modern Codex exec results can include a `Script completed` transport envelope
+  before the command's actual output. Normalized result text omits that envelope.
+- Claude can insert `No response requested.` after an interrupted resume. Only
+  the exact text from a `<synthetic>` model record is omitted; ordinary assistant
+  text with those words remains visible.

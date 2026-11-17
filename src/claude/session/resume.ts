@@ -6,6 +6,7 @@
 import { elwoodError } from "../../core/errors.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
+import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
@@ -26,7 +27,7 @@ import type { ClaudeSessionApi } from "./interface.ts";
 export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<ClaudeSessionApi> {
   // `highTrust` expands to its explicit posture override (or rejects a conflicting
   // explicit one) before anything else, exactly as on start (C-API-54).
-  const options = applyClaudeHighTrust(rawOptions);
+  const options = applyClaudeHighTrust(snapshotEnvironment(rawOptions));
   // The given `cwd`, resolved once, before any read or `await`, so the directory checked is the
   // one launched in even if `process.cwd()` changes.
   const given =
@@ -50,7 +51,10 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   try {
     const directory = await checkLaunchDirectory("claude", cwd);
     const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-      preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false, directory),
+      preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
+        ...directory,
+        env: options.env,
+      }),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
@@ -65,6 +69,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
           cwd,
           stateDir,
           launchDirectory: directory,
+          env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),

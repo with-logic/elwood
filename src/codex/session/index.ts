@@ -6,6 +6,7 @@ import { checkedInputBytes } from "../../core/control-queue/budget.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
+import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
   type CheckedLaunchDirectory,
   prepareLaunchDirectory,
@@ -55,10 +56,12 @@ export async function startCodexWithId(
   // PTY spawn all agree. `highTrust` expands to its concrete posture (or rejects a
   // conflicting explicit one) HERE, before preflight, so the persisted record and the
   // launch command both carry the expanded posture (C-API-54).
-  const options = applyCodexHighTrust({
-    ...rawOptions,
-    cwd: resolveLaunchDirectory("codex", rawOptions.cwd),
-  });
+  const options = applyCodexHighTrust(
+    snapshotEnvironment({
+      ...rawOptions,
+      cwd: resolveLaunchDirectory("codex", rawOptions.cwd),
+    }),
+  );
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
@@ -70,11 +73,10 @@ export async function startCodexWithId(
   assertCwdUnchanged();
   const stateDir = canonicalStatePath(stateDirPath);
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-    preflight.preflightCodex(
-      options.strictVersionCheck ?? false,
-      options.autoupdate ?? false,
-      directory,
-    ),
+    preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
+      ...directory,
+      env: options.env,
+    }),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("codex", stateDir, {

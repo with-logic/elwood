@@ -24,6 +24,9 @@ export function resetMaxRecordsForTests(): void {
   maxRecords = defaultMaxRecords;
 }
 
+/** Native prompt fields found only at a genuine user boundary in the bounded scan. */
+export type BaselinePrompt = Readonly<Record<string, unknown>>;
+
 /**
  * Recovered current turn: the committed record lines plus whether the scan hit
  * its byte/record cap before the user PROMPT boundary. `truncated` is true only
@@ -36,6 +39,8 @@ export type BaselineTail = {
   readonly lines: readonly string[];
   readonly truncated: boolean;
   readonly unrecoveredBytes: number;
+  /** The genuine user prompt boundary, retained only for native identity seeding. */
+  readonly prompt?: BaselinePrompt;
 };
 
 /**
@@ -61,6 +66,7 @@ export function scanBaselineTail(path: string, size: number): BaselineTail {
     if (boundary >= 0)
       return {
         lines: flatten(chunks, lines.slice(boundary + 1)),
+        prompt: JSON.parse(lines[boundary] as string) as BaselinePrompt,
         truncated: false,
         unrecoveredBytes: 0,
       };

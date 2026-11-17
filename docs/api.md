@@ -121,7 +121,9 @@ Elwood queues it and submits it on the next `ready` transition.
 prompt. It does not wait for `ready`: it dispatches as soon as no other
 submission is in flight, like a human typing into the TUI. It may overtake
 readiness-waiting messages but never interleaves with an in-flight paste/Enter
-sequence.
+sequence. After Codex's `initial_ready_backstop` warning, it also waits for a
+configured composer or readiness hook, so its bypass cannot type into an unknown
+startup screen.
 
 `sendGuidance` is for a coordinator intervening in an active turn. It queues
 before the session's first readiness and while a blocking dialog is visible.
@@ -144,7 +146,9 @@ session has reached initial readiness it writes Escape immediately when the
 session is `running` or `blocked`, then resolves once the session is `ready`
 again, or rejects with `interrupt_failed` after `timeoutMs` (default 10 s).
 With no turn in flight it resolves without touching the terminal. Concurrent
-calls coalesce into one Escape.
+calls coalesce into one interrupt sequence. Claude retries once 250 ms after the
+first Escape write settles if the session remains `running`; becoming `ready`,
+`blocked`, or terminal cancels that retry. Codex receives one Escape.
 
 `compact` types the adapter's `/compact` command and resolves when the adapter
 reports completion through its `PostCompact` hook.

@@ -30,6 +30,7 @@ export function startOrResumeCodex(
 function resumeOptions(elwoodSessionId: string, start: StartCodexOptions): ResumeCodexOptions {
   const forwarded = compact<Omit<ResumeCodexOptions, "elwoodSessionId" | "cwd">>({
     stateDir: start.stateDir,
+    env: start.env,
     hooks: start.hooks,
     initialSize: start.initialSize,
     reasoningEffort: start.reasoningEffort,

@@ -118,7 +118,13 @@ export function cachedVersionRead(
   read: (options: CommandOptions) => Promise<CommandResult>,
   directory: ProbeDirectory = { cwd: process.cwd() },
 ): Promise<CommandResult> {
-  return readInDirectory(versionReads[adapter], directory.cwd, read, directory.identity);
+  return readInDirectory(
+    versionReads[adapter],
+    directory.cwd,
+    read,
+    directory.identity,
+    directory.env,
+  );
 }
 
 export function invalidateVersionRead(adapter: UpdateAdapter): void {

@@ -20,7 +20,11 @@ export function hookActivityBase(
     agent,
     source: "hook",
     hookEventName: event.hook_event_name,
-    ...optional("turnId", stringValue(source["turn_id"])),
+    ...optional(
+      "turnId",
+      stringValue(source["turn_id"]) ??
+        (agent === "claude" ? stringValue(source["prompt_id"]) || undefined : undefined),
+    ),
     ...optional("toolName", stringValue(source["tool_name"])),
     ...optional("toolUseId", stringValue(source["tool_use_id"])),
     raw: event,

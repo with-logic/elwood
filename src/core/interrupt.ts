@@ -22,7 +22,7 @@ export type InterruptEmitter = {
 const interruptibleStatuses = new Set<ElwoodSessionStatus>(["running", "blocked"]);
 
 /**
- * Sends a single Escape to cancel an in-flight turn and resolves when the
+ * Sends Escape to cancel an in-flight turn and resolves when the
  * session next reaches `ready`. Escape is written immediately, bypassing the
  * control queue, because an interrupt exists to stop work already in flight.
  *
@@ -41,6 +41,7 @@ export function sessionInterrupt(
   everReady: () => boolean,
   sendEscape: () => Promise<void>,
   timeoutMs: number | undefined,
+  retryMs?: number,
 ): Promise<void> {
   // No turn in flight: resolve without touching the terminal. This covers both
   // an idle-ready session and the pre-readiness startup window, where `running`
@@ -48,10 +49,13 @@ export function sessionInterrupt(
   if (!(everReady() && interruptibleStatuses.has(status()))) return Promise.resolve();
   return new Promise((resolve, reject) => {
     let settled = false;
+    let retryAllowed = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     const settle = (finish: () => void): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(retry);
       offStatus();
       finish();
     };
@@ -63,14 +67,29 @@ export function sessionInterrupt(
       );
     }, timeoutMs ?? defaultInterruptTimeoutMs);
     const offStatus = emitter.on("status", (event) => {
+      if (event.status !== "running") {
+        retryAllowed = false;
+        clearTimeout(retry);
+      }
       if (event.status === "ready") settle(resolve);
       if (!terminalStatuses.has(event.status)) return;
       settle(() =>
         reject(elwoodError("session_not_running", "Session ended before the interrupt completed.")),
       );
     });
-    sendEscape().then(undefined, (error: unknown) => {
-      settle(() => reject(error));
-    });
+    const fail = (error: unknown) => settle(() => reject(error));
+    sendEscape().then(() => {
+      // Claude can swallow the first Escape. Wait for its physical write before
+      // arming one retry; never send it to an idle composer or a blocking dialog.
+      if (settled || !retryAllowed || retryMs === undefined) return;
+      retry = setTimeout(() => {
+        void Promise.resolve()
+          .then(() => {
+            if (status() === "running") return sendEscape();
+            return undefined;
+          })
+          .catch(fail);
+      }, retryMs);
+    }, fail);
   });
 }

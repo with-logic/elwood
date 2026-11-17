@@ -45,6 +45,7 @@ export type CommandSurfaceDeps = {
   readonly statusEvents: SessionStatusEmitter;
   readonly status: () => ElwoodSessionStatus;
   readonly everReady: () => boolean;
+  readonly interruptRetryMs?: number;
   readonly blocked: () => boolean;
   readonly picker: () => ModelPickerSpec;
   readonly controlQueue: ControlQueue;
@@ -79,6 +80,7 @@ export class CommandSurface {
       everReady,
       sendEscape,
       options?.timeoutMs,
+      this.deps.interruptRetryMs,
     );
     // Clear the in-flight guard on settle so a later interrupt can run afresh.
     this.interrupting = running.finally(() => {

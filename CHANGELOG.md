@@ -12,6 +12,27 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-17
+
+- Snapshot inherited launch environments for both adapters' probes and child
+  processes, including launches without explicit overrides.
+- Bind Claude transcript turn identities only to matching native prompt evidence,
+  omit empty IDs, and bound retained identity bytes and watched paths.
+
+- Keep Codex readiness and queued prompts held when its initial-ready backstop
+  expires without a configured composer; emit the diagnostic without reporting
+  `ready`. Direct prompt writes also respect that hold.
+- Retry Claude interruption once after 250 ms when the first Escape leaves the
+  turn running; concurrent interrupt callers share the retry.
+- Let Claude native question dialogs settle for 1.5 seconds before automated
+  answers, including cancellation and timeout handling during the wait.
+- Correlate Claude activity with native prompt IDs so late assistant messages
+  retain their turn, and omit Claude's synthetic `No response requested.` reply.
+- Surface Codex command output without its `Script completed` transport envelope.
+- Accept launch-only `env` overrides on both adapters' start, resume and
+  start-or-resume APIs; `undefined` removes inherited variables without changing
+  the host environment.
+
 - Decode landing-page sprite sheets in up to four workers instead of one.
 - Bound the landing page's decoded sprite cache by memory (about 200 MB, half on
   low-memory devices) instead of four pages, and load the first-reached clips ahead

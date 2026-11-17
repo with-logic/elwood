@@ -1,8 +1,6 @@
 /**
- * The caller-facing control surface shared by both adapter sessions — prompt,
- * message, and guidance submission (with image attachment), raw keys, resize,
- * interrupt/compact, the model picker, and recurring loops — layered over the
- * lifecycle core in `lifecycle.ts`. Implements PRD §5.3, §5.7, §5.9.
+ * Shared caller controls: text/images, keys, resize, interrupt/compact, models,
+ * and loops, layered over lifecycle.ts. Implements PRD §5.3, §5.7, §5.9.
  */
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
@@ -40,6 +38,9 @@ import type { SessionStatusEmitter } from "./status-wiring.ts";
 type Timeout = { readonly timeoutMs?: number };
 
 export abstract class AgentSessionBase extends QuestionSessionBase {
+  protected get interruptRetryMs(): number | undefined {
+    return undefined;
+  }
   protected abstract readonly picker: ModelPickerSpec;
   private readonly commands: CommandSurface;
 
@@ -80,6 +81,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
       statusEvents,
       status: () => this.status,
       everReady: () => this.everReady,
+      ...(this.interruptRetryMs === undefined ? {} : { interruptRetryMs: this.interruptRetryMs }),
       blocked: () => super.isInputBlocked(),
       picker: () => this.picker,
       controlQueue: this.controlQueue,

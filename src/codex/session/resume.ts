@@ -5,6 +5,7 @@
 
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
+import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
@@ -24,7 +25,7 @@ import type { CodexSessionApi, ResumeCodexOptions } from "./types.ts";
 export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<CodexSessionApi> {
   // `highTrust` expands to its explicit posture override (or rejects a conflicting
   // explicit one) before anything else, exactly as on start (C-API-54).
-  const options = applyCodexHighTrust(rawOptions);
+  const options = applyCodexHighTrust(snapshotEnvironment(rawOptions));
   // Resolve stateDir to ABSOLUTE ONCE, before any read/await, so a `process.chdir()`
   // between the record read and the runtime-file writes can't split them (§8.1).
   const stateDir = canonicalStatePath(
@@ -42,11 +43,10 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     // Codex relaunches where the session started (`--cd`); `cwd` only locates the state.
     const directory = await checkLaunchDirectory("codex", record.cwd);
     const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-      preflight.preflightCodex(
-        options.strictVersionCheck ?? false,
-        options.autoupdate ?? false,
-        directory,
-      ),
+      preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
+        ...directory,
+        env: options.env,
+      }),
     );
     // Resume defaults to the posture this session launched with; explicit options
     // override field by field, and the effective posture is re-persisted (C-API-32,
@@ -61,6 +61,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
           cwd: record.cwd, // where Codex relaunches; `options.cwd` only located the state
           stateDir,
           launchDirectory: directory,
+          env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),

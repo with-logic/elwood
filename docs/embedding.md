@@ -65,7 +65,12 @@ cap does not constrain your state layout.
   work, but resume will find nothing. If your parent app can itself be
   launched from a Claude session (dev workflows, test runners), strip those
   variables from the child environment when you need resumable sessions —
-  Elwood's own e2e suite does exactly this.
+  use the launch-only `env` option rather than changing the host's `process.env`.
+  Strings override inherited values and `undefined` removes them. For example,
+  `env: { CLAUDECODE: undefined, npm_config_prefix: undefined }`. To remove a
+  family such as `CLAUDE_CODE_*` or `ELECTRON_*`, build a map of matching names
+  with `undefined` values. The same map applies to preflight probes and the PTY;
+  login profiles can subsequently modify it. Re-supply it on resume.
 - **User keystrokes** should be forwarded with the `Uint8Array` overload of
   `sendKeys` for verbatim delivery; the string overload applies terminal
   input semantics (see [api.md](api.md)).
@@ -80,6 +85,29 @@ cap does not constrain your state layout.
   before the user starts a session — use `listClaudeModels`/`listCodexModels`.
   They spin up a throwaway session, list, and always tear it down, so they cost
   a few seconds each; cache the result in the parent app if you call them often.
+
+## Turns and startup input
+
+`ready` describes terminal availability. Startup and dialog repaints can produce
+status changes without a user turn, and committed assistant text can arrive after
+`ready`. Use `user_message` activity as the accepted turn boundary and correlate
+Claude activity using its native `turnId` when present. Keep accepting matching
+assistant messages after a status transition; a status edge is not a transcript
+flush barrier. Older Claude records without native prompt identity can remain
+untagged. Claude's synthetic interrupted-resume placeholder is omitted from
+normalized assistant activity.
+
+Codex's `initial_ready_backstop` warning means startup evidence is still missing:
+readiness and queued text remain held. Inspect or operate the terminal with raw
+keys, or stop the session; do not treat the diagnostic as prompt acceptance.
+Recognized update menus are safely skipped or reported as `blocked` with
+`codex-update-prompt` attention. Elwood never chooses `Update now` in the TUI.
+
+Call `answerQuestions()` as soon as its request is raised. Claude answers wait
+until 1.5 seconds after the first complete matching native dialog paint, then
+recheck the dialog; the answer timeout includes this wait. Raw `sendKeys` remains
+immediate, so callers driving a newly painted trust/question dialog themselves
+must allow its input handler to settle.
 
 ## Scaling concurrent sessions
 

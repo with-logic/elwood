@@ -3,12 +3,21 @@
  * Covers PRD §5.3 and C-API-38.
  */
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { pasteSettleDelayMs } from "../../src/core/input/index.ts";
 import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
-afterEach(resetFakes);
+afterEach(() => {
+  vi.useRealTimers();
+  resetFakes();
+});
+
+async function submitWithClock(pending: Promise<void>): Promise<void> {
+  await vi.advanceTimersByTimeAsync(pasteSettleDelayMs);
+  await pending;
+}
 
 const instructionsLoaded = (cwd: string) =>
   ({
@@ -36,11 +45,13 @@ describe("ClaudeSessionApi interrupt", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
-    await session.sendMessage("write a long essay");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await submitWithClock(session.sendMessage("write a long essay"));
     expect(session.status).toBe("running");
     const interrupted = session.interrupt();
     // Escape bypasses the readiness queue: it lands while the turn still runs.
-    await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(escapes(ptys[0]!.writes)).toBe(1);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
     await interrupted;
     expect(session.status).toBe("ready");
@@ -51,14 +62,17 @@ describe("ClaudeSessionApi interrupt", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
-    await session.sendMessage("write a long essay");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await submitWithClock(session.sendMessage("write a long essay"));
     // Two callers race an interrupt: only one Escape may reach the terminal, or
     // the second would land on the composer the first just made idle.
     const first = session.interrupt();
     const second = session.interrupt();
-    await expect.poll(() => escapes(ptys[0]!.writes)).toBe(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(escapes(ptys[0]!.writes)).toBe(1);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
     await Promise.all([first, second]);
+    await vi.advanceTimersByTimeAsync(250);
     expect(escapes(ptys[0]!.writes)).toBe(1);
   });
 
@@ -67,20 +81,23 @@ describe("ClaudeSessionApi interrupt", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // Drive a FULL interrupt to completion so the coalescing guard's `.finally`
     // resets the cached in-flight promise.
-    await session.sendMessage("write a long essay");
+    await submitWithClock(session.sendMessage("write a long essay"));
     const first = session.interrupt();
-    await expect.poll(() => escapes(ptys[0]!.writes)).toBe(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(escapes(ptys[0]!.writes)).toBe(1);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
     await first;
     expect(session.status).toBe("ready");
     // A SECOND turn: if the settled promise were reused, this interrupt would send
     // NO Escape and resolve off the stale settle. Assert a fresh (second) Escape.
-    await session.sendMessage("write another essay");
+    await submitWithClock(session.sendMessage("write another essay"));
     expect(session.status).toBe("running");
     const second = session.interrupt();
-    await expect.poll(() => escapes(ptys[0]!.writes)).toBe(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(escapes(ptys[0]!.writes)).toBe(2);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
     await second;
     expect(session.status).toBe("ready");
@@ -91,17 +108,20 @@ describe("ClaudeSessionApi interrupt", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // sendPrompt writes the bracketed paste, then its submitting Enter after a
     // settle delay. Do NOT await it: interrupt during that window proves raw
     // Escape bypasses the queue and lands between the paste and the Enter.
     const prompted = session.sendPrompt("essay");
-    await expect.poll(() => ptys[0]!.writes.length).toBe(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ptys[0]!.writes).toHaveLength(1);
     expect(ptys[0]!.writes[0]).toBe("\u001b[200~essay\u001b[201~");
     // The interrupt's Escape write is immediate; its promise only settles once
     // the turn ends, which the Stop hook below drives. Observe writes, don't await.
     const interrupted = session.interrupt();
-    await expect.poll(() => ptys[0]!.writes.length).toBe(3);
-    await prompted;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~essay\u001b[201~", "\u001b"]);
+    await submitWithClock(prompted);
     // paste, then Escape, then the prompt's delayed submitting Enter.
     expect(ptys[0]!.writes).toEqual(["\u001b[200~essay\u001b[201~", "\u001b", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
