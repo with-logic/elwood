@@ -64,7 +64,7 @@ invalid and will conclude the hook "never fires". (This once produced a false
 sandboxed homes, and user `config.toml` hooks merge additively with `-c` hooks.)
 Because `SessionStart` is Elwood's authoritative Codex readiness signal
 (`markInitialReadyFromHook`, `src/codex/session/hooks.ts`), cold-start readiness
-comes from that hook, bounded by a **two-stage starvation deadline** armed on the
+comes from that hook, with **timers that check readiness evidence** armed on the
 first render frame (`src/runtime/readiness/initial-ready.ts`): after 10 s
 (`initialDeadlineMs`) Codex readiness waits for a configured composer, described
 below, and after 60 s (`initialBackstopMs`) it warns if that evidence is still missing.

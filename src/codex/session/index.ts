@@ -75,7 +75,7 @@ export async function startCodexWithId(
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
       ...directory,
-      ...(options.env === undefined ? {} : { env: options.env }),
+      env: options.env,
     }),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {

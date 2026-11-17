@@ -14,6 +14,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [0.2.6] - 2026-11-17
 
+- Snapshot inherited launch environments for both adapters' probes and child
+  processes, including launches without explicit overrides.
+- Bind Claude transcript turn identities only to matching native prompt evidence,
+  omit empty IDs, and bound retained identity bytes and watched paths.
+
 - Keep Codex readiness and queued prompts held when its initial-ready backstop
   expires without a configured composer; emit the diagnostic without reporting
   `ready`. Direct prompt writes also respect that hold.

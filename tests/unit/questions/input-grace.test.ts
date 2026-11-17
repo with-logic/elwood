@@ -1,7 +1,6 @@
 /** Claude's initial questionnaire paint precedes input readiness (PRD §5.10, C-QUESTION-03). */
 import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import type { ElwoodQuestionRequest } from "../../../src/core/questions/types.ts";
 import { fixture, frame, registry } from "./helpers.ts";
 import { composer, nativeHook, singleQuestionToolInput } from "./lifecycle-helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
@@ -65,25 +64,42 @@ test("C-QUESTION-03 cancellation during input grace prevents every answer key", 
   expect(h.writes).toEqual([]);
 });
 
-test.each([
-  "replacement",
-  "retired",
-  "layout",
-])("C-QUESTION-03 rechecks %s after input grace", async (change) => {
+test("C-QUESTION-03 rechecks native completion after input grace", async () => {
   const h = setup();
   h.adapter.render(h.initial);
-  const request: ElwoodQuestionRequest = h.requests.list()[0]!;
+  const pending = h.adapter.answer(h.requests.list()[0]!, [{ optionIndexes: [0] }], h.io);
+  const failed = expect(pending).rejects.toMatchObject({ code: "question_answer_failed" });
+  await vi.advanceTimersByTimeAsync(1_000);
+  h.adapter.observe(nativeHook("PostToolUse", { tool_input: singleQuestionToolInput }));
+  await vi.advanceTimersByTimeAsync(500);
+  await failed;
+  expect(h.writes).toEqual([]);
+});
+
+test("C-QUESTION-03 rechecks request retirement after input grace", async () => {
+  const h = setup();
+  h.adapter.render(h.initial);
+  const request = h.requests.list()[0]!;
+  const pending = h.adapter.answer(request, [{ optionIndexes: [0] }], h.io);
+  const failed = expect(pending).rejects.toMatchObject({ code: "question_answer_failed" });
+  await vi.advanceTimersByTimeAsync(1_000);
+  h.requests.retireUnconfirmed(request.id);
+  await vi.advanceTimersByTimeAsync(500);
+  await failed;
+  expect(h.writes).toEqual([]);
+});
+
+test("C-QUESTION-03 rechecks the current layout after input grace", async () => {
+  const h = setup();
+  h.adapter.render(h.initial);
   let current = h.initial;
-  const pending = h.adapter.answer(request, [{ optionIndexes: [0] }], {
+  const pending = h.adapter.answer(h.requests.list()[0]!, [{ optionIndexes: [0] }], {
     ...h.io,
     frame: () => current,
   });
   const failed = expect(pending).rejects.toMatchObject({ code: "question_answer_failed" });
   await vi.advanceTimersByTimeAsync(1_000);
-  if (change === "replacement")
-    h.adapter.observe(nativeHook("PostToolUse", { tool_input: singleQuestionToolInput }));
-  else if (change === "retired") h.requests.retireUnconfirmed(request.id);
-  else current = frame("Unrecognized replacement dialog");
+  current = frame("Unrecognized replacement dialog");
   await vi.advanceTimersByTimeAsync(500);
   await failed;
   expect(h.writes).toEqual([]);

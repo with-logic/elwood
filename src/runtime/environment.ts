@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 
 export type ChildEnvironment = Readonly<Record<string, string | undefined>>;
 
-export function snapshotEnvironment<T extends { readonly env?: ChildEnvironment }>(options: T): T {
-  if (options.env === undefined) return options;
+export function snapshotEnvironment<T extends { readonly env?: ChildEnvironment }>(
+  options: T,
+): Omit<T, "env"> & { readonly env: ChildEnvironment } {
   const env = { ...process.env, ...options.env };
   for (const name of Object.keys(env)) {
     if (env[name] === undefined) delete env[name];

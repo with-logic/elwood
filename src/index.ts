@@ -141,6 +141,7 @@ export type {
   ElwoodStatusEvidence,
   ElwoodWarningEvent,
   HookErrorEvent,
+  LaunchEnvironmentOverrides,
   ResumeClaudeOptions,
   StartClaudeOptions,
   StatusMatch,

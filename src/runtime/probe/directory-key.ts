@@ -65,7 +65,8 @@ export function createDirectoryProbeCache<T>(
 }
 
 /**
- * `cwd`'s answer from `cache`, else `read()`'s, keyed by path and filesystem identity.
+ * `cwd`'s answer from `cache`, else `read()`'s, keyed by path, filesystem identity,
+ * and the effective child environment.
  * The factory refuses retention when identities observed before and after the read differ.
  * The checks compare two snapshots; a replacement restored before the final snapshot
  * can escape detection.

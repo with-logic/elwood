@@ -102,8 +102,9 @@ function toolResult(payload: Item): CodexTranscriptSummary {
 
 // Extracts a tool result's text. Accepts a plain string, or an
 // `{ type:"input_text", text }[]` array (custom_tool_call_output/modern exec) whose
-// entry texts are joined. Any other shape returns undefined, and the `toolResult`
-// caller simply omits the text (no generic serialization fallback) (C-CODEX-19).
+// recognized leading `Script completed` envelope (with optional wall time) is removed
+// before entry texts are joined. Any other shape returns undefined, and the
+// `toolResult` caller omits the text (no serialization fallback) (C-CODEX-19).
 export function toolOutputText(output: unknown): string | undefined {
   if (typeof output === "string") return output;
   if (!Array.isArray(output)) return undefined;

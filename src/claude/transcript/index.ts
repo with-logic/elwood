@@ -69,14 +69,13 @@ export class ClaudeTranscriptWatcher {
   }
 
   // Begin watching `path`: baselines at EOF (history not replayed); a turn-boundary
-  // first-observe (recoverTail) replays the committed tail (§5.4). No observation
-  // after finish — a late hook must not emit past terminal:exit.
+  // first-observe (recoverTail) replays the tail. No observation after finish (§5.4).
   observe(path: string, recoverTail = false, turnId?: string): void {
     if (this.finished) return;
     const cursor =
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
-    this.lines.turns.seed(path, turnId);
+    this.lines.turns.seed(path, turnId, () => this.guard.read(path, () => cursor.baselinePrompt()));
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {

@@ -6,6 +6,8 @@
 
 import { stringify } from "../../core/serialize.ts";
 
+const noResponsePlaceholder = "No response requested.";
+
 /**
  * A committed transcript item, discriminated by kind so each variant carries
  * only the fields it can have (an `assistant_message` always has `text`; a
@@ -54,12 +56,12 @@ export function summarizeClaudeRecord(item: unknown): readonly ClaudeTranscriptS
 
 /** Native resume bookkeeping is not an assistant reply, even when written after boot. */
 function isNoResponsePlaceholder(content: unknown): boolean {
-  if (content === "No response requested.") return true;
+  if (content === noResponsePlaceholder) return true;
   return (
     Array.isArray(content) &&
     content.length === 1 &&
     asRecord(content[0])["type"] === "text" &&
-    asRecord(content[0])["text"] === "No response requested."
+    asRecord(content[0])["text"] === noResponsePlaceholder
   );
 }
 

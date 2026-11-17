@@ -63,9 +63,16 @@ export type ClaudePermissionMode =
 export type ClaudeToolRule = string;
 export type ClaudeSettingsOverrides = Readonly<Record<string, unknown>>;
 
+/**
+ * Launch-only overrides for the inherited environment used by probes and the child shell.
+ * Values overlay a snapshot of `process.env`; `undefined` removes a variable. Overrides
+ * are not persisted and must be supplied again when resuming a session.
+ */
+export type LaunchEnvironmentOverrides = Readonly<Record<string, string | undefined>>;
+
 export type StartClaudeOptions = {
   readonly cwd: string;
-  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly env?: LaunchEnvironmentOverrides;
   readonly stateDir?: string;
   readonly name?: string;
   readonly initialSize?: TerminalSize;
@@ -89,7 +96,7 @@ export type StartClaudeOptions = {
 export type ResumeClaudeOptions = {
   readonly elwoodSessionId: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly env?: LaunchEnvironmentOverrides;
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;

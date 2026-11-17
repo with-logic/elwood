@@ -143,7 +143,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       if (matchesNativePanel) candidate.seenChrome = true;
       if (screen?.kind === "question") {
         this.lastNativeQuestions = candidate.questions;
-        candidate.inputReadyAt ??= performance.now() + claudeQuestionInputGraceMs;
+        candidate.inputReadyAtMs ??= performance.now() + claudeQuestionInputGraceMs;
       }
       if (!candidate.awaitingNativeHookClosure && candidate.seenChrome && hasLiveEmptyComposer) {
         this.close(candidate, "unavailable");
@@ -170,8 +170,8 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
   ): Promise<void> {
     const nativeKey = this.registry.keyFor(request.id);
     const candidate = nativeKey === undefined ? undefined : this.candidates.get(nativeKey);
-    if (candidate?.inputReadyAt === undefined) throw questionAnswerFailed();
-    await waitForClaudeQuestionInput(candidate.inputReadyAt, io.signal);
+    if (candidate?.inputReadyAtMs === undefined) throw questionAnswerFailed();
+    await waitForClaudeQuestionInput(candidate.inputReadyAtMs, io.signal);
     if (
       this.candidates.get(candidate.nativeKey) !== candidate ||
       this.registry.get(request.id) !== request

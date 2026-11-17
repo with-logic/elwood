@@ -9,7 +9,7 @@
 
 import { stat } from "node:fs/promises";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
-import { scanBaselineTail } from "./baseline.ts";
+import { type BaselinePrompt, scanBaselineTail } from "./baseline.ts";
 
 export type { ChunkRead, TakenLines } from "../../core/transcript/cursor.ts";
 export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
@@ -21,6 +21,11 @@ export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
  * path is a turn-boundary hook.
  */
 export class TranscriptCursor extends BoundedTranscriptCursor {
+  /** Read only within the EOF baseline; callers contain filesystem failures with the guard. */
+  baselinePrompt(): BaselinePrompt | undefined {
+    return scanBaselineTail(this.path, this.offset).prompt;
+  }
+
   // The current (final) turn already on disk (the Stop-first edge). Delegates to
   // the bounded backward scan (`scanBaselineTail`): UTF-8-seam-safe, linear, and —
   // when the turn is larger than the cap — recovering the in-window committed

@@ -86,7 +86,7 @@ test("C-API-28 Codex readiness on its configured composer does not warn", async 
 test.each([
   "sendMessage",
   "sendPrompt",
-] as const)("C-API-28 dismissing an update dialog after the backstop releases %s", async (method) => {
+] as const)("C-API-28 %s remains held after the backstop until the update dialog clears", async (method) => {
   const { session, warnings, statuses } = await start();
   ptys[0]!.emitData("\u001b[2J\u001b[HUpdate available! 0.167.2 -> 0.169.0\r\n1. Update now");
   await vi.advanceTimersByTimeAsync(60_100);

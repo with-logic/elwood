@@ -9,6 +9,7 @@ import { runContained } from "../core/contained.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, ElwoodError, elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import type { ChildEnvironment } from "../runtime/environment.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
 import type { CheckedLaunchDirectory } from "../runtime/session/launch-directory.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
@@ -24,8 +25,9 @@ import {
 import * as preflight from "./preflight.ts";
 import type { StartCodexOptions } from "./session/types.ts";
 
-/** The identity first checked before this launch’s preflight. */
+/** The environment snapshot and directory identity captured before this launch's preflight. */
 export type CodexLaunchOptions = StartCodexOptions & {
+  readonly env: ChildEnvironment;
   readonly launchDirectory: CheckedLaunchDirectory;
 };
 
@@ -56,7 +58,7 @@ export async function spawnCodexPty(
 ): Promise<CodexLaunch> {
   const capabilities = await preflight.detectCodexCliCapabilities({
     ...options.launchDirectory,
-    ...(options.env === undefined ? {} : { env: options.env }),
+    env: options.env,
   });
   const reportPath = codexHomeReportPath(runtime);
   const launch = buildCodexShellCommand(
@@ -72,7 +74,7 @@ export async function spawnCodexPty(
       args: loginShellCommand(`${reportCodexHomeCommand(reportPath)}; ${launch}`),
       cwd: options.launchDirectory.cwd,
       directoryIdentity: options.launchDirectory.identity,
-      env: { ...(options.env ?? process.env), ELWOOD_SESSION_ID: record.elwoodSessionId },
+      env: { ...options.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
       size: options.initialSize ?? defaultTerminalSize,
     });
   } catch (error) {

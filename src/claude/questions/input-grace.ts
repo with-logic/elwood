@@ -5,11 +5,12 @@ import { untilQuestionAbort } from "../../core/questions/abort.ts";
 // before the dialog's input handler settles; embedders measured 1.2–1.5 seconds.
 export const claudeQuestionInputGraceMs = 1_500;
 
+/** Wait until an absolute monotonic timestamp in milliseconds from `performance.now()`. */
 export async function waitForClaudeQuestionInput(
-  inputReadyAt: number,
+  inputReadyAtMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  const remainingMs = inputReadyAt - performance.now();
+  const remainingMs = inputReadyAtMs - performance.now();
   if (remainingMs <= 0) return;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

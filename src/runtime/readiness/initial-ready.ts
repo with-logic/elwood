@@ -1,5 +1,5 @@
 /**
- * Shared hook-backed initial-readiness marker with a two-stage starvation deadline.
+ * Shared hook-backed readiness evidence checks and a diagnostic backstop.
  * Implements PRD §5.3/§9.4, C-API-19, and C-API-28.
  *
  * On a COLD start both adapters gate the first queued message on a pre-input

@@ -23,7 +23,7 @@ export function hookActivityBase(
     ...optional(
       "turnId",
       stringValue(source["turn_id"]) ??
-        (agent === "claude" ? stringValue(source["prompt_id"]) : undefined),
+        (agent === "claude" ? stringValue(source["prompt_id"]) || undefined : undefined),
     ),
     ...optional("toolName", stringValue(source["tool_name"])),
     ...optional("toolUseId", stringValue(source["tool_use_id"])),

@@ -80,7 +80,7 @@ export async function startClaudeWithId(
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflightClaude(strict, options.autoupdate ?? false, {
       ...directory,
-      ...(options.env === undefined ? {} : { env: options.env }),
+      env: options.env,
     }),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {

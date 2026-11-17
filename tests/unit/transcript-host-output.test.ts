@@ -67,7 +67,10 @@ test("C-CLAUDE-15 only the synthetic no-response placeholder is filtered", () =>
       type: "assistant",
       message: { model: "<synthetic>", content: [...content, ...content] },
     }),
-  ).toHaveLength(2);
+  ).toEqual([
+    { kind: "assistant_message", label: "assistant", text: "No response requested." },
+    { kind: "assistant_message", label: "assistant", text: "No response requested." },
+  ]);
   expect(
     summarizeClaudeRecord({
       type: "assistant",

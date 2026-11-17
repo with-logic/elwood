@@ -10,7 +10,10 @@ import { assistant, tmpFile } from "./claude-transcript-helpers.ts";
 
 test("C-CLAUDE-15 an initial hook seeds identity when its prompt is already at EOF", () => {
   const path = tmpFile();
-  writeFileSync(path, `${JSON.stringify({ type: "user", uuid: "user", promptId: "native" })}\n`);
+  writeFileSync(
+    path,
+    `${JSON.stringify({ type: "user", uuid: "user", promptId: "native", message: { content: "prompt" } })}\n`,
+  );
   const events: ClaudeTranscriptEvent[] = [];
   const watcher = new ClaudeTranscriptWatcher("session", (event) => events.push(event));
   try {
@@ -29,7 +32,7 @@ test("C-CLAUDE-15 chain identity stays separate from hook timing and other paths
   expect(turns.observe("main", null)).toBeUndefined();
   expect(turns.observe("main", { uuid: "before", promptId: "", parentUuid: 1 })).toBeUndefined();
   expect(turns.observe("main", { uuid: "root", promptId: "first" })).toBe("first");
-  turns.seed("main", "second");
+  turns.seed("main", "second", () => undefined);
   expect(turns.observe("main", { uuid: "first-answer", parentUuid: "root" })).toBe("first");
   expect(turns.observe("main", { uuid: "next", promptId: "second" })).toBe("second");
   expect(turns.observe("main", { parentUuid: "first-answer" })).toBe("first");
@@ -70,7 +73,7 @@ test("C-CLAUDE-15 a failed path registration cannot seed a later transcript at t
     mkdirSync(parent);
     writeFileSync(
       path,
-      `${JSON.stringify({ type: "user", uuid: "user", promptId: "new-turn" })}\n`,
+      `${JSON.stringify({ type: "user", uuid: "user", promptId: "new-turn", message: { content: "prompt" } })}\n`,
     );
     watcher.observe(path, false, "new-turn");
     appendFileSync(path, `${JSON.stringify({ ...assistant("reply"), parentUuid: "user" })}\n`);
@@ -87,7 +90,59 @@ test("C-CLAUDE-15 bounded identity eviction omits unknown chains instead of gues
   for (let index = 0; index < 4_096; index += 1)
     turns.observe("main", { uuid: `record-${index}`, promptId: "successor" });
   expect(turns.observe("main", { parentUuid: "old" })).toBeUndefined();
+  expect(turns.observe("main", { parentUuid: "record-0" })).toBe("successor");
   expect(turns.observe("main", { parentUuid: "record-4095" })).toBe("successor");
   turns.forget("main");
   expect(turns.observe("main", { parentUuid: "record-4095" })).toBeUndefined();
+});
+
+test("C-CLAUDE-15 an EOF seed identifies only the matching user UUID, never unknown ancestry", () => {
+  const path = tmpFile();
+  writeFileSync(
+    path,
+    `${JSON.stringify({ type: "user", uuid: "current", promptId: "native", message: { content: "prompt" } })}\n`,
+  );
+  const events: ClaudeTranscriptEvent[] = [];
+  const watcher = new ClaudeTranscriptWatcher("session", (event) => events.push(event));
+  try {
+    watcher.observe(path, false, "native");
+    appendFileSync(
+      path,
+      `${JSON.stringify({ ...assistant("late predecessor"), parentUuid: "unknown-old" })}\n${JSON.stringify({ ...assistant("current reply"), parentUuid: "current" })}\n`,
+    );
+    watcher.scan();
+    expect(events.map((event) => event.turnId)).toEqual([undefined, "native"]);
+  } finally {
+    watcher.stop();
+  }
+});
+
+test("C-CLAUDE-15 retiring a registered transcript forgets its seeded UUID", () => {
+  const path = tmpFile();
+  writeFileSync(
+    path,
+    `${JSON.stringify({ type: "user", uuid: "old-user", promptId: "old", message: { content: "prompt" } })}\n`,
+  );
+  const events: ClaudeTranscriptEvent[] = [];
+  const watcher = new ClaudeTranscriptWatcher("session", (event) => events.push(event));
+  try {
+    watcher.observe(path, false, "old");
+    appendFileSync(
+      path,
+      `${JSON.stringify({ ...assistant("before retirement"), parentUuid: "old-user" })}\n`,
+    );
+    watcher.scan();
+    expect(events[0]?.turnId).toBe("old");
+    watcher.retire(path);
+    watcher.observe(path);
+    appendFileSync(
+      path,
+      `${JSON.stringify({ ...assistant("after retirement"), parentUuid: "old-user" })}\n`,
+    );
+    watcher.scan();
+    expect(events).toHaveLength(2);
+    expect(events[1]?.turnId).toBeUndefined();
+  } finally {
+    watcher.stop();
+  }
 });

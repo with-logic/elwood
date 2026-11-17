@@ -29,10 +29,7 @@ test("C-PERF-02 a real probe receives its supplied child environment", async () 
   expect(process.env["ELWOOD_ENV_PARENT"]).toBe("parent-only");
 });
 
-test.each([
-  "version",
-  "capability",
-] as const)("C-PERF-02 %s caches do not cross child environments", async (kind) => {
+function cacheHarness() {
   const cwd = tempDir("elwood-env-cache-");
   const runner = vi.fn(
     async (
@@ -46,27 +43,38 @@ test.each([
     }),
   );
   setCommandRunnerForTests(runner);
-  const read = (env: Readonly<Record<string, string | undefined>> | undefined) => {
-    const directory = { cwd, ...(env === undefined ? {} : { env }) };
-    return kind === "version"
-      ? cachedVersionRead("codex", (options) => runner("shell", [], options), directory)
-      : detectCodexCliCapabilities(directory);
-  };
-  for (const env of [
-    undefined,
-    { ELWOOD_ENV_VALUE: "--dangerously-bypass-hook-trust" },
-    { ELWOOD_ENV_VALUE: "other" },
-  ]) {
-    const result = await read(env);
-    expect(result).toEqual(
-      kind === "version"
-        ? { status: 0, stdout: env?.["ELWOOD_ENV_VALUE"] ?? "default", stderr: "" }
-        : {
-            supportsHookTrustBypass:
-              env?.["ELWOOD_ENV_VALUE"] === "--dangerously-bypass-hook-trust",
-          },
-    );
-    await read(env && { ...env });
+  return { cwd, runner };
+}
+
+test("C-PERF-02 version caches do not cross child environments", async () => {
+  const { cwd, runner } = cacheHarness();
+  for (const [directory, expected] of [
+    [{ cwd }, "default"],
+    [
+      { cwd, env: { ELWOOD_ENV_VALUE: "--dangerously-bypass-hook-trust" } },
+      "--dangerously-bypass-hook-trust",
+    ],
+    [{ cwd, env: { ELWOOD_ENV_VALUE: "other" } }, "other"],
+  ] as const) {
+    const read = () =>
+      cachedVersionRead("codex", (options) => runner("shell", [], options), { ...directory });
+    expect(await read()).toEqual({ status: 0, stdout: expected, stderr: "" });
+    await read();
+  }
+  expect(runner).toHaveBeenCalledTimes(3);
+});
+
+test("C-PERF-02 capability caches do not cross child environments", async () => {
+  const { cwd, runner } = cacheHarness();
+  for (const [directory, expected] of [
+    [{ cwd }, false],
+    [{ cwd, env: { ELWOOD_ENV_VALUE: "--dangerously-bypass-hook-trust" } }, true],
+    [{ cwd, env: { ELWOOD_ENV_VALUE: "other" } }, false],
+  ] as const) {
+    expect(await detectCodexCliCapabilities({ ...directory })).toEqual({
+      supportsHookTrustBypass: expected,
+    });
+    await detectCodexCliCapabilities({ ...directory });
   }
   expect(runner).toHaveBeenCalledTimes(3);
 });

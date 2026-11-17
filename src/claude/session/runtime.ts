@@ -18,6 +18,7 @@ import type {
 } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../../pty/types.ts";
+import type { ChildEnvironment } from "../../runtime/environment.ts";
 import { currentPtyFactory } from "../../runtime/seams.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
 import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
@@ -29,8 +30,9 @@ import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
 
-/** The identity first checked before this launch’s preflight. */
+/** The environment snapshot and directory identity captured before this launch's preflight. */
 export type ClaudeLaunchOptions = StartClaudeOptions & {
+  readonly env: ChildEnvironment;
   readonly launchDirectory: CheckedLaunchDirectory;
 };
 
@@ -106,7 +108,7 @@ export function spawnClaudePty(
       cwd: options.launchDirectory.cwd,
       directoryIdentity: options.launchDirectory.identity,
       env: {
-        ...(options.env ?? process.env),
+        ...options.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,
       },
       size: options.initialSize,

@@ -53,7 +53,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
     const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
       preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
         ...directory,
-        ...(options.env === undefined ? {} : { env: options.env }),
+        env: options.env,
       }),
     );
     // Resume defaults to the posture this session launched with; explicit options
@@ -69,7 +69,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
           cwd,
           stateDir,
           launchDirectory: directory,
-          ...(options.env === undefined ? {} : { env: options.env }),
+          env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),

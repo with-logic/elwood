@@ -45,7 +45,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
       preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
         ...directory,
-        ...(options.env === undefined ? {} : { env: options.env }),
+        env: options.env,
       }),
     );
     // Resume defaults to the posture this session launched with; explicit options
@@ -61,7 +61,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
           cwd: record.cwd, // where Codex relaunches; `options.cwd` only located the state
           stateDir,
           launchDirectory: directory,
-          ...(options.env === undefined ? {} : { env: options.env }),
+          env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
