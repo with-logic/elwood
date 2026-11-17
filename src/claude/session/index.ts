@@ -6,6 +6,7 @@ import { checkedInputBytes } from "../../core/control-queue/budget.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
+import { validateSpeed } from "../../core/speed/validate.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
 import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
@@ -75,6 +76,7 @@ export async function startClaudeWithId(
     checkedDirectory,
   );
   assertCwdUnchanged();
+  validateSpeed("claude", options.fastMode);
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
@@ -113,6 +115,7 @@ export function startClaudeFromRecord(
 ) {
   // Validate the effort enum before any spawn (C-CLAUDE-20): both start and resume
   // funnel through here, so a bad value fails fast at the single chokepoint.
+  validateSpeed("claude", options.fastMode);
   validateReasoningEffort(
     options.reasoningEffort,
     claudeReasoningEfforts,

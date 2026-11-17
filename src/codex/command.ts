@@ -71,6 +71,8 @@ export function buildCodexShellCommand(
   // Reasoning effort is applied AFTER caller overrides so it wins over a hand-rolled
   // `model_reasoning_effort` duplicate.
   parts.push(...launchShellWords(codexEffortArguments(options.reasoningEffort)));
+  if (options.serviceTier !== undefined)
+    parts.push("-c", shellQuote(`service_tier="${options.serviceTier}"`));
   parts.push("-c", shellQuote("features.hooks=true"));
   parts.push("-c", shellQuote('hookTrust="trust-all"'));
   return parts.join(" ");

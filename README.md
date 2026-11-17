@@ -418,6 +418,23 @@ or receives invalid input is reported as a `hookError` event and the agent
 proceeds as if no handler ran. Empty objects are invalid Codex results and fail
 open the same way.
 
+## Agent speed
+
+Speed options preserve the native agent's distinctions:
+
+```ts
+const codex = new CodexSession({ serviceTier: "ultrafast" });
+const claude = new ClaudeSession({ fastMode: true });
+```
+
+Codex accepts `default`, `fast`, or `ultrafast`; Claude accepts a Fast boolean.
+Omit the option to inherit native settings. Re-supply it on `resumeCodex` or
+`resumeClaude` to change speed between turns while retaining the conversation.
+Typed options take precedence over duplicate raw launch overrides.
+
+A selected mode is not proof of availability. See
+[the speed API contract](prd/05-api/5.11-speed.md) for scope and limitations.
+
 ## Events
 
 Subscribe with `session.on(eventName, handler)`; `on` returns an unsubscribe

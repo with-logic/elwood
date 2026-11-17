@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Add typed Codex `serviceTier` (default, fast, ultrafast) and Claude `fastMode`
+  options on start/resume, including lazy constructors and startOrResume helpers.
+  Explicit resume overrides now reach both CLIs without downstream patches; invalid
+  speed options are rejected before fresh-start state setup, resume ownership changes,
+  or preflight.
+
 ## [0.2.6] - 2026-11-17
 
 - Snapshot inherited launch environments for both adapters' probes and child

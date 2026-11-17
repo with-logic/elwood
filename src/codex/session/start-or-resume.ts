@@ -34,6 +34,8 @@ function resumeOptions(elwoodSessionId: string, start: StartCodexOptions): Resum
     hooks: start.hooks,
     initialSize: start.initialSize,
     reasoningEffort: start.reasoningEffort,
+    serviceTier: start.serviceTier,
+    configOverrides: start.configOverrides,
     sandbox: start.sandbox,
     approvalPolicy: start.approvalPolicy,
     autoupdate: start.autoupdate,

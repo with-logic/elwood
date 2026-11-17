@@ -6,6 +6,7 @@
 import type { ElwoodAgentKind } from "./activity/index.ts";
 
 export type ElwoodErrorName =
+  | "invalid_speed"
   | "unsupported_platform"
   | "claude_not_found"
   | "claude_start_failed"

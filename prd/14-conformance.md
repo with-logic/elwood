@@ -404,3 +404,9 @@ Each criterion has:
 | C-QUESTION-03 | §5.10 §7 | Claude grouped choices, checkboxes, alternative text and final review use matching native frames; direct hook answers retain precedence, unsupported layouts hold ordinary input without speculative writes. Claude answers wait until 1500 ms from the first complete matching dialog paint, with timeout/cancellation and identity/layout revalidation before input. Completion requires matching AskUserQuestion identity, using matching ordered question definitions only when the completion omits a native ID. |
 | C-QUESTION-04 | §5.10 §7A.5 | Codex modal groups and independently accepted queued questions retain native identities across mirrors, require confirmed current editors, retire from native evidence without invented expiry, remain distinct from final replies, and do not reopen historical requests on resume. Every question must omit `isSecret` or use boolean `false`; unsupported or malformed flags prevent publication of the complete request. |
 | C-QUESTION-05 | §7A.5 | Codex question metadata and retired identities obey bounded count/UTF-8 budgets; overflow closes requests as unavailable and disables automation for the session without guessing input; opaque identities hold ordinary automation until explicit native turn end. Unchanged high-volume redraws do not republish candidates or repeatedly scan/copy the registry. |
+
+### Native speed controls
+
+| ID | Section | Requirement |
+|---|---|---|
+| C-SPEED-01 | §5.11 | Adapter-specific typed speed options validate after directory/session checks and before preflight, state setup, or ownership changes; override duplicate raw settings; and reach start, lazy construction, resume and startOrResume without persistence or changing native user defaults. Resume forwards explicit raw overrides. |
