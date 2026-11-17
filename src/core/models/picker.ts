@@ -68,9 +68,9 @@ export type ModelPickerSpec = {
   /**
    * Completes listed rows from state the picker does not render, inside the operation's
    * queue slot and under its deadline/termination `signal`. Codex reads its configured
-   * default here (PRD §5.3).
+   * default and cached speed capabilities here (PRD §5.3, §5.11).
    */
-  readonly withDefaults?: (
+  readonly enrichOptions?: (
     options: readonly AgentModelOption[],
     signal: AbortSignal,
   ) => Promise<readonly AgentModelOption[]>;

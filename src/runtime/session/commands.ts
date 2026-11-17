@@ -128,7 +128,7 @@ export class CommandSurface {
     const timeoutMs = pickerTimeout(options);
     return this.picker.run("list_models", spec, timeoutMs, async (io, signal) => {
       const options = await listPickerModels(io, spec, timeoutMs);
-      return spec.withDefaults ? spec.withDefaults(options, signal) : options;
+      return spec.enrichOptions ? spec.enrichOptions(options, signal) : options;
     });
   }
 

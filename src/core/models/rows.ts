@@ -4,6 +4,7 @@
  * Implements PRD §5.3 AgentModelOption, C-API-23, and C-API-24.
  */
 
+import type { CodexServiceTiers } from "../speed/types.ts";
 import { overflowMayFollowRow, type ScrollGrammar, unmarkedRow } from "./row-block.ts";
 
 export type AgentModelOption = {
@@ -13,6 +14,7 @@ export type AgentModelOption = {
   readonly isCurrent: boolean;
   readonly isDefault: boolean;
   readonly raw: string;
+  readonly codexServiceTiers?: CodexServiceTiers;
 };
 
 /**

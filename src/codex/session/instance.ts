@@ -20,7 +20,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexTurnIdentity } from "../accepted-turn.ts";
-import { withCodexDefault } from "../config/default-model.ts";
+import { enrichCodexModels } from "../config/default-model.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
 import { codexSessionQuestions } from "../questions/session.ts";
@@ -44,7 +44,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   protected readonly picker: ModelPickerSpec = {
     ...codexModelPicker,
     isClear: liveCodexClearance(() => this.terminal),
-    withDefaults: (options, signal) => withCodexDefault(options, signal, this.resolveConfigPath),
+    enrichOptions: (options, signal) => enrichCodexModels(options, signal, this.resolveConfigPath),
   };
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;

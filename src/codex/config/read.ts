@@ -1,25 +1,25 @@
 /**
- * Reads a Codex config.toml without letting the file stall or flood Elwood. The file can sit
+ * Reads bounded regular text files without letting them stall or flood Elwood. The file can sit
  * in a project-local `CODEX_HOME` that the agent itself may rewrite, so it can become a FIFO
  * (a blocking read waits for a writer and freezes every session in the process) or grow
- * without bound. Implements PRD §5.3 and C-CODEX-25.
+ * without bound. Used for Codex config and model-cache reads (PRD §5.3, §5.11, C-CODEX-25).
  */
 
 import { closeSync, constants, fstatSync, openSync, readSync, type Stats, statSync } from "node:fs";
 import { errnoCode } from "../../core/errors.ts";
 
-/** The largest config.toml Elwood reads (C-CODEX-25). */
-export const maxCodexConfigBytes = 1024 * 1024;
+/** Maximum size of a configuration or model-cache text file. */
+export const maxTextFileBytes = 1024 * 1024;
 
-type ConfigFileCode = "EISDIR" | "EFTYPE" | "EFBIG";
+type TextFileCode = "EISDIR" | "EFTYPE" | "EFBIG";
 
 /**
- * The text of the config.toml at `path`, or `undefined` when there is none. Anything else
- * that is not a regular file of at most `maxCodexConfigBytes` throws an errno-coded error:
+ * The text at `path`, or `undefined` when there is none. Anything else
+ * that is not a regular file of at most `maxTextFileBytes` throws an errno-coded error:
  * `EISDIR` for a directory, `EFTYPE` for any other kind of file (a FIFO, socket, or device),
  * `EFBIG` past the limit, and an open or read failure's own code.
  */
-export function readCodexConfigFile(path: string): string | undefined {
+export function readBoundedTextFile(path: string): string | undefined {
   let fd: number;
   try {
     // O_NONBLOCK: opening a FIFO read-only would otherwise wait for a writer.
@@ -59,18 +59,18 @@ function notRegularFile(stat: Stats | undefined, path: string): Error | undefine
  * is told apart from one exactly at it.
  */
 function readSizeChecked(fd: number, path: string): string {
-  const buffer = Buffer.alloc(maxCodexConfigBytes + 1);
+  const buffer = Buffer.alloc(maxTextFileBytes + 1);
   let length = 0;
   for (;;) {
     const read = readSync(fd, buffer, length, buffer.length - length, null);
     if (read === 0) return buffer.toString("utf8", 0, length);
     length += read;
-    if (length > maxCodexConfigBytes) throw fileError("EFBIG", path);
+    if (length > maxTextFileBytes) throw fileError("EFBIG", path);
   }
 }
 
-function fileError(code: ConfigFileCode, path: string): NodeJS.ErrnoException {
+function fileError(code: TextFileCode, path: string): NodeJS.ErrnoException {
   const reason =
-    code === "EFBIG" ? `is larger than ${maxCodexConfigBytes} bytes` : "is not a regular file";
-  return Object.assign(new Error(`${code}: Codex config ${reason}: ${path}`), { code, path });
+    code === "EFBIG" ? `is larger than ${maxTextFileBytes} bytes` : "is not a regular file";
+  return Object.assign(new Error(`${code}: Text file ${reason}: ${path}`), { code, path });
 }

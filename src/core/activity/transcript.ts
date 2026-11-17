@@ -4,8 +4,10 @@
  */
 
 import type { ClaudeTranscriptEvent } from "../../claude/transcript/index.ts";
+import { claudeSpeedObservation } from "../../claude/transcript/speed.ts";
 import type { ClaudeTranscriptSummary } from "../../claude/transcript/summary.ts";
 import type { CodexTranscriptEvent } from "../../codex/transcript/index.ts";
+import { codexSpeedObservation } from "../../codex/transcript/speed.ts";
 import { transcriptActivityKind } from "../hook-result.ts";
 import type { ElwoodActivityEvent } from "./index.ts";
 import * as meta from "./meta.ts";
@@ -31,6 +33,7 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
     ...meta.transcriptActivityMeta(event),
     raw: event.item,
+    ...codexSpeedObservation(event.item),
   };
 }
 
@@ -54,6 +57,7 @@ export function activityFromClaudeTranscript(
     transcriptPath: event.path,
     ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
     raw: event.item,
+    ...claudeSpeedObservation(event.item),
   } as const;
   return { ...base, ...claudeActivityFields(event.summary) };
 }

@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { ElwoodError, elwoodError, errnoCode } from "../../core/errors.ts";
-import { readCodexConfigFile } from "./read.ts";
+import { readBoundedTextFile } from "./read.ts";
 
 /**
  * `restored`: the snapshot was written back. `unchanged`: the picker wrote nothing.
@@ -54,7 +54,7 @@ export function currentCodexConfig(path: string): string | undefined {
 
 function readForSwitch(path: string, message: string): string | undefined {
   try {
-    return readCodexConfigFile(path);
+    return readBoundedTextFile(path);
   } catch (error) {
     throw elwoodError("model_automation_failed", message, { path, code: errnoCode(error) });
   }
