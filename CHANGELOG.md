@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-17
+
 - Keep Codex readiness and queued prompts held when its initial-ready backstop
   expires without a configured composer; emit the diagnostic without reporting
   `ready`. Direct prompt writes also respect that hold.
