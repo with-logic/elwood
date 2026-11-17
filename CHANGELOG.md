@@ -15,7 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Add typed Codex `serviceTier` (default, fast, ultrafast) and Claude `fastMode`
   options on start/resume, including lazy constructors and startOrResume helpers.
   Explicit resume overrides now reach both CLIs without downstream patches; invalid
-  speed options are rejected before reserving resume ownership or running preflight.
+  speed options are rejected before fresh-start state setup, resume ownership changes,
+  or preflight.
 - Expose cached Codex model service tiers and provenance-labelled transcript speed
   observations, typed to their matching transcript adapter; requested settings are
   not reported as confirmed account eligibility.

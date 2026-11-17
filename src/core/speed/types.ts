@@ -2,7 +2,7 @@
 export const codexServiceTiers = ["default", "fast", "ultrafast"] as const;
 export type CodexServiceTier = (typeof codexServiceTiers)[number];
 
-/** Cached model support, not live account entitlement or a successful request. */
+/** Elwood supplies `default`; additional tiers come from valid cache evidence, not live entitlement. */
 export type CodexServiceTiers = {
   readonly fetchedAt: string;
   readonly values: readonly ["default", ...CodexServiceTier[]];

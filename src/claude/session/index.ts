@@ -73,6 +73,7 @@ export async function startClaudeWithId(
     checkedDirectory,
   );
   assertCwdUnchanged();
+  validateSpeed("claude", options.fastMode);
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>

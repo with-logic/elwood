@@ -1,8 +1,9 @@
 /** End-to-end launch-boundary coverage for typed speed and resume overrides. C-SPEED-01. */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
-import { resumeClaude, startClaude, startOrResumeClaude } from "../../src/index.ts";
+import { afterEach, expect, test, vi } from "vitest";
+import { ClaudeSession, resumeClaude, startClaude, startOrResumeClaude } from "../../src/index.ts";
+import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { readSessionRecord, sessionDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -12,7 +13,7 @@ afterEach(resetFakes);
 test.each([
   false,
   true,
-] as const)("C-SPEED-01 claude applies %s on start, resume and helper without persisting speed", async (value) => {
+] as const)("C-SPEED-01 claude applies %s on start, resume, lazy and helper paths without persisting speed", async (value) => {
   installFakes();
   const cwd = tempDir();
   const stateDir = join(cwd, ".elwood");
@@ -49,6 +50,16 @@ test.each([
   const inherited = await resumeClaude({ cwd, stateDir, elwoodSessionId: id });
   expect(settingsText()).not.toContain("fastMode");
   await inherited.stop();
+  const priorLaunches = ptys.length;
+  const lazy = new ClaudeSession(options);
+  expect(ptys).toHaveLength(priorLaunches);
+  await lazy.start();
+  check();
+  await lazy.stop();
+  const freshHelper = await startOrResumeClaude(options);
+  expect(freshHelper.resumed).toBe(false);
+  check();
+  await freshHelper.session.stop();
 });
 
 test.each([
@@ -56,14 +67,20 @@ test.each([
   "true",
   1,
   null,
-])("C-SPEED-01 claude refuses invalid %s before PTY spawn", async (value) => {
+])("C-SPEED-01 claude refuses invalid %s before preflight or state setup", async (value) => {
   installFakes();
-  await expect(startClaude({ cwd: tempDir(), fastMode: value as never })).rejects.toMatchObject({
+  const cwd = tempDir();
+  const stateDir = join(cwd, ".elwood");
+  const probe = vi.fn(() => ({ status: 0, stdout: "2.1.144\n", stderr: "" }));
+  setCommandRunnerForTests(probe);
+  await expect(startClaude({ cwd, stateDir, fastMode: value as never })).rejects.toMatchObject({
     code: "invalid_speed",
     details: { agent: "claude", option: "fastMode", valid: [true, false] },
     message: expect.stringContaining("must be one of:"),
   });
   expect(ptys).toHaveLength(0);
+  expect.soft(probe).not.toHaveBeenCalled();
+  expect.soft(existsSync(stateDir)).toBe(false);
 });
 
 test("C-SPEED-01 invalid claude resume cannot reserve ownership ahead of cleanup", async () => {

@@ -69,6 +69,7 @@ export async function startCodexWithId(
     checkedDirectory,
   );
   assertCwdUnchanged();
+  validateSpeed("codex", options.serviceTier);
   const stateDir = canonicalStatePath(stateDirPath);
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflight.preflightCodex(

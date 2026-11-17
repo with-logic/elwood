@@ -48,6 +48,7 @@ test.each([
     summary: { kind: "assistant_message", label: "assistant", text: "hello" },
   });
   expect(event).toMatchObject({
+    elwoodSessionId: "session",
     transcriptPath: "/native/subagent",
     raw: item,
     speed: { agent: "claude", fastMode: speed === "fast", evidence: "response_usage" },

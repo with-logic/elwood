@@ -1,7 +1,9 @@
 /** End-to-end launch-boundary coverage for typed speed and resume overrides. C-SPEED-01. */
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
-import { resumeCodex, startCodex, startOrResumeCodex } from "../../src/index.ts";
+import { afterEach, expect, test, vi } from "vitest";
+import { CodexSession, resumeCodex, startCodex, startOrResumeCodex } from "../../src/index.ts";
+import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { readSessionRecord, sessionDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -12,7 +14,7 @@ test.each([
   "default",
   "fast",
   "ultrafast",
-] as const)("C-SPEED-01 codex applies %s on start, resume and helper without persisting speed", async (value) => {
+] as const)("C-SPEED-01 codex applies %s on start, resume, lazy and helper paths without persisting speed", async (value) => {
   installFakes();
   const cwd = tempDir();
   const stateDir = join(cwd, ".elwood");
@@ -46,6 +48,16 @@ test.each([
   const inherited = await resumeCodex({ cwd, stateDir, elwoodSessionId: id });
   expect(ptys.at(-1)!.options.args.join(" ")).not.toContain("service_tier");
   await inherited.stop();
+  const priorLaunches = ptys.length;
+  const lazy = new CodexSession(options);
+  expect(ptys).toHaveLength(priorLaunches);
+  await lazy.start();
+  check();
+  await lazy.stop();
+  const freshHelper = await startOrResumeCodex(options);
+  expect(freshHelper.resumed).toBe(false);
+  check();
+  await freshHelper.session.stop();
 });
 
 test.each([
@@ -53,14 +65,20 @@ test.each([
   "bogus",
   true,
   null,
-])("C-SPEED-01 codex refuses invalid %s before PTY spawn", async (value) => {
+])("C-SPEED-01 codex refuses invalid %s before preflight or state setup", async (value) => {
   installFakes();
-  await expect(startCodex({ cwd: tempDir(), serviceTier: value as never })).rejects.toMatchObject({
+  const cwd = tempDir();
+  const stateDir = join(cwd, ".elwood");
+  const probe = vi.fn(() => ({ status: 0, stdout: "codex-cli 0.132.0\n", stderr: "" }));
+  setCommandRunnerForTests(probe);
+  await expect(startCodex({ cwd, stateDir, serviceTier: value as never })).rejects.toMatchObject({
     code: "invalid_speed",
     details: { agent: "codex", option: "serviceTier", valid: ["default", "fast", "ultrafast"] },
     message: expect.stringContaining("must be one of:"),
   });
   expect(ptys).toHaveLength(0);
+  expect.soft(probe).not.toHaveBeenCalled();
+  expect.soft(existsSync(stateDir)).toBe(false);
 });
 
 test("C-SPEED-01 invalid codex resume cannot reserve ownership ahead of cleanup", async () => {
