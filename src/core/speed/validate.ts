@@ -11,7 +11,7 @@ export function validateSpeed(agent: "claude" | "codex", value: unknown): void {
   throw elwoodError("invalid_speed", `${agent} ${option} must be one of: ${values.join(", ")}.`, {
     agent,
     option,
-    valid: values,
+    valid: [...values],
     value,
   });
 }
