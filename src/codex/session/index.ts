@@ -6,6 +6,7 @@ import { checkedInputBytes } from "../../core/control-queue/budget.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
+import { validateSpeed } from "../../core/speed/validate.ts";
 import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
   type CheckedLaunchDirectory,
@@ -71,6 +72,7 @@ export async function startCodexWithId(
     checkedDirectory,
   );
   assertCwdUnchanged();
+  validateSpeed("codex", options.serviceTier);
   const stateDir = canonicalStatePath(stateDirPath);
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
     preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false, {
@@ -113,6 +115,7 @@ export function startCodexFromRecord(
   // Validate the effort enum before any spawn (C-CODEX-21): both start and resume funnel
   // through here. Codex validates server-side (a bad value fails at the first turn), so
   // this turns a deferred provider error into a fast, clear start-time rejection.
+  validateSpeed("codex", options.serviceTier);
   validateReasoningEffort(
     options.reasoningEffort,
     codexReasoningEfforts,

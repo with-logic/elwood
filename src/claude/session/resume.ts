@@ -5,6 +5,7 @@
 
 import { elwoodError } from "../../core/errors.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
+import { validateSpeed } from "../../core/speed/validate.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
 import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
@@ -45,6 +46,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   }
   // Claude relaunches in the given `cwd`, else where the session started.
   const cwd = given ?? resolveLaunchDirectory("claude", record.cwd);
+  validateSpeed("claude", options.fastMode);
   // Reserved before the first `await`: a teardown already running must see this successor
   // before it decides which shared state to remove (C-API-20).
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
@@ -74,6 +76,10 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
           ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+          ...(options.fastMode === undefined ? {} : { fastMode: options.fastMode }),
+          ...(options.settingsOverrides === undefined
+            ? {}
+            : { settingsOverrides: options.settingsOverrides }),
           // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CLAUDE-20).
           ...(options.reasoningEffort === undefined
             ? {}
