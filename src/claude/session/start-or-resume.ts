@@ -30,6 +30,7 @@ export function startOrResumeClaude(
 function resumeOptions(elwoodSessionId: string, start: StartClaudeOptions): ResumeClaudeOptions {
   const forwarded = compact<Omit<ResumeClaudeOptions, "elwoodSessionId" | "cwd">>({
     stateDir: start.stateDir,
+    env: start.env,
     hooks: start.hooks,
     initialSize: start.initialSize,
     reasoningEffort: start.reasoningEffort,

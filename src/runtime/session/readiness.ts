@@ -44,10 +44,11 @@ export function createReadinessGate(
   resumed: boolean,
   composer?: {
     readonly configured: (frame: string) => boolean;
-    readonly onBackstopRelease: () => void;
+    readonly onBackstop: () => void;
   },
 ): ReadinessGate {
   let readinessHeld = false;
+  let backstopHold: (() => boolean) | undefined;
   let latest: { facts: ComposerReadyFacts; frame: string } | undefined;
   const observeFrameHold = (
     facts: ComposerReadyFacts,
@@ -64,21 +65,36 @@ export function createReadinessGate(
   };
   // Work may animate forever (a failing MCP server's retry spinner), so only the
   // configured composer itself, not idleness, is required before the deadline marks.
-  const evidence: ConfiguredComposerEvidence | undefined = composer && {
-    shown: () =>
+  let evidence: ConfiguredComposerEvidence | undefined;
+  if (composer) {
+    const shown = () =>
       latest?.facts.composer_visible === true &&
       !latest.facts.blocking_prompt_visible &&
-      composer.configured(latest.frame),
-    onBackstopRelease: composer.onBackstopRelease,
-  };
-  const ready = initialReady(onReady, undefined, () => readinessHeld, evidence);
+      composer.configured(latest.frame);
+    evidence = {
+      shown,
+      onBackstop: () => {
+        backstopHold = () => !shown();
+        composer.onBackstop();
+      },
+    };
+  }
+  const ready = initialReady(
+    () => {
+      backstopHold = undefined;
+      onReady();
+    },
+    undefined,
+    () => readinessHeld,
+    evidence,
+  );
   return {
     ready,
-    isHeld: () => readinessHeld,
+    isHeld: () => readinessHeld || backstopHold?.() === true,
     observeFrameHold,
     observeReadinessFrame: (facts, trustInputBlocking, frame) => {
       observeFrameHold(facts, trustInputBlocking, frame);
-      markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
+      if (!backstopHold?.()) markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
     },
   };

@@ -52,6 +52,7 @@ export function activityFromClaudeTranscript(
     source: "transcript",
     label: event.summary.label,
     transcriptPath: event.path,
+    ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
     raw: event.item,
   } as const;
   return { ...base, ...claudeActivityFields(event.summary) };

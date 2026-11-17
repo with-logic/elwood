@@ -1,6 +1,6 @@
 /**
  * Codex's initial-readiness gate: its deadline needs the configured composer (the model
- * footer), and a release by the backstop without one is reported as a content-free
+ * footer), and missing evidence at the backstop is reported as a content-free
  * `initial_ready_backstop` warning (PRD §5.3, §5.7, C-API-28).
  */
 import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.ts";
@@ -16,7 +16,7 @@ export function createCodexReadinessGate(
 ): ReadinessGate {
   return createReadinessGate(onReady, resumed, {
     configured: codexComposerConfigured,
-    onBackstopRelease: () => warnings.emitWarnings([backstopWarning(elwoodSessionId)]),
+    onBackstop: () => warnings.emitWarnings([backstopWarning(elwoodSessionId)]),
   });
 }
 
@@ -28,7 +28,7 @@ function backstopWarning(elwoodSessionId: string): InitialReadyBackstopWarning {
     source: "lifecycle",
     code: "initial_ready_backstop",
     severity: "warning",
-    message: `No configured Codex composer was recognized within ${initialBackstopMs / 1_000} seconds of the first frame; readiness was released without it.`,
+    message: `No configured Codex composer was recognized within ${initialBackstopMs / 1_000} seconds of the first frame; readiness and queued input remain held.`,
     raw: "initial_ready_backstop",
   };
 }

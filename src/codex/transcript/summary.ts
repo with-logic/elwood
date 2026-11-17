@@ -110,7 +110,11 @@ export function toolOutputText(output: unknown): string | undefined {
   const parts = output
     .map((entry) => stringValue(record(entry)?.["text"]))
     .filter((part): part is string => part !== undefined);
-  return parts.length > 0 ? parts.join("") : undefined;
+  const header = parts[0];
+  if (header === undefined) return undefined;
+  const nativeEnvelope = /^Script completed\n(?:Wall time [\d.]+ seconds\n)?Output:\n$/;
+  if (nativeEnvelope.test(header)) parts.shift();
+  return parts.join("");
 }
 
 function message(payload: Item): CodexTranscriptSummary {

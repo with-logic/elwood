@@ -137,7 +137,13 @@ export function detectCodexCliCapabilities(
 ): Promise<CodexCliCapabilities> {
   // Matching-directory first spawns share a probe; a rejected read is not retained.
   // A later start retries instead of inheriting the failure.
-  return readInDirectory(capabilityProbe, directory.cwd, detectCapabilities, directory.identity);
+  return readInDirectory(
+    capabilityProbe,
+    directory.cwd,
+    detectCapabilities,
+    directory.identity,
+    directory.env,
+  );
 }
 
 async function detectCapabilities(options: CommandOptions): Promise<CodexCliCapabilities> {

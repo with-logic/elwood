@@ -65,6 +65,7 @@ export type ClaudeSettingsOverrides = Readonly<Record<string, unknown>>;
 
 export type StartClaudeOptions = {
   readonly cwd: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly stateDir?: string;
   readonly name?: string;
   readonly initialSize?: TerminalSize;
@@ -88,6 +89,7 @@ export type StartClaudeOptions = {
 export type ResumeClaudeOptions = {
   readonly elwoodSessionId: string;
   readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;

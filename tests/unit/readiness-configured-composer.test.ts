@@ -1,7 +1,6 @@
 /**
- * The starvation deadline marks only onto a configured session's composer, and a
- * backstop marks anyway, reporting the missing composer, so an unrecognized composer never
- * starves readiness (PRD §5.3, C-API-28). Codex 0.164 paints a boot composer without its model footer before a late
+ * The deadline requires a configured composer; the backstop warns while retaining
+ * queued input (PRD §5.3, C-API-28). Codex 0.164 paints a boot composer without its model footer before a late
  * directory-trust gate; the footer appears once the session is configured.
  */
 
@@ -17,9 +16,9 @@ const boot = capturedFrame("codex-0.164.0/boot/boot-composer");
 const configured = capturedFrame("codex-0.164.0/boot/configured-composer");
 const idle = { composer_visible: true, working_visible: false, blocking_prompt_visible: false };
 const dialog = { ...idle, blocking_prompt_visible: true };
-const codex = (configured = codexComposerConfigured, onBackstopRelease = () => {}) => ({
+const codex = (configured = codexComposerConfigured, onBackstop = () => {}) => ({
   configured,
-  onBackstopRelease,
+  onBackstop,
 });
 
 test("C-API-28 Codex's boot composer is not configured; its footed composer is", () => {
@@ -73,37 +72,37 @@ test("C-API-28 without an adapter predicate the deadline marks onto any frame", 
   expect(ready).toBe(1);
 });
 
-test("C-API-28 by default the backstop marks sixty seconds after the first frame, and says so", () => {
+test("C-API-28 the backstop warns at sixty seconds without releasing readiness", () => {
   vi.useFakeTimers();
   let ready = 0;
-  const released = vi.fn();
-  const gate = createReadinessGate(() => ready++, false, codex(codexComposerConfigured, released));
+  const reported = vi.fn();
+  const gate = createReadinessGate(() => ready++, false, codex(codexComposerConfigured, reported));
   gate.observeReadinessFrame(idle, false, boot);
   gate.ready.armDeadline();
-  // Twice the slowest measured trust gate (30.6 s): a shorter default could mark
-  // before a gate that is still coming.
   vi.advanceTimersByTime(59_999);
   expect(ready).toBe(0);
   vi.advanceTimersByTime(1);
+  expect(ready).toBe(0);
+  expect(reported).toHaveBeenCalledOnce();
+  gate.observeReadinessFrame(idle, false, configured);
   expect(ready).toBe(1);
-  expect(released).toHaveBeenCalledOnce();
 });
 
-test("C-API-28 a release after the backstop is reported only without the configured composer", () => {
+test("C-API-28 missing evidence warns even behind a dialog, and later clearance readies", () => {
   vi.useFakeTimers();
   let ready = 0;
-  const released = vi.fn();
-  const gate = createReadinessGate(() => ready++, false, codex(codexComposerConfigured, released));
+  const reported = vi.fn();
+  const gate = createReadinessGate(() => ready++, false, codex(codexComposerConfigured, reported));
   gate.observeReadinessFrame(dialog, false, boot); // a dialog holds readiness past the backstop
   gate.ready.armDeadline();
   vi.advanceTimersByTime(60_000);
   expect(ready).toBe(0);
   gate.observeReadinessFrame(idle, false, configured);
   expect(ready).toBe(1);
-  expect(released).not.toHaveBeenCalled();
+  expect(reported).toHaveBeenCalledOnce();
 });
 
-test("C-API-28 a failing backstop report never undoes readiness or breaks a frame", () => {
+test("C-API-28 a failing backstop report never releases input or breaks a frame", () => {
   vi.useFakeTimers();
   let ready = 0;
   let held = true;
@@ -116,29 +115,31 @@ test("C-API-28 a failing backstop report never undoes readiness or breaks a fram
     () => held,
     {
       shown: () => false,
-      onBackstopRelease: report,
+      onBackstop: report,
       backstopMs: 100,
     },
   );
   r.armDeadline();
-  vi.advanceTimersByTime(100); // the backstop's mark waits behind a dialog
+  vi.advanceTimersByTime(100);
   held = false;
-  expect(() => r.retryWhenReleased(false)).not.toThrow(); // released by a rendered frame
-  expect(ready).toBe(1);
+  expect(() => r.retryWhenReleased(false)).not.toThrow(); // the dialog clears but configured-composer evidence remains absent
+  expect(ready).toBe(0);
   expect(report).toHaveBeenCalledTimes(1);
+  r.mark(); // an authoritative hook can still ready after the warning
+  expect(ready).toBe(1);
 });
 
-test("C-API-28 the backstop marks when no configured composer ever paints", () => {
+test("C-API-28 the backstop retains readiness when no configured composer ever paints", () => {
   vi.useFakeTimers();
   let ready = 0;
-  const released = vi.fn();
+  const reported = vi.fn();
   const r = initialReady(
     () => ready++,
     10,
     () => false,
     {
       shown: () => false,
-      onBackstopRelease: released,
+      onBackstop: reported,
       backstopMs: 100,
     },
   );
@@ -148,26 +149,41 @@ test("C-API-28 the backstop marks when no configured composer ever paints", () =
   r.retryWhenReleased(false); // another unconfigured frame
   expect(ready).toBe(0);
   vi.advanceTimersByTime(50);
-  expect(ready).toBe(1);
-  expect(released).toHaveBeenCalledOnce();
+  expect(ready).toBe(0);
+  expect(reported).toHaveBeenCalledOnce();
 });
 
 test("C-API-28 the readiness hook needs no composer, and readiness arms no timer afterwards", () => {
   vi.useFakeTimers();
   let ready = 0;
-  const released = vi.fn();
+  const reported = vi.fn();
   const r = initialReady(
     () => ready++,
     10,
     () => false,
     {
       shown: () => false,
-      onBackstopRelease: released,
+      onBackstop: reported,
     },
   );
   r.mark();
   expect(ready).toBe(1);
   r.armDeadline();
   expect(vi.getTimerCount()).toBe(0);
-  expect(released).not.toHaveBeenCalled();
+  expect(reported).not.toHaveBeenCalled();
+});
+
+test("C-API-28 backstop holds sendPrompt until authoritative readiness evidence", () => {
+  const callback = vi.fn();
+  vi.useFakeTimers();
+  const gate = createReadinessGate(callback, false, codex());
+  expect(gate.isHeld()).toBe(false);
+  gate.observeReadinessFrame(idle, false, boot);
+  gate.ready.armDeadline();
+  vi.advanceTimersByTime(60_000);
+  expect(callback).not.toHaveBeenCalled();
+  expect(gate.isHeld()).toBe(true);
+  gate.ready.mark(); // an authoritative native hook remains sufficient
+  expect(callback).toHaveBeenCalledOnce();
+  expect(gate.isHeld()).toBe(false);
 });

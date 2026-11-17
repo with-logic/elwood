@@ -7,6 +7,7 @@ import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
+import { snapshotEnvironment } from "../../runtime/environment.ts";
 import {
   type CheckedLaunchDirectory,
   prepareLaunchDirectory,
@@ -59,10 +60,12 @@ export async function startClaudeWithId(
   // PTY spawn all agree. `highTrust` expands to its concrete posture (or rejects a
   // conflicting explicit one) HERE, before preflight, so the persisted record and the
   // launch command both carry the expanded posture (C-API-54).
-  const options = applyClaudeHighTrust({
-    ...rawOptions,
-    cwd: resolveLaunchDirectory("claude", rawOptions.cwd),
-  });
+  const options = applyClaudeHighTrust(
+    snapshotEnvironment({
+      ...rawOptions,
+      cwd: resolveLaunchDirectory("claude", rawOptions.cwd),
+    }),
+  );
   checkedInputBytes(options.persona ?? "");
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
@@ -75,7 +78,10 @@ export async function startClaudeWithId(
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-    preflightClaude(strict, options.autoupdate ?? false, directory),
+    preflightClaude(strict, options.autoupdate ?? false, {
+      ...directory,
+      ...(options.env === undefined ? {} : { env: options.env }),
+    }),
   );
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {

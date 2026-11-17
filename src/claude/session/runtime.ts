@@ -106,7 +106,7 @@ export function spawnClaudePty(
       cwd: options.launchDirectory.cwd,
       directoryIdentity: options.launchDirectory.identity,
       env: {
-        ...process.env,
+        ...(options.env ?? process.env),
         ELWOOD_SESSION_ID: record.elwoodSessionId,
       },
       size: options.initialSize,

@@ -8,16 +8,19 @@
 import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
+import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 
 export type ClaudeTranscriptEvent = {
   readonly elwoodSessionId: string;
   readonly path: string;
   readonly item: unknown;
   readonly summary: ClaudeTranscriptSummary;
+  readonly turnId?: string;
 };
 
 /** Turns raw transcript text into parsed activity events for one watcher. */
 export class LineEmitter {
+  readonly turns = new ClaudeTranscriptTurns();
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
   private readonly drops: DropReporter;
@@ -50,8 +53,15 @@ export class LineEmitter {
       this.drops.record(path);
       return;
     }
+    const turnId = this.turns.observe(path, item);
     for (const summary of summarizeClaudeRecord(item)) {
-      this.emit({ elwoodSessionId: this.elwoodSessionId, path, item, summary });
+      this.emit({
+        elwoodSessionId: this.elwoodSessionId,
+        path,
+        item,
+        summary,
+        ...(turnId === undefined ? {} : { turnId }),
+      });
     }
   }
 }

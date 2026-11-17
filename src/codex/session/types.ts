@@ -33,6 +33,7 @@ export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
 
 export type StartCodexOptions = {
   readonly cwd: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly stateDir?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: CodexHookHandlers;
@@ -54,6 +55,7 @@ export type StartCodexOptions = {
 export type ResumeCodexOptions = {
   readonly elwoodSessionId: string;
   readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;

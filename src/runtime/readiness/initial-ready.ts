@@ -13,10 +13,9 @@
  * hold: human/automation gates and their working or partial clearance frames. The hooks differ on resume:
  * Codex does NOT re-fire `SessionStart` (so the composer is the fast signal), while
  * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
- * race, whichever arrives first (readiness is idempotent). `armDeadline` is the ultimate
- * fallback for both start and resume so a missing readiness signal never starves the
- * queue forever: its deadline marks onto a configured composer, and its backstop marks
- * regardless.
+ * race, whichever arrives first (readiness is idempotent). A deadline provides
+ * fallback readiness, subject to configured-composer evidence when supplied. Its
+ * backstop reports missing evidence while retaining queued input.
  */
 
 export type InitialReady = {
@@ -61,31 +60,19 @@ export function markReadyOnResumeComposer(
     ready.mark();
 }
 
-/**
- * Twice the longest measured Codex 0.164 trust-gate delay (30.6 s after first output,
- * docs/cli-behavior.md): readiness without a configured composer this long after the
- * first frame is no longer racing a late gate (C-API-28).
- */
 export const initialBackstopMs = 60_000;
 
-/** An adapter's evidence that a rendered composer belongs to a configured session. */
 export type ConfiguredComposerEvidence = {
   /** The latest frame shows a configured session's composer outside any blocking dialog. */
   readonly shown: () => boolean;
-  /** Readiness was released after the backstop without that composer on screen. */
-  readonly onBackstopRelease: () => void;
+  readonly onBackstop: () => void;
   readonly backstopMs?: number;
 };
 
 /**
- * With `composer` evidence, the initial deadline marks only onto a frame showing a
- * configured session's composer: a CLI that has not configured its session is still
- * booting, and under load can paint a trust gate after the deadline, so an earlier mark
- * would drain the queue into the boot screen or that gate. A deadline that expires first
- * waits for that frame, and the backstop after the first frame marks anyway, so an
- * unrecognized composer delays readiness but never starves it. A release after the
- * backstop without that composer is reported once through `onBackstopRelease`, so a host
- * can tell it from ordinary readiness (C-API-28).
+ * Deadline marks require configured-composer evidence when supplied. The backstop
+ * warns once if that evidence is missing, retaining input until a hook or a later
+ * configured frame. Elapsed time alone cannot authorize writing into a dialog.
  */
 export function initialReady(
   callback: () => void,
@@ -98,16 +85,15 @@ export function initialReady(
   let cancelled = false;
   let deferredByHold = false;
   let awaitingComposer = false;
-  let backstopFired = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let backstop: ReturnType<typeof setTimeout> | undefined;
   /**
    * Timer marks are contained. A mark whose callback throws leaves `ready` false; a later
    * readiness hook, or for the deadline the backstop, retries it.
    */
-  const markFromTimer = (composerRequired: boolean) => {
+  const markFromTimer = () => {
     try {
-      awaitingComposer = composerRequired && !isComposerConfigured();
+      awaitingComposer = !isComposerConfigured();
       if (!awaitingComposer) mark();
     } catch {
       // Retried by a later readiness hook or timer, as above.
@@ -124,7 +110,6 @@ export function initialReady(
       return;
     }
     deferredByHold = false;
-    const withoutComposer = composer !== undefined && backstopFired && !composer.shown();
     // Latch AFTER the callback returns, so if it throws (a throwing status/activity
     // listener) readiness is NOT consumed and a later hook/deadline/frame retries —
     // a failed transition must never permanently starve the queue (C-API-28).
@@ -132,11 +117,6 @@ export function initialReady(
     ready = true;
     clearTimeout(deadline);
     clearTimeout(backstop);
-    try {
-      if (withoutComposer) composer.onBackstopRelease();
-    } catch {
-      // A failing warning sink must not undo or block the readiness just released.
-    }
   };
   return {
     cancel: () => {
@@ -153,15 +133,19 @@ export function initialReady(
       if (deferredByHold || (awaitingComposer && isComposerConfigured())) mark();
     },
     replay: () => void (!cancelled && ready && callback()),
-    // Arms on the first frame regardless of hook arrival, so a missing or failed
-    // readiness hook cannot starve readiness forever. Timer marks are contained (a
-    // throwing callback on a timer would otherwise be an uncaught exception).
+    // Timer readiness still requires the adapter's input evidence; the backstop
+    // diagnoses missing evidence without authorizing input. Observer throws stay
+    // contained so later hooks or configured frames can retry.
     armDeadline: () => {
       if (cancelled || ready) return;
-      deadline ??= setTimeout(() => markFromTimer(true), initialDeadlineMs);
+      deadline ??= setTimeout(() => markFromTimer(), initialDeadlineMs);
       backstop ??= setTimeout(() => {
-        backstopFired = true;
-        markFromTimer(false);
+        markFromTimer();
+        try {
+          if (!ready && composer && !composer.shown()) composer.onBackstop();
+        } catch {
+          // Observer failure must not release unsafe input.
+        }
       }, composer?.backstopMs ?? initialBackstopMs);
     },
   };

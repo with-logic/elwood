@@ -15,6 +15,7 @@ import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
 import { type Candidate, candidatePanel, createCandidate, hasPendingHook } from "./candidate.ts";
 import { matchesCandidateHook, matchesNativeQuestions } from "./correlation.ts";
+import { claudeQuestionInputGraceMs, waitForClaudeQuestionInput } from "./input-grace.ts";
 import { claudeQuestionCandidate } from "./screen.ts";
 
 export class ClaudeQuestionAdapter implements QuestionAdapter {
@@ -140,7 +141,10 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     for (const { candidate, screen, matchesNativePanel } of panels) {
       if (this.candidates.get(candidate.nativeKey) !== candidate) continue;
       if (matchesNativePanel) candidate.seenChrome = true;
-      if (screen?.kind === "question") this.lastNativeQuestions = candidate.questions;
+      if (screen?.kind === "question") {
+        this.lastNativeQuestions = candidate.questions;
+        candidate.inputReadyAt ??= performance.now() + claudeQuestionInputGraceMs;
+      }
       if (!candidate.awaitingNativeHookClosure && candidate.seenChrome && hasLiveEmptyComposer) {
         this.close(candidate, "unavailable");
         continue;
@@ -166,7 +170,13 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
   ): Promise<void> {
     const nativeKey = this.registry.keyFor(request.id);
     const candidate = nativeKey === undefined ? undefined : this.candidates.get(nativeKey);
-    if (!candidate) throw questionAnswerFailed();
+    if (candidate?.inputReadyAt === undefined) throw questionAnswerFailed();
+    await waitForClaudeQuestionInput(candidate.inputReadyAt, io.signal);
+    if (
+      this.candidates.get(candidate.nativeKey) !== candidate ||
+      this.registry.get(request.id) !== request
+    )
+      throw questionAnswerFailed();
     return await answerClaudeQuestions(request, answers, io, () => {
       candidate.awaitingNativeHookClosure = true;
     });

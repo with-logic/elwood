@@ -15,6 +15,7 @@ export type Candidate = {
   awaitingNativeHookClosure: boolean;
   publishable: boolean;
   seenChrome: boolean;
+  inputReadyAt: number | undefined;
   readonly requiresExactQuestionMatch: boolean;
 };
 export function createCandidate(
@@ -27,6 +28,7 @@ export function createCandidate(
     awaitingNativeHookClosure: false,
     publishable: true,
     seenChrome: false,
+    inputReadyAt: undefined,
     requiresExactQuestionMatch:
       lastNativeQuestions !== undefined && !matchesNativeQuestions(questions, lastNativeQuestions),
     questions: questions.map((question) => ({

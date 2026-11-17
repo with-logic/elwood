@@ -29,9 +29,10 @@ export type CommandResult = {
 };
 
 /** Initial probe cwd and optional original identity, retained across queue/profile boundaries. */
-export type CommandOptions =
+export type CommandOptions = { readonly env?: Readonly<Record<string, string | undefined>> } & (
   | { readonly cwd?: string; readonly directoryIdentity?: undefined }
-  | { readonly cwd: string; readonly directoryIdentity: DirectoryIdentity };
+  | { readonly cwd: string; readonly directoryIdentity: DirectoryIdentity }
+);
 
 /**
  * Runs a subprocess and returns its result. Production is async (`spawn`) so a

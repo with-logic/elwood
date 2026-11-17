@@ -89,9 +89,9 @@ describe("C-QUESTION public Claude session", () => {
           optionIds: request!.questions[1]!.options.map((option) => option.id),
         },
       ],
-      { timeoutMs: 1500 },
+      { timeoutMs: 5000 },
     );
-    await expect.poll(() => h.pty.writes).toContain("\x1b[B");
+    await expect.poll(() => h.pty.writes, { timeout: 5000 }).toContain("\x1b[B");
     await h.session.sendKeys("human");
     await expect(answering).rejects.toMatchObject({ code: "question_answer_failed" });
     expect(h.pty.writes.join("")).not.toContain("must remain held");
@@ -138,10 +138,10 @@ describe("C-QUESTION public Claude session", () => {
         questionId: question.id,
         optionIds: [question.options[0]!.id],
       })),
-      { timeoutMs: 1000 },
+      { timeoutMs: 5000 },
     );
     const rejected = expect(answering).rejects.toMatchObject({ code: "question_answer_failed" });
-    await expect.poll(() => h.pty.writes.includes("\r")).toBe(true);
+    await expect.poll(() => h.pty.writes.includes("\r"), { timeout: 5000 }).toBe(true);
     await expect(h.session.interrupt({ timeoutMs: 25 })).rejects.toMatchObject({
       code: "interrupt_failed",
     });

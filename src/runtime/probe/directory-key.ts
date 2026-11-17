@@ -5,6 +5,7 @@
 
 import { stat } from "node:fs/promises";
 import type { DirectoryIdentity } from "../../core/directory-identity.ts";
+import { type ChildEnvironment, environmentCacheKey } from "../environment.ts";
 import { createProbeCache, type ProbeCache } from "../probe-cache.ts";
 import type { CommandOptions } from "../seams.ts";
 
@@ -12,13 +13,15 @@ import type { CommandOptions } from "../seams.ts";
 export type ProbeDirectory = {
   readonly cwd: string;
   readonly identity?: DirectoryIdentity | undefined;
+  readonly env?: ChildEnvironment;
 };
 
 /** Preserve a captured identity when passing a directory to the command runner. */
 export function probeCommandOptions(directory: ProbeDirectory): CommandOptions {
+  const environment = directory.env === undefined ? {} : { env: directory.env };
   return directory.identity === undefined
-    ? { cwd: directory.cwd }
-    : { cwd: directory.cwd, directoryIdentity: directory.identity };
+    ? { cwd: directory.cwd, ...environment }
+    : { cwd: directory.cwd, directoryIdentity: directory.identity, ...environment };
 }
 
 /**
@@ -72,18 +75,24 @@ export async function readInDirectory<T>(
   cwd: string,
   read: (options: CommandOptions) => Promise<T>,
   expectedIdentity?: DirectoryIdentity,
+  env?: ChildEnvironment,
 ): Promise<T> {
   const observed = await directoryKey(cwd);
   const identity = expectedIdentity ?? observed?.identity;
   // An unidentifiable path with no captured identity cannot be shared or retained.
-  if (identity === undefined) return read(probeCommandOptions({ cwd }));
-  const key = `${identity.dev}:${identity.ino}:${cwd}`;
-  const matches = observed?.key === key;
+  const environment = env === undefined ? {} : { env };
+  if (identity === undefined) return read(probeCommandOptions({ cwd, ...environment }));
+  const directoryIdentityKey = `${identity.dev}:${identity.ino}:${cwd}`;
+  const key = `${directoryIdentityKey}:${environmentCacheKey(env)}`;
+  const matches = observed?.key === directoryIdentityKey;
   const { value } = await cache.get(
     key,
     async () => {
-      const value = await read(probeCommandOptions({ cwd, identity }));
-      return { value, sameDirectory: matches && (await directoryKey(cwd))?.key === key };
+      const value = await read(probeCommandOptions({ cwd, identity, ...environment }));
+      return {
+        value,
+        sameDirectory: matches && (await directoryKey(cwd))?.key === directoryIdentityKey,
+      };
     },
     !matches,
   );

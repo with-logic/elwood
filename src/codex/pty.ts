@@ -54,7 +54,10 @@ export async function spawnCodexPty(
   runtime: Pick<SessionRuntime, "socketHome" | "socketPath" | "bridgeScriptPath">,
   options: CodexLaunchOptions,
 ): Promise<CodexLaunch> {
-  const capabilities = await preflight.detectCodexCliCapabilities(options.launchDirectory);
+  const capabilities = await preflight.detectCodexCliCapabilities({
+    ...options.launchDirectory,
+    ...(options.env === undefined ? {} : { env: options.env }),
+  });
   const reportPath = codexHomeReportPath(runtime);
   const launch = buildCodexShellCommand(
     { ...record, cwd: options.launchDirectory.cwd },
@@ -69,7 +72,7 @@ export async function spawnCodexPty(
       args: loginShellCommand(`${reportCodexHomeCommand(reportPath)}; ${launch}`),
       cwd: options.launchDirectory.cwd,
       directoryIdentity: options.launchDirectory.identity,
-      env: { ...process.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
+      env: { ...(options.env ?? process.env), ELWOOD_SESSION_ID: record.elwoodSessionId },
       size: options.initialSize ?? defaultTerminalSize,
     });
   } catch (error) {
