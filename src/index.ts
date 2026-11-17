@@ -124,7 +124,11 @@ export type {
 export type { ClaudeReasoningEffort, CodexReasoningEffort } from "./core/reasoning-effort.ts";
 export type { TurnEvent } from "./core/simple/events.ts";
 export type { TurnOptions } from "./core/simple/session.ts";
-export type { CodexServiceTier } from "./core/speed/types.ts";
+export type {
+  AgentSpeedObservation,
+  CodexServiceTier,
+  CodexServiceTiers,
+} from "./core/speed/types.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
   ActivityMatch,

@@ -432,7 +432,10 @@ Omit the option to inherit native settings. Re-supply it on `resumeCodex` or
 `resumeClaude` to change speed between turns while retaining the conversation.
 Typed options take precedence over duplicate raw launch overrides.
 
-A selected mode is not proof of availability. See
+A selected mode is not proof of availability. Codex model listings may include
+`codexServiceTiers` with cached native capability evidence and its timestamp.
+Transcript activity may include `speed`, explicitly distinguishing Codex turn
+configuration from Claude response usage. Missing evidence stays unknown. See
 [the speed API contract](prd/05-api/5.11-speed.md) for scope and limitations.
 
 ## Events
