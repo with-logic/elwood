@@ -7,7 +7,7 @@
 import { elwoodError, errnoCode } from "../../core/errors.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { withCodexConfigLock } from "./lock.ts";
-import { readCodexConfigFile } from "./read.ts";
+import { readBoundedTextFile } from "./read.ts";
 import { withCodexServiceTiers } from "./service-tiers.ts";
 
 const tableHeader = /^\s*\[/;
@@ -74,7 +74,7 @@ export function configuredCodexModel(path: string): string | undefined {
 /** Only a missing file means "no config"; any other failure must not pass as one. */
 function readConfig(path: string): string | undefined {
   try {
-    return readCodexConfigFile(path);
+    return readBoundedTextFile(path);
   } catch (error) {
     throw elwoodError(
       "model_automation_failed",

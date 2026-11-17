@@ -7,9 +7,9 @@ import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
 import { hookResultLabel } from "../hook-result.ts";
 import type { ElwoodQuestionEvent } from "../questions/types.ts";
-import type { AgentSpeedObservation } from "../speed/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
+import type { SpeedActivityFields } from "./speed.ts";
 
 export type ElwoodAgentKind = "claude" | "codex";
 export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
@@ -51,7 +51,6 @@ type ActivityFields = {
   readonly failedOpen?: boolean;
   readonly transcriptPath?: string;
   readonly raw?: unknown;
-  readonly speed?: AgentSpeedObservation;
 };
 
 /** Distribute the agent-and-phase event union so the activity label, nested phase,
@@ -68,6 +67,7 @@ type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEv
     : never;
 
 export type ElwoodActivityEvent = ActivityFields &
+  SpeedActivityFields &
   (
     | { readonly kind: Exclude<ElwoodActivityKind, "question" | "assistant_progress"> }
     | {
@@ -90,7 +90,7 @@ export {
 
 /** Hook events both adapters map identically; returns undefined for the rest. */
 function sharedHookActivity(
-  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
+  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text" | "speed">,
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
@@ -187,7 +187,7 @@ export {
 } from "./transcript.ts";
 
 function withText(
-  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
+  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text" | "speed">,
   kind: "user_message" | "notification",
   label: string,
   text: string,

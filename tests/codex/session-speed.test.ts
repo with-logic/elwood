@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { resumeCodex, startCodex, startOrResumeCodex } from "../../src/index.ts";
+import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { readSessionRecord, sessionDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -60,4 +61,30 @@ test.each([
     message: expect.stringContaining("must be one of:"),
   });
   expect(ptys).toHaveLength(0);
+});
+
+test("C-SPEED-01 invalid codex resume cannot reserve ownership ahead of cleanup", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const stateDir = join(cwd, ".elwood");
+  const session = await startCodex({ cwd, stateDir });
+  await session.stop();
+  const id = session.elwoodSessionId;
+  const directory = sessionDir(stateDir, id);
+  const record = readSessionRecord(stateDir, id);
+  writeSessionRecord(
+    { ...record, codex: { ...record.codex, resumeId: "native-speed" } },
+    directory,
+  );
+  const cleanup = reserveLaunchOwnership(directory);
+  try {
+    const resumed = resumeCodex({ stateDir, elwoodSessionId: id, serviceTier: "bogus" as never });
+    const rejected = expect(resumed).rejects.toMatchObject({ code: "invalid_speed" });
+    const retainedOwnership = cleanup.current();
+    await rejected;
+    expect(retainedOwnership).toBe(true);
+    expect(ptys).toHaveLength(1);
+  } finally {
+    cleanup.rollback();
+  }
 });

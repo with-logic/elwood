@@ -74,3 +74,40 @@ test.each([
   expect(codexSpeedObservation(item)).toEqual({});
   expect(claudeSpeedObservation(item)).toEqual({});
 });
+
+test.each([
+  undefined,
+  "unknown",
+  null,
+])("C-SPEED-03 public activity leaves missing or unknown %s speed absent", (value) => {
+  const codexItem = {
+    type: "turn_context",
+    payload: { model: "gpt-6-astra", ...(value === undefined ? {} : { service_tier: value }) },
+  };
+  const codexEvent = activityFromCodexTranscript({
+    elwoodSessionId: "s",
+    path: "/codex",
+    item: codexItem,
+    summary: summarizeTranscriptItem(codexItem),
+  });
+  expect(codexEvent).not.toHaveProperty("speed");
+  const claudeItem = {
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "hello" }],
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        ...(value === undefined ? {} : { speed: value }),
+      },
+    },
+  };
+  const claudeEvent = activityFromClaudeTranscript({
+    elwoodSessionId: "s",
+    path: "/claude",
+    item: claudeItem,
+    summary: { kind: "assistant_message", label: "assistant", text: "hello" },
+  });
+  expect(claudeEvent).not.toHaveProperty("speed");
+});

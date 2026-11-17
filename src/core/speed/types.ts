@@ -1,12 +1,18 @@
 /** Adapter-specific speed settings and native evidence. Implements PRD §5.11. */
-export type CodexServiceTier = "default" | "fast" | "ultrafast";
+export const codexServiceTiers = ["default", "fast", "ultrafast"] as const;
+export type CodexServiceTier = (typeof codexServiceTiers)[number];
 
 /** Cached model support, not live account entitlement or a successful request. */
 export type CodexServiceTiers = {
   readonly fetchedAt: string;
-  readonly values: readonly CodexServiceTier[];
+  readonly values: readonly ["default", ...CodexServiceTier[]];
 };
 
+/**
+ * Evidence for one transcript record, not the session's current setting.
+ * Codex reports turn configuration, not provider-billed speed; Claude reports
+ * assistant-response usage. Consumers retain the event's transcript ownership.
+ */
 export type AgentSpeedObservation =
   | {
       readonly agent: "codex";
@@ -18,6 +24,5 @@ export type AgentSpeedObservation =
 /** Native `priority` and `fast` name the same tier; unknown never means standard. */
 export function codexServiceTier(value: unknown): CodexServiceTier | undefined {
   if (value === "priority") return "fast";
-  if (value === "default" || value === "fast" || value === "ultrafast") return value;
-  return undefined;
+  return codexServiceTiers.find((tier) => tier === value);
 }

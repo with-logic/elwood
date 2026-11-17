@@ -15,7 +15,7 @@ export type GeneratedSettingsInput = {
   readonly timeoutSeconds: number;
 };
 
-/** Caller overrides (including any `permissions`) pass through; Elwood adds only `hooks`. */
+/** Raw caller overrides pass through; typed `fastMode` wins, and Elwood supplies `hooks`. */
 export function generateClaudeSettings(
   input: GeneratedSettingsInput,
 ): Readonly<Record<string, unknown>> {

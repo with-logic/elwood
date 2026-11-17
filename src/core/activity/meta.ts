@@ -13,7 +13,7 @@ export function hookActivityBase(
   agent: ElwoodAgentKind,
   elwoodSessionId: string,
   event: ClaudeHookEvent | CodexHookEvent,
-): Omit<ElwoodActivityEvent, "kind" | "label" | "text"> {
+): Omit<ElwoodActivityEvent, "kind" | "label" | "text" | "speed"> {
   const source = record(event);
   return {
     elwoodSessionId,

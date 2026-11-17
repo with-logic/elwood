@@ -2,9 +2,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import test from "node:test";
+import { isRecord } from "../../src/core/predicates.ts";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import { makeProject, sandboxedCodexHome, skipIf, skipReason, waitFor } from "./helpers.ts";
@@ -13,12 +14,25 @@ test("C-SPEED-01 Codex sends Fast, Ultrafast and standard across one conversatio
   skip: skipIf(skipReason("codex")),
   timeout: 120_000,
 }, async (t) => {
-  const requests: unknown[] = [];
-  const server = createServer(async (request, response) => {
+  const requests: string[] = [];
+  const failures: unknown[] = [];
+  const server = createServer((request, response) => {
+    void respond(request, response).catch((error: unknown) => {
+      failures.push(error);
+      response.destroy();
+    });
+  });
+  async function respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
-    const body = JSON.parse(Buffer.concat(chunks).toString()) as { service_tier?: unknown };
-    requests.push(body.service_tier ?? "default");
+    const body: unknown = JSON.parse(Buffer.concat(chunks).toString());
+    assert(isRecord(body), "Expected a Responses request object");
+    const tier = body["service_tier"];
+    assert(
+      tier === undefined || tier === "default" || tier === "priority" || tier === "ultrafast",
+      `Unexpected service_tier: ${JSON.stringify(tier)}`,
+    );
+    requests.push(tier === undefined ? "default" : tier);
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const id = `fixture_${requests.length}`;
     const item = {
@@ -29,8 +43,8 @@ test("C-SPEED-01 Codex sends Fast, Ultrafast and standard across one conversatio
       status: "completed",
       content: [{ type: "output_text", text: "SPEED VERIFIED", annotations: [] }],
     };
-    const send = (type: string, data: unknown) =>
-      response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...(data as object) })}\n\n`);
+    const send = (type: string, data: Record<string, unknown>) =>
+      response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
     send("response.created", {
       response: { id, object: "response", status: "in_progress", output: [] },
     });
@@ -45,7 +59,7 @@ test("C-SPEED-01 Codex sends Fast, Ultrafast and standard across one conversatio
       },
     });
     response.end();
-  });
+  }
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => {
     server.closeAllConnections();
@@ -104,7 +118,10 @@ screen_reader_detection_done = true
     });
     await current.sendMessage("Reply SPEED VERIFIED. Do not use tools.");
     await waitFor(
-      () => (completed && current.status === "ready" ? true : undefined),
+      () => {
+        assert.deepEqual(failures, [], "Loopback provider rejected a native request");
+        return completed && current.status === "ready" ? true : undefined;
+      },
       "speed turn complete",
       30_000,
     );

@@ -4,13 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, expect, test } from "vitest";
 import { withCodexDefault } from "../../src/codex/config/default-model.ts";
-import { maxCodexConfigBytes } from "../../src/codex/config/read.ts";
+import { maxTextFileBytes } from "../../src/codex/config/read.ts";
 import { withCodexServiceTiers } from "../../src/codex/config/service-tiers.ts";
 
 const root = mkdtempSync(join(tmpdir(), "speed-catalog-"));
 const config = join(root, "config.toml");
 const cachePath = join(root, "models_cache.json");
-const row = { id: "gpt-6.1-sol", label: "Sol", raw: "Sol", isCurrent: true, isDefault: false };
+const row = Object.freeze({
+  id: "gpt-6.1-sol",
+  label: "Sol",
+  raw: "Sol",
+  isCurrent: true,
+  isDefault: false,
+});
 const fetched_at = "2026-11-16T20:00:00Z";
 const cache = (service_tiers: unknown) => ({
   fetched_at,
@@ -55,17 +61,26 @@ test.each([
   { fetched_at, models: [{ slug: row.id, additional_speed_tiers: ["fast"] }] },
 ])("C-SPEED-02 invalid evidence remains unknown: %j", (value) => {
   write(value);
-  expect(withCodexServiceTiers([row], config)).toEqual([row]);
+  const expected = { ...row };
+  const result = withCodexServiceTiers([row], config);
+  expect(result).toEqual([expected]);
+  expect(result[0]).not.toHaveProperty("codexServiceTiers");
 });
 
-test("C-SPEED-02 missing, malformed, nonregular and oversized cache leaves discovery usable", () => {
-  expect(withCodexServiceTiers([row], config)).toEqual([row]);
-  writeFileSync(cachePath, "{");
-  expect(withCodexServiceTiers([row], config)).toEqual([row]);
-  rmSync(cachePath);
-  mkdirSync(cachePath);
-  expect(withCodexServiceTiers([row], config)).toEqual([row]);
-  rmSync(cachePath, { recursive: true });
-  writeFileSync(cachePath, " ".repeat(maxCodexConfigBytes + 1));
-  expect(withCodexServiceTiers([row], config)).toEqual([row]);
+test.each([
+  "missing",
+  "malformed",
+  "nonregular",
+  "oversized",
+])("C-SPEED-02 %s cache leaves discovery usable", (state) => {
+  if (state === "malformed") writeFileSync(cachePath, "{");
+  if (state === "nonregular") mkdirSync(cachePath);
+  if (state === "oversized") {
+    const valid = JSON.stringify(cache([{ id: "fast" }]));
+    writeFileSync(cachePath, valid.padEnd(maxTextFileBytes + 1, " "));
+  }
+  const expected = { ...row };
+  const result = withCodexServiceTiers([row], config);
+  expect(result).toEqual([expected]);
+  expect(result[0]).not.toHaveProperty("codexServiceTiers");
 });

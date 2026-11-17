@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { type CodexServiceTier, codexServiceTier } from "../../core/speed/types.ts";
-import { readCodexConfigFile } from "./read.ts";
+import { readBoundedTextFile } from "./read.ts";
 
 /** Cache failures leave capability unknown, without making the model picker unusable. */
 export function withCodexServiceTiers(
@@ -13,7 +13,7 @@ export function withCodexServiceTiers(
 ): readonly AgentModelOption[] {
   try {
     // Reuse the nonblocking regular-file reader and its 1 MiB limit.
-    const text = readCodexConfigFile(join(dirname(configPath), "models_cache.json"));
+    const text = readBoundedTextFile(join(dirname(configPath), "models_cache.json"));
     if (text === undefined) return options;
     const cache = JSON.parse(text) as unknown;
     if (
@@ -30,7 +30,7 @@ export function withCodexServiceTiers(
         (value: unknown) => isRecord(value) && value["slug"] === option.id,
       );
       if (!(isRecord(model) && Array.isArray(model["service_tiers"]))) return option;
-      const values: CodexServiceTier[] = ["default"];
+      const values: ["default", ...CodexServiceTier[]] = ["default"];
       for (const tier of model["service_tiers"]) {
         if (!isRecord(tier) || typeof tier["id"] !== "string" || tier["id"].length === 0)
           return option;

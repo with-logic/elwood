@@ -5,6 +5,7 @@
 
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
+import { validateSpeed } from "../../core/speed/validate.ts";
 import {
   checkLaunchDirectory,
   recheckLaunchDirectoryOnFailure,
@@ -35,6 +36,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");
   if (!record.codex.resumeId)
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
+  validateSpeed("codex", options.serviceTier);
   // Reserved before the first `await`: a teardown already running must see this successor
   // before it decides which shared state to remove (C-API-20).
   const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));

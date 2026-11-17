@@ -2,7 +2,9 @@
 import { isRecord } from "../../core/predicates.ts";
 import { type AgentSpeedObservation, codexServiceTier } from "../../core/speed/types.ts";
 
-export function codexSpeedObservation(item: unknown): { readonly speed?: AgentSpeedObservation } {
+export function codexSpeedObservation(item: unknown): {
+  readonly speed?: Extract<AgentSpeedObservation, { readonly agent: "codex" }>;
+} {
   if (!isRecord(item) || item["type"] !== "turn_context" || !isRecord(item["payload"])) return {};
   const tier = codexServiceTier(item["payload"]["service_tier"]);
   return tier === undefined

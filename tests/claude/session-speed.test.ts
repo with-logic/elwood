@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { resumeClaude, startClaude, startOrResumeClaude } from "../../src/index.ts";
+import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { readSessionRecord, sessionDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -63,4 +64,30 @@ test.each([
     message: expect.stringContaining("must be one of:"),
   });
   expect(ptys).toHaveLength(0);
+});
+
+test("C-SPEED-01 invalid claude resume cannot reserve ownership ahead of cleanup", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const stateDir = join(cwd, ".elwood");
+  const session = await startClaude({ cwd, stateDir });
+  await session.stop();
+  const id = session.elwoodSessionId;
+  const directory = sessionDir(stateDir, id);
+  const record = readSessionRecord(stateDir, id);
+  writeSessionRecord(
+    { ...record, claude: { ...record.claude, resumeId: "native-speed" } },
+    directory,
+  );
+  const cleanup = reserveLaunchOwnership(directory);
+  try {
+    const resumed = resumeClaude({ stateDir, elwoodSessionId: id, fastMode: "ultrafast" as never });
+    const rejected = expect(resumed).rejects.toMatchObject({ code: "invalid_speed" });
+    const retainedOwnership = cleanup.current();
+    await rejected;
+    expect(retainedOwnership).toBe(true);
+    expect(ptys).toHaveLength(1);
+  } finally {
+    cleanup.rollback();
+  }
 });

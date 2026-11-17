@@ -2645,7 +2645,7 @@ request test verifies usable input, not just process startup.
 Claude Code 2.1.325 was separately exercised in a private config directory with
 a fixture API key and no inference. Launching with generated `fastMode: true`
 opened `/fast` showing `Fast mode ON`; launching with `false` showed that Fast
-was unavailable for that fixture account. The report was cancelled without
-confirming a toggle. This verifies that the native CLI reads the override, not
+was unavailable for that fixture account. The `/fast` screen was dismissed with
+Escape without confirming a toggle. This verifies that the native CLI reads the override, not
 that a real account is entitled to Fast or that a response used it. Claude speed
 usage is only reported when native assistant `usage.speed` supplies it.

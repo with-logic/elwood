@@ -2,12 +2,9 @@
 import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
 import { activity } from "../../helpers/activity.ts";
 
-export function nativeTranscriptEvent(
-  raw: unknown,
-  elwoodSessionId: string,
-): ElwoodActivityEvent & { readonly kind: "other" } {
+export function nativeTranscriptEvent(raw: unknown, elwoodSessionId: string) {
   return {
     ...activity({ agent: "codex", elwoodSessionId, source: "transcript", label: "native", raw }),
     kind: "other",
-  };
+  } as const satisfies ElwoodActivityEvent;
 }
