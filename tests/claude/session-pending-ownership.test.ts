@@ -12,12 +12,12 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-async function becomeReady(id: string, cwd: string) {
+async function recordSubmission(id: string, cwd: string) {
   await ptys[0]!.dispatchHook(id, {
-    hook_event_name: "SessionStart",
+    hook_event_name: "UserPromptSubmit",
     session_id: "claude-1",
     cwd,
-    source: "startup",
+    prompt: "existing conversation",
   });
 }
 
@@ -48,7 +48,7 @@ test("C-LOOP-17 pending successor activation preserves successful predecessor lo
   let held: ReturnType<typeof holdNextBridge> | undefined;
   let starting: Promise<ClaudeSessionApi> | undefined;
   try {
-    await becomeReady(prior.elwoodSessionId, cwd);
+    await recordSubmission(prior.elwoodSessionId, cwd);
     const loop = await prior.createLoop({ mode: "fixed", intervalMs: 60_000, message: "cancel" });
     held = holdNextBridge();
     starting = resumeClaude({ cwd, elwoodSessionId: prior.elwoodSessionId });
@@ -85,7 +85,7 @@ test.each([
   let held: ReturnType<typeof holdNextBridge> | undefined;
   let starting: Promise<unknown> | undefined;
   try {
-    await becomeReady(prior.elwoodSessionId, cwd);
+    await recordSubmission(prior.elwoodSessionId, cwd);
     await prior.createLoop({ mode: "fixed", intervalMs: 60_000, message: "remove" });
     held = holdNextBridge(true);
     starting = resumeClaude({ cwd, elwoodSessionId: prior.elwoodSessionId }).catch(
@@ -120,7 +120,7 @@ test("C-HRESP-07 a pending successor cannot replace the live predecessor's deny 
   let held: ReturnType<typeof holdNextBridge> | undefined;
   let starting: Promise<unknown> | undefined;
   try {
-    await becomeReady(prior.elwoodSessionId, cwd);
+    await recordSubmission(prior.elwoodSessionId, cwd);
     held = holdNextBridge(true);
     starting = resumeClaude({ cwd, elwoodSessionId: prior.elwoodSessionId }).catch(
       (error: unknown) => error,

@@ -26,10 +26,10 @@ test.each([
   const live = await startClaude({ cwd });
   const id = live.elwoodSessionId;
   await ptys[0]!.dispatchHook(id, {
-    hook_event_name: "SessionStart",
+    hook_event_name: "UserPromptSubmit",
     session_id: "old",
     cwd,
-    source: "startup",
+    prompt: "existing conversation",
   });
   const dir = join(cwd, ".elwood", "sessions", id);
   const files = readdirSync(dir);
@@ -96,7 +96,12 @@ test.for([
     const physicalState = move ? join(moved, "state") : stateDir;
     await ptys[0]!.dispatchHook(
       id,
-      { hook_event_name: "SessionStart", session_id: "pending-id", cwd, source: "startup" },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "pending-id",
+        cwd,
+        prompt: "existing conversation",
+      },
       physicalState,
     );
     expect(readSessionRecord(physicalState, id).claude.resumeId).toBe("pending-id");

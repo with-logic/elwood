@@ -36,10 +36,10 @@ test("C-CLAUDE-21 a highTrust resume answers the bypass dialog and is ready abov
   const initialSize = { cols: dialog.cols, rows: dialog.rows };
   const original = await startClaude({ cwd, initialSize });
   await ptys[0]!.dispatchHook(original.elwoodSessionId, {
-    hook_event_name: "SessionStart",
+    hook_event_name: "UserPromptSubmit",
     session_id: "claude-resume",
     cwd,
-    source: "startup",
+    prompt: "existing conversation",
     model: "fixture",
   });
   await original.stop();

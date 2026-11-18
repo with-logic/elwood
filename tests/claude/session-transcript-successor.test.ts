@@ -48,10 +48,10 @@ test.each([
       message: "retained",
     });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-resume",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
@@ -125,10 +125,10 @@ test("C-API-20 a failed successor restores legitimate prior teardown authority",
   await ptys[0]!.dispatchHook(
     session.elwoodSessionId,
     {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "resumable",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     },
     stateDir,
   );

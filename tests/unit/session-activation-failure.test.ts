@@ -29,10 +29,11 @@ for (const adapter of [
     const prior = await adapter.start({ cwd });
     try {
       await adapter.helpers.ptys[0]!.dispatchHook(prior.elwoodSessionId, {
-        hook_event_name: "SessionStart",
+        ...(adapter.name === "claude"
+          ? { hook_event_name: "UserPromptSubmit", prompt: "existing conversation" }
+          : { hook_event_name: "SessionStart", source: "startup" }),
         session_id: "prior",
         cwd,
-        source: "startup",
       });
       const dir = join(cwd, ".elwood", "sessions", prior.elwoodSessionId);
       const factory = currentPtyFactory();

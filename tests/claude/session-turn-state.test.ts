@@ -19,11 +19,11 @@ const instructionsLoaded = (cwd: string) => ({
   load_reason: "session_start",
 });
 
-const sessionStart = (cwd: string) => ({
-  hook_event_name: "SessionStart",
+const userSubmission = (cwd: string) => ({
+  hook_event_name: "UserPromptSubmit",
   session_id: "claude-1",
   cwd,
-  source: "startup",
+  prompt: "existing conversation",
 });
 
 const workingFooter = "❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents";
@@ -34,7 +34,7 @@ describe("ClaudeSessionApi turn boundaries", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd));
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, userSubmission(cwd));
     await session.stop();
     const resumed = await resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
     ptys[1]!.emitData(

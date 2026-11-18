@@ -149,7 +149,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     }
   }
   rememberClaudeSessionId(sessionId: string): void {
-    if (this.record.claude.resumeId) return;
+    if (this.closing.signal.aborted || this.record.claude.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));
   }
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {

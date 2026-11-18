@@ -38,13 +38,13 @@ const adapters = [
     start: async (cwd: string) => tracked(await startClaude({ cwd })),
     resume: async (elwoodSessionId: string, cwd: string) =>
       tracked(await resumeClaude({ elwoodSessionId, cwd })),
-    // SessionStart records the agent's session id, so a later resume of the session can launch.
+    // Claude records its resume id after an unblocked user submission.
     recordAgentSessionId: (elwoodSessionId: string, cwd: string) =>
       claude.ptys[0]!.dispatchHook(elwoodSessionId, {
-        hook_event_name: "SessionStart",
+        hook_event_name: "UserPromptSubmit",
         session_id: "claude-release",
         cwd,
-        source: "startup",
+        prompt: "existing conversation",
       }),
   },
   {
@@ -53,7 +53,7 @@ const adapters = [
     start: async (cwd: string) => tracked(await startCodex({ cwd })),
     resume: async (elwoodSessionId: string, cwd: string) =>
       tracked(await resumeCodex({ elwoodSessionId, cwd })),
-    // Records the agent's session id the same way, and also marks the session ready.
+    // Codex's SessionStart records its id and marks the session ready.
     recordAgentSessionId: (elwoodSessionId: string, cwd: string) =>
       codex.becomeReady(elwoodSessionId, cwd),
   },

@@ -1,13 +1,13 @@
 /**
  * Conformance tests for Claude session terminal-state edge behavior.
- * Covers PRD §5.3, §8.4, and §9.4.
+ * Covers PRD §5.2 (C-CLAUDE-08), §5.3, §8.4, and §9.4.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ClaudeSessionImpl } from "../../src/claude/session/instance.ts";
-import { startClaude } from "../../src/index.ts";
+import { type ClaudeHookEventFor, startClaude } from "../../src/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -156,18 +156,18 @@ describe("ClaudeSessionApi terminal-state edges", () => {
     await expect.poll(() => session.status).toBe("ready");
   });
 
-  test("C-STATE-02 keeps the first Claude session id for resume", async () => {
+  test("C-CLAUDE-08 keeps the first accepted Claude session id for resume", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "claude-first"));
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "claude-second"));
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, userSubmission(cwd, "claude-first"));
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, userSubmission(cwd, "claude-second"));
     expect(readRecord(cwd, session.elwoodSessionId).claude.resumeId).toBe("claude-first");
   });
 });
 
-function sessionStart(cwd: string, session_id: string): Record<string, unknown> {
-  return { hook_event_name: "SessionStart", session_id, cwd, source: "startup" };
+function userSubmission(cwd: string, session_id: string): ClaudeHookEventFor<"UserPromptSubmit"> {
+  return { hook_event_name: "UserPromptSubmit", session_id, cwd, prompt: "existing conversation" };
 }
 
 function readRecord(cwd: string, id: string): { readonly claude: { readonly resumeId?: string } } {

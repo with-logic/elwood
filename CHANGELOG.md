@@ -13,6 +13,9 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Recognize Codex's lowercase fast/ultrafast status badges and effort/directory footers without a model name, avoiding the initial-readiness backstop on ordinary configured composers.
+- Keep Claude startup-only sessions unresumable until an unblocked user submission,
+  so `startOrResumeClaude` starts fresh after an unused session is stopped instead
+  of attempting a native conversation that was never created.
 
 ## [0.2.8] - 2026-11-18
 

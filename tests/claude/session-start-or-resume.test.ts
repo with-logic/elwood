@@ -6,10 +6,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { startOrResumeClaude } from "../../src/index.ts";
+import { type ClaudeHookEventFor, startOrResumeClaude } from "../../src/index.ts";
 import {
   createSessionRecord,
   prepareStateDir,
+  readSessionRecord,
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
@@ -94,6 +95,78 @@ describe("startOrResumeClaude", () => {
     await expect(startOrResumeClaude({ cwd, elwoodSessionId: "broken" })).rejects.toMatchObject({
       code: "state_corrupt",
     });
+  });
+
+  test("C-API-26 C-CLAUDE-08 restarts a ready startup-only session fresh", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const options = { cwd, stateDir: join(cwd, "state"), autotrust: true, highTrust: true };
+    const first = await startOrResumeClaude(options);
+    const elwoodSessionId = first.session.elwoodSessionId;
+    const hook = { session_id: "native-empty", cwd };
+    await ptys[0]!.dispatchHook(
+      elwoodSessionId,
+      { ...hook, hook_event_name: "SessionStart", source: "startup" },
+      options.stateDir,
+    );
+    await ptys[0]!.dispatchHook(
+      elwoodSessionId,
+      {
+        ...hook,
+        hook_event_name: "InstructionsLoaded",
+        file_path: join(cwd, "CLAUDE.md"),
+        memory_type: "Project",
+        load_reason: "session_start",
+      },
+      options.stateDir,
+    );
+    expect(first.session.status).toBe("ready");
+    await first.session.stop();
+    const second = await startOrResumeClaude({ ...options, elwoodSessionId });
+    expect(second.resumed).toBe(false);
+    expect(second.session.elwoodSessionId).not.toBe(elwoodSessionId);
+    expect(ptys).toHaveLength(2);
+    expect(ptys[1]!.options.args.join(" ")).not.toContain("--resume");
+    await second.session.stop();
+  });
+
+  test("C-CLAUDE-08 only an unblocked user submission establishes a resume id", async () => {
+    const cwd = tempDir();
+    installFakes();
+    let block = true;
+    const options = {
+      cwd,
+      stateDir: join(cwd, "state"),
+      hooks: {
+        UserPromptSubmit: () =>
+          block ? { decision: "block" as const, reason: "Try later" } : undefined,
+      },
+    };
+    const first = await startOrResumeClaude(options);
+    const elwoodSessionId = first.session.elwoodSessionId;
+    const hook = {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "native-user",
+      cwd,
+      prompt: "hello",
+    } satisfies ClaudeHookEventFor<"UserPromptSubmit">;
+    await ptys[0]!.dispatchHook(
+      elwoodSessionId,
+      { hook_event_name: "SessionStart", session_id: "native-user", cwd, source: "startup" },
+      options.stateDir,
+    );
+    await ptys[0]!.dispatchHook(elwoodSessionId, hook, options.stateDir);
+    expect(readSessionRecord(options.stateDir, elwoodSessionId).claude.resumeId).toBeUndefined();
+    block = false;
+    await ptys[0]!.dispatchHook(elwoodSessionId, hook, options.stateDir);
+    expect(readSessionRecord(options.stateDir, elwoodSessionId).claude.resumeId).toBe(
+      "native-user",
+    );
+    await first.session.stop();
+    const second = await startOrResumeClaude({ ...options, elwoodSessionId });
+    expect(second.resumed).toBe(true);
+    expect(second.session.elwoodSessionId).toBe(elwoodSessionId);
+    await second.session.stop();
   });
 });
 

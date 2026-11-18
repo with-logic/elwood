@@ -12,10 +12,10 @@ test("C-CLAUDE-23 observes renewal on resume without replaying to late listeners
   const cwd = tempDir();
   const session = await startClaude({ cwd });
   await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-    hook_event_name: "SessionStart",
+    hook_event_name: "UserPromptSubmit",
     session_id: "claude-resume",
     cwd,
-    source: "startup",
+    prompt: "existing conversation",
   });
   await session.stop();
   setPtyFactoryForTests((options) => {

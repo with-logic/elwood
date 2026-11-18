@@ -28,7 +28,12 @@ describe("ClaudeSessionApi resume options", () => {
     const session = await startClaude({ cwd, stateDir });
     await ptys[0]!.dispatchHook(
       session.elwoodSessionId,
-      { hook_event_name: "SessionStart", session_id: "claude-resume", cwd, source: "startup" },
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "claude-resume",
+        cwd,
+        prompt: "existing conversation",
+      },
       stateDir,
     );
     await session.stop();
@@ -75,10 +80,10 @@ describe("ClaudeSessionApi resume options", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-resume",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     });
     await session.stop();
     const previousCwd = process.cwd();
@@ -102,10 +107,10 @@ describe("ClaudeSessionApi resume options", () => {
     try {
       const first = await startClaude({ cwd, stateDir: ".elwood" }); // relative
       await ptys[0]!.dispatchHook(first.elwoodSessionId, {
-        hook_event_name: "SessionStart",
+        hook_event_name: "UserPromptSubmit",
         session_id: "claude-rel",
         cwd,
-        source: "startup",
+        prompt: "existing conversation",
       });
       await first.stop();
       const resumed = await resumeClaude({

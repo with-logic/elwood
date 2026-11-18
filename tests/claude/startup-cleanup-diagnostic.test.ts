@@ -59,10 +59,10 @@ describe("C-ERR-08 an unconfirmed reap on a failed Claude start", () => {
     const cwd = tempDir();
     const original = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(original.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-resume",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     });
     await original.stop();
     refuseGroupKills();
