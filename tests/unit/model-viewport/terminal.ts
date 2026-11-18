@@ -81,7 +81,9 @@ export function viewportTerminal(
       }
     }
     if (input === "s") {
-      state.selected = items()[state.cursor] as number;
+      const selected = items()[state.cursor];
+      if (selected === undefined) throw new Error("Picker selection is out of range");
+      state.selected = selected;
       terminal.text = "❯ ";
       return;
     }

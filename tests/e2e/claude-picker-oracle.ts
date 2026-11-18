@@ -11,11 +11,12 @@ import { type AgentModelOption, type ClaudeSessionApi, startClaude } from "../..
 import { cleanup, type E2eProject, waitFor } from "./helpers.ts";
 
 /**
- * Opens the picker with raw keys and reads the count it announces, its last rendered row's
- * absolute number plus the `… +K models` hidden below it, and the effort row, which shows
- * the current model's effort while the cursor opens on that model. Then cancels with
- * Escape. Raw keys and its own patterns keep it independent of the code it checks. A picker
- * Elwood did not open holds Elwood's own input until the composer is positively clear again,
+ * Opens the picker with raw keys and reads the current model's effort at its initial cursor.
+ * Legacy layouts count the last absolute model row plus the `… +K models` hidden below it.
+ * Modern layouts expand `More models` and count physical selectable items, subtracting the
+ * non-model disclosure. Then cancels with Escape. Raw keys and its own patterns keep it
+ * independent of the code it checks. A picker Elwood did not open holds Elwood's own input
+ * until the composer is positively clear again,
  * so the session's next model call waits this one out.
  */
 export async function readClaudePicker(

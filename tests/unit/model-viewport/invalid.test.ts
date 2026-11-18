@@ -2,6 +2,7 @@
 
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../../src/claude/model-picker.ts";
+import { claudeViewportGrammar } from "../../../src/claude/models/grammar.ts";
 import { codexModelPicker } from "../../../src/codex/model-picker.ts";
 import { parseModelViewport } from "../../../src/core/models/viewport/parse.ts";
 import { capturedFrame } from "../../helpers/captured-frames.ts";
@@ -81,18 +82,18 @@ test("C-API-24 a wrapped native Max warning is recognized only verbatim", () => 
 
 test("C-API-24 a split control is sufficient for a modern catalog without a disclosure", () => {
   const withoutMore = collapsed.replace(/^.*More models.*\n/m, "");
-  expect(parseModelViewport(withoutMore, "claude")?.options).toHaveLength(5);
+  expect(parseModelViewport(withoutMore, claudeViewportGrammar)?.options).toHaveLength(5);
 });
 
 test("C-API-24 unsupported-effort controls retain a navigable viewport", () => {
   const text = collapsed
     .replace(/^.*More models.*\n/m, "")
     .replace("◐ Medium effort (default)", "○ Effort not supported for Haiku 4.5");
-  expect(parseModelViewport(text, "claude")?.options).toHaveLength(5);
+  expect(parseModelViewport(text, claudeViewportGrammar)?.options).toHaveLength(5);
 });
 
 test("C-API-24 model windows require at least two actual model rows", () => {
   const text =
     "Select model\n❯ 1. One  Description\n▸ More models\n\n◐ Medium effort\nEsc to cancel";
-  expect(parseModelViewport(text, "claude")).toBeUndefined();
+  expect(parseModelViewport(text, claudeViewportGrammar)).toBeUndefined();
 });

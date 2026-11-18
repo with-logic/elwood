@@ -1,9 +1,8 @@
 /** The contiguous selectable block inside a modern native picker (PRD §5.3, C-API-24). */
-import type { ElwoodAgentKind } from "../../activity/index.ts";
 import { modelRow, rowPattern } from "../model-row.ts";
 import type { PickerRow } from "../rows.ts";
-import { blankOrRule, disclosureRow, foreignViewportRow, viewportMarker } from "./syntax.ts";
-import type { ViewportItem } from "./types.ts";
+import { blankOrRule, foreignViewportRow, viewportMarker } from "./syntax.ts";
+import type { ViewportGrammar, ViewportItem } from "./types.ts";
 
 export class ViewportBlock {
   readonly items: ViewportItem[] = [];
@@ -19,11 +18,11 @@ export class ViewportBlock {
   nativePartial = false;
   private ended = false;
   private previousNumber: number | undefined;
-  private readonly agent: ElwoodAgentKind;
+  private readonly grammar: ViewportGrammar;
   private readonly prefix: boolean;
 
-  constructor(agent: ElwoodAgentKind, prefix: boolean) {
-    this.agent = agent;
+  constructor(grammar: ViewportGrammar, prefix: boolean) {
+    this.grammar = grammar;
     this.prefix = prefix;
   }
 
@@ -33,10 +32,10 @@ export class ViewportBlock {
       return true;
     }
     if (this.partial) return false;
-    const marker = viewportMarker(line, this.agent);
+    const marker = viewportMarker(line, this.grammar);
     if (marker !== undefined) return this.acceptMarker(marker);
     const match = rowPattern.exec(line);
-    const disclosure = this.agent === "claude" ? disclosureRow.exec(line) : null;
+    const disclosure = this.grammar.disclosure?.row.exec(line) ?? null;
     if (match !== null || disclosure !== null) return this.acceptItem(line, match, disclosure);
     if (this.prefix && this.acceptPartial(line)) return true;
     if (this.items.length === 0) return !foreignViewportRow(line);
@@ -52,24 +51,26 @@ export class ViewportBlock {
       return true;
     }
     const model = /^\s*(?:❯|›)?\s*(\d+)(?:\.(?:\s.*)?)?$/.exec(line);
-    const disclosure = /^\s*(?:❯|›)?\s*[▸▾]\s*(.*)$/.exec(line);
-    const marker = /^\s*([↑↓])(?:\s+\d+(?:\s+(\S*))?)?\s*$/.exec(line);
+    const marker = this.grammar.partialMarker.exec(line);
     if (model !== null) {
       const number = Number(model[1]);
       if (!this.nextPartialModel(number)) return false;
-    } else if (
-      this.agent === "claude" &&
-      disclosure !== null &&
-      "More models".startsWith((disclosure[1] as string).trim())
-    ) {
+    } else if (this.isDisclosurePrefix(line)) {
       this.nativePartial = true;
-    } else if (marker !== null && "more".startsWith(marker[2] ?? "")) {
+    } else if (marker !== null && this.grammar.markerSuffix.startsWith(marker[2] ?? "")) {
       if (marker[1] === "↑" ? this.items.length > 0 || this.above : this.items.length === 0)
         return false;
       this.nativePartial = true;
     } else return false;
     this.partial = true;
     return true;
+  }
+
+  private isDisclosurePrefix(line: string): boolean {
+    const disclosure = this.grammar.disclosure;
+    if (disclosure === undefined) return false;
+    const match = disclosure.partial.exec(line);
+    return match !== null && disclosure.label.startsWith((match[1] as string).trim());
   }
 
   private nextPartialModel(number: number): boolean {
@@ -124,7 +125,7 @@ export class ViewportBlock {
       (this.previousNumber !== undefined && number !== this.previousNumber + 1)
     )
       return false;
-    const row = modelRow(match, line, this.agent);
+    const row = modelRow(match, line, this.grammar.agent);
     if (match[1]) this.cursorOptionIndex = this.rows.length;
     this.rows.push(row);
     this.previousNumber = number;

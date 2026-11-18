@@ -25,6 +25,7 @@ import {
   savedClaudeModel,
 } from "./claude-picker-oracle.ts";
 import { configureCodexDefaultModel, defaultIds, drawnCodexDefault } from "./codex-default.ts";
+import { nativeCodexTarget } from "./codex-picker-oracle.ts";
 import { startReadyCodex } from "./codex-ready.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
@@ -124,15 +125,12 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
       onStarted: (launched) => started.push(launched),
     });
     const models = await session.listModels();
-    assert.ok(models.length >= 3, "picker lists several models");
-    assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    // Without a drawn default, §5.3 uses a configured non-target model.
+    const target = await nativeCodexTarget(session, models);
     const drawn = drawnCodexDefault(models);
-    const configured = models.find((model) => !model.isCurrent && model.id !== drawn);
-    const target =
-      models.find((model) => model.id === "gpt-6.1-terra" && !model.isCurrent) ??
-      models.findLast((model) => !model.isCurrent);
-    assert.ok(configured && target && configured !== target, "two other models are listed");
+    const configured = models.find(
+      (model) => !model.isCurrent && model.id !== drawn && model.id !== target.id,
+    );
+    assert.ok(configured, "a different configured default is listed");
     configureCodexDefaultModel(sandbox.configPath, configured.id);
     const defaultsBefore = rootModelKeys(sandbox.configPath);
     await session.setModel(target.id);
@@ -143,12 +141,15 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
       [drawn ?? configured.id],
       "codex default model is unchanged",
     );
-    // C-CODEX-14: Elwood itself restored the sandbox's model defaults after the CLI
-    // persisted the picker selection — nothing in this test writes them back.
+    const terra = models.find((model) => model.id === "gpt-6.1-terra" && model.id !== target.id);
+    if (terra) {
+      await session.setModel(terra.id);
+      assert.equal((await session.listModels()).find((model) => model.isCurrent)?.id, terra.id);
+    }
     assert.deepEqual(
       rootModelKeys(sandbox.configPath),
       defaultsBefore,
-      "user model defaults already restored by setModel",
+      "C-CODEX-14: setModel already restored user model defaults",
     );
   });
 });
@@ -187,7 +188,6 @@ test("C-API-41 real listCodexModels returns models and leaves config.toml untouc
     const models = await launches.track(listCodexModels(project));
     assert.ok(models.length >= 2, "session-less probe lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    // The baseline names no model, so at most the one default Codex drew (§5.3).
     drawnCodexDefault(models);
     // The probe only opens and cancels the picker (never applies a selection), so
     // the sandbox's model defaults are untouched.

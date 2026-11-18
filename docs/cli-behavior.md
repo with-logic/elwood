@@ -2693,6 +2693,9 @@ Claude also splits the effort row from its adjustment hint and can wrap its Max
 warning over two lines. An incomplete modern picker prefix must hold queued
 input before its footer paints; it cannot authorize navigation. Fixtures:
 `tests/fixtures/claude-2.1.327/model-picker/`. C-API-23, C-API-24, C-API-55.
+Implementation: `src/claude/models/grammar.ts` owns the native syntax;
+`src/core/models/viewport/` parses and walks the selectable items;
+`src/claude/model-picker.ts` owns session-only apply.
 
 Codex 0.169.0 shows eight of the observed ten models at a time, with standalone
 `↑`/`↓` indicators and no hidden-row count. Walking reaches a numbered end before
@@ -2702,6 +2705,10 @@ display name. A native probe listed the canonical id, marked a configured Terra
 default independently of the current model, selected it, and read it back.
 Fixtures: `tests/fixtures/codex-0.169.0/model-picker/` and `terra-composer.txt`.
 C-API-23, C-API-24, C-API-28. Counts depend on the account's available catalog.
+Implementation: `src/codex/models/grammar.ts` owns the native syntax;
+`src/core/models/viewport/` parses and walks the windows;
+`src/core/models/model-row.ts` maps the Terra label;
+`src/codex/screen/clearance.ts` recognizes the composer footer.
 
 Claude Code 2.1.326 combines `More models` with the inline effort hint
 (`◐ Medium effort (default) ←/→ to adjust`); 2.1.327 moves the adjustment

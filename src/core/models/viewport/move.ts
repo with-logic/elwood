@@ -11,13 +11,13 @@ import type { ModelViewport } from "./types.ts";
 export type ViewportFrame = ParsedModelPicker & { readonly viewport: ModelViewport };
 export type ViewportSpec = Pick<ModelPickerSpec, "agent" | "parse" | "activeDialog">;
 
-export function viewportLength(viewport: ModelViewport): number | undefined {
+export function totalSelectableItemCount(viewport: ModelViewport): number | undefined {
   return viewport.remainingBelow === undefined
     ? undefined
     : viewport.offset + viewport.items.length + viewport.remainingBelow;
 }
 
-export function viewportCursor(viewport: ModelViewport): number | undefined {
+export function absoluteCursorItemNumber(viewport: ModelViewport): number | undefined {
   return viewport.items[viewport.cursorItemIndex] === undefined
     ? undefined
     : viewport.offset + viewport.cursorItemIndex + 1;
@@ -54,7 +54,7 @@ export async function nextViewport(
 /** A known end stays fixed while Codex can still hide uncounted rows before it. */
 export function compatibleLength(frame: ViewportFrame, expected: number | undefined): boolean {
   if (expected === undefined) return true;
-  const length = viewportLength(frame.viewport);
+  const length = totalSelectableItemCount(frame.viewport);
   return length === undefined
     ? frame.viewport.offset + frame.viewport.items.length < expected
     : length === expected;
@@ -69,7 +69,7 @@ export function viewportSource(
 ): boolean {
   const viewport = frame.viewport;
   return (
-    viewportCursor(viewport) === cursor &&
+    absoluteCursorItemNumber(viewport) === cursor &&
     compatibleLength(frame, length) &&
     (direction !== "down" ||
       viewport.remainingBelow === undefined ||
@@ -81,7 +81,7 @@ export function viewportSource(
 export async function sendViewportInput(
   io: ModelPickerIo,
   spec: ViewportSpec,
-  input: string,
+  input: typeof arrowUp | typeof arrowDown | "\r",
   accepts: (frame: ViewportFrame) => boolean,
   timeoutMs: number,
 ): Promise<void> {
@@ -120,12 +120,13 @@ export async function moveViewportCursor(
   opening: ViewportFrame,
   target: number,
   timeoutMs: number,
+  knownItemCount = totalSelectableItemCount(opening.viewport),
 ): Promise<ViewportFrame> {
   const deadline = performance.now() + timeoutMs;
   let frame = opening;
-  const length = viewportLength(opening.viewport);
+  const length = knownItemCount;
   for (;;) {
-    const cursor = viewportCursor(frame.viewport);
+    const cursor = absoluteCursorItemNumber(frame.viewport);
     if (cursor === undefined)
       throw elwoodError("model_automation_failed", "Could not locate the picker cursor.");
     if (cursor === target) return frame;
@@ -141,7 +142,8 @@ export async function moveViewportCursor(
     frame = await nextViewport(
       io,
       spec,
-      (next) => viewportCursor(next.viewport) === expected && compatibleLength(next, length),
+      (next) =>
+        absoluteCursorItemNumber(next.viewport) === expected && compatibleLength(next, length),
       deadline - performance.now(),
       `cursor on item ${expected}`,
     );

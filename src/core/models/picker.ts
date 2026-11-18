@@ -118,10 +118,9 @@ export async function setPickerModel(
   const walk = { timeoutMs, found: isTarget };
   const { frame: parsed, options } = await revealPickerRows(io, spec, opening, walk);
   const targetOptionIndex = parsed.options.findIndex(isTarget);
-  if (
-    targetOptionIndex === -1 ||
-    (parsed.cursorOptionIndex === -1 && parsed.viewport === undefined)
-  ) {
+  const targetIsUnlisted = targetOptionIndex === -1;
+  const legacyPickerHasNoCursor = parsed.cursorOptionIndex === -1 && parsed.viewport === undefined;
+  if (targetIsUnlisted || legacyPickerHasNoCursor) {
     await sendPickerInput(io, escapeKey, ownCompletePicker);
     const reason =
       targetOptionIndex === -1

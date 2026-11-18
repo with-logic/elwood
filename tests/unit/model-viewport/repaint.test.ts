@@ -16,6 +16,7 @@ test.each([
   terminal.text = terminal.text.replace(agent === "claude" ? "❯" : "›", " ");
   const spec = agent === "claude" ? claudeModelPicker : codexModelPicker;
   await expect(listPickerModels({ terminal, submit }, spec, 200)).rejects.toMatchObject({
+    code: "model_automation_failed",
     message: "Could not locate the picker cursor.",
   });
   expect(terminal.inputs).toEqual([]);
@@ -77,6 +78,9 @@ test("C-API-24 a modern selection with no highlighted item fails before apply", 
   terminal.text = terminal.text.replace("❯", " ");
   await expect(
     setPickerModel({ terminal, submit }, claudeModelPicker, "model1", 200),
-  ).rejects.toMatchObject({ message: "Could not locate the picker cursor." });
+  ).rejects.toMatchObject({
+    code: "model_automation_failed",
+    message: "Could not locate the picker cursor.",
+  });
   expect(terminal.inputs).toEqual([]);
 });

@@ -29,8 +29,15 @@ test("C-API-23 expands Claude's disclosure and lists every model without changin
 test("C-API-23 an opened scrolled Claude catalog walks both physical ends", async () => {
   const { terminal, state } = viewportTerminal("claude", { expanded: true, cursor: 6 });
   const models = await listPickerModels({ terminal, submit }, claudeModelPicker, 2_000);
-  expect(models).toHaveLength(7);
-  expect(models[0]?.id).toBe("model1");
+  expect(models.map((model) => model.id)).toEqual([
+    "model1",
+    "model2",
+    "model3",
+    "model4",
+    "model5",
+    "model6",
+    "model7",
+  ]);
   expect(state.expansions).toBe(0);
 });
 

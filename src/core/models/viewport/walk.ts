@@ -1,22 +1,25 @@
 /** Enumerates modern model windows and expands non-model disclosures (C-API-23/24). */
 import { elwoodError } from "../../errors.ts";
-import { arrowDown, arrowUp } from "../../input/constants.ts";
 import { inPickerOrder } from "../model-row.ts";
 import type { ModelPickerIo } from "../picker.ts";
 import type { PickerRow } from "../rows.ts";
 import type { PickerWalk, RevealedPicker } from "../window.ts";
 import {
-  compatibleLength,
+  absoluteCursorItemNumber,
   moveViewportCursor,
   nextViewport,
   sendViewportInput,
+  totalSelectableItemCount,
   type ViewportFrame,
   type ViewportSpec,
-  viewportCursor,
-  viewportLength,
   viewportSource,
 } from "./move.ts";
 
+/**
+ * Walks both physical ends and expands collapsed disclosures to return every model in
+ * native row order. Disclosures occupy selectable positions but never become options.
+ * A `found` predicate stops as soon as its matching model is visible, before a full walk.
+ */
 export async function revealViewportRows(
   io: ModelPickerIo,
   spec: ViewportSpec,
@@ -27,7 +30,7 @@ export async function revealViewportRows(
   const rows = new Map<number, PickerRow>();
   const positions = new Set<number>();
   let frame = opening;
-  let length = viewportLength(frame.viewport);
+  let length = totalSelectableItemCount(frame.viewport);
   const revealed = () => ({
     frame,
     options: inPickerOrder(rows),
@@ -72,32 +75,24 @@ export async function revealViewportRows(
       );
       rows.clear();
       positions.clear();
-      length = viewportLength(frame.viewport);
+      length = totalSelectableItemCount(frame.viewport);
       continue;
     }
     if (length !== undefined && positions.size === length) return revealed();
-    const cursor = viewportCursor(viewport);
+    const cursor = absoluteCursorItemNumber(viewport);
     if (cursor === undefined)
       throw elwoodError("model_automation_failed", "Could not locate the picker cursor.");
     const down = length === undefined || !positions.has(length);
     const expected = cursor + (down ? 1 : -1);
-    await sendViewportInput(
+    frame = await moveViewportCursor(
       io,
       spec,
-      down ? arrowDown : arrowUp,
-      (next) => viewportSource(next, cursor, length, down ? "down" : "up"),
+      frame,
+      expected,
       deadline - performance.now(),
+      length,
     );
-    const expectedLength = length;
-    frame = await nextViewport(
-      io,
-      spec,
-      (next) =>
-        viewportCursor(next.viewport) === expected && compatibleLength(next, expectedLength),
-      deadline - performance.now(),
-      `cursor on item ${expected}`,
-    );
-    length ??= viewportLength(frame.viewport);
+    length ??= totalSelectableItemCount(frame.viewport);
   }
 }
 

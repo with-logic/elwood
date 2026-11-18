@@ -17,6 +17,7 @@ import {
 import { waitForScreen } from "../core/models/tui-screen.ts";
 import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
 import { parseModelViewport } from "../core/models/viewport/parse.ts";
+import { codexViewportGrammar as pickerGrammar } from "./models/grammar.ts";
 
 import { codexComposerClearance } from "./screen/clearance.ts";
 
@@ -24,7 +25,6 @@ const reasoningHeader = /Select Reasoning Level/;
 // Both screens close with `Press enter to confirm or esc to go back` on 0.154.0 and with
 // `enter select · esc back` / `enter default · s session · esc back` on 0.164.0.
 const footer = codexModelFooter;
-const pickerGrammar: DialogGrammar = { header: codexModelPickerHeader, footer };
 const reasoningGrammar: DialogGrammar = { header: reasoningHeader, footer };
 const changeConfirmed = /Model changed to/;
 
@@ -32,7 +32,7 @@ export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
   isClear: codexComposerClearance,
   isCandidate: (text) =>
-    isModelViewportCandidate(text, "codex") ||
+    isModelViewportCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, reasoningGrammar),
   hasPickerHeader: (text) => codexModelPickerHeader.test(text),
@@ -42,13 +42,13 @@ export const codexModelPicker: ModelPickerSpec = {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to
     // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).
     if (!authority.opened) return undefined;
-    if (parseModelViewport(text, "codex") !== undefined) return "picker";
+    if (parseModelViewport(text, pickerGrammar) !== undefined) return "picker";
     const picker = bottomDialogRow(text, pickerGrammar);
     const level = bottomDialogRow(text, reasoningGrammar);
     if (picker < 0 && level < 0) return undefined;
     return level > picker ? "follow-up" : "picker";
   },
-  parse: (text) => parseModelViewport(text, "codex") ?? parseCodexModelPicker(text),
+  parse: (text) => parseModelViewport(text, pickerGrammar) ?? parseCodexModelPicker(text),
   // No `enrichOptions` here: when Codex draws no `(default)` marker (0.164 never does), each
   // listing reads the configured default from the SESSION's config.toml, so the session
   // binds it (`CodexSessionImpl.picker`, PRD §5.3).

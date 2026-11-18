@@ -1,7 +1,9 @@
 /** Malformed model metadata may hold input but never authorizes navigation (C-API-24/55). */
 import { expect, onTestFinished, test, vi } from "vitest";
 import { claudeModelPicker } from "../../../src/claude/model-picker.ts";
+import { claudeViewportGrammar } from "../../../src/claude/models/grammar.ts";
 import { codexModelPicker } from "../../../src/codex/model-picker.ts";
+import { codexViewportGrammar } from "../../../src/codex/models/grammar.ts";
 import { clearReadingGapMs } from "../../../src/core/models/clearance.ts";
 import { parseModelViewport } from "../../../src/core/models/viewport/parse.ts";
 import { PickerHold } from "../../../src/runtime/session/picker-hold.ts";
@@ -23,7 +25,9 @@ test.each([
   const title = agent === "claude" ? "Select model" : "Select Model and Effort";
   const prefix = `${title}\n  1. One  Description\n  2. Two  Description\n${marker}`;
   expect(spec.isCandidate(prefix)).toBe(true);
-  expect(parseModelViewport(prefix, agent)).toBeUndefined();
+  expect(
+    parseModelViewport(prefix, agent === "claude" ? claudeViewportGrammar : codexViewportGrammar),
+  ).toBeUndefined();
   expect(spec.activeDialog(prefix, { opened: true })).toBeUndefined();
   const hold = new PickerHold();
   expect(hold.observe(prefix, spec)).toBe(true);

@@ -2,7 +2,9 @@
 
 import { expect, onTestFinished, test, vi } from "vitest";
 import { claudeModelPicker } from "../../../src/claude/model-picker.ts";
+import { claudeViewportGrammar } from "../../../src/claude/models/grammar.ts";
 import { codexModelPicker } from "../../../src/codex/model-picker.ts";
+import { codexViewportGrammar } from "../../../src/codex/models/grammar.ts";
 import { clearReadingGapMs } from "../../../src/core/models/clearance.ts";
 import { isModelViewportCandidate } from "../../../src/core/models/viewport/candidate.ts";
 import { PickerHold } from "../../../src/runtime/session/picker-hold.ts";
@@ -89,9 +91,12 @@ test.each([
     claudeModelPicker,
   ],
 ] as const)("C-API-55 %s is not a native picker prefix", (_name, text, spec) => {
-  expect(isModelViewportCandidate(text, spec === claudeModelPicker ? "claude" : "codex")).toBe(
-    false,
-  );
+  expect(
+    isModelViewportCandidate(
+      text,
+      spec === claudeModelPicker ? claudeViewportGrammar : codexViewportGrammar,
+    ),
+  ).toBe(false);
   expect(spec.activeDialog(text, { opened: true })).toBeUndefined();
 });
 
