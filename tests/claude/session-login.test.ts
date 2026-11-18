@@ -7,7 +7,9 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { startClaude } from "../../src/index.ts";
+import { type ElwoodSessionStatus, startClaude } from "../../src/index.ts";
+import { claudeLoginSuccess } from "../fixtures/claude-login.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { ARROW_DOWN, ready, succeedAndRecover } from "./login-helpers.ts";
@@ -15,7 +17,7 @@ import { ARROW_DOWN, ready, succeedAndRecover } from "./login-helpers.ts";
 afterEach(resetFakes);
 
 describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
-  test("C-API-43 full happy path: picker, URL, code, one Enter, then a fresh ready", async () => {
+  test("C-API-43 full happy path: picker, URL, code Enter, success acknowledgement, ready", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -51,18 +53,21 @@ describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
     expect(reportedUrl).toBe("https://claude.ai/oauth/authorize?code=x");
     await expect.poll(() => ptys[0]!.writes.includes("AUTH-CODE-123")).toBe(true);
 
-    await succeedAndRecover(cwd, session);
+    await expect.poll(() => ptys[0]!.writes.filter((w) => w === "\r").length).toBe(3);
+    ptys[0]!.emitData(asScreen(claudeLoginSuccess));
+    await expect.poll(() => ptys[0]!.writes.filter((w) => w === "\r").length).toBe(4);
+    ptys[0]!.emitData(asScreen(claudeTty(`❯ /login\n  ⎿  Login successful\n${claudeComposer}`)));
     await expect(done).resolves.toBeUndefined();
 
     // Ordered write deltas: /login + its Enter, the picker Enter (no arrow for
-    // claudeai), the code, and EXACTLY ONE Enter after the code (not two).
+    // claudeai), one code Enter, then the modal's separate acknowledgement.
     const writes = ptys[0]!.writes;
     expect(writes[0]).toBe("/login");
     expect(writes[1]).toBe("\r");
     const codeIdx = writes.indexOf("AUTH-CODE-123");
     expect(writes.slice(2, codeIdx)).toEqual(["\r"]); // picker Enter only, no arrow
     expect(writes[codeIdx + 1]).toBe("\r");
-    expect(writes.slice(codeIdx + 2)).toEqual([]); // exactly one Enter after the code
+    expect(writes.slice(codeIdx + 2)).toEqual(["\r"]); // acknowledgement after native success
   });
 
   test("C-API-43 non-default method (console = row 1) sends exactly one arrow-down", async () => {
@@ -90,6 +95,8 @@ describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
     await ready(cwd, session);
 
     let codeAsked = false;
+    const statuses: ElwoodSessionStatus[] = [];
+    session.on("status", ({ status }) => statuses.push(status));
     // Omit timeoutMs so the default applies — exercises the default branch.
     const done = session.login({
       provideCode: () => {
@@ -97,11 +104,16 @@ describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
         return "unused";
       },
     });
-    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // No method picker, straight to success (e.g. a browser round-trip completed).
-    await succeedAndRecover(cwd, session);
-    await expect(done).resolves.toBeUndefined();
+    await expect.poll(() => ptys[0]!.writes.filter((w) => w === "\r").length).toBe(1);
+    // Field-reported native success stays open until its own acknowledgement Enter.
+    ptys[0]!.emitData(asScreen(claudeLoginSuccess));
+    await expect.poll(() => ptys[0]!.writes.filter((w) => w === "\r").length).toBe(2);
+    expect(statuses).toEqual(["blocked"]);
     expect(codeAsked).toBe(false);
+    // No fabricated turn or Stop hook: Enter returns the command result and composer.
+    ptys[0]!.emitData(asScreen(claudeTty(`❯ /login\n  ⎿  Login successful\n${claudeComposer}`)));
+    await expect(done).resolves.toBeUndefined();
+    expect(statuses).toEqual(["blocked", "ready"]);
   });
 
   test("C-API-43 polls through a neutral intermediate frame before the picker renders", async () => {

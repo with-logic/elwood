@@ -41,3 +41,31 @@ export function activeRegion(text: string): string {
   const lines = text.split("\n").filter((line) => line.trim() !== "");
   return lines.slice(-6).join("\n");
 }
+
+export function isClaudeLoginSuccessDialog(text: string): boolean {
+  if (!text.includes("❯ /login")) return false;
+  const rows = text
+    .split("\n")
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .slice(-5);
+  return (
+    rows[0] === "❯ /login" &&
+    /^[─━]{3,}$/.test(rows[1] ?? "") &&
+    rows[2] === "Login" &&
+    /^Logged in as \S.*$/.test(rows[3] ?? "") &&
+    /^Login successful\. Press Enter to continue(?:…|\.\.\.)?$/.test(rows[4] ?? "")
+  );
+}
+
+/** Account identity can paint before the modal's acknowledgement prompt is complete. */
+export function isClaudeLoginSuccessPending(text: string): boolean {
+  const region = activeRegion(text)
+    .split("\n")
+    .map((row) => row.trim())
+    .join("\n");
+  return (
+    /(?:^|\n)❯ \/login\n[─━]{3,}\nLogin\nLogged in as[^\n]*(?:\n[^\n]*)?$/.test(region) &&
+    !isClaudeLoginSuccessDialog(text)
+  );
+}

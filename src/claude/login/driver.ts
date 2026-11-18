@@ -8,18 +8,19 @@
  * once the CLI reports success AND the session is usable again.
  */
 
-import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
+import type { ObservedTerminal } from "../../core/input/abort.ts";
+import { acknowledgeLoginSuccess } from "./confirmation.ts";
 import { awaitLoginOutcome, selectMethodIfShown } from "./stages.ts";
 import type { ClaudeLoginOptions } from "./types.ts";
 
 export type LoginIo = {
-  readonly terminal: ScreenTerminal;
+  readonly terminal: ObservedTerminal;
   /** Whether a blocking dialog is on screen; login writes hold while true. */
   readonly blocked: () => boolean;
   /** Submit the `/login` slash command as an exclusive queue-owned write. */
   readonly submit: (command: string) => Promise<void>;
-  /** Resolves when the session next reaches a usable `ready` state after login. */
-  readonly awaitUsable: () => Promise<void>;
+  /** Capture the ready baseline before acknowledgement, retaining clearance during its write. */
+  readonly awaitUsable: (acknowledge: () => Promise<void>) => Promise<void>;
 };
 
 /**
@@ -43,5 +44,5 @@ export async function driveLogin(
   await awaitLoginOutcome(io, options, baseline, signal);
   // A success banner alone does not prove usability; wait for a fresh ready state
   // scoped to this attempt before releasing the exclusive lease.
-  await io.awaitUsable();
+  await io.awaitUsable(() => acknowledgeLoginSuccess(io, signal));
 }

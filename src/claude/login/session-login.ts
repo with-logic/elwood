@@ -8,8 +8,8 @@
  */
 
 import type { ControlQueue } from "../../core/control-queue/index.ts";
+import type { ObservedTerminal } from "../../core/input/abort.ts";
 import { commandEnterDelayMs } from "../../core/input/index.ts";
-import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import {
   abortableDelay,
   abortError,
@@ -24,7 +24,7 @@ const escapeKey = "\u001b";
 
 export type LoginSessionDeps = {
   readonly controlQueue: ControlQueue;
-  readonly terminal: ScreenTerminal;
+  readonly terminal: ObservedTerminal;
   /** Whether a blocking dialog is on screen (login writes hold while true). */
   readonly blocked: () => boolean;
   /**
@@ -59,7 +59,8 @@ export function runSessionLogin(
               terminal: deps.terminal,
               blocked: deps.blocked,
               submit: (command) => submitLoginCommand(deps, command, deadline.signal),
-              awaitUsable: () => raceSettle(readies.waitForNext(), deadline.signal),
+              awaitUsable: (acknowledge) =>
+                raceSettle(readies.waitForNext(acknowledge), deadline.signal),
             },
             options,
             deadline.signal,
@@ -105,8 +106,9 @@ function watchReadyCount(deps: LoginSessionDeps, signal: AbortSignal) {
     stop,
     // Resolve on the NEXT ready strictly after this call (post-success). A ready
     // that already fired earlier in the flow does not satisfy it.
-    waitForNext: (): Promise<void> => {
+    waitForNext: async (acknowledge: () => Promise<void>): Promise<void> => {
       const baseline = count;
+      await acknowledge();
       return new Promise<void>((resolve) => {
         const check = () => (count > baseline ? resolve() : waiters.add(check));
         check();

@@ -1,7 +1,7 @@
 /**
  * Claude rendered-screen fact table for turn-state and attention detection.
  * Implements PRD §5.3, C-TURN-01 through C-TURN-05, and C-ATTN-01 through
- * C-ATTN-05.
+ * C-ATTN-05, and login acknowledgement (C-API-43).
  */
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";
@@ -12,6 +12,7 @@ import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.t
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
 import { claudeComposerFooterRow } from "./composer/footer.ts";
+import { isClaudeLoginSuccessDialog } from "./login/screens.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 import { claudeQuestionCandidate } from "./questions/screen.ts";
 
@@ -85,13 +86,18 @@ export function liveClaudeClearance(
  * dialog caret from being mistaken for the idle composer. Verified on claude
  * 2.1.258. The questionnaire blocking pattern and manual-mode footer were
  * captured on 2.1.305, and the working-title rule (both half circles) on
- * 2.1.310; every other rule retains the 2.1.258 evidence.
+ * 2.1.310.
  */
 export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
   verifiedAgainst:
-    "claude 2.1.258; question dialog and manual footer: 2.1.305; working title: 2.1.310",
+    "claude 2.1.258; question dialog and manual footer: 2.1.305; working title: 2.1.310; login success: field report 2026-11-18",
   rules: [
+    {
+      id: "claude-login-success",
+      fact: "blocking_prompt_visible",
+      match: isClaudeLoginSuccessDialog,
+    },
     {
       id: "claude-question-dialog",
       fact: "blocking_prompt_visible",

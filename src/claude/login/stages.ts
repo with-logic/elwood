@@ -15,6 +15,7 @@ import {
   activeRegion,
   authUrlVisible,
   extractAuthUrl,
+  isClaudeLoginSuccessPending,
   loginFailed,
   loginSucceeded,
   methodPickerVisible,
@@ -88,7 +89,7 @@ export async function awaitLoginOutcome(
       authorizing = true;
       reportUrl(options, url);
     }
-    if (succeeded(text)) return;
+    if (succeeded(text) && !isClaudeLoginSuccessPending(text)) return;
     if (failed(text)) throw elwoodError("login_failed", "Claude /login reported a failure.");
     if (authorizing && !codeSent && codePrompt(text)) {
       codeSent = true;
