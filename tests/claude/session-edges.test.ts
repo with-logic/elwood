@@ -1,13 +1,13 @@
 /**
  * Conformance tests for Claude session terminal-state edge behavior.
- * Covers PRD §5.3, §8.4, and §9.4.
+ * Covers PRD §5.2 (C-CLAUDE-08), §5.3, §8.4, and §9.4.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ClaudeSessionImpl } from "../../src/claude/session/instance.ts";
-import { startClaude } from "../../src/index.ts";
+import { type ClaudeHookEventFor, startClaude } from "../../src/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -166,7 +166,7 @@ describe("ClaudeSessionApi terminal-state edges", () => {
   });
 });
 
-function userSubmission(cwd: string, session_id: string): Record<string, unknown> {
+function userSubmission(cwd: string, session_id: string): ClaudeHookEventFor<"UserPromptSubmit"> {
   return { hook_event_name: "UserPromptSubmit", session_id, cwd, prompt: "existing conversation" };
 }
 

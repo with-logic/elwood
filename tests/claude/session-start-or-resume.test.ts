@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { startOrResumeClaude } from "../../src/index.ts";
+import { type ClaudeHookEventFor, startOrResumeClaude } from "../../src/index.ts";
 import {
   createSessionRecord,
   prepareStateDir,
@@ -102,15 +102,15 @@ describe("startOrResumeClaude", () => {
     installFakes();
     const options = { cwd, stateDir: join(cwd, "state"), autotrust: true, highTrust: true };
     const first = await startOrResumeClaude(options);
-    const id = first.session.elwoodSessionId;
+    const elwoodSessionId = first.session.elwoodSessionId;
     const hook = { session_id: "native-empty", cwd };
     await ptys[0]!.dispatchHook(
-      id,
+      elwoodSessionId,
       { ...hook, hook_event_name: "SessionStart", source: "startup" },
       options.stateDir,
     );
     await ptys[0]!.dispatchHook(
-      id,
+      elwoodSessionId,
       {
         ...hook,
         hook_event_name: "InstructionsLoaded",
@@ -122,9 +122,9 @@ describe("startOrResumeClaude", () => {
     );
     expect(first.session.status).toBe("ready");
     await first.session.stop();
-    const second = await startOrResumeClaude({ ...options, elwoodSessionId: id });
+    const second = await startOrResumeClaude({ ...options, elwoodSessionId });
     expect(second.resumed).toBe(false);
-    expect(second.session.elwoodSessionId).not.toBe(id);
+    expect(second.session.elwoodSessionId).not.toBe(elwoodSessionId);
     expect(ptys).toHaveLength(2);
     expect(ptys[1]!.options.args.join(" ")).not.toContain("--resume");
     await second.session.stop();
@@ -143,27 +143,29 @@ describe("startOrResumeClaude", () => {
       },
     };
     const first = await startOrResumeClaude(options);
-    const id = first.session.elwoodSessionId;
+    const elwoodSessionId = first.session.elwoodSessionId;
     const hook = {
       hook_event_name: "UserPromptSubmit",
       session_id: "native-user",
       cwd,
       prompt: "hello",
-    };
+    } satisfies ClaudeHookEventFor<"UserPromptSubmit">;
     await ptys[0]!.dispatchHook(
-      id,
+      elwoodSessionId,
       { hook_event_name: "SessionStart", session_id: "native-user", cwd, source: "startup" },
       options.stateDir,
     );
-    await ptys[0]!.dispatchHook(id, hook, options.stateDir);
-    expect(readSessionRecord(options.stateDir, id).claude.resumeId).toBeUndefined();
+    await ptys[0]!.dispatchHook(elwoodSessionId, hook, options.stateDir);
+    expect(readSessionRecord(options.stateDir, elwoodSessionId).claude.resumeId).toBeUndefined();
     block = false;
-    await ptys[0]!.dispatchHook(id, hook, options.stateDir);
-    expect(readSessionRecord(options.stateDir, id).claude.resumeId).toBe("native-user");
+    await ptys[0]!.dispatchHook(elwoodSessionId, hook, options.stateDir);
+    expect(readSessionRecord(options.stateDir, elwoodSessionId).claude.resumeId).toBe(
+      "native-user",
+    );
     await first.session.stop();
-    const second = await startOrResumeClaude({ ...options, elwoodSessionId: id });
+    const second = await startOrResumeClaude({ ...options, elwoodSessionId });
     expect(second.resumed).toBe(true);
-    expect(second.session.elwoodSessionId).toBe(id);
+    expect(second.session.elwoodSessionId).toBe(elwoodSessionId);
     await second.session.stop();
   });
 });

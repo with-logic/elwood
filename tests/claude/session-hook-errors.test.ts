@@ -1,13 +1,13 @@
 /**
  * Conformance tests for Claude hook handler failure behavior.
- * Covers PRD §6 and §10.
+ * Covers PRD §5.2 (C-CLAUDE-08), §6, and §10.
  */
 
 import { mkdirSync, unlinkSync } from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { startClaude, startOrResumeClaude } from "../../src/index.ts";
+import { type ClaudeHookEventFor, startClaude, startOrResumeClaude } from "../../src/index.ts";
 import { readSessionRecord } from "../../src/state/store.ts";
 import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import { installFakes, ptys, readBridgeScript, resetFakes, tempDir } from "./helpers.ts";
@@ -52,7 +52,7 @@ describe("ClaudeSessionApi hook errors", () => {
       session_id: "claude-1",
       cwd,
       prompt: "hello",
-    });
+    } satisfies ClaudeHookEventFor<"UserPromptSubmit">);
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(errors).toEqual(["handler_error:Hook handler failed"]);
     expect(readSessionRecord(join(cwd, ".elwood"), session.elwoodSessionId).claude.resumeId).toBe(
@@ -74,10 +74,10 @@ describe("ClaudeSessionApi hook errors", () => {
         },
       },
     });
-    const id = session.elwoodSessionId;
+    const elwoodSessionId = session.elwoodSessionId;
     const stateDir = join(cwd, ".elwood");
     const bridge = readBridgeScript(
-      onlyLaunchArtifact(join(stateDir, "sessions", id), "hook-bridge"),
+      onlyLaunchArtifact(join(stateDir, "sessions", elwoodSessionId), "hook-bridge"),
     );
     const client = createConnection({ path: bridge.socketPath });
     let reply = "";
@@ -91,13 +91,13 @@ describe("ClaudeSessionApi hook errors", () => {
         client.write(
           `${JSON.stringify({
             token: bridge.token,
-            elwoodSessionId: id,
+            elwoodSessionId,
             input: JSON.stringify({
               hook_event_name: "UserPromptSubmit",
               session_id: "unsaved",
               cwd,
               prompt: "hello",
-            }),
+            } satisfies ClaudeHookEventFor<"UserPromptSubmit">),
           })}\n`,
         ),
       );
@@ -113,8 +113,8 @@ describe("ClaudeSessionApi hook errors", () => {
       release.resolve();
     }
     await expect.poll(() => results).toContain("hook_result");
-    expect(readSessionRecord(stateDir, id).claude.resumeId).toBeUndefined();
-    const next = await startOrResumeClaude({ cwd, elwoodSessionId: id });
+    expect(readSessionRecord(stateDir, elwoodSessionId).claude.resumeId).toBeUndefined();
+    const next = await startOrResumeClaude({ cwd, elwoodSessionId });
     expect(next.resumed).toBe(false);
     await next.session.stop();
   });
@@ -123,20 +123,20 @@ describe("ClaudeSessionApi hook errors", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
-    const id = session.elwoodSessionId;
-    const record = join(cwd, ".elwood", "sessions", id, "session.json");
+    const elwoodSessionId = session.elwoodSessionId;
+    const record = join(cwd, ".elwood", "sessions", elwoodSessionId, "session.json");
     unlinkSync(record);
     mkdirSync(record);
     const results: string[] = [];
     const warnings: unknown[] = [];
     session.on("activity", (event) => results.push(event.kind));
     session.on("warning", (event) => warnings.push(event));
-    const result = await ptys[0]!.dispatchHook(id, {
+    const result = await ptys[0]!.dispatchHook(elwoodSessionId, {
       hook_event_name: "UserPromptSubmit",
       session_id: "unsaved",
       cwd,
       prompt: "hello",
-    });
+    } satisfies ClaudeHookEventFor<"UserPromptSubmit">);
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(results.filter((kind) => kind === "hook_result")).toEqual(["hook_result"]);
     expect(warnings).toEqual([

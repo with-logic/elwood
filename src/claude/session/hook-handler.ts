@@ -74,7 +74,8 @@ export function buildClaudeHookHandler(
     );
     const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     const blocked = isBlock(outcome.result);
-    // Claude announces an id before an unused conversation is saved (C-CLAUDE-08).
+    // Claude can emit SessionStart before a conversation transcript exists.
+    // Persist its native resume ID after an unblocked UserPromptSubmit (C-CLAUDE-08).
     if (event.hook_event_name === "UserPromptSubmit" && !blocked)
       observation.run("lifecycle", () =>
         deps.getSession()?.rememberClaudeSessionId(event.session_id),
