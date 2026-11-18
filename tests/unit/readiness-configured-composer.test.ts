@@ -28,6 +28,8 @@ test("C-API-28 Codex's boot composer is not configured; its footed composer is",
     "codex-0.142.5/composer-model-only",
     "codex-0.156.1/cleared-composer",
     "codex-0.159.2/warning-composer",
+    "codex-0.170.0/xhigh-fast-composer",
+    "codex-0.170.0/effort-only-composer",
   ])
     expect(codexComposerConfigured(capturedFrame(older))).toBe(true);
   expect(codexComposerConfigured(configured.replace(/^›.*$/m, ""))).toBe(false);

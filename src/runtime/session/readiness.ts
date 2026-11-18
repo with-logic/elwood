@@ -35,7 +35,7 @@ export type ReadinessGate = {
 
 /**
  * An adapter's `composer.configured`, when supplied, proves a rendered composer belongs
- * to a configured session rather than to the boot screen (Codex's model footer). The
+ * to a configured session rather than to the boot screen (Codex's native status footer). The
  * initial deadline then marks only onto such a frame (C-API-28). The latest frame is
  * checked only when readiness asks, never on every render.
  */
