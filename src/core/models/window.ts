@@ -135,6 +135,8 @@ function revealed(frame: ParsedModelPicker, seen: ReadonlyMap<number, PickerRow>
 
 function walkFailed(reason: string, seen: ReadonlyMap<number, PickerRow>): Error {
   return elwoodError("model_automation_failed", reason, {
-    available: inPickerOrder(seen).map((option) => option.id),
+    available: inPickerOrder(seen)
+      .map((option) => option.id)
+      .filter((id) => id !== null),
   });
 }

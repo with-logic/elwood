@@ -28,7 +28,7 @@ test("C-API-23 walks the disclosure when effort adjustment stays inline", async 
     2_000,
   );
   expect(models.map((model) => model.id)).toEqual(
-    Array.from({ length: 7 }, (_, index) => `model${index + 1}`),
+    Array.from({ length: 7 }, (_, index) => `claude-fixture-${index + 1}`),
   );
   expect(state.expansions).toBe(1);
   expect(terminal.inputs.at(-1)).toBe("\u001b");

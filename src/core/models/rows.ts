@@ -11,8 +11,9 @@ import { modelRow, rowPattern } from "./model-row.ts";
 import { overflowMayFollowRow, type ScrollGrammar, unmarkedRow } from "./row-block.ts";
 import type { ModelViewport } from "./viewport/types.ts";
 
-export type AgentModelOption = {
-  readonly id: string;
+export type AgentModelOption<Id extends string | null = string | null> = {
+  /** CLI launch/switch selector, or null when only an unrecognized display label is known. */
+  readonly id: Id;
   readonly label: string;
   readonly description?: string;
   readonly isCurrent: boolean;
@@ -20,6 +21,9 @@ export type AgentModelOption = {
   readonly raw: string;
   readonly codexServiceTiers?: CodexServiceTiers;
 };
+
+/** Codex picker rows always render their native launch selector (PRD §5.7). */
+export type CodexModelOption = AgentModelOption<string>;
 
 /**
  * One rendered option row. `absoluteRowNumber` is the row's 1-based position in the WHOLE

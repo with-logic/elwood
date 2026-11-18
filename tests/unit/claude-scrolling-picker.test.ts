@@ -43,25 +43,25 @@ test.each([
 test("C-API-23 scroll-marked rows are parsed as rendered options", () => {
   const top = claudeModelPicker.parse(frame("top-window"));
   expect(top.options).toHaveLength(10);
-  expect(top.options[9]).toMatchObject({ id: "opus 4.8", isCurrent: false });
+  expect(top.options[9]).toMatchObject({ id: "claude-opus-4-8", isCurrent: false });
   // `raw` is the row as rendered, so a marked row keeps its marker.
   expect(top.options[9]?.raw).toMatch(/^↓ 10\. Opus 4\.8/);
   expect(top.cursorOptionIndex).toBe(0);
   expect(ids(frame("both-markers"))).toEqual([
-    "fable 5.1",
-    "sonnet 5.5",
-    "haiku 5.5",
-    "haiku 4.5",
-    "sonnet 5",
-    "opus 5",
-    "fable 5",
-    "opus 4.8",
-    "opus 4.7",
-    "opus 4.6",
+    "claude-fable-5-1",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-haiku-4-5",
+    "claude-sonnet-5",
+    "claude-opus-5",
+    "claude-fable-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
   ]);
   const hidden = claudeModelPicker.parse(frame("opened-on-hidden-current"));
   expect(hidden.options[hidden.cursorOptionIndex]).toMatchObject({
-    id: "opus 4.6",
+    id: "claude-opus-4-6",
     isCurrent: true,
   });
 });

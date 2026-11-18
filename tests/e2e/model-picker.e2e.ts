@@ -72,9 +72,8 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       models.some((model) => model.isDefault),
       "a default row is marked",
     );
-    // Any non-current model: the roster depends on the developer's account/plan.
-    const target = models.find((model) => !model.isCurrent);
-    assert.ok(target, "another model is available to switch to");
+    const target = models.find(({ isCurrent, id }) => !isCurrent && id && id !== "default");
+    assert.ok(target?.id, "another model is available to switch to");
     await session.setModel(target.id);
     const after = await session.listModels();
     assert.equal(after.find((model) => model.isCurrent)?.id, target.id);
@@ -86,7 +85,7 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
     );
     // The last row exercises the legacy group and any viewport scrolling.
     const last = after.at(-1);
-    assert.ok(last && !last.isCurrent, "the last row is another model");
+    assert.ok(last?.id && !last.isCurrent, "the last row is another model");
     assert.ok(after.length > 10, "the catalog includes legacy models beyond the primary group");
     await session.setModel(last.id);
     const shown = await readClaudePicker(session);

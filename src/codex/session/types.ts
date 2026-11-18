@@ -6,7 +6,7 @@
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { LoopControls } from "../../core/loops/loop-controls.ts";
-import type { AgentModelOption } from "../../core/models/rows.ts";
+import type { CodexModelOption } from "../../core/models/rows.ts";
 import type { QuestionControls } from "../../core/questions/types.ts";
 import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { CodexServiceTier } from "../../core/speed/types.ts";
@@ -116,7 +116,7 @@ export interface CodexSessionApi extends LoopControls, QuestionControls {
   resize(size: TerminalSize): Promise<void>;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
-  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly CodexModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;

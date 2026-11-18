@@ -4,7 +4,9 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { parseClaudeModelPicker, parseCodexModelPicker } from "../../src/core/models/rows.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import {
   claudePicker,
   claudePickerCursorOnHaiku,
@@ -13,6 +15,56 @@ import {
 } from "../helpers/model-pickers.ts";
 
 describe("model picker parsing", () => {
+  test("C-API-23 known context decorations become native context selectors", () => {
+    const labels = [
+      "Opus (1M context)",
+      "Fable 5.2 (1M context)",
+      "Default (1M context)",
+      "Project Model (1M context)",
+    ];
+    const models = parseClaudeModelPicker(
+      ["Select model", ...labels.map((label, i) => ` ${i + 1}. ${label}  Description`)].join("\n"),
+    ).options;
+    expect(models.map((model) => model.id)).toEqual([
+      "opus[1m]",
+      "claude-fable-5-2[1m]",
+      null,
+      null,
+    ]);
+    expect(models.map((model) => model.label)).toEqual(labels);
+  });
+
+  test("C-API-23 captured Claude versioned labels have native launch selectors", () => {
+    const models = claudeModelPicker.parse(
+      capturedFrame("claude-2.1.327/model-picker/expanded"),
+    ).options;
+    expect(models.find((model) => model.label === "Haiku 5.5")).toMatchObject({
+      id: "claude-haiku-5-5",
+      label: "Haiku 5.5",
+    });
+    expect(models.find((model) => model.label === "Opus 5.5")?.id).toBe("claude-opus-5-5");
+    expect(models.find((model) => model.label === "Sonnet 5")?.id).toBe("claude-sonnet-5");
+    expect(models.find((model) => model.label === "Default")?.id).toBe("default");
+  });
+
+  test("C-API-23 keeps explicit selectors and marks unrecognized Claude labels unavailable", () => {
+    const labels = [
+      "claude-haiku-4-5-20251001",
+      "claude-fable-5-2[1m]",
+      "Project Model",
+      "Future 6.0",
+    ];
+    const parsed = parseClaudeModelPicker(
+      ["Select model", ...labels.map((label, i) => ` ${i + 1}. ${label}  Description`)].join("\n"),
+    );
+    expect(parsed.options.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: labels[0], label: labels[0] },
+      { id: labels[1], label: labels[1] },
+      { id: null, label: labels[2] },
+      { id: null, label: labels[3] },
+    ]);
+  });
+
   test("C-API-23 parses the captured Claude picker", () => {
     const parsed = parseClaudeModelPicker(claudePicker);
     expect(parsed.options.map((option) => option.id)).toEqual([

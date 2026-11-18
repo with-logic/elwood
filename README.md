@@ -298,7 +298,8 @@ elwood models --output json | jq '.agents[] | {agent, models}'
 elwood models --agent claude --output json | jq -r '.models[] | select(.isCurrent) | .id'
 ```
 
-JSON is one `{"schemaVersion":1,"type":"models",...}` document. Combined
+JSON is one `{"schemaVersion":2,"type":"models",...}` document. An unrecognized
+Claude label has `id: null`; use its label for display and skip it for launch. Combined
 listings contain `agents: [{agent, models}]` and `errors: [...]`; explicit
 `--agent` retains the single `agent` and `models` fields. If one agent fails or
 is unavailable, the other catalog remains available and the command exits

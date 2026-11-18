@@ -9,7 +9,7 @@ describe("combined models", () => {
     expect(await main(["models", "--output", "json"], h.context, h.dependencies)).toBe(0);
     expect(h.agents).toEqual(["claude", "codex"]);
     expect(JSON.parse(h.stdout.value)).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       type: "models",
       errors: [],
       agents: [

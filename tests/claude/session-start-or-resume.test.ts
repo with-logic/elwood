@@ -42,6 +42,7 @@ describe("startOrResumeClaude", () => {
       stateDir: join(cwd, ".elwood"),
       hooks: {},
       initialSize: { cols: 90, rows: 30 },
+      model: "claude-haiku-5-5",
       autoupdate: false,
       autotrust: false,
       hookTimeoutMs: 5_000,
@@ -54,6 +55,7 @@ describe("startOrResumeClaude", () => {
     });
     expect(result.resumed).toBe(true);
     expect(result.session.elwoodSessionId).toBe("resumable");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--model 'claude-haiku-5-5'");
     // C-API-29 privilege options survive the startOrResume resume path.
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--allowedTools 'Read'");

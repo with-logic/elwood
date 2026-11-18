@@ -67,6 +67,26 @@ describe("model picker automation", () => {
     expect(terminal.inputs).toEqual(["\u001b"]);
   });
 
+  test("C-API-24 an absent label cannot select an unavailable row or appear as a selector", async () => {
+    const terminal = scripted(claudePicker.replace("Fable ✔", "Project Model ✔"));
+    await expect(
+      setPickerModel({ terminal, submit: submitOk }, claudeModelPicker, "Absent Model", 2_000),
+    ).rejects.toMatchObject({
+      code: "model_automation_failed",
+      details: { available: ["default", "opus", "sonnet", "haiku"] },
+    });
+    expect(terminal.inputs).toEqual(["\u001b"]);
+  });
+
+  test("C-API-24 an unavailable launch id still supports the visible custom label", async () => {
+    const terminal = scripted(claudePicker.replace("Fable ✔", "Project Model ✔"));
+    terminal.onInput = (input) => {
+      if (input === "s") terminal.text = "❯ ";
+    };
+    await setPickerModel({ terminal, submit: submitOk }, claudeModelPicker, "PROJECT MODEL", 500);
+    expect(terminal.inputs).toEqual(["s"]);
+  });
+
   // A bare header is untrusted evidence: the agent can print it. Escaping it could interrupt
   // a running turn, so the operation fails without a write and leaves the dialog to cleanup.
   test("C-API-24 a header whose dialog never completes rejects without a write", async () => {

@@ -111,7 +111,7 @@ export type {
   ElwoodLoopState,
 } from "./core/loops/types.ts";
 export type { ListModelsOptions } from "./core/models/list.ts";
-export type { AgentModelOption } from "./core/models/rows.ts";
+export type { AgentModelOption, CodexModelOption } from "./core/models/rows.ts";
 export type {
   ElwoodQuestion,
   ElwoodQuestionAnswer,

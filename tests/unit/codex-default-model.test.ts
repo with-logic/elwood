@@ -23,7 +23,7 @@ function row(id: string, flags: Flags = {}): AgentModelOption {
 
 const rows = [row("gpt-6.1-sol", { isCurrent: true }), row("gpt-6-astra"), row("gpt-6-luna")];
 
-function defaultIds(options: readonly AgentModelOption[]): readonly string[] {
+function defaultIds(options: readonly AgentModelOption[]): readonly AgentModelOption["id"][] {
   return options.filter((option) => option.isDefault).map((option) => option.id);
 }
 

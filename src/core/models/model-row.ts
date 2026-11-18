@@ -1,5 +1,6 @@
 /** Constructs one native model row and its ordered projection (PRD §5.3, C-API-23/24). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
+import { claudeModelSelector } from "./claude-selector.ts";
 import type { AgentModelOption, PickerRow } from "./rows.ts";
 
 /** Cursor, absolute model number, label, and description columns. */
@@ -18,7 +19,7 @@ export function modelRow(match: RegExpExecArray, line: string, agent: ElwoodAgen
     absoluteRowNumber: Number(match[2]),
     option: {
       label,
-      id: claude ? label.toLowerCase() : label.toLowerCase().replace(/\s+/g, "-"),
+      id: claude ? claudeModelSelector(label) : label.toLowerCase().replace(/\s+/g, "-"),
       isCurrent: claude ? labelText.includes("✔") : /\(current\)/i.test(labelText),
       isDefault: (claude ? /\(recommended\)/i : /\(default\)/i).test(labelText),
       description: match[4] as string,

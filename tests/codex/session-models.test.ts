@@ -5,7 +5,7 @@
 
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
-import { startCodex } from "../../src/index.ts";
+import { CodexSession, startCodex } from "../../src/index.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
@@ -22,13 +22,17 @@ afterEach(() => {
 });
 
 describe("CodexSessionApi model picker", () => {
-  test("C-API-23 listModels drives the picker through the readiness queue", async () => {
+  test.each([
+    "raw",
+    "lazy",
+  ])("C-API-23 %s listModels drives the picker through the readiness queue", async (surface) => {
     const cwd = tempDir();
     // Codex marks only the current row; the default comes from the config (PRD §5.3).
     writeFileSync(sandboxCodexHome(cwd), 'model = "gpt-5.4"\n');
     installFakes();
-    const session = await startCodex({ cwd });
-    await becomeReady(session.elwoodSessionId, cwd);
+    const session = surface === "raw" ? await startCodex({ cwd }) : new CodexSession({ cwd });
+    const live = session instanceof CodexSession ? await session.start() : session;
+    await becomeReady(live.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const listing = session.listModels({ timeoutMs: 30_000 });
     await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);

@@ -102,6 +102,7 @@ export type ResumeClaudeOptions = {
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly model?: string;
   readonly reasoningEffort?: ClaudeReasoningEffort;
   readonly fastMode?: boolean;
   readonly permissionMode?: ClaudePermissionMode;

@@ -11,16 +11,20 @@ test("C-API-23 expands Claude's disclosure and lists every model without changin
   const { terminal, state } = viewportTerminal("claude");
   const models = await listPickerModels({ terminal, submit }, claudeModelPicker, 2_000);
   expect(models.map((model) => model.id)).toEqual([
-    "model1",
-    "model2",
-    "model3",
-    "model4",
-    "model5",
-    "model6",
-    "model7",
+    "claude-fixture-1",
+    "claude-fixture-2",
+    "claude-fixture-3",
+    "claude-fixture-4",
+    "claude-fixture-5",
+    "claude-fixture-6",
+    "claude-fixture-7",
   ]);
-  expect(models.filter((model) => model.isCurrent).map((model) => model.id)).toEqual(["model2"]);
-  expect(models.filter((model) => model.isDefault).map((model) => model.id)).toEqual(["model1"]);
+  expect(models.filter((model) => model.isCurrent).map((model) => model.id)).toEqual([
+    "claude-fixture-2",
+  ]);
+  expect(models.filter((model) => model.isDefault).map((model) => model.id)).toEqual([
+    "claude-fixture-1",
+  ]);
   expect(state.expansions).toBe(1);
   expect(state.selected).toBe(2);
   expect(terminal.inputs.at(-1)).toBe("\u001b");
@@ -30,20 +34,20 @@ test("C-API-23 an opened scrolled Claude catalog walks both physical ends", asyn
   const { terminal, state } = viewportTerminal("claude", { expanded: true, cursor: 6 });
   const models = await listPickerModels({ terminal, submit }, claudeModelPicker, 2_000);
   expect(models.map((model) => model.id)).toEqual([
-    "model1",
-    "model2",
-    "model3",
-    "model4",
-    "model5",
-    "model6",
-    "model7",
+    "claude-fixture-1",
+    "claude-fixture-2",
+    "claude-fixture-3",
+    "claude-fixture-4",
+    "claude-fixture-5",
+    "claude-fixture-6",
+    "claude-fixture-7",
   ]);
   expect(state.expansions).toBe(0);
 });
 
 test("C-API-24 a legacy model selection crosses the non-model disclosure", async () => {
   const { terminal, state } = viewportTerminal("claude");
-  await setPickerModel({ terminal, submit }, claudeModelPicker, "model7", 2_000);
+  await setPickerModel({ terminal, submit }, claudeModelPicker, "claude-fixture-7", 2_000);
   expect(state.selected).toBe(7);
   expect(state.expansions).toBe(1);
   expect(terminal.inputs.at(-1)).toBe("s");
@@ -51,14 +55,30 @@ test("C-API-24 a legacy model selection crosses the non-model disclosure", async
 
 test("C-API-24 a visible primary model does not require expanding the catalog", async () => {
   const { terminal, state } = viewportTerminal("claude");
-  await setPickerModel({ terminal, submit }, claudeModelPicker, "model1", 2_000);
+  await setPickerModel({ terminal, submit }, claudeModelPicker, "claude-fixture-1", 2_000);
   expect(state.selected).toBe(1);
   expect(state.expansions).toBe(0);
 });
 
+test("C-API-24 selects the second custom label across a scrolling disclosure", async () => {
+  const { terminal, state } = viewportTerminal("claude");
+  const labels = (text: string) =>
+    text.replace("claude-fixture-6", "Project A").replace("claude-fixture-7", "Project B");
+  const input = terminal.onInput;
+  terminal.text = labels(terminal.text);
+  terminal.onInput = (key) => {
+    input?.(key);
+    terminal.text = labels(terminal.text);
+  };
+  await setPickerModel({ terminal, submit }, claudeModelPicker, "PROJECT B", 500);
+  expect(state.selected).toBe(7);
+  expect(state.expansions).toBe(1);
+  expect(terminal.inputs.at(-1)).toBe("s");
+});
+
 test("C-API-24 selection can move from the disclosure back across primary models", async () => {
   const { terminal, state } = viewportTerminal("claude", { expanded: true, cursor: 2 });
-  await setPickerModel({ terminal, submit }, claudeModelPicker, "model1", 2_000);
+  await setPickerModel({ terminal, submit }, claudeModelPicker, "claude-fixture-1", 2_000);
   expect(state.selected).toBe(1);
 });
 
@@ -69,7 +89,15 @@ test("C-API-24 unknown Claude model ids report the expanded catalog", async () =
   ).rejects.toMatchObject({
     code: "model_automation_failed",
     details: {
-      available: ["model1", "model2", "model3", "model4", "model5", "model6", "model7"],
+      available: [
+        "claude-fixture-1",
+        "claude-fixture-2",
+        "claude-fixture-3",
+        "claude-fixture-4",
+        "claude-fixture-5",
+        "claude-fixture-6",
+        "claude-fixture-7",
+      ],
     },
   });
   expect(state.selected).toBe(2);

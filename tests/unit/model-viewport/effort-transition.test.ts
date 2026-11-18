@@ -42,13 +42,13 @@ test.each([
     cursor += input === "\u001b[B" ? 1 : -1;
     terminal.text = render();
   };
-  await setPickerModel(io, claudeModelPicker, "haiku 4.5", 300);
+  await setPickerModel(io, claudeModelPicker, "CLAUDE-HAIKU-4-5", 300);
   const models = await listPickerModels(io, claudeModelPicker, 300);
   expect(models).toHaveLength(3);
-  expect(models.find((model) => model.isCurrent)?.id).toBe("haiku 4.5");
+  expect(models.find((model) => model.isCurrent)?.id).toBe("claude-haiku-4-5");
   expect(models.find((model) => model.isDefault)?.id).toBe("default");
   await setPickerModel(io, claudeModelPicker, "opus 5.5", 300);
   expect(
     (await listPickerModels(io, claudeModelPicker, 300)).find((model) => model.isCurrent)?.id,
-  ).toBe("opus 5.5");
+  ).toBe("claude-opus-5-5");
 });

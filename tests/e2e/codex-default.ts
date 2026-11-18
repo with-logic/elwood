@@ -7,7 +7,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-type ListedRow = { readonly id: string; readonly isDefault: boolean };
+type ListedRow = { readonly id: string | null; readonly isDefault: boolean };
 
 /**
  * Names `modelId` as the configured DEFAULT in `config.toml`; a running session's current model
@@ -30,5 +30,8 @@ export function drawnCodexDefault(unconfigured: readonly ListedRow[]): string | 
 }
 
 export function defaultIds(models: readonly ListedRow[]): readonly string[] {
-  return models.filter((model) => model.isDefault).map((model) => model.id);
+  return models
+    .filter((model) => model.isDefault)
+    .map((model) => model.id)
+    .filter((id) => id !== null);
 }
