@@ -5,17 +5,23 @@
  * live drop warning, never emitted as activity.
  */
 
+import { field } from "../../core/stats/fields.ts";
+import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
+import { claudeTokenUsage } from "./usage.ts";
 
 export type ClaudeTranscriptEvent = {
   readonly elwoodSessionId: string;
   readonly path: string;
   readonly item: unknown;
-  readonly summary: ClaudeTranscriptSummary;
+  readonly summary:
+    | ClaudeTranscriptSummary
+    | { readonly kind: "other"; readonly label: "token_usage" };
   readonly turnId?: string;
+  readonly tokenUsage?: ClaudeTokenUsage;
 };
 
 /** Turns raw transcript text into parsed activity events for one watcher. */
@@ -54,13 +60,17 @@ export class LineEmitter {
       return;
     }
     const turnId = this.turns.observe(path, item);
-    for (const summary of summarizeClaudeRecord(item)) {
+    const summaries = summarizeClaudeRecord(item);
+    const tokenUsage = claudeTokenUsage(item);
+    const base = { elwoodSessionId: this.elwoodSessionId, path, item, ...field("turnId", turnId) };
+    if (summaries.length === 0 && tokenUsage !== undefined) {
+      this.emit({ ...base, summary: { kind: "other", label: "token_usage" }, tokenUsage });
+    }
+    for (const [index, summary] of summaries.entries()) {
       this.emit({
-        elwoodSessionId: this.elwoodSessionId,
-        path,
-        item,
+        ...base,
         summary,
-        ...(turnId === undefined ? {} : { turnId }),
+        ...field("tokenUsage", index === 0 ? tokenUsage : undefined),
       });
     }
   }

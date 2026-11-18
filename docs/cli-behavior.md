@@ -2715,6 +2715,27 @@ Escape without confirming a toggle. This verifies that the native CLI reads the 
 that a real account is entitled to Fast or that a response used it. Claude speed
 usage is only reported when native assistant `usage.speed` supplies it.
 
+## Native statistics for dashboards
+
+A signed-in Codex 0.170.0 model probe in a private home listed ten models. All
+ten advertised `priority` in their refreshed catalog (normalized to `fast`);
+none advertised `ultrafast`. The same client can request Ultrafast when a
+different catalog advertises it, as the loopback test above shows.
+
+Codex 0.170.0 JSONL can contain `event_msg` / `token_count` with cumulative and
+last-request counts and a model context window under `info`. The same records
+can carry `rate_limits` with separate optional windows, fractional
+`used_percent`, and `resets_at` in Unix seconds. A quota window is a provider
+snapshot for its limit and can appear in multiple sessions. Replacing the
+previous observation preserves the meaning of both quota and cumulative usage.
+
+Claude Code's assistant JSONL records include `message.id` and `message.usage`.
+Different records can describe the same message ID, for example when the CLI
+writes different response blocks. Upserting by transcript and message ID
+avoids charging for that response more than once. Claude reports uncached input,
+cache reads, and cache writes separately. No quota window was observed in the
+interactive Claude records inspected.
+
 ## Native model picker layout changes (2026-11-17)
 
 Claude 2.1.327 folds legacy models under a selectable, non-numbered `More models`

@@ -13,6 +13,8 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Export the frozen `codexServiceTiers` choices for host speed settings.
+- Expose native token usage for Claude and Codex, Codex quota windows, and
+  subagent lifecycle observations on the live `activity` stream.
 
 ## [0.3.0] - 2026-11-18
 

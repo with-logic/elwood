@@ -6,11 +6,16 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { join } from "node:path";
 import test from "node:test";
 import { isRecord } from "../../src/core/predicates.ts";
-import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
+import {
+  type CodexSessionApi,
+  type CodexTokenUsage,
+  resumeCodex,
+  startCodex,
+} from "../../src/index.ts";
 import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import { makeProject, sandboxedCodexHome, skipIf, skipReason, waitFor } from "./helpers.ts";
 
-test("C-SPEED-01 Codex sends Fast, Ultrafast and standard across one conversation's resumes", {
+test("C-SPEED-01 C-STATS-01 Codex selects tiers and reports native usage across resumes", {
   skip: skipIf(skipReason("codex")),
   timeout: 120_000,
 }, async (t) => {
@@ -112,19 +117,23 @@ screen_reader_detection_done = true
     await waitFor(() => (current.status === "ready" ? true : undefined), "speed ready", 30_000);
     const before = requests.length;
     let completed = false;
+    let usage: CodexTokenUsage | undefined;
     current.on("activity", (event) => {
       if (event.kind === "assistant_message" && event.text?.includes("SPEED VERIFIED"))
         completed = true;
+      if (event.tokenUsage?.scope === "thread") usage = event.tokenUsage;
     });
     await current.sendMessage("Reply SPEED VERIFIED. Do not use tools.");
-    await waitFor(
+    const observed = await waitFor(
       () => {
         assert.deepEqual(failures, [], "Loopback provider rejected a native request");
-        return completed && current.status === "ready" ? true : undefined;
+        return completed && current.status === "ready" ? usage : undefined;
       },
       "speed turn complete",
       30_000,
     );
+    assert.equal(observed.last?.totalTokens, 23);
+    assert(observed.total.totalTokens >= 23);
     assert(requests.length > before);
     assert(
       requests

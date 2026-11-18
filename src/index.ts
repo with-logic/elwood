@@ -137,6 +137,14 @@ export {
 } from "./core/speed/types.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
+  ClaudeTokenUsage,
+  CodexRateLimits,
+  CodexRateLimitWindow,
+  CodexTokenUsage,
+  SubagentObservation,
+  TokenCounts,
+} from "./core/stats/types.ts";
+export type {
   ActivityMatch,
   ClaudeEventHandler,
   ClaudeEventMap,

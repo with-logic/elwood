@@ -11,6 +11,7 @@ import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { confirmNativeBoundary } from "../../core/simple/native-boundary.ts";
 import { recordNativeTurn } from "../../core/simple/submission-context.ts";
+import { subagentObservation } from "../../core/stats/subagents.ts";
 import { withStopInput, withStopInputNotification } from "../../core/stop-input.ts";
 import type { HookErrorEvent } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -133,6 +134,7 @@ async function observeAndRequest(
         event.hook_event_name,
         outcome.result,
         outcome.failedOpen,
+        subagentObservation(event, blocked),
       ),
     ),
   );

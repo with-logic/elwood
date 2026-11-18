@@ -98,6 +98,24 @@ cap does not constrain your state layout.
   or pass `"default"` for Standard. To change it between turns, stop and
   resume the session with the selected value.
 
+## Dashboard statistics
+
+Subscribe to `activity` before sending a turn and read the session's `status`
+to show whether the main agent is running. Stats arrive with the existing
+transcript and hook events.
+
+| Field | What to show | How to update |
+| --- | --- | --- |
+| `tokenUsage` with `scope: "thread"` | Codex cumulative totals, last request, and context window | Replace the previous snapshot for `transcriptPath`. Totals may include history after resume. |
+| `tokenUsage` with `scope: "response"` | Claude response tokens, including cache reads and writes | Upsert by `transcriptPath` and `responseId` before summing. Claude can update one response across multiple records. |
+| `rateLimits` | Codex quota remaining, window duration, and reset time | Use the latest `remainingPercent` and `resetsAtUnixSeconds` for each observed window. One account's quota can appear across several sessions. |
+| `subagent` | Observed active subagents for either harness | Add the ID to a per-session set on `started`, delete on `stopped`, and use the set size. Clear it on `terminal:exit`. |
+
+An absent field means the harness has supplied no matching evidence. Codex
+quota snapshots may get stale while idle. Claude quota is unavailable through
+these records. Subagent counts are best effort, especially after resume when
+existing workers may have started before subscription.
+
 ## Turns and startup input
 
 `ready` describes terminal availability. Startup and dialog repaints can produce

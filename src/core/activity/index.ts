@@ -5,8 +5,8 @@
 
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
-import { hookResultLabel } from "../hook-result.ts";
 import type { ElwoodQuestionEvent } from "../questions/types.ts";
+import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
 import type { SpeedActivityFields } from "./speed.ts";
@@ -67,6 +67,7 @@ type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEv
     : never;
 
 export type ElwoodActivityEvent = ActivityFields &
+  DashboardActivityFields &
   SpeedActivityFields &
   (
     | { readonly kind: Exclude<ElwoodActivityKind, "question" | "assistant_progress"> }
@@ -150,24 +151,7 @@ export function activityFromHookError(
   };
 }
 
-export function activityFromHookResult(
-  agent: ElwoodAgentKind,
-  elwoodSessionId: string,
-  hookEventName: string,
-  result: unknown,
-  failedOpen: boolean,
-): ElwoodActivityEvent {
-  return {
-    elwoodSessionId,
-    agent,
-    source: "hook",
-    kind: "hook_result",
-    label: hookResultLabel(result, failedOpen),
-    hookEventName,
-    failedOpen,
-    raw: { hookEventName, result, failedOpen },
-  };
-}
+export { activityFromHookResult } from "../hook-result.ts";
 
 export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEvent {
   return {

@@ -1,10 +1,32 @@
 /**
- * Hook result display labels for adapter-neutral activity.
- * Implements PRD §5.4.
+ * Hook result activity and transcript kind mappings. Implements PRD §5.4 and §5.12.
  */
 
 import type { CodexTranscriptSummary } from "../codex/transcript/types.ts";
-import type { ElwoodActivityKind } from "./activity/index.ts";
+import type { ElwoodActivityEvent, ElwoodActivityKind, ElwoodAgentKind } from "./activity/index.ts";
+import { field } from "./stats/fields.ts";
+import type { SubagentObservation } from "./stats/types.ts";
+
+export function activityFromHookResult(
+  agent: ElwoodAgentKind,
+  elwoodSessionId: string,
+  hookEventName: string,
+  result: unknown,
+  failedOpen: boolean,
+  subagent?: SubagentObservation,
+): ElwoodActivityEvent {
+  return {
+    elwoodSessionId,
+    agent,
+    source: "hook",
+    kind: "hook_result",
+    label: hookResultLabel(result, failedOpen),
+    hookEventName,
+    failedOpen,
+    ...field("subagent", subagent),
+    raw: { hookEventName, result, failedOpen },
+  };
+}
 
 export function hookResultLabel(result: unknown, failedOpen: boolean): string {
   if (failedOpen) return "error";
