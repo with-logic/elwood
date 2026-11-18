@@ -7,6 +7,7 @@ import {
 import type { LoginIo } from "../../src/claude/login/driver.ts";
 import { runSessionLogin } from "../../src/claude/login/session-login.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import type { ObservedTerminal } from "../../src/core/input/abort.ts";
 import { claudeLoginSuccess } from "../fixtures/claude-login.ts";
 import { claudePicker } from "../helpers/model-pickers.ts";
 import { synchronousRender } from "../helpers/synchronous-render.ts";
@@ -15,16 +16,26 @@ afterEach(() => vi.useRealTimers());
 
 test("C-API-43 only the complete native success modal authorizes acknowledgement", () => {
   expect(isClaudeLoginSuccessDialog(claudeLoginSuccess)).toBe(true);
-  const rows = claudeLoginSuccess
-    .split("\n")
-    .map((row) => row.trim())
-    .filter(Boolean);
-  for (let length = 0; length < rows.length; length += 1)
-    expect(isClaudeLoginSuccessDialog(rows.slice(0, length).join("\n"))).toBe(false);
-  for (const row of rows)
-    expect(isClaudeLoginSuccessDialog(claudeLoginSuccess.replace(row, "unrelated"))).toBe(false);
-  expect(isClaudeLoginSuccessDialog("❯ /login\n  ⎿  Login successful")).toBe(false);
-  expect(isClaudeLoginSuccessDialog(`${claudeLoginSuccess}\n❯ next draft`)).toBe(false);
+});
+
+const successRows = claudeLoginSuccess
+  .split("\n")
+  .map((row) => row.trim())
+  .filter(Boolean);
+const malformedFrames: readonly (readonly [string, string])[] = [
+  ...successRows.map(
+    (_row, length) => [`${length} painted rows`, successRows.slice(0, length).join("\n")] as const,
+  ),
+  ...successRows.map(
+    (row, index) =>
+      [`replaced row ${index + 1}`, claudeLoginSuccess.replace(row, "unrelated")] as const,
+  ),
+  ["command result", "❯ /login\n  ⎿  Login successful"],
+  ["next draft", `${claudeLoginSuccess}\n❯ next draft`],
+  ["footer prefix", `${successRows.slice(0, -1).join("\n")}\n  Login suc`],
+];
+test.each(malformedFrames)("C-API-43 %s does not authorize acknowledgement", (_label, text) => {
+  expect(isClaudeLoginSuccessDialog(text)).toBe(false);
 });
 
 function confirmationIo() {
@@ -32,7 +43,7 @@ function confirmationIo() {
   const terminal = {
     ...synchronousRender,
     snapshot: () => ({ text }),
-    sendInput: vi.fn(),
+    sendInput: vi.fn<ObservedTerminal["sendInput"]>(),
   };
   const io: LoginIo = {
     terminal,
@@ -71,6 +82,7 @@ test("C-API-43 a withheld acknowledgement retries after the render backlog settl
   let observations = 0;
   terminal.settled = () => (++observations === 1 ? new Promise(() => {}) : Promise.resolve());
   const done = acknowledgeLoginSuccess(io, new AbortController().signal);
+  // Cross the 1,000 ms observation budget and the next 100 ms login poll.
   await vi.advanceTimersByTimeAsync(1_101);
   await done;
   expect(terminal.sendInput).toHaveBeenCalledExactlyOnceWith("\r");
@@ -96,6 +108,7 @@ test.each([
 ])("C-API-43 readiness delivered inside the acknowledgement write completes a %s login", async (paint) => {
   let text = "";
   let ready = () => {};
+  let acknowledgedText: string | undefined;
   const writes: string[] = [];
   const terminal = {
     ...synchronousRender,
@@ -114,7 +127,10 @@ test.each([
             setTimeout(() => {
               text = claudeLoginSuccess;
             }, 10);
-        } else ready(); // Synchronous native clearance, before the write fulfills.
+        } else {
+          acknowledgedText = text;
+          ready(); // Synchronous native clearance, before the write fulfills.
+        }
       }
       return Promise.resolve();
     },
@@ -144,6 +160,7 @@ test.each([
       },
     );
     expect(writes).toEqual(["/login", "\r", "\r"]);
+    expect(acknowledgedText).toBe(claudeLoginSuccess);
   } finally {
     queue.close();
   }

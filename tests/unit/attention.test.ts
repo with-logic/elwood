@@ -66,6 +66,14 @@ describe("AttentionWatcher", () => {
 });
 
 describe("activityFromAttention", () => {
+  test.each([
+    { rules: [] },
+    { rules: ["claude-login-success", "claude-permission-dialog"] },
+  ])("mixed or absent login rules retain the shared attention text: %j", ({ rules }) => {
+    expect(activityFromAttention("claude", "elwood-1", rules).text).toBe(
+      "Agent is blocked waiting on a human decision.",
+    );
+  });
   test("labels the event with the matched rule ids", () => {
     const event = activityFromAttention("claude", "elwood-1", ["claude-permission-dialog"]);
     expect(event).toMatchObject({

@@ -14,7 +14,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [0.2.8] - 2026-11-18
 
-- Acknowledge Claude's login-success modal with Enter and deliver the fresh ready transition before resolving `login()`, allowing hosts to clear their sign-in notice.
+- Acknowledge Claude's login-success modal with Enter and deliver the fresh ready transition before resolving `login()`, allowing hosts to clear their sign-in notice. Report accurate acknowledgement attention, preserve typed write failures, and leave unrelated dialogs untouched on timeout.
 
 ## [0.2.7] - 2026-11-17
 

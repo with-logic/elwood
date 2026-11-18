@@ -10,6 +10,7 @@
 import type { ControlQueue } from "../../core/control-queue/index.ts";
 import type { ObservedTerminal } from "../../core/input/abort.ts";
 import { commandEnterDelayMs } from "../../core/input/index.ts";
+import { observeRender } from "../../core/input/render-observation.ts";
 import {
   abortableDelay,
   abortError,
@@ -18,6 +19,13 @@ import {
   raceSettle,
 } from "./abort.ts";
 import { driveLogin } from "./driver.ts";
+import {
+  activeRegion,
+  authUrlVisible,
+  classifyClaudeLoginSuccess,
+  methodPickerVisible,
+  pasteCodePrompt,
+} from "./screens.ts";
 import { type ClaudeLoginOptions, defaultLoginTimeoutMs } from "./types.ts";
 
 const escapeKey = "\u001b";
@@ -66,14 +74,7 @@ export function runSessionLogin(
             deadline.signal,
           );
         } catch (error) {
-          // Best-effort: cancel the still-open login UI before releasing the lease,
-          // so a failed/timed-out attempt leaves no dialog for the next queued op to
-          // write into. Never masks the original error.
-          try {
-            await deps.terminal.sendInput(escapeKey);
-          } catch {
-            // A closed terminal makes the cancel a no-op; the original error stands.
-          }
+          await cancelOwnedLogin(deps, queueClose);
           throw error;
         } finally {
           readies.stop();
@@ -130,4 +131,28 @@ async function submitLoginCommand(
   await raceSettle(Promise.resolve(deps.terminal.sendInput(command)), signal);
   await abortableDelay(commandEnterDelayMs, signal);
   await raceSettle(Promise.resolve(deps.terminal.sendInput("\r")), signal);
+}
+
+/** Best-effort cleanup never extends an expired flow to wait for a repaint. */
+async function cancelOwnedLogin(deps: LoginSessionDeps, closed: AbortSignal): Promise<void> {
+  if (closed.aborted || !(await observeRender(deps.terminal.settled(), undefined, 0))) return;
+  if (closed.aborted || deps.terminal.renderFailed) return;
+  const text = deps.terminal.snapshot().text;
+  const modal = classifyClaudeLoginSuccess(text) !== "absent";
+  const region = activeRegion(text);
+  if (
+    !modal &&
+    (deps.blocked() ||
+      !(
+        methodPickerVisible.test(region) ||
+        authUrlVisible.test(region) ||
+        pasteCodePrompt.test(region)
+      ))
+  )
+    return;
+  try {
+    await deps.terminal.sendInput(escapeKey);
+  } catch {
+    // A closed terminal makes cancellation a no-op; preserve the original error.
+  }
 }

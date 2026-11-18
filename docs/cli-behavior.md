@@ -1601,6 +1601,10 @@ terminal renderer, and status engine. A separate ordering test delivers ready
 inside the acknowledgement write. This did not run a new native OAuth exchange
 or alter the developer's authentication state.
 
+Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
+`src/claude/login/session-login.ts` captures the ready boundary, and
+`src/claude/screen-table.ts` classifies the modal as blocking. Contract: C-API-43.
+
 ## Input / paste
 
 - Caller and LLM text sent via `sendPrompt`/`sendMessage`/`sendGuidance` is

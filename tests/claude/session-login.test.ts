@@ -7,7 +7,11 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { type ElwoodSessionStatus, startClaude } from "../../src/index.ts";
+import {
+  type ElwoodActivityEvent,
+  type ElwoodSessionStatus,
+  startClaude,
+} from "../../src/index.ts";
 import { claudeLoginSuccess } from "../fixtures/claude-login.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
@@ -96,7 +100,11 @@ describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
 
     let codeAsked = false;
     const statuses: ElwoodSessionStatus[] = [];
+    const attention: ElwoodActivityEvent[] = [];
     session.on("status", ({ status }) => statuses.push(status));
+    session.on("activity", (event) => {
+      if (event.kind === "attention") attention.push(event);
+    });
     // Omit timeoutMs so the default applies — exercises the default branch.
     const done = session.login({
       provideCode: () => {
@@ -109,6 +117,12 @@ describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
     ptys[0]!.emitData(asScreen(claudeLoginSuccess));
     await expect.poll(() => ptys[0]!.writes.filter((w) => w === "\r").length).toBe(2);
     expect(statuses).toEqual(["blocked"]);
+    expect(attention).toEqual([
+      expect.objectContaining({
+        label: "claude-login-success",
+        text: "Claude login succeeded; waiting for acknowledgement.",
+      }),
+    ]);
     expect(codeAsked).toBe(false);
     // No fabricated turn or Stop hook: Enter returns the command result and composer.
     ptys[0]!.emitData(asScreen(claudeTty(`❯ /login\n  ⎿  Login successful\n${claudeComposer}`)));
