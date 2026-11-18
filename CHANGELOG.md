@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Export the frozen `codexServiceTiers` choices for host speed settings.
+
 ## [0.3.0] - 2026-11-18
 
 - Return launchable Claude model selectors separately from display labels; retain

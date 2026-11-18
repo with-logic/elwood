@@ -88,6 +88,15 @@ cap does not constrain your state layout.
   Display `label` and pass a non-null `id` unchanged to launch or `setModel`;
   `id: null` means the row has no recognized launch selector. Refresh cached
   catalogs after CLI updates. Claude's `default` is a valid selector.
+- **Codex speed** is a separate launch and resume setting, `serviceTier`.
+  `codexServiceTiers` lists the accepted values: `default`, `fast`, and
+  `ultrafast`. For the selected model, use `codexServiceTiers.values` on its
+  `listCodexModels` row to show tiers advertised by the native catalog.
+  An absent field means the catalog evidence is unavailable. Treat the
+  catalog timestamp and values as hints because eligibility can change with
+  the active account and provider. Omit `serviceTier` to inherit settings,
+  or pass `"default"` for Standard. To change it between turns, stop and
+  resume the session with the selected value.
 
 ## Turns and startup input
 

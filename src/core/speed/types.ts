@@ -1,5 +1,5 @@
 /** Adapter-specific speed settings and native evidence. Implements PRD §5.11. */
-export const codexServiceTiers = ["default", "fast", "ultrafast"] as const;
+export const codexServiceTiers = Object.freeze(["default", "fast", "ultrafast"] as const);
 export type CodexServiceTier = (typeof codexServiceTiers)[number];
 
 /** Elwood supplies `default`; additional tiers come from valid cache evidence, not live entitlement. */
