@@ -23,6 +23,8 @@ vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
 const limits = imageLimits as { maxQueuedBytes: number };
 const realCeiling = limits.maxQueuedBytes;
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// Allow real image-file I/O to finish under parallel test load.
+const IMAGE_IO_WAIT_TIMEOUT_MS = 5_000;
 afterEach(() => {
   limits.maxQueuedBytes = realCeiling;
   clipboard.path = "";
@@ -96,7 +98,10 @@ for (const agent of ["claude", "codex"] as const) {
       await expect(
         facade.send("overflow", { images: [{ data: png, format: "png" }] }),
       ).rejects.toMatchObject({ code: "invalid_image" });
-      await vi.waitFor(() => expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1));
+      // Real image-file I/O shares this wait with fake-clock input delays.
+      await vi.waitFor(() => expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1), {
+        timeout: IMAGE_IO_WAIT_TIMEOUT_MS,
+      });
       expect(attached).toEqual([Buffer.from(png)]);
       await pty.dispatchHook(raw.elwoodSessionId, {
         hook_event_name: "UserPromptSubmit",
@@ -134,14 +139,14 @@ for (const agent of ["claude", "codex"] as const) {
           last_assistant_message: "",
           turn_id: "image-turn",
         });
-        // A timed-out turn holds the next one for a drain after that ready. Step the clock
-        // through it here: left to vi.waitFor's 50 ms per check, the drain took 15 of the
-        // 20 checks a 1 s real budget fits, and a loaded suite fit fewer.
+        // Advance the known drain explicitly so polling can wait for real image-file I/O.
         await vi.advanceTimersByTimeAsync(DRAIN_MS - 1);
         expect(held).toThrow("Too many queued image bytes"); // still held as the drain ends
         await vi.advanceTimersByTimeAsync(1);
       }
-      await vi.waitFor(() => expect(attached).toHaveLength(2));
+      await vi.waitFor(() => expect(attached).toHaveLength(2), {
+        timeout: IMAGE_IO_WAIT_TIMEOUT_MS,
+      });
       expect(attached[1]).toEqual(Buffer.from(png));
     } finally {
       vi.useRealTimers();
