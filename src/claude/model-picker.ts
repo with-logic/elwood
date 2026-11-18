@@ -4,6 +4,7 @@
  */
 
 import { arrowDown, arrowUp } from "../core/input/constants.ts";
+import { claudeModelFooter } from "../core/models/hints.ts";
 import { sendPickerInput } from "../core/models/input.ts";
 import { isOwnCompletePicker, type ModelPickerSpec } from "../core/models/picker.ts";
 import {
@@ -14,6 +15,8 @@ import {
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
+import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
+import { parseModelViewport } from "../core/models/viewport/parse.ts";
 import { claudeLastComposerClearance } from "./composer/last.ts";
 import {
   isClaudeIdleComposer,
@@ -33,7 +36,7 @@ const enterKey = "\r";
  */
 const pickerGrammar: DialogGrammar = {
   header: claudeModelPickerHeader,
-  footer: /\besc to cancel\b/i,
+  footer: claudeModelFooter,
   controlRow: /^\s*[○◐●◉◈] (?:\S.* ←\/→ to adjust|Effort not supported for \S.*?)\s*$/,
   // `↑ 3.` marks the window's first row while rows are hidden above it, `↓ 10.` its last
   // while rows are hidden below, with `… +3 models` (`… +1 model`) directly under it. The
@@ -44,7 +47,10 @@ const pickerGrammar: DialogGrammar = {
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isClear: claudeLastComposerClearance,
-  isCandidate: (text) => bottomDialogCandidate(text, pickerGrammar) || isClaudeSwitchShell(text),
+  isCandidate: (text) =>
+    isModelViewportCandidate(text, "claude") ||
+    bottomDialogCandidate(text, pickerGrammar) ||
+    isClaudeSwitchShell(text),
   hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
   isCallerDialog: (text) => parseClaudeSwitchConfirmation(text)?.isCacheWarning === false,
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
@@ -58,9 +64,13 @@ export const claudeModelPicker: ModelPickerSpec = {
     if (confirmation !== undefined) return confirmation.isCacheWarning ? "follow-up" : undefined;
     // The title without its options yet: hold input on it, but never write to it.
     if (isClaudeSwitchShell(text)) return "painting";
-    return bottomDialogRow(text, pickerGrammar) < 0 ? undefined : "picker";
+    return parseModelViewport(text, "claude") !== undefined ||
+      bottomDialogRow(text, pickerGrammar) >= 0
+      ? "picker"
+      : undefined;
   },
-  parse: (text) => parseClaudeModelPicker(text, pickerGrammar.scroll),
+  parse: (text) =>
+    parseModelViewport(text, "claude") ?? parseClaudeModelPicker(text, pickerGrammar.scroll),
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {

@@ -83,11 +83,10 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
       models.find((model) => model.isDefault)?.id,
       "user default model is untouched",
     );
-    // The last row, so the cursor crosses every row's effort control. Past the ten-row window it
-    // stays hidden until the walk reaches it, and the next picker opens scrolled to it.
+    // The last row exercises the legacy group and any viewport scrolling.
     const last = after.at(-1);
     assert.ok(last && !last.isCurrent, "the last row is another model");
-    assert.ok(after.length > 10, "the picker windows a list of more than ten models");
+    assert.ok(after.length > 10, "the catalog includes legacy models beyond the primary group");
     await session.setModel(last.id);
     const shown = await readClaudePicker(session);
     assert.ok(shown.effortRow, "the picker shows the current model's effort");
@@ -95,12 +94,13 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
     const final = await session.listModels();
     assert.equal(savedClaudeModel(), saved, "the walking listing saves no default model");
     assert.equal(final.find((model) => model.isCurrent)?.id, last.id);
-    // Opened scrolled on its last row, the picker hides the rows ABOVE its window instead.
+    // New Claude moves a current legacy model into its primary group, changing row order.
     assert.deepEqual(
-      final.map((model) => model.id),
-      models.map((model) => model.id),
+      final.map((model) => model.id).sort(),
+      models.map((model) => model.id).sort(),
       "a picker opened scrolled lists the complete catalog",
     );
+    assert.ok(hasCompletePickerOrder(final), "every row follows the current native picker order");
     // The walk's arrows move only the highlight; its Escape keeps the model AND its effort.
     const reread = await readClaudePicker(session);
     assert.equal(reread.effortRow, shown.effortRow, "listing keeps the current effort");
@@ -126,12 +126,12 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
     const models = await session.listModels();
     assert.ok(models.length >= 3, "picker lists several models");
     assert.equal(models.filter((model) => model.isCurrent).length, 1);
-    // The baseline names no model, so a default here is one Codex drew (none on 0.164).
-    // Without one, the default is the configured model (§5.3): name one that is neither
-    // the launch model nor the switch target.
+    // Without a drawn default, §5.3 uses a configured non-target model.
     const drawn = drawnCodexDefault(models);
     const configured = models.find((model) => !model.isCurrent && model.id !== drawn);
-    const target = models.findLast((model) => !model.isCurrent);
+    const target =
+      models.find((model) => model.id === "gpt-6.1-terra" && !model.isCurrent) ??
+      models.findLast((model) => !model.isCurrent);
     assert.ok(configured && target && configured !== target, "two other models are listed");
     configureCodexDefaultModel(sandbox.configPath, configured.id);
     const defaultsBefore = rootModelKeys(sandbox.configPath);

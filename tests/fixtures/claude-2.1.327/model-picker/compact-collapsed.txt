@@ -1,0 +1,11 @@
+Select model
+  Your pick is the default for new sessions. For other models, use --model.
+    ↑ 3 more
+    4.  Sonnet 5.5             Most efficient for simpler tasks
+    5.  Haiku 5.5              Fastest for quick answers
+  ❯ 6.  Opus 4.6 ✔             Best for everyday, complex tasks
+    ↓ 1 more
+
+  ◐ Medium effort
+
+  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel

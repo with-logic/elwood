@@ -4,6 +4,7 @@
  * rows themselves) to keep each file within the size cap. Implements C-API-24.
  */
 
+import { isModelFooter } from "./hints.ts";
 import { caretRow, numberedRow, RowBlock, type ScrollGrammar } from "./row-block.ts";
 
 /**
@@ -25,17 +26,6 @@ export type DialogGrammar = {
 const replyRow = /^\s*[●•⏺]/;
 // Both CLIs separate the transcript from the composer or a lower dialog with one of these.
 const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
-// The closing hint row is ONLY hints — `key to action` clauses joined by `·` — so the footer
-// phrase cannot be matched inside a sentence of the agent's own prose that mentions Esc.
-const hintClause = /^[^.!?]{0,48}$/;
-
-/** A closing hint row: the footer phrase standing on its own row, not buried in prose. */
-function isFooterRow(line: string, grammar: DialogGrammar): boolean {
-  if (!grammar.footer.test(line)) return false;
-  return line
-    .split(/[·•]/)
-    .every((clause) => hintClause.test(clause.trim()) && clause.trim().length > 0);
-}
 /** A real picker always offers a choice, so one row is a quoted fragment, not a dialog. */
 const minimumRows = 2;
 
@@ -61,7 +51,7 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean, grammar: Dialog
   if (rowsStarted && grammar.controlRow?.test(line) === true) return true;
   if (replyRow.test(line) || caretRow.test(line) || numberedRow.test(line)) return false;
   if (!rowsStarted) return true;
-  return blockEnd.test(line) || isFooterRow(line, grammar);
+  return blockEnd.test(line) || isModelFooter(line, grammar.footer);
 }
 
 /**
@@ -106,7 +96,7 @@ function isNativeRegion(lines: readonly string[], grammar: DialogGrammar, comple
     }
     if (block.accept(line)) continue;
     if (!mayAppearBesideRows(line, block.rowCount > 0, grammar)) return false;
-    footer = isFooterRow(line, grammar);
+    footer = isModelFooter(line, grammar.footer);
   }
   return block.cursorCount <= 1 && (!complete || (footer && block.rowCount >= minimumRows));
 }
