@@ -178,3 +178,19 @@ test("C-CODEX-12 a live welcome-only composer releases the startup update hold",
     f.terminal.dispose();
   }
 });
+
+test("C-CODEX-12 a live ultra composer releases the startup update hold", async () => {
+  const f = fixture();
+  const composer = codexSmallComposer.replace("›", "»").replace(" low ", " ultra ");
+  try {
+    await f.paint(update);
+    expect(f.read(true)).toBe(true);
+    await f.paint(composer);
+    await f.terminal.writeOutput("\u001b[4;3H\u001b[?25l");
+    expect(f.read()).toBe(true);
+    await f.terminal.writeOutput("\u001b[?25h");
+    expect(f.read()).toBe(false);
+  } finally {
+    f.terminal.dispose();
+  }
+});

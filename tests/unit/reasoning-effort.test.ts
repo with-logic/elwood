@@ -16,8 +16,8 @@ import * as elwood from "../../src/index.ts";
 
 describe("validateReasoningEffort", () => {
   test("C-CLI-02 effort help agrees with the exported harness choices", () => {
-    expect(cliHelp).toContain(`Claude: ${claudeReasoningEfforts.join("|")}`);
-    expect(cliHelp).toContain(`Codex: ${codexReasoningEfforts.join("|")}`);
+    expect(cliHelp.match(/Claude: (.+)/)?.[1]?.split("|")).toEqual(claudeReasoningEfforts);
+    expect(cliHelp.match(/Codex: (.+)/)?.[1]?.split("|")).toEqual(codexReasoningEfforts);
   });
   test("C-CLAUDE-20 C-CODEX-21 exports immutable, adapter-specific effort choices", () => {
     expect(elwood.claudeReasoningEfforts).toEqual(["low", "medium", "high", "xhigh", "max"]);

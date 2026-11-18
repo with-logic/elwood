@@ -30,6 +30,8 @@ import {
   waitFor,
 } from "./helpers.ts";
 
+const minimumUltraCodexVersion = "0.169.0";
+
 test("C-CODEX-21 C-API-28 Codex launches with ultra effort and a configured composer", {
   skip: skipIf(pathSkipReason("codex"), codexAuthMissing()),
   timeout: 90_000,
@@ -38,8 +40,8 @@ test("C-CODEX-21 C-API-28 Codex launches with ultra effort and a configured comp
   assert.equal(result.status, 0, "Codex version probe succeeds");
   const version = parseVersion(result.stdout);
   assert.ok(version, "Codex reports its native CLI version");
-  if (compareVersions(version, "0.169.0") < 0) {
-    skipNow(t, "The ultra composer probe requires Codex 0.169.0 or newer");
+  if (compareVersions(version, minimumUltraCodexVersion) < 0) {
+    skipNow(t, `The ultra composer probe requires Codex ${minimumUltraCodexVersion} or newer`);
     return;
   }
   const project = makeProject("codex");

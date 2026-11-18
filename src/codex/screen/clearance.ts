@@ -3,6 +3,7 @@
  * Implements PRD §5.3/§5.4, C-API-31/C-API-56/C-TRUST-01.
  */
 
+import { codexReasoningEfforts } from "../../core/reasoning-effort.ts";
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { codexWorkingScreen } from "./working.ts";
@@ -22,8 +23,9 @@ const placeholders = new Set([
   "Run /review on my current changes",
   "Use /skills to list available skills",
 ]);
-const modelFooter =
-  /^ {2}(?:gpt|GPT)-[\w.-]+(?: Terra)? (?:none|minimal|low|medium|high|xhigh|max|ultra|default)(?: (?:Fast|Ultrafast))?(?: · (?:~?\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$/;
+const modelFooter = new RegExp(
+  String.raw`^ {2}(?:gpt|GPT)-[\w.-]+(?: Terra)? (?:${codexReasoningEfforts.join("|")}|default)(?: (?:Fast|Ultrafast))?(?: · (?:~?\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
+);
 const hintFooter =
   /^(?: {2})?(?:← for agents · )?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
 
@@ -51,7 +53,9 @@ function welcomeBox(rows: readonly string[]): boolean {
 }
 
 function isUserHistoryRow(row: string, rows: readonly string[], index: number): boolean {
-  return /^[›»] \S/.test(row) && !(/^[›»] \d+[.)]/.test(row) && numberedSibling(rows, index));
+  const isPromptRow = /^[›»] \S/.test(row);
+  const isNumberedOptionRow = /^[›»] \d+[.)]/.test(row) && numberedSibling(rows, index);
+  return isPromptRow && !isNumberedOptionRow;
 }
 
 /** Preserve row boundaries when excluding complete user history or assistant quotation. */

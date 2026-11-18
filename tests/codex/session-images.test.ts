@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 /** Emit the `[Image #1]` chip once the Ctrl+V lands so the attach wait resolves. */
-function driveChip(marker = "›"): void {
+function driveChip(marker: "›" | "»" = "›"): void {
   const tick = () => {
     if (ptys[0]!.writes.includes(CTRL_V)) ptys[0]!.emitData(`[999;1H[K${marker} [Image #1]`);
     else setTimeout(tick, 20);

@@ -7,6 +7,7 @@ import {
   codexComposerRowsClearance,
 } from "../../../src/codex/screen/clearance.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
+import { codexReasoningEfforts } from "../../../src/core/reasoning-effort.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 
 const captured = readFileSync(
@@ -29,9 +30,8 @@ test("C-API-28 C-TRUST-01 captured Terra display name proves a configured compos
 });
 
 test.each([
-  "none",
-  "max",
-  "ultra",
+  ...codexReasoningEfforts,
+  "default",
 ])("C-API-28 C-TRUST-01 native %s effort footer proves a configured composer", (effort) => {
   const frame = `› Ask Codex to do anything\n  GPT-6.2-Sol ${effort} · /tmp/elwood-effort-CAPTURE\n  ← for agents · ? for shortcuts`;
   expect(codexComposerConfigured(frame)).toBe(true);
@@ -89,4 +89,10 @@ test.each([
   },
 ])("C-TRUST-01 capitalized footer cannot clear $label", ({ frame }) => {
   expect(codexComposerRowsClearance(frame.split("\n"))).toBe(false);
+});
+
+test("C-API-28 unsupported effort cannot prove a configured composer", () => {
+  const frame = "› Ask Codex to do anything\n  GPT-6.2-Sol unsupported";
+  expect(codexComposerConfigured(frame)).toBe(false);
+  expect(codexComposerRowsClearance(frame.split("\n"), 0)).toBe(false);
 });

@@ -19,7 +19,7 @@ afterEach(() => vi.useRealTimers());
 describe("waitForImageChip (C-API-44)", () => {
   test("C-API-44 imageChipCount counts chips only on the composer prompt line", () => {
     expect(imageChipCount("")).toBe(0);
-    // Chips on the composer prompt line (Codex `›`, Claude `❯`) count.
+    // Chips on the composer prompt line (Codex `›`/`»`, Claude `❯`) count.
     expect(imageChipCount("› [Image #1] [Image #2]")).toBe(2);
     expect(imageChipCount("❯ [Image #1]")).toBe(1);
     expect(imageChipCount("» [Image #1] [Image #2]")).toBe(2);
