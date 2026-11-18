@@ -67,6 +67,7 @@ export type ModelPickerSpec = {
     authority: ModelDialogAuthority,
   ) => ModelDialogStage | undefined;
   readonly parse: (text: string) => ParsedModelPicker;
+  readonly target?: (id: string) => (option: AgentModelOption) => boolean;
   /**
    * Completes listed rows from state the picker does not render, inside the operation's
    * queue slot and under its deadline/termination `signal`. Codex reads its configured
@@ -110,7 +111,7 @@ export async function setPickerModel(
   timeoutMs: number,
 ): Promise<void> {
   const opening = await openAndParse(io, spec, timeoutMs);
-  const isTarget = modelTarget(spec.agent, id);
+  const isTarget = (spec.target ?? modelTarget)(id);
   const ownCompletePicker = isOwnCompletePicker(spec);
   // A row outside a scrolling window is as selectable as a rendered one: walk only until it
   // is rendered. An unknown id walks the whole list to collect available launch selectors.

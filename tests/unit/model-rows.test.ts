@@ -5,7 +5,8 @@
 
 import { describe, expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
-import { parseClaudeModelPicker, parseCodexModelPicker } from "../../src/core/models/rows.ts";
+import { parseClaudeModelPicker } from "../../src/claude/models/parse.ts";
+import { parseCodexModelPicker } from "../../src/core/models/rows.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import {
   claudePicker,
@@ -55,7 +56,12 @@ describe("model picker parsing", () => {
       "Future 6.0",
     ];
     const parsed = parseClaudeModelPicker(
-      ["Select model", ...labels.map((label, i) => ` ${i + 1}. ${label}  Description`)].join("\n"),
+      [
+        "Select model",
+        ...labels.map(
+          (label, i) => ` ${i + 1}. ${label}${i === 2 ? " ✔ (recommended)" : ""}  Description`,
+        ),
+      ].join("\n"),
     );
     expect(parsed.options.map(({ id, label }) => ({ id, label }))).toEqual([
       { id: labels[0], label: labels[0] },
@@ -63,6 +69,14 @@ describe("model picker parsing", () => {
       { id: null, label: labels[2] },
       { id: null, label: labels[3] },
     ]);
+    expect(parsed.options[2]).toEqual({
+      id: null,
+      label: "Project Model",
+      description: "Description",
+      raw: "3. Project Model ✔ (recommended)  Description",
+      isCurrent: true,
+      isDefault: true,
+    });
   });
 
   test("C-API-23 parses the captured Claude picker", () => {

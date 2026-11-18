@@ -50,9 +50,7 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
     return startCodex(this.options);
   }
 
-  override async listModels(options?: { readonly timeoutMs?: number }) {
-    return (await this.start()).listModels(options);
-  }
+  declare readonly listModels: CodexSessionApi["listModels"];
 
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;

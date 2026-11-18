@@ -23,6 +23,7 @@ import { codexTurnIdentity } from "../accepted-turn.ts";
 import { enrichCodexModels } from "../config/default-model.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { codexModelOptions } from "../models/options.ts";
 import { codexSessionQuestions } from "../questions/session.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
@@ -40,9 +41,9 @@ import { clipboardRestoreFailedWarning } from "./warnings.ts";
 const cliExitWaitMs = 5_000;
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  // The closed Codex picker and enrichment retain native string IDs (PRD §5.7).
-  declare readonly listModels: CodexSessionApi["listModels"];
-  // The default and the setModel restore use the config of THIS session's Codex (C-CODEX-24).
+  override async listModels(options?: { readonly timeoutMs?: number }) {
+    return codexModelOptions(await super.listModels(options));
+  }
   protected readonly picker: ModelPickerSpec = {
     ...codexModelPicker,
     isClear: liveCodexClearance(() => this.terminal),
@@ -53,8 +54,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
-  // The PTY's own exit. Session status cannot stand in for it: shutdown records stopped,
-  // killed, and torn_down even when its signal did not take.
+  // The PTY's own exit proves shutdown; recorded session status alone does not.
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */

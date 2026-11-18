@@ -2,7 +2,7 @@
 import { expectTypeOf, test } from "vitest";
 import type { CodexSession, CodexSessionApi, listCodexModels } from "../../src/index.ts";
 
-test("C-API-23 Codex-specific model listings retain non-null string IDs", () => {
+test("C-API-23 C-API-41 Codex-specific model listings retain non-null string IDs", () => {
   type ListedId<F extends (...args: never[]) => unknown> =
     Awaited<ReturnType<F>> extends readonly { readonly id: infer Id }[] ? Id : never;
   expectTypeOf<ListedId<typeof listCodexModels>>().toEqualTypeOf<string>();

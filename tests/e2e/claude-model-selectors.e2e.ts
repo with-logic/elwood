@@ -19,9 +19,15 @@ test("C-API-23 C-API-24 C-API-41 discovered Claude selectors launch and switch u
   await listClaudeModels(project);
   const models = rejectCompiledClaudeFallback(await listClaudeModels(project));
   const versioned = models.filter((model) => /^(?:Opus|Sonnet|Haiku|Fable) \d/.test(model.label));
-  const target = versioned.find((model) => model.label.startsWith("Haiku")) ?? versioned[0];
+  const resolvedDefault = models.find((model) => model.isCurrent);
+  assert.ok(resolvedDefault?.id, "the initial launch resolves a concrete default");
+  const alternatives = versioned.filter((model) => model.id !== resolvedDefault.id);
+  const target =
+    alternatives.find((model) => model.id?.endsWith("[1m]")) ??
+    alternatives.find((model) => model.label.startsWith("Haiku")) ??
+    alternatives[0];
   assert.ok(target?.id, "the native picker lists a versioned launch selector");
-  assert.match(target.id, /^claude-[a-z0-9-]+$/);
+  assert.match(target.id, /^claude-[a-z0-9-]+(?:\[1m\])?$/);
   const other = versioned.find((model) => model.id !== target.id);
   assert.ok(other?.id, "another versioned selector is available");
   const defaultModel = models.find((model) => model.id === "default");
@@ -51,7 +57,10 @@ test("C-API-23 C-API-24 C-API-41 discovered Claude selectors launch and switch u
       highTrust: true,
     });
     await session.waitForStatus((status) => status === "ready", 30_000);
-    assert.ok((await session.listModels()).find((model) => model.isCurrent)?.id);
+    assert.equal(
+      (await session.listModels()).find((model) => model.isCurrent)?.id,
+      resolvedDefault.id,
+    );
   } finally {
     await cleanup(session);
   }

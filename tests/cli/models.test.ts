@@ -76,19 +76,18 @@ describe("executeModels", () => {
     expect(h.stdout.value.endsWith("\n")).toBe(true);
   });
 
-  test.each([
-    "text",
-    "json",
-  ] as const)("C-CLI-26 renders unavailable selectors in %s", async (output) => {
-    const h = harness({ agent: "claude", output });
+  test("C-CLI-26 renders unavailable selectors in text", async () => {
+    const h = harness({ agent: "claude", output: "text" });
     h.session.underlying.listModels = () => Promise.resolve([{ ...rows[0]!, id: null }]);
     expect(await h.run()).toBe(0);
-    if (output === "json")
-      expect(JSON.parse(h.stdout.value)).toMatchObject({
-        schemaVersion: 2,
-        models: [{ id: null }],
-      });
-    else expect(h.stdout.value).toContain("unavailable");
+    expect(h.stdout.value).toContain("unavailable");
+  });
+
+  test("C-CLI-26 renders unavailable selectors in JSON", async () => {
+    const h = harness({ agent: "claude", output: "json" });
+    h.session.underlying.listModels = () => Promise.resolve([{ ...rows[0]!, id: null }]);
+    expect(await h.run()).toBe(0);
+    expect(JSON.parse(h.stdout.value)).toMatchObject({ schemaVersion: 2, models: [{ id: null }] });
   });
 
   test("C-CLI-26 maps a picker failure to an error record with cleanup and status 1", async () => {

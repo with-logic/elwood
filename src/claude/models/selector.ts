@@ -1,4 +1,5 @@
-/** Maps native Claude picker labels to CLI selectors without inventing custom IDs (PRD §5.3). */
+/** Maps native Claude labels and legacy switch targets to selectors (PRD §5.3, C-API-24). */
+import type { AgentModelOption } from "../../core/models/rows.ts";
 
 const family = "(?:opus|sonnet|haiku|fable)";
 const alias = new RegExp(`^(?:default|${family}(?:\\[1m\\])?)$`);
@@ -12,4 +13,11 @@ export function claudeModelSelector(value: string): string | null {
     .replace(/ \(1m context\)$/, "[1m]");
   if (alias.test(lower) || fullSelector.test(lower)) return lower;
   return versioned.test(lower) ? `claude-${lower.replace(/[ .]/g, "-")}` : null;
+}
+
+export function claudeModelTarget(id: string): (option: AgentModelOption) => boolean {
+  const label = id.toLowerCase();
+  const wanted = claudeModelSelector(id) ?? label;
+  return (option) =>
+    option.id === wanted || (option.id === null && option.label.toLowerCase() === label);
 }

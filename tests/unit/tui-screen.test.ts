@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { parseClaudeModelPicker } from "../../src/core/models/rows.ts";
+import { parseClaudeModelPicker } from "../../src/claude/models/parse.ts";
 import { openCommandScreen, waitForScreen } from "../../src/core/models/tui-screen.ts";
 import { claudePicker } from "../helpers/model-pickers.ts";
 import { scripted } from "./scripted-terminal.ts";

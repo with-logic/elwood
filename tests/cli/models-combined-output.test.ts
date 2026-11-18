@@ -31,10 +31,7 @@ test("C-CLI-26 combined tables mark defaults and sanitize every model field", as
   expect(h.stdout.value).not.toContain("\u001b");
 });
 
-test.each([
-  "text",
-  "json",
-] as const)("C-CLI-26 combined %s retains unavailable selectors", async (output) => {
+function unavailableHarness() {
   const h = modelsHarness();
   const dependencies = {
     ...h.dependencies,
@@ -54,16 +51,25 @@ test.each([
       return prepared;
     },
   };
-  expect(await main(["models", "--output", output], h.context, dependencies)).toBe(0);
-  if (output === "json")
-    expect(JSON.parse(h.stdout.value)).toMatchObject({
-      schemaVersion: 2,
-      agents: [
-        { agent: "claude", models: [{ id: null }] },
-        { agent: "codex", models: [{ id: "codex-model" }] },
-      ],
-    });
-  else expect(h.stdout.value).toContain("unavailable");
+  return { h, dependencies };
+}
+
+test("C-CLI-26 combined text retains unavailable selectors", async () => {
+  const { h, dependencies } = unavailableHarness();
+  expect(await main(["models", "--output", "text"], h.context, dependencies)).toBe(0);
+  expect(h.stdout.value).toContain("unavailable");
+});
+
+test("C-CLI-26 combined JSON retains unavailable selectors", async () => {
+  const { h, dependencies } = unavailableHarness();
+  expect(await main(["models", "--output", "json"], h.context, dependencies)).toBe(0);
+  expect(JSON.parse(h.stdout.value)).toMatchObject({
+    schemaVersion: 2,
+    agents: [
+      { agent: "claude", models: [{ id: null }] },
+      { agent: "codex", models: [{ id: "codex-model" }] },
+    ],
+  });
 });
 
 test("C-CLI-26 a rejected aggregate stdout write causes no retry or leaked signal listener", async () => {

@@ -10,7 +10,6 @@ import {
   bottomDialogCandidate,
   bottomDialogRow,
   claudeModelPickerHeader,
-  parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
@@ -23,11 +22,14 @@ import {
   parseClaudeSwitchConfirmation,
 } from "./model-switch-confirmation.ts";
 import { claudeViewportGrammar as pickerGrammar } from "./models/grammar.ts";
+import { parseClaudeModelPicker } from "./models/parse.ts";
+import { claudeModelTarget } from "./models/selector.ts";
 
 const enterKey = "\r";
 
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
+  target: claudeModelTarget,
   isClear: claudeLastComposerClearance,
   isCandidate: (text) =>
     isModelViewportCandidate(text, pickerGrammar) ||
