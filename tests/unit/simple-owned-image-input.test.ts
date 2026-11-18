@@ -23,6 +23,8 @@ vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
 const limits = imageLimits as { maxQueuedBytes: number };
 const realCeiling = limits.maxQueuedBytes;
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// Allow real image-file I/O to finish under parallel test load.
+const IMAGE_IO_WAIT_TIMEOUT_MS = 5_000;
 afterEach(() => {
   limits.maxQueuedBytes = realCeiling;
   clipboard.path = "";
@@ -98,7 +100,7 @@ for (const agent of ["claude", "codex"] as const) {
       ).rejects.toMatchObject({ code: "invalid_image" });
       // Real image-file I/O shares this wait with fake-clock input delays.
       await vi.waitFor(() => expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1), {
-        timeout: 5_000,
+        timeout: IMAGE_IO_WAIT_TIMEOUT_MS,
       });
       expect(attached).toEqual([Buffer.from(png)]);
       await pty.dispatchHook(raw.elwoodSessionId, {
@@ -142,7 +144,9 @@ for (const agent of ["claude", "codex"] as const) {
         expect(held).toThrow("Too many queued image bytes"); // still held as the drain ends
         await vi.advanceTimersByTimeAsync(1);
       }
-      await vi.waitFor(() => expect(attached).toHaveLength(2), { timeout: 5_000 });
+      await vi.waitFor(() => expect(attached).toHaveLength(2), {
+        timeout: IMAGE_IO_WAIT_TIMEOUT_MS,
+      });
       expect(attached[1]).toEqual(Buffer.from(png));
     } finally {
       vi.useRealTimers();
