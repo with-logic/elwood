@@ -53,10 +53,10 @@ describe("C-LIFE-10 ending a failed Claude start's PTY", () => {
     const cwd = tempDir();
     const original = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(original.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-resume",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     });
     await original.stop();
     reapedGroups.length = 0;

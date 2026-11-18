@@ -2792,3 +2792,32 @@ reasoning-only status item omits the fast badge even when fast service is enable
 A model-less footer must include a recognized effort and native directory path:
 a bare effort word is insufficient readiness evidence. Dialog, cursor-visibility,
 and received-render guards still apply.
+
+## Claude 2.1.327 startup ids without a conversation
+
+A private-home reproduction on 2026-11-18 started Claude through
+`startOrResumeClaude`, waited for ready, sent nothing and stopped. `SessionStart`
+had supplied an id, which Elwood saved, but the native transcript did not exist.
+A second call with that Elwood id returned `resumed: true` in 545 ms, then Claude
+printed `No conversation found with session ID` and exited without a resume hook.
+The old 500 ms startup check therefore could not provide this fallback itself.
+
+Persisting the id after an unblocked `UserPromptSubmit` prevents this empty-session
+resume attempt. Explicitly blocked submissions do not establish resume state;
+failed-open hooks still allow the native prompt and therefore do establish it.
+Existing stored ids remain eligible, including records written by earlier releases;
+this prevention rule does not inspect or migrate those native histories.
+
+In separate fresh folders, a deliberately missing native id with `autotrust: false`
+showed a manual trust gate before rejecting the id, with both `highTrust` settings.
+Waiting unconditionally for a resumed session to reach ready would hide the session
+object needed to answer that gate. The prevention rule preserves the eager return
+and manual trust flow.
+
+With the prevention rule, the same empty-session reproduction saved no native id;
+the second call returned `resumed: false` in 540 ms and reached ready without a
+missing-conversation error. A separate control submitted one prompt using the
+known-invalid `haiku 5.5` selector. Claude rejected the model but persisted the
+conversation: Elwood saved the id after the unblocked submission, and the next
+call returned `resumed: true`, emitted native `SessionStart` with `source: "resume"`,
+and reached ready. No successful model turn was needed for either check.

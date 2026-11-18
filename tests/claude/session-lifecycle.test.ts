@@ -26,10 +26,10 @@ describe("ClaudeSessionApi lifecycle", () => {
     await ptys[0]!.dispatchHook(
       session.elwoodSessionId,
       {
-        hook_event_name: "SessionStart",
+        hook_event_name: "UserPromptSubmit",
         session_id: "claude-resume-id",
         cwd,
-        source: "startup",
+        prompt: "existing conversation",
       },
       stateDir,
     );

@@ -90,10 +90,10 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     const priv = isolateTmp();
     const live = await startClaude({ cwd }); // A: live, owns a socket in the shared home
     await ptys[0]!.dispatchHook(live.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-overlap",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     }); // persist a resumeId so the overlapping resume reaches its bridge start
     expect(socketFilesIn(priv)).toHaveLength(1);
     // B: an overlapping resume for the SAME session id whose bridge start fails.
@@ -129,10 +129,10 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     const priv = isolateTmp();
     const first = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(first.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-restart",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     });
     await first.stop(); // stop keeps state for resume, but not the emptied home (§8.1)
     expect(socketHomesIn(priv)).toEqual([]);

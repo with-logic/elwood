@@ -49,10 +49,10 @@ describe("ClaudeSessionApi recurring loops", () => {
     const session = await startClaude({ cwd });
     const loop = await session.createLoop({ mode: "fixed", intervalMs: 60_000, message: "tick" });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "SessionStart",
+      hook_event_name: "UserPromptSubmit",
       session_id: "claude-resume",
       cwd,
-      source: "startup",
+      prompt: "existing conversation",
     });
     await ready(session.elwoodSessionId, cwd, "claude-resume");
     await session.stop();

@@ -1,6 +1,6 @@
 /**
  * The Claude hook-bridge message and error handlers that `build.ts` hands
- * to the bridge factory. Implements PRD §5.3, §5.4, §6, and §8:
+ * to the bridge factory. Implements PRD §5.2, §5.3, §5.4, §6, and §8:
  * normalize each hook, emit its `hook`/`activity` events, run the caller's hook
  * with a bounded timeout, and drive readiness/turn state — initial readiness on
  * `InstructionsLoaded` (C-API-28), turn-end on an unblocked `Stop` (C-CLAUDE-15).
@@ -54,8 +54,6 @@ export function buildClaudeHookHandler(
         ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
         : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
-    if (event.hook_event_name === "SessionStart")
-      deps.getSession()?.rememberClaudeSessionId(event.session_id);
     observation.run("transcript", () => deps.observeHookTranscript(event));
     observation.run("hook", () => emitter.emit("hook", event));
     observation.run("activity", () =>
@@ -76,6 +74,11 @@ export function buildClaudeHookHandler(
     );
     const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     const blocked = isBlock(outcome.result);
+    // Claude announces an id before an unused conversation is saved (C-CLAUDE-08).
+    if (event.hook_event_name === "UserPromptSubmit" && !blocked)
+      observation.run("lifecycle", () =>
+        deps.getSession()?.rememberClaudeSessionId(event.session_id),
+      );
     observation.run("activity", () =>
       emitter.emit(
         "activity",

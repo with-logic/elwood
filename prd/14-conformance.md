@@ -150,7 +150,7 @@ Each criterion has:
 | C-CLAUDE-05 | §10 | Missing `claude` fails with `claude_not_found` and a useful message. |
 | C-CLAUDE-06 | §10 | An immediately failing or unusable Claude process fails with `claude_start_failed` or a more specific typed error. |
 | C-CLAUDE-07 | §5.1 | `autoupdate: true` runs `claude update` before spawning Claude. |
-| C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. |
+| C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. The first unblocked `UserPromptSubmit` establishes that id; `SessionStart` and blocked submissions do not. `startOrResumeClaude` therefore starts fresh after a startup-only session is stopped. |
 | C-CLAUDE-09 | §9.2 | `autoupdate: true` rechecks the Claude version after running `claude update`. |
 | C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity, supporting both older numbered-option layouts and current cursor-selectable layouts. The activity is emitted once per answered gate, when the composer verifies the answer, including when Claude shows a blank or banner-only screen between the erased dialog and its composer (C-TRUST-01). |
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
