@@ -107,17 +107,19 @@ conversation already exists, so no `SessionStart` re-fires). To avoid that, on
 (`createReadinessGate(onReady, resumed)`, `src/runtime/session/readiness.ts`).
 
 **The composer marker is safe as a readiness signal on resume, but NOT on cold
-start.** On a cold start the composer (`›` for Codex, `❯` for Claude) is a
-**boot-time placeholder** that paints ~1 s before the input loop is live and is
-byte-identical to the ready composer — sending a prompt then gets silently
-swallowed. On resume the conversation already exists, so the composer is live
+start.** On a cold start the composer (`›` for ordinary Codex effort, `»` for
+Codex `ultra`, `❯` for Claude) is a **boot-time placeholder** that paints ~1 s
+before the input loop is live and is byte-identical to the ready composer —
+sending a prompt then gets silently swallowed. On resume the conversation already exists, so the composer is live
 when it paints and a prompt sent at that moment is accepted. This is why the
 resume-composer path is gated on `resumed`. C-API-28, PRD §5.3.
 
-**The composer caret is byte-identical to a permission/trust dialog's option
-caret.** A resume opening onto a dialog must NOT latch ready off the composer, or
-a draining Enter could approve the dialog. Resume-composer readiness is gated on
-`!facts.blocking_prompt_visible`. This is a security property, not a nicety.
+**Ordinary Codex `›` and Claude `❯` composer carets are byte-identical to their
+permission/trust dialog option carets.** Codex `ultra` uses the distinct `»`
+composer marker. A resume opening onto a dialog must NOT latch ready off the
+composer, or a draining Enter could approve the dialog. Resume-composer readiness
+is gated on `!facts.blocking_prompt_visible`. This is a security property, not a
+nicety.
 
 **Observe readiness through the signals Elwood sends — never the state file.**
 `session.status`, the `status` event, or `waitForStatus(s => s === "ready")` on
@@ -2715,3 +2717,18 @@ Claude Code 2.1.326 combines `More models` with the inline effort hint
 hint to the footer. Both are complete native model pickers. The npm-published
 2.1.326 layout is recorded separately so testing a newer native install cannot
 hide a regression in the published CLI.
+
+Codex 0.169.0 changes the native composer marker from `›` to `»` at `ultra`
+effort. Ordinary-effort composers, model choices, and approval choices keep
+their `›` caret. The composer prefix still occupies two cells, so readiness,
+empty-input and staged-draft checks must accept the new marker without
+weakening their footer, cursor, or
+dialog guards. Queued-question boundaries must recognize it too. Whitespace
+drafts can look empty after trimming; check the live whitespace geometry before
+treating the same frame as an ordinary text draft. The versioned ultra fixture
+and the no-turn ultra launch probe record the native layout.
+
+Codex 0.170.0 renders `» [Image #1]` after a real clipboard-image paste at
+ultra effort. `tests/fixtures/codex-0.170.0/ultra-image-composer.txt` captures
+that idle frame after Ctrl+V, without submitting a model turn; its project path
+is anonymized.

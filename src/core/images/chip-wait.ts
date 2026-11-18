@@ -63,11 +63,11 @@ export type ChipWaitOptions = {
   readonly pollMs: number;
 };
 
-// Both CLIs render the image chip on the composer PROMPT line (Codex `›`, Claude
+// Both CLIs render the image chip on the composer PROMPT line (Codex `›`/`»`, Claude
 // `❯`), e.g. `› [Image #1]`. Counting chips only on lines bearing a prompt marker
 // means assistant/tool/transcript output elsewhere that happens to contain a
 // literal `[Image #N]` cannot spoof a confirmation (C-API-44/45/46).
-const promptLine = /^[^\S\r\n]*[›❯]/;
+const promptLine = /^[^\S\r\n]*[›»❯]/;
 const chip = /\[Image #\d+\]/g;
 
 /** Counts `[Image #N]` chips on the composer prompt line(s) only. */

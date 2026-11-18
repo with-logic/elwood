@@ -2,7 +2,13 @@
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
-import { modalFooter, notesFooter, queuedFooter, queuedPanelHeader } from "./chrome.ts";
+import {
+  composerInputPrefix,
+  modalFooter,
+  notesFooter,
+  queuedFooter,
+  queuedPanelHeader,
+} from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
 import { nativeSelection } from "./selection.ts";
 
@@ -41,7 +47,7 @@ export function queuedBadge(frame: QuestionFrame): number | undefined {
   if (
     !match ||
     lines[start + 2] !== "⇧← to answer" ||
-    !lines.slice(start + 3).some((line) => line.startsWith("› "))
+    !lines.slice(start + 3).some((line) => composerInputPrefix.test(line))
   )
     return undefined;
   return Number(match[1]);

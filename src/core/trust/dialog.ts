@@ -17,7 +17,7 @@ const footerRow =
   /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to (?:cancel|go back))|enter continue · esc quit)\s*$/i;
 // Native Codex's location prelude begins with >; conversation/composer rows do too.
 const conversationRow =
-  /^\s*(?:[●•]|[❯›](?!\s*\d+[.)])|>(?!\s+You are in (?:\/|[A-Z]:[\\/]))(?!\s*\d+[.)])|(?:user|assistant)\s*:)/i;
+  /^\s*(?:[●•]|[❯›»](?!\s*\d+[.)])|>(?!\s+You are in (?:\/|[A-Z]:[\\/]))(?!\s*\d+[.)])|(?:user|assistant)\s*:)/i;
 
 export type TrustDialog = {
   readonly header: string;

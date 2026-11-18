@@ -19,9 +19,10 @@ afterEach(() => vi.useRealTimers());
 describe("waitForImageChip (C-API-44)", () => {
   test("C-API-44 imageChipCount counts chips only on the composer prompt line", () => {
     expect(imageChipCount("")).toBe(0);
-    // Chips on the composer prompt line (Codex `›`, Claude `❯`) count.
+    // Chips on the composer prompt line (Codex `›`/`»`, Claude `❯`) count.
     expect(imageChipCount("› [Image #1] [Image #2]")).toBe(2);
     expect(imageChipCount("❯ [Image #1]")).toBe(1);
+    expect(imageChipCount("» [Image #1] [Image #2]")).toBe(2);
     // An empty composer prompt line (no chip yet) counts zero, not a crash.
     expect(imageChipCount("› ")).toBe(0);
     // A chip-like string on a NON-prompt line (assistant/transcript output) does not.
@@ -44,7 +45,11 @@ describe("waitForImageChip (C-API-44)", () => {
     await settled;
   });
 
-  test("C-API-44 resolves once the chip count rises above before", async () => {
+  test.each([
+    "›",
+    "»",
+    "❯",
+  ])("C-API-44 %s resolves once the chip count rises above before", async (marker) => {
     let text = "";
     const term = {
       settled: () => Promise.resolve(),
@@ -53,7 +58,7 @@ describe("waitForImageChip (C-API-44)", () => {
       snapshot: () => ({ text }),
     };
     const done = waitForImageChip(term, 0, new AbortController().signal, opts);
-    text = "› [Image #1]";
+    text = `${marker} [Image #1]`;
     await vi.runAllTimersAsync();
     await expect(done).resolves.toBeUndefined();
   });

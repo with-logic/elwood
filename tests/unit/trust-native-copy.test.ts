@@ -59,6 +59,7 @@ test.each([
   folderAccess.replace("Your trust decision will be saved.", ""),
   `• Assistant quotes the dialog:\n${folderAccess}`,
   `› quoted user prompt\n${folderAccess}`,
+  `» quoted user prompt\n${folderAccess}`,
 ])("C-TRUST-01 foreign prose cannot borrow native trust authority: %s", (frame) => {
   const write = vi.fn();
   expect(

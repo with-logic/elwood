@@ -1,4 +1,5 @@
-/** Recognize native Codex question footer chrome independently of input parsing (PRD §4; C-ATTN-02). */
+/** Recognize native Codex question chrome and composer boundaries independently of input parsing (PRD §4; C-ATTN-02). */
+export const composerInputPrefix = /^[›»] /;
 export const queuedPanelHeader = "• Queued follow-up inputs";
 export const questionHeader = /^\s*Question (\d+)\/(\d+) \(\d+ unanswered\)$/;
 

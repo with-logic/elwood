@@ -51,6 +51,7 @@ test("rejects partial, unknown, quoted and stale cursor layouts", () => {
     { ...first, cursorRow: 100 },
     { ...first, cursorRow: 0 },
     frame(`${first.text.trimEnd()}\n› normal composer`),
+    frame(`${first.text.trimEnd()}\n» normal composer`),
   ])
     expect(questionView(invalid)).toBeUndefined();
   const badge = captured("async-badge.txt");
@@ -108,4 +109,13 @@ test("later queued pages accept the previous-question footer", () => {
     .text.replace("1 of 2", "2 of 2")
     .replace("⇧→ main prompt", "⇧→ prev question");
   expect(questionView(frame(later))).toMatchObject({ kind: "queued", index: 1, count: 2 });
+});
+
+test("C-QUESTION-04 ultra composer retains the queued-question badge", () => {
+  const badge = captured("async-badge.txt");
+  expect(
+    queuedBadge(
+      frame(badge.text.replaceAll("› Ask Codex to do anything", "» Ask Codex to do anything")),
+    ),
+  ).toBe(2);
 });

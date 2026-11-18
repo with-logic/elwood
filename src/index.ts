@@ -121,7 +121,12 @@ export type {
   ElwoodQuestionRequest,
   QuestionCloseReason,
 } from "./core/questions/types.ts";
-export type { ClaudeReasoningEffort, CodexReasoningEffort } from "./core/reasoning-effort.ts";
+export {
+  type ClaudeReasoningEffort,
+  type CodexReasoningEffort,
+  claudeReasoningEfforts,
+  codexReasoningEfforts,
+} from "./core/reasoning-effort.ts";
 export type { TurnEvent } from "./core/simple/events.ts";
 export type { TurnOptions } from "./core/simple/session.ts";
 export type {

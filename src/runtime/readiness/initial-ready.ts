@@ -43,10 +43,11 @@ export type ComposerReadyFacts = {
 
 /**
  * On RESUME, mark readiness on the first genuine composer frame: the composer is
- * visible AND no blocking dialog is on screen. The dialog's option caret (`›`/`❯`) is
- * byte-identical to the composer marker, so a dialog frame must NOT latch readiness —
- * otherwise a draining queued message's Enter could approve the dialog; readiness waits
- * for the composite hold owned by `createReadinessGate` to release on verified idle.
+ * visible AND no blocking dialog is on screen. Ordinary Codex `›` and Claude `❯`
+ * composers share their dialog's option caret; Codex `ultra` uses the distinct `»`.
+ * A dialog frame must NOT latch readiness, or a queued message's Enter could approve it;
+ * readiness waits for the composite hold owned by `createReadinessGate`
+ * to release on verified idle.
  * Cold start (`resumed: false`) never fires here, so the
  * composer stays an unsafe signal there (C-API-28).
  */

@@ -1,7 +1,7 @@
 /** Read live queue submission evidence without retaining answer text (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
-import { questionHeader, queuedPanelHeader } from "./chrome.ts";
+import { composerInputPrefix, questionHeader, queuedPanelHeader } from "./chrome.ts";
 
 const pendingHeader = "• Messages to be submitted after next tool call";
 const pendingPromptPrefix = "  ↳ > ";
@@ -13,7 +13,9 @@ export function nativePendingPrompts(frame: QuestionFrame): readonly string[] {
   const header = frame.lines.findLastIndex((line) => line.startsWith(pendingHeader));
   if (header < working) return [];
   const after = frame.lines.slice(header + 1);
-  const end = after.findIndex((line) => line === queuedPanelHeader || line.startsWith("› "));
+  const end = after.findIndex(
+    (line) => line === queuedPanelHeader || composerInputPrefix.test(line),
+  );
   return (end < 0 ? after : after.slice(0, end))
     .filter((line) => line.startsWith(pendingPromptPrefix))
     .map((line) => line.slice(pendingPromptPrefix.length).trimEnd());

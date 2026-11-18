@@ -20,6 +20,17 @@ test("unanchored pending rows cannot identify a current submission", () => {
   ).toEqual([]);
 });
 
+test.each([
+  "›",
+  "»",
+])("C-QUESTION-04 the %s composer ends pending-submission evidence", (marker) => {
+  const text =
+    "• Working (3s • esc to interrupt)\n" +
+    "• Messages to be submitted after next tool call\n  ↳ > Q\n" +
+    `${marker} Ask Codex to do anything\n  ↳ > unrelated history`;
+  expect(nativePendingPrompts(frame(text))).toEqual(["Q"]);
+});
+
 test("a blank row ends bounded quotation before a partially painted panel", () => {
   expect(
     nativeQuestionFragment(frame("• Explanation:\n  Quoted body\n\n  Question 1/2 (2 unanswered)")),

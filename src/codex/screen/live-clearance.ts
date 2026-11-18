@@ -15,7 +15,7 @@ export function liveCodexClearance(readTerminal: () => ElwoodTerminal): TrustCle
     const terminal = readTerminal();
     if (codexWorkingTitle.test(terminal.title)) return false;
     const frame = currentRenderedFrame(terminal);
-    // Native input follows the two-cell "› " prefix (zero-based column 2).
+    // Native input follows the two-cell "› " or "» " prefix (zero-based column 2).
     if (
       frame === undefined ||
       !settledCursorVisible(terminal.xterm) ||
