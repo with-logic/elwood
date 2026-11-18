@@ -30,6 +30,8 @@ async function start() {
   const statuses: ElwoodSessionStatus[] = [];
   session.on("warning", (warning) => warnings.push(warning));
   session.on("status", ({ status }) => statuses.push(status));
+  // The startup warning gate opens on a real timer before this test takes over the clock.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.useFakeTimers();
   return { session, warnings, statuses };
 }
