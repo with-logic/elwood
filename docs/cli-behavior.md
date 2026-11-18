@@ -2715,3 +2715,12 @@ Claude Code 2.1.326 combines `More models` with the inline effort hint
 hint to the footer. Both are complete native model pickers. The npm-published
 2.1.326 layout is recorded separately so testing a newer native install cannot
 hide a regression in the published CLI.
+
+Codex 0.169.0 changes the native composer marker from `›` to `»` at `ultra`
+effort. Model and approval choices keep their ordinary `›` caret. The composer
+prefix still occupies two cells, so readiness, empty-input and staged-draft
+checks must accept the new marker without weakening their footer, cursor, or
+dialog guards. Queued-question boundaries must recognize it too. Whitespace
+drafts can look empty after trimming; check the live whitespace geometry before
+treating the same frame as an ordinary text draft. The versioned ultra fixture
+and the no-turn ultra launch probe record the native layout.

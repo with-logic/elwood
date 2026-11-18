@@ -28,6 +28,23 @@ test("C-API-28 C-TRUST-01 captured Terra display name proves a configured compos
   expect(codexComposerRowsClearance(frame.split("\n"))).toBe(true);
 });
 
+test.each([
+  "none",
+  "max",
+  "ultra",
+])("C-API-28 C-TRUST-01 native %s effort footer proves a configured composer", (effort) => {
+  const frame = `› Ask Codex to do anything\n  GPT-6.2-Sol ${effort} · /tmp/elwood-effort-CAPTURE\n  ← for agents · ? for shortcuts`;
+  expect(codexComposerConfigured(frame)).toBe(true);
+  expect(codexComposerRowsClearance(frame.split("\n"), 0)).toBe(true);
+  expect(
+    codexComposerRowsClearance(
+      frame.replace("› Ask Codex to do anything", "› draft").split("\n"),
+      0,
+    ),
+  ).toBe(false);
+  expect(codexComposerRowsClearance(`${frame}\n  1. Yes\n  2. No`.split("\n"), 0)).toBe(false);
+});
+
 test.each(footers)("C-API-56 captured $label footer acknowledges the native cleared composer", ({
   frame,
 }) => {

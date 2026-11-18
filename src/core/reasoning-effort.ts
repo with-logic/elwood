@@ -2,7 +2,7 @@
  * Per-adapter reasoning-effort enums and a shared before-spawn validator.
  * Implements PRD §5.1/§5.2 (C-CLAUDE-20) and §5.5/§5.6 (C-CODEX-21).
  *
- * The two CLIs accept DIFFERENT effort sets (Codex adds `none`/`minimal`; both
+ * The two CLIs accept DIFFERENT effort sets (Codex adds `none`/`minimal`/`ultra`; both
  * share `low`..`max`), and both are version-coupled to the installed CLI, so the
  * value is a fixed per-adapter allowlist rather than a shared Elwood enum. Elwood
  * validates BEFORE spawning: Claude's `--effort` would reject inconsistently and
@@ -23,20 +23,20 @@ import { type ElwoodErrorName, elwoodError } from "./errors.ts";
  * rejects a union member the tuple omits.
  */
 export type ClaudeReasoningEffort = ClaudeEffortLevel;
-export const claudeReasoningEfforts = [
+export const claudeReasoningEfforts = Object.freeze([
   "low",
   "medium",
   "high",
   "xhigh",
   "max",
-] as const satisfies readonly ClaudeReasoningEffort[];
+] as const satisfies readonly ClaudeReasoningEffort[]);
 /** `T` itself, instantiable only when `U` (the union) is covered by `T`'s members. */
 type Covers<T extends readonly string[], U extends T[number]> = readonly U[] extends T ? never : T;
 /** The launch tuple, proven to cover the hook-payload union (fails to compile on drift). */
 export type ClaudeReasoningEfforts = Covers<typeof claudeReasoningEfforts, ClaudeReasoningEffort>;
 
-/** Codex `model_reasoning_effort` values (codex 0.149.1, API-enforced enum). */
-export const codexReasoningEfforts = [
+/** Codex launch values, including `ultra` in the 0.169.0 native model catalog. */
+export const codexReasoningEfforts = Object.freeze([
   "none",
   "minimal",
   "low",
@@ -44,7 +44,8 @@ export const codexReasoningEfforts = [
   "high",
   "xhigh",
   "max",
-] as const;
+  "ultra",
+] as const);
 export type CodexReasoningEffort = (typeof codexReasoningEfforts)[number];
 
 /**

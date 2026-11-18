@@ -35,7 +35,7 @@ function* nativeWarningRows(text: string): Generator<string> {
   for (const raw of text.split(/\r?\n/)) {
     // Keep row provenance: a conversation boundary before the warning invalidates
     // its authority even if a later line copies the native welcome or warning.
-    if (/^\s*[›❯●•>]/.test(raw)) break;
+    if (/^\s*[›»❯●•>]/.test(raw)) break;
     if (/^\s*│\s*>_ OpenAI Codex \(v[\d.]+\)/.test(raw)) header = true;
     if (!body) {
       if (header && /^\s*╰─+╯\s*$/.test(raw)) body = true;

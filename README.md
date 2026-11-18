@@ -418,6 +418,23 @@ or receives invalid input is reported as a `hookError` event and the agent
 proceeds as if no handler ran. Empty objects are invalid Codex results and fail
 open the same way.
 
+## Reasoning effort
+
+Model and reasoning effort are separate launch settings. Both adapters accept
+`reasoningEffort` on start and resume, including the lazy session constructors.
+The package exports immutable choices for an application's effort selector:
+
+```ts
+import { claudeReasoningEfforts, codexReasoningEfforts } from "@with-logic/elwood";
+
+// Claude: low, medium, high, xhigh, max
+// Codex: none, minimal, low, medium, high, xhigh, max, ultra
+```
+
+The corresponding types are `ClaudeReasoningEffort` and `CodexReasoningEffort`.
+Pass the selected value as `reasoningEffort` when starting or resuming the
+session; individual models can support fewer levels than the CLI's full enum.
+
 ## Agent speed
 
 Speed options preserve the native agent's distinctions:

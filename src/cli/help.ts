@@ -1,5 +1,5 @@
 /**
- * Static production help for the first-party headless Elwood command.
+ * Production help for the first-party headless Elwood command.
  * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-21 through C-CLI-26.
  */
 
@@ -33,7 +33,7 @@ Agent and turn options:
   --agent <claude|codex>      Select the agent (default: first available of claude, codex)
   --model <id>                Select or switch the model
   --reasoning-effort <level>  Claude: low|medium|high|xhigh|max
-                              Codex: none|minimal|low|medium|high|xhigh|max
+                              Codex: none|minimal|low|medium|high|xhigh|max|ultra
   --persona <prompt>          Run a real side-effect-capable setup turn; hide its answer
   -C, --cwd <path>            Workspace for a new run (default: current directory)
   --image <path>              Attach an image; repeat to preserve order

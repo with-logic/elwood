@@ -40,26 +40,36 @@ afterEach(() => {
 });
 
 /** Emit the `[Image #1]` chip once the Ctrl+V lands so the attach wait resolves. */
-function driveChip(): void {
+function driveChip(marker = "›"): void {
   const tick = () => {
-    if (ptys[0]!.writes.includes(CTRL_V)) ptys[0]!.emitData(`[999;1H[K› [Image #1]`);
+    if (ptys[0]!.writes.includes(CTRL_V)) ptys[0]!.emitData(`[999;1H[K${marker} [Image #1]`);
     else setTimeout(tick, 20);
   };
   setTimeout(tick, 20);
 }
 
 describe("CodexSessionApi image attachment (C-API-44/46)", () => {
-  for (const method of ["sendMessage", "sendPrompt", "sendGuidance"] as const) {
-    test(`C-API-46 ${method} sets the image, sends Ctrl+V, then the text`, async () => {
+  for (const [method, marker] of [
+    ["sendMessage", "›"],
+    ["sendPrompt", "›"],
+    ["sendGuidance", "›"],
+    ["sendMessage", "»"],
+    ["sendPrompt", "»"],
+    ["sendGuidance", "»"],
+  ] as const) {
+    test(`C-API-46 ${method} ${marker} sets the image, sends Ctrl+V, then the text`, async () => {
       const cwd = tempDir();
       installFakes();
       const img = join(cwd, "shot.png");
       const { writeFileSync } = await import("node:fs");
       writeFileSync(img, PNG);
-      const session = await startCodex({ cwd });
+      const session = await startCodex({
+        cwd,
+        reasoningEffort: marker === "»" ? "ultra" : "medium",
+      });
       const queued = session[method]("describe", { images: [{ path: img }] });
       await becomeReady(session.elwoodSessionId, cwd);
-      driveChip();
+      driveChip(marker);
       await queued;
       expect(clip.set).toHaveLength(1);
       expect(ptys[0]!.writes[0]).toBe(CTRL_V);

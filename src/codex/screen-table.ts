@@ -20,14 +20,14 @@ import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 
 const verifiedAgainst =
-  "codex-cli 0.142.5; work pulses and question panels: 0.163.0; resume loading: 0.164.0";
+  "codex-cli 0.142.5; work pulses/questions: 0.163.0; resume: 0.164.0; ultra composer: 0.169.0";
 
 /**
  * Original rules verified against codex-cli 0.142.5; 0.163.0 captures additionally
  * verify pulsing work and native question panels. The working spinner renders
  * "• Working (3s • esc to interrupt)", the interrupt banner renders
  * "■ Conversation interrupted", and the idle composer marker is a
- * line-leading "›". Approval dialogs ask "Would you like to run the following
+ * line-leading "›" ("»" at ultra effort). Approval dialogs ask "Would you like to run the following
  * command?" (or an apply-patch variant) with a numbered option list and a
  * "Press enter to confirm or esc to cancel" footer; the dialog also renders a
  * "›" option caret, so the turn watcher's blocking-prompt guard keeps that
@@ -43,7 +43,7 @@ const verifiedAgainst =
  */
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
-    { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
+    { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*[›»]/m] },
     { id: "codex-resume-loading", fact: "resume_loading_visible", all: [/^\s*Resuming session…/m] },
     { id: "codex-working-spinner", fact: "working_visible", all: [codexWorkingScreen] },
     {

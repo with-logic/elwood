@@ -1,22 +1,70 @@
 /**
- * Real-CLI verification that a caller-selected reasoning effort is ACCEPTED by the
- * live CLIs (PRD §5.1/§5.5, C-CLAUDE-20/C-CODEX-21). Elwood forwards Claude's
- * `--effort <level>` flag and Codex's `-c model_reasoning_effort=<value>` override;
- * this pins that the real binaries launch and reach ready with them, which a unit
- * test cannot prove (the flag/override only meets the real CLI here). The effort
- * itself is applied server-side and is not locally observable, so the assertion is
- * the honest one: the session reaches ready and completes a turn with effort set.
+ * Real-CLI reasoning-effort configuration (PRD §5.1/§5.5, C-CLAUDE-20/C-CODEX-21).
+ * Elwood forwards Claude's `--effort` flag and Codex's model_reasoning_effort override.
+ * The ultra case checks native composer configuration without a model turn; the high
+ * cases also complete a turn to exercise provider acceptance, which a local footer
+ * alone cannot establish.
  */
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
+import { compareVersions, parseVersion } from "../../src/core/versions.ts";
 import {
   type ClaudeSessionApi,
   type CodexSessionApi,
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { pathSkipReason, resolvedAgentProgramPath } from "./availability.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
+import {
+  cleanup,
+  codexAuthMissing,
+  makeProject,
+  sandboxedCodexHome,
+  skipIf,
+  skipNow,
+  skipReason,
+  waitFor,
+} from "./helpers.ts";
+
+test("C-CODEX-21 C-API-28 Codex launches with ultra effort and a configured composer", {
+  skip: skipIf(pathSkipReason("codex"), codexAuthMissing()),
+  timeout: 90_000,
+}, async (t) => {
+  const version = parseVersion(
+    execFileSync(resolvedAgentProgramPath("codex"), ["--version"], {
+      encoding: "utf8",
+      timeout: 10_000,
+    }),
+  );
+  assert.ok(version, "Codex reports its native CLI version");
+  if (compareVersions(version, "0.169.0") < 0) {
+    skipNow(t, "The ultra composer probe requires Codex 0.169.0 or newer");
+    return;
+  }
+  const project = makeProject("codex");
+  const sandbox = sandboxedCodexHome(project, 'model_reasoning_effort = "medium"\n');
+  const launches = codexLaunches();
+  let session: CodexSessionApi | undefined;
+  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
+    session = await launches.track(
+      startCodex({
+        ...project,
+        model: "gpt-6.2-sol",
+        reasoningEffort: "ultra",
+        sandbox: "read-only",
+        approvalPolicy: "never",
+        autotrust: true,
+        hooks: {},
+      }),
+    );
+    await session.waitForStatus((status) => status === "ready", 60_000);
+    assert.match(session.terminal.snapshot().text, /(?:gpt|GPT)-[\w.-]+(?: Terra)? ultra/);
+    // Native configuration evidence only: opening the CLI runs no model turn.
+  });
+});
 
 test("C-CLAUDE-20 Claude launches and reaches ready with --effort set (real CLI)", {
   skip: skipIf(skipReason("claude")),

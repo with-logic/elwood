@@ -5,14 +5,42 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { cliHelp } from "../../src/cli/help.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import {
   claudeReasoningEfforts,
   codexReasoningEfforts,
   validateReasoningEffort,
 } from "../../src/core/reasoning-effort.ts";
+import * as elwood from "../../src/index.ts";
 
 describe("validateReasoningEffort", () => {
+  test("C-CLI-02 effort help agrees with the exported harness choices", () => {
+    expect(cliHelp).toContain(`Claude: ${claudeReasoningEfforts.join("|")}`);
+    expect(cliHelp).toContain(`Codex: ${codexReasoningEfforts.join("|")}`);
+  });
+  test("C-CLAUDE-20 C-CODEX-21 exports immutable, adapter-specific effort choices", () => {
+    expect(elwood.claudeReasoningEfforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(elwood.codexReasoningEfforts).toEqual([
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra",
+    ]);
+    expect(Object.isFrozen(elwood.claudeReasoningEfforts)).toBe(true);
+    expect(Object.isFrozen(elwood.codexReasoningEfforts)).toBe(true);
+  });
+
+  test("C-CODEX-21 accepts the native Codex ultra reasoning level", () => {
+    expect(
+      validateReasoningEffort("ultra", codexReasoningEfforts, "codex_invalid_reasoning_effort"),
+    ).toBe("ultra");
+  });
+
   test("returns a valid value unchanged and passes undefined through", () => {
     expect(
       validateReasoningEffort("high", claudeReasoningEfforts, "claude_invalid_reasoning_effort"),

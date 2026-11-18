@@ -18,21 +18,20 @@ function prepareCodexStaged(terminal: ElwoodTerminal, payload: string): () => bo
   let whitespaceOnly: boolean | undefined;
   return () => {
     const current = readIdleComposerFrame(terminal, codexScreenFactTable);
-    const draft = readStagedComposerFrame(
-      current,
-      codexEmptyInputRows,
-      "› Ask Codex to do anything",
+    const prompt = current?.frame.lines.findLast(
+      (row, index) => index <= current.viewportCursorRow && /^[›»](?:[ \u00a0]|$)/.test(row),
     );
-    if (draft === undefined) {
-      if (!readStagedWhitespace(current, codexEmptyInputRows, "› Ask Codex to do anything"))
-        return false;
+    const placeholder = `${prompt?.charAt(0) ?? "›"} Ask Codex to do anything`;
+    if (readStagedWhitespace(current, codexEmptyInputRows, placeholder)) {
       whitespaceOnly ??= payload.length > 0 && payload.trim().length === 0;
       return whitespaceOnly;
     }
+    const draft = readStagedComposerFrame(current, codexEmptyInputRows, placeholder);
+    if (draft === undefined) return false;
     if (imageChipCount(draft) > 0) return true;
     // Derive only after a live draft exists; retain only for this recovery sequence.
     lastLine ??= normalizedLastLine(payload);
-    return lastLine.length > 0 && draft.replace(/\s+/gu, " ").includes(lastLine);
+    return lastLine.length > 0 && draft.slice(2).replace(/\s+/gu, " ").includes(lastLine);
   };
 }
 

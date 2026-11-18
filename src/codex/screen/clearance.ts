@@ -7,7 +7,8 @@ import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { codexWorkingScreen } from "./working.ts";
 
-const caretRow = /^\s*›/;
+const caretRow = /^\s*[›»]/;
+const composerRowStart = /^[›»](?:\s|$)/;
 const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
 const placeholders = new Set([
@@ -22,7 +23,7 @@ const placeholders = new Set([
   "Use /skills to list available skills",
 ]);
 const modelFooter =
-  /^ {2}(?:gpt|GPT)-[\w.-]+(?: Terra)? (?:minimal|low|medium|high|xhigh|default)(?: (?:Fast|Ultrafast))?(?: · (?:~?\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$/;
+  /^ {2}(?:gpt|GPT)-[\w.-]+(?: Terra)? (?:none|minimal|low|medium|high|xhigh|max|ultra|default)(?: (?:Fast|Ultrafast))?(?: · (?:~?\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$/;
 const hintFooter =
   /^(?: {2})?(?:← for agents · )?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
 
@@ -49,16 +50,16 @@ function welcomeBox(rows: readonly string[]): boolean {
   });
 }
 
+function isUserHistoryRow(row: string, rows: readonly string[], index: number): boolean {
+  return /^[›»] \S/.test(row) && !(/^[›»] \d+[.)]/.test(row) && numberedSibling(rows, index));
+}
+
 /** Preserve row boundaries when excluding complete user history or assistant quotation. */
 function unquotedRows(rows: readonly string[], liveCursor: boolean): readonly string[] {
   let quoted = false;
   let userEnd = -1;
   return rows.map((row, index) => {
-    if (
-      liveCursor &&
-      /^› \S/.test(row) &&
-      !(/^› \d+[.)]/.test(row) && numberedSibling(rows, index))
-    )
+    if (liveCursor && isUserHistoryRow(row, rows, index))
       userEnd = completeUserHistoryEnd(rows, index);
     if (index < userEnd) return "";
     if (liveCursor && /^• \S/.test(row) && !codexWorkingScreen.test(row)) {
@@ -76,12 +77,7 @@ function completeUserHistoryEnd(rows: readonly string[], start: number): number 
   let end = start + 1;
   for (; end < rows.length; end++) {
     const row = rows[end] as string;
-    if (
-      row === "" ||
-      /^ {2,}\S/.test(row) ||
-      (/^› \S/.test(row) && !(/^› \d+[.)]/.test(row) && numberedSibling(rows, end)))
-    )
-      continue;
+    if (row === "" || /^ {2,}\S/.test(row) || isUserHistoryRow(row, rows, end)) continue;
     return /^• \S/.test(row) && !codexWorkingScreen.test(row) ? end : start;
   }
   return start;
@@ -95,19 +91,15 @@ function hasNativeDialogEvidence(rows: readonly string[], liveCursor: boolean): 
       row.trim() === "Folder access" ||
       approvalHeader.test(row.trimStart()) ||
       isTrustDialogHeader(row) ||
-      /^\s*[›❯>]\s*\d+[.)]\s*\S/.test(row) ||
-      /^\s*(?:[›❯>]\s*)?\d+[.)]\s*(?:Yes|No)\b/i.test(row)
+      /^\s*[›»❯>]\s*\d+[.)]\s*\S/.test(row) ||
+      /^\s*(?:[›»❯>]\s*)?\d+[.)]\s*(?:Yes|No)\b/i.test(row)
     )
       return true;
   }
   // A live input cursor can coexist with quoted menus in transcript history, but
   // cannot override approval fragments outside a bounded assistant quotation.
   if (liveCursor && unquoted.some((row) => /^\s*❯\s+\S/.test(row))) return true;
-  if (
-    !liveCursor &&
-    rows.some((row) => /^\s*(?:[›❯>]\s*\d+[.)]\s*\S|(?:\d+[.)]\s*|[›❯]\s+)(?:Yes|No)\b)/i.test(row))
-  )
-    return true;
+  if (!liveCursor && rows.some((row) => /^\s*[›»❯]\s+(?:Yes|No)\b/i.test(row))) return true;
   let startRow = 0;
   for (;;) {
     const cursor = cursorOptionRows(unquoted, startRow);
@@ -120,14 +112,14 @@ function hasNativeDialogEvidence(rows: readonly string[], liveCursor: boolean): 
 /** A standalone numbered user prompt is not a native option block. */
 function numberedSibling(rows: readonly string[], index: number): boolean {
   return [rows[index - 1], rows[index + 1]].some(
-    (row) => row !== undefined && /^\s*(?:[›❯>]\s*)?\d+[.)]\s*\S/.test(row),
+    (row) => row !== undefined && /^\s*(?:[›»❯>]\s*)?\d+[.)]\s*\S/.test(row),
   );
 }
 
 /** Locate a composer by retained footer evidence or a live-verified welcome region. */
 export function codexComposerRow(frameRows: readonly string[], liveClear: boolean): number {
   const at = frameRows.findLastIndex(
-    (row) => /^›(?:\s|$)/.test(row) && placeholders.has(row.slice(1).trim()),
+    (row) => composerRowStart.test(row) && placeholders.has(row.slice(1).trim()),
   );
   // Submitted transcript prompts can exactly match a placeholder; native chrome
   // must remain too. Welcome chrome also survives in transcripts, so it requires
@@ -142,7 +134,7 @@ export function codexComposerRow(frameRows: readonly string[], liveClear: boolea
  */
 export function codexComposerConfigured(frame: string): boolean {
   const rows = frame.split("\n").map((row) => row.trimEnd());
-  const at = rows.findLastIndex((row) => /^›(?:\s|$)/.test(row));
+  const at = rows.findLastIndex((row) => composerRowStart.test(row));
   return at >= 0 && nativeComposerRegion(rows, at, false);
 }
 
@@ -184,7 +176,7 @@ export function codexComposerRowsEmpty(frameRows: readonly string[], cursorRow?:
   const at = cursorRow ?? rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
   // Native composer starts at column zero; transcript continuations are indented.
-  if (composer === undefined || !/^›(?:\s|$)/.test(composer)) return false;
+  if (composer === undefined || !composerRowStart.test(composer)) return false;
   if (!placeholders.has(composer.slice(1).trim())) return false;
   const above = rows.slice(0, at);
   // A partially painted native approval overrides a cursor left on the old composer.
