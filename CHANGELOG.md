@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Restore complete model listing and session-only switching on current Claude and
+  Codex pickers, including folded legacy models, scrolling, canonical Terra ids,
+  and the native Terra composer display name. Reject prose that merely mentions a
+  picker closing hint before granting navigation authority.
 - Add typed Codex `serviceTier` (default, fast, ultrafast) and Claude `fastMode`
   options on start/resume, including lazy constructors and startOrResume helpers.
   Explicit resume overrides now reach both CLIs without downstream patches; invalid

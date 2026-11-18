@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import {
+  codexComposerConfigured,
   codexComposerRow,
   codexComposerRowsClearance,
 } from "../../../src/codex/screen/clearance.ts";
@@ -17,6 +18,15 @@ const footers = [
   { label: "with path", frame: captured },
   { label: "model only", frame: captured.replace(" · /tmp/elwood_e2e_codex-CAPTURE", "") },
 ];
+
+test("C-API-28 C-TRUST-01 captured Terra display name proves a configured composer", () => {
+  const frame = readFileSync(
+    new URL("../../fixtures/codex-0.169.0/terra-composer.txt", import.meta.url),
+    "utf8",
+  );
+  expect(codexComposerConfigured(frame)).toBe(true);
+  expect(codexComposerRowsClearance(frame.split("\n"))).toBe(true);
+});
 
 test.each(footers)("C-API-56 captured $label footer acknowledges the native cleared composer", ({
   frame,

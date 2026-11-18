@@ -1,0 +1,11 @@
+Select model
+  Your pick is the default for new sessions. For other models, use --model.
+    ↑ 5 more
+    6.  Opus 4.6 ✔             Best for everyday, complex tasks
+  ❯ ▾   More models
+    7.  Fable 5.1              Most capable for your hardest and longest-running tasks
+    ↓ 7 more
+
+
+
+  Enter to collapse · Esc to cancel

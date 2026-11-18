@@ -6,7 +6,7 @@
 
 import { rowPattern } from "./rows.ts";
 
-export const caretRow = /^\s*[❯›]/;
+export const caretRow = /^\s*[❯›»]/;
 export const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
 
 /**

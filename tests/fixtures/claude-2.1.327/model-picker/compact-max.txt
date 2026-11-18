@@ -1,0 +1,13 @@
+Select model
+  Your pick is the default for new sessions. For other models, use --model.
+
+    1.  Default (recommended)  Opus 5.5 · Best for everyday, complex tasks
+    2.  Opus 5.5               For complex work and everyday tasks
+  ❯ 3.  Fable 5.2 ✔            For your toughest challenges
+    ↓ 3 more
+
+  ◈ Max effort
+  May use excessive tokens resulting in long response times or overthinking. Use sparingly for the
+  hardest tasks.
+
+  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel

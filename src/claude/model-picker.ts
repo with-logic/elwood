@@ -10,10 +10,11 @@ import {
   bottomDialogCandidate,
   bottomDialogRow,
   claudeModelPickerHeader,
-  type DialogGrammar,
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
+import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
+import { parseModelViewport } from "../core/models/viewport/parse.ts";
 import { claudeLastComposerClearance } from "./composer/last.ts";
 import {
   isClaudeIdleComposer,
@@ -21,30 +22,17 @@ import {
   isClaudeSwitchShell,
   parseClaudeSwitchConfirmation,
 } from "./model-switch-confirmation.ts";
+import { claudeViewportGrammar as pickerGrammar } from "./models/grammar.ts";
 
 const enterKey = "\r";
-
-/**
- * Claude's picker closes with `Esc to cancel`, windows a list longer than ten rows, and
- * paints a radio-style effort row between its rows and that footer. The effort row follows
- * the HIGHLIGHTED model (2.1.310): ○ low, ◐ medium, ● high, ◉ xhigh, ◈ max, or
- * `○ Effort not supported for Haiku 4.5`. It is matched by its own copy because `●` is also
- * a reply bullet, which the region grammar otherwise rejects as transcript.
- */
-const pickerGrammar: DialogGrammar = {
-  header: claudeModelPickerHeader,
-  footer: /\besc to cancel\b/i,
-  controlRow: /^\s*[○◐●◉◈] (?:\S.* ←\/→ to adjust|Effort not supported for \S.*?)\s*$/,
-  // `↑ 3.` marks the window's first row while rows are hidden above it, `↓ 10.` its last
-  // while rows are hidden below, with `… +3 models` (`… +1 model`) directly under it. The
-  // cursor glyph replaces either marker on its own row.
-  scroll: { above: /^\s*↑/, below: /^\s*↓/, overflow: /^\s*…\s*\+(?<hidden>\d+) models?\s*$/ },
-};
 
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isClear: claudeLastComposerClearance,
-  isCandidate: (text) => bottomDialogCandidate(text, pickerGrammar) || isClaudeSwitchShell(text),
+  isCandidate: (text) =>
+    isModelViewportCandidate(text, pickerGrammar) ||
+    bottomDialogCandidate(text, pickerGrammar) ||
+    isClaudeSwitchShell(text),
   hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
   isCallerDialog: (text) => parseClaudeSwitchConfirmation(text)?.isCacheWarning === false,
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
@@ -58,9 +46,13 @@ export const claudeModelPicker: ModelPickerSpec = {
     if (confirmation !== undefined) return confirmation.isCacheWarning ? "follow-up" : undefined;
     // The title without its options yet: hold input on it, but never write to it.
     if (isClaudeSwitchShell(text)) return "painting";
-    return bottomDialogRow(text, pickerGrammar) < 0 ? undefined : "picker";
+    return parseModelViewport(text, pickerGrammar) !== undefined ||
+      bottomDialogRow(text, pickerGrammar) >= 0
+      ? "picker"
+      : undefined;
   },
-  parse: (text) => parseClaudeModelPicker(text, pickerGrammar.scroll),
+  parse: (text) =>
+    parseModelViewport(text, pickerGrammar) ?? parseClaudeModelPicker(text, pickerGrammar.scroll),
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {

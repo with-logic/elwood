@@ -7,10 +7,12 @@
 import { elwoodError } from "../errors.ts";
 import { arrowDown, arrowUp } from "../input/constants.ts";
 import { sendPickerInput } from "./input.ts";
+import { inPickerOrder } from "./model-row.ts";
 import { isOwnCompletePicker } from "./own-picker.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "./picker.ts";
 import type { AgentModelOption, ParsedModelPicker, PickerRow } from "./rows.ts";
 import { waitForScreen } from "./tui-screen.ts";
+import { revealViewportRows } from "./viewport/walk.ts";
 
 export type PickerWalk = {
   /** One deadline for the whole walk, however many rows the picker claims. */
@@ -39,8 +41,8 @@ export type RevealedPicker = {
  * list is complete once it holds as many rows as the list's length. Arrow keys only move
  * the highlight; what follows the walk is the caller's: a listing cancels with Escape,
  * which keeps model and effort, and a selection moves to its target and applies it. A list
- * that fits its window costs no key, which is every Codex list, since Codex's grammar
- * rejects a scrolled one.
+ * that fits its window costs no key. Modern selectable-item windows use the separate
+ * viewport walk, which also handles Codex's uncounted scroll indicators.
  *
  * The rendered count and row numbers are validated, not trusted, whenever the walk still
  * needs rows (a listing, or `setModel` before its target is rendered). The list's length is
@@ -58,6 +60,8 @@ export async function revealPickerRows(
   opening: ParsedModelPicker,
   walk: PickerWalk,
 ): Promise<RevealedPicker> {
+  if (opening.viewport !== undefined)
+    return revealViewportRows(io, spec, { ...opening, viewport: opening.viewport }, walk);
   const deadline = performance.now() + walk.timeoutMs;
   const ownCompletePicker = isOwnCompletePicker(spec);
   const seen = new Map<number, PickerRow>();
@@ -116,19 +120,13 @@ function listLength(frame: ParsedModelPicker): number | undefined {
   return Number.isSafeInteger(length) ? length : undefined;
 }
 
-/** The highlighted option, or undefined while no cursor is painted. */
+/** The highlighted model, or undefined for a disclosure or an unpainted cursor. */
 export function cursorOption(parsed: ParsedModelPicker): AgentModelOption | undefined {
   return parsed.options[parsed.cursorOptionIndex];
 }
 
 function cursorAbsoluteRowNumber(parsed: ParsedModelPicker): number | undefined {
   return parsed.rows[parsed.cursorOptionIndex]?.absoluteRowNumber;
-}
-
-function inPickerOrder(seen: ReadonlyMap<number, PickerRow>): AgentModelOption[] {
-  return [...seen.values()]
-    .sort((left, right) => left.absoluteRowNumber - right.absoluteRowNumber)
-    .map((row) => row.option);
 }
 
 function revealed(frame: ParsedModelPicker, seen: ReadonlyMap<number, PickerRow>): RevealedPicker {

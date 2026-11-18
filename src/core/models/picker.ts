@@ -18,6 +18,7 @@ import type {
   ParsedModelPicker,
 } from "./rows.ts";
 import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
+import { selectViewportModel } from "./viewport/move.ts";
 import { cursorOption, revealPickerRows } from "./window.ts";
 
 export { isOwnCompletePicker } from "./own-picker.ts";
@@ -109,8 +110,7 @@ export async function setPickerModel(
 ): Promise<void> {
   const opening = await openAndParse(io, spec, timeoutMs);
   const wanted = id.toLowerCase();
-  // Row ids are already lower-cased labels (`rows.ts`), so matching the id
-  // alone covers a caller that passes the display label in any case.
+  // Returned IDs are canonical selectors; callers may vary their casing.
   const isTarget = (option: AgentModelOption) => option.id === wanted;
   const ownCompletePicker = isOwnCompletePicker(spec);
   // A row outside a scrolling window is as selectable as a rendered one: walk only until it
@@ -118,7 +118,9 @@ export async function setPickerModel(
   const walk = { timeoutMs, found: isTarget };
   const { frame: parsed, options } = await revealPickerRows(io, spec, opening, walk);
   const targetOptionIndex = parsed.options.findIndex(isTarget);
-  if (targetOptionIndex === -1 || parsed.cursorOptionIndex === -1) {
+  const targetIsUnlisted = targetOptionIndex === -1;
+  const legacyPickerHasNoCursor = parsed.cursorOptionIndex === -1 && parsed.viewport === undefined;
+  if (targetIsUnlisted || legacyPickerHasNoCursor) {
     await sendPickerInput(io, escapeKey, ownCompletePicker);
     const reason =
       targetOptionIndex === -1
@@ -128,11 +130,21 @@ export async function setPickerModel(
       available: options.map((option) => option.id),
     });
   }
-  const delta = targetOptionIndex - parsed.cursorOptionIndex;
-  const key = delta > 0 ? arrowDown : arrowUp;
-  for (let step = 0; step < Math.abs(delta); step += 1) {
-    await sendPickerInput(io, key, ownCompletePicker);
-    await delay(arrowStepMs);
+  if (parsed.viewport === undefined) {
+    const delta = targetOptionIndex - parsed.cursorOptionIndex;
+    const key = delta > 0 ? arrowDown : arrowUp;
+    for (let step = 0; step < Math.abs(delta); step += 1) {
+      await sendPickerInput(io, key, ownCompletePicker);
+      await delay(arrowStepMs);
+    }
+  } else {
+    await selectViewportModel(
+      io,
+      spec,
+      { ...parsed, viewport: parsed.viewport },
+      wanted,
+      timeoutMs,
+    );
   }
   // Settle on the cursor row's identity, not its index: a scrolled Claude window shifts
   // which rows are rendered as the cursor moves, so the target's index changes with it.

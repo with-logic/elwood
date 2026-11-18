@@ -11,11 +11,12 @@ import { type AgentModelOption, type ClaudeSessionApi, startClaude } from "../..
 import { cleanup, type E2eProject, waitFor } from "./helpers.ts";
 
 /**
- * Opens the picker with raw keys and reads the count it announces, its last rendered row's
- * absolute number plus the `… +K models` hidden below it, and the effort row, which shows
- * the current model's effort while the cursor opens on that model. Then cancels with
- * Escape. Raw keys and its own patterns keep it independent of the code it checks. A picker
- * Elwood did not open holds Elwood's own input until the composer is positively clear again,
+ * Opens the picker with raw keys and reads the current model's effort at its initial cursor.
+ * Legacy layouts count the last absolute model row plus the `… +K models` hidden below it.
+ * Modern layouts expand `More models` and count physical selectable items, subtracting the
+ * non-model disclosure. Then cancels with Escape. Raw keys and its own patterns keep it
+ * independent of the code it checks. A picker Elwood did not open holds Elwood's own input
+ * until the composer is positively clear again,
  * so the session's next model call waits this one out.
  */
 export async function readClaudePicker(
@@ -28,18 +29,72 @@ export async function readClaudePicker(
   await waitFor(() => (/❯ \/model/.test(screen()) ? true : undefined), "/model typed", 10_000);
   await session.sendKeys("\r");
   let previous = "";
-  const picker = await waitFor(() => {
+  let picker = await waitFor(() => {
     const text = screen();
     const settled = /Esc to cancel/.test(text) && text === previous;
     previous = text;
     return settled ? text.slice(text.lastIndexOf("Select model")) : undefined;
   }, "a settled claude model picker");
+  const effortRow = /^\s*[○◐●◉◈] .*$/m.exec(picker)?.[0].trim();
+  let expanded = false;
+  // New Claude counts physical items, including a disclosure. Read its native count
+  // independently of production parsing, and only Enter on its explicit expand action.
+  while (/^\s*(?:❯\s*)?[▸▾]\s+More models\s*$|^\s*↓ \d+ more\s*$/m.test(picker)) {
+    if (/^\s*❯\s*▸\s+More models\s*$/m.test(picker)) {
+      assertNativeExpand(picker);
+      await session.sendKeys("\r");
+      picker = await waitFor(() => {
+        const text = screen().slice(screen().lastIndexOf("Select model"));
+        return /^\s*❯\s*▾\s+More models\s*$/m.test(text) && /Enter to collapse/.test(text)
+          ? text
+          : undefined;
+      }, "expanded native Claude catalog");
+      expanded = true;
+      break;
+    }
+    const cursor = physicalCursor(picker);
+    if (cursor >= physicalCount(picker)) break;
+    await session.sendKeys("\u001b[B");
+    picker = await waitFor(() => {
+      const text = screen().slice(screen().lastIndexOf("Select model"));
+      return /Esc to cancel/.test(text) && physicalCursor(text) === cursor + 1 ? text : undefined;
+    }, "native Claude disclosure navigation");
+  }
   await session.sendKeys("\u001b");
   await waitFor(() => (kept() > before ? true : undefined), "the picker to close", 10_000);
   const rows = [...picker.matchAll(/^\s*[❯↑↓]?\s*(\d+)\.\s/gm)].map((match) => Number(match[1]));
   const hidden = Number(/…\s*\+(\d+) models?/.exec(picker)?.[1] ?? 0);
-  const effortRow = /^\s*[○◐●◉◈] .*$/m.exec(picker)?.[0].trim();
-  return { rowCount: Math.max(...rows) + hidden, effortRow };
+  return {
+    rowCount: expanded ? physicalCount(picker) - 1 : Math.max(...rows) + hidden,
+    effortRow,
+  };
+}
+
+function selectableRows(text: string): readonly string[] {
+  return text
+    .split("\n")
+    .filter((line) => /^\s*(?:❯\s*)?(?:\d+\.\s|[▸▾]\s+More models)/.test(line));
+}
+
+function physicalCount(text: string): number {
+  return (
+    Number(/^\s*↑ (\d+) more\s*$/m.exec(text)?.[1] ?? 0) +
+    selectableRows(text).length +
+    Number(/^\s*↓ (\d+) more\s*$/m.exec(text)?.[1] ?? 0)
+  );
+}
+
+function physicalCursor(text: string): number {
+  return (
+    Number(/^\s*↑ (\d+) more\s*$/m.exec(text)?.[1] ?? 0) +
+    selectableRows(text).findIndex((line) => /^\s*❯/.test(line)) +
+    1
+  );
+}
+
+function assertNativeExpand(text: string): void {
+  if (!/Enter to expand · Esc to cancel/.test(text))
+    throw new Error("Claude's disclosure was not ready to expand");
 }
 
 /** The picker's own row count for `project`'s account, read in a fresh session. */

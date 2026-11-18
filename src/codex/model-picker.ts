@@ -3,6 +3,7 @@
  * Implements PRD §5.7, C-API-23, and C-API-24.
  */
 
+import { codexModelFooter } from "../core/models/hints.ts";
 import { sendPickerInput } from "../core/models/input.ts";
 import { isOwnCompletePicker, type ModelPickerSpec } from "../core/models/picker.ts";
 import {
@@ -14,14 +15,16 @@ import {
   parseCodexModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
+import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
+import { parseModelViewport } from "../core/models/viewport/parse.ts";
+import { codexViewportGrammar as pickerGrammar } from "./models/grammar.ts";
 
 import { codexComposerClearance } from "./screen/clearance.ts";
 
 const reasoningHeader = /Select Reasoning Level/;
 // Both screens close with `Press enter to confirm or esc to go back` on 0.154.0 and with
 // `enter select · esc back` / `enter default · s session · esc back` on 0.164.0.
-const footer = /\besc (?:to go )?back\b/i;
-const pickerGrammar: DialogGrammar = { header: codexModelPickerHeader, footer };
+const footer = codexModelFooter;
 const reasoningGrammar: DialogGrammar = { header: reasoningHeader, footer };
 const changeConfirmed = /Model changed to/;
 
@@ -29,7 +32,9 @@ export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
   isClear: codexComposerClearance,
   isCandidate: (text) =>
-    bottomDialogCandidate(text, pickerGrammar) || bottomDialogCandidate(text, reasoningGrammar),
+    isModelViewportCandidate(text, pickerGrammar) ||
+    bottomDialogCandidate(text, pickerGrammar) ||
+    bottomDialogCandidate(text, reasoningGrammar),
   hasPickerHeader: (text) => codexModelPickerHeader.test(text),
   // Codex's switch has no dialog of the caller's own to replace the picker.
   isCallerDialog: () => false,
@@ -37,12 +42,13 @@ export const codexModelPicker: ModelPickerSpec = {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to
     // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).
     if (!authority.opened) return undefined;
+    if (parseModelViewport(text, pickerGrammar) !== undefined) return "picker";
     const picker = bottomDialogRow(text, pickerGrammar);
     const level = bottomDialogRow(text, reasoningGrammar);
     if (picker < 0 && level < 0) return undefined;
     return level > picker ? "follow-up" : "picker";
   },
-  parse: parseCodexModelPicker,
+  parse: (text) => parseModelViewport(text, pickerGrammar) ?? parseCodexModelPicker(text),
   // No `enrichOptions` here: when Codex draws no `(default)` marker (0.164 never does), each
   // listing reads the configured default from the SESSION's config.toml, so the session
   // binds it (`CodexSessionImpl.picker`, PRD §5.3).

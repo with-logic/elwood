@@ -2676,3 +2676,42 @@ was unavailable for that fixture account. The `/fast` screen was dismissed with
 Escape without confirming a toggle. This verifies that the native CLI reads the override, not
 that a real account is entitled to Fast or that a response used it. Claude speed
 usage is only reported when native assistant `usage.speed` supplies it.
+
+## Native model picker layout changes (2026-11-17)
+
+Claude 2.1.327 folds legacy models under a selectable, non-numbered `More models`
+row. Highlighting it changes the footer to `Enter to expand`; Enter expands it in
+place, and Escape still cancels the whole picker. At 100×24, standalone
+`↑ N more` and `↓ N more` count selectable items, including this disclosure. The
+observed expanded catalog has 14 models and 15 selectable items. Model numbers
+exclude the disclosure, so navigation uses physical item positions. When the
+current model is legacy, Claude inserts it into the primary group and removes its
+old legacy entry: the catalog's order can change after a model switch. Current
+and default markers remain `✔` and `(recommended)`.
+
+Claude also splits the effort row from its adjustment hint and can wrap its Max
+warning over two lines. An incomplete modern picker prefix must hold queued
+input before its footer paints; it cannot authorize navigation. Fixtures:
+`tests/fixtures/claude-2.1.327/model-picker/`. C-API-23, C-API-24, C-API-55.
+Implementation: `src/claude/models/grammar.ts` owns the native syntax;
+`src/core/models/viewport/` parses and walks the selectable items;
+`src/claude/model-picker.ts` owns session-only apply.
+
+Codex 0.169.0 shows eight of the observed ten models at a time, with standalone
+`↑`/`↓` indicators and no hidden-row count. Walking reaches a numbered end before
+concluding that the list is complete. Its `GPT-6.1 Terra` display name corresponds
+to the canonical `gpt-6.1-terra` selector; the composer footer retains the spaced
+display name. A native probe listed the canonical id, marked a configured Terra
+default independently of the current model, selected it, and read it back.
+Fixtures: `tests/fixtures/codex-0.169.0/model-picker/` and `terra-composer.txt`.
+C-API-23, C-API-24, C-API-28. Counts depend on the account's available catalog.
+Implementation: `src/codex/models/grammar.ts` owns the native syntax;
+`src/core/models/viewport/` parses and walks the windows;
+`src/core/models/model-row.ts` maps the Terra label;
+`src/codex/screen/clearance.ts` recognizes the composer footer.
+
+Claude Code 2.1.326 combines `More models` with the inline effort hint
+(`◐ Medium effort (default) ←/→ to adjust`); 2.1.327 moves the adjustment
+hint to the footer. Both are complete native model pickers. The npm-published
+2.1.326 layout is recorded separately so testing a newer native install cannot
+hide a regression in the published CLI.
