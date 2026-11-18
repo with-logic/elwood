@@ -90,12 +90,7 @@ export function optionalNonBlank(value: string | undefined, label: string): stri
   return value === undefined ? undefined : nonBlank(value, label);
 }
 
-export function optional<K extends string, V>(
-  value: V | undefined,
-  key: K,
-): { readonly [P in K]?: V } {
-  return value === undefined ? {} : ({ [key]: value } as { readonly [P in K]?: V });
-}
+export { optional } from "../../core/optional.ts";
 
 export function usage(message: string): CliValidationError {
   return new CliValidationError("invalid_arguments", message);

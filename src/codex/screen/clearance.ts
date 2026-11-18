@@ -4,7 +4,7 @@
  */
 
 import { codexReasoningEfforts } from "../../core/reasoning-effort.ts";
-import { codexServiceTiers } from "../../core/speed/types.ts";
+import { codexServiceTierChoices } from "../../core/speed/types.ts";
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { codexWorkingScreen } from "./working.ts";
@@ -24,7 +24,7 @@ const placeholders = new Set([
   "Run /review on my current changes",
   "Use /skills to list available skills",
 ]);
-const tierBadges = codexServiceTiers
+const tierBadges = codexServiceTierChoices
   .filter((tier) => tier !== "default")
   .map((tier) => tier.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`))
   .join("|");

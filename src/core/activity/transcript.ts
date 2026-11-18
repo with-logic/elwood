@@ -5,10 +5,11 @@
 
 import type { ClaudeTranscriptEvent } from "../../claude/transcript/index.ts";
 import { claudeSpeedObservation } from "../../claude/transcript/speed.ts";
-import type { ClaudeTranscriptSummary } from "../../claude/transcript/summary.ts";
 import type { CodexTranscriptEvent } from "../../codex/transcript/index.ts";
 import { codexSpeedObservation } from "../../codex/transcript/speed.ts";
+import { codexStats } from "../../codex/transcript/stats.ts";
 import { transcriptActivityKind } from "../hook-result.ts";
+import { optional } from "../optional.ts";
 import type { ElwoodActivityEvent } from "./index.ts";
 import * as meta from "./meta.ts";
 
@@ -34,6 +35,7 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
     ...meta.transcriptActivityMeta(event),
     raw: event.item,
     ...codexSpeedObservation(event.item),
+    ...codexStats(event.item),
   };
 }
 
@@ -56,18 +58,22 @@ export function activityFromClaudeTranscript(
     label: event.summary.label,
     transcriptPath: event.path,
     ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
-    raw: event.item,
+    ...(event.summary.kind === "other" ? {} : { raw: event.item }),
     ...claudeSpeedObservation(event.item),
+    ...optional(event.tokenUsage, "tokenUsage"),
   } as const;
   return { ...base, ...claudeActivityFields(event.summary) };
 }
 
 // Distribute over summaries so required payloads remain required in each variant.
-type ClaudeActivityFields<Summary extends ClaudeTranscriptSummary = ClaudeTranscriptSummary> =
-  Summary extends ClaudeTranscriptSummary ? Omit<Summary, "label"> : never;
+type ClaudeSummary = ClaudeTranscriptEvent["summary"];
+type ClaudeActivityFields<Summary extends ClaudeSummary = ClaudeSummary> =
+  Summary extends ClaudeSummary ? Omit<Summary, "label"> : never;
 
-function claudeActivityFields(summary: ClaudeTranscriptSummary): ClaudeActivityFields {
+function claudeActivityFields(summary: ClaudeSummary): ClaudeActivityFields {
   switch (summary.kind) {
+    case "other":
+      return { kind: "other" };
     case "assistant_message":
     case "reasoning":
       return { kind: summary.kind, text: summary.text };

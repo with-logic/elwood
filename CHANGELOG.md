@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-18
+
+- Export the frozen `codexServiceTierChoices` tuple for host speed settings.
+- Expose native token usage for Claude and Codex, Codex quota windows, and
+  subagent lifecycle observations on the live `activity` stream. Claude
+  usage-only events also carry valid native speed evidence.
+
 ## [0.3.0] - 2026-11-18
 
 - Return launchable Claude model selectors separately from display labels; retain

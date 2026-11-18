@@ -13,6 +13,7 @@ import {
   MIN_LOOP_INTERVAL_MS,
   MIN_LOOP_MESSAGE_BYTES,
 } from "../core/loops/constants.ts";
+import { isNonnegativeSafeInteger } from "../core/predicates.ts";
 import type { PersistedLoopDefinition } from "./loop-store.ts";
 import { isRecord } from "./validate-predicates.ts";
 
@@ -66,8 +67,8 @@ function validateCommon(value: Readonly<Record<string, unknown>>): CommonDefinit
     id.length === 0 ||
     typeof message !== "string" ||
     !validMessageSize(message) ||
-    !safeTimestamp(createdAt) ||
-    !safeTimestamp(expiresAt) ||
+    !isNonnegativeSafeInteger(createdAt) ||
+    !isNonnegativeSafeInteger(expiresAt) ||
     expiresAt !== createdAt + LOOP_EXPIRATION_MS ||
     typeof jitterMs !== "number" ||
     !Number.isSafeInteger(jitterMs)
@@ -80,10 +81,6 @@ function validateCommon(value: Readonly<Record<string, unknown>>): CommonDefinit
 function validMessageSize(message: string): boolean {
   const bytes = Buffer.byteLength(message, "utf8");
   return bytes >= MIN_LOOP_MESSAGE_BYTES && bytes <= MAX_LOOP_MESSAGE_BYTES;
-}
-
-function safeTimestamp(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function validInterval(value: unknown): value is number {

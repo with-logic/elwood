@@ -21,3 +21,5 @@ concepts in this section, including the stable `ElwoodErrorName` union.
 - [5.10 Native questions](5.10-questions.md)
 
 - [5.11 Native speed controls](5.11-speed.md)
+
+- [5.12 Dashboard statistics](5.12-dashboard-stats.md)

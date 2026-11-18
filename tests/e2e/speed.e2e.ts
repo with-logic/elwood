@@ -6,14 +6,30 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { join } from "node:path";
 import test from "node:test";
 import { isRecord } from "../../src/core/predicates.ts";
-import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
+import { parseVersion } from "../../src/core/versions.ts";
+import {
+  type CodexSessionApi,
+  type CodexTokenUsage,
+  resumeCodex,
+  startCodex,
+} from "../../src/index.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
+import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
 import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import { makeProject, sandboxedCodexHome, skipIf, skipReason, waitFor } from "./helpers.ts";
 
-test("C-SPEED-01 Codex sends Fast, Ultrafast and standard across one conversation's resumes", {
+const tokenCountFixtureVersion = "codex-cli 0.170.0";
+const fixtureTotalTokens = 23;
+
+test("C-SPEED-01 C-STATS-01 Codex selects tiers and reports native usage across resumes", {
   skip: skipIf(skipReason("codex")),
   timeout: 120_000,
 }, async (t) => {
+  const version = await runProbe(userShell(), probeShellCommand("codex --version", "codex"));
+  assert.equal(version.status, 0, "Codex version probe succeeds");
+  assert.ok(parseVersion(version.stdout), "Codex reports its native CLI version");
+  // Only the pinned version is known to report these token_count snapshots.
+  const checkUsage = version.stdout.trim() === tokenCountFixtureVersion;
   const requests: string[] = [];
   const failures: unknown[] = [];
   const server = createServer((request, response) => {
@@ -55,7 +71,7 @@ test("C-SPEED-01 Codex sends Fast, Ultrafast and standard across one conversatio
         object: "response",
         status: "completed",
         output: [item],
-        usage: { input_tokens: 20, output_tokens: 3, total_tokens: 23 },
+        usage: { input_tokens: 20, output_tokens: 3, total_tokens: fixtureTotalTokens },
       },
     });
     response.end();
@@ -94,6 +110,7 @@ screen_reader_detection_done = true
   let session: CodexSessionApi | undefined;
   t.after(() => endCodexTestAfter(t, { sessions: [session], sandbox, launches }));
   let id: string | undefined;
+  let previousTotal = 0;
   for (const serviceTier of ["fast", "ultrafast", "default"] as const) {
     const options = {
       cwd: project.cwd,
@@ -112,19 +129,27 @@ screen_reader_detection_done = true
     await waitFor(() => (current.status === "ready" ? true : undefined), "speed ready", 30_000);
     const before = requests.length;
     let completed = false;
+    let usage: CodexTokenUsage | undefined;
     current.on("activity", (event) => {
       if (event.kind === "assistant_message" && event.text?.includes("SPEED VERIFIED"))
         completed = true;
+      if (event.tokenUsage?.scope === "thread") usage = event.tokenUsage;
     });
     await current.sendMessage("Reply SPEED VERIFIED. Do not use tools.");
-    await waitFor(
+    const observed = await waitFor(
       () => {
         assert.deepEqual(failures, [], "Loopback provider rejected a native request");
-        return completed && current.status === "ready" ? true : undefined;
+        if (!completed || current.status !== "ready") return undefined;
+        return checkUsage ? usage : true;
       },
       "speed turn complete",
       30_000,
     );
+    if (observed !== true) {
+      assert.equal(observed.last?.totalTokens, fixtureTotalTokens);
+      assert.equal(observed.total.totalTokens, previousTotal + fixtureTotalTokens);
+      previousTotal = observed.total.totalTokens;
+    }
     assert(requests.length > before);
     assert(
       requests

@@ -4,6 +4,7 @@
  * results are sourced from the committed transcript, never from ghost-text.
  */
 
+import { optional } from "../../core/optional.ts";
 import { stringify } from "../../core/serialize.ts";
 
 const noResponsePlaceholder = "No response requested.";
@@ -106,8 +107,8 @@ function toolCall(block: Record<string, unknown>): ClaudeTranscriptSummary {
     kind: "tool_call",
     label: name,
     toolName: name,
-    ...optional("toolUseId", stringValue(block["id"])),
-    ...optional("toolInput", stringify(block["input"])),
+    ...optional(stringValue(block["id"]), "toolUseId"),
+    ...optional(stringify(block["input"]), "toolInput"),
   };
 }
 
@@ -117,12 +118,8 @@ function toolResult(block: Record<string, unknown>): ClaudeTranscriptSummary {
     kind: "tool_result",
     label: id,
     toolUseId: id,
-    ...optional("toolOutput", stringify(block["content"])),
+    ...optional(stringify(block["content"]), "toolOutput"),
   };
-}
-
-function optional<K extends string>(key: K, value: string | undefined): Partial<Record<K, string>> {
-  return value === undefined ? {} : ({ [key]: value } as Record<K, string>);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

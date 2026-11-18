@@ -10,6 +10,7 @@ import type { BridgeProcessResult } from "../../bridge/types.ts";
 import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
+import { subagentObservation } from "../../core/stats/subagents.ts";
 import { withStopInput, withStopInputNotification } from "../../core/stop-input.ts";
 import type { TurnStateWatcher } from "../../core/turn-state.ts";
 import type { ClaudeEventMap, HookErrorEvent, StartClaudeOptions } from "../../core/types.ts";
@@ -89,6 +90,7 @@ export function buildClaudeHookHandler(
           event.hook_event_name,
           outcome.result,
           outcome.failedOpen,
+          subagentObservation(event, blocked, deps.getSession()?.closing.signal),
         ),
       ),
     );

@@ -2,11 +2,19 @@
 import { expect, expectTypeOf, test } from "vitest";
 import type { claudeSpeedObservation } from "../../src/claude/transcript/speed.ts";
 import type { codexSpeedObservation } from "../../src/codex/transcript/speed.ts";
-import type {
-  AgentSpeedObservation,
-  CodexServiceTiers,
-  ElwoodActivityEvent,
+import {
+  type AgentSpeedObservation,
+  type CodexServiceTier,
+  type CodexServiceTiers,
+  codexServiceTierChoices,
+  type ElwoodActivityEvent,
 } from "../../src/index.ts";
+
+test("C-SPEED-01 the package exposes frozen Codex launch choices", () => {
+  expect(codexServiceTierChoices).toEqual(["default", "fast", "ultrafast"]);
+  expect(Object.isFrozen(codexServiceTierChoices)).toBe(true);
+  expectTypeOf<(typeof codexServiceTierChoices)[number]>().toEqualTypeOf<CodexServiceTier>();
+});
 
 test("C-SPEED-03 only the matching transcript adapter can carry speed evidence", () => {
   const event = {

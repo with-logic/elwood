@@ -93,8 +93,9 @@ export function createCodexTranscriptWatcher(
     (event) =>
       duringDelivery(() => {
         clipboardCopies.observe(event.item);
+        const projected = activity.activityFromCodexTranscript(event);
         deliver("codex:transcript", event);
-        deliver("activity", activity.activityFromCodexTranscript(event));
+        deliver("activity", projected);
       }),
     {
       onDrop: (notice) => route(codexDropWarning(notice)),

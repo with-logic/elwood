@@ -21,10 +21,7 @@ export const singleQuestionToolInput = {
     },
   ] satisfies AskUserQuestionInput["questions"],
 } satisfies AskUserQuestionInput;
-export function nativeHook(
-  name = "PreToolUse",
-  extra: Readonly<Record<string, unknown>> = {},
-): ElwoodActivityEvent {
+export function nativeHook(name = "PreToolUse", extra: Readonly<Record<string, unknown>> = {}) {
   return {
     elwoodSessionId: "s",
     agent: "claude",
@@ -38,7 +35,7 @@ export function nativeHook(
       tool_input: { questions: nativeQuestions } satisfies AskUserQuestionInput,
       ...extra,
     },
-  };
+  } as const satisfies ElwoodActivityEvent;
 }
 export function composer() {
   return {

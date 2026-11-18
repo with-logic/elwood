@@ -88,6 +88,33 @@ cap does not constrain your state layout.
   Display `label` and pass a non-null `id` unchanged to launch or `setModel`;
   `id: null` means the row has no recognized launch selector. Refresh cached
   catalogs after CLI updates. Claude's `default` is a valid selector.
+- **Codex speed** is a separate launch and resume setting, `serviceTier`.
+  `codexServiceTierChoices` lists the accepted values: `default`, `fast`, and
+  `ultrafast`. For the selected model, use `codexServiceTiers.values` on its
+  `listCodexModels` row to show tiers advertised by the native catalog.
+  An absent field means the catalog evidence is unavailable. Treat the
+  catalog timestamp and values as hints because eligibility can change with
+  the active account and provider. Omit `serviceTier` to inherit settings,
+  or pass `"default"` for Standard. To change it between turns, stop and
+  resume the session with the selected value.
+
+## Dashboard statistics
+
+Subscribe to `activity` before sending a turn and read the session's `status`
+to show whether the main agent is running. Stats arrive with the existing
+transcript and hook events.
+
+| Field | What to show | How to update |
+| --- | --- | --- |
+| `tokenUsage` with `scope: "thread"` | Codex cumulative totals, last request, and context window | Replace the previous snapshot for `transcriptPath`. Totals may include history after resume. |
+| `tokenUsage` with `scope: "response"` | Claude response tokens, including cache reads and writes | Upsert by `transcriptPath` and `responseId`, then sum `counts.totalTokens`. Cache reads and writes are components of `counts.inputTokens`. |
+| `rateLimits` | Codex quota remaining, window duration, and reset time | Replace the whole snapshot for a known account and `limitId`. Compare `recordedAt` across sessions and treat samples without it as unordered. |
+| `subagent` | Observed active subagents for either harness | Add the ID to a per-session set on `started`, delete on `stopped`, and use the set size. Clear it on `terminal:exit`. |
+
+An absent field means the harness has supplied no matching evidence. Codex
+quota snapshots may get stale while idle. Claude quota is unavailable through
+these records. Subagent counts are best effort, especially after resume when
+existing workers may have started before subscription.
 
 ## Turns and startup input
 
