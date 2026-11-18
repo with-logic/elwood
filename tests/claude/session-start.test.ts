@@ -36,11 +36,14 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     expect(ptys).toHaveLength(1);
   });
 
-  test("C-CLAUDE-12 forwards model to the --model launch flag", async () => {
+  test.each([
+    "claude-haiku-4-5",
+    "default",
+  ])("C-CLAUDE-12 forwards %s to the --model launch flag", async (model) => {
     const cwd = tempDir();
     installFakes();
-    await startClaude({ cwd, model: "claude-haiku-4-5" });
-    expect(ptys[0]!.options.args.join(" ")).toContain("--model 'claude-haiku-4-5'");
+    await startClaude({ cwd, model });
+    expect(ptys[0]!.options.args.join(" ")).toContain(`--model '${model}'`);
   });
 
   test("C-STATE-04 persists only the minimal near-stateless record", async () => {

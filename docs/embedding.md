@@ -85,6 +85,9 @@ cap does not constrain your state layout.
   before the user starts a session — use `listClaudeModels`/`listCodexModels`.
   They spin up a throwaway session, list, and always tear it down, so they cost
   a few seconds each; cache the result in the parent app if you call them often.
+  Display `label` and pass a non-null `id` unchanged to launch or `setModel`;
+  `id: null` means the row has no recognized launch selector. Refresh cached
+  catalogs after CLI updates. Claude's `default` is a valid selector.
 
 ## Turns and startup input
 

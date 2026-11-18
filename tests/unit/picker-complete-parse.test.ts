@@ -31,7 +31,7 @@ const walk = capturedWalk("claude-2.1.310/model-picker/walk-down-from-top");
 const catalog = claudeModelPicker
   .parse(frame("top-window"))
   .options.map((option) => option.id)
-  .concat("opus 4.7", "opus 4.6", "sonnet 4.6");
+  .concat("claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6");
 
 test.each([
   ["three rows above the slash-command menu", ["painting-three-rows"]],

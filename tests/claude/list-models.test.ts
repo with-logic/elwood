@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { listClaudeModels } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { asScreen, claudePicker, until } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
@@ -35,7 +36,7 @@ function probeState(parent: string): { stateDir: string; id: string } {
 
 /** Poll a condition without `expect` so it can live in a shared helper. */
 /** Drive the fake probe through readiness, the rendered picker, and its close. */
-async function driveProbe(cwd: string, parent: string): Promise<void> {
+async function driveProbe(cwd: string, parent: string, picker = claudePicker): Promise<void> {
   // The probe's PTY exists only once startClaude resolves inside listClaudeModels.
   await until(() => ptys.length === 1);
   const pty = ptys[0]!;
@@ -44,12 +45,25 @@ async function driveProbe(cwd: string, parent: string): Promise<void> {
   await pty.dispatchHook(id, instructionsLoaded(cwd), stateDir);
   // listModels opens the picker; feed the rendered rows, then the closed screen.
   await until(() => pty.writes.includes("/model") && pty.writes.includes("\r"));
-  pty.emitData(asScreen(claudePicker));
+  pty.emitData(asScreen(picker));
   await until(() => pty.writes.includes("\u001b"));
   pty.emitData(asScreen("❯ "));
 }
 
 describe("listClaudeModels", () => {
+  test("C-API-41 returns launch selectors from the current native picker", async () => {
+    const cwd = tempDir();
+    const stateDir = join(cwd, "state");
+    installFakes();
+    const listing = listClaudeModels({ cwd, stateDir });
+    await driveProbe(cwd, stateDir, capturedFrame("claude-2.1.327/model-picker/expanded"));
+    const models = await listing;
+    expect(models.find((model) => model.label === "Haiku 5.5")?.id).toBe("claude-haiku-5-5");
+    expect(models.find((model) => model.label === "Default")?.id).toBe("default");
+    expect(reapedGroups).toContain(ptys[0]!.pid);
+    expect(readdirSync(stateDir)).toEqual([]);
+  });
+
   test("C-API-41 starts a throwaway session, lists models, and tears it down", async () => {
     const cwd = tempDir();
     const stateDir = join(cwd, "state");

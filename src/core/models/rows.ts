@@ -11,8 +11,9 @@ import { modelRow, rowPattern } from "./model-row.ts";
 import { overflowMayFollowRow, type ScrollGrammar, unmarkedRow } from "./row-block.ts";
 import type { ModelViewport } from "./viewport/types.ts";
 
-export type AgentModelOption = {
-  readonly id: string;
+export type AgentModelOption<Id extends string | null = string | null> = {
+  /** CLI launch/switch selector, or null when only an unrecognized display label is known. */
+  readonly id: Id;
   readonly label: string;
   readonly description?: string;
   readonly isCurrent: boolean;
@@ -20,6 +21,9 @@ export type AgentModelOption = {
   readonly raw: string;
   readonly codexServiceTiers?: CodexServiceTiers;
 };
+
+/** Codex picker rows always render their native launch selector (PRD §5.7). */
+export type CodexModelOption = AgentModelOption<string>;
 
 /**
  * One rendered option row. `absoluteRowNumber` is the row's 1-based position in the WHOLE
@@ -56,8 +60,14 @@ export { rowPattern } from "./model-row.ts";
  * Claude's rendered rows. Under `scroll`, a row wearing a scroll marker (`↓ 10.`) is an
  * ordinary option; its `raw` keeps the marker as rendered.
  */
-export function parseClaudeModelPicker(text: string, scroll?: ScrollGrammar): ParsedModelPicker {
-  return parseRows(pickerRegion(text, claudeModelPickerHeader), scroll, "claude");
+export function parseModelPicker(
+  text: string,
+  header: RegExp,
+  agent: ElwoodAgentKind,
+  selector: (label: string) => string | null,
+  scroll?: ScrollGrammar,
+): ParsedModelPicker {
+  return parseRows(pickerRegion(text, header), scroll, agent, selector);
 }
 
 /**
@@ -72,6 +82,7 @@ function parseRows(
   region: string,
   scroll: ScrollGrammar | undefined,
   agent: ElwoodAgentKind,
+  selector?: (label: string) => string | null,
 ): ParsedModelPicker {
   const rows: PickerRow[] = [];
   let cursorOptionIndex = -1;
@@ -93,7 +104,7 @@ function parseRows(
     // A `below` marker says rows are hidden; only the overflow line under it says how many.
     if (scroll?.below.test(line) === true) hiddenRowCountBelow = undefined;
     overflowMayFollow = overflowMayFollowRow(line, scroll);
-    rows.push(modelRow(match, line, agent));
+    rows.push(modelRow(match, line, agent, selector));
   }
   return { rows, options: rows.map((row) => row.option), cursorOptionIndex, hiddenRowCountBelow };
 }

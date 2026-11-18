@@ -426,7 +426,7 @@ NOT launch the next adapter. Every started probe is cleaned up before the next.
 
 For combined listings, text includes an `AGENT` column and per-agent errors go
 to stderr. JSON is exactly one document
-`{ "schemaVersion": 1, "type": "models", "agents": [{ "agent": "...", "models": [...] }], "errors": [...] }`.
+`{ "schemaVersion": 2, "type": "models", "agents": [{ "agent": "...", "models": [...] }], "errors": [...] }`.
 `agents` contains successful catalogs (including empty catalogs), and `errors`
 contains the canonical version-1 error records with agent, error, duration, and
 cleanup fields. Both arrays retain probe order. Status is 0 only if both probes
@@ -439,9 +439,12 @@ and error contract below. All model probes remain ephemeral.
 
 Single-agent text output is an aligned table with a header row: `*` in the first column marks
 the current model, followed by the id, label, `(default)` when the row is the
-adapter's default, and the description. JSON output is exactly one version-1
-document `{ "schemaVersion": 1, "type": "models", "agent": "...", "models": [...] }`
-whose rows are the `AgentModelOption` objects. Every string is sanitized under
+adapter's default, and the description. JSON output is exactly one version-2
+document `{ "schemaVersion": 2, "type": "models", "agent": "...", "models": [...] }`
+whose rows are the `AgentModelOption` objects. An unavailable launch selector is
+`id: null` in JSON and `unavailable` in the table's ID column, in both single-agent
+and combined output. Version 2 distinguishes nullable IDs from the string-only
+version-1 model catalogs; other CLI document schemas remain unchanged. Every string is sanitized under
 §12A.3. Failures — timeout (124), interruption (130), blocked prompts, agent
 exit, and picker automation failures — use the existing stderr, error-document,
 and status conventions, and cleanup still runs exactly once. `--stream`,

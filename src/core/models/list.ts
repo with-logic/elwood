@@ -23,12 +23,17 @@ export type ListModelsOptions = {
  * Derived from the public session contract so it uses the SAME closed
  * `ElwoodSessionStatus` type and cannot drift from the real methods.
  */
-type ProbeSession = Pick<ElwoodAgentSession, "waitForStatus" | "listModels" | "teardown">;
+type ProbeSession<T extends AgentModelOption = AgentModelOption> = Pick<
+  ElwoodAgentSession,
+  "waitForStatus" | "teardown"
+> & {
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly T[]>;
+};
 
 /** Adapter hooks for a probe: how to start the session and how to remove ALL its state. */
-export type ProbeAdapter<S extends ProbeSession> = {
+export type ProbeAdapter<T extends AgentModelOption> = {
   /** Starts the throwaway session against the probe's owned state directory. */
-  readonly start: () => Promise<S>;
+  readonly start: () => Promise<ProbeSession<T>>;
   /**
    * Removes ALL probe state (its owned temp directory and everything under it).
    * Runs on EVERY outcome — success, readiness/picker failure, AND a start failure
@@ -45,11 +50,11 @@ export type ProbeAdapter<S extends ProbeSession> = {
  * The probe only opens and cancels the picker, so the user's default stays
  * untouched. A teardown/cleanup failure never masks a real list/readiness error.
  */
-export async function probeModels<S extends ProbeSession>(
-  adapter: ProbeAdapter<S>,
+export async function probeModels<T extends AgentModelOption>(
+  adapter: ProbeAdapter<T>,
   options: ListModelsOptions,
-): Promise<readonly AgentModelOption[]> {
-  let session: S;
+): Promise<readonly T[]> {
+  let session: ProbeSession<T>;
   try {
     session = await adapter.start();
   } catch (error) {
@@ -67,11 +72,11 @@ export async function probeModels<S extends ProbeSession>(
   }
 }
 
-async function runProbe<S extends ProbeSession>(
-  session: S,
+async function runProbe<T extends AgentModelOption>(
+  session: ProbeSession<T>,
   options: ListModelsOptions,
-): Promise<readonly AgentModelOption[]> {
-  let models: readonly AgentModelOption[];
+): Promise<readonly T[]> {
+  let models: readonly T[];
   try {
     await session.waitForStatus((status) => status === "ready");
     models = await session.listModels(

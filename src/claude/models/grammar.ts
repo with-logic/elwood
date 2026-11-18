@@ -5,6 +5,8 @@ import { viewportTail } from "../../core/models/viewport/syntax.ts";
 import type { ViewportGrammar } from "../../core/models/viewport/types.ts";
 import { type ClaudeReasoningEffort, claudeReasoningEfforts } from "../../core/reasoning-effort.ts";
 
+import { claudeModelSelector } from "./selector.ts";
+
 // The highlighted model owns this control; High's glyph is otherwise an agent-reply bullet.
 // The exhaustive map and canonical tuple keep full rows and painting prefixes in sync.
 const effortLabels = {
@@ -39,6 +41,7 @@ const hintPrefix = (line: string) =>
 
 export const claudeViewportGrammar: ViewportGrammar = {
   agent: "claude",
+  selector: claudeModelSelector,
   header: claudeModelPickerHeader,
   footer: claudeModelFooter,
   controlRow,

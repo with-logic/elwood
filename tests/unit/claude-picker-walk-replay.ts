@@ -14,18 +14,18 @@ export const openedScrolled = capturedWalk("claude-2.1.310/model-picker/walk-ope
 /** The 13 models of the captured account, in picker order. */
 export const catalog = [
   "default",
-  "opus 5.5",
-  "fable 5.1",
-  "sonnet 5.5",
-  "haiku 5.5",
-  "haiku 4.5",
-  "sonnet 5",
-  "opus 5",
-  "fable 5",
-  "opus 4.8",
-  "opus 4.7",
-  "opus 4.6",
-  "sonnet 4.6",
+  "claude-opus-5-5",
+  "claude-fable-5-1",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+  "claude-haiku-4-5",
+  "claude-sonnet-5",
+  "claude-opus-5",
+  "claude-fable-5",
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
 ];
 
 /**

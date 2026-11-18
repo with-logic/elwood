@@ -35,7 +35,7 @@ test("C-API-23 sends no further keys while an expanded viewport count is inconsi
   terminal.text = render();
   await vi.advanceTimersByTimeAsync(500);
   expect((await pending).map((model) => model.id)).toEqual(
-    Array.from({ length: 7 }, (_, index) => `model${index + 1}`),
+    Array.from({ length: 7 }, (_, index) => `claude-fixture-${index + 1}`),
   );
   expect(terminal.inputs.at(-1)).toBe("\u001b");
 });

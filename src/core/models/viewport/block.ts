@@ -125,7 +125,7 @@ export class ViewportBlock {
       (this.previousNumber !== undefined && number !== this.previousNumber + 1)
     )
       return false;
-    const row = modelRow(match, line, this.grammar.agent);
+    const row = modelRow(match, line, this.grammar.agent, this.grammar.selector);
     if (match[1]) this.cursorOptionIndex = this.rows.length;
     this.rows.push(row);
     this.previousNumber = number;

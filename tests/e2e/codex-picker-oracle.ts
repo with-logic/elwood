@@ -1,7 +1,7 @@
 /** Independent raw-key Codex catalog reading for native listing and switching (C-API-23/24). */
 // biome-ignore-all lint/suspicious/noMisplacedAssertion: Native oracle helpers own these assertions.
 import assert from "node:assert/strict";
-import type { AgentModelOption } from "../../src/index.ts";
+import type { CodexModelOption } from "../../src/index.ts";
 import { waitFor } from "./wait-for.ts";
 
 type PickerSession = {
@@ -18,8 +18,8 @@ type NativeFrame = {
 /** Checks the complete native order and chooses a row outside the opening window when possible. */
 export async function nativeCodexTarget(
   session: PickerSession,
-  models: readonly AgentModelOption[],
-): Promise<AgentModelOption> {
+  models: readonly CodexModelOption[],
+): Promise<CodexModelOption> {
   const native = await readCodexPicker(session);
   assert.deepEqual(
     models.map((model) => model.label),

@@ -46,7 +46,8 @@ export function viewportTerminal(
       if (number === 0) return `${cursor} ${state.expanded ? "▾" : "▸"}   More models`;
       const current = number === state.selected ? (agent === "claude" ? " ✔" : " (current)") : "";
       const recommended = agent === "claude" && number === 1 ? " (recommended)" : "";
-      return `${cursor} ${number}. Model${number}${current}${recommended}  Model description ${number}`;
+      const label = agent === "claude" ? `claude-fixture-${number}` : `Model${number}`;
+      return `${cursor} ${number}. ${label}${current}${recommended}  Model description ${number}`;
     });
     const controls = agent === "claude" && chosen !== 0 ? "◐ Medium effort (default)" : "";
     const footer =

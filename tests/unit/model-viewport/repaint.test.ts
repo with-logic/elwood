@@ -77,7 +77,7 @@ test("C-API-24 a modern selection with no highlighted item fails before apply", 
   const { terminal } = viewportTerminal("claude");
   terminal.text = terminal.text.replace("❯", " ");
   await expect(
-    setPickerModel({ terminal, submit }, claudeModelPicker, "model1", 200),
+    setPickerModel({ terminal, submit }, claudeModelPicker, "claude-fixture-1", 200),
   ).rejects.toMatchObject({
     code: "model_automation_failed",
     message: "Could not locate the picker cursor.",

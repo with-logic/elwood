@@ -5,7 +5,7 @@
 
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
-import { startCodex } from "../../src/index.ts";
+import { CodexSession, startCodex } from "../../src/index.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
@@ -22,15 +22,39 @@ afterEach(() => {
 });
 
 describe("CodexSessionApi model picker", () => {
-  test("C-API-23 listModels drives the picker through the readiness queue", async () => {
+  test("C-API-23 raw listModels drives the picker through the readiness queue", async () => {
     const cwd = tempDir();
-    // Codex marks only the current row; the default comes from the config (PRD §5.3).
     writeFileSync(sandboxCodexHome(cwd), 'model = "gpt-5.4"\n');
     installFakes();
     const session = await startCodex({ cwd });
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const listing = session.listModels({ timeoutMs: 30_000 });
+    await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
+    ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
+    await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
+    ptys[0]!.emitData(asScreen("\u203a "));
+    const options = await listing;
+    expect(options.map((option) => option.id)).toEqual([
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex-spark",
+    ]);
+    expect(options[0]).toMatchObject({ isCurrent: true, isDefault: false });
+    expect(options[1]).toMatchObject({ isCurrent: false, isDefault: true });
+  });
+
+  test("C-API-23 lazy listModels starts a cold facade and drives its picker", async () => {
+    const cwd = tempDir();
+    writeFileSync(sandboxCodexHome(cwd), 'model = "gpt-5.4"\n');
+    installFakes();
+    const session = new CodexSession({ cwd });
+    expect(session.session).toBeUndefined();
+    const listing = session.listModels({ timeoutMs: 30_000 });
+    await expect.poll(() => session.session).toBeDefined();
+    await becomeReady(session.session!.elwoodSessionId, cwd);
+    await expect.poll(() => session.status).toBe("ready");
     await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);

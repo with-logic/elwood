@@ -384,7 +384,9 @@ elwood models
 elwood models --agent codex --output json
 ```
 
-Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 2, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+
+Use `label` for display and pass a non-null `id` unchanged as the launch `model` or to `setModel`. Claude labels such as `Haiku 5.5` have native selectors such as `claude-haiku-5-5`. An unrecognized Claude label keeps its row with `id: null`, shown as `unavailable` in the table. Skip that row for launch; its exact, case-insensitive label still works with `setModel`. Codex-specific API listings retain string IDs. Schema version 2 identifies nullable model IDs; sessions and embedded error records keep version 1.
 
 If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings. `models` rejects `--stream`, `--head`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--resume`, `--ephemeral`, prompt words, and JSONL output.
 
@@ -925,7 +927,9 @@ Model listing:
 
 JSON terminal records have `schemaVersion: 1`, `type`, `agent`, `response`, `sessionId`, `durationMs`, and `cleanup`. Error records add `error: { code, message }`. `cleanup.action` is `none`, `preserve` or `teardown`; `cleanup.status` is `succeeded` or `failed`, with an optional error message.
 
-`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 1, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol. Bare `models` includes `agents: [{agent, models}]` and `errors: [...]` for Claude and Codex; explicit `--agent` retains `agent` and `models`. Incomplete catalogs exit nonzero, and `--timeout` is shared by both probes.
+`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 2, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol. Bare `models` includes `agents: [{agent, models}]` and `errors: [...]` for Claude and Codex; explicit `--agent` retains `agent` and `models`. Incomplete catalogs exit nonzero, and `--timeout` is shared by both probes.
+
+Model rows keep their display `label` separate from the native launch `id`. A Claude row with no recognized launch selector has `id: null`, shown as `unavailable` in text. Skip it for launch; its exact, case-insensitive label remains usable with `setModel`. Non-null IDs work unchanged for launch and switching. Version 2 applies to both model catalog forms; embedded error records keep version 1.
 
 JSONL records add a monotonically increasing `sequence` and elapsed `elapsedMs`. Progress record types are `text`, `thinking`, `tool`, `status` and `warning`. A tool record has `phase: "call"` or `"result"`, optional content and a shared `toolCallId` when available. Exactly one terminal `result` or `error` ends the stream.
 

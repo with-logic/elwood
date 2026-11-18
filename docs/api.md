@@ -155,7 +155,14 @@ reports completion through its `PostCompact` hook.
 
 `listModels` and `setModel` drive the adapter's `/model` picker through the
 headless terminal. `listModels` returns rows (`id`, `label`, `description`,
-`isCurrent`, `isDefault`) and leaves the model unchanged. `setModel` switches
+`isCurrent`, `isDefault`) and leaves the model unchanged. A non-null `id` can be
+passed unchanged as the launch `model` or to `setModel`; `label` is display text.
+Claude's `Haiku 5.5` label has id `claude-haiku-5-5`, while `default` remains a
+valid alias. Unrecognized labels retain their rows with `id: null`; skip those
+rows when choosing a launch value. Codex-specific listings return `CodexModelOption`
+rows with non-null string IDs. Legacy Claude display labels still
+work with `setModel`. Explicit model choices are forwarded on Claude resume too.
+`setModel` switches
 the session's model and leaves the user's saved defaults untouched: Claude
 applies session-only; Codex persists picker selections into the user's
 `config.toml` on its own, so Elwood restores the prior default afterwards via

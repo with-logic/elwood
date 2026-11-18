@@ -117,7 +117,9 @@ elwood models
 elwood models --agent codex --output json
 ```
 
-Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 2, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+
+Use `label` for display and pass a non-null `id` unchanged as the launch `model` or to `setModel`. Claude labels such as `Haiku 5.5` have native selectors such as `claude-haiku-5-5`. An unrecognized Claude label keeps its row with `id: null`, shown as `unavailable` in the table. Skip that row for launch; its exact, case-insensitive label still works with `setModel`. Codex-specific API listings retain string IDs. Schema version 2 identifies nullable model IDs; sessions and embedded error records keep version 1.
 
 If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings. `models` rejects `--stream`, `--head`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--resume`, `--ephemeral`, prompt words, and JSONL output.
 

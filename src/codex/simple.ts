@@ -50,6 +50,8 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
     return startCodex(this.options);
   }
 
+  declare readonly listModels: CodexSessionApi["listModels"];
+
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;
   protected override readonly readNativeTurn = codexTurnIdentity;

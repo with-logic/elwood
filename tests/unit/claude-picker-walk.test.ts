@@ -39,7 +39,7 @@ test("C-API-23 a picker opened scrolled on a hidden current row lists the rows a
   const terminal = replay(openedScrolled);
   const models = await listPickerModels(io(terminal), claudeModelPicker, 2_000);
   expect(models.map((model) => model.id)).toEqual(catalog);
-  expect(models.find((model) => model.isCurrent)?.id).toBe("opus 4.6");
+  expect(models.find((model) => model.isCurrent)?.id).toBe("claude-opus-4-6");
   // One row down reveals row 13; up to row 2 brings rows 2 and 1 into the window.
   expect(terminal.inputs).toEqual([down, ...new Array<string>(11).fill(up), escapeKey]);
 });
@@ -117,12 +117,12 @@ test("C-API-23 an abort mid-walk writes no further key", async () => {
 });
 
 test("C-API-23 a scrolled window without a painted cursor is never walked", async () => {
-  const frame = topWindow.replace("❯ 1.", "  1.");
+  const frame = topWindow.replace("❯ 1.", "  1.").replace(/(2\.\s+)Opus 5\.5/, "$1Project Model");
   const terminal = scripted(frame);
   await expect(listPickerModels(io(terminal), claudeModelPicker, 2_000)).rejects.toMatchObject({
     code: "model_automation_failed",
     message: "Could not locate the picker cursor.",
-    details: { available: catalog.slice(0, 10) },
+    details: { available: catalog.slice(0, 10).filter((id) => id !== "claude-opus-5-5") },
   });
   expect(terminal.inputs).toEqual([]);
 });

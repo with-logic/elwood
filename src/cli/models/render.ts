@@ -23,22 +23,21 @@ export async function renderModels(
   const clean = createCliSanitizer();
   const rows = models.map((model) => sanitizedModel(model, clean));
   if (output === "json") {
-    const document = { schemaVersion: 1, type: "models", agent, models: rows };
+    const document = { schemaVersion: 2, type: "models", agent, models: rows };
     await stdout.write(`${JSON.stringify(document)}\n`);
     return;
   }
-  await stdout.write(
-    renderTable(
-      header,
-      rows.map((model) => [
-        model.isCurrent ? "*" : "",
-        model.id,
-        model.label,
-        model.isDefault ? "(default)" : "",
-        model.description ?? "",
-      ]),
-    ),
-  );
+  await stdout.write(renderTable(header, rows.map(modelCells)));
+}
+
+function modelCells(model: AgentModelOption): readonly string[] {
+  return [
+    model.isCurrent ? "*" : "",
+    model.id ?? "unavailable",
+    model.label,
+    model.isDefault ? "(default)" : "",
+    model.description ?? "",
+  ];
 }
 
 function sanitizedModel(
@@ -47,7 +46,7 @@ function sanitizedModel(
 ): AgentModelOption {
   return {
     ...model,
-    id: clean(model.id),
+    id: model.id === null ? null : clean(model.id),
     label: clean(model.label),
     ...(model.description === undefined ? {} : { description: clean(model.description) }),
     raw: clean(model.raw),
@@ -74,23 +73,14 @@ export async function renderCombinedModels(
   const errors = results.flatMap((result) => ("error" in result ? [result.error] : []));
   if (output === "json") {
     await io.stdout.write(
-      `${JSON.stringify({ schemaVersion: 1, type: "models", agents, errors })}\n`,
+      `${JSON.stringify({ schemaVersion: 2, type: "models", agents, errors })}\n`,
     );
     return;
   }
   await io.stdout.write(
     renderTable(
       ["AGENT", ...header],
-      agents.flatMap(({ agent, models }) =>
-        models.map((model) => [
-          agent,
-          model.isCurrent ? "*" : "",
-          model.id,
-          model.label,
-          model.isDefault ? "(default)" : "",
-          model.description ?? "",
-        ]),
-      ),
+      agents.flatMap(({ agent, models }) => models.map((model) => [agent, ...modelCells(model)])),
     ),
   );
   for (const error of errors)

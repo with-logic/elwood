@@ -17,6 +17,7 @@ import type {
   ModelDialogStage,
   ParsedModelPicker,
 } from "./rows.ts";
+import { modelTarget } from "./target.ts";
 import { defaultModelTimeoutMs, openCommandScreen, waitForScreen } from "./tui-screen.ts";
 import { selectViewportModel } from "./viewport/move.ts";
 import { cursorOption, revealPickerRows } from "./window.ts";
@@ -66,6 +67,7 @@ export type ModelPickerSpec = {
     authority: ModelDialogAuthority,
   ) => ModelDialogStage | undefined;
   readonly parse: (text: string) => ParsedModelPicker;
+  readonly target?: (id: string) => (option: AgentModelOption) => boolean;
   /**
    * Completes listed rows from state the picker does not render, inside the operation's
    * queue slot and under its deadline/termination `signal`. Codex reads its configured
@@ -100,7 +102,7 @@ export async function listPickerModels(
 /**
  * Selects `id`, walking a scrolling window only until that row is rendered, then moving to it
  * and applying it with the adapter's own `apply`. An unknown id cancels, and the rejection
- * lists every row the walk saw.
+ * lists every non-null launch selector the walk saw.
  */
 export async function setPickerModel(
   io: ModelPickerIo,
@@ -109,12 +111,10 @@ export async function setPickerModel(
   timeoutMs: number,
 ): Promise<void> {
   const opening = await openAndParse(io, spec, timeoutMs);
-  const wanted = id.toLowerCase();
-  // Returned IDs are canonical selectors; callers may vary their casing.
-  const isTarget = (option: AgentModelOption) => option.id === wanted;
+  const isTarget = (spec.target ?? modelTarget)(id);
   const ownCompletePicker = isOwnCompletePicker(spec);
   // A row outside a scrolling window is as selectable as a rendered one: walk only until it
-  // is rendered. An unknown id walks the whole list, so the error names every row.
+  // is rendered. An unknown id walks the whole list to collect available launch selectors.
   const walk = { timeoutMs, found: isTarget };
   const { frame: parsed, options } = await revealPickerRows(io, spec, opening, walk);
   const targetOptionIndex = parsed.options.findIndex(isTarget);
@@ -127,7 +127,7 @@ export async function setPickerModel(
         ? `Unknown model id "${id}".`
         : "Could not locate the picker cursor.";
     throw elwoodError("model_automation_failed", reason, {
-      available: options.map((option) => option.id),
+      available: options.map((option) => option.id).filter((id) => id !== null),
     });
   }
   if (parsed.viewport === undefined) {
@@ -142,7 +142,7 @@ export async function setPickerModel(
       io,
       spec,
       { ...parsed, viewport: parsed.viewport },
-      wanted,
+      isTarget,
       timeoutMs,
     );
   }
@@ -150,7 +150,10 @@ export async function setPickerModel(
   // which rows are rendered as the cursor moves, so the target's index changes with it.
   await waitForScreen(
     io.terminal,
-    (text) => cursorOption(spec.parse(text))?.id === wanted,
+    (text) => {
+      const cursor = cursorOption(spec.parse(text));
+      return cursor !== undefined && isTarget(cursor);
+    },
     timeoutMs,
     `${spec.agent} picker cursor on "${id}"`,
     io.signal,

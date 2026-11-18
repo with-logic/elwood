@@ -69,11 +69,25 @@ describe("executeModels", () => {
     const h = harness({ output: "json" });
     expect(await h.run()).toBe(0);
     const document = JSON.parse(h.stdout.value);
-    expect(document).toMatchObject({ schemaVersion: 1, type: "models", agent: "codex" });
+    expect(document).toMatchObject({ schemaVersion: 2, type: "models", agent: "codex" });
     expect(document.models).toHaveLength(2);
     expect(document.models[0].description).toBe("Flagship model");
     expect(document.models[1]).not.toHaveProperty("description");
     expect(h.stdout.value.endsWith("\n")).toBe(true);
+  });
+
+  test("C-CLI-26 renders unavailable selectors in text", async () => {
+    const h = harness({ agent: "claude", output: "text" });
+    h.session.underlying.listModels = () => Promise.resolve([{ ...rows[0]!, id: null }]);
+    expect(await h.run()).toBe(0);
+    expect(h.stdout.value).toContain("unavailable");
+  });
+
+  test("C-CLI-26 renders unavailable selectors in JSON", async () => {
+    const h = harness({ agent: "claude", output: "json" });
+    h.session.underlying.listModels = () => Promise.resolve([{ ...rows[0]!, id: null }]);
+    expect(await h.run()).toBe(0);
+    expect(JSON.parse(h.stdout.value)).toMatchObject({ schemaVersion: 2, models: [{ id: null }] });
   });
 
   test("C-CLI-26 maps a picker failure to an error record with cleanup and status 1", async () => {

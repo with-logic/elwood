@@ -53,7 +53,7 @@ export type ResultDocument = {
 
 /** The `elwood models --output=json` document. */
 export type ModelsDocument = {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly type: "models";
   readonly agent: "claude" | "codex";
   readonly models: readonly ListedModel[];
@@ -71,7 +71,7 @@ export function codexDefaultSandbox(project: E2eProject) {
     configureDefault(unconfigured: readonly ListedModel[]): string {
       const drawn = drawnCodexDefault(unconfigured);
       const configured = unconfigured.find((model) => !model.isCurrent && model.id !== drawn);
-      if (!configured) throw new Error("No other Codex model is listed.");
+      if (!configured?.id) throw new Error("No other Codex model is listed.");
       writeFileSync(sandbox.configPath, `model = "${configured.id}"\n`);
       return drawn ?? configured.id;
     },

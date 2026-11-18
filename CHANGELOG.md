@@ -12,10 +12,18 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-18
+
+- Return launchable Claude model selectors separately from display labels; retain
+  unknown rows with a nullable id, preserve legacy switch aliases, and forward
+  explicit model choices when resuming Claude. Claude/common model IDs are now
+  `string | null`; Codex-specific listings keep string IDs. CLI `models` JSON
+  catalogs use schema version 2 to identify nullable IDs.
 - Recognize Codex's lowercase fast/ultrafast status badges and effort/directory footers without a model name, avoiding the initial-readiness backstop on ordinary configured composers.
 - Keep Claude startup-only sessions unresumable until an unblocked user submission,
   so `startOrResumeClaude` starts fresh after an unused session is stopped instead
-  of attempting a native conversation that was never created.
+  of attempting a native conversation that was never created. Already-saved
+  unusable native IDs require a fresh start.
 
 ## [0.2.8] - 2026-11-18
 

@@ -4,7 +4,7 @@
 
 import { type ListModelsOptions, probeModels } from "../core/models/list.ts";
 import { ownedProbeStateDir } from "../core/models/probe-state.ts";
-import type { AgentModelOption } from "../core/models/rows.ts";
+import type { CodexModelOption } from "../core/models/rows.ts";
 import { startCodex } from "./session/index.ts";
 
 /**
@@ -16,7 +16,7 @@ import { startCodex } from "./session/index.ts";
  * the user's saved MODEL default stays untouched (Codex's own boot config
  * bookkeeping is outside Elwood's control and is not a model change).
  */
-export function listCodexModels(options: ListModelsOptions): Promise<readonly AgentModelOption[]> {
+export function listCodexModels(options: ListModelsOptions): Promise<readonly CodexModelOption[]> {
   const state = ownedProbeStateDir("codex", options.stateDir);
   return probeModels(
     {

@@ -65,7 +65,9 @@ test.each([
   terminal.text = render();
   await vi.advanceTimersByTimeAsync(1_000);
   expect((await pending).map((model) => model.id)).toEqual(
-    Array.from({ length: codex ? 10 : 7 }, (_, index) => `model${index + 1}`),
+    Array.from({ length: codex ? 10 : 7 }, (_, index) =>
+      codex ? `model${index + 1}` : `claude-fixture-${index + 1}`,
+    ),
   );
   expect(terminal.inputs.at(-1)).toBe("\u001b");
 });

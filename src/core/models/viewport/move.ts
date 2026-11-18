@@ -4,7 +4,7 @@ import { arrowDown, arrowUp } from "../../input/constants.ts";
 import { sendPickerInput } from "../input.ts";
 import { isOwnCompletePicker } from "../own-picker.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../picker.ts";
-import type { ParsedModelPicker } from "../rows.ts";
+import type { AgentModelOption, ParsedModelPicker } from "../rows.ts";
 import { waitForScreen } from "../tui-screen.ts";
 import type { ModelViewport } from "./types.ts";
 
@@ -155,11 +155,11 @@ export function selectViewportModel(
   io: ModelPickerIo,
   spec: ViewportSpec,
   frame: ViewportFrame,
-  id: string,
+  isTarget: (option: AgentModelOption) => boolean,
   timeoutMs: number,
 ): Promise<ViewportFrame> {
   const target = frame.viewport.items.findIndex(
-    (item) => item.kind === "model" && item.row.option.id === id,
+    (item) => item.kind === "model" && isTarget(item.row.option),
   );
   return moveViewportCursor(io, spec, frame, frame.viewport.offset + target + 1, timeoutMs);
 }

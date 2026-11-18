@@ -6,6 +6,7 @@ import type { PickerRow } from "../rows.ts";
 /** Each adapter owns its native window markers, disclosures, and control text. */
 export type ViewportGrammar = DialogGrammar & {
   readonly agent: ElwoodAgentKind;
+  readonly selector?: (label: string) => string | null;
   readonly marker: RegExp;
   readonly countedMarkers: boolean;
   readonly partialMarker: RegExp;

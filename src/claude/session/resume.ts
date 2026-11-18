@@ -74,6 +74,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
           env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
+          ...(options.model === undefined ? {} : { model: options.model }),
           ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
           ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
           ...(options.fastMode === undefined ? {} : { fastMode: options.fastMode }),

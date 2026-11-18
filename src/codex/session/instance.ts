@@ -23,6 +23,7 @@ import { codexTurnIdentity } from "../accepted-turn.ts";
 import { enrichCodexModels } from "../config/default-model.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { codexModelOptions } from "../models/options.ts";
 import { codexSessionQuestions } from "../questions/session.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
@@ -40,7 +41,9 @@ import { clipboardRestoreFailedWarning } from "./warnings.ts";
 const cliExitWaitMs = 5_000;
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  // The default and the setModel restore use the config of THIS session's Codex (C-CODEX-24).
+  override async listModels(options?: { readonly timeoutMs?: number }) {
+    return codexModelOptions(await super.listModels(options));
+  }
   protected readonly picker: ModelPickerSpec = {
     ...codexModelPicker,
     isClear: liveCodexClearance(() => this.terminal),
@@ -51,8 +54,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
-  // The PTY's own exit. Session status cannot stand in for it: shutdown records stopped,
-  // killed, and torn_down even when its signal did not take.
+  // The PTY's own exit proves shutdown; recorded session status alone does not.
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
@@ -94,7 +96,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
-
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
     // REGISTER before replaying buffered `terminal:data` (mirrors Claude): a throwing replay
     // handler must still be subscribed for FUTURE data. Replay is synchronous, so nothing interleaves.
@@ -154,8 +155,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     if (this.record.codex.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "codex", sessionId));
   }
-  /** Registers the readiness trigger fired by the `SessionStart` hook — Codex's
-   * authoritative "initialized and accepting input" signal (C-API-28). */
+  /** Installs the authoritative SessionStart readiness trigger (C-API-28). */
   setInitialReadyHook(fire: () => void): void {
     this.onInitialReady = fire;
   }

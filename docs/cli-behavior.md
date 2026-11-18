@@ -2823,3 +2823,36 @@ known-invalid `haiku 5.5` selector. Claude rejected the model but persisted the
 conversation: Elwood saved the native resume ID after the unblocked submission,
 and the next call returned `resumed: true`, emitted native `SessionStart` with `source: "resume"`,
 and reached ready. No successful model turn was needed for either check.
+
+## Claude 2.1.327 picker labels and model selectors
+
+A private-home reproduction on 2026-11-18 called public `listClaudeModels`, which
+returned `id: "haiku 5.5"` for the native `Haiku 5.5` row. Passing that id unchanged
+as the launch model reached ready but the first prompt was rejected as an invalid
+model. Launching with `claude-haiku-5-5` selected the native `Haiku 5.5` row instead.
+No successful model response was needed to reproduce the rejected label.
+
+`--model default` is supported: the same pinned CLI reached ready and reported the
+account's concrete `Fable 5.2` row as current. Default is a selector alias rather
+than an unavailable model; its resolved current row need not have id `default`.
+The native resolver also recognizes bare Opus, Sonnet, Haiku and Fable aliases.
+
+The initialized SDK model projection listed five compiled choices, while the TUI
+listed fourteen account-specific choices and a different resolved default. It is
+therefore not a replacement catalog for the live picker. Elwood maps known native
+family/version labels to CLI selectors, preserves explicit selectors and aliases,
+and leaves arbitrary labels explicitly unresolved instead of guessing a slug.
+
+With canonical selectors, a private-home Claude 2.1.327 test listed the served
+catalog, launched with a returned id, switched to another returned id, switched
+back with the legacy display label, and launched with `default`. A separate control
+created a conversation using an invalid-model rejection, then passed a discovered
+`claude-haiku-5-5` selector on a true `startOrResumeClaude` resume; the native current
+row was `Haiku 5.5`. No successful model response was used.
+
+A fresh private config's first probe selected the five-row compiled catalog,
+while the next process exposed the fourteen-row served catalog. Enabling the model
+catalog flag alone did not change that first-process result. The native selector
+test primes its private config with one probe before requiring the served catalog;
+a second fallback still fails explicitly. This is test setup for Claude's catalog
+initialization, not a change to which native rows Elwood returns.
