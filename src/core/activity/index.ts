@@ -91,7 +91,10 @@ export {
 
 /** Hook events both adapters map identically; returns undefined for the rest. */
 function sharedHookActivity(
-  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text" | "speed">,
+  base: Omit<
+    ElwoodActivityEvent,
+    "kind" | "label" | "text" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
+  >,
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
@@ -171,7 +174,10 @@ export {
 } from "./transcript.ts";
 
 function withText(
-  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text" | "speed">,
+  base: Omit<
+    ElwoodActivityEvent,
+    "kind" | "label" | "text" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
+  >,
   kind: "user_message" | "notification",
   label: string,
   text: string,

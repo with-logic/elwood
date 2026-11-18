@@ -134,7 +134,7 @@ async function observeAndRequest(
         event.hook_event_name,
         outcome.result,
         outcome.failedOpen,
-        subagentObservation(event, blocked),
+        subagentObservation(event, blocked, session?.closing.signal),
       ),
     ),
   );

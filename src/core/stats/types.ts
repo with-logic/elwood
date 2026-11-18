@@ -4,7 +4,7 @@ export type TokenCounts = {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly totalTokens: number;
-  readonly cachedInputTokens?: number;
+  readonly cacheReadInputTokens?: number;
   readonly cacheWriteInputTokens?: number;
   readonly reasoningOutputTokens?: number;
 };
@@ -31,6 +31,7 @@ export type CodexRateLimitWindow = {
 
 export type CodexRateLimits = {
   readonly limitId?: string;
+  readonly recordedAt?: string;
 } & (
   | { readonly primary: CodexRateLimitWindow; readonly secondary?: CodexRateLimitWindow }
   | { readonly primary?: never; readonly secondary: CodexRateLimitWindow }
@@ -42,8 +43,28 @@ export type SubagentObservation = {
   readonly state: "started" | "stopped";
 };
 
-export type DashboardActivityFields = {
-  readonly tokenUsage?: CodexTokenUsage | ClaudeTokenUsage;
-  readonly rateLimits?: CodexRateLimits;
-  readonly subagent?: SubagentObservation;
-};
+export type DashboardActivityFields =
+  | { readonly tokenUsage?: never; readonly rateLimits?: never; readonly subagent?: never }
+  | {
+      readonly source: "transcript";
+      readonly agent: "codex";
+      readonly transcriptPath: string;
+      readonly tokenUsage?: CodexTokenUsage;
+      readonly rateLimits?: CodexRateLimits;
+      readonly subagent?: never;
+    }
+  | {
+      readonly source: "transcript";
+      readonly agent: "claude";
+      readonly transcriptPath: string;
+      readonly tokenUsage?: ClaudeTokenUsage;
+      readonly rateLimits?: never;
+      readonly subagent?: never;
+    }
+  | {
+      readonly source: "hook";
+      readonly kind: "hook_result";
+      readonly subagent: SubagentObservation;
+      readonly tokenUsage?: never;
+      readonly rateLimits?: never;
+    };

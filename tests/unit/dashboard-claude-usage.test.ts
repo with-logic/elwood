@@ -30,13 +30,20 @@ test("C-STATS-01 Claude publishes one usage sample per record, including usage-o
       type: "assistant",
       message: { ...message, content: [{ type: "thinking", thinking: "think" }, text] },
     },
-    { type: "assistant", message: { ...message, usage: { ...usage, output_tokens: 12 } } },
+    {
+      type: "assistant",
+      message: {
+        ...message,
+        content: [{ type: "redacted_thinking", data: "private" }],
+        usage: { ...usage, output_tokens: 12 },
+      },
+    },
   );
   const counts = {
     inputTokens: 65,
     outputTokens: 10,
     totalTokens: 75,
-    cachedInputTokens: 30,
+    cacheReadInputTokens: 30,
     cacheWriteInputTokens: 15,
   };
   expect(events).toMatchObject([
@@ -53,26 +60,28 @@ test("C-STATS-01 Claude publishes one usage sample per record, including usage-o
     },
   ]);
   expect(events[1]?.tokenUsage).toBeUndefined();
+  expect(events[2]).not.toHaveProperty("raw");
 });
 
 test("C-STATS-01 Claude omits synthetic, unkeyed, and malformed usage", () => {
-  for (const item of [
-    { type: "user", message: { ...message, content: [] } },
-    { type: "assistant", message: null },
-    ...[
-      { model: "<synthetic>" },
-      { id: "" },
-      { id: null },
-      { usage: null },
-      { usage: { ...usage, input_tokens: -1 } },
-      { usage: { ...usage, output_tokens: -4 } },
-      { usage: { ...usage, input_tokens: Number.MAX_SAFE_INTEGER } },
-    ].map((overrides) => ({
+  expect(claude({ type: "user", message: { ...message, content: [] } })).toEqual([]);
+  expect(claude({ type: "assistant", message: null })).toEqual([]);
+  for (const overrides of [
+    { model: "<synthetic>" },
+    { id: "" },
+    { id: "   " },
+    { id: null },
+    { usage: null },
+    { usage: { ...usage, input_tokens: -1 } },
+    { usage: { ...usage, output_tokens: -4 } },
+    { usage: { ...usage, input_tokens: Number.MAX_SAFE_INTEGER } },
+  ]) {
+    const events = claude({
       type: "assistant",
       message: { ...message, ...overrides, content: [text] },
-    })),
-  ]) {
-    expect(claude(item).every((event) => event.tokenUsage === undefined)).toBe(true);
+    });
+    expect(events).toMatchObject([{ kind: "assistant_message", text: "done" }]);
+    expect(events[0]).not.toHaveProperty("tokenUsage");
   }
   const [event] = claude({
     type: "assistant",

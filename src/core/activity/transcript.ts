@@ -9,7 +9,7 @@ import type { CodexTranscriptEvent } from "../../codex/transcript/index.ts";
 import { codexSpeedObservation } from "../../codex/transcript/speed.ts";
 import { codexStats } from "../../codex/transcript/stats.ts";
 import { transcriptActivityKind } from "../hook-result.ts";
-import { field } from "../stats/fields.ts";
+import { optional } from "../optional.ts";
 import type { ElwoodActivityEvent } from "./index.ts";
 import * as meta from "./meta.ts";
 
@@ -58,9 +58,10 @@ export function activityFromClaudeTranscript(
     label: event.summary.label,
     transcriptPath: event.path,
     ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
-    raw: event.item,
-    ...claudeSpeedObservation(event.item),
-    ...field("tokenUsage", event.tokenUsage),
+    ...(event.summary.kind === "other"
+      ? {}
+      : { raw: event.item, ...claudeSpeedObservation(event.item) }),
+    ...optional(event.tokenUsage, "tokenUsage"),
   } as const;
   return { ...base, ...claudeActivityFields(event.summary) };
 }

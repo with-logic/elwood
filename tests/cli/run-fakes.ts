@@ -94,7 +94,7 @@ export class FakeCliSession implements CliSessionFacade {
     partial: Partial<
       Omit<
         Exclude<ElwoodActivityEvent, { readonly kind: "assistant_progress" | "question" }>,
-        "speed"
+        "speed" | "tokenUsage" | "rateLimits" | "subagent"
       >
     >,
   ): void {

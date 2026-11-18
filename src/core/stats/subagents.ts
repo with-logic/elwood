@@ -6,9 +6,11 @@ import type { SubagentObservation } from "./types.ts";
 export function subagentObservation(
   event: ClaudeHookEvent | CodexHookEvent,
   blocked: boolean,
+  closing: AbortSignal | undefined,
 ): SubagentObservation | undefined {
   const name = event.hook_event_name;
   if (name !== "SubagentStart" && (name !== "SubagentStop" || blocked)) return undefined;
+  if (closing?.aborted || event.agent_id.trim() === "") return undefined;
   return {
     id: event.agent_id,
     type: event.agent_type,

@@ -107,8 +107,8 @@ transcript and hook events.
 | Field | What to show | How to update |
 | --- | --- | --- |
 | `tokenUsage` with `scope: "thread"` | Codex cumulative totals, last request, and context window | Replace the previous snapshot for `transcriptPath`. Totals may include history after resume. |
-| `tokenUsage` with `scope: "response"` | Claude response tokens, including cache reads and writes | Upsert by `transcriptPath` and `responseId` before summing. Claude can update one response across multiple records. |
-| `rateLimits` | Codex quota remaining, window duration, and reset time | Use the latest `remainingPercent` and `resetsAtUnixSeconds` for each observed window. One account's quota can appear across several sessions. |
+| `tokenUsage` with `scope: "response"` | Claude response tokens, including cache reads and writes | Upsert by `transcriptPath` and `responseId`, then sum `counts.totalTokens`. Cache reads and writes are components of `counts.inputTokens`. |
+| `rateLimits` | Codex quota remaining, window duration, and reset time | Replace the whole snapshot for a known account and `limitId`. Compare `recordedAt` across sessions and treat samples without it as unordered. |
 | `subagent` | Observed active subagents for either harness | Add the ID to a per-session set on `started`, delete on `stopped`, and use the set size. Clear it on `terminal:exit`. |
 
 An absent field means the harness has supplied no matching evidence. Codex

@@ -4,7 +4,6 @@
 
 import type { CodexTranscriptSummary } from "../codex/transcript/types.ts";
 import type { ElwoodActivityEvent, ElwoodActivityKind, ElwoodAgentKind } from "./activity/index.ts";
-import { field } from "./stats/fields.ts";
 import type { SubagentObservation } from "./stats/types.ts";
 
 export function activityFromHookResult(
@@ -23,7 +22,7 @@ export function activityFromHookResult(
     label: hookResultLabel(result, failedOpen),
     hookEventName,
     failedOpen,
-    ...field("subagent", subagent),
+    ...(subagent === undefined ? {} : { subagent }),
     raw: { hookEventName, result, failedOpen },
   };
 }

@@ -5,7 +5,7 @@
  * live drop warning, never emitted as activity.
  */
 
-import { field } from "../../core/stats/fields.ts";
+import { optional } from "../../core/optional.ts";
 import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
@@ -62,7 +62,12 @@ export class LineEmitter {
     const turnId = this.turns.observe(path, item);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
-    const base = { elwoodSessionId: this.elwoodSessionId, path, item, ...field("turnId", turnId) };
+    const base = {
+      elwoodSessionId: this.elwoodSessionId,
+      path,
+      item,
+      ...optional(turnId, "turnId"),
+    };
     if (summaries.length === 0 && tokenUsage !== undefined) {
       this.emit({ ...base, summary: { kind: "other", label: "token_usage" }, tokenUsage });
     }
@@ -70,7 +75,7 @@ export class LineEmitter {
       this.emit({
         ...base,
         summary,
-        ...field("tokenUsage", index === 0 ? tokenUsage : undefined),
+        ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage"),
       });
     }
   }

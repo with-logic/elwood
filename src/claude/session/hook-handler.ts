@@ -90,7 +90,7 @@ export function buildClaudeHookHandler(
           event.hook_event_name,
           outcome.result,
           outcome.failedOpen,
-          subagentObservation(event, blocked),
+          subagentObservation(event, blocked, deps.getSession()?.closing.signal),
         ),
       ),
     );

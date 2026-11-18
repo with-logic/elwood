@@ -411,6 +411,11 @@ Each criterion has:
 |---|---|---|
 | C-SPEED-01 | §5.11 | Adapter-specific typed speed options validate after directory/session checks and before preflight, state setup, or ownership changes; override duplicate raw settings; and reach start, lazy construction, resume and startOrResume without persistence or changing native user defaults. Resume forwards explicit raw overrides. The package root exports the frozen `codexServiceTiers` tuple of accepted Codex choices. |
 | C-SPEED-02 | §5.11 | Codex model enumeration exposes an Elwood-supplied `default` baseline plus recognized native cached tiers with their timestamp, using the session's own config home and bounded file reads; missing or invalid evidence leaves the entire field absent. |
-| C-STATS-01 | §5.12 | Activity exposes Codex thread token and quota snapshots and Claude response usage keyed by native message ID, including usage-only records. Invalid or missing telemetry remains absent. |
-| C-STATS-02 | §5.12 | Activity exposes subagent start and unblocked stop hook results on both adapters, identified by native agent ID. |
 | C-SPEED-03 | §5.11 | Transcript activity distinguishes Codex turn configuration from Claude response usage, retains transcript ownership, and never infers speed from absent or unknown data. |
+
+### Dashboard statistics
+
+| ID | Section | Requirement |
+|---|---|---|
+| C-STATS-01 | §5.12 | Activity exposes Codex thread token and quota snapshots and Claude response usage keyed by native message ID, including usage-only records without the raw record. Quota exposes the native timestamp when present, and Codex stats are projected before raw observers. Invalid or missing telemetry remains absent. |
+| C-STATS-02 | §5.12 | Activity exposes subagent start and unblocked stop hook results on both adapters, identified by a nonblank native agent ID. Shutdown suppresses late subagent observations. |

@@ -1,6 +1,8 @@
 /** Normalizes Claude assistant response usage without counting synthetic records (C-STATS-01). */
+
+import { optional } from "../../core/optional.ts";
 import { isRecord } from "../../core/predicates.ts";
-import { count, field } from "../../core/stats/fields.ts";
+import { count } from "../../core/stats/fields.ts";
 import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
 
 export function claudeTokenUsage(item: unknown): ClaudeTokenUsage | undefined {
@@ -9,7 +11,7 @@ export function claudeTokenUsage(item: unknown): ClaudeTokenUsage | undefined {
   if (!isRecord(message) || message["model"] === "<synthetic>") return undefined;
   const responseId = message["id"];
   const usage = message["usage"];
-  if (typeof responseId !== "string" || responseId.length === 0 || !isRecord(usage))
+  if (typeof responseId !== "string" || responseId.trim() === "" || !isRecord(usage))
     return undefined;
   const uncached = count(usage["input_tokens"]);
   const outputTokens = count(usage["output_tokens"]);
@@ -26,8 +28,8 @@ export function claudeTokenUsage(item: unknown): ClaudeTokenUsage | undefined {
       inputTokens,
       outputTokens,
       totalTokens,
-      ...field("cachedInputTokens", cached),
-      ...field("cacheWriteInputTokens", written),
+      ...optional(cached, "cacheReadInputTokens"),
+      ...optional(written, "cacheWriteInputTokens"),
     },
   };
 }

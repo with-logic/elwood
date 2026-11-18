@@ -13,7 +13,11 @@ function codex(item: unknown) {
 }
 
 function tokenCount(data: object) {
-  return { type: "event_msg", payload: { type: "token_count", ...data } };
+  return {
+    timestamp: "2026-11-17T07:09:22.024Z",
+    type: "event_msg",
+    payload: { type: "token_count", ...data },
+  };
 }
 
 const total = {
@@ -47,7 +51,7 @@ test("C-STATS-01 projects Codex native cumulative and last usage with its quota 
       inputTokens: 240,
       outputTokens: 60,
       totalTokens: 300,
-      cachedInputTokens: 100,
+      cacheReadInputTokens: 100,
       cacheWriteInputTokens: 10,
       reasoningOutputTokens: 30,
     },
@@ -56,6 +60,7 @@ test("C-STATS-01 projects Codex native cumulative and last usage with its quota 
   });
   expect(event.rateLimits).toEqual({
     limitId: "codex",
+    recordedAt: "2026-11-17T07:09:22.024Z",
     primary: {
       usedPercent: 34.5,
       remainingPercent: 65.5,
@@ -68,8 +73,8 @@ test("C-STATS-01 projects Codex native cumulative and last usage with its quota 
 });
 
 test("C-STATS-01 Codex quota can arrive without usage and with only one valid window", () => {
-  const event = codex(
-    tokenCount({
+  const event = codex({
+    ...tokenCount({
       info: null,
       rate_limits: {
         limit_id: 123,
@@ -77,7 +82,8 @@ test("C-STATS-01 Codex quota can arrive without usage and with only one valid wi
         secondary: { used_percent: 0, window_minutes: "300", resets_at: 1.5 },
       },
     }),
-  );
+    timestamp: "invalid time",
+  });
   expect(event.tokenUsage).toBeUndefined();
   expect(event.rateLimits).toEqual({ secondary: { usedPercent: 0, remainingPercent: 100 } });
 });
@@ -117,11 +123,23 @@ test("C-STATS-01 invalid Codex counters never become a zero usage or quota readi
     },
   });
   expect(event.rateLimits).toBeUndefined();
-  expect(
-    codex({ type: "response_item", payload: { type: "token_count" } }).tokenUsage,
-  ).toBeUndefined();
   expect(codex({ type: "event_msg", payload: null }).tokenUsage).toBeUndefined();
-  expect(
-    codex({ type: "event_msg", payload: { type: "task_complete" } }).tokenUsage,
-  ).toBeUndefined();
+  const snapshot = tokenCount({
+    info: { total_token_usage: total },
+    rate_limits: { primary: { used_percent: 25 } },
+  });
+  for (const item of [
+    { ...snapshot, type: "response_item" },
+    { ...snapshot, payload: { ...snapshot.payload, type: "task_complete" } },
+  ]) {
+    expect(codex(item)).not.toHaveProperty("tokenUsage");
+    expect(codex(item)).not.toHaveProperty("rateLimits");
+  }
+});
+
+test("C-STATS-01 existing quota records without a timestamp still report their windows", () => {
+  const { payload } = tokenCount({ rate_limits: { primary: { used_percent: 25 } } });
+  expect(codex({ type: "event_msg", payload }).rateLimits).toEqual({
+    primary: { usedPercent: 25, remainingPercent: 75 },
+  });
 });

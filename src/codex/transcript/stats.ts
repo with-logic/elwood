@@ -1,6 +1,8 @@
 /** Codex token and quota snapshots from committed token_count records (C-STATS-01). */
+
+import { optional } from "../../core/optional.ts";
 import { isFiniteNumber, isRecord } from "../../core/predicates.ts";
-import { count, field } from "../../core/stats/fields.ts";
+import { count } from "../../core/stats/fields.ts";
 import type {
   CodexRateLimits,
   CodexRateLimitWindow,
@@ -16,8 +18,8 @@ export function codexStats(item: unknown): {
   const payload = item["payload"];
   if (!isRecord(payload) || payload["type"] !== "token_count") return {};
   return {
-    ...field("tokenUsage", tokenUsage(payload["info"])),
-    ...field("rateLimits", rateLimits(payload["rate_limits"])),
+    ...optional(tokenUsage(payload["info"]), "tokenUsage"),
+    ...optional(rateLimits(payload["rate_limits"], item["timestamp"]), "rateLimits"),
   };
 }
 
@@ -28,8 +30,8 @@ function tokenUsage(info: unknown): CodexTokenUsage | undefined {
   return {
     scope: "thread",
     total,
-    ...field("last", tokenCounts(info["last_token_usage"])),
-    ...field("contextWindowTokens", count(info["model_context_window"])),
+    ...optional(tokenCounts(info["last_token_usage"]), "last"),
+    ...optional(count(info["model_context_window"]), "contextWindowTokens"),
   };
 }
 
@@ -44,19 +46,24 @@ function tokenCounts(value: unknown): TokenCounts | undefined {
     inputTokens,
     outputTokens,
     totalTokens,
-    ...field("cachedInputTokens", count(value["cached_input_tokens"])),
-    ...field("cacheWriteInputTokens", count(value["cache_write_input_tokens"])),
-    ...field("reasoningOutputTokens", count(value["reasoning_output_tokens"])),
+    ...optional(count(value["cached_input_tokens"]), "cacheReadInputTokens"),
+    ...optional(count(value["cache_write_input_tokens"]), "cacheWriteInputTokens"),
+    ...optional(count(value["reasoning_output_tokens"]), "reasoningOutputTokens"),
   };
 }
 
-function rateLimits(value: unknown): CodexRateLimits | undefined {
+function rateLimits(value: unknown, timestamp: unknown): CodexRateLimits | undefined {
   if (!isRecord(value)) return undefined;
   const primary = rateWindow(value["primary"]);
   const secondary = rateWindow(value["secondary"]);
   const id = value["limit_id"];
-  const identity = field("limitId", typeof id === "string" ? id : undefined);
-  if (primary) return { ...identity, primary, ...field("secondary", secondary) };
+  const recordedAt =
+    typeof timestamp === "string" && Number.isFinite(Date.parse(timestamp)) ? timestamp : undefined;
+  const identity = {
+    ...optional(typeof id === "string" ? id : undefined, "limitId"),
+    ...optional(recordedAt, "recordedAt"),
+  };
+  if (primary) return { ...identity, primary, ...optional(secondary, "secondary") };
   if (secondary) return { ...identity, secondary };
   return undefined;
 }
@@ -68,7 +75,7 @@ function rateWindow(value: unknown): CodexRateLimitWindow | undefined {
   return {
     usedPercent,
     remainingPercent: Math.max(0, 100 - usedPercent),
-    ...field("windowMinutes", count(value["window_minutes"])),
-    ...field("resetsAtUnixSeconds", count(value["resets_at"])),
+    ...optional(count(value["window_minutes"]), "windowMinutes"),
+    ...optional(count(value["resets_at"]), "resetsAtUnixSeconds"),
   };
 }
