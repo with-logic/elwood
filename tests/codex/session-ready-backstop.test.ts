@@ -83,16 +83,25 @@ test.each([
   expect(ptys[0]!.writes.join("")).toContain("message behind unknown startup");
 });
 
-test("C-API-28 Codex readiness on its configured composer does not warn", async () => {
+test.each([
+  { label: "legacy", frame: codexComposer },
+  { label: "lowercase fast", frame: capturedFrame("codex-0.170.0/xhigh-fast-composer") },
+  { label: "effort-only", frame: capturedFrame("codex-0.170.0/effort-only-composer") },
+])("C-API-28 Codex $label composer releases startup input without warning", async ({ frame }) => {
   const { session, warnings, statuses } = await start();
+  const sent = session.sendMessage("ordinary initial prompt");
+  void sent.catch(() => {});
   ptys[0]!.emitData(codexTty(boot));
   await settleFrame(session);
   await vi.advanceTimersByTimeAsync(5_000);
-  ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+  expect(ptys[0]!.writes.join("")).not.toContain("ordinary initial prompt");
+  ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(frame)}`);
   await settleFrame(session);
-  await vi.advanceTimersByTimeAsync(5_100);
-  expect(statuses).toEqual(["ready"]);
+  await vi.advanceTimersByTimeAsync(5_500);
+  expect(statuses).toEqual(["ready", "running"]);
+  await sent;
   await vi.advanceTimersByTimeAsync(60_000);
+  expect(ptys[0]!.writes).toEqual(["\u001b[200~ordinary initial prompt\u001b[201~", "\r"]);
   expect(warnings).toEqual([]);
 });
 
