@@ -34,7 +34,7 @@ async function start() {
   return { session, warnings, statuses };
 }
 
-/** Flush the frame's immediate renderer work before starting its readiness clock. */
+/** Render the frame so its readiness timer is armed before fake time advances. */
 async function settleFrame(session: CodexSessionApi): Promise<void> {
   const settled = session.terminal.settled();
   await vi.advanceTimersByTimeAsync(0);
@@ -105,7 +105,11 @@ test.each([
   expect(session.status).toBe("blocked");
   expect(warnings.map((event) => event.code)).toContain("initial_ready_backstop");
   const sent = session[method]("queued after the update offer");
-  void sent.catch(() => {});
+  const settled = vi.fn();
+  void sent.then(settled, settled);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(ptys[0]!.writes).toEqual([]);
+  expect(settled).not.toHaveBeenCalled();
   ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
   await settleFrame(session);
   await vi.advanceTimersByTimeAsync(500);
