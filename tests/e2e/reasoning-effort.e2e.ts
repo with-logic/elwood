@@ -7,7 +7,6 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { compareVersions, parseVersion } from "../../src/core/versions.ts";
 import {
@@ -16,7 +15,9 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { pathSkipReason, resolvedAgentProgramPath } from "./availability.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
+import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { pathSkipReason } from "./availability.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import {
   cleanup,
@@ -33,12 +34,9 @@ test("C-CODEX-21 C-API-28 Codex launches with ultra effort and a configured comp
   skip: skipIf(pathSkipReason("codex"), codexAuthMissing()),
   timeout: 90_000,
 }, async (t) => {
-  const version = parseVersion(
-    execFileSync(resolvedAgentProgramPath("codex"), ["--version"], {
-      encoding: "utf8",
-      timeout: 10_000,
-    }),
-  );
+  const result = await runProbe(userShell(), probeShellCommand("codex --version", "codex"));
+  assert.equal(result.status, 0, "Codex version probe succeeds");
+  const version = parseVersion(result.stdout);
   assert.ok(version, "Codex reports its native CLI version");
   if (compareVersions(version, "0.169.0") < 0) {
     skipNow(t, "The ultra composer probe requires Codex 0.169.0 or newer");
