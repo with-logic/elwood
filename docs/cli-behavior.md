@@ -2728,6 +2728,10 @@ can carry `rate_limits` with separate optional windows, fractional
 `used_percent`, and `resets_at` in Unix seconds. A quota window is a provider
 snapshot for its limit and can appear in multiple sessions. Replacing the
 previous observation preserves the meaning of both quota and cumulative usage.
+In the 0.170.0 loopback fixture, one 23-token request per launch produces
+cumulative snapshots of 23, 46, and 69 after a start and two resumes. The
+latest request stays at 23. The speed test checks these counts on 0.170.0
+and continues to test tier selection on other CLI versions.
 
 Claude Code's assistant JSONL records include `message.id` and `message.usage`.
 Different records can describe the same message ID, for example when the CLI

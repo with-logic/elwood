@@ -6,14 +6,14 @@ import {
   type AgentSpeedObservation,
   type CodexServiceTier,
   type CodexServiceTiers,
-  codexServiceTiers,
+  codexServiceTierChoices,
   type ElwoodActivityEvent,
 } from "../../src/index.ts";
 
 test("C-SPEED-01 the package exposes frozen Codex launch choices", () => {
-  expect(codexServiceTiers).toEqual(["default", "fast", "ultrafast"]);
-  expect(Object.isFrozen(codexServiceTiers)).toBe(true);
-  expectTypeOf<(typeof codexServiceTiers)[number]>().toEqualTypeOf<CodexServiceTier>();
+  expect(codexServiceTierChoices).toEqual(["default", "fast", "ultrafast"]);
+  expect(Object.isFrozen(codexServiceTierChoices)).toBe(true);
+  expectTypeOf<(typeof codexServiceTierChoices)[number]>().toEqualTypeOf<CodexServiceTier>();
 });
 
 test("C-SPEED-03 only the matching transcript adapter can carry speed evidence", () => {

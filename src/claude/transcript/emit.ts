@@ -13,16 +13,21 @@ import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.t
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 import { claudeTokenUsage } from "./usage.ts";
 
-export type ClaudeTranscriptEvent = {
+type ClaudeTranscriptFields = {
   readonly elwoodSessionId: string;
   readonly path: string;
   readonly item: unknown;
-  readonly summary:
-    | ClaudeTranscriptSummary
-    | { readonly kind: "other"; readonly label: "token_usage" };
   readonly turnId?: string;
-  readonly tokenUsage?: ClaudeTokenUsage;
 };
+
+export type ClaudeTranscriptEvent = ClaudeTranscriptFields &
+  (
+    | { readonly summary: ClaudeTranscriptSummary; readonly tokenUsage?: ClaudeTokenUsage }
+    | {
+        readonly summary: { readonly kind: "other"; readonly label: "token_usage" };
+        readonly tokenUsage: ClaudeTokenUsage;
+      }
+  );
 
 /** Turns raw transcript text into parsed activity events for one watcher. */
 export class LineEmitter {
@@ -62,15 +67,16 @@ export class LineEmitter {
     const turnId = this.turns.observe(path, item);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
-    const base = {
-      elwoodSessionId: this.elwoodSessionId,
-      path,
-      item,
-      ...optional(turnId, "turnId"),
-    };
-    if (summaries.length === 0 && tokenUsage !== undefined) {
-      this.emit({ ...base, summary: { kind: "other", label: "token_usage" }, tokenUsage });
+    if (summaries.length === 0) {
+      if (tokenUsage === undefined) return;
+      this.emit({
+        ...this.eventFields(path, item, turnId),
+        summary: { kind: "other", label: "token_usage" },
+        tokenUsage,
+      });
+      return;
     }
+    const base = this.eventFields(path, item, turnId);
     for (const [index, summary] of summaries.entries()) {
       this.emit({
         ...base,
@@ -78,6 +84,19 @@ export class LineEmitter {
         ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage"),
       });
     }
+  }
+
+  private eventFields(
+    path: string,
+    item: unknown,
+    turnId: string | undefined,
+  ): ClaudeTranscriptFields {
+    return {
+      elwoodSessionId: this.elwoodSessionId,
+      path,
+      item,
+      ...optional(turnId, "turnId"),
+    };
   }
 }
 

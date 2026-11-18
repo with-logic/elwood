@@ -10,13 +10,15 @@ import type {
   TokenCounts,
 } from "../../core/stats/types.ts";
 
-export function codexStats(item: unknown): {
+type CodexStats = {
   readonly tokenUsage?: CodexTokenUsage;
   readonly rateLimits?: CodexRateLimits;
-} {
-  if (!isRecord(item) || item["type"] !== "event_msg") return {};
+};
+
+export function codexStats(item: unknown): CodexStats | undefined {
+  if (!isRecord(item) || item["type"] !== "event_msg") return undefined;
   const payload = item["payload"];
-  if (!isRecord(payload) || payload["type"] !== "token_count") return {};
+  if (!isRecord(payload) || payload["type"] !== "token_count") return undefined;
   return {
     ...optional(tokenUsage(payload["info"]), "tokenUsage"),
     ...optional(rateLimits(payload["rate_limits"], item["timestamp"]), "rateLimits"),

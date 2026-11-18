@@ -30,6 +30,10 @@ export function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+export function isNonnegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 /** Absent, or a finite number. Named for the contract: a non-finite number FAILS. */
 export function optionalFiniteNumber(value: unknown): boolean {
   return value === undefined || isFiniteNumber(value);

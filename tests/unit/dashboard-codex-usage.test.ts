@@ -88,20 +88,19 @@ test("C-STATS-01 Codex quota can arrive without usage and with only one valid wi
   expect(event.rateLimits).toEqual({ secondary: { usedPercent: 0, remainingPercent: 100 } });
 });
 
-test("C-STATS-01 invalid Codex counters never become a zero usage or quota reading", () => {
-  for (const info of [
-    null,
-    {},
-    { total_token_usage: { ...total, input_tokens: -1 } },
-    { total_token_usage: { ...total, output_tokens: 0.2 } },
-    { total_token_usage: { ...total, total_tokens: "300" } },
-  ]) {
-    const event = codex(
-      tokenCount({ info, rate_limits: { primary: { used_percent: Number.NaN } } }),
-    );
-    expect(event.tokenUsage).toBeUndefined();
-    expect(event.rateLimits).toBeUndefined();
-  }
+test.each([
+  ["null info", null],
+  ["missing total", {}],
+  ["negative input", { total_token_usage: { ...total, input_tokens: -1 } }],
+  ["fractional output", { total_token_usage: { ...total, output_tokens: 0.2 } }],
+  ["string total", { total_token_usage: { ...total, total_tokens: "300" } }],
+] as const)("C-STATS-01 Codex omits invalid token usage for %s", (_name, info) => {
+  const event = codex(tokenCount({ info, rate_limits: { primary: { used_percent: Number.NaN } } }));
+  expect(event.tokenUsage).toBeUndefined();
+  expect(event.rateLimits).toBeUndefined();
+});
+
+test("C-STATS-01 Codex preserves valid required counts when optional telemetry is invalid", () => {
   const event = codex(
     tokenCount({
       info: {
@@ -123,18 +122,23 @@ test("C-STATS-01 invalid Codex counters never become a zero usage or quota readi
     },
   });
   expect(event.rateLimits).toBeUndefined();
-  expect(codex({ type: "event_msg", payload: null }).tokenUsage).toBeUndefined();
-  const snapshot = tokenCount({
-    info: { total_token_usage: total },
-    rate_limits: { primary: { used_percent: 25 } },
-  });
-  for (const item of [
-    { ...snapshot, type: "response_item" },
+});
+
+const snapshot = tokenCount({
+  info: { total_token_usage: total },
+  rate_limits: { primary: { used_percent: 25 } },
+});
+
+test.each([
+  ["missing payload", { ...snapshot, payload: null }],
+  ["unexpected record type", { ...snapshot, type: "response_item" }],
+  [
+    "unexpected payload type",
     { ...snapshot, payload: { ...snapshot.payload, type: "task_complete" } },
-  ]) {
-    expect(codex(item)).not.toHaveProperty("tokenUsage");
-    expect(codex(item)).not.toHaveProperty("rateLimits");
-  }
+  ],
+] as const)("C-STATS-01 Codex omits telemetry for %s", (_name, item) => {
+  expect(codex(item)).not.toHaveProperty("tokenUsage");
+  expect(codex(item)).not.toHaveProperty("rateLimits");
 });
 
 test("C-STATS-01 existing quota records without a timestamp still report their windows", () => {

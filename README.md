@@ -446,7 +446,7 @@ const claude = new ClaudeSession({ fastMode: true });
 ```
 
 Codex accepts `default`, `fast`, or `ultrafast`; Claude accepts a Fast boolean.
-`codexServiceTiers` exports the valid Codex choices for a host settings control.
+`codexServiceTierChoices` exports the valid Codex choices for a host settings control.
 Omit the option to inherit native settings. Re-supply it on `resumeCodex` or
 `resumeClaude` to change speed between turns while retaining the conversation.
 Typed options take precedence over duplicate raw launch overrides.

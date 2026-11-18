@@ -9,11 +9,13 @@ export function subagentObservation(
   closing: AbortSignal | undefined,
 ): SubagentObservation | undefined {
   const name = event.hook_event_name;
-  if (name !== "SubagentStart" && (name !== "SubagentStop" || blocked)) return undefined;
+  const isSubagentStart = name === "SubagentStart";
+  const isUnblockedSubagentStop = name === "SubagentStop" && !blocked;
+  if (!(isSubagentStart || isUnblockedSubagentStop)) return undefined;
   if (closing?.aborted || event.agent_id.trim() === "") return undefined;
   return {
     id: event.agent_id,
     type: event.agent_type,
-    state: name === "SubagentStart" ? "started" : "stopped",
+    state: isSubagentStart ? "started" : "stopped",
   };
 }

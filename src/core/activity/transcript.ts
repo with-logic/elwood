@@ -58,9 +58,8 @@ export function activityFromClaudeTranscript(
     label: event.summary.label,
     transcriptPath: event.path,
     ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
-    ...(event.summary.kind === "other"
-      ? {}
-      : { raw: event.item, ...claudeSpeedObservation(event.item) }),
+    ...(event.summary.kind === "other" ? {} : { raw: event.item }),
+    ...claudeSpeedObservation(event.item),
     ...optional(event.tokenUsage, "tokenUsage"),
   } as const;
   return { ...base, ...claudeActivityFields(event.summary) };

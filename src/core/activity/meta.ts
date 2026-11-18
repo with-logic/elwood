@@ -6,6 +6,7 @@
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
 import { type CodexTranscriptEvent, toolOutputText } from "../../codex/transcript/index.ts";
+import { optional } from "../optional.ts";
 import { stringify } from "../serialize.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./index.ts";
 
@@ -23,13 +24,13 @@ export function hookActivityBase(
     agent,
     source: "hook",
     hookEventName: event.hook_event_name,
-    ...optional(
-      "turnId",
+    ...optionalMeta(
       stringValue(source["turn_id"]) ??
         (agent === "claude" ? stringValue(source["prompt_id"]) || undefined : undefined),
+      "turnId",
     ),
-    ...optional("toolName", stringValue(source["tool_name"])),
-    ...optional("toolUseId", stringValue(source["tool_use_id"])),
+    ...optionalMeta(stringValue(source["tool_name"]), "toolName"),
+    ...optionalMeta(stringValue(source["tool_use_id"]), "toolUseId"),
     raw: event,
   };
 }
@@ -39,15 +40,16 @@ type OptionalTranscriptMeta = Pick<
   "turnId" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
 >;
 type TranscriptActivityMeta = OptionalTranscriptMeta & { readonly transcriptPath: string };
+const optionalMeta = optional<keyof OptionalTranscriptMeta, string>;
 
 export function transcriptActivityMeta(event: CodexTranscriptEvent): TranscriptActivityMeta {
   const item = record(event.item);
   const payload = record(item["payload"]);
   return {
     transcriptPath: event.path,
-    ...optional("turnId", stringValue(item["turn_id"]) ?? stringValue(payload["turn_id"])),
-    ...optional("toolName", transcriptToolName(event, payload)),
-    ...optional("toolUseId", transcriptToolUseId(event, payload)),
+    ...optionalMeta(stringValue(item["turn_id"]) ?? stringValue(payload["turn_id"]), "turnId"),
+    ...optionalMeta(transcriptToolName(event, payload), "toolName"),
+    ...optionalMeta(transcriptToolUseId(event, payload), "toolUseId"),
     ...transcriptToolIo(event, payload),
   };
 }
@@ -62,11 +64,11 @@ function transcriptToolIo(
   // the raw `input`/`arguments` only when the summary carried no text (C-CODEX-19).
   if (event.summary.kind === "tool_call") {
     const command = event.summary.text ?? stringify(payload["input"] ?? payload["arguments"]);
-    return optional("toolInput", command);
+    return optionalMeta(command, "toolInput");
   }
   if (event.summary.kind === "tool_result") {
     const output = payload["output"];
-    return optional("toolOutput", toolOutputText(output) ?? stringify(output));
+    return optionalMeta(toolOutputText(output) ?? stringify(output), "toolOutput");
   }
   return {};
 }
@@ -95,11 +97,4 @@ function transcriptToolUseId(
 ): string | undefined {
   if (event.summary.kind !== "tool_call" && event.summary.kind !== "tool_result") return undefined;
   return stringValue(payload["id"]) ?? stringValue(payload["call_id"]) ?? event.summary.label;
-}
-
-function optional(
-  key: keyof OptionalTranscriptMeta,
-  value: string | undefined,
-): OptionalTranscriptMeta {
-  return value === undefined ? {} : { [key]: value };
 }

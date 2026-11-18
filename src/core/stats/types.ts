@@ -17,7 +17,9 @@ export type ClaudeTokenUsage = {
 
 export type CodexTokenUsage = {
   readonly scope: "thread";
+  /** Native cumulative snapshot for the thread, including prior usage when reported after resume. */
   readonly total: TokenCounts;
+  /** Counts for the latest request when the native record supplies them. */
   readonly last?: TokenCounts;
   readonly contextWindowTokens?: number;
 };

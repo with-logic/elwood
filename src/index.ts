@@ -133,7 +133,7 @@ export {
   type AgentSpeedObservation,
   type CodexServiceTier,
   type CodexServiceTiers,
-  codexServiceTiers,
+  codexServiceTierChoices,
 } from "./core/speed/types.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
