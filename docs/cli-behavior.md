@@ -2767,3 +2767,27 @@ Codex 0.170.0 renders `» [Image #1]` after a real clipboard-image paste at
 ultra effort. `tests/fixtures/codex-0.170.0/ultra-image-composer.txt` captures
 that idle frame after Ctrl+V, without submitting a model turn; its project path
 is anonymized.
+
+
+## Codex 0.170.0 lowercase service tier in the configured footer
+
+A private-home macOS reproduction on 2026-11-18, with `model = "gpt-6.2-sol"`,
+`model_reasoning_effort = "xhigh"` and `service_tier = "fast"`, reached the ordinary
+unboxed startup screen with `GPT-6.2-Sol xhigh fast · <cwd>` beneath the composer.
+The old footer grammar accepted only capitalized `Fast`/`Ultrafast`, so it emitted
+`initial_ready_backstop` and retained startup input. No update dialog or model turn
+was involved. With the footer fix, the same setup reached `ready` in 12.3 seconds
+with no warnings. At 70 columns the native directory was truncated; the tier stayed
+lowercase. The sanitized full-width capture is
+`tests/fixtures/codex-0.170.0/xhigh-fast-composer.txt`.
+
+A second private-home run in a fresh Git folder configured
+`[tui] status_line = ["reasoning", "current-dir"]`. Codex 0.170.0 rendered
+`xhigh · <cwd>` without a model name, and reached `ready` in 12.8 seconds with
+no warnings. That capture is `tests/fixtures/codex-0.170.0/effort-only-composer.txt`.
+The combined `xhigh fast · <cwd>` layout remains host-reported; the native
+reasoning-only status item omits the fast badge even when fast service is enabled.
+
+A model-less footer must include a recognized effort and native directory path:
+a bare effort word is insufficient readiness evidence. Dialog, cursor-visibility,
+and received-render guards still apply.

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recognize Codex's lowercase fast/ultrafast status badges and effort/directory footers without a model name, avoiding the initial-readiness backstop on ordinary configured composers.
+
 ## [0.2.8] - 2026-11-18
 
 - Acknowledge Claude's login-success modal with Enter and deliver the fresh ready transition before resolving `login()`, allowing hosts to clear their sign-in notice. Report accurate acknowledgement attention, preserve typed write failures, and leave unrelated dialogs untouched on timeout.

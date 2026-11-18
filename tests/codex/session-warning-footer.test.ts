@@ -22,6 +22,14 @@ const agents = readFileSync(
   new URL("../fixtures/codex-0.167.0/agents-footer.txt", import.meta.url),
   "utf8",
 );
+const fast = readFileSync(
+  new URL("../fixtures/codex-0.170.0/xhigh-fast-composer.txt", import.meta.url),
+  "utf8",
+);
+const effortOnly = readFileSync(
+  new URL("../fixtures/codex-0.170.0/effort-only-composer.txt", import.meta.url),
+  "utf8",
+);
 const paint = (text: string, visible = true) => `\u001b[2J\u001b[H${codexTty(text, visible)}`;
 
 afterEach(() => {
@@ -74,6 +82,9 @@ test("C-API-28 C-TRUST-01 agents hint retains warning, chrome, and dialog guards
 test.each([
   { label: "Codex 0.159.2 warning footer", frame: captured },
   { label: "Codex 0.167.0 agents footer", frame: agents },
+  { label: "Codex 0.170.0 lowercase fast footer", frame: fast },
+  { label: "Codex 0.170.0 effort-only footer", frame: effortOnly },
+  { label: "reported effort-only fast footer", frame: fast.replace("GPT-6.2-Sol ", "") },
 ])("C-API-28 $label releases deferred trust readiness, not hidden or dialog frames", async ({
   frame,
 }) => {
@@ -81,7 +92,7 @@ test.each([
   const session = await startCodex({
     cwd: tempDir(),
     autotrust: true,
-    initialSize: { cols: 220, rows: 35 },
+    initialSize: { cols: 220, rows: 60 },
   });
   const queued = session.sendMessage("after trust");
   // Teardown rejects pending input if an assertion fails.

@@ -23,8 +23,11 @@ const placeholders = new Set([
   "Run /review on my current changes",
   "Use /skills to list available skills",
 ]);
-const modelFooter = new RegExp(
-  String.raw`^ {2}(?:gpt|GPT)-[\w.-]+(?: Terra)? (?:${codexReasoningEfforts.join("|")}|default)(?: (?:Fast|Ultrafast))?(?: · (?:~?\/|[A-Z]:[\\/])[^\n]*)?(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
+const effortAndTier = `(?:${codexReasoningEfforts.join("|")}|default)(?: (?:[Ff]ast|[Uu]ltrafast))?`;
+const directory = String.raw` · (?:~?\/|[A-Z]:[\\/])[^\n]*`;
+// An effort-only footer needs its directory; a bare effort word cannot prove configuration.
+const statusFooter = new RegExp(
+  String.raw`^ {2}(?:(?:gpt|GPT)-[\w.-]+(?: Terra)? ${effortAndTier}(?:${directory})?|${effortAndTier}${directory})(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
 );
 const hintFooter =
   /^(?: {2})?(?:← for agents · )?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
@@ -132,7 +135,7 @@ export function codexComposerRow(frameRows: readonly string[], liveClear: boolea
 }
 
 /**
- * Codex paints its model footer beneath the composer only once its session is configured.
+ * Codex paints its status footer beneath the composer once its session is configured.
  * The composer it paints while booting has none, and under load its directory-trust gate
  * can follow seconds later, so readiness waits for this footer (C-API-28).
  */
@@ -149,15 +152,15 @@ function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome:
     .slice(at + 1)
     .map((row) => row.replace(/ {2,}⚠ [1-9]\d* warnings? · f2 to view\s*$/, "").trimEnd())
     .filter((row) => row !== "");
-  if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
+  if (!below.every((row) => statusFooter.test(row) || hintFooter.test(row))) return false;
   return (
-    below.some((row) => modelFooter.test(row)) ||
+    below.some((row) => statusFooter.test(row)) ||
     (allowWelcome && welcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
   );
 }
 
 /**
- * The last composer needs its own model footer or the verified welcome box above
+ * The last composer needs its own status footer or the verified welcome box above
  * it. A stale footer cannot vouch for a bare caret, which is also how a dialog
  * selection starts; ordinary numbered transcript content can precede the composer.
  */
