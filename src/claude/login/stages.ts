@@ -14,6 +14,7 @@ import type { LoginIo } from "./driver.ts";
 import {
   activeRegion,
   authUrlVisible,
+  classifyClaudeLoginSuccess,
   extractAuthUrl,
   loginFailed,
   loginSucceeded,
@@ -88,7 +89,7 @@ export async function awaitLoginOutcome(
       authorizing = true;
       reportUrl(options, url);
     }
-    if (succeeded(text)) return;
+    if (succeeded(text) && classifyClaudeLoginSuccess(text) !== "pending") return;
     if (failed(text)) throw elwoodError("login_failed", "Claude /login reported a failure.");
     if (authorizing && !codeSent && codePrompt(text)) {
       codeSent = true;

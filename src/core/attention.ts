@@ -61,6 +61,9 @@ export function activityFromAttention(
     source: "terminal",
     kind: "attention",
     label: ruleIds.join(","),
-    text: "Agent is blocked waiting on a human decision.",
+    text:
+      ruleIds.length === 1 && ruleIds[0] === "claude-login-success"
+        ? "Claude login succeeded; waiting for acknowledgement."
+        : "Agent is blocked waiting on a human decision.",
   };
 }

@@ -1570,6 +1570,41 @@ stage: the old fixture missed the selection Enter; the corrected handshake passe
 This was a fixture reproduction, not a fresh native CLI authentication test; no
 new CLI version or native capture was verified.
 
+## Claude login success requires its own Enter (2026-11-18)
+
+A field-reported Claude login finishes in a modal after the browser/code step:
+
+```text
+❯ /login
+
+──────────────────────────────────────────────────────────────
+  Login
+
+  Logged in as user@example.test
+  Login successful. Press Enter to continue…
+```
+
+Its acknowledgement Enter is separate from the command, picker, and code Enters.
+After it, the transcript contains `❯ /login` followed by `⎿ Login successful`,
+and the normal composer returns. The modal's old `/login` caret is not an idle
+composer. Classifying it as blocking supplies the real blocked→ready transition;
+`login()` must capture that ready boundary before writing the acknowledgement,
+because clearance can arrive before the write promise fulfills.
+
+The identity row can be observed before the acknowledgement footer completes.
+That partial native modal must keep the outcome poll waiting; treating `Logged
+in as` alone as the final outcome skips the later acknowledgement. A split-paint
+fixture reproduces this ordering without a new authentication exchange.
+
+The conformance fixture uses these user-reported frames with the real queue,
+terminal renderer, and status engine. A separate ordering test delivers ready
+inside the acknowledgement write. This did not run a new native OAuth exchange
+or alter the developer's authentication state.
+
+Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
+`src/claude/login/session-login.ts` captures the ready boundary, and
+`src/claude/screen-table.ts` classifies the modal as blocking. Contract: C-API-43.
+
 ## Input / paste
 
 - Caller and LLM text sent via `sendPrompt`/`sendMessage`/`sendGuidance` is

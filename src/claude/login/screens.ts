@@ -41,3 +41,27 @@ export function activeRegion(text: string): string {
   const lines = text.split("\n").filter((line) => line.trim() !== "");
   return lines.slice(-6).join("\n");
 }
+
+/**
+ * Classify the native modal's shared grammar. Pending includes an incomplete
+ * identity/footer; only complete grants blocked status and acknowledgement authority.
+ */
+export function classifyClaudeLoginSuccess(text: string): "absent" | "pending" | "complete" {
+  const region = activeRegion(text)
+    .split("\n")
+    .map((row) => row.trim())
+    .join("\n");
+  const modal = /(?:^|\n)❯ \/login\n[─━]{3,}\nLogin\nLogged in as([^\n]*)(?:\n([^\n]*))?$/.exec(
+    region,
+  );
+  if (!modal) return "absent";
+  return /^ \S.*$/.test(modal[1]!) &&
+    /^Login successful\. Press Enter to continue(?:…|\.\.\.)?$/.test(modal[2] ?? "")
+    ? "complete"
+    : "pending";
+}
+
+/** Complete native modal required by both input blocking and guarded acknowledgement. */
+export function isClaudeLoginSuccessDialog(text: string): boolean {
+  return classifyClaudeLoginSuccess(text) === "complete";
+}
