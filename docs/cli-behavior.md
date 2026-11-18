@@ -678,8 +678,9 @@ adapter's other verified screen facts — `claudeTrustClearance` in
 and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`).
 When a CLI's banner, status row, or composer placeholder changes, update that adapter's
 predicate. Codex's text grammar lives in `src/codex/screen/clearance.ts` and checks
-known placeholders plus a native model footer or complete welcome box. Text-only
-callers conservatively reject approval-like rows; the live session additionally
+known placeholders plus a native model-and-effort footer, an effort-and-directory
+footer without a model name, or a complete welcome box. Text-only callers
+conservatively reject approval-like rows; the live session additionally
 uses the actual visible input cursor to identify the composer, so transcript
 caret/numbered rows above that input remain legitimate history. Dialogs hide the
 cursor or leave it outside the composer. A bare caret never proves clearance.

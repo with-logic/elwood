@@ -23,7 +23,7 @@ test.each([
   "  xhigh · /tmp/project",
   "  ultra ultrafast · ~/project",
   "  medium · C:\\project",
-])("C-API-28 C-SPEED-01 configured native footer %s needs no model name", (footer) => {
+])("C-API-28 C-SPEED-01 recognizes configured native footer %s", (footer) => {
   const frame = `› Ask Codex to do anything\n${footer}\n  ? for shortcuts`;
   expect(codexComposerConfigured(frame)).toBe(true);
   expect(codexComposerClearance(frame)).toBe(true);

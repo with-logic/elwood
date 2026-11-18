@@ -99,9 +99,9 @@ test.each([
   await settleFrame(session);
   await vi.advanceTimersByTimeAsync(5_500);
   expect(statuses).toEqual(["ready", "running"]);
-  expect(ptys[0]!.writes.join("")).toContain("ordinary initial prompt");
   await sent;
   await vi.advanceTimersByTimeAsync(60_000);
+  expect(ptys[0]!.writes).toEqual(["\u001b[200~ordinary initial prompt\u001b[201~", "\r"]);
   expect(warnings).toEqual([]);
 });
 

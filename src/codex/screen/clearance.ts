@@ -4,6 +4,7 @@
  */
 
 import { codexReasoningEfforts } from "../../core/reasoning-effort.ts";
+import { codexServiceTiers } from "../../core/speed/types.ts";
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { codexWorkingScreen } from "./working.ts";
@@ -23,11 +24,15 @@ const placeholders = new Set([
   "Run /review on my current changes",
   "Use /skills to list available skills",
 ]);
-const effortAndTier = `(?:${codexReasoningEfforts.join("|")}|default)(?: (?:[Ff]ast|[Uu]ltrafast))?`;
+const tierBadges = codexServiceTiers
+  .filter((tier) => tier !== "default")
+  .map((tier) => tier.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`))
+  .join("|");
+const effortWithOptionalTier = `(?:${codexReasoningEfforts.join("|")}|default)(?: (?:${tierBadges}))?`;
 const directory = String.raw` · (?:~?\/|[A-Z]:[\\/])[^\n]*`;
 // An effort-only footer needs its directory; a bare effort word cannot prove configuration.
 const statusFooter = new RegExp(
-  String.raw`^ {2}(?:(?:gpt|GPT)-[\w.-]+(?: Terra)? ${effortAndTier}(?:${directory})?|${effortAndTier}${directory})(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
+  String.raw`^ {2}(?:(?:gpt|GPT)-[\w.-]+(?: Terra)? ${effortWithOptionalTier}(?:${directory})?|${effortWithOptionalTier}${directory})(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
 );
 const hintFooter =
   /^(?: {2})?(?:← for agents · )?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;

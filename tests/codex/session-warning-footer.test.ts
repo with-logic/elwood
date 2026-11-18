@@ -117,10 +117,11 @@ test.each([
     await vi.advanceTimersByTimeAsync(100);
     expect(session.status).toBe("blocked");
     expect(pty.writes).not.toContain("\u001b[200~after trust\u001b[201~");
+    const beforeReady = [...pty.writes];
     pty.emitData("\u001b[?2026l");
     await vi.advanceTimersByTimeAsync(500);
-    expect(pty.writes).toContain("\u001b[200~after trust\u001b[201~");
     await queued;
+    expect(pty.writes).toEqual([...beforeReady, "\u001b[200~after trust\u001b[201~", "\r"]);
   } finally {
     vi.useRealTimers();
     await session.teardown();

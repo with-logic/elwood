@@ -24,15 +24,17 @@ const codex = (configured = codexComposerConfigured, onBackstop = () => {}) => (
 test("C-API-28 Codex's boot composer is not configured; its footed composer is", () => {
   expect(codexComposerConfigured(boot)).toBe(false);
   expect(codexComposerConfigured(configured)).toBe(true);
-  for (const older of [
-    "codex-0.142.5/composer-model-only",
-    "codex-0.156.1/cleared-composer",
-    "codex-0.159.2/warning-composer",
-    "codex-0.170.0/xhigh-fast-composer",
-    "codex-0.170.0/effort-only-composer",
-  ])
-    expect(codexComposerConfigured(capturedFrame(older))).toBe(true);
   expect(codexComposerConfigured(configured.replace(/^›.*$/m, ""))).toBe(false);
+});
+
+test.each([
+  "codex-0.142.5/composer-model-only",
+  "codex-0.156.1/cleared-composer",
+  "codex-0.159.2/warning-composer",
+  "codex-0.170.0/xhigh-fast-composer",
+  "codex-0.170.0/effort-only-composer",
+])("C-API-28 captured %s is configured", (capture) => {
+  expect(codexComposerConfigured(capturedFrame(capture))).toBe(true);
 });
 
 test("C-API-28 a deadline expiring on Codex's boot composer waits for the configured one", () => {
