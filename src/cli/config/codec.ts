@@ -30,6 +30,7 @@ const topKeys = [
   "schemaVersion",
   "agent",
   "output",
+  "usageDirection",
   "timeout",
   "trust",
   "highTrust",
@@ -58,6 +59,7 @@ export function decodeConfig(value: unknown): CliConfig {
     schemaVersion: 1,
     ...optionalEnum(object, "agent", cliAgents),
     ...optionalEnum(object, "output", cliOutputModes),
+    ...optionalEnum(object, "usageDirection", ["left", "used"] as const),
     ...optionalDuration(object),
     ...optionalBoolean(object, "trust"),
     ...optionalBoolean(object, "highTrust"),
@@ -79,6 +81,7 @@ export function parseConfigValue(key: string, value: string): unknown {
   if (key === "trust" || key === "highTrust" || key === "verbose" || key === "stream")
     return strictBoolean(value);
   if (key === "agent") return oneOf(value, cliAgents, key);
+  if (key === "usageDirection") return oneOf(value, ["left", "used"], key);
   if (key === "output") return oneOf(value, cliOutputModes, key);
   if (key === "timeout") {
     parseDuration(value, "invalid_config");

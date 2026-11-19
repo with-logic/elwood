@@ -66,6 +66,7 @@ describe("CLI config codec edges", () => {
       schemaVersion: "1",
       agent: "claude",
       output: "text",
+      usageDirection: "used",
       timeout: "1h",
       trust: "true",
       highTrust: "true",

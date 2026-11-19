@@ -50,6 +50,7 @@ export type CliConfig = {
   readonly schemaVersion: 1;
   readonly agent?: CliAgent;
   readonly output?: CliOutputMode;
+  readonly usageDirection?: "left" | "used";
   readonly timeout?: string;
   readonly trust?: boolean;
   readonly highTrust?: boolean;
@@ -107,6 +108,7 @@ export type ParsedCliCommand =
   | ParsedInteractiveCommand
   | { readonly command: "help" }
   | { readonly command: "version" }
+  | { readonly command: "usage"; readonly args: readonly string[] }
   | { readonly command: "config"; readonly args: readonly string[] };
 
 export type PromptStdin = {

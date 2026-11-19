@@ -10,6 +10,8 @@ import type {
   TokenCounts,
 } from "../../core/stats/types.ts";
 
+import { isoInstant } from "../../core/usage/windows.ts";
+
 type CodexStats = {
   readonly tokenUsage?: CodexTokenUsage;
   readonly rateLimits?: CodexRateLimits;
@@ -59,8 +61,7 @@ function rateLimits(value: unknown, timestamp: unknown): CodexRateLimits | undef
   const primary = rateWindow(value["primary"]);
   const secondary = rateWindow(value["secondary"]);
   const id = value["limit_id"];
-  const recordedAt =
-    typeof timestamp === "string" && Number.isFinite(Date.parse(timestamp)) ? timestamp : undefined;
+  const recordedAt = isoInstant(timestamp);
   const identity = {
     ...optional(typeof id === "string" ? id : undefined, "limitId"),
     ...optional(recordedAt, "recordedAt"),

@@ -2881,3 +2881,17 @@ catalog flag alone did not change that first-process result. The native selector
 test primes its private config with one probe before requiring the served catalog;
 a second fallback still fails explicitly. This is test setup for Claude's catalog
 initialization, not a change to which native rows Elwood returns.
+
+
+## Account quota before the first turn
+
+On 2026-11-19, Claude Code 2.1.328 answered a lone stream-json control request
+with subtype `get_usage` and `skip_behaviors: true`. The probe used print mode,
+no session persistence, and sent no user message. Its signed-in response
+included server-selected weekly and model-specific rows and omitted a five-hour
+window. The API also supplies legacy utilization fields on older response shapes.
+
+Codex 0.170.0 answered `account/rateLimits/read` over app-server stdio after
+the initialize handshake. Closing stdin immediately after writing the requests
+lost the quota reply. Keeping it open until the matching response produced the
+account buckets. Both probes ran before any model turn (C-STATS-03).

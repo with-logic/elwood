@@ -19,9 +19,8 @@ arguments is another exact top-level help form and MUST NOT read piped or termin
 stdin. `elwood run` remains an explicit run and therefore requires prompt input,
 including when that input comes only from piped stdin.
 
-`resume`, `interactive`, `sessions`, and `models` are further first-argument
-commands with the same reservation rule; they are specified in §12A.7 through
-§12A.10. Each accepts `-h`/`--help` and prints the top-level help without
+`resume`, `interactive`, `sessions`, `models`, and `usage` are further first-argument
+commands with the same reservation rule. See §12A.7 through §12A.11. Each accepts `-h`/`--help` and prints the top-level help without
 reading configuration or launching an agent.
 
 A new session defaults to the invocation directory; `-C`/`--cwd` overrides it.
@@ -182,7 +181,7 @@ non-empty, otherwise `~/.config/elwood/config.json`. V1 does not read
 project-local configuration.
 
 Configuration is a strict version-1 JSON object. Documented keys are
-`schemaVersion`, `agent`, `output`, `timeout`, `trust`, `highTrust`, `stateDir`,
+`schemaVersion`, `agent`, `output`, `usageDirection`, `timeout`, `trust`, `highTrust`, `stateDir`,
 `verbose`, `stream`, `persona`, `claude.model`, `claude.reasoningEffort`,
 `claude.permissionMode`, `codex.model`, `codex.reasoningEffort`,
 `codex.sandbox`, and `codex.approvalPolicy`. Config MUST NOT set prompt, cwd,
@@ -464,3 +463,18 @@ PATH in its place. If the shell exits
 successfully without returning a complete PATH probe frame, the foreground
 launch MUST preserve the inherited PATH. A complete frame containing an empty
 PATH remains authoritative. C-CLI-24/25.
+
+### 12A.11 Account usage
+
+`elwood usage` reads the current Claude and Codex account limits (§5.12).
+Text shows the account, window, percentage left, and reset time for each row.
+`--direction used|left` overrides the global `usageDirection` preference,
+which defaults to `left`. `--output json` returns a single document with
+`schemaVersion: 1`, `type: "usage"`, and `accounts` in the library's format.
+The output option uses the usual flag, environment, config, and text precedence.
+Repeat `--account 'agent:label=/absolute/profile'` to select named profiles
+instead of the two defaults. Omit `=/absolute/profile` to select the current
+sign-in for that agent. A missing reading is marked unavailable. Exit status
+is 1 if any requested reading is unavailable and 0 when all are available.
+Invalid arguments use status 2. On Ctrl-C, active checks finish their bounded
+cleanup and the command exits with status 130. Help does not read config or start a CLI.

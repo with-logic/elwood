@@ -167,4 +167,6 @@ export type {
   TerminalSize,
   Unsubscribe,
 } from "./core/types.ts";
+export { readAccountUsage } from "./core/usage/index.ts";
+export type { AccountUsage, UsageAccount, UsageWindow } from "./core/usage/types.ts";
 export type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "./terminal/headless.ts";
