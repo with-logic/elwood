@@ -392,7 +392,7 @@ export class LandingScene {
     // when the pickup clip arrives, moves the robot without the pointer: start over.
     const timed = userInput && Number.isFinite(point.timeMs);
     if (limitsChanged || !timed) this.drag.samples.length = 0;
-    if (timed) recordDragSample(this.drag.samples, point.timeMs, x, y);
+    if (timed) recordDragSample(this.drag.samples, { timeMs: point.timeMs, x, y });
     p.x += x - this.drag.socket.x;
     p.y += y - this.drag.socket.y;
     this.drag.point = point;

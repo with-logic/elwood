@@ -1,3 +1,6 @@
+/** The robot's movement, physics and animation state, shared by the landing page and the
+ * playground. Release from a pickup, with or without momentum, follows PRD §13.4 (C-SITE-07).
+ */
 import { angleDelta, mirroredPose, nearestAngle, turnAngle } from "./rotation.mjs";
 
 export const FLOOR = 620;

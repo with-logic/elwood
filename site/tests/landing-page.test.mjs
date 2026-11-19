@@ -437,13 +437,43 @@ test("C-SITE-07 letting go of a moving pointer carries the robot along; a still 
     grip.fire("pointerup", { pointerId: 11, timeStamp: 1084 });
   });
   assert.deepEqual([nudged.thrown, nudged.vx], [false, 0], "a keyboard nudge starts the measurement over");
-  const relimited = drag(12, () => {
+  const escaped = drag(12, () => grip.fire("keydown", { code: "Escape", stopPropagation() {} }));
+  assert.deepEqual([escaped.thrown, escaped.vx], [false, 0], "Escape drops him whatever the pointer was doing");
+  const interrupted = drag(13, () => grip.fire("lostpointercapture", { pointerId: 13, timeStamp: 1084 }));
+  assert.deepEqual([interrupted.thrown, interrupted.vx], [false, 0]);
+  const relimitedByMove = drag(17, () => {
     assert.ok(scene.bank.clips.get(scene.drag.name), "the suspended clip is loaded");
+    // The clip arriving mid-drag, noticed first by a pointer movement.
     scene.drag.boundsClip = null;
-    grip.fire("pointermove", { pointerId: 12, clientX: 700, clientY: 400, timeStamp: 1082 });
-    grip.fire("pointerup", { pointerId: 12, timeStamp: 1084 });
+    grip.fire("pointermove", { pointerId: 17, clientX: 700, clientY: 400, timeStamp: 1082 });
+    grip.fire("pointerup", { pointerId: 17, timeStamp: 1084 });
   });
-  assert.deepEqual([relimited.thrown, relimited.vx], [false, 0], "new drag limits start the measurement over");
+  assert.deepEqual([relimitedByMove.thrown, relimitedByMove.vx], [false, 0], "new drag limits start the measurement over");
+  let relimit;
+  const relimited = drag(15, () => {
+    // The clip arriving mid-drag: the next paint applies its limits without a pointer event.
+    scene.drag.boundsClip = null;
+    relimit = advance(1).then(() => {
+      assert.ok(scene.drag.boundsClip, "the paint applied the new limits");
+      grip.fire("pointerup", { pointerId: 15, timeStamp: 1084 });
+    });
+  });
+  assert.equal(relimited.mode, "drag");
+  await relimit;
+  assert.deepEqual([scene.world.player.thrown, scene.world.player.vx], [false, 0], "new drag limits start the measurement over");
+  // Pinned at the right limit: the pointer keeps moving but the held robot does not.
+  grip.fire("pointerdown", { button: 0, pointerId: 16, clientX: 600, clientY: 460, timeStamp: 2000 });
+  grip.fire("pointermove", { pointerId: 16, clientX: 9000, clientY: 400, timeStamp: 2040 });
+  const pinnedX = scene.world.player.x;
+  grip.fire("pointermove", { pointerId: 16, clientX: 9200, clientY: 400, timeStamp: 2200 });
+  grip.fire("pointermove", { pointerId: 16, clientX: 9400, clientY: 400, timeStamp: 2240 });
+  assert.equal(scene.world.player.x, pinnedX);
+  grip.fire("pointerup", { pointerId: 16, timeStamp: 2244 });
+  assert.deepEqual([scene.world.player.thrown, scene.world.player.vx], [false, 0], "a pinned robot has no velocity to keep");
+  // Losing window focus pauses the scene, which ends the drag without a release time.
+  const blurred = drag(14, () => listeners.get("blur")());
+  assert.deepEqual([blurred.thrown, blurred.vx], [false, 0]);
+  listeners.get("focus")();
   scene.pause("test", true);
 });
 

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { angleDelta, nearestAngle } from "../rotation.mjs";
 import { FLOOR, HEIGHT, PLATFORM_LAYOUT, World } from "../world.mjs";
+import { stepWorld as step } from "./helpers/step-world.mjs";
 
 // The 4K production masters are the asset pipeline's inputs and are NOT part of
 // the deployed site or this repository (see .gitignore). Tests that verify an
@@ -12,9 +13,6 @@ const productionMasters = new URL("../assets/production/", import.meta.url);
 const hasMasters = existsSync(productionMasters);
 const masterTest = hasMasters ? test : test.skip;
 
-const step = (world, seconds, input = {}) => {
-  for (let index = 0; index < Math.round(seconds * 120); index++) world.update(1 / 120, input);
-};
 
 test("sprint follows its calibrated gait, turns on reversal, and does not boost ordinary jump travel", () => {
   const world = new World();

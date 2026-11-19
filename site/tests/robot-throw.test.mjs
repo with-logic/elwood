@@ -2,13 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { recordDragSample, throwVelocity } from "../drag/throw.mjs";
 import { FLOOR, HEIGHT, World } from "../world.mjs";
-
-const step = (world, seconds, input = {}, each = () => {}) => {
-  for (let index = 0; index < Math.round(seconds * 120); index++) {
-    world.update(1 / 120, input);
-    each(world.player);
-  }
-};
+import { stepWorld as step } from "./helpers/step-world.mjs";
 
 function thrownWorld() {
   const world = new World();
@@ -23,7 +17,7 @@ function thrownWorld() {
 
 function samples(...points) {
   const recorded = [];
-  for (const [time, x, y] of points) recordDragSample(recorded, time, x, y);
+  for (const [timeMs, x, y] of points) recordDragSample(recorded, { timeMs, x, y });
   return recorded;
 }
 
@@ -97,21 +91,28 @@ test("C-SITE-07 a release without velocity still drops straight down", () => {
   assert.equal(world.player.vx, 0);
 });
 
-test("C-SITE-07 a thrown robot stops at the side of a solid block without rebounding", () => {
-  const world = thrownWorld();
-  const block = { x: 420, width: 60, top: FLOOR - 300, solid: true };
-  world.platforms = [block];
-  world.releaseFromPickup({ x: 400, y: -100 });
-  const speeds = new Set();
-  let furthest = 0;
-  step(world, 2, {}, (player) => {
-    speeds.add(player.vx);
-    furthest = Math.max(furthest, player.x);
+for (const [face, from, velocity] of [["left", 300, 400], ["right", 600, -400]]) {
+  test(`C-SITE-07 a thrown robot stops at the ${face} side of a solid block without rebounding`, () => {
+    const world = thrownWorld();
+    world.bounds = { left: 100, right: 800, top: FLOOR - 400 };
+    const block = { x: 420, width: 60, top: FLOOR - 300, solid: true };
+    world.platforms = [block];
+    world.player.x = from;
+    world.releaseFromPickup({ x: velocity, y: -100 });
+    const speeds = new Set();
+    const reached = [];
+    step(world, 2, {}, (player) => {
+      speeds.add(player.vx);
+      reached.push(player.x);
+    });
+    assert.deepEqual([...speeds], [velocity, 0]);
+    const stop = velocity > 0 ? Math.max(...reached) : Math.min(...reached);
+    const side = velocity > 0 ? block.x : block.x + block.width;
+    assert.ok(Math.abs(stop - side) < 40 && (stop - side) * velocity < 0, `stopped at ${stop}`);
+    assert.equal(world.player.x, stop, "he falls straight down from where he stopped");
+    assert.equal(world.player.gesture, "hero-land");
   });
-  assert.deepEqual([...speeds], [400, 0]);
-  assert.ok(furthest < block.x && furthest > 380, `stopped at ${furthest}`);
-  assert.equal(world.player.gesture, "hero-land");
-});
+}
 
 test("C-SITE-07 catching a ledge ends the throw, so a later drop from it is steered", () => {
   const world = thrownWorld();

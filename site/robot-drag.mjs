@@ -1,3 +1,6 @@
+/** Pointer and keyboard pickup of the landing-page robot. Only a pointer release carries a
+ * time, so only it can pass on momentum (PRD §13.4; C-SITE-04, C-SITE-07).
+ */
 export function bindRobotDrag(scene, grip) {
   let pointer = null;
   const point = (event) => ({ ...scene.worldPoint(event.clientX, event.clientY), timeMs: event.timeStamp });
