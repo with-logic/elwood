@@ -14,6 +14,7 @@ import {
   socketPosition,
   transitionPose,
 } from "./sprite-pose.mjs";
+import { recordDragSample, throwVelocity } from "./drag/throw.mjs";
 import { SpriteRenderer } from "./sprite-renderer.mjs";
 import { Tether } from "./tether.mjs";
 import { FLOOR, HEIGHT, World } from "./world.mjs";
@@ -329,7 +330,7 @@ export class LandingScene {
       ? socketPosition(this.lastPose, HEIGHT / 384)
       : { x: p.x, y: p.y - HEIGHT };
     const { suspended: name, release } = this.pickupClips();
-    this.drag = { point, offset: { x: socket.x - point.x, y: socket.y - point.y }, socket, name };
+    this.drag = { point, offset: { x: socket.x - point.x, y: socket.y - point.y }, socket, name, samples: [] };
     Object.assign(p, {
       mode: "drag",
       vx: 0,
@@ -390,14 +391,19 @@ export class LandingScene {
     p.y += y - this.drag.socket.y;
     this.drag.point = point;
     this.drag.socket = { x, y };
+    // Only timed pointer movement can pass on momentum; a keyboard nudge forgets it.
+    if (userInput && Number.isFinite(point.time)) recordDragSample(this.drag.samples, point.time, x, y);
+    else if (userInput) this.drag.samples.length = 0;
     // scene.interact() cancels pickup preparation; movement must preserve its generation.
     if (userInput) this.director.interact();
   }
   nudgeDrag(dx, dy) {
     if (this.drag) this.moveDrag({ x: this.drag.point.x + dx, y: this.drag.point.y + dy });
   }
-  endDrag() {
+  /** `time` is the release event's timestamp. With it, a pointer still moving passes on some momentum. */
+  endDrag(time) {
     if (!this.drag) return;
+    const velocity = throwVelocity(this.drag.samples, time);
     const p = this.world.player;
     const fall = this.bank.clips.get("pickup-fall");
     const unit = HEIGHT / 384;
@@ -415,7 +421,7 @@ export class LandingScene {
     this.drag = null;
     this.clearInput();
     this.interact();
-    this.world.dropFromPickup();
+    this.world.dropFromPickup(velocity);
   }
   get userPaused() {
     return this.pauses.has("user") || this.pauses.has("reduced");

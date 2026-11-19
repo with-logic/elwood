@@ -410,6 +410,31 @@ test("pointer and keyboard pickup route through the real scene and release witho
   scene.pause("test", true);
 });
 
+test("C-SITE-07 letting go of a moving pointer carries the robot along; a still pointer or a cancel drops it", async () => {
+  scene.pause("test", false);
+  scene.configure({ ...scene.config, platforms: [] }, true);
+  const grip = element(".robot-grip");
+  const drag = (pointerId, finish) => {
+    grip.fire("pointerdown", { button: 0, pointerId, clientX: 600, clientY: 460, timeStamp: 1000 });
+    grip.fire("pointermove", { pointerId, clientX: 620, clientY: 440, timeStamp: 1040 });
+    grip.fire("pointermove", { pointerId, clientX: 700, clientY: 400, timeStamp: 1080 });
+    finish();
+    return scene.world.player;
+  };
+  const thrown = drag(8, () => grip.fire("pointerup", { pointerId: 8, timeStamp: 1084 }));
+  assert.equal(thrown.mode, "air");
+  assert.equal(thrown.thrown, true);
+  assert.ok(thrown.vx > 0 && thrown.vy < 0, "the throw follows the pointer up and to the right");
+  const x = thrown.x;
+  await advance(6);
+  assert.ok(scene.world.player.x > x);
+  const held = drag(9, () => grip.fire("pointerup", { pointerId: 9, timeStamp: 1500 }));
+  assert.deepEqual([held.thrown, held.vx], [false, 0]);
+  const cancelled = drag(10, () => grip.fire("pointercancel", { pointerId: 10, timeStamp: 1084 }));
+  assert.deepEqual([cancelled.thrown, cancelled.vx], [false, 0]);
+  scene.pause("test", true);
+});
+
 test("permanent departure disposes the scene while bfcache preserves it", () => {
   listeners.get("pagehide")({ persisted: true });
   assert.equal(scene.bank.disposed, false);
