@@ -1,12 +1,12 @@
 export function bindRobotDrag(scene, grip) {
   let pointer = null;
-  const point = (event) => ({ ...scene.worldPoint(event.clientX, event.clientY), time: event.timeStamp });
+  const point = (event) => ({ ...scene.worldPoint(event.clientX, event.clientY), timeMs: event.timeStamp });
   /** Only a pointer release carries a time, so only it can pass momentum to the robot. */
-  function release(time) {
+  function release(releaseTimeMs) {
     const released = pointer;
     pointer = null;
     if (released !== null && grip.hasPointerCapture(released)) grip.releasePointerCapture(released);
-    scene.endDrag(time);
+    scene.endDrag(releaseTimeMs);
     grip.setAttribute("aria-pressed", "false");
   }
   grip.addEventListener("pointerdown", (event) => {

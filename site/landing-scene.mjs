@@ -358,7 +358,8 @@ export class LandingScene {
     const p = this.world.player;
     const clip = this.bank.clips.get(this.drag.name);
     const unit = HEIGHT / 384;
-    if (clip && this.drag.boundsClip !== clip) {
+    const limitsChanged = Boolean(clip) && this.drag.boundsClip !== clip;
+    if (limitsChanged) {
       this.drag.boundsClip = clip;
       this.drag.bounds = clip.frames.reduce(
         (bounds, f) => ({
@@ -387,23 +388,27 @@ export class LandingScene {
       FLOOR + (6 - cfg.floorY) / cfg.scale + bounds.above,
       Math.min(FLOOR - bounds.below - 2, point.y + this.drag.offset.y),
     );
+    // Momentum comes from uninterrupted pointer movement. A keyboard nudge, or new limits
+    // when the pickup clip arrives, moves the robot without the pointer: start over.
+    const timed = userInput && Number.isFinite(point.timeMs);
+    if (limitsChanged || !timed) this.drag.samples.length = 0;
+    if (timed) recordDragSample(this.drag.samples, point.timeMs, x, y);
     p.x += x - this.drag.socket.x;
     p.y += y - this.drag.socket.y;
     this.drag.point = point;
     this.drag.socket = { x, y };
-    // Only timed pointer movement can pass on momentum; a keyboard nudge forgets it.
-    if (userInput && Number.isFinite(point.time)) recordDragSample(this.drag.samples, point.time, x, y);
-    else if (userInput) this.drag.samples.length = 0;
     // scene.interact() cancels pickup preparation; movement must preserve its generation.
     if (userInput) this.director.interact();
   }
   nudgeDrag(dx, dy) {
     if (this.drag) this.moveDrag({ x: this.drag.point.x + dx, y: this.drag.point.y + dy });
   }
-  /** `time` is the release event's timestamp. With it, a pointer still moving passes on some momentum. */
-  endDrag(time) {
+  /** `releaseTimeMs` is the release event's `timeStamp` in milliseconds. With it, a pointer
+   * still moving passes on some momentum.
+   */
+  endDrag(releaseTimeMs) {
     if (!this.drag) return;
-    const velocity = throwVelocity(this.drag.samples, time);
+    const velocity = throwVelocity(this.drag.samples, releaseTimeMs);
     const p = this.world.player;
     const fall = this.bank.clips.get("pickup-fall");
     const unit = HEIGHT / 384;
@@ -421,7 +426,7 @@ export class LandingScene {
     this.drag = null;
     this.clearInput();
     this.interact();
-    this.world.dropFromPickup(velocity);
+    this.world.releaseFromPickup(velocity);
   }
   get userPaused() {
     return this.pauses.has("user") || this.pauses.has("reduced");

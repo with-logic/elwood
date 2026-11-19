@@ -1,33 +1,38 @@
 /** Release velocity of a pointer drag, so letting go mid-motion carries the robot along (PRD §13.4). */
 
-/** Only motion this recent counts: a pointer that stopped before release drops straight down. */
+/** The held robot's velocity is measured over the pointer movement this recent. */
 const WINDOW_MS = 100;
+/** A pointer whose last movement is older than this at release had stopped: plain drop. */
 const STALE_MS = 60;
-/** World pixels per second of pointer movement below which a release is a plain drop. */
-export const MIN_POINTER_SPEED = 150;
-/** The robot is heavy: he keeps this share of the pointer's velocity, up to a low ceiling. */
+/** World pixels per second the held robot must be moving, below which a release is a plain drop. */
+const MIN_RELEASE_SPEED = 150;
+/** The robot is heavy: he keeps this share of his held velocity. */
 export const THROW_SHARE = 0.35;
+/** Ceiling on the released speed, in world pixels per second. */
 export const MAX_THROW_SPEED = 420;
 
-/** Record where the robot was at a pointer event, keeping only the recent window. */
-export function recordDragSample(samples, time, x, y) {
-  samples.push({ time, x, y });
-  while (samples.length > 1 && time - samples[0].time > WINDOW_MS) samples.shift();
+/** Record where the held robot was at a pointer event (`timeMs` is `event.timeStamp`),
+ * keeping only the window before this latest movement.
+ */
+export function recordDragSample(samples, timeMs, x, y) {
+  samples.push({ timeMs, x, y });
+  while (timeMs - samples[0].timeMs > WINDOW_MS) samples.shift();
 }
 
-/** Velocity at release in world pixels per second, or null when the release is not a throw. */
-export function throwVelocity(samples, time) {
-  if (!Number.isFinite(time)) return null;
-  const recent = samples.filter((sample) => time - sample.time <= WINDOW_MS);
-  const first = recent[0];
-  const last = recent.at(-1);
-  if (recent.length < 2 || time - last.time > STALE_MS) return null;
-  const seconds = (last.time - first.time) / 1000;
+/** Velocity at release in world pixels per second, or null when the release is not a throw.
+ * `releaseTimeMs` is the release event's `timeStamp`; other releases pass none.
+ */
+export function throwVelocity(samples, releaseTimeMs) {
+  if (!Number.isFinite(releaseTimeMs)) return null;
+  const first = samples[0];
+  const last = samples.at(-1);
+  if (samples.length < 2 || releaseTimeMs - last.timeMs > STALE_MS) return null;
+  const seconds = (last.timeMs - first.timeMs) / 1000;
   if (!(seconds > 0)) return null;
   const x = (last.x - first.x) / seconds;
   const y = (last.y - first.y) / seconds;
   const speed = Math.hypot(x, y);
-  if (speed < MIN_POINTER_SPEED) return null;
+  if (speed < MIN_RELEASE_SPEED) return null;
   const scale = Math.min(THROW_SHARE, MAX_THROW_SPEED / speed);
   return { x: x * scale, y: y * scale };
 }

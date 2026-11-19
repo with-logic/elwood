@@ -55,7 +55,7 @@ test("pickup release falls into its dedicated landing and completes recovery bef
   world.clips["hero-land"] = { frames: 48, fps: 24, finish_before_next: true };
   world.gestureDurations["hero-land"] = 2;
   world.player.y = FLOOR - 130;
-  world.dropFromPickup();
+  world.releaseFromPickup();
   assert.equal(world.player.animation, "pickup-fall");
   step(world, 0.6, { axis: -1 });
   assert.equal(world.player.gesture, "hero-land");
@@ -73,7 +73,7 @@ test("pickup release falls into its dedicated landing and completes recovery bef
   step(world, 2, { axis: 1 });
   assert.equal(world.player.gesture, null);
   assert.ok(world.player.x > x);
-  world.dropFromPickup();
+  world.releaseFromPickup();
   world.grab({ edge: 300, platform: { x: 300, width: 100, top: FLOOR - 200 }, direction: 1 });
   assert.equal(world.player.dropLanding, false, "Catching a ledge ends the pickup fall");
   world.release();

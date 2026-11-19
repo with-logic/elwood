@@ -432,6 +432,18 @@ test("C-SITE-07 letting go of a moving pointer carries the robot along; a still 
   assert.deepEqual([held.thrown, held.vx], [false, 0]);
   const cancelled = drag(10, () => grip.fire("pointercancel", { pointerId: 10, timeStamp: 1084 }));
   assert.deepEqual([cancelled.thrown, cancelled.vx], [false, 0]);
+  const nudged = drag(11, () => {
+    grip.fire("keydown", { code: "ArrowRight", stopPropagation() {} });
+    grip.fire("pointerup", { pointerId: 11, timeStamp: 1084 });
+  });
+  assert.deepEqual([nudged.thrown, nudged.vx], [false, 0], "a keyboard nudge starts the measurement over");
+  const relimited = drag(12, () => {
+    assert.ok(scene.bank.clips.get(scene.drag.name), "the suspended clip is loaded");
+    scene.drag.boundsClip = null;
+    grip.fire("pointermove", { pointerId: 12, clientX: 700, clientY: 400, timeStamp: 1082 });
+    grip.fire("pointerup", { pointerId: 12, timeStamp: 1084 });
+  });
+  assert.deepEqual([relimited.thrown, relimited.vx], [false, 0], "new drag limits start the measurement over");
   scene.pause("test", true);
 });
 

@@ -410,10 +410,11 @@ export class World {
     }
   }
 
-  /** Release from a pickup. A velocity in world pixels per second carries the robot along
-   * under gravity, unsteered, until it lands or meets the edge of the scene.
+  /** Release from a pickup. A velocity (world pixels per second) makes it a throw: the
+   * robot follows it under gravity, unsteered until it lands; the sides of the scene and of
+   * solid blocks stop its horizontal motion.
    */
-  dropFromPickup(velocity = null) {
+  releaseFromPickup(velocity = null) {
     const p = this.player;
     Object.assign(p, {
       mode: "air",
@@ -568,7 +569,7 @@ export class World {
       }
       // Steer gently in flight without flipping the airborne sprite. Any new
       // facing request turns after the landing has planted.
-      // A released robot keeps its own horizontal motion; nothing steers it.
+      // A thrown robot keeps its own horizontal motion; nothing steers it.
       if (!p.thrown) p.vx = p.dropLanding ? 0 : approach(p.vx, axis * SPEED, 450 * dt);
       if (axis && !p.dropLanding) {
         p.desiredFacing = axis;
@@ -578,13 +579,13 @@ export class World {
 
     const previousX = p.x;
     const previousY = p.y;
-    const travelled = p.x + p.vx * dt;
+    const unclampedX = p.x + p.vx * dt;
     p.x = Math.max(
       this.bounds?.left ?? 58,
-      Math.min(this.bounds?.right ?? WORLD_WIDTH - 60, travelled),
+      Math.min(this.bounds?.right ?? WORLD_WIDTH - 60, unclampedX),
     );
-    // Nothing steers a released robot, so the edge of the scene has to stop it.
-    if (p.thrown && p.x !== travelled) p.vx = 0;
+    // Nothing steers a thrown robot, so the edge of the scene has to stop it.
+    if (p.thrown && p.x !== unclampedX) p.vx = 0;
     for (const platform of this.platforms) {
       if (platform.solid === false) continue;
       if (p.y <= platform.top + 2 || p.y - HEIGHT >= FLOOR) continue;

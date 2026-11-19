@@ -114,12 +114,14 @@ transitions retain their existing on-demand behavior.
 
 Letting go of a pointer that is still moving gives the robot a little momentum. He
 is heavy: he keeps 35% of his velocity over the last 100 ms of pointer movement,
-capped at 420 world pixels per second. A release whose pointer moved slower than 150
-world pixels per second, or last moved more than 60 ms earlier, and every keyboard,
-Escape, cancelled or interrupted release drop straight down as before. A released
-robot follows that velocity under gravity with no steering, stops at the sides of
-the visible scene and of solid blocks without rebounding, and lands in the same
-planted landing as a drop.
+capped at 420 world pixels per second. His velocity is that of the held robot, who
+stops with the pointer at the limits of the scene; a keyboard nudge, or the
+suspended clip arriving and changing those limits, starts the measurement over. A
+release in which he moved slower than 150 world pixels per second, or whose pointer
+last moved more than 60 ms earlier, and every keyboard, Escape, cancelled or
+interrupted release drop straight down as before. A released robot follows that
+velocity under gravity with no steering, stops at the sides of the visible scene and
+of solid blocks without rebounding, and lands in the same planted landing as a drop.
 
 ### 13.5 Landing-page loading ahead of use
 
