@@ -476,5 +476,5 @@ Repeat `--account 'agent:label=/absolute/profile'` to select named profiles
 instead of the two defaults. Omit `=/absolute/profile` to select the current
 sign-in for that agent. A missing reading is marked unavailable. Exit status
 is 1 if any requested reading is unavailable and 0 when all are available.
-Invalid arguments use status 2. On Ctrl-C, active checks finish their bounded
+Invalid arguments use status 2. On Ctrl-C, pending checks do not start. Active checks finish their bounded
 cleanup and the command exits with status 130. Help does not read config or start a CLI.

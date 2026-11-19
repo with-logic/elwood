@@ -1,8 +1,8 @@
 /** Codex token and quota snapshots from committed token_count records (C-STATS-01). */
 
 import { optional } from "../../core/optional.ts";
-import { isFiniteNumber, isRecord } from "../../core/predicates.ts";
-import { count } from "../../core/stats/fields.ts";
+import { isRecord } from "../../core/predicates.ts";
+import { count, quotaPercentages } from "../../core/stats/fields.ts";
 import type {
   CodexRateLimits,
   CodexRateLimitWindow,
@@ -73,11 +73,10 @@ function rateLimits(value: unknown, timestamp: unknown): CodexRateLimits | undef
 
 function rateWindow(value: unknown): CodexRateLimitWindow | undefined {
   if (!isRecord(value)) return undefined;
-  const usedPercent = value["used_percent"];
-  if (!isFiniteNumber(usedPercent) || usedPercent < 0) return undefined;
+  const percentages = quotaPercentages(value["used_percent"]);
+  if (!percentages) return undefined;
   return {
-    usedPercent,
-    remainingPercent: Math.max(0, 100 - usedPercent),
+    ...percentages,
     ...optional(count(value["window_minutes"]), "windowMinutes"),
     ...optional(count(value["resets_at"]), "resetsAtUnixSeconds"),
   };

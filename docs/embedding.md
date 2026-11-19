@@ -127,9 +127,11 @@ Use `windowMinutes` to align known durations across providers.
 import { readAccountUsage } from "@with-logic/elwood";
 
 const accounts = await readAccountUsage();
-for (const { label, status, windows } of accounts) {
-  if (status === "unavailable") console.log(label, "Unavailable");
-  for (const window of windows) console.log(label, window.label, window.remainingPercent, "% left");
+for (const { agent, label, status, windows } of accounts) {
+  if (status === "unavailable") console.log(agent, label, "Unavailable");
+  for (const window of windows) {
+    console.log(agent, label, window.label, window.remainingPercent, "% left", window.resetsAt ?? "");
+  }
 }
 ```
 

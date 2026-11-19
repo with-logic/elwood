@@ -1,6 +1,7 @@
 /** Validate provider percentages and reset times (PRD §5.12, C-STATS-01/03). */
 import { optional } from "../optional.ts";
-import { isFiniteNumber, isNonnegativeSafeInteger } from "../predicates.ts";
+import { isNonnegativeSafeInteger } from "../predicates.ts";
+import { quotaPercentages } from "../stats/fields.ts";
 import type { UsageWindow } from "./types.ts";
 
 export function isoInstant(value: unknown): string | undefined {
@@ -22,13 +23,14 @@ export function resetFromSeconds(value: unknown): string | undefined {
   return new Date(value * 1000).toISOString();
 }
 
-export function windowReading(
+export function windowReadings(
   label: string,
   used: unknown,
   reset: string | undefined,
   minutes?: unknown,
 ): UsageWindow[] {
-  if (!isFiniteNumber(used) || used < 0) return [];
+  const percentages = quotaPercentages(used);
+  if (!percentages) return [];
   return [
     {
       label,
@@ -36,8 +38,7 @@ export function windowReading(
         isNonnegativeSafeInteger(minutes) && minutes > 0 ? minutes : undefined,
         "windowMinutes",
       ),
-      usedPercent: used,
-      remainingPercent: Math.max(0, 100 - used),
+      ...percentages,
       ...optional(reset, "resetsAt"),
     },
   ];

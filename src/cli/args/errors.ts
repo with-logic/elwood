@@ -5,12 +5,15 @@
 
 import { longOptions } from "./options.ts";
 
-export function argumentErrorMessage(error: unknown): string {
+export function argumentErrorMessage(
+  error: unknown,
+  options: readonly string[] = longOptions,
+): string {
   if (!(error instanceof Error)) return "Could not parse command-line arguments.";
   const code = (error as Error & { readonly code?: unknown }).code;
   const match = code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? unknownOption(error.message) : undefined;
   if (match === undefined) return error.message;
-  const suggestion = nearestOption(match);
+  const suggestion = nearestOption(match, options);
   return suggestion === undefined
     ? `Unknown option '${match}'.`
     : `Unknown option '${match}'. Did you mean '${suggestion}'?`;
@@ -20,9 +23,9 @@ function unknownOption(message: string): string | undefined {
   return /Unknown option '([^']+)'/u.exec(message)?.[1];
 }
 
-function nearestOption(input: string): string | undefined {
+function nearestOption(input: string, options: readonly string[]): string | undefined {
   if (!input.startsWith("--")) return undefined;
-  const ranked = longOptions
+  const ranked = options
     .map((option) => ({ option, distance: editDistance(input, option) }))
     .sort((left, right) => left.distance - right.distance);
   const best = ranked[0];

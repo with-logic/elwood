@@ -1,6 +1,6 @@
 /** Account usage through the normal CLI, including saved defaults (C-STATS-03). */
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { main } from "../../src/cli/main.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -15,7 +15,8 @@ function harness() {
 }
 const valid = {
   status: 0,
-  stdout: '{"rate_limits_available":true,"rate_limits":{"seven_day":{"utilization":25}}}',
+  stdout:
+    '{"rate_limits_available":true,"rate_limits":{"seven_day":{"utilization":25,"resets_at":"2028-02-01T10:15:00Z"}}}',
   stderr: "",
 };
 
@@ -24,7 +25,7 @@ test("C-STATS-03 before launch, the CLI defaults left, saves used, and allows a 
   setCommandRunnerForTests(() => valid);
   const args = ["usage", "--account", "claude:Work"];
   expect(await h.run(args)).toBe(0);
-  expect(h.stdout.value).toMatch(/LEFT[\s\S]*Work\s+Weekly\s+75%/);
+  expect(h.stdout.value).toMatch(/LEFT[\s\S]*Work\s+Weekly\s+75%\s+2028-02-01T10:15:00Z/);
   expect(await h.run(["config", "set", "usageDirection", "used"])).toBe(0);
   h.stdout.value = "";
   expect(await h.run(args)).toBe(0);
@@ -82,11 +83,62 @@ test("C-STATS-03 help and invalid usage arguments do not probe accounts", async 
 
 test("C-STATS-03 interruption drains an active read and releases the signal handler", async () => {
   const h = harness();
+  const active = Promise.withResolvers<typeof valid>();
+  const started = Promise.withResolvers<void>();
   setCommandRunnerForTests(() => {
-    h.context.signals.emit();
-    return valid;
+    started.resolve();
+    return active.promise;
   });
-  expect(await h.run(["usage", "--output", "json"])).toBe(130);
+  const done = vi.fn();
+  const pending = h.run(["usage", "--output", "json"]).then((status) => {
+    done(status);
+    return status;
+  });
+  await started.promise;
+  h.context.signals.emit();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(done).not.toHaveBeenCalled();
+  active.resolve(valid);
+  expect(await pending).toBe(130);
   expect(h.stdout.value).toBe("");
   expect(h.context.signals.unbound).toBe(true);
+});
+
+test("C-STATS-03 usage validates help position and suggests its own options", async () => {
+  const h = harness();
+  expect(await h.run(["usage", "--", "--help"])).toBe(2);
+  expect(await h.run(["usage", "--acount", "claude:Work"])).toBe(2);
+  expect(h.stderr.value).toContain("Did you mean '--account'?");
+});
+
+test("C-STATS-03 structured usage strips controls from profile labels", async () => {
+  const h = harness();
+  setCommandRunnerForTests(() => valid);
+  expect(await h.run(["usage", "--account", "claude:\u009b31mWork", "--output", "json"])).toBe(0);
+  expect(JSON.parse(h.stdout.value).accounts[0].label).toBe("Work");
+});
+
+test("C-STATS-03 usage releases the SIGINT handler before a slow write", async () => {
+  const h = harness();
+  setCommandRunnerForTests(() => ({
+    ...valid,
+    stdout: valid.stdout.replace(',"resets_at":"2028-02-01T10:15:00Z"', ""),
+  }));
+  const write = h.stdout.write.bind(h.stdout);
+  vi.spyOn(h.stdout, "write").mockImplementation((text, callback) => {
+    expect(h.context.signals.unbound).toBe(true);
+    return write(text, callback);
+  });
+  expect(await h.run(["usage", "--account", "claude:Work"])).toBe(0);
+});
+
+test("C-STATS-03 usage errors apply to the command, even with a saved agent hint", async () => {
+  const h = harness();
+  expect(
+    await main(["usage", "--direction", "bad", "--output", "json"], {
+      ...h.context,
+      env: { ...h.context.env, ELWOOD_AGENT: "claude" },
+    }),
+  ).toBe(2);
+  expect(JSON.parse(h.stdout.value).agent).toBeNull();
 });

@@ -9,7 +9,7 @@ export const cliHelp = `Usage: elwood [options] [prompt...]
        elwood interactive [id] [options]
        elwood sessions [--state-dir <path>] [--output <text|json>]
        elwood models [options] [--output <text|json>]
-       elwood usage [--direction left|used] [--output text|json] [--account agent:label=/profile ...]
+       elwood usage [--direction left|used] [--output text|json] [--account 'agent:label[=/absolute/profile]']...
        elwood config <command>
 
 Run one Claude Code or Codex turn and write its combined assistant response.

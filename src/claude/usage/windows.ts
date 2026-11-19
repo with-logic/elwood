@@ -1,7 +1,7 @@
 /** Project Claude's on-demand get_usage result into named quota windows (PRD §5.12). */
-import { isRecord } from "../predicates.ts";
-import type { UsageWindow } from "./types.ts";
-import { isoInstant, windowReading } from "./windows.ts";
+import { isRecord } from "../../core/predicates.ts";
+import type { UsageWindow } from "../../core/usage/types.ts";
+import { isoInstant, windowReadings } from "../../core/usage/windows.ts";
 
 function scopeLabel(scope: unknown): string {
   if (!isRecord(scope)) return "";
@@ -12,12 +12,12 @@ function scopeLabel(scope: unknown): string {
     .join(" / ");
 }
 
-function nativeRow(row: unknown): UsageWindow[] {
+function windowsFromNativeRow(row: unknown): UsageWindow[] {
   if (!isRecord(row) || typeof row["kind"] !== "string") return [];
   const minutes = row["kind"] === "session" ? 300 : row["group"] === "weekly" ? 10080 : undefined;
   const period = minutes === 300 ? "5-hour" : minutes === 10080 ? "Weekly" : row["kind"];
   const scope = scopeLabel(row["scope"]);
-  return windowReading(
+  return windowReadings(
     scope ? `${period} (${scope})` : period,
     row["percent"],
     isoInstant(row["resets_at"]),
@@ -33,7 +33,7 @@ export function claudeWindows(reply: unknown): UsageWindow[] {
   )
     return [];
   const limits = reply["rate_limits"];
-  if (Array.isArray(limits["limits"])) return limits["limits"].flatMap(nativeRow);
+  if (Array.isArray(limits["limits"])) return limits["limits"].flatMap(windowsFromNativeRow);
   const legacyLabels = {
     five_hour: "5-hour",
     seven_day: "Weekly",
@@ -45,7 +45,7 @@ export function claudeWindows(reply: unknown): UsageWindow[] {
   const windows = Object.entries(legacyLabels).flatMap(([key, label]) => {
     const row = limits[key];
     return isRecord(row)
-      ? windowReading(
+      ? windowReadings(
           label,
           row["utilization"],
           isoInstant(row["resets_at"]),
@@ -59,7 +59,7 @@ export function claudeWindows(reply: unknown): UsageWindow[] {
       const label = `Weekly (${row["display_name"]})`;
       if (!windows.some((window) => window.label === label)) {
         windows.push(
-          ...windowReading(label, row["utilization"], isoInstant(row["resets_at"]), 10080),
+          ...windowReadings(label, row["utilization"], isoInstant(row["resets_at"]), 10080),
         );
       }
     }

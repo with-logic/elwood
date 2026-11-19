@@ -19,6 +19,7 @@ export type AccountUsage = {
   readonly agent: ElwoodAgentKind;
   readonly label: string;
   readonly checkedAt: string;
-  readonly status: "available" | "unavailable";
-  readonly windows: readonly UsageWindow[];
-};
+} & (
+  | { readonly status: "available"; readonly windows: readonly [UsageWindow, ...UsageWindow[]] }
+  | { readonly status: "unavailable"; readonly windows: readonly [] }
+);

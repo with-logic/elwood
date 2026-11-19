@@ -97,6 +97,7 @@ export async function main(
       return 0;
     }
     if (parsed.command === "usage") {
+      agent = null;
       const { runUsageCommand } = await import("./usage/index.ts");
       return await runUsageCommand(parsed.args, context, stdout);
     }

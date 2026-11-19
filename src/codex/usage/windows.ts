@@ -1,7 +1,7 @@
 /** Project Codex account/rateLimits/read buckets, independent of transcript writes (PRD §5.12). */
-import { isNonnegativeSafeInteger, isRecord } from "../predicates.ts";
-import type { UsageWindow } from "./types.ts";
-import { resetFromSeconds, windowReading } from "./windows.ts";
+import { isNonnegativeSafeInteger, isRecord } from "../../core/predicates.ts";
+import type { UsageWindow } from "../../core/usage/types.ts";
+import { resetFromSeconds, windowReadings } from "../../core/usage/windows.ts";
 
 function durationLabel(minutes: unknown, slot: string): string {
   if (minutes === 10080) return "Weekly";
@@ -16,7 +16,7 @@ function bucketWindows(value: unknown, bucket: string): UsageWindow[] {
     if (!isRecord(row)) return [];
     const period = durationLabel(row["windowDurationMins"], slot);
     const label = bucket ? `${period} (${bucket})` : period;
-    return windowReading(
+    return windowReadings(
       label,
       row["usedPercent"],
       resetFromSeconds(row["resetsAt"]),

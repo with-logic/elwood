@@ -2,6 +2,8 @@
 import { homedir } from "node:os";
 import { expect, test } from "vitest";
 import { readAccountUsage, type UsageAccount } from "../../src/index.ts";
+import { runProbe } from "../../src/runtime/probe/index.ts";
+import { maxConcurrentProbes, withProbeSlot } from "../../src/runtime/probe/slots.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 
 test("C-STATS-03 checks separate named profiles in caller order, including failed and missing profiles", async () => {
@@ -74,4 +76,37 @@ test("C-STATS-03 editing a profile during a read cannot relabel another account'
   profile.label = "Personal";
   expect((await result)[0]).toMatchObject({ label: "Work", status: "available" });
   expect(selected).toBe(homedir());
+});
+
+test("C-STATS-03 a named profile can supply its directory through a getter", async () => {
+  class WorkProfile {
+    readonly agent = "codex" as const;
+    readonly label = "Work";
+    get configDir() {
+      return homedir();
+    }
+  }
+  setCommandRunnerForTests((_cmd, _args, options) => ({
+    status: 0,
+    stderr: "",
+    stdout: JSON.stringify({
+      rateLimits: {
+        primary: { usedPercent: options?.env?.["CODEX_HOME"] === homedir() ? 12 : 80 },
+      },
+    }),
+  }));
+  expect((await readAccountUsage([new WorkProfile()]))[0]?.windows[0]?.usedPercent).toBe(12);
+});
+
+test("C-STATS-03 an interrupted quota read never launches its queued shell", async () => {
+  const occupied = Promise.withResolvers<void>();
+  const busy = Array.from({ length: maxConcurrentProbes }, () =>
+    withProbeSlot(() => occupied.promise),
+  );
+  const controller = new AbortController();
+  const pending = runProbe("/usr/bin/true", [], { signal: controller.signal });
+  controller.abort();
+  occupied.resolve();
+  await expect(pending).rejects.toBe(controller.signal.reason);
+  await Promise.all(busy);
 });

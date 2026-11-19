@@ -1,5 +1,5 @@
 /** Exercise C-STATS-03 at both real process boundaries with isolated native CLI stand-ins. */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { readAccountUsage } from "../../src/index.ts";
@@ -34,6 +34,9 @@ test("C-STATS-03 reads fresh balances for distinct profiles before a model turn"
   f.cli(
     "claude",
     `
+    if (process.env.CLAUDE_CONFIG_DIR !== ${JSON.stringify(f.root)} || !process.argv.includes("--no-session-persistence") ||
+        process.argv[process.argv.indexOf("--input-format") + 1] !== "stream-json" ||
+        process.argv[process.argv.indexOf("--output-format") + 1] !== "stream-json") process.exit(2);
     require("node:readline").createInterface({input:process.stdin}).on("line", line => {
       const msg = JSON.parse(line);
       if (msg.type !== "control_request" || msg.request.subtype !== "get_usage" || !msg.request.skip_behaviors) process.exit(2);
@@ -49,12 +52,13 @@ test("C-STATS-03 reads fresh balances for distinct profiles before a model turn"
     "codex",
     `
     const lines = require("node:readline").createInterface({input:process.stdin});
-    let initialized = false;
+    if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["app-server","--listen","stdio://"])) process.exit(2);
+    let handshake = 0;
     lines.on("line", line => {
       const msg = JSON.parse(line);
-      if (msg.method === "initialize") console.log(JSON.stringify({id:msg.id,result:{}}));
-      else if (msg.method === "initialized") initialized = true;
-      else if (initialized && msg.method === "account/rateLimits/read") {
+      if (handshake === 0 && msg.method === "initialize") { handshake++; console.log(JSON.stringify({id:msg.id,result:{}})); }
+      else if (handshake === 1 && msg.method === "initialized") handshake++;
+      else if (handshake === 2 && msg.method === "account/rateLimits/read") {
         const used = process.env.CODEX_HOME.endsWith("personal 'account") ? 4 : 57;
         console.log(JSON.stringify({id:msg.id,result:{rateLimits:{primary:{usedPercent:used,windowDurationMins:300}}}}));
       } else process.exit(2);
@@ -84,7 +88,42 @@ test("C-STATS-03 a profile overwritten by the login shell never displays the wro
 
 test("C-STATS-03 a native refusal or oversized reply yields unavailable", async () => {
   const f = fixture();
-  f.cli("claude", 'process.stdout.write("a".repeat(1_100_000));process.stdin.resume();');
+  const pidFile = join(f.root, "helper.pid");
+  f.cli(
+    "claude",
+    `
+    const helper = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 12000)"], {stdio:"ignore"});
+    require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(helper.pid));
+    helper.unref();
+    process.stdout.write("a".repeat(1_100_000));
+    process.stdin.resume();
+  `,
+  );
   f.cli("codex", "console.log(JSON.stringify({id:1,error:{code:42}}));process.stdin.resume();");
   expect((await readAccountUsage()).map((a) => a.status)).toEqual(["unavailable", "unavailable"]);
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(), { timeout: 4000 });
+});
+
+test("C-STATS-03 an explicit Claude profile uses its own credential store after login-shell startup", async () => {
+  const f = fixture("export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake");
+  f.cli(
+    "claude",
+    `
+    const selected = process.env.CLAUDE_CONFIG_DIR;
+    const inherited = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+    const explicit = selected === ${JSON.stringify(f.root)};
+    const correct = explicit ? (!inherited || inherited === selected) && !process.env.CLAUDE_CODE_OAUTH_TOKEN : inherited === "/other";
+    if (!correct) process.exit(2);
+    require("node:readline").createInterface({ input: process.stdin }).on("line", () => {
+      console.log(JSON.stringify({type:"control_response",response:{request_id:"usage",subtype:"success",response:{
+        rate_limits_available:true,rate_limits:{seven_day:{utilization:explicit ? 15 : 70}}
+      }}}));
+    });`,
+  );
+  const results = await readAccountUsage([
+    { agent: "claude", label: "Work", configDir: f.root },
+    { agent: "claude", label: "Current" },
+  ]);
+  expect(results.map((row) => row.windows[0]?.usedPercent)).toEqual([15, 70]);
 });

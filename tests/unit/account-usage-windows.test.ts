@@ -1,9 +1,9 @@
 /** Native account limits and valid dates for C-STATS-01/03. */
 import { expect, test } from "vitest";
+import { claudeWindows } from "../../src/claude/usage/windows.ts";
 import { codexStats } from "../../src/codex/transcript/stats.ts";
-import { claudeWindows } from "../../src/core/usage/claude.ts";
-import { codexWindows } from "../../src/core/usage/codex.ts";
-import { isoInstant, resetFromSeconds, windowReading } from "../../src/core/usage/windows.ts";
+import { codexWindows } from "../../src/codex/usage/windows.ts";
+import { isoInstant, resetFromSeconds, windowReadings } from "../../src/core/usage/windows.ts";
 
 const reset = "2028-02-29T19:00:00+02:30";
 const window = (label: string, windowMinutes?: number) => ({
@@ -95,7 +95,7 @@ test("C-STATS-03 Codex renders every rate-limit bucket once and labels each repo
   expect(codexWindows(null)).toEqual([]);
 });
 
-test("C-STATS-01 a malformed native date cannot order account samples", () => {
+test("C-STATS-01 omits recordedAt for an invalid transcript timestamp", () => {
   const timestamp = "2026-02-30T12:00:00Z";
   const stats = codexStats({
     type: "event_msg",
@@ -107,5 +107,5 @@ test("C-STATS-01 a malformed native date cannot order account samples", () => {
     expect(isoInstant(value)).toBeUndefined();
   expect(isoInstant(reset)).toBe(reset);
   expect(resetFromSeconds(8_640_000_000_001)).toBeUndefined();
-  for (const used of [-1, Number.NaN]) expect(windowReading("test", used, undefined)).toEqual([]);
+  for (const used of [-1, Number.NaN]) expect(windowReadings("test", used, undefined)).toEqual([]);
 });

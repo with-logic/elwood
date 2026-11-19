@@ -1,45 +1,18 @@
 /** Session-free account quota command and per-profile output (PRD §12A.11, C-STATS-03). */
-import { parseArgs } from "node:util";
-import { readAccountUsage, validateAccounts } from "../../core/usage/index.ts";
-import type { AccountUsage, UsageAccount } from "../../core/usage/types.ts";
+import { readUsageProfiles } from "../../core/usage/index.ts";
+import type { AccountUsage } from "../../core/usage/types.ts";
 import { resolveConfigPath } from "../config/paths.ts";
 import { readConfig } from "../config/store.ts";
+import { cliHelp } from "../help.ts";
 import type { CliMainContext } from "../main.ts";
-import { formatDiagnosticValue } from "../output/sanitize.ts";
-import { requiredChoice, usage } from "../request/values.ts";
+import { createCliSanitizer, formatDiagnosticValue } from "../output/sanitize.ts";
+import { requiredChoice } from "../request/values.ts";
 import type { AsyncOutputSink } from "../stream.ts";
 import { renderTable } from "../table.ts";
+import { type UsageDirection, usageDirections } from "../types.ts";
+import { parseUsageArgs } from "./args.ts";
 
-function accountFrom(value: string): UsageAccount {
-  const match = /^(claude|codex):([^=]+)(?:=(.*))?$/u.exec(value);
-  if (!match) throw usage("Use --account 'agent:label=/absolute/profile' or 'agent:label'.");
-  const [, agent, label, configDir] = match;
-  return {
-    agent: agent as UsageAccount["agent"],
-    label: label!,
-    ...(configDir === undefined ? {} : { configDir }),
-  };
-}
-
-function parse(args: readonly string[]) {
-  try {
-    const { values } = parseArgs({
-      args,
-      options: {
-        account: { type: "string", multiple: true },
-        direction: { type: "string" },
-        output: { type: "string" },
-      },
-    });
-    const accounts = values.account?.map(accountFrom);
-    if (accounts) validateAccounts(accounts);
-    return { ...values, accounts };
-  } catch (error) {
-    throw usage((error as Error).message);
-  }
-}
-
-function usageRows(readings: readonly AccountUsage[], direction: "used" | "left") {
+function usageRows(readings: readonly AccountUsage[], direction: UsageDirection) {
   return readings.flatMap((reading) => {
     const account = [reading.agent, formatDiagnosticValue(reading.label)];
     if (reading.status === "unavailable") return [[...account, "Unavailable", "—", "—"]];
@@ -60,7 +33,11 @@ export async function runUsageCommand(
   context: CliMainContext,
   stdout: AsyncOutputSink,
 ): Promise<number> {
-  const flags = parse(args);
+  const flags = parseUsageArgs(args);
+  if (flags.help) {
+    await stdout.write(cliHelp);
+    return 0;
+  }
   const config = readConfig(resolveConfigPath(context.env, context.invocationCwd, context.homeDir));
   const output = requiredChoice(
     flags.output ?? context.env["ELWOOD_OUTPUT"] ?? config.output ?? "text",
@@ -69,26 +46,31 @@ export async function runUsageCommand(
   );
   const direction = requiredChoice(
     flags.direction ?? config.usageDirection ?? "left",
-    ["left", "used"] as const,
+    usageDirections,
     "direction",
   );
-  let interrupted = false;
-  const dispose = context.signals.onSigint(() => {
-    interrupted = true;
-  });
+  const controller = new AbortController();
+  const dispose = context.signals.onSigint(() => controller.abort());
+  let accounts: readonly AccountUsage[];
   try {
-    const accounts = await readAccountUsage(flags.accounts);
-    if (interrupted) return 130;
-    await stdout.write(
-      output === "json"
-        ? `${JSON.stringify({ schemaVersion: 1, type: "usage", accounts })}\n`
-        : renderTable(
-            ["AGENT", "ACCOUNT", "WINDOW", direction.toUpperCase(), "RESETS AT"],
-            usageRows(accounts, direction),
-          ),
-    );
-    return accounts.some((account) => account.status === "unavailable") ? 1 : 0;
+    accounts = await readUsageProfiles(flags.accounts, controller.signal);
   } finally {
     dispose();
   }
+  if (controller.signal.aborted) return 130;
+  const clean = createCliSanitizer();
+  const rows = accounts.map((account) => ({
+    ...account,
+    label: clean(account.label),
+    windows: account.windows.map((window) => ({ ...window, label: clean(window.label) })),
+  }));
+  await stdout.write(
+    output === "json"
+      ? `${JSON.stringify({ schemaVersion: 1, type: "usage", accounts: rows })}\n`
+      : renderTable(
+          ["AGENT", "ACCOUNT", "WINDOW", direction.toUpperCase(), "RESETS AT"],
+          usageRows(accounts, direction),
+        ),
+  );
+  return accounts.some((account) => account.status === "unavailable") ? 1 : 0;
 }
