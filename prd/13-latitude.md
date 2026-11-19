@@ -112,6 +112,21 @@ Current/outgoing poses remain retained. Failure reports once for the current dra
 movement and painting do not retry, but a new drag may retry. Falling and landing
 transitions retain their existing on-demand behavior.
 
+Letting go of a pointer that is still moving gives the robot a little momentum. He
+is heavy: he keeps 35% of his velocity over the last 100 ms of pointer movement,
+capped at 420 world pixels per second. His velocity is that of the held robot, who
+stops with the pointer at the limits of the scene; a keyboard nudge, or the
+suspended clip arriving and changing those limits, starts the measurement over.
+
+Two pointer releases are still plain drops: one in which the held robot moved slower
+than 150 world pixels per second, and one whose pointer last moved more than 60 ms
+earlier. Every release that is not a pointer release (keyboard, Escape, cancelled or
+interrupted) is a plain drop whatever the pointer was doing.
+
+A robot released with momentum follows that velocity under gravity with no steering,
+stops at the sides of the visible scene and of solid blocks without rebounding, and
+lands in the same planted landing as a drop.
+
 ### 13.5 Landing-page loading ahead of use
 
 After the first live paint the landing page loads the clips a visitor reaches first, so

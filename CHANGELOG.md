@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Give the landing-page robot a little momentum on release: letting go of a drag
+  while the pointer is moving carries him along instead of dropping him flat.
+
 ## [0.4.0] - 2026-11-18
 
 - Export the frozen `codexServiceTierChoices` tuple for host speed settings.

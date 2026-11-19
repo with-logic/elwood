@@ -1,3 +1,6 @@
+/** The robot's movement, physics and animation state, shared by the landing page and the
+ * playground. Release from a pickup, with or without momentum, follows PRD §13.4 (C-SITE-07).
+ */
 import { angleDelta, mirroredPose, nearestAngle, turnAngle } from "./rotation.mjs";
 
 export const FLOOR = 620;
@@ -132,6 +135,7 @@ export class World {
       gestureStage: null,
       queuedAction: null,
       dropLanding: false,
+      thrown: false,
     };
     this.time = 0;
   }
@@ -409,12 +413,17 @@ export class World {
     }
   }
 
-  dropFromPickup() {
+  /** Release from a pickup. A velocity (world pixels per second) makes it a throw: the
+   * robot follows it under gravity, unsteered until it lands; the sides of the scene and of
+   * solid blocks stop its horizontal motion.
+   */
+  releaseFromPickup(velocity = null) {
     const p = this.player;
     Object.assign(p, {
       mode: "air",
-      vx: 0,
-      vy: 30,
+      vx: velocity?.x ?? 0,
+      vy: velocity?.y ?? 30,
+      thrown: velocity !== null,
       grabCooldown: 1,
       coyote: 0,
       jumpBuffer: 0,
@@ -457,6 +466,7 @@ export class World {
     p.vy = 0;
     p.support = null;
     p.dropLanding = false;
+    p.thrown = false;
     p.x = ledge.edge - p.facing * 24;
     p.y = ledge.platform.top + HEIGHT;
     p.gesture = null;
@@ -562,7 +572,8 @@ export class World {
       }
       // Steer gently in flight without flipping the airborne sprite. Any new
       // facing request turns after the landing has planted.
-      p.vx = p.dropLanding ? 0 : approach(p.vx, axis * SPEED, 450 * dt);
+      // A thrown robot keeps its own horizontal motion; nothing steers it.
+      if (!p.thrown) p.vx = p.dropLanding ? 0 : approach(p.vx, axis * SPEED, 450 * dt);
       if (axis && !p.dropLanding) {
         p.desiredFacing = axis;
         p.hasMoved = true;
@@ -571,10 +582,13 @@ export class World {
 
     const previousX = p.x;
     const previousY = p.y;
+    const unclampedX = p.x + p.vx * dt;
     p.x = Math.max(
       this.bounds?.left ?? 58,
-      Math.min(this.bounds?.right ?? WORLD_WIDTH - 60, p.x + p.vx * dt),
+      Math.min(this.bounds?.right ?? WORLD_WIDTH - 60, unclampedX),
     );
+    // Nothing steers a thrown robot, so the edge of the scene has to stop it.
+    if (p.thrown && p.x !== unclampedX) p.vx = 0;
     for (const platform of this.platforms) {
       if (platform.solid === false) continue;
       if (p.y <= platform.top + 2 || p.y - HEIGHT >= FLOOR) continue;
@@ -625,6 +639,7 @@ export class World {
           p.y = landing?.top ?? FLOOR;
           p.vx = 0;
           p.vy = 0;
+          p.thrown = false;
           p.mode = "ground";
           p.support = landing ?? null;
           p.gesture = null;

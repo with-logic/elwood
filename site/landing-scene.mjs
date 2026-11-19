@@ -14,6 +14,7 @@ import {
   socketPosition,
   transitionPose,
 } from "./sprite-pose.mjs";
+import { recordDragSample, throwVelocity } from "./drag/throw.mjs";
 import { SpriteRenderer } from "./sprite-renderer.mjs";
 import { Tether } from "./tether.mjs";
 import { FLOOR, HEIGHT, World } from "./world.mjs";
@@ -329,7 +330,7 @@ export class LandingScene {
       ? socketPosition(this.lastPose, HEIGHT / 384)
       : { x: p.x, y: p.y - HEIGHT };
     const { suspended: name, release } = this.pickupClips();
-    this.drag = { point, offset: { x: socket.x - point.x, y: socket.y - point.y }, socket, name };
+    this.drag = { point, offset: { x: socket.x - point.x, y: socket.y - point.y }, socket, name, samples: [] };
     Object.assign(p, {
       mode: "drag",
       vx: 0,
@@ -357,7 +358,8 @@ export class LandingScene {
     const p = this.world.player;
     const clip = this.bank.clips.get(this.drag.name);
     const unit = HEIGHT / 384;
-    if (clip && this.drag.boundsClip !== clip) {
+    const limitsChanged = Boolean(clip) && this.drag.boundsClip !== clip;
+    if (limitsChanged) {
       this.drag.boundsClip = clip;
       this.drag.bounds = clip.frames.reduce(
         (bounds, f) => ({
@@ -386,6 +388,11 @@ export class LandingScene {
       FLOOR + (6 - cfg.floorY) / cfg.scale + bounds.above,
       Math.min(FLOOR - bounds.below - 2, point.y + this.drag.offset.y),
     );
+    // Momentum comes from uninterrupted pointer movement. A keyboard nudge, or new limits
+    // when the pickup clip arrives, moves the robot without the pointer: start over.
+    const timed = userInput && Number.isFinite(point.timeMs);
+    if (limitsChanged || !timed) this.drag.samples.length = 0;
+    if (timed) recordDragSample(this.drag.samples, { timeMs: point.timeMs, x, y });
     p.x += x - this.drag.socket.x;
     p.y += y - this.drag.socket.y;
     this.drag.point = point;
@@ -396,8 +403,12 @@ export class LandingScene {
   nudgeDrag(dx, dy) {
     if (this.drag) this.moveDrag({ x: this.drag.point.x + dx, y: this.drag.point.y + dy });
   }
-  endDrag() {
+  /** `releaseTimeMs` is the release event's `timeStamp` in milliseconds. With it, a pointer
+   * still moving passes on some momentum.
+   */
+  endDrag(releaseTimeMs) {
     if (!this.drag) return;
+    const velocity = throwVelocity(this.drag.samples, releaseTimeMs);
     const p = this.world.player;
     const fall = this.bank.clips.get("pickup-fall");
     const unit = HEIGHT / 384;
@@ -415,7 +426,7 @@ export class LandingScene {
     this.drag = null;
     this.clearInput();
     this.interact();
-    this.world.dropFromPickup();
+    this.world.releaseFromPickup(velocity);
   }
   get userPaused() {
     return this.pauses.has("user") || this.pauses.has("reduced");

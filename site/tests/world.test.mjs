@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { angleDelta, nearestAngle } from "../rotation.mjs";
 import { FLOOR, HEIGHT, PLATFORM_LAYOUT, World } from "../world.mjs";
+import { stepWorld as step } from "./helpers/step-world.mjs";
 
 // The 4K production masters are the asset pipeline's inputs and are NOT part of
 // the deployed site or this repository (see .gitignore). Tests that verify an
@@ -12,9 +13,6 @@ const productionMasters = new URL("../assets/production/", import.meta.url);
 const hasMasters = existsSync(productionMasters);
 const masterTest = hasMasters ? test : test.skip;
 
-const step = (world, seconds, input = {}) => {
-  for (let index = 0; index < Math.round(seconds * 120); index++) world.update(1 / 120, input);
-};
 
 test("sprint follows its calibrated gait, turns on reversal, and does not boost ordinary jump travel", () => {
   const world = new World();
@@ -55,7 +53,7 @@ test("pickup release falls into its dedicated landing and completes recovery bef
   world.clips["hero-land"] = { frames: 48, fps: 24, finish_before_next: true };
   world.gestureDurations["hero-land"] = 2;
   world.player.y = FLOOR - 130;
-  world.dropFromPickup();
+  world.releaseFromPickup();
   assert.equal(world.player.animation, "pickup-fall");
   step(world, 0.6, { axis: -1 });
   assert.equal(world.player.gesture, "hero-land");
@@ -73,7 +71,7 @@ test("pickup release falls into its dedicated landing and completes recovery bef
   step(world, 2, { axis: 1 });
   assert.equal(world.player.gesture, null);
   assert.ok(world.player.x > x);
-  world.dropFromPickup();
+  world.releaseFromPickup();
   world.grab({ edge: 300, platform: { x: 300, width: 100, top: FLOOR - 200 }, direction: 1 });
   assert.equal(world.player.dropLanding, false, "Catching a ledge ends the pickup fall");
   world.release();
