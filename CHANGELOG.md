@@ -14,8 +14,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Recognize Codex's status footer when Codex wraps it onto continuation rows
   because a long working directory, thread name or agent label does not fit the
-  terminal. Such sessions stayed `running` from startup and never became `ready`,
-  so prompts were never typed and a graceful quit could not stop them.
+  terminal, at every terminal width. Also recognize the shorter hint row
+  (`← for agents`) and warnings badge (`⚠ N · f2`) that Codex 0.170 draws in a
+  narrow terminal. Such sessions stayed `running` from startup and never became
+  `ready`, so queued prompts were never typed, and a host that waits for `ready`
+  before it calls `stop()` never reached that call. `stop()` itself always worked
+  while the session was `running`.
 - Give the landing-page robot a little momentum on release: letting go of a drag
   while the pointer is moving carries him along instead of dropping him flat.
 

@@ -6,6 +6,8 @@ import { codexComposerRow } from "./clearance.ts";
 export type RetainedFrameReader = () => {
   readonly text: string;
   readonly lines: readonly string[];
+  /** The terminal's width; without it a wrapped status footer is not evidence. */
+  readonly cols?: number;
 };
 type ComposerProvenance = { readonly rows: readonly string[]; readonly at: number };
 
@@ -27,7 +29,7 @@ export class CodexRetainedComposerHold {
     const frame = this.readFrame?.();
     const rows = frame?.text === text ? frame.lines : text.split("\n");
     const liveClear = this.isClear(text);
-    const composer = codexComposerRow(rows, liveClear);
+    const composer = codexComposerRow(rows, liveClear, frame?.cols);
     if (updateActive && !this.holding) {
       this.frozenPrelude =
         composer < 0

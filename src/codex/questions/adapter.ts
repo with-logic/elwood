@@ -5,7 +5,7 @@ import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
-import { codexEmptyInputRows } from "../screen/empty-input.ts";
+import { codexComposerRowsEmpty } from "../screen/clearance.ts";
 import { hasInFlightSubmission, type QueuedCandidate } from "./candidate.ts";
 import { type Candidate, CodexQuestionCandidates } from "./candidates.ts";
 import { answerBlocking, answerQueued } from "./driver.ts";
@@ -134,7 +134,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       chrome ||
       frame.cursorVisible !== true ||
       frame.cursorX !== 2 ||
-      !codexEmptyInputRows(frame.lines, frame.cursorRow)
+      !codexComposerRowsEmpty(frame.lines, frame.cursorRow, frame.cols)
     )
       return;
     this.hold = false;

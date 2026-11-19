@@ -5,7 +5,7 @@
 
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
-import { codexFooterRows } from "./footer.ts";
+import { classifyCodexFooter, unknownCols } from "./footer.ts";
 import { codexWorkingScreen } from "./working.ts";
 
 const caretRow = /^\s*[›»]/;
@@ -114,31 +114,45 @@ function numberedSibling(rows: readonly string[], index: number): boolean {
   );
 }
 
-/** Locate a composer by retained footer evidence or a live-verified welcome region. */
-export function codexComposerRow(frameRows: readonly string[], liveClear: boolean): number {
+/**
+ * Locate a composer by retained footer evidence or a live-verified welcome region. Here and
+ * below, `cols` is the width of the terminal that drew the rows: without it (`unknownCols`)
+ * a wrapped status footer is not evidence (C-CODEX-26).
+ */
+export function codexComposerRow(
+  frameRows: readonly string[],
+  liveClear: boolean,
+  cols = unknownCols,
+): number {
   const at = frameRows.findLastIndex(
     (row) => composerRowStart.test(row) && placeholders.has(row.slice(1).trim()),
   );
   // Submitted transcript prompts can exactly match a placeholder; native chrome
   // must remain too. Welcome chrome also survives in transcripts, so it requires
   // live cursor verification before it can preserve the composer's provenance.
-  return at >= 0 && nativeComposerRegion(frameRows, at, liveClear) ? at : -1;
+  return at >= 0 && nativeComposerRegion(frameRows, at, liveClear, cols) ? at : -1;
 }
 
 /**
  * Codex paints its status footer beneath the composer once its session is configured.
  * The composer it paints while booting has none, and under load its directory-trust gate
- * can follow seconds later, so readiness waits for this footer (C-API-28).
+ * can follow seconds later, so readiness waits for this footer (C-API-28). A wrapped footer
+ * counts only with the width of the terminal that drew the frame (C-CODEX-26).
  */
-export function codexComposerConfigured(frame: string): boolean {
+export function codexComposerConfigured(frame: string, cols = unknownCols): boolean {
   const rows = frame.split("\n").map((row) => row.trimEnd());
   const at = rows.findLastIndex((row) => composerRowStart.test(row));
-  return at >= 0 && nativeComposerRegion(rows, at, false);
+  return at >= 0 && nativeComposerRegion(rows, at, false, cols);
 }
 
 /** Require the composer's own footer unless the caller permits welcome evidence. */
-function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
-  const footer = codexFooterRows(rows.slice(at + 1));
+function nativeComposerRegion(
+  rows: readonly string[],
+  at: number,
+  allowWelcome: boolean,
+  cols: number,
+): boolean {
+  const footer = classifyCodexFooter(rows.slice(at + 1), cols);
   if (footer === undefined) return false;
   return (
     footer.hasStatus || (allowWelcome && welcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
@@ -149,22 +163,29 @@ function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome:
  * The last composer needs its own status footer or the verified welcome box above
  * it. A stale footer cannot vouch for a bare caret, which is also how a dialog
  * selection starts; ordinary numbered transcript content can precede the composer.
+ * A frame's text carries no width: called with the text alone, as a `TrustClearance`, this
+ * fails closed on a wrapped footer. A session uses `liveCodexClearance`, which has the width.
  */
-export function codexComposerClearance(frame: string, cursorRow?: number): boolean {
-  return codexComposerRowsClearance(frame.split("\n"), cursorRow);
+export function codexComposerClearance(frame: string, cursorRow?: number, cols?: number): boolean {
+  return codexComposerRowsClearance(frame.split("\n"), cursorRow, cols);
 }
 
 /** Classify existing snapshot rows without splitting another viewport string. */
 export function codexComposerRowsClearance(
   frameRows: readonly string[],
   cursorRow?: number,
+  cols?: number,
 ): boolean {
   if (frameRows.some((row) => codexWorkingScreen.test(row))) return false;
-  return codexComposerRowsEmpty(frameRows, cursorRow);
+  return codexComposerRowsEmpty(frameRows, cursorRow, cols);
 }
 
 /** Empty input does not imply an idle turn; callers choose the activity contract. */
-export function codexComposerRowsEmpty(frameRows: readonly string[], cursorRow?: number): boolean {
+export function codexComposerRowsEmpty(
+  frameRows: readonly string[],
+  cursorRow?: number,
+  cols = unknownCols,
+): boolean {
   const rows = frameRows.map((row) => row.trimEnd());
   const at = cursorRow ?? rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
@@ -175,5 +196,5 @@ export function codexComposerRowsEmpty(frameRows: readonly string[], cursorRow?:
   // A partially painted native approval overrides a cursor left on the old composer.
   // Indentation and a retained cursor do not turn native approval rows into history.
   if (hasNativeDialogEvidence(above, cursorRow !== undefined)) return false;
-  return nativeComposerRegion(rows, at, true);
+  return nativeComposerRegion(rows, at, true, cols);
 }
