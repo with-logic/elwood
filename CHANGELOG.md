@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recognize Codex's status footer when Codex wraps it onto continuation rows
+  because a long working directory, thread name or agent label does not fit the
+  terminal. Such sessions stayed `running` from startup and never became `ready`,
+  so prompts were never typed and a graceful quit could not stop them.
 - Give the landing-page robot a little momentum on release: letting go of a drag
   while the pointer is moving carries him along instead of dropping him flat.
 

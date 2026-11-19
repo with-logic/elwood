@@ -3,10 +3,9 @@
  * Implements PRD §5.3/§5.4, C-API-31/C-API-56/C-TRUST-01.
  */
 
-import { codexReasoningEfforts } from "../../core/reasoning-effort.ts";
-import { codexServiceTierChoices } from "../../core/speed/types.ts";
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
+import { codexFooterRows } from "./footer.ts";
 import { codexWorkingScreen } from "./working.ts";
 
 const caretRow = /^\s*[›»]/;
@@ -24,19 +23,6 @@ const placeholders = new Set([
   "Run /review on my current changes",
   "Use /skills to list available skills",
 ]);
-const tierBadges = codexServiceTierChoices
-  .filter((tier) => tier !== "default")
-  .map((tier) => tier.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`))
-  .join("|");
-const effortWithOptionalTier = `(?:${codexReasoningEfforts.join("|")}|default)(?: (?:${tierBadges}))?`;
-const directory = String.raw` · (?:~?\/|[A-Z]:[\\/])[^\n]*`;
-// An effort-only footer needs its directory; a bare effort word cannot prove configuration.
-const statusFooter = new RegExp(
-  String.raw`^ {2}(?:(?:gpt|GPT)-[\w.-]+(?: Terra)? ${effortWithOptionalTier}(?:${directory})?|${effortWithOptionalTier}${directory})(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
-);
-const hintFooter =
-  /^(?: {2})?(?:← for agents · )?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
-
 /** A contiguous startup welcome box and its native tip/warning rows. */
 function welcomeBox(rows: readonly string[]): boolean {
   if (!/^╭─+╮$/.test(rows[0] ?? "")) return false;
@@ -152,15 +138,10 @@ export function codexComposerConfigured(frame: string): boolean {
 
 /** Require the composer's own footer unless the caller permits welcome evidence. */
 function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
-  // Native Codex right-aligns this badge even with a model-only status line.
-  const below = rows
-    .slice(at + 1)
-    .map((row) => row.replace(/ {2,}⚠ [1-9]\d* warnings? · f2 to view\s*$/, "").trimEnd())
-    .filter((row) => row !== "");
-  if (!below.every((row) => statusFooter.test(row) || hintFooter.test(row))) return false;
+  const footer = codexFooterRows(rows.slice(at + 1));
+  if (footer === undefined) return false;
   return (
-    below.some((row) => statusFooter.test(row)) ||
-    (allowWelcome && welcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
+    footer.hasStatus || (allowWelcome && welcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
   );
 }
 

@@ -57,6 +57,19 @@ model evidence, warning suffix validation, live cursor and dialog guards remain.
 Footer capture: `tests/fixtures/codex-0.167.0/agents-footer.txt`.
 C-API-28, C-TRUST-01.
 
+**Codex 0.170.0 wraps its status footer when it does not fit the terminal.** With a
+long working directory, a model at `xhigh` and a thread name (the first prompt, cut with
+an ellipsis), the footer takes two or three rows at 160 columns: the first row is a
+normal status footer cut at a path separator, and the rows beneath carry the rest of the
+directory, the thread name, and after a helper agent has run ` · <name> [<role>]`. The
+warnings badge follows the last status row after one space, or sits on the hint row
+beneath. The grammar saw the continuation as an unknown row, so a session never
+recognized its composer, stayed `running`, never typed a prompt and could not stop
+gracefully. A short directory hid it. The rows carry no terminal width, so the widest
+row beneath the composer stands in for it: a continuation counts only directly beneath a
+status row to which its first piece (up to the next `/` or space) could not have fitted.
+Widths other than 160 were not captured. C-API-28, C-CODEX-26.
+
 **Codex fires its `SessionStart` hook lazily — on the first turn, not at boot.**
 Any experiment that waits for a boot-time Codex hook *without running a turn* is
 invalid and will conclude the hook "never fires". (This once produced a false
