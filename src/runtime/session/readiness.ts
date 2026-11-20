@@ -23,6 +23,7 @@ export type ReadinessGate = {
     facts: ComposerReadyFacts,
     trustInputBlocking: boolean,
     frame: string,
+    cols?: number,
   ) => void;
   /** Per rendered frame: update the blocking gate, reconcile a deferred or waiting mark,
    * and (on resume) mark readiness on the first quiet, non-blocking composer. */
@@ -30,6 +31,7 @@ export type ReadinessGate = {
     facts: ComposerReadyFacts,
     trustInputBlocking: boolean,
     frame: string,
+    cols?: number,
   ) => void;
 };
 
@@ -43,17 +45,18 @@ export function createReadinessGate(
   onReady: () => void,
   resumed: boolean,
   composer?: {
-    readonly configured: (frame: string) => boolean;
+    readonly configured: (frame: string, cols?: number) => boolean;
     readonly onBackstop: () => void;
   },
 ): ReadinessGate {
   let readinessHeld = false;
   let backstopHold: (() => boolean) | undefined;
-  let latest: { facts: ComposerReadyFacts; frame: string } | undefined;
+  let latest: { facts: ComposerReadyFacts; frame: string; cols: number | undefined } | undefined;
   const observeFrameHold = (
     facts: ComposerReadyFacts,
     trustInputBlocking: boolean,
     frame: string,
+    cols?: number,
   ) => {
     // A dialog's deferred mark waits for idle; ordinary cold-start work still
     // retains the existing hook/deadline path instead of waiting on itself.
@@ -61,7 +64,7 @@ export function createReadinessGate(
       facts.blocking_prompt_visible ||
       trustInputBlocking ||
       (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
-    latest = { facts, frame };
+    latest = { facts, frame, cols };
   };
   // Work may animate forever (a failing MCP server's retry spinner), so only the
   // configured composer itself, not idleness, is required before the deadline marks.
@@ -70,7 +73,7 @@ export function createReadinessGate(
     const shown = () =>
       latest?.facts.composer_visible === true &&
       !latest.facts.blocking_prompt_visible &&
-      composer.configured(latest.frame);
+      composer.configured(latest.frame, latest.cols);
     evidence = {
       shown,
       onBackstop: () => {
@@ -92,8 +95,8 @@ export function createReadinessGate(
     ready,
     isHeld: () => readinessHeld || backstopHold?.() === true,
     observeFrameHold,
-    observeReadinessFrame: (facts, trustInputBlocking, frame) => {
-      observeFrameHold(facts, trustInputBlocking, frame);
+    observeReadinessFrame: (facts, trustInputBlocking, frame, cols) => {
+      observeFrameHold(facts, trustInputBlocking, frame, cols);
       if (!backstopHold?.()) markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
     },
