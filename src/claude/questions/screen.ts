@@ -57,20 +57,8 @@ export function parseClaudeQuestionScreen(
   const panel = readClaudeQuestionPanel(frame, questions);
   if (!panel) return undefined;
   const { start, body, first, prompt } = panel;
-  const reviewReadyIndex = body.lastIndexOf(CLAUDE_REVIEW_READY_LABEL);
-  if (prompt.startsWith(`${CLAUDE_REVIEW_TITLE} `) && reviewReadyIndex >= 0) {
-    if (!questionCursor(frame)) return undefined;
-    const questionRows = body.slice(first).filter((line) => line.trim());
-    if (
-      questionRows.length !== 2 ||
-      !/^(?:❯| )\s+1\. Submit answers$/.test(questionRows[0]!) ||
-      !reviewCancelRow.test(questionRows[1]!)
-    )
-      return undefined;
-    const summary = normalizeClaudeQuestionText(body.slice(0, reviewReadyIndex).join(" "))
-      .slice(CLAUDE_REVIEW_TITLE.length)
-      .trim();
-    return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1, summary };
+  if (prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)) {
+    return parseReview(frame, body, first);
   }
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
@@ -82,7 +70,7 @@ export function parseClaudeQuestionScreen(
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
   const questionRows = body.slice(first, end);
-  const parsed = parseClaudeQuestionRows(question, questionRows);
+  const parsed = parseClaudeQuestionRows(question, questionRows, questions.length > 1);
   if (!parsed) return undefined;
   const otherTop = start + 1 + first + parsed.otherStart;
   const otherBottom = start + 1 + first + parsed.otherEnd;
@@ -91,9 +79,42 @@ export function parseClaudeQuestionScreen(
     frame.cursorX >= OTHER_CONTINUATION_INDENT_COLUMNS &&
     frame.cursorRow >= otherTop &&
     frame.cursorRow <= otherBottom;
-  return questionCursor(frame) || otherCursor
-    ? { kind: "question", questionIndex, ...parsed }
-    : undefined;
+  if (!(questionCursor(frame) || otherCursor)) return undefined;
+  // Claude may paint a blank cursor cell after the typed value. Compare xterm's
+  // exact prefix so wide glyphs and spaces within the submitted answer survive.
+  const cursorPad =
+    otherCursor &&
+    frame.cursorRow === otherBottom &&
+    frame.cursorLineBefore !== undefined &&
+    frame.lines[otherBottom] === `${frame.cursorLineBefore} `;
+  return {
+    kind: "question",
+    questionIndex,
+    ...parsed,
+    other: cursorPad ? parsed.other.slice(0, -1) : parsed.other,
+  };
+}
+
+function parseReview(
+  frame: QuestionFrame,
+  body: readonly string[],
+  first: number,
+): ClaudeQuestionScreen | undefined {
+  if (!questionCursor(frame)) return undefined;
+  const questionRows = body.slice(first).filter((line) => line.trim());
+  if (
+    questionRows.length < 2 ||
+    !/^(?:❯| )\s+1\. Submit answers$/.test(questionRows[0]!) ||
+    !reviewCancelRow.test(questionRows[1]!) ||
+    questionRows[0]!.startsWith("❯") === questionRows[1]!.startsWith("❯") ||
+    !hasOnlyOptionalNamedBorder(questionRows.slice(2))
+  )
+    return undefined;
+  const summaryRows = body.slice(0, first).filter((line) => line.trim());
+  if (summaryRows[0] !== CLAUDE_REVIEW_TITLE) return undefined;
+  if (summaryRows.at(-1) === CLAUDE_REVIEW_READY_LABEL) summaryRows.pop();
+  const summary = normalizeClaudeQuestionText(summaryRows.slice(1).join(" "));
+  return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1, summary };
 }
 
 /** Match live tabs and extract the prompt; callers validate the prompt and complete choice rows. */

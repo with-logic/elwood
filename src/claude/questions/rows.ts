@@ -21,6 +21,7 @@ export type ClaudeQuestionRows = {
 export function parseClaudeQuestionRows(
   question: QuestionDefinition,
   questionRows: readonly string[],
+  grouped: boolean,
 ): ClaudeQuestionRows | undefined {
   const parsed = questionRows
     .map((line, index) => ({ index, match: claudeQuestionRow.exec(line) }))
@@ -44,11 +45,10 @@ export function parseClaudeQuestionRows(
     if (match.groups!["marker"] === "❯") cursor = index;
   }
   const last = parsed.at(-1)!;
+  const actionRow = grouped ? /^(?:❯| ) {4}(?:Next|Submit)$/ : /^(?:❯| ) {4}Submit$/;
   const next =
     question.selection === "multiple"
-      ? questionRows.findIndex(
-          (line, index) => index > last.index && /^(?:❯| ) {4}Submit$/.test(line),
-        )
+      ? questionRows.findIndex((line, index) => index > last.index && actionRow.test(line))
       : -1;
   if (question.selection === "multiple") {
     if (next < 0 || questionRows.slice(next + 1).some((line) => line.trim())) return undefined;

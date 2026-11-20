@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Fix Claude Code 2.1.329 question answers timing out on grouped checkbox pages,
+  typed answers, and the final review page in named sessions.
+
 - Give the landing-page robot a little momentum on release: letting go of a drag
   while the pointer is moving carries him along instead of dropping him flat.
 
