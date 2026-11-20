@@ -2893,6 +2893,7 @@ both actions. The review capture is in `tests/fixtures/claude-2.1.329/questions/
 
 Two four-question runs against a loopback provider exercised the real CLI.
 One used choices only. The other included typed text and multiple selections.
-The unpatched Elwood driver stalled on the checkbox action. Chatty’s bundled
-driver got past that action but stalled on typed text or the final review.
+The unpatched Elwood driver stalled on the checkbox action. Chatty, a desktop
+app that embeds Elwood, shipped a driver that passed that action and then stalled
+on typed text or the final review.
 With the corrected driver, Claude returned all four expected answers in each run.

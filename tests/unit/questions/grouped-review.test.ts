@@ -37,6 +37,17 @@ test("C-QUESTION-03 reads Next on a grouped checkbox page", () => {
   });
   const duplicate = frame(next.text.replace("  1. [✔]", "❯ 1. [✔]"));
   expect(parseClaudeQuestionScreen(duplicate, definitions)).toBeUndefined();
-  const single = frame(next.text.replace("←  ☒ Color  ☒ Features  ✔ Submit  →", " ☐ Features"));
-  expect(parseClaudeQuestionScreen(single, [definitions[1]!])).toBeUndefined();
+});
+
+test("C-QUESTION-03 accepts Submit as the only action for a single checkbox question", () => {
+  const page = fixture("features-submit-highlight");
+  const single = frame(page.text.replace("←  ☒ Color  ☒ Features  ✔ Submit  →", " ☐ Features"));
+  const request = [definitions[1]!];
+  expect(parseClaudeQuestionScreen(single, request)).toMatchObject({
+    kind: "question",
+    cursor: 3,
+    checked: [true, true, false],
+  });
+  const next = frame(single.text.replace("❯    Submit", "❯    Next"));
+  expect(parseClaudeQuestionScreen(next, request)).toBeUndefined();
 });

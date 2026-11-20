@@ -102,20 +102,20 @@ function parseReview(
   first: number,
 ): ClaudeQuestionScreen | undefined {
   if (!questionCursor(frame)) return undefined;
-  const questionRows = body.slice(first).filter((line) => line.trim());
-  if (
-    questionRows.length < 2 ||
-    !/^(?:❯| )\s+1\. Submit answers$/.test(questionRows[0]!) ||
-    !reviewCancelRow.test(questionRows[1]!) ||
-    questionRows[0]!.startsWith("❯") === questionRows[1]!.startsWith("❯") ||
-    !hasOnlyOptionalNamedBorder(questionRows.slice(2))
-  )
+  const submit = body[first]!;
+  const [cancel, ...tail] = body.slice(first + 1).filter((line) => line.trim());
+  if (!cancel) return undefined;
+  if (!(/^(?:❯| )\s+1\. Submit answers$/.test(submit) && reviewCancelRow.test(cancel)))
     return undefined;
+  const submitSelected = submit.startsWith("❯");
+  const cancelSelected = cancel.startsWith("❯");
+  const hasExactlyOneSelectedAction = submitSelected !== cancelSelected;
+  if (!(hasExactlyOneSelectedAction && hasOnlyOptionalNamedBorder(tail))) return undefined;
   const summaryRows = body.slice(0, first).filter((line) => line.trim());
   if (summaryRows[0] !== CLAUDE_REVIEW_TITLE) return undefined;
   if (summaryRows.at(-1) === CLAUDE_REVIEW_READY_LABEL) summaryRows.pop();
   const summary = normalizeClaudeQuestionText(summaryRows.slice(1).join(" "));
-  return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1, summary };
+  return { kind: "review", cursor: submitSelected ? 0 : 1, summary };
 }
 
 /** Match live tabs and extract the prompt; callers validate the prompt and complete choice rows. */
