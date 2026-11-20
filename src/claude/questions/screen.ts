@@ -13,7 +13,7 @@ export type ClaudeQuestionScreen =
   | {
       readonly kind: "question";
       readonly questionIndex: number;
-      /** Zero-based selection-list index: options, Other, then optional Submit. */
+      /** Zero-based selection-list index: options, Other, then Next or Submit when present. */
       readonly cursor: number;
       readonly checked: readonly boolean[];
       readonly other: string;
@@ -57,32 +57,21 @@ export function parseClaudeQuestionScreen(
   const panel = readClaudeQuestionPanel(frame, questions);
   if (!panel) return undefined;
   const { start, body, first, prompt } = panel;
-  const reviewReadyIndex = body.lastIndexOf(CLAUDE_REVIEW_READY_LABEL);
-  if (prompt.startsWith(`${CLAUDE_REVIEW_TITLE} `) && reviewReadyIndex >= 0) {
-    if (!questionCursor(frame)) return undefined;
-    const questionRows = body.slice(first).filter((line) => line.trim());
-    if (
-      questionRows.length !== 2 ||
-      !/^(?:❯| )\s+1\. Submit answers$/.test(questionRows[0]!) ||
-      !reviewCancelRow.test(questionRows[1]!)
-    )
-      return undefined;
-    const summary = normalizeClaudeQuestionText(body.slice(0, reviewReadyIndex).join(" "))
-      .slice(CLAUDE_REVIEW_TITLE.length)
-      .trim();
-    return { kind: "review", cursor: questionRows[0]!.startsWith("❯") ? 0 : 1, summary };
-  }
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
   );
   const question = questions[questionIndex];
-  if (!question) return undefined;
+  if (!question) {
+    return prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)
+      ? parseReview(frame, body, first)
+      : undefined;
+  }
   const footer = body.findLastIndex((line) => questionFooter.test(line));
   if (footer < 0 || !hasOnlyOptionalNamedBorder(body.slice(footer + 1))) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
   const questionRows = body.slice(first, end);
-  const parsed = parseClaudeQuestionRows(question, questionRows);
+  const parsed = parseClaudeQuestionRows(question, questionRows, questions.length > 1);
   if (!parsed) return undefined;
   const otherTop = start + 1 + first + parsed.otherStart;
   const otherBottom = start + 1 + first + parsed.otherEnd;
@@ -91,9 +80,42 @@ export function parseClaudeQuestionScreen(
     frame.cursorX >= OTHER_CONTINUATION_INDENT_COLUMNS &&
     frame.cursorRow >= otherTop &&
     frame.cursorRow <= otherBottom;
-  return questionCursor(frame) || otherCursor
-    ? { kind: "question", questionIndex, ...parsed }
-    : undefined;
+  if (!(questionCursor(frame) || otherCursor)) return undefined;
+  // Claude may paint a blank cursor cell after the typed value. Compare xterm's
+  // exact prefix so wide glyphs and spaces within the submitted answer survive.
+  const cursorPad =
+    otherCursor &&
+    frame.cursorRow === otherBottom &&
+    frame.cursorLineBefore !== undefined &&
+    frame.lines[otherBottom] === `${frame.cursorLineBefore} `;
+  return {
+    kind: "question",
+    questionIndex,
+    ...parsed,
+    other: cursorPad ? parsed.other.slice(0, -1) : parsed.other,
+  };
+}
+
+function parseReview(
+  frame: QuestionFrame,
+  body: readonly string[],
+  first: number,
+): ClaudeQuestionScreen | undefined {
+  if (!questionCursor(frame)) return undefined;
+  const submit = body[first]!;
+  const [cancel, ...tail] = body.slice(first + 1).filter((line) => line.trim());
+  if (!cancel) return undefined;
+  if (!(/^(?:❯| )\s+1\. Submit answers$/.test(submit) && reviewCancelRow.test(cancel)))
+    return undefined;
+  const submitSelected = submit.startsWith("❯");
+  const cancelSelected = cancel.startsWith("❯");
+  const hasExactlyOneSelectedAction = submitSelected !== cancelSelected;
+  if (!(hasExactlyOneSelectedAction && hasOnlyOptionalNamedBorder(tail))) return undefined;
+  const summaryRows = body.slice(0, first).filter((line) => line.trim());
+  if (summaryRows[0] !== CLAUDE_REVIEW_TITLE) return undefined;
+  if (summaryRows.at(-1) === CLAUDE_REVIEW_READY_LABEL) summaryRows.pop();
+  const summary = normalizeClaudeQuestionText(summaryRows.slice(1).join(" "));
+  return { kind: "review", cursor: submitSelected ? 0 : 1, summary };
 }
 
 /** Match live tabs and extract the prompt; callers validate the prompt and complete choice rows. */
