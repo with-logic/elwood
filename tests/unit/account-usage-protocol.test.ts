@@ -13,10 +13,11 @@ afterEach(() => {
 
 function fixture(rc = "") {
   const root = tempDir("usage-protocol-");
-  vi.stubEnv("ZDOTDIR", root);
-  vi.spyOn(shell, "userShell").mockReturnValue("/bin/zsh");
+  vi.stubEnv("HOME", root);
+  vi.stubEnv("TERM_PROGRAM", "");
+  vi.spyOn(shell, "userShell").mockReturnValue("/bin/bash");
   writeFileSync(
-    join(root, ".zshrc"),
+    join(root, ".bash_profile"),
     `export PATH=${shell.shellQuote(root)}:/usr/bin:/bin\n${rc}\n`,
   );
   return {
