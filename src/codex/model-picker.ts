@@ -30,6 +30,7 @@ const changeConfirmed = /Model changed to/;
 
 export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
+  // Text alone proves no wrapped footer; a session overrides this with its live clearance.
   isClear: codexComposerClearance,
   isCandidate: (text) =>
     isModelViewportCandidate(text, pickerGrammar) ||

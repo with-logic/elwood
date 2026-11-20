@@ -65,6 +65,8 @@ export type ScreenFactReading = {
 
 export type RenderedFrame = {
   readonly text: string;
+  /** Width when this frame was painted, when the adapter supplies it. */
+  readonly cols?: number;
   /** The OSC window title, "" when none has been set. */
   readonly title: string;
 };
