@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-20
+
 - Run `elwood usage` to check account limits in the terminal. Show percent
   left by default or save a preference for percent used.
 
