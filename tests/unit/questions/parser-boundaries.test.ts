@@ -1,7 +1,7 @@
 /** Private parser authority follows native editor cursor bounds (PRD §4). */
 import { expect, test } from "vitest";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
-import { definitions, frame, nativeSnapshot } from "./helpers.ts";
+import { definitions, fixture, frame, nativeSnapshot } from "./helpers.ts";
 
 const note = {
   ...definitions[0]!,
@@ -31,4 +31,17 @@ test.each([-1, 2])("rejects a cursor outside the Other editor rows: %s", (offset
   expect(
     parseClaudeQuestionScreen({ ...current, cursorX: 5, cursorRow, cursorY: cursorRow }, [note]),
   ).toBeUndefined();
+});
+
+test("C-QUESTION-03 preserves the typed answer's trailing spaces under Claude's cursor", () => {
+  const source = fixture("freeform-other-highlight");
+  const typed = "A wide 界 and a space ";
+  const current = frame(source.text.replace("❯ 3. Type something.", `❯ 3. ${typed} `));
+  const cursorLineBefore = `❯ 3. ${typed}`;
+  expect(
+    parseClaudeQuestionScreen({ ...current, cursorLineBefore, cursorX: 27 }, [note]),
+  ).toMatchObject({ other: typed });
+  expect(
+    parseClaudeQuestionScreen({ ...current, cursorX: 6, cursorLineBefore: "❯ 3. A" }, [note]),
+  ).toMatchObject({ other: `${typed} ` });
 });

@@ -2918,3 +2918,19 @@ catalog flag alone did not change that first-process result. The native selector
 test primes its private config with one probe before requiring the served catalog;
 a second fallback still fails explicitly. This is test setup for Claude's catalog
 initialization, not a change to which native rows Elwood returns.
+
+### Claude 2.1.329 grouped questions (2026-11-20)
+
+In a named 160 × 48 terminal, a grouped checkbox page can show `Next` where
+older captures show `Submit`. The typed Other editor can paint one blank cell
+at the end of the answer, with the cursor on that cell. The completed review
+lists the answers directly above `Submit answers` and `Cancel`. It omits the
+older `Ready to submit your answers?` line and keeps the named border below
+both actions. The review capture is in `tests/fixtures/claude-2.1.329/questions/`.
+
+Two four-question runs against a loopback provider exercised the real CLI.
+One used choices only. The other included typed text and multiple selections.
+The unpatched Elwood driver stalled on the checkbox action. Chatty, a desktop
+app that embeds Elwood, shipped a driver that passed that action and then stalled
+on typed text or the final review.
+With the corrected driver, Claude returned all four expected answers in each run.
