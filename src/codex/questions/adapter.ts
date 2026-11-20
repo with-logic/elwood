@@ -134,7 +134,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
       chrome ||
       frame.cursorVisible !== true ||
       frame.cursorX !== 2 ||
-      !codexComposerRowsEmpty(frame.lines, frame.cursorRow, frame.cols)
+      !codexComposerRowsEmpty(frame.lines, frame)
     )
       return;
     this.hold = false;

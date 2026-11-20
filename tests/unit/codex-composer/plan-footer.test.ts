@@ -11,8 +11,12 @@ import { snapshot } from "../codex-questions/snapshot-fixtures.ts";
 
 const planSnapshot = snapshot("plan-completed.json");
 test("C-API-56 C-TRUST-01 native Plan footer proves an empty composer after a question", () => {
-  expect(codexComposerRowsEmpty(planSnapshot.lines, planSnapshot.cursorY)).toBe(true);
-  expect(codexComposerRowsClearance(planSnapshot.lines, planSnapshot.cursorY)).toBe(true);
+  expect(codexComposerRowsEmpty(planSnapshot.lines, { cursorRow: planSnapshot.cursorY })).toBe(
+    true,
+  );
+  expect(codexComposerRowsClearance(planSnapshot.lines, { cursorRow: planSnapshot.cursorY })).toBe(
+    true,
+  );
   expect(codexComposerRow(planSnapshot.lines, false)).toBe(planSnapshot.cursorY);
 });
 test("C-TRUST-01 the Plan footer still requires the current visible native cursor", async () => {
@@ -40,17 +44,17 @@ test.each([
   "Another mode (⇧tab to cycle)",
 ])("C-TRUST-01 unknown footer suffix cannot borrow native Plan clearance: %s", (suffix) => {
   const rows = planSnapshot.lines.map((line) => line.replace("Plan mode (⇧tab to cycle)", suffix));
-  expect(codexComposerRowsEmpty(rows, planSnapshot.cursorY)).toBe(false);
+  expect(codexComposerRowsEmpty(rows, { cursorRow: planSnapshot.cursorY })).toBe(false);
 });
 test("C-TRUST-01 native Plan footer cannot clear a draft, active work or approval", () => {
   const draft = planSnapshot.lines.map((line) =>
     line.replace("› Ask Codex to do anything", "› unfinished human draft"),
   );
-  expect(codexComposerRowsEmpty(draft, planSnapshot.cursorY)).toBe(false);
+  expect(codexComposerRowsEmpty(draft, { cursorRow: planSnapshot.cursorY })).toBe(false);
   const working = [...planSnapshot.lines];
   working[0] = "◦ Working (2s • esc to interrupt)";
-  expect(codexComposerRowsClearance(working, planSnapshot.cursorY)).toBe(false);
+  expect(codexComposerRowsClearance(working, { cursorRow: planSnapshot.cursorY })).toBe(false);
   const approval = [...planSnapshot.lines];
   approval[0] = "Would you like to run the following command?";
-  expect(codexComposerRowsEmpty(approval, planSnapshot.cursorY)).toBe(false);
+  expect(codexComposerRowsEmpty(approval, { cursorRow: planSnapshot.cursorY })).toBe(false);
 });

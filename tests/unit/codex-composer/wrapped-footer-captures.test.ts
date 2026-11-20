@@ -26,7 +26,7 @@ const atWidths = wrapped.flatMap((capture) => [
 /** Readiness evidence and trust clearance for the rows in a terminal `cols` wide. */
 const recognized = (rows: readonly string[], cols?: number) => {
   const frame = rows.join("\n");
-  return [codexComposerConfigured(frame, cols), codexComposerClearance(frame, undefined, cols)];
+  return [codexComposerConfigured(frame, cols), codexComposerClearance(frame, { cols })];
 };
 
 /** Paint the capture into a terminal `cols` wide; `draft` replaces the placeholder. */
@@ -106,4 +106,15 @@ test.each(
   } finally {
     terminal.dispose();
   }
+});
+
+test("C-CODEX-26 stale snapshot width cannot clear the hold for a different frame", () => {
+  const { cols, rows } = wrapped[0]!;
+  const text = rows.join("\n");
+  const hold = new CodexRetainedComposerHold(
+    () => true,
+    () => ({ text: "old screen", lines: ["old screen"], cols }),
+  );
+  expect(hold.observe("Update available!", true)).toBe(true);
+  expect(hold.observe(text, false)).toBe(true);
 });

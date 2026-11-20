@@ -25,7 +25,7 @@ const boot = capturedFrame("codex-0.164.0/boot/boot-composer").trimEnd();
 const wrapped = codexFooterCaptures170.filter((capture) => capture.wrapped);
 
 /** Start a session `cols` wide, queue a prompt, and paint the capture after the boot composer. */
-async function startAt(cols: number, capture: CapturedFooter) {
+async function startAt(cols: number, capture: CapturedFooter, resizeTo?: number) {
   installFakes();
   const session = await startCodex({ cwd: tempDir(), initialSize: { cols, rows: 12 } });
   sessions.push(session);
@@ -49,6 +49,10 @@ async function startAt(cols: number, capture: CapturedFooter) {
   pty.emitData(codexTty(boot));
   await settle(5_000);
   pty.emitData(`\u001b[2J\u001b[H${codexTty(capture.rows.join("\n"))}`);
+  if (resizeTo !== undefined) {
+    await settle(0);
+    await session.resize({ cols: resizeTo, rows: 12 });
+  }
   await settle(5_500);
   return { pty, warnings, statuses, sent };
 }
@@ -73,4 +77,12 @@ test.each(
   expect(statuses).toEqual([]);
   expect(pty.writes).toEqual([]);
   expect(warnings.map((warning) => warning.code)).toEqual(["initial_ready_backstop"]);
+});
+
+test("C-CODEX-26 a resize before the deadline preserves the captured footer width", async () => {
+  const capture = wrapped[0]!;
+  const { pty, statuses, sent } = await startAt(capture.cols, capture, capture.cols * 2);
+  expect(statuses).toEqual(["ready", "running"]);
+  await sent;
+  expect(pty.writes).toEqual(["\u001b[200~queued prompt\u001b[201~", "\r"]);
 });

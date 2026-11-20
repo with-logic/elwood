@@ -7,7 +7,7 @@ import {
 } from "../../core/input/staged-composer.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexScreenFactTable } from "../screen-table.ts";
-import { codexEmptyInputFrame, codexEmptyInputRowsFor } from "./empty-input.ts";
+import { codexEmptyInputFrame, codexEmptyInputMatcherFor } from "./empty-input.ts";
 
 export function codexInputStaged(terminal: ElwoodTerminal, payload: string): boolean {
   return prepareCodexStaged(terminal, payload)();
@@ -16,18 +16,18 @@ export function codexInputStaged(terminal: ElwoodTerminal, payload: string): boo
 function prepareCodexStaged(terminal: ElwoodTerminal, payload: string): () => boolean {
   let lastLine: string | undefined;
   let whitespaceOnly: boolean | undefined;
-  const emptyRows = codexEmptyInputRowsFor(terminal);
+  const matchesEmptyInput = codexEmptyInputMatcherFor(terminal);
   return () => {
     const current = readIdleComposerFrame(terminal, codexScreenFactTable);
     const prompt = current?.frame.lines.findLast(
       (row, index) => index <= current.viewportCursorRow && /^[›»](?:[ \u00a0]|$)/.test(row),
     );
     const placeholder = `${prompt?.charAt(0) ?? "›"} Ask Codex to do anything`;
-    if (readStagedWhitespace(current, emptyRows, placeholder)) {
+    if (readStagedWhitespace(current, matchesEmptyInput, placeholder)) {
       whitespaceOnly ??= payload.length > 0 && payload.trim().length === 0;
       return whitespaceOnly;
     }
-    const draft = readStagedComposerFrame(current, emptyRows, placeholder);
+    const draft = readStagedComposerFrame(current, matchesEmptyInput, placeholder);
     if (draft === undefined) return false;
     if (imageChipCount(draft) > 0) return true;
     // Derive only after a live draft exists; retain only for this recovery sequence.

@@ -4,11 +4,11 @@ import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexComposerRowsEmpty } from "./clearance.ts";
 
 export function codexEmptyInputFrame(terminal: ElwoodTerminal) {
-  return emptyInputFrame(terminal, codexEmptyInputRowsFor(terminal));
+  return emptyInputFrame(terminal, codexEmptyInputMatcherFor(terminal));
 }
 
 /** The empty-input grammar at the terminal's own width, which a wrapped footer is judged by. */
-export function codexEmptyInputRowsFor(terminal: ElwoodTerminal) {
+export function codexEmptyInputMatcherFor(terminal: ElwoodTerminal) {
   return (rows: readonly string[], cursorRow: number): boolean =>
-    codexComposerRowsEmpty(rows, cursorRow, terminal.size.cols);
+    codexComposerRowsEmpty(rows, { cursorRow, cols: terminal.size.cols });
 }

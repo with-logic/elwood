@@ -13,11 +13,9 @@ export function createCodexReadinessGate(
   resumed: boolean,
   elwoodSessionId: string,
   warnings: { emitWarnings(warnings: readonly InitialReadyBackstopWarning[]): void },
-  /** The rendered terminal, for the width a wrapped status footer is judged against. */
-  rendered: () => { readonly cols: number },
 ): ReadinessGate {
   return createReadinessGate(onReady, resumed, {
-    configured: (frame) => codexComposerConfigured(frame, rendered().cols),
+    configured: codexComposerConfigured,
     onBackstop: () => warnings.emitWarnings([backstopWarning(elwoodSessionId)]),
   });
 }

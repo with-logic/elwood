@@ -27,9 +27,10 @@ export class CodexRetainedComposerHold {
 
   observe(text: string, updateActive: boolean): boolean {
     const frame = this.readFrame?.();
-    const rows = frame?.text === text ? frame.lines : text.split("\n");
+    const matching = frame?.text === text ? frame : undefined;
+    const rows = matching?.lines ?? text.split("\n");
     const liveClear = this.isClear(text);
-    const composer = codexComposerRow(rows, liveClear, frame?.cols);
+    const composer = codexComposerRow(rows, liveClear, matching?.cols);
     if (updateActive && !this.holding) {
       this.frozenPrelude =
         composer < 0

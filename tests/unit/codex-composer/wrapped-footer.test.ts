@@ -24,8 +24,9 @@ const longDirectory = `~/${[
 ].join("/")}`;
 const thread = "[note:first] You are an example, working on a long task that goes on and o…";
 const badge = "⚠ 2 warnings · f2 to view";
+const hintPrefix = "  ← for agents · ? for shortcuts";
 const hint = (withBadge: boolean) =>
-  `  ← for agents · ? for shortcuts${withBadge ? `${" ".repeat(cols - 32 - badge.length)}${badge}` : ""}`;
+  withBadge ? hintPrefix + badge.padStart(cols - hintPrefix.length) : hintPrefix;
 
 /** Break at a space, or after `/` or `-`, with a two-space indent, as the captures show. */
 function wrap(text: string): string[] {
@@ -54,7 +55,7 @@ const status = (directory: string, label = "", name = thread) =>
   wrap(`GPT-6-Astra xhigh · ${directory} · ${name}${label}`);
 const verdict = (frame: string, width = cols) => [
   codexComposerConfigured(frame, width),
-  codexComposerClearance(frame, undefined, width),
+  codexComposerClearance(frame, { cols: width }),
 ];
 const accepted = (frame: string, width = cols) => verdict(frame, width).every(Boolean);
 const refused = (frame: string, width = cols) => !verdict(frame, width).some(Boolean);
@@ -99,8 +100,8 @@ test("C-CODEX-26 a narrow wrapped footer needs no badge at the terminal's edge",
 
 test("C-CODEX-26 a wrapped footer is also empty-input evidence at the composer row", () => {
   const rows = screen(status(longDirectory), [hint(true)]).split("\n");
-  expect(codexComposerRowsEmpty(rows, 2, cols)).toBe(true);
-  expect(codexComposerRowsEmpty(rows, 2)).toBe(false);
+  expect(codexComposerRowsEmpty(rows, { cursorRow: 2, cols })).toBe(true);
+  expect(codexComposerRowsEmpty(rows, { cursorRow: 2 })).toBe(false);
 });
 
 test("C-CODEX-26 a continuation-looking row with no status row above is not evidence", () => {

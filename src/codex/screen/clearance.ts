@@ -8,6 +8,8 @@ import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { classifyCodexFooter, unknownCols } from "./footer.ts";
 import { codexWorkingScreen } from "./working.ts";
 
+type ComposerGeometry = { readonly cursorRow?: number; readonly cols?: number | undefined };
+
 const caretRow = /^\s*[›»]/;
 const composerRowStart = /^[›»](?:\s|$)/;
 const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
@@ -160,31 +162,28 @@ function nativeComposerRegion(
 }
 
 /**
- * The last composer needs its own status footer or the verified welcome box above
- * it. A stale footer cannot vouch for a bare caret, which is also how a dialog
- * selection starts; ordinary numbered transcript content can precede the composer.
+ * Require the last composer’s own status footer or the verified welcome box above it.
+ * A bare caret may be a dialog selection.
  * A frame's text carries no width: called with the text alone, as a `TrustClearance`, this
  * fails closed on a wrapped footer. A session uses `liveCodexClearance`, which has the width.
  */
-export function codexComposerClearance(frame: string, cursorRow?: number, cols?: number): boolean {
-  return codexComposerRowsClearance(frame.split("\n"), cursorRow, cols);
+export function codexComposerClearance(frame: string, geometry?: ComposerGeometry): boolean {
+  return codexComposerRowsClearance(frame.split("\n"), geometry);
 }
 
 /** Classify existing snapshot rows without splitting another viewport string. */
 export function codexComposerRowsClearance(
   frameRows: readonly string[],
-  cursorRow?: number,
-  cols?: number,
+  geometry?: ComposerGeometry,
 ): boolean {
   if (frameRows.some((row) => codexWorkingScreen.test(row))) return false;
-  return codexComposerRowsEmpty(frameRows, cursorRow, cols);
+  return codexComposerRowsEmpty(frameRows, geometry);
 }
 
 /** Empty input does not imply an idle turn; callers choose the activity contract. */
 export function codexComposerRowsEmpty(
   frameRows: readonly string[],
-  cursorRow?: number,
-  cols = unknownCols,
+  { cursorRow, cols = unknownCols }: ComposerGeometry = {},
 ): boolean {
   const rows = frameRows.map((row) => row.trimEnd());
   const at = cursorRow ?? rows.findLastIndex((row) => caretRow.test(row));
