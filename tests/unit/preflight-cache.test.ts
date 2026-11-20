@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
+import type { UpdateAdapter } from "../../src/runtime/update/lock.ts";
 import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
@@ -25,16 +26,21 @@ describe("version-read cache", () => {
   test("C-PERF-01 concurrent adapter preflights overlap instead of serializing", async () => {
     setPlatformForTests("darwin");
     // Keep the first read pending until the other adapter reaches its runner.
-    const started = new Set<string>();
+    const versions: Record<UpdateAdapter, string> = {
+      claude: "2.1.144",
+      codex: "codex-cli 0.132.0",
+    };
+    const started = new Set<UpdateAdapter>();
     const bothStarted = Promise.withResolvers<void>();
     setCommandRunnerForTests(async (_command, args) => {
-      const agent = /\b(claude|codex) --version\b/u.exec(args.join(" "))?.[1];
-      if (!agent) throw new Error("Expected a Claude or Codex version probe");
+      const agent = /\b(\w+) --version\b/u.exec(args.join(" "))?.[1];
+      if (agent !== "claude" && agent !== "codex") {
+        throw new Error("Expected a Claude or Codex version probe");
+      }
       started.add(agent);
       if (started.size === 2) bothStarted.resolve();
       await bothStarted.promise;
-      const stdout = agent === "codex" ? "codex-cli 0.132.0" : "2.1.144";
-      return { status: 0, stdout, stderr: "" };
+      return { status: 0, stdout: versions[agent], stderr: "" };
     });
     await Promise.all([preflightClaude(false), preflightCodex(false)]);
     expect(started).toEqual(new Set(["claude", "codex"]));
