@@ -96,6 +96,11 @@ export async function main(
       await stdout.write(`${dependencies.version()}\n`);
       return 0;
     }
+    if (parsed.command === "usage") {
+      agent = null;
+      const { runUsageCommand } = await import("./usage/index.ts");
+      return await runUsageCommand(parsed.args, context, stdout);
+    }
     if (parsed.command === "config") {
       await runConfigCommand(parsed.args, { ...context, stdout });
       return 0;

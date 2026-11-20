@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Run `elwood usage` to check account limits in the terminal. Show percent
+  left by default or save a preference for percent used.
+
 - Check account quota before opening a session with `readAccountUsage()`. Each
   named Claude or Codex profile returns its own windows, percentages and reset times.
 

@@ -13,7 +13,7 @@ const defaults = [
   { agent: "codex", label: "Codex" },
 ] as const;
 
-function validateAccounts(accounts: readonly UsageAccount[]): void {
+export function validateAccounts(accounts: readonly UsageAccount[]): void {
   const names = new Set<string>();
   for (const { agent, label, configDir } of accounts) {
     if (agent !== "claude" && agent !== "codex")
@@ -30,8 +30,15 @@ function validateAccounts(accounts: readonly UsageAccount[]): void {
 
 /** Check Claude then Codex by default. An explicit list replaces the defaults.
  * Each failed profile returns an unavailable reading in its original position. */
-export async function readAccountUsage(
+export function readAccountUsage(
+  accounts?: readonly UsageAccount[],
+): Promise<readonly AccountUsage[]> {
+  return readUsageProfiles(accounts);
+}
+
+export async function readUsageProfiles(
   accounts: readonly UsageAccount[] = defaults,
+  signal?: AbortSignal,
 ): Promise<readonly AccountUsage[]> {
   const profiles = accounts.map(({ agent, label, configDir }) => ({
     agent,
@@ -39,15 +46,15 @@ export async function readAccountUsage(
     ...optional(configDir, "configDir"),
   }));
   validateAccounts(profiles);
-  return await Promise.all(profiles.map(readProfile));
+  return await Promise.all(profiles.map((profile) => readProfile(profile, signal)));
 }
 
-async function readProfile(account: UsageAccount): Promise<AccountUsage> {
+async function readProfile(account: UsageAccount, signal?: AbortSignal): Promise<AccountUsage> {
   const { agent, label, configDir } = account;
   let windows: UsageWindow[] = [];
   try {
     if (configDir === undefined || (await stat(configDir)).isDirectory()) {
-      const reply = await probeQuota(account);
+      const reply = await probeQuota(account, signal);
       windows = agent === "claude" ? claudeWindows(reply) : codexWindows(reply);
     }
   } catch {

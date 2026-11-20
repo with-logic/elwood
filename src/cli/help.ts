@@ -1,6 +1,6 @@
 /**
  * Production help for the first-party headless Elwood command.
- * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-21 through C-CLI-26.
+ * Implements PRD §12A.1 and §§12A.7–12A.11 (C-CLI-02, C-CLI-21 through C-CLI-26, C-STATS-03).
  */
 
 export const cliHelp = `Usage: elwood [options] [prompt...]
@@ -9,6 +9,7 @@ export const cliHelp = `Usage: elwood [options] [prompt...]
        elwood interactive [id] [options]
        elwood sessions [--state-dir <path>] [--output <text|json>]
        elwood models [options] [--output <text|json>]
+       elwood usage [--direction left|used] [--output text|json] [--account 'agent:label[=/absolute/profile]']...
        elwood config <command>
 
 Run one Claude Code or Codex turn and write its combined assistant response.
@@ -26,6 +27,7 @@ Commands:
   interactive [id]            Open the agent's own TUI here with Elwood's settings
   sessions                    List Elwood-owned session records; never starts an agent
   models                      List both agents' models (starts each briefly)
+  usage                       Check account limits before starting a session
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -122,5 +124,6 @@ Commands:
 Examples:
   elwood config show
   elwood config effective --agent claude
+  elwood config set usageDirection used
   elwood config set codex.sandbox workspace-write
 `;

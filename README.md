@@ -309,8 +309,10 @@ matching adapter posture settings apply; the configured model stays unchanged.
 
 ### Check account limits
 
-Call `await readAccountUsage()` to check Claude and Codex before choosing an
-account. Each reported window includes percent used and percent left.
+Run `elwood usage` or call `await readAccountUsage()` before choosing an account.
+Both return the available Claude and Codex windows. The command defaults to
+percent left. Use `elwood config set usageDirection used` to change it.
+Use `elwood usage --direction used` for a single check. Run `elwood config unset usageDirection` before downgrading.
 See [account usage before launch](docs/embedding.md#account-usage-before-launch)
 for named profiles and app integration.
 
