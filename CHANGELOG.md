@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Check account quota before opening a session with `readAccountUsage()`. Each
+  named Claude or Codex profile returns its own windows, percentages and reset times.
+
 - Fix Claude Code 2.1.329 question answers timing out on grouped checkbox pages,
   typed answers, and the final review page in named sessions.
 

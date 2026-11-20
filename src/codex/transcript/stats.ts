@@ -1,14 +1,16 @@
 /** Codex token and quota snapshots from committed token_count records (C-STATS-01). */
 
 import { optional } from "../../core/optional.ts";
-import { isFiniteNumber, isRecord } from "../../core/predicates.ts";
-import { count } from "../../core/stats/fields.ts";
+import { isRecord } from "../../core/predicates.ts";
+import { count, quotaPercentages } from "../../core/stats/fields.ts";
 import type {
   CodexRateLimits,
   CodexRateLimitWindow,
   CodexTokenUsage,
   TokenCounts,
 } from "../../core/stats/types.ts";
+
+import { isoInstant } from "../../core/usage/windows.ts";
 
 type CodexStats = {
   readonly tokenUsage?: CodexTokenUsage;
@@ -59,8 +61,7 @@ function rateLimits(value: unknown, timestamp: unknown): CodexRateLimits | undef
   const primary = rateWindow(value["primary"]);
   const secondary = rateWindow(value["secondary"]);
   const id = value["limit_id"];
-  const recordedAt =
-    typeof timestamp === "string" && Number.isFinite(Date.parse(timestamp)) ? timestamp : undefined;
+  const recordedAt = isoInstant(timestamp);
   const identity = {
     ...optional(typeof id === "string" ? id : undefined, "limitId"),
     ...optional(recordedAt, "recordedAt"),
@@ -72,11 +73,10 @@ function rateLimits(value: unknown, timestamp: unknown): CodexRateLimits | undef
 
 function rateWindow(value: unknown): CodexRateLimitWindow | undefined {
   if (!isRecord(value)) return undefined;
-  const usedPercent = value["used_percent"];
-  if (!isFiniteNumber(usedPercent) || usedPercent < 0) return undefined;
+  const percentages = quotaPercentages(value["used_percent"]);
+  if (!percentages) return undefined;
   return {
-    usedPercent,
-    remainingPercent: Math.max(0, 100 - usedPercent),
+    ...percentages,
     ...optional(count(value["window_minutes"]), "windowMinutes"),
     ...optional(count(value["resets_at"]), "resetsAtUnixSeconds"),
   };

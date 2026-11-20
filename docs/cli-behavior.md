@@ -2934,3 +2934,16 @@ The unpatched Elwood driver stalled on the checkbox action. Chatty, a desktop
 app that embeds Elwood, shipped a driver that passed that action and then stalled
 on typed text or the final review.
 With the corrected driver, Claude returned all four expected answers in each run.
+
+## Account quota before the first turn
+
+On 2026-11-19, Claude Code 2.1.328 answered a lone stream-json control request
+with subtype `get_usage` and `skip_behaviors: true`. The probe used print mode,
+no session persistence, and sent no user message. Its signed-in response
+included server-selected weekly and model-specific rows and omitted a five-hour
+window. The API also supplies legacy utilization fields on older response shapes.
+
+Codex 0.170.0 answered `account/rateLimits/read` over app-server stdio after
+the initialize handshake. Closing stdin immediately after writing the requests
+lost the quota reply. Keeping it open until the matching response produced the
+account buckets. Both probes ran before any model turn (C-STATS-03).

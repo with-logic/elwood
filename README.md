@@ -307,6 +307,13 @@ nonzero. `--timeout` is one budget shared by both probes, and Ctrl-C stops
 further probes. Workspace, model, reasoning, trust, state-directory, and
 matching adapter posture settings apply; the configured model stays unchanged.
 
+### Check account limits
+
+Call `await readAccountUsage()` to check Claude and Codex before choosing an
+account. Each reported window includes percent used and percent left.
+See [account usage before launch](docs/embedding.md#account-usage-before-launch)
+for named profiles and app integration.
+
 ### Trust and security
 
 Headless mode is non-interactive. With the default `--trust`, Elwood answers only

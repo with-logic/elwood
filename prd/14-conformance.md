@@ -421,3 +421,4 @@ Each criterion has:
 |---|---|---|
 | C-STATS-01 | §5.12 | Activity exposes Codex thread token and quota snapshots and Claude response usage keyed by native message ID, including usage-only records without the raw record. Quota exposes the native timestamp when present, and Codex stats are projected before raw observers. Invalid or missing telemetry remains absent. |
 | C-STATS-02 | §5.12 | Activity exposes subagent start and unblocked stop hook results on both adapters, identified by a nonblank native agent ID. Shutdown suppresses late subagent observations. |
+| C-STATS-03 | §5.12 | Apps can read separate accounts before a session starts. Preserve each reported window, both directions and available reset times. Keep partial results. |

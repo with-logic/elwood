@@ -108,13 +108,37 @@ transcript and hook events.
 | --- | --- | --- |
 | `tokenUsage` with `scope: "thread"` | Codex cumulative totals, last request, and context window | Replace the previous snapshot for `transcriptPath`. Totals may include history after resume. |
 | `tokenUsage` with `scope: "response"` | Claude response tokens, including cache reads and writes | Upsert by `transcriptPath` and `responseId`, then sum `counts.totalTokens`. Cache reads and writes are components of `counts.inputTokens`. |
-| `rateLimits` | Codex quota remaining, window duration, and reset time | Replace the whole snapshot for a known account and `limitId`. Compare `recordedAt` across sessions and treat samples without it as unordered. |
+| `rateLimits` | Codex quota remaining, window duration, and reset time | Keep this observation scoped to its session. A later transcript write can repeat cached quota. |
 | `subagent` | Observed active subagents for either harness | Add the ID to a per-session set on `started`, delete on `stopped`, and use the set size. Clear it on `terminal:exit`. |
 
 An absent field means the harness has supplied no matching evidence. Codex
 quota snapshots may get stale while idle. Claude quota is unavailable through
 these records. Subagent counts are best effort, especially after resume when
 existing workers may have started before subscription.
+
+### Account usage before launch
+
+Call `readAccountUsage()` to check the current Claude and Codex accounts without
+starting a model turn. Each account supplies its own reported windows. Select
+the same percentage field for every row, and show the window label and reset time.
+Use `windowMinutes` to align known durations across providers.
+
+```ts
+import { readAccountUsage } from "@with-logic/elwood";
+
+const accounts = await readAccountUsage();
+for (const { agent, label, status, windows } of accounts) {
+  if (status === "unavailable") console.log(agent, label, "Unavailable");
+  for (const window of windows) {
+    console.log(agent, label, window.label, window.remainingPercent, "% left", window.resetsAt ?? "");
+  }
+}
+```
+
+To check several sign-ins, pass an array such as
+`[{ agent: "codex", label: "Work", configDir: "/Users/me/.codex-work" }]`.
+A label names the CLI profile you supply. The CLI resolves its own credentials.
+Use `usedPercent` for a used-first display. Refresh by calling the API again.
 
 ## Turns and startup input
 
