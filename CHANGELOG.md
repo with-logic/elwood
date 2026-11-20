@@ -18,6 +18,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Check account quota before opening a session with `readAccountUsage()`. Each
   named Claude or Codex profile returns its own windows, percentages and reset times.
 
+- Fix Claude Code 2.1.329 question answers timing out on grouped checkbox pages,
+  typed answers, and the final review page in named sessions.
+
 - Recognize Codex's status footer when Codex wraps it onto continuation rows
   because a long working directory, thread name or agent label does not fit the
   terminal, at every terminal width. Also recognize the shorter hint row
