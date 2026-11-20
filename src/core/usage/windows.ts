@@ -4,6 +4,11 @@ import { isNonnegativeSafeInteger } from "../predicates.ts";
 import { quotaPercentages } from "../stats/fields.ts";
 import type { UsageWindow } from "./types.ts";
 
+export const fiveHourMinutes = 5 * 60;
+export const weeklyMinutes = 7 * 24 * 60;
+// Date accepts at most 8.64e15 milliseconds from the epoch.
+const maxEpochSeconds = 8_640_000_000_000;
+
 export function isoInstant(value: unknown): string | undefined {
   if (
     typeof value !== "string" ||
@@ -19,17 +24,17 @@ export function isoInstant(value: unknown): string | undefined {
 }
 
 export function resetFromSeconds(value: unknown): string | undefined {
-  if (!isNonnegativeSafeInteger(value) || value > 8_640_000_000_000) return undefined;
+  if (!isNonnegativeSafeInteger(value) || value > maxEpochSeconds) return undefined;
   return new Date(value * 1000).toISOString();
 }
 
 export function windowReadings(
   label: string,
-  used: unknown,
+  usedPercent: unknown,
   reset: string | undefined,
   minutes?: unknown,
 ): UsageWindow[] {
-  const percentages = quotaPercentages(used);
+  const percentages = quotaPercentages(usedPercent);
   if (!percentages) return [];
   return [
     {

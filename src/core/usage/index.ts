@@ -28,6 +28,8 @@ export function validateAccounts(accounts: readonly UsageAccount[]): void {
   }
 }
 
+/** Check Claude then Codex by default. An explicit list replaces the defaults.
+ * Each failed profile returns an unavailable reading in its original position. */
 export function readAccountUsage(
   accounts?: readonly UsageAccount[],
 ): Promise<readonly AccountUsage[]> {

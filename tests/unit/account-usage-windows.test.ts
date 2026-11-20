@@ -43,8 +43,14 @@ test("C-STATS-03 Claude reports each active window with its model and surface la
   ]);
   // Explicit server rows supersede any legacy fields.
   expect(claude({ limits: [], five_hour: { utilization: 9 } })).toEqual([]);
-  for (const reply of [null, {}, { rate_limits_available: true }])
-    expect(claudeWindows(reply)).toEqual([]);
+});
+
+test.each([
+  null,
+  {},
+  { rate_limits_available: true },
+])("C-STATS-03 omits missing Claude limits for %j", (reply) => {
+  expect(claudeWindows(reply)).toEqual([]);
 });
 
 test("C-STATS-03 Claude legacy windows preserve updates, omit missing limits, and deduplicate scoped buckets", () => {
@@ -103,9 +109,17 @@ test("C-STATS-01 omits recordedAt for an invalid transcript timestamp", () => {
     payload: { type: "token_count", rate_limits: { primary: { used_percent: 4 } } },
   });
   expect(stats?.rateLimits).not.toHaveProperty("recordedAt");
-  for (const value of [undefined, "tomorrow", "2026-14-01T12:00:00Z", timestamp])
-    expect(isoInstant(value)).toBeUndefined();
   expect(isoInstant(reset)).toBe(reset);
   expect(resetFromSeconds(8_640_000_000_001)).toBeUndefined();
-  for (const used of [-1, Number.NaN]) expect(windowReadings("test", used, undefined)).toEqual([]);
+});
+
+test.each([
+  undefined,
+  "tomorrow",
+  "2026-14-01T12:00:00Z",
+  "2026-02-30T12:00:00Z",
+])("C-STATS-01 rejects invalid timestamp %s", (value) => expect(isoInstant(value)).toBeUndefined());
+
+test.each([-1, Number.NaN])("C-STATS-03 omits invalid percentage %s", (usedPercent) => {
+  expect(windowReadings("test", usedPercent, undefined)).toEqual([]);
 });

@@ -1,7 +1,12 @@
 /** Project Claude's on-demand get_usage result into named quota windows (PRD §5.12). */
 import { isRecord } from "../../core/predicates.ts";
 import type { UsageWindow } from "../../core/usage/types.ts";
-import { isoInstant, windowReadings } from "../../core/usage/windows.ts";
+import {
+  fiveHourMinutes,
+  isoInstant,
+  weeklyMinutes,
+  windowReadings,
+} from "../../core/usage/windows.ts";
 
 function scopeLabel(scope: unknown): string {
   if (!isRecord(scope)) return "";
@@ -14,8 +19,14 @@ function scopeLabel(scope: unknown): string {
 
 function windowsFromNativeRow(row: unknown): UsageWindow[] {
   if (!isRecord(row) || typeof row["kind"] !== "string") return [];
-  const minutes = row["kind"] === "session" ? 300 : row["group"] === "weekly" ? 10080 : undefined;
-  const period = minutes === 300 ? "5-hour" : minutes === 10080 ? "Weekly" : row["kind"];
+  const minutes =
+    row["kind"] === "session"
+      ? fiveHourMinutes
+      : row["group"] === "weekly"
+        ? weeklyMinutes
+        : undefined;
+  const period =
+    minutes === fiveHourMinutes ? "5-hour" : minutes === weeklyMinutes ? "Weekly" : row["kind"];
   const scope = scopeLabel(row["scope"]);
   return windowReadings(
     scope ? `${period} (${scope})` : period,
@@ -49,7 +60,7 @@ export function claudeWindows(reply: unknown): UsageWindow[] {
           label,
           row["utilization"],
           isoInstant(row["resets_at"]),
-          key === "five_hour" ? 300 : 10080,
+          key === "five_hour" ? fiveHourMinutes : weeklyMinutes,
         )
       : [];
   });
@@ -59,7 +70,7 @@ export function claudeWindows(reply: unknown): UsageWindow[] {
       const label = `Weekly (${row["display_name"]})`;
       if (!windows.some((window) => window.label === label)) {
         windows.push(
-          ...windowReadings(label, row["utilization"], isoInstant(row["resets_at"]), 10080),
+          ...windowReadings(label, row["utilization"], isoInstant(row["resets_at"]), weeklyMinutes),
         );
       }
     }

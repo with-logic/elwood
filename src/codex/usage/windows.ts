@@ -1,17 +1,19 @@
 /** Project Codex account/rateLimits/read buckets, independent of transcript writes (PRD §5.12). */
 import { isNonnegativeSafeInteger, isRecord } from "../../core/predicates.ts";
 import type { UsageWindow } from "../../core/usage/types.ts";
-import { resetFromSeconds, windowReadings } from "../../core/usage/windows.ts";
+import { resetFromSeconds, weeklyMinutes, windowReadings } from "../../core/usage/windows.ts";
 
-function durationLabel(minutes: unknown, slot: string): string {
-  if (minutes === 10080) return "Weekly";
+const slots = ["primary", "secondary"] as const;
+
+function durationLabel(minutes: unknown, slot: (typeof slots)[number]): string {
+  if (minutes === weeklyMinutes) return "Weekly";
   if (!isNonnegativeSafeInteger(minutes) || minutes === 0) return slot;
   return minutes % 60 === 0 ? `${minutes / 60}-hour` : `${minutes}-minute`;
 }
 
 function bucketWindows(value: unknown, bucket: string): UsageWindow[] {
   if (!isRecord(value)) return [];
-  return ["primary", "secondary"].flatMap((slot) => {
+  return slots.flatMap((slot) => {
     const row = value[slot];
     if (!isRecord(row)) return [];
     const period = durationLabel(row["windowDurationMins"], slot);

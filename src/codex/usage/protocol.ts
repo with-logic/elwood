@@ -2,7 +2,11 @@
 export const codexUsageProtocol = {
   variable: "CODEX_HOME",
   protocol: `
-if (profileDir !== undefined && process.env.CODEX_HOME !== profileDir) process.exit(1);
+if (profileDir !== undefined) {
+  // A login shell can change the selected home or supply credentials for another account.
+  if (process.env.CODEX_HOME !== profileDir) process.exit(1);
+  delete process.env.CODEX_ACCESS_TOKEN;
+}
 const args = ["app-server", "--listen", "stdio://"];
 const initial = { id: 1, method: "initialize", params: { clientInfo: { name: "elwood", version: "1" } } };
 function receive(message) {

@@ -1,6 +1,6 @@
 /** Public account reads, missing windows and profile isolation (C-STATS-03). */
 import { homedir } from "node:os";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { readAccountUsage, type UsageAccount } from "../../src/index.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { maxConcurrentProbes, withProbeSlot } from "../../src/runtime/probe/slots.ts";
@@ -37,16 +37,20 @@ test("C-STATS-03 checks separate named profiles in caller order, including faile
   expect((await readAccountUsage()).map((r) => r.status)).toEqual(["unavailable", "unavailable"]);
 });
 
-test("C-STATS-03 rejects invalid requests before launching a CLI", async () => {
-  const account = { agent: "claude", label: "Work" } as const;
-  for (const profiles of [
-    [account, account],
-    [{ ...account, agent: "other" }],
-    [{ ...account, label: " " }],
-    [{ ...account, configDir: "relative" }],
-  ]) {
-    await expect(readAccountUsage(profiles as UsageAccount[])).rejects.toThrow(TypeError);
-  }
+const workAccount = { agent: "claude", label: "Work" } as const;
+test.each([
+  { label: "duplicate name", profiles: [workAccount, workAccount] },
+  { label: "unknown agent", profiles: [{ ...workAccount, agent: "other" }] },
+  { label: "blank label", profiles: [{ ...workAccount, label: " " }] },
+  { label: "relative directory", profiles: [{ ...workAccount, configDir: "relative" }] },
+])("C-STATS-03 rejects $label before launching a CLI", async ({ profiles }) => {
+  const run = vi.fn(() => ({ status: 0, stdout: "", stderr: "" }));
+  setCommandRunnerForTests(run);
+  await expect(readAccountUsage(profiles as UsageAccount[])).rejects.toThrow(TypeError);
+  expect(run).not.toHaveBeenCalled();
+});
+
+test("C-STATS-03 an explicitly empty account list returns no readings", async () => {
   expect(await readAccountUsage([])).toEqual([]);
 });
 

@@ -6,7 +6,8 @@ export function count(value: unknown): number | undefined {
   return isNonnegativeSafeInteger(value) ? value : undefined;
 }
 
-export function quotaPercentages(used: unknown) {
-  if (!isFiniteNumber(used) || used < 0) return undefined;
-  return { usedPercent: used, remainingPercent: Math.max(0, 100 - used) };
+/** Preserve usage above 100 percent. An account at 104 percent used has zero remaining. */
+export function quotaPercentages(usedPercent: unknown) {
+  if (!isFiniteNumber(usedPercent) || usedPercent < 0) return undefined;
+  return { usedPercent, remainingPercent: Math.max(0, 100 - usedPercent) };
 }

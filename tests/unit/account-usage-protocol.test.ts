@@ -127,3 +127,25 @@ test("C-STATS-03 an explicit Claude profile uses its own credential store after 
   ]);
   expect(results.map((row) => row.windows[0]?.usedPercent)).toEqual([15, 70]);
 });
+
+test("C-STATS-03 an explicit Codex profile ignores a login-shell token while the current sign-in keeps it", async () => {
+  const f = fixture("export CODEX_ACCESS_TOKEN=synthetic-test-token");
+  f.cli(
+    "codex",
+    `
+    const lines = require("node:readline").createInterface({input:process.stdin});
+    lines.on("line", line => {
+      const msg = JSON.parse(line);
+      if (msg.method === "initialize") console.log(JSON.stringify({id:msg.id,result:{}}));
+      if (msg.method === "account/rateLimits/read") {
+        const usedPercent = process.env.CODEX_ACCESS_TOKEN ? 70 : 15;
+        console.log(JSON.stringify({id:msg.id,result:{rateLimits:{primary:{usedPercent}}}}));
+      }
+    });`,
+  );
+  const results = await readAccountUsage([
+    { agent: "codex", label: "Work", configDir: f.root },
+    { agent: "codex", label: "Current" },
+  ]);
+  expect(results.map((row) => row.windows[0]?.usedPercent)).toEqual([15, 70]);
+});
