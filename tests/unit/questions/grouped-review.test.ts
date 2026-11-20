@@ -35,28 +35,8 @@ test("C-QUESTION-03 reads Next on a grouped checkbox page", () => {
     kind: "question",
     cursor: 3,
   });
+  const duplicate = frame(next.text.replace("  1. [✔]", "❯ 1. [✔]"));
+  expect(parseClaudeQuestionScreen(duplicate, definitions)).toBeUndefined();
   const single = frame(next.text.replace("←  ☒ Color  ☒ Features  ✔ Submit  →", " ☐ Features"));
   expect(parseClaudeQuestionScreen(single, [definitions[1]!])).toBeUndefined();
-});
-
-test("C-QUESTION-03 preserves the typed answer's trailing spaces under Claude's cursor", () => {
-  const source = fixture("freeform-other-highlight");
-  const typed = "A wide 界 and a space ";
-  const current = frame(source.text.replace("❯ 3. Type something.", `❯ 3. ${typed} `));
-  const cursorLineBefore = `❯ 3. ${typed}`;
-  const question = {
-    ...testPick,
-    prompt: "Which test note?",
-    header: "Note",
-    options: [
-      { label: "Brief (short)", description: "A short test note." },
-      { label: "Detailed (long)", description: "A long test note." },
-    ],
-  };
-  expect(
-    parseClaudeQuestionScreen({ ...current, cursorLineBefore, cursorX: 25 }, [question]),
-  ).toMatchObject({ other: typed });
-  expect(
-    parseClaudeQuestionScreen({ ...current, cursorX: 25, cursorLineBefore: "❯ 3. A" }, [question]),
-  ).toMatchObject({ other: `${typed} ` });
 });

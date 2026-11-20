@@ -13,7 +13,7 @@ export type ClaudeQuestionScreen =
   | {
       readonly kind: "question";
       readonly questionIndex: number;
-      /** Zero-based selection-list index: options, Other, then optional Submit. */
+      /** Zero-based selection-list index: options, Other, then Next or Submit when present. */
       readonly cursor: number;
       readonly checked: readonly boolean[];
       readonly other: string;
@@ -57,14 +57,15 @@ export function parseClaudeQuestionScreen(
   const panel = readClaudeQuestionPanel(frame, questions);
   if (!panel) return undefined;
   const { start, body, first, prompt } = panel;
-  if (prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)) {
-    return parseReview(frame, body, first);
-  }
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
   );
   const question = questions[questionIndex];
-  if (!question) return undefined;
+  if (!question) {
+    return prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)
+      ? parseReview(frame, body, first)
+      : undefined;
+  }
   const footer = body.findLastIndex((line) => questionFooter.test(line));
   if (footer < 0 || !hasOnlyOptionalNamedBorder(body.slice(footer + 1))) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));

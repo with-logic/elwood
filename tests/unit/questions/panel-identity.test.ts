@@ -13,6 +13,7 @@ const footer = "Enter to select · Tab/Arrow keys to navigate · Esc to cancel";
 
 test.each([
   "❯ Which test color?",
+  "Review your answers ● Which entry needs edits?",
   "Which test color?\n☐ Fake",
   "❯ Which test color?\n☐ Fake",
   `❯ Which test color?\n───\n${footer}\n❯ quoted input`,

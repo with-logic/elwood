@@ -6,7 +6,7 @@ export const claudeQuestionRow =
 export const OTHER_CONTINUATION_INDENT_COLUMNS = 5;
 export const normalizeClaudeQuestionText = (text: string) => text.replace(/\s+/g, " ").trim();
 export type ClaudeQuestionRows = {
-  /** Zero-based selection-list index: options, Other, then optional Submit. */
+  /** Zero-based selection-list index: options, Other, then Next or Submit when present. */
   readonly cursor: number;
   /** Checkbox state for each option and the Other row. */
   readonly checked: readonly boolean[];
@@ -27,6 +27,7 @@ export function parseClaudeQuestionRows(
     .map((line, index) => ({ index, match: claudeQuestionRow.exec(line) }))
     .filter((item) => item.match);
   if (parsed.length !== question.options.length + 1) return undefined;
+  if (questionRows.filter((line) => line.startsWith("❯ ")).length > 1) return undefined;
   const checked: boolean[] = [];
   let cursor = -1;
   for (const [index, item] of parsed.entries()) {
@@ -45,11 +46,8 @@ export function parseClaudeQuestionRows(
     if (match.groups!["marker"] === "❯") cursor = index;
   }
   const last = parsed.at(-1)!;
-  const actionRow = grouped ? /^(?:❯| ) {4}(?:Next|Submit)$/ : /^(?:❯| ) {4}Submit$/;
   const next =
-    question.selection === "multiple"
-      ? questionRows.findIndex((line, index) => index > last.index && actionRow.test(line))
-      : -1;
+    question.selection === "multiple" ? checkboxActionIndex(questionRows, last.index, grouped) : -1;
   if (question.selection === "multiple") {
     if (next < 0 || questionRows.slice(next + 1).some((line) => line.trim())) return undefined;
     if (questionRows[next]!.trimStart().startsWith("❯")) cursor = parsed.length;
@@ -68,6 +66,15 @@ export function parseClaudeQuestionRows(
     otherStart: last.index,
     otherEnd: next < 0 ? questionRows.length - 1 : next - 1,
   };
+}
+
+function checkboxActionIndex(
+  rows: readonly string[],
+  otherIndex: number,
+  grouped: boolean,
+): number {
+  const action = grouped ? /^(?:❯| ) {4}(?:Next|Submit)$/ : /^(?:❯| ) {4}Submit$/;
+  return rows.findIndex((line, index) => index > otherIndex && action.test(line));
 }
 
 function descriptionMatches(description: string | undefined, rows: readonly string[]): boolean {
