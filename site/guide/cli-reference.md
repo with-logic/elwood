@@ -13,6 +13,7 @@ Usage: elwood [options] [prompt...]
        elwood interactive [id] [options]
        elwood sessions [--state-dir <path>] [--output <text|json>]
        elwood models [options] [--output <text|json>]
+       elwood usage [--direction left|used] [--output text|json] [--account 'agent:label[=/absolute/profile]']...
        elwood config <command>
 
 Run one Claude Code or Codex turn and write its combined assistant response.
@@ -30,6 +31,7 @@ Commands:
   interactive [id]            Open the agent's own TUI here with Elwood's settings
   sessions                    List Elwood-owned session records; never starts an agent
   models                      List both agents' models (starts each briefly)
+  usage                       Check account limits before starting a session
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -151,6 +153,7 @@ Commands:
 Examples:
   elwood config show
   elwood config effective --agent claude
+  elwood config set usageDirection used
   elwood config set codex.sandbox workspace-write
 ```
 

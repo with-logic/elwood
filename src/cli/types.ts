@@ -17,6 +17,8 @@ export const cliAgents = ["claude", "codex"] as const;
 export function agentDisplayName(agent: CliAgent): "Claude" | "Codex" {
   return agent === "claude" ? "Claude" : "Codex";
 }
+export const usageDirections = ["left", "used"] as const;
+export type UsageDirection = (typeof usageDirections)[number];
 export const cliOutputModes = ["text", "json", "jsonl"] as const;
 export const claudePermissionModes = [
   "default",
@@ -50,6 +52,7 @@ export type CliConfig = {
   readonly schemaVersion: 1;
   readonly agent?: CliAgent;
   readonly output?: CliOutputMode;
+  readonly usageDirection?: UsageDirection;
   readonly timeout?: string;
   readonly trust?: boolean;
   readonly highTrust?: boolean;
@@ -107,6 +110,7 @@ export type ParsedCliCommand =
   | ParsedInteractiveCommand
   | { readonly command: "help" }
   | { readonly command: "version" }
+  | { readonly command: "usage"; readonly args: readonly string[] }
   | { readonly command: "config"; readonly args: readonly string[] };
 
 export type PromptStdin = {
