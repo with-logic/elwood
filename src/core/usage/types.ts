@@ -1,4 +1,4 @@
-/** Account quota readings for host dashboards and the CLI (PRD §5.12, C-STATS-03). */
+/** Account quota readings for host dashboards (PRD §5.12, C-STATS-03). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 
 export type UsageAccount = {

@@ -423,10 +423,6 @@ elwood<span class="w"> </span>config<span class="w"> </span>path
 <td><code>text</code>, <code>json</code>, <code>jsonl</code></td>
 </tr>
 <tr>
-<td><code>usageDirection</code></td>
-<td><code>left</code> (default) or <code>used</code> for account quota</td>
-</tr>
-<tr>
 <td><code>timeout</code></td>
 <td><code>10m</code></td>
 </tr>
@@ -777,7 +773,6 @@ elwood<span class="w"> </span>--no-defaults<span class="w"> </span>--agent<span 
        elwood interactive [id] [options]
        elwood sessions [--state-dir &lt;path&gt;] [--output &lt;text|json&gt;]
        elwood models [options] [--output &lt;text|json&gt;]
-       elwood usage [--direction left|used] [--output text|json] [--account 'agent:label[=/absolute/profile]']...
        elwood config &lt;command&gt;
 
 Run one Claude Code or Codex turn and write its combined assistant response.
@@ -795,7 +790,6 @@ Commands:
   interactive [id]            Open the agent's own TUI here with Elwood's settings
   sessions                    List Elwood-owned session records; never starts an agent
   models                      List both agents' models (starts each briefly)
-  usage                       Check account limits before starting a session
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -930,7 +924,6 @@ Commands:
 Examples:
   elwood config show
   elwood config effective --agent claude
-  elwood config set usageDirection used
   elwood config set codex.sandbox workspace-write
 </code></pre></div>
 

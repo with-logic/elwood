@@ -56,7 +56,7 @@ child.stdout.on("data", (chunk) => {
 `;
 }
 
-export async function probeQuota(account: UsageAccount, signal?: AbortSignal): Promise<unknown> {
+export async function probeQuota(account: UsageAccount): Promise<unknown> {
   const { variable, protocol } =
     account.agent === "claude" ? claudeUsageProtocol : codexUsageProtocol;
   const args = [
@@ -75,7 +75,6 @@ export async function probeQuota(account: UsageAccount, signal?: AbortSignal): P
     probeShellCommand(command, account.agent),
     {
       cwd: "/",
-      signal,
       env:
         account.configDir === undefined
           ? process.env

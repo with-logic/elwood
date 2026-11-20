@@ -12,9 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Check account quota before opening a session with `readAccountUsage()` or
-  `elwood usage`. Show each reported window and reset time for named Claude
-  and Codex profiles. Choose one percentage direction across accounts.
+- Check account quota before opening a session with `readAccountUsage()`. Each
+  named Claude or Codex profile returns its own windows, percentages and reset times.
 
 - Give the landing-page robot a little momentum on release: letting go of a drag
   while the pointer is moving carries him along instead of dropping him flat.

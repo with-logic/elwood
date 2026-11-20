@@ -29,10 +29,7 @@ export type CommandResult = {
 };
 
 /** Initial probe cwd and optional original identity, retained across queue/profile boundaries. */
-export type CommandOptions = {
-  readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly signal?: AbortSignal | undefined;
-} & (
+export type CommandOptions = { readonly env?: Readonly<Record<string, string | undefined>> } & (
   | { readonly cwd?: string; readonly directoryIdentity?: undefined }
   | { readonly cwd: string; readonly directoryIdentity: DirectoryIdentity }
 );

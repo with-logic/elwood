@@ -7,7 +7,6 @@ export const configKeys = [
   "schemaVersion",
   "agent",
   "output",
-  "usageDirection",
   "timeout",
   "trust",
   "highTrust",

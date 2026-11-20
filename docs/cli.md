@@ -60,7 +60,7 @@ elwood config get agent
 elwood config unset timeout
 ```
 
-Supported keys are `agent`, `output`, `usageDirection` (default `left`, or `used`), `timeout`, `trust`, `stateDir`,
+Supported keys are `agent`, `output`, `timeout`, `trust`, `stateDir`,
 `verbose`, `stream`, `persona`, `claude.model`, `claude.reasoningEffort`,
 `claude.permissionMode`, `codex.model`, `codex.reasoningEffort`,
 `codex.sandbox`, and `codex.approvalPolicy` (`schemaVersion` is always `1`).

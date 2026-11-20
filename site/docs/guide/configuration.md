@@ -37,7 +37,6 @@ The configuration document has `schemaVersion: 1`. Unknown keys and values with 
 | --- | --- |
 | `agent` | `claude` or `codex` |
 | `output` | `text`, `json`, `jsonl` |
-| `usageDirection` | `left` (default) or `used` for account quota |
 | `timeout` | `10m` |
 | `trust`, `highTrust`, `verbose`, `stream` | `true` or `false` |
 | `stateDir` | Absolute path to CLI-owned session state |

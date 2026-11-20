@@ -39,11 +39,7 @@ export function runProbe(
   args: readonly string[],
   options: CommandOptions = {},
 ): Promise<CommandResult> {
-  return withProbeSlot(() => {
-    // The caller can cancel while this probe is waiting for a slot.
-    options.signal?.throwIfAborted();
-    return spawnProbe(command, args, options);
-  });
+  return withProbeSlot(() => spawnProbe(command, args, options));
 }
 
 async function spawnProbe(
