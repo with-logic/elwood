@@ -1,9 +1,11 @@
 /** Parse repeatable profile selectors and quota display options (PRD §12A.11). */
 import { parseArgs } from "node:util";
+import { isOneOf } from "../../core/predicates.ts";
 import { validateAccounts } from "../../core/usage/index.ts";
 import type { UsageAccount } from "../../core/usage/types.ts";
 import { argumentErrorMessage } from "../args/errors.ts";
 import { usage } from "../request/values.ts";
+import { cliAgents } from "../types.ts";
 
 const options = {
   account: { type: "string", multiple: true },
@@ -13,11 +15,12 @@ const options = {
 } as const;
 
 function accountFrom(value: string): UsageAccount {
-  const match = /^(claude|codex):([^=]+)(?:=(.*))?$/u.exec(value);
-  if (!match) throw usage("Use --account 'agent:label=/absolute/profile' or 'agent:label'.");
+  const match = /^([^:]+):([^=]+)(?:=(.*))?$/u.exec(value);
+  if (!(match && isOneOf(match[1], cliAgents)))
+    throw usage("Use --account 'agent:label=/absolute/profile' or 'agent:label'.");
   const [, agent, label, configDir] = match;
   return {
-    agent: agent as UsageAccount["agent"],
+    agent,
     label: label!,
     ...(configDir === undefined ? {} : { configDir }),
   };

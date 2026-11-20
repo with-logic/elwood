@@ -9,7 +9,7 @@ import {
   setConfigValue,
   unsetConfigValue,
 } from "../../src/cli/config/codec.ts";
-import { configKeys } from "../../src/cli/config/keys.ts";
+import { type ConfigKey, configKeys } from "../../src/cli/config/keys.ts";
 
 describe("CLI config codec edges", () => {
   test("C-CLI-13 decodes every documented field", () => {
@@ -62,7 +62,7 @@ describe("CLI config codec edges", () => {
   });
 
   test("C-CLI-14 parses every dotted value family", () => {
-    const values: Readonly<Record<string, string>> = {
+    const values: Readonly<Record<ConfigKey, string>> = {
       schemaVersion: "1",
       agent: "claude",
       output: "text",
@@ -82,7 +82,7 @@ describe("CLI config codec edges", () => {
       "codex.sandbox": "workspace-write",
       "codex.approvalPolicy": "untrusted",
     };
-    for (const key of configKeys) expect(parseConfigValue(key, values[key]!)).toBeDefined();
+    for (const key of configKeys) expect(parseConfigValue(key, values[key])).toBeDefined();
     expect(() => parseConfigValue("unknown", "x")).toThrow(/unknown/iu);
     expect(() => parseConfigValue("schemaVersion", "2")).toThrow(/must be 1/iu);
     expect(() => parseConfigValue("stateDir", " ")).toThrow(/empty/iu);

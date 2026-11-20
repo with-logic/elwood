@@ -16,8 +16,13 @@ function harness() {
 }
 const valid = {
   status: 0,
-  stdout:
-    '{"rate_limits_available":true,"rate_limits":{"seven_day":{"utilization":25,"resets_at":"2028-02-01T10:15:00Z"}}}',
+  stdout: JSON.stringify({
+    rate_limits_available: true,
+    rate_limits: {
+      five_hour: { utilization: 60, resets_at: "2028-02-01T08:00:00Z" },
+      seven_day: { utilization: 25, resets_at: "2028-02-01T10:15:00Z" },
+    },
+  }),
   stderr: "",
 };
 
@@ -26,7 +31,16 @@ test("C-STATS-03 before launch, the CLI defaults left, saves used, and allows a 
   setCommandRunnerForTests(() => valid);
   const args = ["usage", "--account", "claude:Work"];
   expect(await h.run(args)).toBe(0);
-  expect(h.stdout.value).toMatch(/LEFT[\s\S]*Work\s+Weekly\s+75%\s+2028-02-01T10:15:00Z/);
+  expect(
+    h.stdout.value
+      .trimEnd()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/u)),
+  ).toEqual([
+    ["AGENT", "ACCOUNT", "WINDOW", "LEFT", "RESETS", "AT"],
+    ["claude", "Work", "5-hour", "40%", "2028-02-01T08:00:00Z"],
+    ["claude", "Work", "Weekly", "75%", "2028-02-01T10:15:00Z"],
+  ]);
   expect(await h.run(["config", "set", "usageDirection", "used"])).toBe(0);
   h.stdout.value = "";
   expect(await h.run(args)).toBe(0);
@@ -49,7 +63,25 @@ test("C-STATS-03 JSON retains both accounts on partial failure and accepts the c
     schemaVersion: 1,
     type: "usage",
     accounts: [
-      { agent: "claude", windows: [{ label: "Weekly", usedPercent: 25, remainingPercent: 75 }] },
+      {
+        agent: "claude",
+        windows: [
+          {
+            label: "5-hour",
+            windowMinutes: 300,
+            usedPercent: 60,
+            remainingPercent: 40,
+            resetsAt: "2028-02-01T08:00:00Z",
+          },
+          {
+            label: "Weekly",
+            windowMinutes: 10080,
+            usedPercent: 25,
+            remainingPercent: 75,
+            resetsAt: "2028-02-01T10:15:00Z",
+          },
+        ],
+      },
       { agent: "codex", status: "unavailable", windows: [] },
     ],
   });
@@ -78,6 +110,7 @@ test.each([
 
 test.each([
   { args: ["--account", "bad"] },
+  { args: ["--account", "unknown:Work"] },
   { args: ["--account", "codex:Me=relative"] },
   { args: ["--direction", "up"] },
   { args: ["--output", "jsonl"] },
@@ -122,11 +155,22 @@ test("C-STATS-03 usage validates help position and suggests its own options", as
   expect(h.stderr.value).toContain("Did you mean '--account'?");
 });
 
-test("C-STATS-03 structured usage strips controls from profile labels", async () => {
+test.each([
+  "text",
+  "json",
+])("C-STATS-03 %s strips controls from account and provider window labels", async (output) => {
   const h = harness();
-  setCommandRunnerForTests(() => valid);
-  expect(await h.run(["usage", "--account", "claude:\u009b31mWork", "--output", "json"])).toBe(0);
-  expect(JSON.parse(h.stdout.value).accounts[0].label).toBe("Work");
+  setCommandRunnerForTests(() => ({
+    ...valid,
+    stdout: JSON.stringify({
+      rate_limits_available: true,
+      rate_limits: { model_scoped: [{ display_name: "\u009b31mOpus", utilization: 20 }] },
+    }),
+  }));
+  expect(await h.run(["usage", "--account", "claude:\u009b31mWork", "--output", output])).toBe(0);
+  expect(h.stdout.value).toMatch(/\bWork\b/u);
+  expect(h.stdout.value).toContain("Weekly (Opus)");
+  expect(h.stdout.value).not.toContain("\u009b");
 });
 
 test("C-STATS-03 usage releases the SIGINT handler before a slow write", async () => {
@@ -143,7 +187,7 @@ test("C-STATS-03 usage releases the SIGINT handler before a slow write", async (
   expect(await h.run(["usage", "--account", "claude:Work"])).toBe(0);
 });
 
-test("C-STATS-03 usage errors apply to the command, even with a saved agent hint", async () => {
+test("C-STATS-03 usage errors apply to the command, even with an environment agent hint", async () => {
   const h = harness();
   expect(
     await main(["usage", "--direction", "bad", "--output", "json"], {
