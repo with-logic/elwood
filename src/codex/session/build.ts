@@ -97,9 +97,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
+  const snapshot = () => renderedSnapshot(terminal);
   const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate);
   const clearance = liveCodexClearance(() => terminal);
-  const snapshot = () => renderedSnapshot(terminal);
   const observers = {
     turn: new TurnStateWatcher(),
     attention: new AttentionWatcher(),
@@ -127,10 +127,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
-      const frame = {
-        text: renderedSnapshot(renderedTerminal).text,
-        title: renderedTerminal.title,
-      };
+      const { text, cols } = renderedSnapshot(renderedTerminal);
+      const frame = { text, cols, title: renderedTerminal.title };
       const send = (input: string) =>
         withAutomatedInput(renderedTerminal, () => callerInput.automation(input));
       const read = () => renderedSnapshot(renderedTerminal).text;

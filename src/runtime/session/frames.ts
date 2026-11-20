@@ -69,7 +69,7 @@ export function createSessionFrameObserver(
     // Settle automation against this frame before evidence/readiness releases input.
     state.observeClearance?.(frame.text);
     // Publish this frame's hold before evidence listeners can submit readiness.
-    readiness.observeFrameHold(reading.facts, active.trustInputBlocking, frame.text);
+    readiness.observeFrameHold(reading.facts, active.trustInputBlocking, frame.text, frame.cols);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
@@ -77,7 +77,12 @@ export function createSessionFrameObserver(
       // positive frame shows either resumed work or an idle composer.
       replayAutomationClearance(active, reading.facts);
     } finally {
-      readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking, frame.text);
+      readiness.observeReadinessFrame(
+        reading.facts,
+        active.trustInputBlocking,
+        frame.text,
+        frame.cols,
+      );
     }
   };
   return {

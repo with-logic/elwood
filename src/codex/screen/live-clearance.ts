@@ -30,7 +30,10 @@ export function liveCodexClearance(readTerminal: () => ElwoodTerminal): TrustCle
     // RenderCursor replaces this private snapshot on a render or viewport change.
     // Live evidence above is rechecked even when its row classification is reusable.
     if (frame !== previous) {
-      classification = codexComposerRowsClearance(frame.lines, viewportCursorRow);
+      classification = codexComposerRowsClearance(frame.lines, {
+        cursorRow: viewportCursorRow,
+        cols: frame.cols,
+      });
       previous = frame;
     }
     return classification;

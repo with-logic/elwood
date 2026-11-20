@@ -57,6 +57,43 @@ model evidence, warning suffix validation, live cursor and dialog guards remain.
 Footer capture: `tests/fixtures/codex-0.167.0/agents-footer.txt`.
 C-API-28, C-TRUST-01.
 
+**Codex 0.170.0 wraps its status footer when it does not fit the terminal
+(2026-11-19).** Real sessions were started through `startCodex` on macOS at 30, 36, 40,
+44, 46, 52, 58, 59, 60, 61, 70, 80, 100, 120 and 160 columns, with a private `CODEX_HOME`
+and a loopback Responses provider (no model quota), in a long directory, a short
+directory and a directory with wide (CJK) names. Each ran one turn so that the footer
+also carried the thread name (the first prompt, cut with an ellipsis). The captures are
+`tests/fixtures/codex-footer-captures-170.ts`. They show:
+
+- Codex moves a word to the next row only when it does not fit, and it fills a row to
+  the last column (a 60-cell row at 60 columns). It breaks at a space, after `/` and
+  after `-`, and inside a run of wide characters. A row is often far short of the width:
+  at 60 columns the first row was 40 cells, because the next path piece was 31.
+- The status footer takes at most three rows. Codex cuts the rest with `…`.
+- Rows count display columns. A row of wide characters was full at 100 columns with 78
+  code points.
+- Below 59 columns the hint row had no room beside the warnings badge, and Codex drew
+  `← for agents` alone. Below 44 columns it also drew the badge as `⚠ 3 · f2`.
+- An Elwood session always has a badge on 0.170.0: Codex warns that it ignores the
+  `hookTrust` session flag that Elwood passes.
+
+A footer that the grammar does not recognize leaves the session `running`: it never
+becomes `ready` and never types a queued prompt, and a host that waits for `ready` before
+it calls `stop()` never reaches that call (`stop()` itself works while the session is
+`running`). A short directory in a wide terminal hides the wrapped shapes. Every width
+above reached `ready` and completed its turn.
+
+A continuation row counts only directly beneath a status row, or another continuation
+row, that the terminal's width cut: the row above, one space and the continuation's first
+word are wider than the terminal. The whole word is the test because every real cut passes
+it, whatever break rule Codex used inside the word. The width comes from the terminal that
+drew the frame; a frame with no known width proves no cut.
+
+Not captured here, so their tests use constructed frames: the agent label
+(` · <name> [<role>]`) that follows the thread name after a helper agent has run, a footer
+with no badge, and a badge on the last status row with no hint row beneath it. Windows and
+Linux were not captured. C-API-28, C-CODEX-26.
+
 **Codex fires its `SessionStart` hook lazily — on the first turn, not at boot.**
 Any experiment that waits for a boot-time Codex hook *without running a turn* is
 invalid and will conclude the hook "never fires". (This once produced a false
