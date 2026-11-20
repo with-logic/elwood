@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
+import type { UpdateAdapter } from "../../src/runtime/update/lock.ts";
 import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
@@ -24,24 +25,25 @@ describe("version-read cache", () => {
 
   test("C-PERF-01 concurrent adapter preflights overlap instead of serializing", async () => {
     setPlatformForTests("darwin");
-    // Deterministic overlap proof: track how many reads are in flight at once.
-    // A synchronous (serializing) runner would never exceed 1; an async one
-    // that overlaps reaches 2 when both adapters' reads are pending together.
-    let inFlight = 0;
-    let maxInFlight = 0;
-    setCommandRunnerForTests((_command, args) => {
-      const stdout = args.join(" ").includes("codex") ? "codex-cli 0.132.0" : "2.1.144";
-      inFlight += 1;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          inFlight -= 1;
-          resolve({ status: 0, stdout, stderr: "" });
-        }, 5);
-      });
+    // Keep the first read pending until the other adapter reaches its runner.
+    const versions: Record<UpdateAdapter, string> = {
+      claude: "2.1.144",
+      codex: "codex-cli 0.132.0",
+    };
+    const started = new Set<UpdateAdapter>();
+    const bothStarted = Promise.withResolvers<void>();
+    setCommandRunnerForTests(async (_command, args) => {
+      const agent = /\b(\w+) --version\b/u.exec(args.join(" "))?.[1];
+      if (agent !== "claude" && agent !== "codex") {
+        throw new Error("Expected a Claude or Codex version probe");
+      }
+      started.add(agent);
+      if (started.size === 2) bothStarted.resolve();
+      await bothStarted.promise;
+      return { status: 0, stdout: versions[agent], stderr: "" };
     });
     await Promise.all([preflightClaude(false), preflightCodex(false)]);
-    expect(maxInFlight).toBe(2);
+    expect(started).toEqual(new Set(["claude", "codex"]));
   });
 
   test("C-PERF-02 reuses a retained --version result in the same directory", async () => {
