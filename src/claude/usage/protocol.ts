@@ -24,9 +24,11 @@ function receive(message) {
   if (message?.type !== "control_response" || message.response?.request_id !== "usage") return undefined;
   if (message.response.subtype === "success") return message.response.response ?? null;
   const error = message.response.error;
-  if (message.response.subtype === "error" &&
-      (error === "Unsupported control request subtype: get_usage" || error === "Unsupported control request subtype") &&
-      standardFallbackEnvironment()) return () => relayFallback([...isolated, "--safe-mode", "/usage"]);
+  const isUnsupportedUsageResponse = message.response.subtype === "error" &&
+    (error === "Unsupported control request subtype: get_usage" || error === "Unsupported control request subtype");
+  if (isUnsupportedUsageResponse && standardFallbackEnvironment()) {
+    return () => relayFallback([...isolated, "--safe-mode", "/usage"]);
+  }
   return null;
 }
 `,

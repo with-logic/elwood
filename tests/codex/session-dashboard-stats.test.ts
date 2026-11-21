@@ -1,4 +1,4 @@
-/** Project stats before delivering the mutable native record to subscribers (C-STATS-01). */
+/** Exercise Codex dashboard snapshots through transcript delivery and session stop (C-STATS-01/04). */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -79,18 +79,19 @@ test("C-STATS-01/04 raw listeners cannot change normalized usage or snapshots", 
       state: "fresh",
       windows: [{ label: "secondary", usedPercent: 15 }],
     });
-    const final = await session.getStats();
-    await session.stop();
-    expect(await session.getStats()).toMatchObject({
+    const final = await facade.getStats();
+    await facade.stop();
+    expect(await facade.getStats()).toMatchObject({
+      status: "stopped",
       latestTokenUsage: final.latestTokenUsage,
       quota: final.quota,
     });
   } finally {
-    await session.stop();
+    await facade.stop();
   }
 });
 
-test("C-STATS-04 future quota does not pin a Codex snapshot or extend it past reset", async () => {
+test("C-STATS-04 Codex quota clamps future timestamps, replaces ties, and expires at reset", async () => {
   installFakes();
   const cwd = tempDir();
   const path = join(cwd, "rollout.jsonl");
@@ -125,8 +126,11 @@ test("C-STATS-04 future quota does not pin a Codex snapshot or extend it past re
     });
     if (snapshot.state === "unavailable") throw new Error("missing transcript quota");
     expect(snapshot.windows[0]).not.toHaveProperty("windowMinutes");
-    clock.mockReturnValue(received + 1000);
-    await emit(25, new Date(received + 1000).toISOString(), 300);
+    const observedAtMs = received + 1000;
+    const observedAt = new Date(observedAtMs).toISOString();
+    clock.mockReturnValue(observedAtMs);
+    await emit(50, observedAt, 300);
+    await emit(25, observedAt, 300);
     clock.mockReturnValue(reset - 1);
     expect((await session.getStats()).quota).toMatchObject({
       state: "fresh",

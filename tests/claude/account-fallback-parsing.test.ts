@@ -74,6 +74,13 @@ test("C-STATS-05 an overage report can provide text windows when its structured 
   ]);
 });
 
+test("C-STATS-05 preserves a legacy usage window at 1000 percent", () => {
+  const text = `${header}\nCurrent week: 1000% used`;
+  expect(claudeFallbackWindows(assistant([{ type: "text", text }]))).toEqual([
+    { label: "Weekly", usedPercent: 1000, remainingPercent: 0, windowMinutes: 10_080 },
+  ]);
+});
+
 test("C-STATS-05 legacy rows reuse one formatter per reported time zone", () => {
   vi.setSystemTime(new Date("2026-11-20T12:00:00Z"));
   const NativeFormatter = Intl.DateTimeFormat;

@@ -1,8 +1,10 @@
 /** Resolves a native legacy reset label in the zone reported by Claude (PRD §5.12, C-STATS-05). */
 
-const resetLabel =
-  /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}), (?:(\d{4}), )?(1[0-2]|[1-9])(?::([0-5]\d))?(am|pm) \(([\w/+-]+)\)$/u;
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const resetLabel = new RegExp(
+  String.raw`^(${months.join("|")}) (\d{1,2}), (?:(\d{4}), )?(1[0-2]|[1-9])(?::([0-5]\d))?(am|pm) \(([\w/+-]+)\)$`,
+  "u",
+);
 const dayMs = 24 * 60 * 60_000;
 // A legacy label describes a session or weekly reset. Allow a day of slack around a week.
 const resetVicinityMs = 8 * dayMs;
@@ -26,26 +28,27 @@ function legacyReset(
   if (!projections.has(timeZone)) projections.set(timeZone, createWallTimeProjection(timeZone));
   const wallTimeAsUtcMs = projections.get(timeZone);
   if (!wallTimeAsUtcMs) return undefined;
-  const now = Date.now();
-  const localNow = new Date(wallTimeAsUtcMs(now));
+  const nowMs = Date.now();
+  const localNow = new Date(wallTimeAsUtcMs(nowMs));
   const month = months.indexOf(monthText as string);
   const year = yearText === undefined ? yearNearToday(localNow, month) : Number(yearText);
   const day = Number(dayText);
   const hour = (Number(hourText) % 12) + (meridian === "pm" ? 12 : 0);
-  const wallTime = Date.UTC(year, month, day, hour, Number(minute));
-  if (new Date(wallTime).getUTCDate() !== day) return undefined;
+  const wallTimeMs = Date.UTC(year, month, day, hour, Number(minute));
+  if (new Date(wallTimeMs).getUTCDate() !== day) return undefined;
 
   // Sample both sides of the date to avoid guessing the occurrence of a repeated hour.
   const candidates = new Set(
-    [wallTime - dayMs, wallTime + dayMs].map(
-      (reference) => wallTime - (wallTimeAsUtcMs(reference) - reference),
+    [wallTimeMs - dayMs, wallTimeMs + dayMs].map(
+      (referenceMs) => wallTimeMs - (wallTimeAsUtcMs(referenceMs) - referenceMs),
     ),
   );
-  const matches = [...candidates].filter((instantMs) => wallTimeAsUtcMs(instantMs) === wallTime);
-  const [reset] = matches;
-  if (reset === undefined || matches.length > 1 || Math.abs(reset - now) > resetVicinityMs)
-    return undefined;
-  return new Date(reset).toISOString();
+  const matches = [...candidates].filter((instantMs) => wallTimeAsUtcMs(instantMs) === wallTimeMs);
+  const [resetMs] = matches;
+  const hasUniqueReset = resetMs !== undefined && matches.length === 1;
+  if (!hasUniqueReset) return undefined;
+  const isWithinResetVicinity = Math.abs(resetMs - nowMs) <= resetVicinityMs;
+  return isWithinResetVicinity ? new Date(resetMs).toISOString() : undefined;
 }
 
 function yearNearToday(today: Date, month: number): number {

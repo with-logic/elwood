@@ -22,15 +22,17 @@ function windowLabel(minutes: unknown, slot: Slot, bucket: string | undefined): 
 function projectWindow(
   slot: Slot,
   bucket: string | undefined,
-  percentages: Pick<UsageWindow, "usedPercent" | "remainingPercent">,
-  minutes: unknown,
-  resetSeconds: unknown,
+  window: Pick<UsageWindow, "usedPercent" | "remainingPercent"> & {
+    readonly windowMinutes?: unknown;
+    readonly resetsAtUnixSeconds?: unknown;
+  },
 ): UsageWindow {
+  const { windowMinutes, resetsAtUnixSeconds } = window;
   return usageWindow(
-    windowLabel(minutes, slot, bucket),
-    percentages,
-    resetFromSeconds(resetSeconds),
-    minutes,
+    windowLabel(windowMinutes, slot, bucket),
+    window,
+    resetFromSeconds(resetsAtUnixSeconds),
+    windowMinutes,
   );
 }
 
@@ -41,42 +43,24 @@ function bucketWindows(value: unknown, bucket: string): UsageWindow[] {
     if (!isRecord(row)) return [];
     const percentages = quotaPercentages(row["usedPercent"]);
     return percentages
-      ? [projectWindow(slot, bucket, percentages, row["windowDurationMins"], row["resetsAt"])]
+      ? [
+          projectWindow(slot, bucket, {
+            ...percentages,
+            windowMinutes: row["windowDurationMins"],
+            resetsAtUnixSeconds: row["resetsAt"],
+          }),
+        ]
       : [];
   });
 }
 
 export function codexTranscriptWindows(limits: CodexRateLimits): UsageWindows {
   const { primary, secondary, limitId } = limits;
-  if (primary === undefined)
-    return [
-      projectWindow(
-        "secondary",
-        limitId,
-        secondary,
-        secondary.windowMinutes,
-        secondary.resetsAtUnixSeconds,
-      ),
-    ];
-  const first = projectWindow(
-    "primary",
-    limitId,
-    primary,
-    primary.windowMinutes,
-    primary.resetsAtUnixSeconds,
-  );
+  if (primary === undefined) return [projectWindow("secondary", limitId, secondary)];
+  const first = projectWindow("primary", limitId, primary);
   return secondary === undefined
     ? [first]
-    : [
-        first,
-        projectWindow(
-          "secondary",
-          limitId,
-          secondary,
-          secondary.windowMinutes,
-          secondary.resetsAtUnixSeconds,
-        ),
-      ];
+    : [first, projectWindow("secondary", limitId, secondary)];
 }
 
 export function codexAppServerWindows(reply: unknown): UsageWindow[] {

@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { optional } from "../optional.ts";
 import { type UsageDeadline, usageDeadline, usageIsFresh } from "./freshness.ts";
-import { probeQuota } from "./probe.ts";
+import { probeQuota, type UsageProbeOptions } from "./probe.ts";
 import type { AccountUsage, UsageAccount, UsageWindow } from "./types.ts";
 
 const defaults = [
@@ -35,7 +35,11 @@ export function readAccountUsage(
   return readUsageProfiles(accounts);
 }
 
-/** Capture an account roster for a dashboard and reuse recent readings in memory. */
+/**
+ * Capture and validate an account roster synchronously, throwing `TypeError` for invalid input.
+ * Calls to the returned reader share any pending read. Each account reading stays in memory
+ * for up to five minutes from `checkedAt` or until an earlier reported reset.
+ */
 export function createAccountUsageReader(
   accounts?: readonly UsageAccount[],
 ): () => Promise<readonly AccountUsage[]> {
@@ -61,10 +65,10 @@ function createCachedProfileReader(account: UsageAccount): () => Promise<Account
 
 export async function readUsageProfiles(
   accounts?: readonly UsageAccount[],
-  signal?: AbortSignal,
+  options?: UsageProbeOptions,
 ): Promise<readonly AccountUsage[]> {
   return await Promise.all(
-    captureProfiles(accounts).map((profile) => readProfile(profile, signal)),
+    captureProfiles(accounts).map((profile) => readProfile(profile, options)),
   );
 }
 
@@ -78,12 +82,15 @@ function captureProfiles(accounts: readonly UsageAccount[] = defaults): readonly
   return profiles;
 }
 
-async function readProfile(account: UsageAccount, signal?: AbortSignal): Promise<AccountUsage> {
+async function readProfile(
+  account: UsageAccount,
+  options?: UsageProbeOptions,
+): Promise<AccountUsage> {
   const { agent, label, configDir } = account;
   let windows: readonly UsageWindow[] = [];
   try {
     if (configDir === undefined || (await stat(configDir)).isDirectory()) {
-      windows = await probeQuota(account, signal);
+      windows = await probeQuota(account, options);
     }
   } catch {
     // A missing profile, unavailable CLI or unsupported protocol affects only its own row.

@@ -44,7 +44,7 @@ function usageRows(
 export async function runUsageCommand(
   args: readonly string[],
   context: CliMainContext,
-  stdout: AsyncOutputSink,
+  { stdout, stderr }: { readonly stdout: AsyncOutputSink; readonly stderr: AsyncOutputSink },
 ): Promise<number> {
   const flags = parseUsageArgs(args);
   if (flags.help) {
@@ -64,11 +64,22 @@ export async function runUsageCommand(
   );
   const controller = new AbortController();
   const dispose = context.signals.onSigint(() => controller.abort());
+  const cleanupDiagnostics: string[] = [];
   let accounts: readonly AccountUsage[];
   try {
-    accounts = await readUsageProfiles(flags.accounts, controller.signal);
+    accounts = await readUsageProfiles(flags.accounts, {
+      signal: controller.signal,
+      onUnconfirmedCleanup: ({ cleanupErrorCode, cleanupProcessGroupId }) => {
+        cleanupDiagnostics.push(
+          `elwood: could not confirm account usage probe cleanup (${cleanupErrorCode}, process group ${cleanupProcessGroupId}).\n`,
+        );
+      },
+    });
   } finally {
     dispose();
+  }
+  if (cleanupDiagnostics.length > 0) {
+    await stderr.write(cleanupDiagnostics.join("")).catch(() => undefined);
   }
   if (controller.signal.aborted) return 130;
   const clean = createCliSanitizer();

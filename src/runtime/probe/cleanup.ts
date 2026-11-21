@@ -13,15 +13,17 @@ import {
 } from "../../core/warnings/reasons.ts";
 
 /**
- * Unconfirmed cleanup names both the reason and the group still outstanding; confirmed
- * cleanup names neither. Both fields are optional because `CommandResult` intersects this
- * into an error shape that exists for every failed probe, not only aborted ones — the two
- * are nevertheless always written together, by `abortProbe` alone.
+ * Unconfirmed cleanup names both the reason and the group still outstanding.
+ * The group ID is diagnostic only because the original group may have exited.
  */
-export type ProbeCleanup = {
-  readonly cleanupErrorCode?: ReapErrorCode | "ETIMEDOUT";
-  readonly cleanupProcessGroupId?: number;
+export type UnconfirmedProbeCleanup = {
+  readonly cleanupErrorCode: ReapErrorCode | "ETIMEDOUT";
+  readonly cleanupProcessGroupId: number;
 };
+
+export type ProbeCleanup =
+  | UnconfirmedProbeCleanup
+  | { readonly cleanupErrorCode?: never; readonly cleanupProcessGroupId?: never };
 
 const cleanupWindowMs = 1_000;
 const leaderFallbackAfterMs = 500;

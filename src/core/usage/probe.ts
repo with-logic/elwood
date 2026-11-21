@@ -6,12 +6,18 @@ import { claudeWindows } from "../../claude/usage/windows.ts";
 import { codexUsageProtocol } from "../../codex/usage/protocol.ts";
 import { codexAppServerWindows } from "../../codex/usage/windows.ts";
 import { maxProbeStreamOutputBytes } from "../../runtime/probe/capped-buffer.ts";
+import type { UnconfirmedProbeCleanup } from "../../runtime/probe/cleanup.ts";
 import { currentCommandRunner } from "../../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import { shellQuote } from "../shell.ts";
 import type { UsageAccount, UsageWindow } from "./types.ts";
 
 const fallbackMarker = "ELWOOD_QUOTA_FALLBACK\n";
+
+export type UsageProbeOptions = {
+  readonly signal: AbortSignal;
+  readonly onUnconfirmedCleanup: (cleanup: UnconfirmedProbeCleanup) => void;
+};
 
 // This small stdio client runs inside the existing supervised probe process group.
 // Embedders can bundle Elwood without locating or copying a helper executable.
@@ -73,7 +79,7 @@ child.stdout.on("data", (chunk) => {
 
 export async function probeQuota(
   account: UsageAccount,
-  signal?: AbortSignal,
+  options?: UsageProbeOptions,
 ): Promise<readonly UsageWindow[]> {
   const { variable, protocol } =
     account.agent === "claude" ? claudeUsageProtocol : codexUsageProtocol;
@@ -93,15 +99,22 @@ export async function probeQuota(
     probeShellCommand(command, account.agent),
     {
       cwd: "/",
-      signal,
+      signal: options?.signal,
       env:
         account.configDir === undefined
           ? process.env
           : { ...process.env, [variable]: account.configDir },
     },
   );
-  if (result.error?.code === "ABORT_ERR") return [];
-  const failed = result.status !== 0 || result.error !== undefined;
+  const { error } = result;
+  if (error?.cleanupErrorCode !== undefined) {
+    options?.onUnconfirmedCleanup({
+      cleanupErrorCode: error.cleanupErrorCode,
+      cleanupProcessGroupId: error.cleanupProcessGroupId,
+    });
+  }
+  if (error?.code === "ABORT_ERR") return [];
+  const failed = result.status !== 0 || error !== undefined;
   if (account.agent === "claude" && result.stdout.startsWith(fallbackMarker)) {
     return readClaudeFallback(failed ? undefined : result.stdout.slice(fallbackMarker.length));
   }

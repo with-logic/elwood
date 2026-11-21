@@ -1,35 +1,17 @@
 /** Exercise C-STATS-03 at both real process boundaries with isolated native CLI stand-ins. */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { readAccountUsage } from "../../src/index.ts";
-import * as shell from "../../src/runtime/shell.ts";
-import { tempDir } from "../helpers/tmp.ts";
+import { usageProtocolFixture } from "../helpers/account-usage-protocol.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
-function fixture(rc = "") {
-  const root = tempDir("usage-protocol-");
-  vi.stubEnv("HOME", root);
-  vi.stubEnv("TERM_PROGRAM", "");
-  vi.spyOn(shell, "userShell").mockReturnValue("/bin/bash");
-  writeFileSync(
-    join(root, ".bash_profile"),
-    `export PATH=${shell.shellQuote(root)}:/usr/bin:/bin\n${rc}\n`,
-  );
-  return {
-    root,
-    cli(name: string, body: string) {
-      writeFileSync(join(root, name), `#!${process.execPath}\n${body}\n`, { mode: 0o700 });
-    },
-  };
-}
-
 test("C-STATS-03 reads fresh balances for distinct profiles before a model turn", async () => {
-  const f = fixture();
+  const f = usageProtocolFixture();
   const personal = join(f.root, "personal 'account");
   mkdirSync(personal);
   f.cli(
@@ -79,7 +61,7 @@ test("C-STATS-03 reads fresh balances for distinct profiles before a model turn"
 });
 
 test("C-STATS-03 a profile overwritten by the login shell never displays the wrong balance", async () => {
-  const f = fixture("export CODEX_HOME=/unexpected");
+  const f = usageProtocolFixture("export CODEX_HOME=/unexpected");
   const launched = join(f.root, "launched");
   f.cli("codex", `require("node:fs").writeFileSync(${JSON.stringify(launched)}, "wrong account");`);
   const [account] = await readAccountUsage([{ agent: "codex", label: "Work", configDir: f.root }]);
@@ -88,7 +70,7 @@ test("C-STATS-03 a profile overwritten by the login shell never displays the wro
 });
 
 test("C-STATS-03 a native refusal or oversized reply yields unavailable", async () => {
-  const f = fixture();
+  const f = usageProtocolFixture();
   const pidFile = join(f.root, "helper.pid");
   f.cli(
     "claude",
@@ -107,7 +89,9 @@ test("C-STATS-03 a native refusal or oversized reply yields unavailable", async 
 });
 
 test("C-STATS-03 an explicit Claude profile uses its own credential store after login-shell startup", async () => {
-  const f = fixture("export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake");
+  const f = usageProtocolFixture(
+    "export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake",
+  );
   f.cli(
     "claude",
     `
@@ -130,7 +114,7 @@ test("C-STATS-03 an explicit Claude profile uses its own credential store after 
 });
 
 test("C-STATS-03 an explicit Codex profile ignores a login-shell token while the current sign-in keeps it", async () => {
-  const f = fixture("export CODEX_ACCESS_TOKEN=synthetic-test-token");
+  const f = usageProtocolFixture("export CODEX_ACCESS_TOKEN=synthetic-test-token");
   f.cli(
     "codex",
     `
@@ -149,49 +133,4 @@ test("C-STATS-03 an explicit Codex profile ignores a login-shell token while the
     { agent: "codex", label: "Current" },
   ]);
   expect(results.map((row) => row.windows[0]?.usedPercent)).toEqual([15, 70]);
-});
-
-test.each([
-  { error: "Unsupported control request subtype: get_usage", rc: "", used: 18 },
-  { error: "Unsupported control request subtype", rc: "", used: 18 },
-  { error: "Not authenticated", rc: "", used: undefined },
-  {
-    error: "Unsupported control request subtype: get_usage",
-    rc: "export ANTHROPIC_PROFILE=fixture",
-    used: undefined,
-  },
-  { error: "Unsupported control request subtype: get_usage", rc: "cd /tmp", used: undefined },
-])("C-STATS-05 reads Claude /usage only after an eligible request refusal ($error $rc)", async ({
-  error,
-  rc,
-  used,
-}) => {
-  for (const name of Object.keys(process.env)) {
-    if (/^(?:CLAUDE_|ANTHROPIC_|CLAUDECODE$)/.test(name)) vi.stubEnv(name, undefined);
-  }
-  const f = fixture(rc);
-  const marker = join(f.root, "fallback-invoked");
-  f.cli(
-    "claude",
-    `
-    if (process.argv.includes("/usage")) {
-      require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.cwd());
-      const flag = (name) => process.argv[process.argv.indexOf(name) + 1];
-      if (!process.argv.includes("--safe-mode") || !process.argv.includes("-p") ||
-          flag("--output-format") !== "stream-json" || process.cwd() !== "/" ||
-          process.env.CLAUDE_CONFIG_DIR !== ${JSON.stringify(f.root)} || flag("--setting-sources") !== "user" ||
-          !process.argv.includes("--no-session-persistence") || !process.argv.includes("--strict-mcp-config") ||
-          !JSON.parse(flag("--settings")).disableAllHooks || flag("--tools") !== "") process.exit(2);
-      console.log(JSON.stringify({type:"assistant", usage_report:{rate_limits:{limits:[{kind:"session", percent:18}]}}}));
-    } else {
-      require("node:readline").createInterface({input:process.stdin}).on("line", line => {
-        const msg = JSON.parse(line);
-        console.log(JSON.stringify({type:"control_response",response:{request_id:msg.request_id,subtype:"error",error:${JSON.stringify(error)}}}));
-      });
-    }
-  `,
-  );
-  const [result] = await readAccountUsage([{ agent: "claude", label: "Work", configDir: f.root }]);
-  expect(result?.windows[0]?.usedPercent).toBe(used);
-  expect(existsSync(marker)).toBe(used !== undefined);
 });

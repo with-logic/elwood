@@ -7,6 +7,7 @@ export type QuotaSnapshot =
   | { readonly state: "unavailable" }
   | {
       readonly state: "fresh" | "stale";
+      /** ISO transcript timestamp, or receipt time when the timestamp is missing or in the future. */
       readonly observedAt: string;
       readonly windows: UsageWindows;
     };
@@ -17,11 +18,13 @@ export type SessionStats = {
     readonly transcriptPath: string;
     readonly usage: ClaudeTokenUsage | CodexTokenUsage;
   };
+  /** Best-effort count of active subagents observed through hooks. */
   readonly activeSubagentCount: number;
   readonly quota: QuotaSnapshot;
 };
 
 export interface StatsControls {
+  /** Read the latest in-memory stats without polling or starting a session. */
   getStats(): Promise<SessionStats>;
 }
 

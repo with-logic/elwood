@@ -8,7 +8,7 @@ const subscriptionHeading =
   "You are currently using your subscription to power your Claude Code usage";
 const overageHeading = "You are currently using your overages to power your Claude Code usage.";
 const quotaRow =
-  /^Current (session|week)(?: \(([^)]+)\))?: (\d{1,3}(?:\.\d+)?)% used(?: · resets (.+))?$/u;
+  /^Current (session|week)(?: \(([^)]+)\))?: (\d+(?:\.\d+)?)% used(?: · resets (.+))?$/u;
 
 export function legacyUsageWindows(message: unknown): UsageWindow[] {
   if (!(isRecord(message) && Array.isArray(message["content"]))) return [];

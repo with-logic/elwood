@@ -9,11 +9,13 @@ export function usageDeadline(
   observedAtMs: number,
   windows: readonly UsageWindow[],
 ): UsageDeadline {
+  // A reading expires at its earliest reset or five minutes after observation.
   const epochMs = windows.reduce(
     (until, window) =>
       window.resetsAt === undefined ? until : Math.min(until, Date.parse(window.resetsAt)),
     observedAtMs + quotaLifetimeMs,
   );
+  // The monotonic deadline prevents wall-clock rollbacks from delaying expiry.
   return { epochMs, monotonicMs: performance.now() + (epochMs - Date.now()) };
 }
 

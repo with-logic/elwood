@@ -45,6 +45,30 @@ test.each([
   else expect(write).not.toHaveBeenCalled();
 });
 
+test("C-STATS-05 a successful fallback emits one fixed diagnostic only when opted in", async () => {
+  const write = vi.mocked(fs.writeSync).mockReturnValue(0);
+  const report = {
+    type: "assistant",
+    usage_report: { rate_limits: { five_hour: { utilization: 50 } } },
+    message: "private provider response",
+  };
+  setCommandRunnerForTests(() => ({
+    status: 0,
+    stdout: `ELWOOD_QUOTA_FALLBACK\n${JSON.stringify(report)}`,
+    stderr: "",
+  }));
+  const profiles = [{ agent: "claude" as const, label: "Private account" }];
+  vi.stubEnv("NODE_DEBUG", "");
+  expect(await readAccountUsage(profiles)).toMatchObject([{ status: "available" }]);
+  expect(write).not.toHaveBeenCalled();
+  vi.stubEnv("NODE_DEBUG", "stream,elwood");
+  expect(await readAccountUsage(profiles)).toMatchObject([{ status: "available" }]);
+  expect(write).toHaveBeenCalledExactlyOnceWith(
+    2,
+    "ELWOOD: Claude account usage fallback succeeded.\n",
+  );
+});
+
 test("C-STATS-06 account readers share an in-flight roster and refresh each expired account", async () => {
   const start = new Date("2026-11-20T12:00:00Z");
   vi.setSystemTime(start);

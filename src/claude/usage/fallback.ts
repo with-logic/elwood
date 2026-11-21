@@ -8,11 +8,14 @@ import { claudeWindows } from "./windows.ts";
 
 export function readClaudeFallback(stdout: string | undefined): readonly UsageWindow[] {
   const windows = stdout === undefined ? [] : claudeFallbackWindows(stdout);
-  if (windows.length === 0 && process.env["NODE_DEBUG"]?.split(/[\s,]+/u).includes("elwood")) {
-    const message =
-      stdout === undefined
-        ? "Claude account usage fallback failed."
-        : "Unrecognized Claude account usage fallback report.";
+  if (process.env["NODE_DEBUG"]?.split(/[\s,]+/u).includes("elwood")) {
+    let message = "Claude account usage fallback succeeded.";
+    if (windows.length === 0) {
+      message =
+        stdout === undefined
+          ? "Claude account usage fallback failed."
+          : "Unrecognized Claude account usage fallback report.";
+    }
     runContained(() => writeSync(2, `ELWOOD: ${message}\n`));
   }
   return windows;

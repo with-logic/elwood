@@ -17,6 +17,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Read session status, token usage, active subagent counts, and observed Codex
   quota with `getStats()`. Use `createAccountUsageReader()` to reuse current
   account limits. Claude account reads can fall back to headless `/usage`.
+- Preserve Claude legacy quota readings such as `1000%` and report successful
+  fallback reads when `NODE_DEBUG=elwood` is set.
+- Report unconfirmed account probe cleanup on stderr from `elwood usage`.
 
 ## [0.5.0] - 2026-11-20
 

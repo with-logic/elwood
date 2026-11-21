@@ -10,12 +10,12 @@ export function bindCodexQuotaStats(
 ): void {
   emitter.on("activity", ({ rateLimits }) => {
     if (rateLimits === undefined) return;
-    const receivedAt = Date.now();
+    const receivedAtMs = Date.now();
     session.observeQuota(
       codexTranscriptWindows(rateLimits),
       rateLimits.recordedAt === undefined
-        ? receivedAt
-        : Math.min(receivedAt, Date.parse(rateLimits.recordedAt)),
+        ? receivedAtMs
+        : Math.min(receivedAtMs, Date.parse(rateLimits.recordedAt)),
     );
   });
 }
