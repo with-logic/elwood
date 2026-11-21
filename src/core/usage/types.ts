@@ -16,12 +16,14 @@ export type UsageWindow = {
   readonly resetsAt?: string;
 };
 
+export type UsageWindows = readonly [UsageWindow, ...UsageWindow[]];
+
 export type AccountUsage = {
   readonly agent: ElwoodAgentKind;
   readonly label: string;
   /** ISO timestamp when the profile read finished. */
   readonly checkedAt: string;
 } & (
-  | { readonly status: "available"; readonly windows: readonly [UsageWindow, ...UsageWindow[]] }
+  | { readonly status: "available"; readonly windows: UsageWindows }
   | { readonly status: "unavailable"; readonly windows: readonly [] }
 );

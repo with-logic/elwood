@@ -1,12 +1,17 @@
 /** Bounded native quota protocol for the supervised login-shell probe (PRD §5.12). */
 
+import { readClaudeFallback } from "../../claude/usage/fallback.ts";
 import { claudeUsageProtocol } from "../../claude/usage/protocol.ts";
+import { claudeWindows } from "../../claude/usage/windows.ts";
 import { codexUsageProtocol } from "../../codex/usage/protocol.ts";
+import { codexAppServerWindows } from "../../codex/usage/windows.ts";
 import { maxProbeStreamOutputBytes } from "../../runtime/probe/capped-buffer.ts";
 import { currentCommandRunner } from "../../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import { shellQuote } from "../shell.ts";
-import type { UsageAccount } from "./types.ts";
+import type { UsageAccount, UsageWindow } from "./types.ts";
+
+const fallbackMarker = "ELWOOD_QUOTA_FALLBACK\n";
 
 // This small stdio client runs inside the existing supervised probe process group.
 // Embedders can bundle Elwood without locating or copying a helper executable.
@@ -22,6 +27,15 @@ child.on("error", () => {});
 child.stdin.on("error", () => {});
 function send(message) {
   child.stdin.write(JSON.stringify(message) + "\\n");
+}
+function relayFallback(args) {
+  process.stdout.write(${JSON.stringify(fallbackMarker)});
+  const fallback = spawn(agent, args, {
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  fallback.on("error", () => {});
+  fallback.stdout.pipe(process.stdout, { end: false });
+  fallback.once("close", (status) => { if (status === 0) process.exitCode = 0; });
 }
 send(initial);
 let pending = "";
@@ -44,7 +58,8 @@ child.stdout.on("data", (chunk) => {
     try { message = JSON.parse(line); } catch { continue; }
     const result = receive(message);
     if (result === undefined) continue;
-    if (result && typeof result === "object") {
+    if (typeof result === "function") child.once("close", result);
+    else if (result && typeof result === "object") {
       process.stdout.write(JSON.stringify(result));
       process.exitCode = 0;
     }
@@ -56,7 +71,10 @@ child.stdout.on("data", (chunk) => {
 `;
 }
 
-export async function probeQuota(account: UsageAccount, signal?: AbortSignal): Promise<unknown> {
+export async function probeQuota(
+  account: UsageAccount,
+  signal?: AbortSignal,
+): Promise<readonly UsageWindow[]> {
   const { variable, protocol } =
     account.agent === "claude" ? claudeUsageProtocol : codexUsageProtocol;
   const args = [
@@ -82,6 +100,12 @@ export async function probeQuota(account: UsageAccount, signal?: AbortSignal): P
           : { ...process.env, [variable]: account.configDir },
     },
   );
-  if (result.status !== 0 || result.error) return undefined;
-  return JSON.parse(result.stdout) as unknown;
+  if (result.error?.code === "ABORT_ERR") return [];
+  const failed = result.status !== 0 || result.error !== undefined;
+  if (account.agent === "claude" && result.stdout.startsWith(fallbackMarker)) {
+    return readClaudeFallback(failed ? undefined : result.stdout.slice(fallbackMarker.length));
+  }
+  if (failed) return [];
+  const native: unknown = JSON.parse(result.stdout);
+  return account.agent === "claude" ? claudeWindows(native) : codexAppServerWindows(native);
 }

@@ -34,6 +34,7 @@ import { CodexSessionImpl } from "./instance.ts";
 import { createCodexReadinessGate } from "./readiness.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
+import { bindCodexQuotaStats } from "./stats.ts";
 import * as transcript from "./transcript.ts";
 import type { CodexEventMap } from "./types.ts";
 import { emitUpdateAttention } from "./update-attention.ts";
@@ -161,6 +162,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     loopDefinitions,
     resolveConfigPath,
   );
+  bindCodexQuotaStats(session, emitter);
   const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();

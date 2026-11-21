@@ -14,6 +14,7 @@ import type {
   ElwoodQuestionAnswerOptions,
   ElwoodQuestionRequest,
 } from "../questions/types.ts";
+import { emptySessionStats, type SessionStats } from "../stats/snapshot-types.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -38,14 +39,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   private readonly images = new ImageCaptures();
   private readonly subscriptions = new SubscriptionRegistry<S>();
 
-  /**
-   * Boots the underlying session. Single-flight: the base memoizes an in-flight start so
-   * concurrent callers share it — but a launch that REJECTS is retryable, so `launch` may be
-   * called again after a prior failure (never while one is still in flight or after success).
-   */
   protected abstract launch(): Promise<S>;
-
-  /** Adapter-owned hook normalization: completeness signal plus optional native identity. */
   protected abstract readonly readBoundarySignal: BoundarySignalReader;
   protected readonly readNativeTurn: NativeTurnReader | undefined = undefined;
 
@@ -54,9 +48,11 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     return this.live;
   }
 
-  /** The current status; `starting` until the underlying session exists. */
   get status(): ElwoodSessionStatus {
     return this.live?.status ?? "starting";
+  }
+  getStats(): Promise<SessionStats> {
+    return this.live?.getStats() ?? Promise.resolve(emptySessionStats("starting"));
   }
 
   /** Start the underlying session eagerly. Idempotent and concurrent-safe (C-API-47). */

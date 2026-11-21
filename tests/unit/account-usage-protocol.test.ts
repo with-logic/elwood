@@ -150,3 +150,48 @@ test("C-STATS-03 an explicit Codex profile ignores a login-shell token while the
   ]);
   expect(results.map((row) => row.windows[0]?.usedPercent)).toEqual([15, 70]);
 });
+
+test.each([
+  { error: "Unsupported control request subtype: get_usage", rc: "", used: 18 },
+  { error: "Unsupported control request subtype", rc: "", used: 18 },
+  { error: "Not authenticated", rc: "", used: undefined },
+  {
+    error: "Unsupported control request subtype: get_usage",
+    rc: "export ANTHROPIC_PROFILE=fixture",
+    used: undefined,
+  },
+  { error: "Unsupported control request subtype: get_usage", rc: "cd /tmp", used: undefined },
+])("C-STATS-05 reads Claude /usage only after an eligible request refusal ($error $rc)", async ({
+  error,
+  rc,
+  used,
+}) => {
+  for (const name of Object.keys(process.env)) {
+    if (/^(?:CLAUDE_|ANTHROPIC_|CLAUDECODE$)/.test(name)) vi.stubEnv(name, undefined);
+  }
+  const f = fixture(rc);
+  const marker = join(f.root, "fallback-invoked");
+  f.cli(
+    "claude",
+    `
+    if (process.argv.includes("/usage")) {
+      require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.cwd());
+      const flag = (name) => process.argv[process.argv.indexOf(name) + 1];
+      if (!process.argv.includes("--safe-mode") || !process.argv.includes("-p") ||
+          flag("--output-format") !== "stream-json" || process.cwd() !== "/" ||
+          process.env.CLAUDE_CONFIG_DIR !== ${JSON.stringify(f.root)} || flag("--setting-sources") !== "user" ||
+          !process.argv.includes("--no-session-persistence") || !process.argv.includes("--strict-mcp-config") ||
+          !JSON.parse(flag("--settings")).disableAllHooks || flag("--tools") !== "") process.exit(2);
+      console.log(JSON.stringify({type:"assistant", usage_report:{rate_limits:{limits:[{kind:"session", percent:18}]}}}));
+    } else {
+      require("node:readline").createInterface({input:process.stdin}).on("line", line => {
+        const msg = JSON.parse(line);
+        console.log(JSON.stringify({type:"control_response",response:{request_id:msg.request_id,subtype:"error",error:${JSON.stringify(error)}}}));
+      });
+    }
+  `,
+  );
+  const [result] = await readAccountUsage([{ agent: "claude", label: "Work", configDir: f.root }]);
+  expect(result?.windows[0]?.usedPercent).toBe(used);
+  expect(existsSync(marker)).toBe(used !== undefined);
+});

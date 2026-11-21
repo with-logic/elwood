@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { claudeWindows } from "../../src/claude/usage/windows.ts";
 import { codexStats } from "../../src/codex/transcript/stats.ts";
-import { codexWindows } from "../../src/codex/usage/windows.ts";
+import { codexAppServerWindows } from "../../src/codex/usage/windows.ts";
 import { isoInstant, resetFromSeconds, windowReadings } from "../../src/core/usage/windows.ts";
 
 const reset = "2028-02-29T19:00:00+02:30";
@@ -72,7 +72,7 @@ test("C-STATS-03 Codex renders every rate-limit bucket once and labels each repo
   const secondary = { usedPercent: 104, windowDurationMins: 10080 };
   const bucket = { primary, secondary };
   expect(
-    codexWindows({
+    codexAppServerWindows({
       rateLimits: bucket,
       rateLimitsByLimitId: {
         codex: bucket,
@@ -91,14 +91,16 @@ test("C-STATS-03 Codex renders every rate-limit bucket once and labels each repo
     { label: "45-minute (fast)", windowMinutes: 45, usedPercent: 0, remainingPercent: 100 },
   ]);
   expect(
-    codexWindows({
+    codexAppServerWindows({
       rateLimitsByLimitId: {},
       rateLimits: { limitId: "x", primary: { usedPercent: 24, windowDurationMins: 0 } },
     })[0]?.label,
   ).toBe("primary (x)");
-  expect(codexWindows({ rateLimits: { primary: { usedPercent: 10 } } })[0]?.label).toBe("primary");
-  expect(codexWindows({ rateLimitsByLimitId: { codex: null } })).toEqual([]);
-  expect(codexWindows(null)).toEqual([]);
+  expect(codexAppServerWindows({ rateLimits: { primary: { usedPercent: 10 } } })[0]?.label).toBe(
+    "primary",
+  );
+  expect(codexAppServerWindows({ rateLimitsByLimitId: { codex: null } })).toEqual([]);
+  expect(codexAppServerWindows(null)).toEqual([]);
 });
 
 test("C-STATS-01 omits recordedAt for an invalid transcript timestamp", () => {

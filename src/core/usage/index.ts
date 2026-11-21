@@ -2,9 +2,8 @@
 
 import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import { claudeWindows } from "../../claude/usage/windows.ts";
-import { codexWindows } from "../../codex/usage/windows.ts";
 import { optional } from "../optional.ts";
+import { type UsageDeadline, usageDeadline, usageIsFresh } from "./freshness.ts";
 import { probeQuota } from "./probe.ts";
 import type { AccountUsage, UsageAccount, UsageWindow } from "./types.ts";
 
@@ -36,26 +35,55 @@ export function readAccountUsage(
   return readUsageProfiles(accounts);
 }
 
+/** Capture an account roster for a dashboard and reuse recent readings in memory. */
+export function createAccountUsageReader(
+  accounts?: readonly UsageAccount[],
+): () => Promise<readonly AccountUsage[]> {
+  const readers = captureProfiles(accounts).map(createCachedProfileReader);
+  let pending: Promise<readonly AccountUsage[]> | undefined;
+  return async () => {
+    pending ??= Promise.all(readers.map((read) => read())).finally(() => {
+      pending = undefined;
+    });
+    return structuredClone(await pending);
+  };
+}
+
+function createCachedProfileReader(account: UsageAccount): () => Promise<AccountUsage> {
+  let sample: { readonly reading: AccountUsage; readonly deadline: UsageDeadline } | undefined;
+  return async () => {
+    if (sample && usageIsFresh(sample.deadline)) return sample.reading;
+    const reading = await readProfile(account);
+    sample = { reading, deadline: usageDeadline(Date.parse(reading.checkedAt), reading.windows) };
+    return reading;
+  };
+}
+
 export async function readUsageProfiles(
-  accounts: readonly UsageAccount[] = defaults,
+  accounts?: readonly UsageAccount[],
   signal?: AbortSignal,
 ): Promise<readonly AccountUsage[]> {
+  return await Promise.all(
+    captureProfiles(accounts).map((profile) => readProfile(profile, signal)),
+  );
+}
+
+function captureProfiles(accounts: readonly UsageAccount[] = defaults): readonly UsageAccount[] {
   const profiles = accounts.map(({ agent, label, configDir }) => ({
     agent,
     label,
     ...optional(configDir, "configDir"),
   }));
   validateAccounts(profiles);
-  return await Promise.all(profiles.map((profile) => readProfile(profile, signal)));
+  return profiles;
 }
 
 async function readProfile(account: UsageAccount, signal?: AbortSignal): Promise<AccountUsage> {
   const { agent, label, configDir } = account;
-  let windows: UsageWindow[] = [];
+  let windows: readonly UsageWindow[] = [];
   try {
     if (configDir === undefined || (await stat(configDir)).isDirectory()) {
-      const reply = await probeQuota(account, signal);
-      windows = agent === "claude" ? claudeWindows(reply) : codexWindows(reply);
+      windows = await probeQuota(account, signal);
     }
   } catch {
     // A missing profile, unavailable CLI or unsupported protocol affects only its own row.

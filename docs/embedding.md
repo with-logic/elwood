@@ -116,12 +116,28 @@ quota snapshots may get stale while idle. Claude quota is unavailable through
 these records. Subagent counts are best effort, especially after resume when
 existing workers may have started before subscription.
 
+### Session stats snapshots
+
+`await session.getStats()` reads from memory. It returns the session status,
+latest token observation, `activeSubagentCount`, and quota observed in that
+session's Codex transcript. Quota is `fresh`, `stale`, or `unavailable`.
+Use the ISO timestamp `observedAt` to calculate the age. Final observations remain
+readable after closure. A stats read leaves an unstarted lazy session untouched.
+
 ### Account usage before launch
 
 Call `readAccountUsage()` to check the current Claude and Codex accounts without
 starting a model turn. Each account supplies its own reported windows. Select
 the same percentage field for every row, and show the window label and reset time.
 Use `windowMinutes` to align known durations across providers.
+
+For a dashboard, create one `createAccountUsageReader(accounts?)` and reuse
+the returned function. It shares pending reads and caches each account for up
+to five minutes or an earlier reset. Use `readAccountUsage()` for an immediate
+refresh. Older Claude versions can supply account limits through a headless
+`/usage` read when the structured request is unsupported. This fallback requires
+`--safe-mode` support and a standard Claude environment with only the profile
+selectors among Claude and Anthropic environment settings.
 
 ```ts
 import { readAccountUsage } from "@with-logic/elwood";

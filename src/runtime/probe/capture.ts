@@ -59,8 +59,8 @@ export type ProbeCapture = {
  * The capture for a probe: named pipes for a script that `exec`s its command into them,
  * nothing for a script answered by its status alone, and the pipes of any other command.
  */
-export function probeCapture(args: readonly string[]): Promise<ProbeCapture> {
-  if (args.at(-1)?.endsWith(probeOutputRedirect)) return NamedPipeCapture.create();
+export function probeCapture(args: readonly string[], signal?: AbortSignal): Promise<ProbeCapture> {
+  if (args.at(-1)?.endsWith(probeOutputRedirect)) return NamedPipeCapture.create(undefined, signal);
   return Promise.resolve(announcesStart(args) ? new DiscardedCapture() : new PipeCapture());
 }
 

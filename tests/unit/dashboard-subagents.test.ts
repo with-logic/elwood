@@ -2,10 +2,11 @@
 import { writeFileSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   type ElwoodActivityEvent,
   type ElwoodAgentSession,
+  type SessionStats,
   startClaude,
   startCodex,
 } from "../../src/index.ts";
@@ -26,10 +27,11 @@ function observedSubagents(session: {
 
 const expected = [
   { kind: "hook_result", id: "worker", type: "reviewer", state: "started" },
+  { kind: "hook_result", id: "worker", type: "reviewer", state: "started" },
   { kind: "hook_result", id: "worker", type: "reviewer", state: "stopped" },
 ];
 
-test("C-STATS-02 Claude reports a subagent stop after the allowing hook result", async () => {
+test("C-STATS-02/04 Claude reports a subagent stop after the allowing hook result", async () => {
   claude.installFakes();
   let session: Awaited<ReturnType<typeof startClaude>> | undefined;
   try {
@@ -54,13 +56,32 @@ test("C-STATS-02 Claude reports a subagent stop after the allowing hook result",
         ...fields,
       });
     await call({ hook_event_name: "SubagentStart" });
+    await call({ hook_event_name: "SubagentStart" });
+    expect((await live.getStats()).activeSubagentCount).toBe(1);
     await call({ hook_event_name: "SubagentStart", agent_id: "  " });
     const stop = { hook_event_name: "SubagentStop", agent_transcript_path: path };
     const blocked = await call({ ...stop, stop_hook_active: false });
     expect(JSON.parse(blocked.stdout).decision).toBe("block");
-    expect(events).toEqual(expected.slice(0, 1));
+    expect(events).toEqual(expected.slice(0, 2));
     await call({ ...stop, stop_hook_active: true });
     expect(events).toEqual(expected);
+    expect((await live.getStats()).activeSubagentCount).toBe(0);
+
+    await call({ hook_event_name: "SubagentStart" });
+    const pty = claude.ptys[0]!;
+    const kill = pty.kill.bind(pty);
+    let stopping: Promise<SessionStats> | undefined;
+    let exited: Promise<SessionStats> | undefined;
+    vi.spyOn(pty, "kill").mockImplementationOnce((signal) => {
+      stopping = live.getStats();
+      kill(signal);
+    });
+    live.on("terminal:exit", () => {
+      exited = live.getStats();
+    });
+    await live.stop();
+    expect((await stopping)?.activeSubagentCount).toBe(1);
+    expect((await exited)?.activeSubagentCount).toBe(0);
   } finally {
     try {
       await session?.stop();
@@ -70,7 +91,7 @@ test("C-STATS-02 Claude reports a subagent stop after the allowing hook result",
   }
 });
 
-test("C-STATS-02 Codex reports a subagent stop after the allowing hook result", async () => {
+test("C-STATS-02/04 Codex reports a subagent stop after the allowing hook result", async () => {
   codex.installFakes();
   let session: Awaited<ReturnType<typeof startCodex>> | undefined;
   try {
@@ -94,13 +115,16 @@ test("C-STATS-02 Codex reports a subagent stop after the allowing hook result", 
         ...fields,
       });
     await call({ hook_event_name: "SubagentStart" });
+    await call({ hook_event_name: "SubagentStart" });
+    expect((await live.getStats()).activeSubagentCount).toBe(1);
     await call({ hook_event_name: "SubagentStart", agent_id: "  " });
     const stop = { hook_event_name: "SubagentStop" };
     const blocked = await call({ ...stop, stop_hook_active: false });
     expect(JSON.parse(blocked.stdout).decision).toBe("block");
-    expect(events).toEqual(expected.slice(0, 1));
+    expect(events).toEqual(expected.slice(0, 2));
     await call({ ...stop, stop_hook_active: true });
     expect(events).toEqual(expected);
+    expect((await live.getStats()).activeSubagentCount).toBe(0);
   } finally {
     try {
       await session?.stop();

@@ -5,6 +5,8 @@
  * a shell for every probe at once and slow all of them. Implements PRD §9.2 and C-PERF-07.
  */
 
+import { addAbortListener } from "node:events";
+
 /**
  * At most this many probes run at once; the rest wait their turn in arrival order. Eight keeps a
  * heavy profile near 5 s per probe on a loaded 16-CPU host, against about 2 s at four and 7-19 s
@@ -18,10 +20,12 @@ let running = 0;
 const waiting: (() => void)[] = [];
 
 /** Runs `probe` once a slot is free, and frees the slot when it settles either way. */
-export async function withProbeSlot<T>(probe: () => Promise<T>): Promise<T> {
+export async function withProbeSlot<T>(probe: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   if (running < maxConcurrentProbes) running += 1;
-  else await new Promise<void>((resolve) => waiting.push(resolve));
+  else await waitForProbeSlot(signal);
   try {
+    signal?.throwIfAborted();
     return await probe();
   } finally {
     // Hand the slot straight to the longest waiter, so a newcomer cannot take it first.
@@ -29,4 +33,20 @@ export async function withProbeSlot<T>(probe: () => Promise<T>): Promise<T> {
     if (next) next();
     else running -= 1;
   }
+}
+
+function waitForProbeSlot(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const admit = () => {
+      abortListener?.[Symbol.dispose]();
+      resolve();
+    };
+    const abortListener = signal
+      ? addAbortListener(signal, () => {
+          waiting.splice(waiting.indexOf(admit), 1);
+          reject(signal.reason);
+        })
+      : undefined;
+    waiting.push(admit);
+  });
 }

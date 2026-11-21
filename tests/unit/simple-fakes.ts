@@ -20,6 +20,7 @@ import type {
 } from "../../src/core/questions/types.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
 import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
+import { emptySessionStats } from "../../src/core/stats/snapshot-types.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -65,6 +66,9 @@ export class FakeUnderlying implements ElwoodAgentSession {
   script: (emitter: Emitter, turnId: string) => void = defaultScript;
   statusDecisions() {
     return [];
+  }
+  getStats() {
+    return Promise.resolve(emptySessionStats(this.status));
   }
   on<E extends ElwoodCommonEventName>(
     event: E,

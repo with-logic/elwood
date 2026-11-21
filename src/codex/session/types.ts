@@ -10,6 +10,7 @@ import type { CodexModelOption } from "../../core/models/rows.ts";
 import type { QuestionControls } from "../../core/questions/types.ts";
 import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { CodexServiceTier } from "../../core/speed/types.ts";
+import type { StatsControls } from "../../core/stats/snapshot-types.ts";
 import type {
   ActivityMatch,
   ElwoodCommonEventMap,
@@ -95,7 +96,7 @@ export type CodexEventHandler<E extends CodexEventName> = (
     : undefined
   : void;
 
-export interface CodexSessionApi extends LoopControls, QuestionControls {
+export interface CodexSessionApi extends LoopControls, QuestionControls, StatsControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

@@ -71,9 +71,10 @@ export async function abortProbe(
   child: ChildProcess,
   { keepEventLoopAlive = false }: { readonly keepEventLoopAlive?: boolean } = {},
 ): Promise<ProbeCleanup> {
-  // Abort only follows timeout/output from a successfully spawned process, and
-  // a detached child leads the process group named by its own pid.
-  const processGroupId = child.pid!;
+  // Cancellation can arrive before Node delivers a failed spawn's error.
+  // A successfully spawned detached child owns the group named by its pid.
+  const processGroupId = child.pid;
+  if (processGroupId === undefined) return {};
   child.stdin?.destroy();
   child.stdout?.destroy();
   child.stderr?.destroy();

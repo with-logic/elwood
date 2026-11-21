@@ -9,6 +9,7 @@ import type { SendOptions } from "./images/types.ts";
 import type { LoopControls } from "./loops/loop-controls.ts";
 import type { AgentModelOption } from "./models/rows.ts";
 import type { QuestionControls } from "./questions/types.ts";
+import type { StatsControls } from "./stats/snapshot-types.ts";
 import type {
   ActivityMatch,
   ElwoodCommonEventMap,
@@ -28,7 +29,7 @@ export type { ElwoodCommonEventMap, ElwoodCommonEventName } from "./types.ts";
  * the shared events, io, commands, and lifecycle without adapter-specific
  * generics.
  */
-export interface ElwoodAgentSession extends LoopControls, QuestionControls {
+export interface ElwoodAgentSession extends LoopControls, QuestionControls, StatsControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

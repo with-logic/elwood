@@ -33,17 +33,17 @@ export function resetProbeTimeoutsForTests(): void {
   launchTimeoutMs = probeLaunchTimeoutMs;
 }
 
-/** Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07). */
+/**
+ * Runs one probe once a probe slot is free; its bounds start when it spawns (C-PERF-07).
+ * Before spawn, abort rejects with the signal's reason. After spawn, it attempts
+ * bounded cleanup and returns an ABORT_ERR result, with cleanup failure details if needed.
+ */
 export function runProbe(
   command: string,
   args: readonly string[],
   options: CommandOptions = {},
 ): Promise<CommandResult> {
-  return withProbeSlot(() => {
-    // The caller can cancel while this probe is waiting for a slot.
-    options.signal?.throwIfAborted();
-    return spawnProbe(command, args, options);
-  });
+  return withProbeSlot(() => spawnProbe(command, args, options), options.signal);
 }
 
 async function spawnProbe(
@@ -52,11 +52,13 @@ async function spawnProbe(
   options: CommandOptions,
 ): Promise<CommandResult> {
   const refused = await refusedProbeDirectory(options);
+  options.signal?.throwIfAborted();
   if (refused !== undefined) return refused;
   let capture: ProbeCapture;
   try {
-    capture = await probeCapture(args);
+    capture = await probeCapture(args, options.signal);
   } catch (error) {
+    options.signal?.throwIfAborted();
     return outputUnavailable(error);
   }
   const nativeFailure = await nativeShellFailure(
@@ -64,6 +66,10 @@ async function spawnProbe(
     options,
     capture instanceof NamedPipeCapture || announcesStart(args),
   );
+  if (options.signal?.aborted) {
+    capture.release();
+    throw options.signal.reason;
+  }
   if (nativeFailure !== undefined) {
     capture.release();
     return nativeFailure;

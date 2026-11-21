@@ -12,6 +12,7 @@ import type { SendOptions } from "../../core/images/types.ts";
 import type { LoopControls } from "../../core/loops/loop-controls.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import type { QuestionControls } from "../../core/questions/types.ts";
+import type { StatsControls } from "../../core/stats/snapshot-types.ts";
 import type {
   ActivityMatch,
   ElwoodEventHandler,
@@ -25,7 +26,7 @@ import type {
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 
-export interface ClaudeSessionApi extends LoopControls, QuestionControls {
+export interface ClaudeSessionApi extends LoopControls, QuestionControls, StatsControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

@@ -8,13 +8,26 @@ if (profileDir !== undefined) {
   for (const key of ["CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
                      "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"]) delete process.env[key];
 }
-const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+const isolated = ["-p", "--output-format", "stream-json", "--verbose",
               "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "user",
               "--settings", '{"disableAllHooks":true}', "--tools", ""];
+const args = [...isolated, "--input-format", "stream-json"];
 const initial = { type: "control_request", request_id: "usage", request: { subtype: "get_usage", skip_behaviors: true } };
+// Only retry an ordinary native sign-in. Provider-prefixed overrides can select
+// another credential source or make a one-time credential available to one child.
+function standardFallbackEnvironment() {
+  const profile = new Set(["CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"]);
+  return process.cwd() === "/" &&
+    Object.keys(process.env).every(key => !/^(?:CLAUDE_|ANTHROPIC_|CLAUDECODE$)/.test(key) || profile.has(key));
+}
 function receive(message) {
   if (message?.type !== "control_response" || message.response?.request_id !== "usage") return undefined;
-  return message.response.subtype === "success" ? message.response.response ?? null : null;
+  if (message.response.subtype === "success") return message.response.response ?? null;
+  const error = message.response.error;
+  if (message.response.subtype === "error" &&
+      (error === "Unsupported control request subtype: get_usage" || error === "Unsupported control request subtype") &&
+      standardFallbackEnvironment()) return () => relayFallback([...isolated, "--safe-mode", "/usage"]);
+  return null;
 }
 `,
 } as const;

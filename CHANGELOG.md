@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-20
+
+- Read session status, token usage, active subagent counts, and observed Codex
+  quota with `getStats()`. Use `createAccountUsageReader()` to reuse current
+  account limits. Claude account reads can fall back to headless `/usage`.
+
 ## [0.5.0] - 2026-11-20
 
 - Run `elwood usage` to check account limits in the terminal. Show percent
