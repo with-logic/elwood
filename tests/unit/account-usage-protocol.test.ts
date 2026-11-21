@@ -90,7 +90,7 @@ test("C-STATS-03 a native refusal or oversized reply yields unavailable", async 
 
 test("C-STATS-03 an explicit Claude profile uses its own credential store after login-shell startup", async () => {
   const f = usageProtocolFixture(
-    "export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake",
+    "export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake ANTHROPIC_API_KEY=fixture ANTHROPIC_BASE_URL=https://gateway.example.invalid",
   );
   f.cli(
     "claude",
@@ -98,8 +98,9 @@ test("C-STATS-03 an explicit Claude profile uses its own credential store after 
     const selected = process.env.CLAUDE_CONFIG_DIR;
     const inherited = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
     const explicit = selected === ${JSON.stringify(f.root)};
-    const correct = explicit ? (!inherited || inherited === selected) && !process.env.CLAUDE_CODE_OAUTH_TOKEN : inherited === "/other";
-    if (!correct) process.exit(2);
+    const hasOAuth = "CLAUDE_CODE_OAUTH_TOKEN" in process.env;
+    const correct = explicit ? (!inherited || inherited === selected) && !hasOAuth : inherited === "/other" && hasOAuth;
+    if (!correct || (explicit ? "ANTHROPIC_API_KEY" in process.env : process.env.ANTHROPIC_API_KEY !== "fixture")) process.exit(2);
     require("node:readline").createInterface({ input: process.stdin }).on("line", () => {
       console.log(JSON.stringify({type:"control_response",response:{request_id:"usage",subtype:"success",response:{
         rate_limits_available:true,rate_limits:{seven_day:{utilization:explicit ? 15 : 70}}
