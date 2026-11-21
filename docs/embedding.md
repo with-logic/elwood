@@ -134,10 +134,16 @@ Use `windowMinutes` to align known durations across providers.
 For a dashboard, create one `createAccountUsageReader(accounts?)` and reuse
 the returned function. It shares pending reads and caches each account for up
 to five minutes or an earlier reset. Use `readAccountUsage()` for an immediate
-refresh. Older Claude versions can supply account limits through a headless
+refresh. For the current Claude sign-in, Elwood checks the effective native
+settings before omitting `ANTHROPIC_API_KEY`. Direct sign-ins can expose
+subscription windows. Gateway sign-ins and CLIs that cannot report effective
+settings keep their key. The reading describes the account used for the quota
+check. An interactive session can use a different credential. Older Claude
+versions can supply account limits through a headless
 `/usage` read when the structured request is unsupported. This fallback requires
-`--safe-mode` support and a standard Claude environment with only the profile
-selectors among Claude and Anthropic environment settings.
+`--safe-mode` support and, after credential filtering, a standard Claude
+environment with only the profile selectors among Claude and Anthropic
+environment settings.
 
 ```ts
 import { readAccountUsage } from "@with-logic/elwood";

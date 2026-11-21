@@ -1,23 +1,20 @@
 /** Reads the structured or text report from an isolated Claude /usage probe (C-STATS-05). */
-import { writeSync } from "node:fs";
-import { runContained } from "../../core/contained.ts";
 import { isRecord } from "../../core/predicates.ts";
 import type { UsageWindow } from "../../core/usage/types.ts";
+import { type ClaudeUsageDiagnostic, logClaudeUsage } from "./diagnostics.ts";
 import { legacyUsageWindows } from "./legacy.ts";
 import { claudeWindows } from "./windows.ts";
 
 export function readClaudeFallback(stdout: string | undefined): readonly UsageWindow[] {
   const windows = stdout === undefined ? [] : claudeFallbackWindows(stdout);
-  if (process.env["NODE_DEBUG"]?.split(/[\s,]+/u).includes("elwood")) {
-    let message = "Claude account usage fallback succeeded.";
-    if (windows.length === 0) {
-      message =
-        stdout === undefined
-          ? "Claude account usage fallback failed."
-          : "Unrecognized Claude account usage fallback report.";
-    }
-    runContained(() => writeSync(2, `ELWOOD: ${message}\n`));
+  let message: ClaudeUsageDiagnostic = "Claude account usage fallback succeeded.";
+  if (windows.length === 0) {
+    message =
+      stdout === undefined
+        ? "Claude account usage fallback failed."
+        : "Unrecognized Claude account usage fallback report.";
   }
+  logClaudeUsage(message);
   return windows;
 }
 

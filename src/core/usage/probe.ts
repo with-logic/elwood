@@ -1,5 +1,6 @@
 /** Bounded native quota protocol for the supervised login-shell probe (PRD §5.12). */
 
+import { reportUnverifiedSettings } from "../../claude/usage/diagnostics.ts";
 import { readClaudeFallback } from "../../claude/usage/fallback.ts";
 import { claudeUsageProtocol } from "../../claude/usage/protocol.ts";
 import { claudeWindows } from "../../claude/usage/windows.ts";
@@ -27,13 +28,9 @@ const { spawn } = require("node:child_process");
 const agent = process.argv[1];
 const profileDir = process.argv[2];
 ${protocol}
-const child = spawn(agent, args, { stdio: ["pipe", "pipe", "ignore"] });
 process.exitCode = 1;
-child.on("error", () => {});
-child.stdin.on("error", () => {});
-function send(message) {
-  child.stdin.write(JSON.stringify(message) + "\\n");
-}
+// The settings and quota invocations share the output cap across a restart.
+let bytes = 0;
 function relayFallback(args) {
   process.stdout.write(${JSON.stringify(fallbackMarker)});
   const fallback = spawn(agent, args, {
@@ -43,37 +40,45 @@ function relayFallback(args) {
   fallback.stdout.pipe(process.stdout, { end: false });
   fallback.once("close", (status) => { if (status === 0) process.exitCode = 0; });
 }
-send(initial);
-let pending = "";
-let bytes = 0;
-let done = false;
-child.stdout.setEncoding("utf8");
-child.stdout.on("data", (chunk) => {
-  if (done) return;
-  bytes += Buffer.byteLength(chunk);
-  if (bytes > ${maxProbeStreamOutputBytes}) {
-    done = true;
-    // Trip the supervisor's output bound. It owns cleanup of the entire process group.
-    process.stderr.write(Buffer.alloc(${maxProbeStreamOutputBytes} + 1));
-    return;
+function run(initial) {
+  const child = spawn(agent, args, { stdio: ["pipe", "pipe", "ignore"] });
+  child.on("error", () => {});
+  child.stdin.on("error", () => {});
+  function send(message) {
+    child.stdin.write(JSON.stringify(message) + "\\n");
   }
-  const lines = (pending + chunk).split("\\n");
-  pending = lines.pop();
-  for (const line of lines) {
-    let message;
-    try { message = JSON.parse(line); } catch { continue; }
-    const result = receive(message);
-    if (result === undefined) continue;
-    if (typeof result === "function") child.once("close", result);
-    else if (result && typeof result === "object") {
-      process.stdout.write(JSON.stringify(result));
-      process.exitCode = 0;
+  send(initial);
+  let pending = "";
+  let done = false;
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    if (done) return;
+    bytes += Buffer.byteLength(chunk);
+    if (bytes > ${maxProbeStreamOutputBytes}) {
+      done = true;
+      // Trip the supervisor's output bound. It owns cleanup of the entire process group.
+      process.stderr.write(Buffer.alloc(${maxProbeStreamOutputBytes} + 1));
+      return;
     }
-    done = true;
-    child.stdin.end();
-    return;
-  }
-});
+    const lines = (pending + chunk).split("\\n");
+    pending = lines.pop();
+    for (const line of lines) {
+      let message;
+      try { message = JSON.parse(line); } catch { continue; }
+      const result = receive(message, send, run);
+      if (result === undefined) continue;
+      if (typeof result === "function") child.once("close", result);
+      else if (result && typeof result === "object") {
+        process.stdout.write(JSON.stringify(result));
+        process.exitCode = 0;
+      }
+      done = true;
+      child.stdin.end();
+      return;
+    }
+  });
+}
+run(initial);
 `;
 }
 
@@ -115,8 +120,11 @@ export async function probeQuota(
   }
   if (error?.code === "ABORT_ERR") return [];
   const failed = result.status !== 0 || error !== undefined;
-  if (account.agent === "claude" && result.stdout.startsWith(fallbackMarker)) {
-    return readClaudeFallback(failed ? undefined : result.stdout.slice(fallbackMarker.length));
+  if (account.agent === "claude") {
+    reportUnverifiedSettings(result.stderr);
+    if (result.stdout.startsWith(fallbackMarker)) {
+      return readClaudeFallback(failed ? undefined : result.stdout.slice(fallbackMarker.length));
+    }
   }
   if (failed) return [];
   const native: unknown = JSON.parse(result.stdout);

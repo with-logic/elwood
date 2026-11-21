@@ -9,7 +9,7 @@ if (profileDir !== undefined) {
 }
 const args = ["app-server", "--listen", "stdio://"];
 const initial = { id: 1, method: "initialize", params: { clientInfo: { name: "elwood", version: "1" } } };
-function receive(message) {
+function receive(message, send) {
   if (message?.id === 1) {
     if (!message.result) return null;
     send({ method: "initialized" });

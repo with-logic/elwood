@@ -2943,7 +2943,17 @@ no session persistence, and sent no user message. Its signed-in response
 included server-selected weekly and model-specific rows and omitted a five-hour
 window. The API also supplies legacy utilization fields on older response shapes.
 
+On macOS, Claude Code 2.1.330 returned no subscription windows when a temporary
+`.zshrc` exported a synthetic `ANTHROPIC_API_KEY`. Removing that variable from
+the quota subprocess after shell startup restored subscription windows with the default
+sign-in and no `CLAUDE_CONFIG_DIR` override (C-STATS-03).
+The same version reported a gateway URL set in user settings in the
+`get_settings` control response, so the quota probe can preserve a shell key
+when Claude loads the gateway configuration itself.
+
 Codex 0.170.0 answered `account/rateLimits/read` over app-server stdio after
 the initialize handshake. Closing stdin immediately after writing the requests
 lost the quota reply. Keeping it open until the matching response produced the
 account buckets. Both probes ran before any model turn (C-STATS-03).
+Codex 0.171.0 returned an account window both with and without synthetic
+`OPENAI_API_KEY` and `CODEX_API_KEY` exports in a temporary `.zshrc`.

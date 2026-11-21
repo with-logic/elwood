@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-20
+
+- Read Claude subscription quota for direct sign-ins even when the login shell
+  exports `ANTHROPIC_API_KEY`, including through headless `/usage`.
+
 ## [0.6.0] - 2026-11-20
 
 - Read session status, token usage, active subagent counts, and observed Codex
