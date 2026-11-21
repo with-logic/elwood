@@ -1,5 +1,5 @@
 /** Exercise Claude usage fallback selection at the process boundary (C-STATS-05). */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { readAccountUsage } from "../../src/index.ts";
@@ -78,6 +78,7 @@ test.each([
   const f = usageProtocolFixture(rc);
   const expectedConfigDir = currentSignIn ? undefined : f.root;
   const marker = join(f.root, "fallback-invoked");
+  const usageRequests = join(f.root, "structured-requests");
   f.cli(
     "claude",
     `
@@ -95,6 +96,9 @@ test.each([
     } else {
       require("node:readline").createInterface({input:process.stdin}).on("line", line => {
         const msg = JSON.parse(line);
+        if (msg.request?.subtype === "get_usage") {
+          require("node:fs").appendFileSync(${JSON.stringify(usageRequests)}, "get_usage\\n");
+        }
         const reply = msg.request?.subtype === "get_settings"
           ? {subtype:"success",response:{effective:${JSON.stringify(effective)}}}
           : {subtype:"error",error:${JSON.stringify(error)}};
@@ -110,4 +114,5 @@ test.each([
   ]);
   expect(result?.windows[0]?.usedPercent).toBe(used);
   expect(existsSync(marker)).toBe(used !== undefined);
+  expect(readFileSync(usageRequests, "utf8")).toBe("get_usage\n");
 });

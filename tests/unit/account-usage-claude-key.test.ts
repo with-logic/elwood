@@ -13,14 +13,17 @@ afterEach(() => {
 const direct = { signedIn: true, key: false, used: 20, baseUrl: "", padding: 0, effective: {} };
 const canonicalOrigin = "https://api.anthropic.com";
 const gateway = "https://gateway.example.invalid";
+const shellApiKey = "fixture-shell-key";
 const keepKey = [
   ["settings gateway", { env: { ANTHROPIC_BASE_URL: gateway } }],
   ["managed gateway", { forceLoginGatewayUrl: gateway }],
   ["settings-owned key", { env: { ANTHROPIC_API_KEY: "fixture" } }],
+  ["settings bearer token", { env: { ANTHROPIC_AUTH_TOKEN: "fixture-token" } }],
   ["credential helper", { apiKeyHelper: "configured-helper" }],
   ["invalid settings", []],
   ["invalid environment", { env: null }],
   ["invalid endpoint", { env: { ANTHROPIC_BASE_URL: false } }],
+  ["malformed settings bearer token", { env: { ANTHROPIC_AUTH_TOKEN: null } }],
   ["older CLI", null],
 ] as const;
 
@@ -33,6 +36,11 @@ test.each([
     baseUrl: canonicalOrigin,
     effective: { env: { ANTHROPIC_BASE_URL: `${canonicalOrigin}/` } },
   },
+  {
+    ...direct,
+    name: "empty settings bearer token",
+    effective: { env: { ANTHROPIC_AUTH_TOKEN: "" } },
+  },
   ...keepKey.map(([name, effective]) => ({
     ...direct,
     name,
@@ -43,11 +51,11 @@ test.each([
   { ...direct, name: "combined output limit", padding: 600_000, used: undefined },
 ])("C-STATS-03 chooses Claude credentials after shell startup for $name", async (scenario) => {
   const { baseUrl, effective, key, padding, signedIn, used } = scenario;
-  for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR"]) {
-    vi.stubEnv(name, undefined);
+  for (const name of Object.keys(process.env)) {
+    if (/^(?:CLAUDE_|ANTHROPIC_|CLAUDECODE$)/.test(name)) vi.stubEnv(name, undefined);
   }
   const fixture = usageProtocolFixture(
-    `export ANTHROPIC_API_KEY=fixture ANTHROPIC_BASE_URL="${baseUrl}"`,
+    `export ANTHROPIC_API_KEY=${shellApiKey} ANTHROPIC_BASE_URL="${baseUrl}"`,
   );
   const keyMarker = join(fixture.root, "usage-key-present");
   fixture.cli(
@@ -66,6 +74,7 @@ test.each([
           ? {subtype:"error", error:"Unsupported control request subtype"}
           : {subtype:"success", response:{effective}};
       } else if (msg.request.subtype === "get_usage") {
+        if (keyPresent && process.env.ANTHROPIC_API_KEY !== ${JSON.stringify(shellApiKey)}) process.exit(2);
         fs.writeFileSync(${JSON.stringify(keyMarker)}, String(keyPresent));
         const subscribed = ${signedIn} && !keyPresent;
         reply = {subtype:"success", response:{

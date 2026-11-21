@@ -29,6 +29,7 @@ const agent = process.argv[1];
 const profileDir = process.argv[2];
 ${protocol}
 process.exitCode = 1;
+// The settings and quota invocations share the output cap across a restart.
 let bytes = 0;
 function relayFallback(args) {
   process.stdout.write(${JSON.stringify(fallbackMarker)});

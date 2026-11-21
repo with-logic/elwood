@@ -1,13 +1,13 @@
 /** Reads the structured or text report from an isolated Claude /usage probe (C-STATS-05). */
 import { isRecord } from "../../core/predicates.ts";
 import type { UsageWindow } from "../../core/usage/types.ts";
-import { logClaudeUsage } from "./diagnostics.ts";
+import { type ClaudeUsageDiagnostic, logClaudeUsage } from "./diagnostics.ts";
 import { legacyUsageWindows } from "./legacy.ts";
 import { claudeWindows } from "./windows.ts";
 
 export function readClaudeFallback(stdout: string | undefined): readonly UsageWindow[] {
   const windows = stdout === undefined ? [] : claudeFallbackWindows(stdout);
-  let message = "Claude account usage fallback succeeded.";
+  let message: ClaudeUsageDiagnostic = "Claude account usage fallback succeeded.";
   if (windows.length === 0) {
     message =
       stdout === undefined

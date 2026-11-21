@@ -15,8 +15,8 @@ const isolated = ["-p", "--output-format", "stream-json", "--verbose",
               "--settings", '{"disableAllHooks":true}', "--tools", ""];
 const args = [...isolated, "--input-format", "stream-json"];
 const usageRequest = { type: "control_request", request_id: "usage", request: { subtype: "get_usage", skip_behaviors: true } };
-// Print mode prefers an exported API key. Claude can load gateway routing
-// from settings, so check the effective settings before removing the key.
+// Print mode prefers an exported API key. Check effective settings for
+// gateway routing and configured credentials before removing the shell key.
 let awaitingSettings = Boolean(process.env.ANTHROPIC_API_KEY && isDefaultEndpoint(process.env.ANTHROPIC_BASE_URL));
 let settingsPermitFallback = true;
 const initial = awaitingSettings
@@ -32,11 +32,15 @@ function settingsCredentialPolicy(response) {
   const effective = response.subtype === "success" && response.response?.effective;
   if (!isRecord(effective) || (effective.env !== undefined && !isRecord(effective.env))) return undefined;
   const env = effective.env ?? {};
-  const routing = [env.ANTHROPIC_BASE_URL, env.ANTHROPIC_API_KEY, effective.forceLoginGatewayUrl, effective.apiKeyHelper];
-  if (routing.some(value => value !== undefined && typeof value !== "string")) return undefined;
+  const credentialSettings = [
+    env.ANTHROPIC_BASE_URL, env.ANTHROPIC_API_KEY, env.ANTHROPIC_AUTH_TOKEN,
+    effective.forceLoginGatewayUrl, effective.apiKeyHelper
+  ];
+  if (credentialSettings.some(value => value !== undefined && typeof value !== "string")) return undefined;
   return {
-    removeKey: isDefaultEndpoint(env.ANTHROPIC_BASE_URL) &&
-      !env.ANTHROPIC_API_KEY && !effective.forceLoginGatewayUrl && !effective.apiKeyHelper,
+    shouldRemoveApiKeyFromEnv: isDefaultEndpoint(env.ANTHROPIC_BASE_URL) &&
+      !env.ANTHROPIC_API_KEY && !env.ANTHROPIC_AUTH_TOKEN &&
+      !effective.forceLoginGatewayUrl && !effective.apiKeyHelper,
     allowFallback: standardCredentialEnvironment(env)
   };
 }
@@ -54,7 +58,7 @@ function receive(message, send, restart) {
     awaitingSettings = false;
     // Keep settings and any values they contain inside this subprocess.
     const policy = settingsCredentialPolicy(response);
-    if (policy?.removeKey) return () => {
+    if (policy?.shouldRemoveApiKeyFromEnv) return () => {
       settingsPermitFallback = policy.allowFallback;
       delete process.env.ANTHROPIC_API_KEY;
       restart(usageRequest);
