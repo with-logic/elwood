@@ -35,16 +35,24 @@ export function windowReadings(
   minutes?: unknown,
 ): UsageWindow[] {
   const percentages = quotaPercentages(usedPercent);
-  if (!percentages) return [];
-  return [
-    {
-      label,
-      ...optional(
-        isNonnegativeSafeInteger(minutes) && minutes > 0 ? minutes : undefined,
-        "windowMinutes",
-      ),
-      ...percentages,
-      ...optional(reset, "resetsAt"),
-    },
-  ];
+  return percentages ? [usageWindow(label, percentages, reset, minutes)] : [];
+}
+
+export function usageWindow(
+  label: string,
+  percentages: Pick<UsageWindow, "usedPercent" | "remainingPercent">,
+  reset: string | undefined,
+  minutes: unknown,
+): UsageWindow {
+  const { usedPercent, remainingPercent } = percentages;
+  return {
+    label,
+    ...optional(
+      isNonnegativeSafeInteger(minutes) && minutes > 0 ? minutes : undefined,
+      "windowMinutes",
+    ),
+    usedPercent,
+    remainingPercent,
+    ...optional(reset, "resetsAt"),
+  };
 }

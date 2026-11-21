@@ -1,4 +1,5 @@
 /** One captured probe’s event wiring, phase bounds and output ownership (PRD §9.2, C-PERF-03/05). */
+import { addAbortListener } from "node:events";
 import type { Readable } from "node:stream";
 import { exitStatus } from "../exit-status.ts";
 import { homeGuardStopMarker, homeGuardStopped, watchForStopMarker } from "../home-guard/index.ts";
@@ -32,7 +33,7 @@ export function runCapturedProbe(
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
     const run = new ProbeRun(command, args, capture, options, timeouts, resolve);
-    run.start();
+    run.start(options.signal);
   });
 }
 
@@ -47,6 +48,7 @@ class ProbeRun {
   private readonly guardStop = watchForStopMarker();
   private readonly expectsStartLine: boolean;
   private readonly directory: ProbeDirectoryRefusal;
+  private abortListener: Disposable | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private commandExit:
     | { readonly code: number | null; readonly signal: NodeJS.Signals | null }
@@ -80,7 +82,7 @@ class ProbeRun {
     this.expectsStartLine = announcesStart(args);
   }
 
-  start(): void {
+  start(signal: AbortSignal | undefined): void {
     const child = this.process.child;
     child.stdout.on("data", this.onStdout);
     this.capture.watch(this.process.output, { overflowed: this.onOverflow, ended: this.finish });
@@ -88,6 +90,7 @@ class ProbeRun {
     child.on("error", this.onError);
     this.process.onExit(this.onExit);
     this.timer = this.boundBy(this.timeouts.launch(), launchTimedOut);
+    if (signal) this.abortListener = addAbortListener(signal, this.onAbort);
   }
 
   private capturedOutput(): [string, string] {
@@ -126,6 +129,16 @@ class ProbeRun {
   };
 
   private readonly onOverflow = (): void => this.abort(overflow(...this.capturedOutput()));
+
+  private readonly onAbort = (): void => {
+    const [stdout, stderr] = this.capturedOutput();
+    this.abort({
+      status: null,
+      stdout,
+      stderr,
+      error: { code: "ABORT_ERR", message: "probe canceled" },
+    });
+  };
 
   private readonly onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
     // Command exit keeps the supervisor alive; its phase bound still owns inherited FIFO writers.
@@ -167,6 +180,7 @@ class ProbeRun {
 
   private releaseCapture(): void {
     clearTimeout(this.timer);
+    this.abortListener?.[Symbol.dispose]();
     this.control.off("data", this.onControl);
     this.process.child.stdout.off("data", this.onStdout);
     this.process.child.off("error", this.onError);

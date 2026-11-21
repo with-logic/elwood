@@ -33,6 +33,7 @@ export type SessionStatusEmitter = CompactEmitter &
     on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;
     on(event: "hook", handler: (event: TurnBoundaryHook) => void): Unsubscribe;
     on(event: "terminal:data", handler: () => void): Unsubscribe;
+    on(event: "terminal:exit", handler: () => void): Unsubscribe;
   };
 
 type StatusWiringInput = {

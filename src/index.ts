@@ -136,6 +136,7 @@ export {
   codexServiceTierChoices,
 } from "./core/speed/types.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
+export type { QuotaSnapshot, SessionStats } from "./core/stats/snapshot-types.ts";
 export type {
   ClaudeTokenUsage,
   CodexRateLimits,
@@ -167,6 +168,6 @@ export type {
   TerminalSize,
   Unsubscribe,
 } from "./core/types.ts";
-export { readAccountUsage } from "./core/usage/index.ts";
+export { createAccountUsageReader, readAccountUsage } from "./core/usage/index.ts";
 export type { AccountUsage, UsageAccount, UsageWindow } from "./core/usage/types.ts";
 export type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "./terminal/headless.ts";

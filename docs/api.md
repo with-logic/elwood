@@ -69,10 +69,9 @@ spawn.
 
 ## Common surface
 
-Both sessions satisfy the exported `ElwoodAgentSession` type. Code generic over
-"any agent session" should use it; it covers the shared events, io, commands,
-loops, and lifecycle. The sketch below is illustrative, not the exact
-declaration:
+Both sessions satisfy the exported `ElwoodAgentSession` type. It covers shared
+events, I/O, commands, loops, lifecycle, and dashboard stats. The interface below
+shows common calls. [Dashboard stats](embedding.md#session-stats-snapshots)
 
 ```ts
 interface ElwoodAgentSession {
@@ -82,6 +81,7 @@ interface ElwoodAgentSession {
   readonly terminal: ElwoodTerminal;
 
   statusDecisions(): readonly ElwoodStatusDecision[];
+  getStats(): Promise<SessionStats>;
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number): Promise<ElwoodSessionStatus>;
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number): Promise<ElwoodActivityEvent>;
 

@@ -13,15 +13,17 @@ import {
 } from "../../core/warnings/reasons.ts";
 
 /**
- * Unconfirmed cleanup names both the reason and the group still outstanding; confirmed
- * cleanup names neither. Both fields are optional because `CommandResult` intersects this
- * into an error shape that exists for every failed probe, not only aborted ones — the two
- * are nevertheless always written together, by `abortProbe` alone.
+ * Unconfirmed cleanup names both the reason and the group still outstanding.
+ * The group ID is diagnostic only because the original group may have exited.
  */
-export type ProbeCleanup = {
-  readonly cleanupErrorCode?: ReapErrorCode | "ETIMEDOUT";
-  readonly cleanupProcessGroupId?: number;
+export type UnconfirmedProbeCleanup = {
+  readonly cleanupErrorCode: ReapErrorCode | "ETIMEDOUT";
+  readonly cleanupProcessGroupId: number;
 };
+
+export type ProbeCleanup =
+  | UnconfirmedProbeCleanup
+  | { readonly cleanupErrorCode?: never; readonly cleanupProcessGroupId?: never };
 
 const cleanupWindowMs = 1_000;
 const leaderFallbackAfterMs = 500;
@@ -71,9 +73,10 @@ export async function abortProbe(
   child: ChildProcess,
   { keepEventLoopAlive = false }: { readonly keepEventLoopAlive?: boolean } = {},
 ): Promise<ProbeCleanup> {
-  // Abort only follows timeout/output from a successfully spawned process, and
-  // a detached child leads the process group named by its own pid.
-  const processGroupId = child.pid!;
+  // Cancellation can arrive before Node delivers a failed spawn's error.
+  // A successfully spawned detached child owns the group named by its pid.
+  const processGroupId = child.pid;
+  if (processGroupId === undefined) return {};
   child.stdin?.destroy();
   child.stdout?.destroy();
   child.stderr?.destroy();

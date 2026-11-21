@@ -1,35 +1,17 @@
 /** Exercise C-STATS-03 at both real process boundaries with isolated native CLI stand-ins. */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { readAccountUsage } from "../../src/index.ts";
-import * as shell from "../../src/runtime/shell.ts";
-import { tempDir } from "../helpers/tmp.ts";
+import { usageProtocolFixture } from "../helpers/account-usage-protocol.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
-function fixture(rc = "") {
-  const root = tempDir("usage-protocol-");
-  vi.stubEnv("HOME", root);
-  vi.stubEnv("TERM_PROGRAM", "");
-  vi.spyOn(shell, "userShell").mockReturnValue("/bin/bash");
-  writeFileSync(
-    join(root, ".bash_profile"),
-    `export PATH=${shell.shellQuote(root)}:/usr/bin:/bin\n${rc}\n`,
-  );
-  return {
-    root,
-    cli(name: string, body: string) {
-      writeFileSync(join(root, name), `#!${process.execPath}\n${body}\n`, { mode: 0o700 });
-    },
-  };
-}
-
 test("C-STATS-03 reads fresh balances for distinct profiles before a model turn", async () => {
-  const f = fixture();
+  const f = usageProtocolFixture();
   const personal = join(f.root, "personal 'account");
   mkdirSync(personal);
   f.cli(
@@ -79,7 +61,7 @@ test("C-STATS-03 reads fresh balances for distinct profiles before a model turn"
 });
 
 test("C-STATS-03 a profile overwritten by the login shell never displays the wrong balance", async () => {
-  const f = fixture("export CODEX_HOME=/unexpected");
+  const f = usageProtocolFixture("export CODEX_HOME=/unexpected");
   const launched = join(f.root, "launched");
   f.cli("codex", `require("node:fs").writeFileSync(${JSON.stringify(launched)}, "wrong account");`);
   const [account] = await readAccountUsage([{ agent: "codex", label: "Work", configDir: f.root }]);
@@ -88,7 +70,7 @@ test("C-STATS-03 a profile overwritten by the login shell never displays the wro
 });
 
 test("C-STATS-03 a native refusal or oversized reply yields unavailable", async () => {
-  const f = fixture();
+  const f = usageProtocolFixture();
   const pidFile = join(f.root, "helper.pid");
   f.cli(
     "claude",
@@ -107,7 +89,9 @@ test("C-STATS-03 a native refusal or oversized reply yields unavailable", async 
 });
 
 test("C-STATS-03 an explicit Claude profile uses its own credential store after login-shell startup", async () => {
-  const f = fixture("export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake");
+  const f = usageProtocolFixture(
+    "export CLAUDE_SECURESTORAGE_CONFIG_DIR=/other CLAUDE_CODE_OAUTH_TOKEN=fake",
+  );
   f.cli(
     "claude",
     `
@@ -130,7 +114,7 @@ test("C-STATS-03 an explicit Claude profile uses its own credential store after 
 });
 
 test("C-STATS-03 an explicit Codex profile ignores a login-shell token while the current sign-in keeps it", async () => {
-  const f = fixture("export CODEX_ACCESS_TOKEN=synthetic-test-token");
+  const f = usageProtocolFixture("export CODEX_ACCESS_TOKEN=synthetic-test-token");
   f.cli(
     "codex",
     `

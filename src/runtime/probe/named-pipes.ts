@@ -4,6 +4,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { addAbortListener } from "node:events";
 import { closeSync, constants, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -130,13 +131,23 @@ export class NamedPipeCapture implements ProbeCapture {
    * Bounds the `mkfifo` child, killing and reaping it on expiry. Filesystem operations
    * outside that child are not timed; setup failures release partial pipes and the directory.
    */
-  static async create(setupTimeoutMs = probeOutputSetupTimeoutMs): Promise<NamedPipeCapture> {
+  static async create(
+    setupTimeoutMs = probeOutputSetupTimeoutMs,
+    signal?: AbortSignal,
+  ): Promise<NamedPipeCapture> {
     const capture = new NamedPipeCapture(makePrivateDirectory());
     try {
-      await run(mkfifo, ["-m", pipeMode, ...capture.pipes.map((pipe) => pipe.path)], {
+      const creation = run(mkfifo, ["-m", pipeMode, ...capture.pipes.map((pipe) => pipe.path)], {
         timeout: setupTimeoutMs,
         killSignal: "SIGKILL",
       });
+      // Let execFile deliver the child's close before releasing its directory.
+      using _abortListener = signal
+        ? addAbortListener(signal, () => {
+            creation.child.kill("SIGKILL");
+          })
+        : undefined;
+      await creation;
       for (const pipe of capture.pipes) pipe.open();
       return capture;
     } catch (error) {

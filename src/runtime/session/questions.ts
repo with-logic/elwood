@@ -12,11 +12,11 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
-import { SessionLifecycle } from "./lifecycle.ts";
 import type { SessionInputOwnership } from "./session-input.ts";
+import { SessionStatsReader } from "./stats.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
-export abstract class QuestionSessionBase extends SessionLifecycle {
+export abstract class QuestionSessionBase extends SessionStatsReader {
   private readonly questions: SessionQuestions;
   protected constructor(
     agent: ElwoodAgentKind,

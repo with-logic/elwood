@@ -5,6 +5,8 @@
  * a shell for every probe at once and slow all of them. Implements PRD §9.2 and C-PERF-07.
  */
 
+import { addAbortListener } from "node:events";
+
 /**
  * At most this many probes run at once; the rest wait their turn in arrival order. Eight keeps a
  * heavy profile near 5 s per probe on a loaded 16-CPU host, against about 2 s at four and 7-19 s
@@ -15,18 +17,59 @@
 export const maxConcurrentProbes = 8;
 
 let running = 0;
-const waiting: (() => void)[] = [];
+
+type Waiter = {
+  readonly admit: () => void;
+  previous: Waiter | undefined;
+  next: Waiter | undefined;
+};
+
+let firstWaiter: Waiter | undefined;
+let lastWaiter: Waiter | undefined;
 
 /** Runs `probe` once a slot is free, and frees the slot when it settles either way. */
-export async function withProbeSlot<T>(probe: () => Promise<T>): Promise<T> {
+export async function withProbeSlot<T>(probe: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   if (running < maxConcurrentProbes) running += 1;
-  else await new Promise<void>((resolve) => waiting.push(resolve));
+  else await waitForProbeSlot(signal);
   try {
+    signal?.throwIfAborted();
     return await probe();
   } finally {
     // Hand the slot straight to the longest waiter, so a newcomer cannot take it first.
-    const next = waiting.shift();
-    if (next) next();
-    else running -= 1;
+    const next = firstWaiter;
+    if (next) {
+      removeWaiter(next);
+      next.admit();
+    } else running -= 1;
   }
+}
+
+function waitForProbeSlot(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const waiter: Waiter = {
+      admit: () => {
+        abortListener?.[Symbol.dispose]();
+        resolve();
+      },
+      previous: lastWaiter,
+      next: undefined,
+    };
+    const abortListener = signal
+      ? addAbortListener(signal, () => {
+          removeWaiter(waiter);
+          reject(signal.reason);
+        })
+      : undefined;
+    if (lastWaiter) lastWaiter.next = waiter;
+    else firstWaiter = waiter;
+    lastWaiter = waiter;
+  });
+}
+
+function removeWaiter({ previous, next }: Waiter): void {
+  if (previous) previous.next = next;
+  else firstWaiter = next;
+  if (next) next.previous = previous;
+  else lastWaiter = previous;
 }
