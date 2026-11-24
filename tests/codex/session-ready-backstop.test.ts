@@ -56,6 +56,7 @@ test.each([
   await vi.advanceTimersByTimeAsync(59_900);
   expect(statuses).toEqual([]);
   expect(warnings).toEqual([]);
+  expect(activity.some((event) => event.kind === "unrecognized_startup")).toBe(false);
   await vi.advanceTimersByTimeAsync(200); // the backstop runs from the first rendered frame
   expect(statuses).toEqual([]);
   expect(ptys[0]!.writes).toEqual([]);
@@ -86,7 +87,10 @@ test.each([
       text: expect.stringContaining(sentinel),
     },
   ]);
+  const lateEvents: ElwoodActivityEvent[] = [];
+  session.on("activity", (event) => lateEvents.push(event));
   await vi.advanceTimersByTimeAsync(60_000);
+  expect(lateEvents.some((event) => event.kind === "unrecognized_startup")).toBe(false);
   expect(warnings).toHaveLength(1);
   expect(unrecognized()).toHaveLength(1);
   expect(ptys[0]!.writes).toEqual([]);
@@ -156,6 +160,8 @@ test("C-ATTN-06 the startup activity uses live screen text while the host views 
   pty.emitData("\u001b[2J\u001b[HNew native startup screen");
   await settleFrame(session);
   expect(session.terminal.snapshot().text).toContain("Earlier startup output");
+  pty.emitData("\u001b[?2026h\u001b[2J\u001b[HIncomplete startup repaint");
+  await settleFrame(session);
   session.on("activity", (event) => {
     if (event.kind === "unrecognized_startup") throw new Error("listener failure");
   });
@@ -164,10 +170,26 @@ test("C-ATTN-06 the startup activity uses live screen text while the host views 
       ? Promise.reject(new Error("listener rejection"))
       : undefined,
   );
+  const finalListener = vi.fn();
+  session.on("activity", finalListener);
   await vi.advanceTimersByTimeAsync(60_100);
+  expect(finalListener).toHaveBeenCalledWith(
+    expect.objectContaining({ kind: "unrecognized_startup", text: "New native startup screen" }),
+  );
   expect(activity.filter((event) => event.kind === "unrecognized_startup")).toMatchObject([
     { text: "New native startup screen" },
   ]);
   expect(warnings.map(({ code }) => code)).toEqual(["initial_ready_backstop"]);
   expect(pty.writes).toEqual([]);
+});
+
+test("C-ATTN-06 a completed blank startup screen has empty text", async () => {
+  const { session, warnings, activity } = await start();
+  ptys[0]!.emitData("\u001b[2J\u001b[H");
+  await settleFrame(session);
+  await vi.advanceTimersByTimeAsync(60_100);
+  expect(activity.filter((event) => event.kind === "unrecognized_startup")).toMatchObject([
+    { text: "" },
+  ]);
+  expect(warnings.map(({ code }) => code)).toEqual(["initial_ready_backstop"]);
 });

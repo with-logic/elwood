@@ -2,7 +2,10 @@
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 
 type FixtureActivity = Omit<
-  Exclude<ElwoodActivityEvent, { kind: "question" | "assistant_progress" }>,
+  Exclude<
+    ElwoodActivityEvent,
+    { kind: "question" | "assistant_progress" | "unrecognized_startup" }
+  >,
   "speed" | "tokenUsage" | "rateLimits" | "subagent"
 > & { readonly speed?: never };
 

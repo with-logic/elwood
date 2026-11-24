@@ -1,6 +1,8 @@
 /** Bound the live-only Codex startup screen activity (PRD §5.4, C-ATTN-06). */
 import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 
+const maxStartupScreenCodeUnits = 8_192;
+
 export type UnrecognizedStartupActivity = {
   readonly elwoodSessionId: string;
   readonly agent: "codex";
@@ -16,7 +18,8 @@ export function unrecognizedStartupActivity(
 ): UnrecognizedStartupActivity {
   const text = screen
     .trimEnd()
-    .slice(-8192)
+    .slice(-maxStartupScreenCodeUnits)
+    // Drop the low surrogate if the cut fell inside a character.
     .replace(/^[\udc00-\udfff]/u, "");
   return {
     elwoodSessionId,

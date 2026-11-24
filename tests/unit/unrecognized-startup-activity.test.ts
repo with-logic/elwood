@@ -6,3 +6,8 @@ test("C-ATTN-06 keeps the bounded trailing screen without splitting a surrogate 
   const screen = `prefix😀${"a".repeat(8191)}\n\n`;
   expect(unrecognizedStartupActivity("session", screen).text).toBe("a".repeat(8191));
 });
+
+test("C-ATTN-06 retains exactly 8192 code units when the cut is a character boundary", () => {
+  const tail = "x".repeat(8_192);
+  expect(unrecognizedStartupActivity("session", `prefix${tail}  \n`).text).toBe(tail);
+});

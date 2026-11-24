@@ -8,6 +8,7 @@ import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "..
 import * as meta from "./meta.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
+import type { UnrecognizedStartupActivity } from "./startup.ts";
 export type ElwoodAgentKind = "claude" | "codex";
 export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
 export type ElwoodActivityKind =
@@ -71,9 +72,10 @@ export type ElwoodActivityEvent = ActivityFields &
     | {
         readonly kind: Exclude<
           ElwoodActivityKind,
-          "question" | "assistant_progress" | "user_message"
+          "question" | "assistant_progress" | "user_message" | "unrecognized_startup"
         >;
       }
+    | UnrecognizedStartupActivity
     | {
         readonly kind: "assistant_progress";
         readonly agent: "codex";

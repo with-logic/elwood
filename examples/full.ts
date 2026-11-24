@@ -49,8 +49,9 @@ async function startSession(options: Options): Promise<ExampleSession> {
 
 function wireLogs(session: ExampleSession): void {
   session.on("activity", (event) => {
+    const text = event.kind === "unrecognized_startup" ? undefined : event.text;
     process.stdout.write(
-      `[activity] ${event.agent}:${event.kind}:${event.label}${textSuffix(event.text)}\n`,
+      `[activity] ${event.agent}:${event.kind}:${event.label}${textSuffix(text)}\n`,
     );
   });
   session.on("warning", (event) => {
