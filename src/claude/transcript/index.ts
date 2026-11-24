@@ -83,8 +83,7 @@ export class ClaudeTranscriptWatcher {
     if (recoverTail) {
       const tail = this.guard.read(path, () => cursor.baselineTail());
       this.lines.emitLines(path, tail?.text ?? "");
-      // A turn larger than the recovery window surfaces its out-of-window records as
-      // one bounded, content-free backlog drop warning so the gap is not silent (§5.4).
+      // Report unread earlier records with one content-free backlog warning (§5.4).
       if (tail?.truncated && tail.droppedBytes > 0) this.drops.drop(path, "unread_backlog");
       this.drops.flushPass(); // deliver this observe's coalesced drops
     }

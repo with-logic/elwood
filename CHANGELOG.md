@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep Claude transcript recovery responsive when invalid UTF-8 prevents a
+  backward scan from advancing.
+
 - Surface the last live screen as structured activity when Codex startup is
   held on an unrecognized screen.
 
