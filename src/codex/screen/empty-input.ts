@@ -10,5 +10,5 @@ export function codexEmptyInputFrame(terminal: ElwoodTerminal) {
 /** The empty-input grammar at the terminal's own width, which a wrapped footer is judged by. */
 export function codexEmptyInputMatcherFor(terminal: ElwoodTerminal) {
   return (rows: readonly string[], cursorRow: number): boolean =>
-    codexComposerRowsEmpty(rows, { cursorRow, cols: terminal.size.cols });
+    codexComposerRowsEmpty(rows, { cursorRow, cols: terminal.xterm.cols });
 }

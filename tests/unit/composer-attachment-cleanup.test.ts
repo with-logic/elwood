@@ -61,6 +61,7 @@ test.each([
     closing.signal,
     () => rawInput.signal,
     () => (screen === "❯ " ? frame : undefined),
+    () => () => true,
   );
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {

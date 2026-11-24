@@ -126,7 +126,7 @@ class HeadlessTerminal implements ElwoodTerminal {
     const revision = alreadyReceived ? this.cursor.queued() : this.cursor.received();
     const arrival = this.cursor.arrival;
     return this.renders.enqueue(data, () => {
-      this.cursor.rendered(revision, arrival);
+      this.cursor.rendered(revision, arrival, alreadyReceived);
       onRendered?.();
     });
   }

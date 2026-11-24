@@ -10,7 +10,7 @@ export function readStagedComposer(
   emptyRow: string,
 ): string | undefined {
   return readStagedComposerFrame(
-    readIdleComposerFrame(terminal, table),
+    readCandidateComposerFrame(terminal, table),
     matchesEmptyInput,
     emptyRow,
   );
@@ -18,7 +18,7 @@ export function readStagedComposer(
 
 /** Reuse one completed idle-frame classification for normal and whitespace drafts. */
 export function readStagedComposerFrame(
-  current: ReturnType<typeof readIdleComposerFrame>,
+  current: ReturnType<typeof readCandidateComposerFrame>,
   matchesEmptyInput: (rows: readonly string[], cursorRow: number) => boolean,
   emptyRow: string,
 ): string | undefined {
@@ -43,7 +43,7 @@ export function readStagedComposerFrame(
 
 /** A whitespace draft is visible only through its advanced caret on the live prompt row. */
 export function readStagedWhitespace(
-  current: ReturnType<typeof readIdleComposerFrame>,
+  current: ReturnType<typeof readCandidateComposerFrame>,
   matchesEmptyInput: (rows: readonly string[], cursorRow: number) => boolean,
   emptyRow: string,
 ): boolean {
@@ -55,14 +55,14 @@ export function readStagedWhitespace(
   return matchesEmptyInput(normalized, cursorRow);
 }
 
-export function readIdleComposerFrame(terminal: ElwoodTerminal, table: ScreenFactTable) {
+/** Candidate live rows. The caller still verifies native composer geometry. */
+export function readCandidateComposerFrame(terminal: ElwoodTerminal, table: ScreenFactTable) {
   const frame = settledLiveSnapshot(terminal);
   // The native caret prefix occupies two cells; staged text/chips advance beyond them.
   if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX < 2) return undefined;
   const { facts } = readScreenFacts(table, { text: frame.text, title: terminal.title });
   if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
   const cursorRow = frame.cursorY;
-  const cursorLine = frame.lines[cursorRow];
-  if (cursorLine === undefined) return undefined;
-  return { frame, cursorRow, cursorLine };
+  // The live snapshot has xterm's actual row count, which bounds cursorY.
+  return { frame, cursorRow, cursorLine: frame.lines[cursorRow]! };
 }

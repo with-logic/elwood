@@ -115,7 +115,7 @@ test.each([
   }
 });
 
-test("C-API-56 a resize without native output cannot acknowledge draft cleanup", async () => {
+test("C-API-56 a resize or host repaint cannot acknowledge draft cleanup", async () => {
   const { session, abort } = await staged(false);
   const pty = ptys[0]!;
   const composer = `\u001b[2J\u001b[H${claudeTty(claudeComposer)}`;
@@ -141,6 +141,10 @@ test("C-API-56 a resize without native output cannot acknowledge draft cleanup",
     xterm.resize(width + 2, xterm.rows);
     xterm.resize(width, xterm.rows);
     await vi.advanceTimersByTimeAsync(350);
+    expect(pty.writes.at(-1)).toBe(clear);
+    const hostRepaint = session.terminal.writeOutput(composer);
+    await vi.advanceTimersByTimeAsync(100);
+    await hostRepaint;
     expect(pty.writes.at(-1)).toBe(clear);
     pty.emitData(composer);
     await vi.advanceTimersByTimeAsync(350);

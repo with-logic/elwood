@@ -47,7 +47,7 @@ export class ComposerCleanup {
   private readonly closing: AbortSignal;
   private readonly rawInputSignal: () => AbortSignal;
   private readonly observeEmpty: EmptyComposerObserver;
-  private readonly captureProgress: () => () => boolean;
+  private readonly captureRenderProgress: () => () => boolean;
   /** Register this owner before any stage/submit hooks or queued operation. */
   constructor(
     terminal: InputTerminal,
@@ -55,14 +55,14 @@ export class ComposerCleanup {
     closing: AbortSignal,
     rawInputSignal: () => AbortSignal,
     observeEmpty: EmptyComposerObserver,
-    captureProgress: () => () => boolean = () => () => true,
+    captureRenderProgress: () => () => boolean,
   ) {
     this.terminal = terminal;
     this.blocked = blocked;
     this.closing = closing;
     this.rawInputSignal = rawInputSignal;
     this.observeEmpty = observeEmpty;
-    this.captureProgress = captureProgress;
+    this.captureRenderProgress = captureRenderProgress;
     this.baseline = rawInputSignal();
     owners.set(terminal, this);
     closing.addEventListener(
@@ -145,7 +145,7 @@ export class ComposerCleanup {
         this.blocked,
         this.observeEmpty,
         signal,
-        this.captureProgress,
+        this.captureRenderProgress,
       );
     } catch {
       throwIfInputAborted(signal);

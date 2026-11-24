@@ -68,8 +68,10 @@ export class SessionInputOwnership {
       origin = undefined;
       try {
         if (writing === undefined) revoke();
-        // Caller keys keep xterm's scroll policy. Internal keys stay behind scrollback.
-        input(data, writing === "automation" ? false : wasUserInput);
+        // Keep xterm's input fast path at the live edge and retain history during automation.
+        const buffer = inner.xterm.buffer.active;
+        const keepHistory = writing === "automation" && buffer.viewportY !== buffer.baseY;
+        input(data, keepHistory ? false : wasUserInput);
       } finally {
         origin = writing;
       }
@@ -104,7 +106,7 @@ export class SessionInputOwnership {
       closing,
       () => this.signal(),
       observeEmpty,
-      () => captureRenderProgress(this.automated),
+      () => captureRenderProgress(this.automated, "pty"),
     );
     return (work, signal) => cleanup.run(work, signal);
   }

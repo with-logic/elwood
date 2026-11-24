@@ -31,18 +31,7 @@ export class PickerTransactions {
     deps.observeRendered?.((read) => this.foreignPickerHoldsInput(read));
   }
 
-  /**
-   * Whether a model dialog is on screen that queued input must not be written into.
-   *
-   * TWO cases, and the difference matters. A SURVIVOR is a dialog our own cleanup could not
-   * cancel, or what its cleanup left on a frame that is not positively clear (a blank or
-   * half-painted repaint): it is ours, and it is remembered until the composer is clear. A
-   * dialog nobody here opened — a human who typed `/model` themselves — is NOT ours and
-   * never becomes a survivor, but Enter on it still applies its highlighted row, and Escape
-   * still discards the human's state. So writes are held on any visible model dialog,
-   * whoever opened it; ownership decides what Elwood may DRIVE, not what it may safely type
-   * over (C-API-55).
-   */
+  /** Hold input for a picker that survived Elwood's cleanup until verified clearance. */
   blocksInput(): boolean {
     if (this.survivor === undefined) return false;
     const text = this.deps.terminal.snapshot().text;

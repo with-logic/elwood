@@ -56,6 +56,7 @@ export function replayFixture() {
     closing.signal,
     () => raw.signal,
     guard.emptyFrame,
+    () => () => true,
   );
   const queue = new ControlQueue(
     (input, mode, signal, onSubmitted) =>

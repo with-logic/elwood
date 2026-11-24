@@ -17,6 +17,7 @@ function setup(initiallyEmpty = false) {
     lifetime.signal,
     () => human.signal,
     () => (empty ? frame : undefined),
+    () => () => true,
   );
   const fail = () =>
     owner.run(() => {
@@ -90,6 +91,7 @@ test.each([
     closing.signal,
     () => closing.signal,
     () => frame,
+    () => () => true,
   );
   await expect(
     owner.run(() => {
@@ -143,6 +145,7 @@ test("C-API-56 closing between native acknowledgement and token release stays cl
       queueMicrotask(() => closing.abort());
       return {};
     },
+    () => () => true,
   );
   await expect(
     owner.run(() => {

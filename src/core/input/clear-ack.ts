@@ -9,9 +9,9 @@ import {
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
 
 /**
- * Positive empty-composer evidence: reuse one token for each completed frame and
- * return a distinct token only for a later completed frame, never for each poll.
- * Return undefined when there is no completed, positively empty native composer.
+ * Positive empty-composer evidence. The same cached rows and geometry share a
+ * token. Only the native progress check establishes new PTY output after a write.
+ * Return undefined until a completed frame proves the composer is empty.
  */
 export type EmptyComposerObserver = () => object | undefined;
 
@@ -20,11 +20,11 @@ export async function clearAndObserveComposer(
   blocked: () => boolean,
   observeEmpty: EmptyComposerObserver,
   signal: AbortSignal,
-  captureProgress: () => () => boolean,
+  captureRenderProgress: () => () => boolean,
 ): Promise<void> {
   const before = observeEmpty();
   throwIfInputAborted(signal);
-  const progressed = captureProgress();
+  const progressed = captureRenderProgress();
   await terminal.sendInput(composerClearKeys);
   const deadline = new AbortController();
   const timer = setTimeout(

@@ -19,6 +19,7 @@ function setup() {
     closing.signal,
     () => closing.signal,
     () => terminal.sendInput.mock.calls.at(-1),
+    () => () => true,
   );
   stageComposer(terminal);
   cleanup.defer();

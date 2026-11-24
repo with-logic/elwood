@@ -4,6 +4,7 @@ import type { ElwoodTerminal, TerminalSnapshot } from "./headless.ts";
 import { terminalSnapshot } from "./snapshot.ts";
 
 const tracked = new WeakMap<Terminal, RenderCursor>();
+type RenderSource = "any" | "pty";
 type CachedFrame = { readonly position: string; readonly frame: TerminalSnapshot };
 
 export function settledCursorVisible(terminal: Terminal): boolean {
@@ -29,8 +30,11 @@ export function hasUnknownOrNonPristineOutput(terminal: ElwoodTerminal): boolean
 }
 
 /** A recovery Enter requires output received after its own physical attempt (C-API-31). */
-export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
-  const progressed = tracked.get(terminal.xterm)?.captureProgress();
+export function captureRenderProgress(
+  terminal: ElwoodTerminal,
+  source: RenderSource = "any",
+): () => boolean {
+  const progressed = tracked.get(terminal.xterm)?.captureProgress(source);
   return () => progressed?.() === true && renderIsSettled(terminal);
 }
 
@@ -45,7 +49,7 @@ export function cachedLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
   const firstBufferRow = xterm.buffer.active.baseY;
   const read = () =>
     terminalSnapshot(xterm, { cols: xterm.cols, rows: xterm.rows }, firstBufferRow);
-  return tracked.get(terminal.xterm)?.snapshot(read, firstBufferRow) ?? read();
+  return tracked.get(terminal.xterm)?.snapshot(read) ?? read();
 }
 
 export class RenderCursor {
@@ -60,6 +64,7 @@ export class RenderCursor {
   private renderedRevision = -1;
   private arrivals = 0;
   private renderedArrivals = 0;
+  private renderedPtyArrival = 0;
   private visible = true;
   private readonly handlers: readonly { dispose(): void }[];
 
@@ -103,15 +108,16 @@ export class RenderCursor {
   get arrival(): number {
     return this.arrivals;
   }
-  rendered(revision: number, arrival: number): void {
+  rendered(revision: number, arrival: number, fromPty: boolean): void {
     this.renderedRevision = revision;
     this.renderedArrivals = arrival;
+    if (fromPty) this.renderedPtyArrival = arrival;
     this.cachedFrame = undefined;
     for (const listener of this.listeners) listener();
   }
-  captureProgress(): () => boolean {
+  captureProgress(source: RenderSource): () => boolean {
     const before = this.arrivals;
-    return () => this.renderedArrivals > before;
+    return () => (source === "pty" ? this.renderedPtyArrival : this.renderedArrivals) > before;
   }
   get settled(): boolean {
     return this.receivedRevision === this.renderedRevision && !this.hasStagedOutput();
@@ -119,14 +125,13 @@ export class RenderCursor {
   get settledVisible(): boolean {
     return this.visible && this.settled;
   }
-  snapshot(capture: () => TerminalSnapshot, firstBufferRow: number): TerminalSnapshot {
+  snapshot(capture: () => TerminalSnapshot): TerminalSnapshot {
     const buffer = this.terminal.buffer.active;
     const position = [
       this.terminal.cols,
       this.terminal.rows,
       buffer.cursorX,
       buffer.cursorY,
-      firstBufferRow,
       buffer.baseY,
     ].join(":");
     const known = this.cachedFrame;
