@@ -71,7 +71,11 @@ export class ClaudeUserPrompts {
   }
 
   /** Resolve only an authenticated blank hook for the matching initial prompt. */
-  recoverInitial(path: string, turnId: string, read: () => InitialUserPrompt | undefined): void {
+  recoverInitial(
+    path: string,
+    turnId: string,
+    read: (pendingToken: object) => InitialUserPrompt | undefined,
+  ): void {
     const identity = promptLocation(path, turnId);
     if (!identity || this.shown.has(turnId)) return;
     const pending = this.entries.get(identity.key);
