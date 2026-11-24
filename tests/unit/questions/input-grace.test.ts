@@ -127,9 +127,9 @@ test("C-QUESTION-03 the public answer deadline includes input grace without reti
   try {
     await h.start();
     // Start the fake clock on an integer tick so its deadline comparison is exact.
-    const paintedAt = Math.ceil(performance.now());
+    const fakeClockOffsetMs = Math.ceil(performance.now());
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-    vi.advanceTimersByTime(paintedAt);
+    vi.advanceTimersByTime(fakeClockOffsetMs);
     const request = h.questions.list()[0]!;
     const pending = h.questions.answer(
       request.id,
