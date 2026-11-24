@@ -159,7 +159,9 @@ function activity(
     text: "body",
     raw: { kind },
   } as const;
-  return kind === "user_message" ? { ...body, kind } : { ...body, kind };
+  return kind === "user_message"
+    ? { ...body, kind, source: "hook", hookEventName: "UserPromptSubmit", label: "user" }
+    : { ...body, kind };
 }
 
 function warning(): ElwoodWarningEvent {

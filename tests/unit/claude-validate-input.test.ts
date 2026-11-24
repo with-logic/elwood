@@ -18,21 +18,17 @@ import {
 } from "./claude-validate-input-helpers.ts";
 
 describe("Claude hook input validation (lifecycle)", () => {
-  test("C-API-62 missing text cannot acknowledge an explicitly empty submission", () => {
-    const normalizeSubmit = (fields: Readonly<Record<string, unknown>>) => {
-      const event = normalizeClaudeHookEvent(base("UserPromptSubmit", fields));
-      if (event.hook_event_name !== "UserPromptSubmit") throw new Error("Expected a submit hook");
-      return event;
-    };
-    for (const fields of [{}, { prompt: null }]) {
-      const wire = base("UserPromptSubmit", fields);
-      expect(isClaudeHookInput(wire)).toBe(true);
-      const normalized = normalizeSubmit(fields);
-      expect(normalized).toMatchObject({ prompt: "" });
-      expect(defaultAcceptanceSignal(normalized, "")).toBe(false);
-    }
-    expect(defaultAcceptanceSignal(normalizeSubmit({ prompt: "" }), "")).toBe(true);
-    expect(isClaudeHookInput(base("UserPromptSubmit", { prompt: false }))).toBe(false);
+  test.each([
+    { name: "omitted", fields: {}, accepted: false },
+    { name: "null", fields: { prompt: null }, accepted: false },
+    { name: "empty", fields: { prompt: "" }, accepted: true },
+  ])("C-API-62 distinguishes an $name native prompt", ({ fields, accepted }) => {
+    const wire = base("UserPromptSubmit", fields);
+    expect(isClaudeHookInput(wire)).toBe(true);
+    const event = normalizeClaudeHookEvent(wire);
+    if (event.hook_event_name !== "UserPromptSubmit") throw new Error("Expected a submit hook");
+    expect(event).toMatchObject({ prompt: "" });
+    expect(defaultAcceptanceSignal(event, "")).toBe(accepted);
   });
   test("C-HOOK-07 C-HOOK-17 validates lifecycle hook inputs by event-specific schema", () => {
     expect(isClaudeHookInput(null)).toBe(false);
@@ -45,6 +41,7 @@ describe("Claude hook input validation (lifecycle)", () => {
     expect(isClaudeHookInput(base("Setup", { trigger: "manual" }))).toBe(false);
     expect(isClaudeHookInput(base("InstructionsLoaded", instructions()))).toBe(true);
     expect(isClaudeHookInput(base("UserPromptSubmit", { prompt: "hello" }))).toBe(true);
+    expect(isClaudeHookInput(base("UserPromptSubmit", { prompt: false }))).toBe(false);
     expect(isClaudeHookInput(base("UserPromptExpansion", expansion()))).toBe(true);
     expect(isClaudeHookInput(base("PostToolBatch", { tool_calls: [] }))).toBe(true);
     expect(isClaudeHookInput(base("PostToolBatch", { tool_calls: [batchToolCall()] }))).toBe(true);

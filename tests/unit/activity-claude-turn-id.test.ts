@@ -5,6 +5,11 @@ import { activityFromClaudeHook } from "../../src/core/activity/index.ts";
 test.each([
   { name: "missing", fields: {}, expected: undefined },
   { name: "empty", fields: { prompt_id: "" }, expected: undefined },
+  {
+    name: "empty with a separate turn ID",
+    fields: { prompt_id: "", turn_id: "other" },
+    expected: undefined,
+  },
   { name: "native", fields: { prompt_id: "native" }, expected: "native" },
 ])("C-CLAUDE-15 a $name hook prompt identity projects consistently", ({ fields, expected }) => {
   const event = activityFromClaudeHook("session", {

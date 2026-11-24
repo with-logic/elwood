@@ -61,13 +61,15 @@ void _knownToolNamesCoupled;
 const knownToolNames: ReadonlySet<string> = new Set(knownToolNameList);
 
 type NormalizedSubmit = ClaudeHookEventFor<"UserPromptSubmit">;
-type TextlessWireSubmit = ClaudeCommonHookFields & {
+type MissingOrNullPromptWireSubmit = ClaudeCommonHookFields & {
   readonly hook_event_name: "UserPromptSubmit";
   readonly prompt?: null;
 };
-type WireHook = ClaudeHookEvent | TextlessWireSubmit;
+type WireHook = ClaudeHookEvent | MissingOrNullPromptWireSubmit;
 
-function hasNativePrompt(event: NormalizedSubmit | TextlessWireSubmit): event is NormalizedSubmit {
+function hasNativePrompt(
+  event: NormalizedSubmit | MissingOrNullPromptWireSubmit,
+): event is NormalizedSubmit {
   return typeof event.prompt === "string";
 }
 

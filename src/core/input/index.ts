@@ -39,7 +39,7 @@ export function ignoreInputFailure(input: void | Promise<void>): void {
  * the same PTY write races that ingestion and can be dropped, leaving the prompt
  * staged but never submitted (long personas hit this reliably). The Enter
  * follows after a settle delay; bounded re-Enters require staged content.
- * Native submission activity permanently revokes recovery.
+ * An authenticated UserPromptSubmit hook permanently revokes recovery, including when textless.
  *
  * While a human or automation-owned dialog is on screen, the WHOLE submission is
  * held: neither the paste nor any Enter reaches the terminal until the dialog
@@ -52,7 +52,7 @@ export function ignoreInputFailure(input: void | Promise<void>): void {
  * Enter; recovery continues in the background. Awaited ergonomic input keeps the queue and
  * composer owned until fresh rendered input is positively empty. Its physical
  * submission callback still runs after the first Enter, before native acceptance.
- * Native activity stops retry Enters without accepting an awaited draft; raw input
+ * The submit hook stops retry Enters without confirming input consumption. Raw input
  * revokes recovery and cleanup authority over the caller's replacement draft.
  */
 async function writePastedPrompt(

@@ -16,6 +16,13 @@ export function activity(partial: Partial<FixtureActivity> = {}) {
     ...fields,
   } as const;
   return kind === "user_message"
-    ? { ...base, kind, text: fields.text ?? "fixture prompt" }
+    ? ({
+        ...base,
+        kind,
+        source: "hook",
+        hookEventName: "UserPromptSubmit",
+        label: "user",
+        text: fields.text ?? "fixture prompt",
+      } as const)
     : { ...base, kind };
 }

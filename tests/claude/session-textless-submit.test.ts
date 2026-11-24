@@ -8,6 +8,7 @@ afterEach(resetFakes);
 test.each([
   {},
   { prompt: null },
+  { prompt: "" },
 ])("C-API-62 a textless Claude submit stays observable (%j)", async (fields) => {
   const cwd = tempDir();
   installFakes();

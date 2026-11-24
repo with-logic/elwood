@@ -86,7 +86,13 @@ export type ElwoodActivityEvent = ActivityFields &
         readonly transcriptPath: string;
         readonly raw: unknown;
       }
-    | { readonly kind: "user_message"; readonly text: string }
+    | {
+        readonly kind: "user_message";
+        readonly source: "hook";
+        readonly hookEventName: "UserPromptSubmit";
+        readonly label: "user";
+        readonly text: string;
+      }
     | QuestionActivityFields
   );
 
@@ -106,7 +112,14 @@ function sharedHookActivity(
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
     return hasPromptText(event.prompt)
-      ? { ...base, kind: "user_message", label: "user", text: event.prompt }
+      ? {
+          ...base,
+          kind: "user_message",
+          source: "hook",
+          hookEventName: "UserPromptSubmit",
+          label: "user",
+          text: event.prompt,
+        }
       : undefined;
   }
   if (event.hook_event_name === "Notification") {

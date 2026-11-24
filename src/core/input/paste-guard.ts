@@ -15,7 +15,7 @@ export type PasteGuard = {
   readonly beforeEnter?: () => void;
   /** Captured immediately before Enter; true only after later received output is rendered. */
   readonly captureRenderProgress?: () => () => boolean;
-  /** Capture before paste/Enter: watches later native submission activity. */
+  /** Capture before paste/Enter: a later authenticated UserPromptSubmit hook revokes retries. */
   readonly captureRecovery?: () => { readonly revoked: () => boolean };
   /** Reuse a token per completed empty frame; only a later frame gets a new identity. */
   readonly emptyFrame?: EmptyComposerObserver;
