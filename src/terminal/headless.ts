@@ -25,6 +25,7 @@ export interface ElwoodTerminal {
   readonly size: TerminalSize;
   /** Latest OSC 0/1/2 window title, or "" before any title is set. */
   readonly title: string;
+  /** Renders host output without advancing native PTY progress. */
   writeOutput(data: string | Uint8Array): Promise<void>;
   sendInput(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): void;
