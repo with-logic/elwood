@@ -38,7 +38,8 @@ import { bindCodexQuotaStats } from "./stats.ts";
 import * as transcript from "./transcript.ts";
 import type { CodexEventMap } from "./types.ts";
 import { emitUpdateAttention } from "./update-attention.ts";
-export type BuildCodexSessionInput = {
+
+type BuildCodexSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
@@ -49,7 +50,7 @@ export type BuildCodexSessionInput = {
 };
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
-  const elwoodSessionId = record.elwoodSessionId;
+  const { elwoodSessionId } = record;
   secureMkdir(runtime.sessionDir);
   const publish = runtime.stateOwnership.publishFile;
   writeSessionRecord(record, runtime.sessionDir, publish);
@@ -64,7 +65,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => promptResponder.closingSignal.aborted,
     (deliver) => wired.duringDelivery(deliver),
   );
-  // Transcript diagnostics flow through the same startup warning gate.
   const wired = transcript.createCodexTranscriptWatcher(elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const bridge = currentCodexHookBridgeFactory()(
@@ -99,7 +99,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
   const snapshot = () => cachedLiveSnapshot(terminal);
-  const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate);
+  const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate, emitter);
   const clearance = liveCodexClearance(() => terminal);
   const observers = {
     turn: new TurnStateWatcher(),
@@ -128,17 +128,14 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
+      readiness.captureStartupScreen(renderedTerminal);
       const { text, cols } = cachedLiveSnapshot(renderedTerminal);
       const frame = { text, cols, title: renderedTerminal.title };
       const send = (input: string) =>
         withAutomatedInput(renderedTerminal, () => callerInput.automation(input));
       const read = () => cachedLiveSnapshot(renderedTerminal).text;
-      const guarded = guardedCodexAutomationWrite(
-        renderedTerminal,
-        send,
-        read,
-        promptResponder.closingSignal,
-      );
+      const { closingSignal } = promptResponder;
+      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read, closingSignal);
       const trustRead = () => settledLiveSnapshot(renderedTerminal)?.text;
       const result = promptResponder.handle(frame.text, send, read, guarded, trustRead);
       warnGate.emitWarnings(result.warnings);
