@@ -72,3 +72,41 @@ test("C-TRUST-01 a working title retains human trust until an idle title restore
     await session.teardown();
   }
 });
+
+test("C-TRUST-01 Claude 2.1.331 clears trust at its drawn empty input cursor", async () => {
+  installFakes();
+  const session = await startClaude({
+    cwd: tempDir(),
+    autotrust: false,
+    initialSize: { cols: 173, rows: 35 },
+  });
+  try {
+    vi.useFakeTimers();
+    const pty = ptys[0]!;
+    pty.emitData(`\u001b[2J\u001b[H\u001b[?25l${claudeNativeTrust}`);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(session.status).toBe("blocked");
+    const pending = session.sendMessage("after drawn cursor");
+    void pending.catch(() => undefined);
+
+    // The native renderer sits at column two, with DEC cursor visibility off.
+    const idle = `${claudeNativeIdlePaint}\u001b[2K\u001b[1G❯ `;
+    const expectHeldAfter = async (paint: string) => {
+      pty.emitData(`\u001b[2J\u001b[H${idle}${paint}\u001b[3G`);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(pty.writes).toEqual([]);
+      expect(session.status).toBe("blocked");
+    };
+    await expectHeldAfter(" ");
+    await expectHeldAfter("\u001b[7m\u00a0\u001b[27m");
+    await expectHeldAfter("\u001b[4G\u001b[7m \u001b[27m");
+
+    pty.emitData(`${idle}\u001b[7m \u001b[27m\u001b[3G`);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(pty.writes).toEqual(["\u001b[200~after drawn cursor\u001b[201~", "\r"]);
+    await pending;
+  } finally {
+    vi.useRealTimers();
+    await session.teardown();
+  }
+});

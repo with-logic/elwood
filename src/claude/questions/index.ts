@@ -7,10 +7,10 @@ import { QuestionNotificationErrors } from "../../core/questions/notification-er
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { ElwoodQuestionRequest, QuestionDefinition } from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { claudeComposerInputColumn } from "../composer/cursor.ts";
 import { claudeEmptyInputRows } from "../composer/empty-input.ts";
 import { isBlock } from "../hooks/dispatch.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
-import { claudeComposerInputColumn } from "../screen-table.ts";
 import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
 import { type Candidate, candidatePanel, createCandidate, hasPendingHook } from "./candidate.ts";

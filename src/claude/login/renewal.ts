@@ -1,8 +1,8 @@
 /** Recognize native renewal notices without quoting terminal content (PRD §5.7, C-CLAUDE-23). */
 
-import { emptyInputFrame } from "../../core/input/empty-frame.ts";
 import type { LoginExpiringWarning } from "../../core/warnings/auth.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
+import { readClaudeInputCursor } from "../composer/cursor.ts";
 import { claudeEmptyInputRows } from "../composer/empty-input.ts";
 import { LOGIN_RECOVERY_COMMAND } from "../login-expired.ts";
 import { loginRenewalNotice } from "./notice.ts";
@@ -56,11 +56,8 @@ function renewalDays(
 
 /** Requires the visible input cursor on the same completed native empty-composer frame. */
 function hasNativeEmptyComposerFrame(terminal: ElwoodTerminal, rows: readonly string[]): boolean {
-  return (
-    emptyInputFrame(terminal, (_frameRows, cursorRow) =>
-      claudeEmptyInputRows(rows.slice(cursorRow - 1), 1),
-    ) !== undefined
-  );
+  const frame = readClaudeInputCursor(terminal)?.frame;
+  return frame !== undefined && claudeEmptyInputRows(rows.slice(frame.cursorY - 1), 1);
 }
 
 function parseNotice(row: string): number | undefined {

@@ -138,7 +138,10 @@ test("C-CLAUDE-23 wrapped notices above the native composer preserve its cursor 
   await expect.poll(() => warnings).toMatchObject([{ code: "login_expiring", expiresInDays: 1 }]);
 });
 
-test("C-CLAUDE-23 live composer cursor proves a renewal footer while viewing history", async () => {
+test.each([
+  ["hardware", "\u001b[?25h\u001b[2;3H"],
+  ["drawn", "\u001b[?25l\u001b[2;3H\u001b[7m \u001b[27m\u001b[2;3H"],
+])("C-CLAUDE-23 %s composer cursor proves a renewal footer while viewing history", async (_kind, cursor) => {
   installFakes();
   const session = await startClaude({ cwd: tempDir() });
   const warnings: unknown[] = [];
@@ -147,8 +150,9 @@ test("C-CLAUDE-23 live composer cursor proves a renewal footer while viewing his
     const { isScrolled, paint } = await viewTerminalHistory(session.terminal, ptys[0]!);
     await paint("❯ \r\n");
     await paint(
-      `───\r\n❯ \r\n───\r\n  ⏸ manual mode on\r\nYour login expires in 1 day · run /login to renew\u001b[?25h\u001b[2;3H`,
+      `───\r\n❯ \r\n───\r\n  ⏸ manual mode on\r\nYour login expires in 1 day · run /login to renew${cursor}`,
     );
+    expect(session.terminal.xterm.buffer.active.baseY).toBeGreaterThan(0);
     expect(isScrolled()).toBe(true);
     expect(warnings).toMatchObject([{ code: "login_expiring", expiresInDays: 1 }]);
   } finally {

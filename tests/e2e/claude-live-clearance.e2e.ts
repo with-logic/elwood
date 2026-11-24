@@ -1,5 +1,6 @@
 /** Real human trust holds queued Claude input until native cursor clearance (C-TRUST-01). */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { optionKeystrokes, selectableOptions } from "../../src/core/terminal-options.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
@@ -13,6 +14,8 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
   timeout: 90_000,
 }, async (t) => {
   const project = makeProject("claude");
+  const version = execFileSync("claude", ["--version"], { encoding: "utf8", timeout: 5_000 });
+  const requireDrawnCursor = /^2\.1\.331(?:\s|$)/.test(version.trim());
   const marker = "ELWOOD_CLAUDE_NATIVE_CURSOR_QUEUE_PROBE";
   const order: string[] = [];
   const inputs: string[] = [];
@@ -47,7 +50,7 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
     autotrust: false,
   });
   const active = session;
-  // Independent oracle: native DEC25 mode and the actual cursor's fenced composer row.
+  // Independent oracle: DEC25 or the drawn input cursor, on the fenced composer row.
   active.on("terminal:data", ({ data }) => {
     for (const part of data.split("\u001b")) {
       const mode = /^\[\?25([hl])/.exec(part);
@@ -57,16 +60,19 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
     if (folderTrustScreenVisible(frame.text)) observedTrust = true;
     const buffer = active.terminal.xterm.buffer.active;
     const row = frame.cursorY + buffer.baseY - buffer.viewportY;
+    const composer = frame.lines[row] ?? "";
+    const cell = buffer.getLine(buffer.baseY + frame.cursorY)?.getCell(frame.cursorX);
+    const drawnCursor = composer.trimEnd() === "❯" && cell?.getChars() === " " && cell.isInverse();
     if (
       observedTrust &&
-      cursorVisible &&
+      (cursorVisible || drawnCursor) &&
       frame.cursorX === 2 &&
-      /^❯(?:\s|$)/.test(frame.lines[row] ?? "") &&
+      /^❯(?:\s|$)/.test(composer) &&
       /^[─━]{3,}/.test(frame.lines[row - 1] ?? "") &&
       /^[─━]{3,}/.test(frame.lines[row + 1] ?? "") &&
       !folderTrustScreenVisible(frame.text)
     )
-      order.push("native-clear");
+      order.push(cursorVisible ? "native-hardware-clear" : "native-drawn-clear");
   });
   // Only physical submission is required; no model response or available quota is needed.
   const pending = active.sendMessage(`Reply exactly ${marker}. Do not use tools.`).then(() => {
@@ -120,7 +126,7 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
         sent,
         inputCount: inputs.length,
         callerInputCount: order.filter((step) => step === "caller-input").length,
-        nativeClearCount: order.filter((step) => step === "native-clear").length,
+        nativeClearCount: order.filter((step) => step.startsWith("native-")).length,
         cursorX: frame.cursorX,
         cursorY: frame.cursorY,
         cols: frame.cols,
@@ -131,8 +137,10 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
     throw error;
   }
   await pending;
-  assert.equal(order[0], "native-clear");
-  assert.ok(order.indexOf("native-clear") < order.indexOf("caller-input"));
+  const first = order[0];
+  assert.ok(first === "native-hardware-clear" || first === "native-drawn-clear");
+  if (requireDrawnCursor) assert.equal(first, "native-drawn-clear");
+  assert.ok(order.indexOf(first) < order.indexOf("caller-input"));
   assert.equal(inputs.filter((input) => input.includes(marker)).length, 1);
   const paste = inputs.findIndex((input) => input.includes(marker));
   assert.ok(inputs.slice(paste + 1).includes("\r"), "queued paste has a submitting Enter");
