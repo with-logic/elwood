@@ -2549,14 +2549,14 @@ These captures establish the questionnaire and manual-footer additions on
 The private adapter/controller tests retain native input ownership when a
 composer repaint precedes the matching completion hook. Successful submissions
 keep their request pending; a post-write abort retires the public ID while the
-native hold remains until matching completion, replacement or turn end. A
+native hold remains until matching completion, turn end, or shutdown. A
 predecessor review panel cannot publish a newly observed successor.
 
 Live sessions connect this adapter to the session-owned question controller,
 completed terminal renders, hook routing and the ordinary-input gate. Claude's
 hook-decision gate resolves the exact caller hook outcome before publishing a
 request; direct answers and denials withdraw automation while retaining native
-ownership until matching completion, replacement or turn end. The captured frames
+ownership until matching completion, turn end, or shutdown. The captured frames
 establish the native layouts; the capture-specific version and screen-pattern
 limitations above still apply.
 
