@@ -61,7 +61,13 @@ export function isTerminalStatus(status: ElwoodSessionStatus): boolean {
   );
 }
 
-export function textSuffix(text: string | undefined): string {
+export function activityLogLine(event: ElwoodActivityEvent): string {
+  // A startup screen can show account and workspace details.
+  const text = event.kind === "unrecognized_startup" ? undefined : event.text;
+  return `[activity] ${event.agent}:${event.kind}:${event.label}${textSuffix(text)}\n`;
+}
+
+function textSuffix(text: string | undefined): string {
   if (!text) return "";
   return ` ${text.replace(/\s+/g, " ").slice(0, 120)}`;
 }

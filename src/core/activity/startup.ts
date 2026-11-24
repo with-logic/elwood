@@ -12,6 +12,7 @@ export type UnrecognizedStartupActivity = {
   readonly text: string;
 };
 
+/** Trim trailing whitespace and retain up to 8,192 UTF-16 units without splitting a surrogate pair (C-ATTN-06). */
 export function unrecognizedStartupActivity(
   elwoodSessionId: string,
   screen: string,

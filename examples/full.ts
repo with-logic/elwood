@@ -7,11 +7,11 @@ import { resolve } from "node:path";
 import { startClaude, startCodex } from "../src/index.ts";
 import {
   type Agent,
+  activityLogLine,
   cleanupSession,
   type ExampleSession,
   errorMessage,
   isTerminalStatus,
-  textSuffix,
   waitForSettled,
 } from "./support.ts";
 
@@ -49,10 +49,7 @@ async function startSession(options: Options): Promise<ExampleSession> {
 
 function wireLogs(session: ExampleSession): void {
   session.on("activity", (event) => {
-    const text = event.kind === "unrecognized_startup" ? undefined : event.text;
-    process.stdout.write(
-      `[activity] ${event.agent}:${event.kind}:${event.label}${textSuffix(text)}\n`,
-    );
+    process.stdout.write(activityLogLine(event));
   });
   session.on("warning", (event) => {
     process.stdout.write(`[warning] ${event.agent}:${event.code} ${event.message}\n`);
