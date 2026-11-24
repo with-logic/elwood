@@ -1,4 +1,5 @@
 /** Captured native layouts, cursor ownership, and draft safety (PRD §4). */
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { blockingQuestionVisible } from "../../../src/codex/questions/chrome.ts";
 import { matchesQuestion, questionView, queuedBadge } from "../../../src/codex/questions/frame.ts";
@@ -38,16 +39,10 @@ test("recognizes modal input blocking independently of queued availability", () 
   ).toBe(true);
 });
 test("C-QUESTION-04 a Codex 0.171 standalone modal omits the question navigation hint", () => {
-  const text = [
-    "  Question 1/1 (1 unanswered)",
-    "  Fixture modal. Which color?",
-    "",
-    "  › 1. Amber              Warm",
-    "    2. Blue               Cold",
-    "    3. None of the above  Optionally, add details in notes (tab)",
-    "",
-    "  tab to add notes | enter to submit answer | esc to interrupt",
-  ].join("\n");
+  const text = readFileSync(
+    new URL("../../fixtures/codex-0.171.0/questions/blocking-modal-single.txt", import.meta.url),
+    "utf8",
+  );
   expect(blockingQuestionVisible(text)).toBe(true);
   expect(questionView(frame(text))).toMatchObject({
     kind: "blocking",
@@ -56,9 +51,9 @@ test("C-QUESTION-04 a Codex 0.171 standalone modal omits the question navigation
     selected: 0,
     notes: false,
   });
-  expect(
-    questionView(frame(text.replace("1/1 (1 unanswered)", "1/2 (2 unanswered)"))),
-  ).toBeUndefined();
+  const unsupported = text.replace("1/1 (1 unanswered)", "1/2 (2 unanswered)");
+  expect(blockingQuestionVisible(unsupported)).toBe(true);
+  expect(questionView(frame(unsupported))).toBeUndefined();
 });
 test("rejects partial, unknown, quoted and stale cursor layouts", () => {
   const first = captured("async-editor-first.txt");

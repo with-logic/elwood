@@ -2586,11 +2586,14 @@ These captures establish the layouts in
 `tests/fixtures/codex-0.163.0/questions/`; they do not reverify all earlier
 Codex trust and update dialogs.
 
-**Codex 0.171.0 can omit navigation from a single-question Plan-mode footer.**
-Its one-question editor ends with
+### Codex 0.171.0 single-question Plan-mode footer (2026-11-23)
+
+The captured one-question editor ends with
 `tab to add notes | enter to submit answer | esc to interrupt`. The grouped
 footer includes the left and right arrow hint. Elwood recognizes the shorter
 footer only as a single-question editor for structured answers.
+The panel from the isolated native run is in
+[`blocking-modal-single.txt`](../tests/fixtures/codex-0.171.0/questions/blocking-modal-single.txt).
 
 ### Codex home-path footer after question closure (2026-10-24)
 
