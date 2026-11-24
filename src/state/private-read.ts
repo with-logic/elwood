@@ -7,7 +7,15 @@
  * check and the read.
  */
 
-import { closeSync, constants, fstatSync, openSync, readFileSync, type Stats } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  type Stats,
+} from "node:fs";
 import { errnoCode, toError } from "../core/errors.ts";
 
 export type FileOwner = { readonly uid: number };
@@ -23,26 +31,34 @@ type Outcome = { readonly text: string } | { readonly fault: string } | undefine
 /**
  * Read a private file. Returns `undefined` when the file is absent (ENOENT); throws
  * `corrupt(reason)` when it is a symlink, not a regular file, owned by another user,
- * group/world accessible, or cannot be read for any other reason.
+ * group/world accessible, exceeds an optional byte limit, or cannot be read for any other reason.
  */
 export function readPrivateFile(
   path: string,
   owner: FileOwner | undefined,
   corrupt: (reason: string) => Error,
+  maxBytes?: number,
 ): string | undefined {
-  const outcome = inspect(path, owner);
+  const outcome = inspect(path, owner, maxBytes);
   if (outcome === undefined) return undefined;
   if ("fault" in outcome) throw corrupt(outcome.fault);
   return outcome.text;
 }
 
-function inspect(path: string, owner: FileOwner | undefined): Outcome {
+function inspect(path: string, owner: FileOwner | undefined, maxBytes?: number): Outcome {
   let fd: number | undefined;
   try {
     // O_NONBLOCK: opening a FIFO read-only would otherwise block until a writer appears.
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    const fault = privacyFault(fstatSync(fd), owner);
-    return fault === undefined ? { text: readFileSync(fd, "utf8") } : { fault };
+    const stat = fstatSync(fd);
+    const fault = privacyFault(stat, owner);
+    if (fault !== undefined) return { fault };
+    if (maxBytes === undefined) return { text: readFileSync(fd, "utf8") };
+    const buffer = Buffer.allocUnsafe(maxBytes + 1);
+    const count = readSync(fd, buffer, 0, buffer.length, 0);
+    return count !== stat.size || count > maxBytes
+      ? { fault: "invalid bounded private file length" }
+      : { text: buffer.toString("utf8", 0, count) };
   } catch (error) {
     if (errnoCode(error) === "ENOENT") return undefined;
     return { fault: toError(error).message };

@@ -61,10 +61,15 @@ function realReadBytes(path: string, start: number, length: number): Buffer {
       const code = status.isDirectory() ? "EISDIR" : "EINVAL";
       throw Object.assign(new Error("The transcript path is not a regular file."), { code });
     }
-    const buffer = Buffer.allocUnsafe(length);
-    const read = readSync(fd, buffer, 0, length, start);
-    return buffer.subarray(0, read);
+    return readTranscriptBytes(fd, start, length);
   });
+}
+
+/** Read a fixed-length range on an already verified descriptor. */
+export function readTranscriptBytes(fd: number, start: number, length: number): Buffer {
+  const buffer = Buffer.allocUnsafe(length);
+  const read = readSync(fd, buffer, 0, length, start);
+  return buffer.subarray(0, read);
 }
 
 // Indirection so a test can force a read failure (proving the offset is committed
@@ -77,8 +82,13 @@ export const readBytes: ByteReader = (p, s, l) => readBytesImpl(p, s, l);
 // point (a split multibyte char is left for the next read, not corrupted). `start`
 // is always an already-committed code-point boundary, so no leading-byte fixup is
 // needed (the forward-read invariant).
-export function readRange(path: string, start: number, length: number): RangeRead {
-  const bytes = readBytes(path, start, length);
+export function readRange(
+  path: string,
+  start: number,
+  length: number,
+  reader: ByteReader = readBytes,
+): RangeRead {
+  const bytes = reader(path, start, length);
   const complete = completeUtf8Length(bytes);
   return { text: bytes.toString("utf8", 0, complete), bytes: complete };
 }

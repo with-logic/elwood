@@ -28,7 +28,8 @@ back each entry are listed in `prd/14-conformance.md`.
   initial transcript.
 - Keep transcript observation responsive if a watched file is replaced by a pipe.
 
-- Preserve authenticated Codex rollout locations across session restart.
+- Preserve Codex transcript activity across resume using the saved rollout
+  location, including before the first hook reports a path.
 
 - Preserve native prompt holds and readiness while an embedded terminal views
   scrollback.

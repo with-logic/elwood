@@ -34,6 +34,7 @@ const scanChunksPerScan = 16;
 
 export class CodexTranscriptWatcher {
   private cursor: BoundedTranscriptCursor | undefined;
+  private pendingResume: BoundedTranscriptCursor | undefined;
   private interval: ReturnType<typeof setInterval> | undefined;
   // A permanent terminal latch: once finished, no scan/flush/observe restarts it.
   private finished = false;
@@ -61,14 +62,31 @@ export class CodexTranscriptWatcher {
     this.now = notices.now;
   }
 
+  /** Save a pre-PTY EOF. Publish its appends only once the resumed launch commits. */
+  seedResume(cursor: BoundedTranscriptCursor | undefined): void {
+    this.pendingResume = cursor;
+  }
+
+  startSeededResume(): void {
+    const cursor = this.pendingResume;
+    this.pendingResume = undefined;
+    if (cursor !== undefined) this.watch(cursor);
+  }
+
   // Begin watching `path`, baselining at its CURRENT end so history is NOT replayed.
   // No-op if already watching this exact path or once finished (never restart polling
   // past a terminal:exit). A switch to a new path drops the old.
   observe(path: string): void {
-    if (this.finished || this.cursor?.path === path) return;
+    if (this.finished || this.cursor?.path === path || this.pendingResume?.path === path) return;
+    this.pendingResume = undefined;
     this.stop();
-    this.cursor = this.guard.read(path, () => new BoundedTranscriptCursor(path));
-    if (!this.cursor) return;
+    const cursor = this.guard.read(path, () => new BoundedTranscriptCursor(path));
+    if (cursor) this.watch(cursor);
+    else this.cursor = undefined;
+  }
+
+  private watch(cursor: BoundedTranscriptCursor): void {
+    this.cursor = cursor;
     // A scan() throw (a throwing drop/activity/warning listener) must not escape the
     // timer as an uncaught exception — contain it, stop, and route a bounded live
     // diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
@@ -124,6 +142,7 @@ export class CodexTranscriptWatcher {
       this.flush();
     } finally {
       this.finished = true;
+      this.pendingResume = undefined;
       this.stop();
     }
   }

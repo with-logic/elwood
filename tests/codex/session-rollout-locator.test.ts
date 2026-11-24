@@ -9,7 +9,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-const nativeId = "codex-native-1";
+const nativeSessionId = "codex-native-1";
 
 test("C-STATE-15 only the current authenticated conversation updates its private locator", async () => {
   installFakes();
@@ -19,35 +19,51 @@ test("C-STATE-15 only the current authenticated conversation updates its private
   let successor: typeof original | undefined;
   const rollout = join(cwd, "original.jsonl");
   const stored = join(sessionDir(defaultStateDir(cwd), elwoodSessionId), "codex-rollout.json");
-  const submit = (index: number, session_id: string, transcript_path: string) =>
+  const submit = ({
+    index,
+    nativeSessionId,
+    transcriptPath,
+  }: {
+    readonly index: number;
+    readonly nativeSessionId: string;
+    readonly transcriptPath: string;
+  }) =>
     ptys[index]!.dispatchHook(elwoodSessionId, {
       hook_event_name: "SessionStart",
       source: index === 0 ? "startup" : "resume",
-      session_id,
-      transcript_path,
+      session_id: nativeSessionId,
+      transcript_path: transcriptPath,
       cwd,
     } satisfies CodexHookEventFor<"SessionStart">);
   const read = () => JSON.parse(readFileSync(stored, "utf8"));
   try {
-    expect(await submit(0, "", rollout)).toMatchObject({ exitCode: 0 });
+    expect(await submit({ index: 0, nativeSessionId: "", transcriptPath: rollout })).toMatchObject({
+      exitCode: 0,
+    });
     expect(existsSync(stored)).toBe(false);
-    await submit(0, nativeId, rollout);
-    expect(read()).toEqual({ nativeSessionId: nativeId, path: rollout });
+    await submit({ index: 0, nativeSessionId, transcriptPath: rollout });
+    expect(read()).toEqual({ nativeSessionId, path: rollout });
     expect(statSync(stored).mode & 0o777).toBe(0o600);
-    await submit(0, "other", join(cwd, "unrelated.jsonl"));
-    expect(read()).toEqual({ nativeSessionId: nativeId, path: rollout });
+    await submit({
+      index: 0,
+      nativeSessionId: "other",
+      transcriptPath: join(cwd, "unrelated.jsonl"),
+    });
+    expect(read()).toEqual({ nativeSessionId, path: rollout });
 
     successor = await resumeCodex({ cwd, elwoodSessionId });
-    expect(read()).toEqual({ nativeSessionId: nativeId, path: rollout });
+    expect(read()).toEqual({ nativeSessionId, path: rollout });
     const relocated = join(cwd, "relocated.jsonl");
-    await submit(1, nativeId, relocated);
-    expect(read()).toEqual({ nativeSessionId: nativeId, path: relocated });
-    expect(await submit(0, nativeId, join(cwd, "superseded.jsonl"))).toEqual({
+    await submit({ index: 1, nativeSessionId, transcriptPath: relocated });
+    expect(read()).toEqual({ nativeSessionId, path: relocated });
+    expect(
+      await submit({ index: 0, nativeSessionId, transcriptPath: join(cwd, "superseded.jsonl") }),
+    ).toEqual({
       exitCode: 0,
       stdout: "",
       stderr: "",
     });
-    expect(read()).toEqual({ nativeSessionId: nativeId, path: relocated });
+    expect(read()).toEqual({ nativeSessionId, path: relocated });
   } finally {
     await successor?.teardown();
     await original.teardown();
@@ -76,11 +92,11 @@ test("C-STATE-15 an unavailable optional locator cannot stop SessionStart or rea
       hook_event_name: "SessionStart",
       source: "startup",
       cwd,
-      session_id: nativeId,
+      session_id: nativeSessionId,
       transcript_path: join(cwd, "transcript.jsonl"),
     } satisfies CodexHookEventFor<"SessionStart">);
     expect(reply).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(events).toEqual([nativeId]);
+    expect(events).toEqual([nativeSessionId]);
     expect(warnings).toEqual([
       {
         elwoodSessionId,

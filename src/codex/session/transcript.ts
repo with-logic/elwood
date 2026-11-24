@@ -21,12 +21,15 @@ import {
   codexPollStoppedWarning,
   codexReadErrorWarning,
 } from "../transcript/index.ts";
+import { seedCodexResumeCursor } from "../transcript/resume-cursor.ts";
+import { loadCodexRolloutLocator } from "./rollout-locator.ts";
 import type { CodexEventMap } from "./types.ts";
 import { imageCopyRemovalFailedWarning } from "./warnings.ts";
 
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 type WiredCodexTranscriptWatcher = {
   readonly watcher: CodexTranscriptWatcher;
+  readonly seedResume: (sessionDir: string, nativeSessionId: string | undefined) => void;
   /** Include deferred startup-warning fan-out in the exit-order barrier. */
   readonly duringDelivery: (work: () => void) => void;
   readonly flushPendingWarnings: () => void;
@@ -131,5 +134,10 @@ export function createCodexTranscriptWatcher(
       });
     }
   };
-  return { watcher, duringDelivery, flushPendingWarnings, finishSafely };
+  const seedResume = (sessionDir: string, nativeSessionId: string | undefined): void => {
+    if (!nativeSessionId) return;
+    const path = loadCodexRolloutLocator(sessionDir, nativeSessionId);
+    if (path !== undefined) watcher.seedResume(seedCodexResumeCursor(path, nativeSessionId));
+  };
+  return { watcher, duringDelivery, flushPendingWarnings, finishSafely, seedResume };
 }

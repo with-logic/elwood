@@ -55,6 +55,7 @@ export async function spawnCodexPty(
   record: SessionRecord,
   runtime: Pick<SessionRuntime, "socketHome" | "socketPath" | "bridgeScriptPath">,
   options: CodexLaunchOptions,
+  beforeSpawn: () => void,
 ): Promise<CodexLaunch> {
   const capabilities = await preflight.detectCodexCliCapabilities({
     ...options.launchDirectory,
@@ -69,6 +70,7 @@ export async function spawnCodexPty(
   );
   let pty: PtyProcess;
   try {
+    beforeSpawn();
     pty = currentPtyFactory()({
       command: userShell(),
       args: loginShellCommand(`${reportCodexHomeCommand(reportPath)}; ${launch}`),

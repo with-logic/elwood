@@ -2,10 +2,10 @@
  * Builders for the Codex session's lifecycle warnings: the config.toml restore
  * outcomes after a model switch (PRD §5.3, C-CODEX-14), the clipboard-restore
  * failure after an image attach and a pasted image's copy left after exit (§5.3, C-API-46),
- * and a shutdown that signaled Codex
- * before it recorded the ended turn (§5.7, C-LIFE-13). Every warning is live-only
- * (§5.7) and content-free: `raw` carries a path, a fixed token, or a bounded errno
- * code, never config contents, clipboard data, or a raw error message.
+ * a failed write of the optional rollout locator (§8.2, C-STATE-15), and a
+ * shutdown that signaled Codex before it recorded the ended turn (§5.7, C-LIFE-13).
+ * Every warning is live-only (§5.7) and content-free. The `raw` field carries
+ * only a path, a fixed token, or a bounded errno code.
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";

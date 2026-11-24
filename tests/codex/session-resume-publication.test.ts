@@ -1,4 +1,4 @@
-/** Failed startup restores published predecessor files and hook delivery (C-API-20). */
+/** Startup restores predecessor state on failure and publishes locators on commit (C-API-20, C-STATE-15). */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -64,10 +64,10 @@ test.each([
   }
 });
 
-test.each([
-  { phase: "failed", fails: true },
-  { phase: "successful", fails: false },
-])("C-STATE-15 $phase startup defers its locator until launch commit", async ({ fails }) => {
+const startupWaitMs = 1_000;
+const nativeSessionId = "pending-id";
+
+function startPendingPublication() {
   installFakes();
   const cwd = tempDir();
   const stateDir = join(cwd, "state");
@@ -83,46 +83,67 @@ test.each([
     return pty;
   });
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  setStartupWaitMsForTests(1_000);
+  setStartupWaitMsForTests(startupWaitMs);
   const starting = startCodexWithId({ cwd, stateDir }, id).then(
     (session) => ({ session }),
     (error: unknown) => ({ error }),
   );
-  try {
+  const reportSessionStart = async () => {
     await launched.promise;
     await ptys[0]!.dispatchHook(
       id,
       {
         hook_event_name: "SessionStart",
-        session_id: "pending-id",
+        session_id: nativeSessionId,
         transcript_path: rollout,
         cwd,
         source: "startup",
       },
       stateDir,
     );
-    expect(readSessionRecord(stateDir, id).codex.resumeId).toBe("pending-id");
-    expect(existsSync(locator)).toBe(false);
-    if (fails) ptys[0]!.emitExit({ exitCode: 1 });
-    await vi.advanceTimersByTimeAsync(1_000);
-    if (fails) {
-      expect(await starting).toMatchObject({ error: { code: "codex_start_failed" } });
-      expect(existsSync(join(dir, "session.json"))).toBe(false);
-      expect(readdirSync(dir)).toEqual([]);
-      expect(hasLaunchOwner(dir)).toBe(false);
-    } else {
-      expect(await starting).toHaveProperty("session");
-      expect(JSON.parse(readFileSync(locator, "utf8"))).toEqual({
-        nativeSessionId: "pending-id",
-        path: rollout,
-      });
-    }
-  } finally {
+  };
+  const cleanup = async () => {
     ptys[0]?.emitExit({ exitCode: 1 });
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(startupWaitMs);
     const result = await starting;
     vi.useRealTimers();
     if ("session" in result) await result.session.teardown();
     removeSessionIdentity(stateDir, id, "codex");
+  };
+  return { id, stateDir, dir, locator, rollout, starting, reportSessionStart, cleanup };
+}
+
+test("C-STATE-15 failed startup discards its pending locator", async () => {
+  const { id, stateDir, dir, locator, starting, reportSessionStart, cleanup } =
+    startPendingPublication();
+  try {
+    await reportSessionStart();
+    expect(readSessionRecord(stateDir, id).codex.resumeId).toBe(nativeSessionId);
+    expect(existsSync(locator)).toBe(false);
+
+    ptys[0]!.emitExit({ exitCode: 1 });
+    await vi.advanceTimersByTimeAsync(startupWaitMs);
+    expect(await starting).toMatchObject({ error: { code: "codex_start_failed" } });
+    expect(existsSync(join(dir, "session.json"))).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(hasLaunchOwner(dir)).toBe(false);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("C-STATE-15 successful startup publishes its locator at launch commit", async () => {
+  const { id, stateDir, locator, rollout, starting, reportSessionStart, cleanup } =
+    startPendingPublication();
+  try {
+    await reportSessionStart();
+    expect(readSessionRecord(stateDir, id).codex.resumeId).toBe(nativeSessionId);
+    expect(existsSync(locator)).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(startupWaitMs);
+    expect(await starting).toHaveProperty("session");
+    expect(JSON.parse(readFileSync(locator, "utf8"))).toEqual({ nativeSessionId, path: rollout });
+  } finally {
+    await cleanup();
   }
 });

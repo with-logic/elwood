@@ -97,7 +97,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     );
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.resolveConfigPath = resolveConfigPath;
-    // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
+    // A rejected Codex turn has a failed `task_complete` in place of `Stop` (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
@@ -153,12 +153,13 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
+  /** Match the native ID before buffering or writing its locator. Write failures only warn. */
   captureSessionStartMetadata(event: CodexHookEventFor<"SessionStart">): void {
-    const { session_id: nativeId, transcript_path: path } = event;
+    const { session_id: nativeSessionId, transcript_path: path } = event;
     if (!this.record.codex.resumeId)
-      this.persist(updateSessionResumeId(this.record, "codex", nativeId));
-    if (this.record.codex.resumeId !== nativeId) return;
-    const warnings = this.rolloutLocator.observe(nativeId, path);
+      this.persist(updateSessionResumeId(this.record, "codex", nativeSessionId));
+    if (this.record.codex.resumeId !== nativeSessionId) return;
+    const warnings = this.rolloutLocator.observe(nativeSessionId, path);
     deliverFrameWarnings(this, warnings);
   }
   setInitialReadyHook(fire: () => void): void {

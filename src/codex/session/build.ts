@@ -84,12 +84,12 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       socketPath: runtime.socketPath,
     });
   }
-  const { pty, resolveConfigPath } = await spawnCodexPty(record, runtime, options).catch(
-    async (error: unknown) => {
-      await cleanupStartupResources({ bridge });
-      throw error;
-    },
-  );
+  const { pty, resolveConfigPath } = await spawnCodexPty(record, runtime, options, () =>
+    wired.seedResume(runtime.sessionDir, record.codex.resumeId),
+  ).catch(async (error: unknown) => {
+    await cleanupStartupResources({ bridge });
+    throw error;
+  });
   const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
@@ -186,6 +186,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       activeSession.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(activeSession);
       input.activate();
+      transcriptWatcher.startSeededResume();
       warnGate.emitWarnings(activeSession.rolloutLocator.onLaunchCommitted());
     },
     { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
