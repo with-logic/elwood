@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recover Claude prompt text from matching user records in the live transcript
+  when the native submission hook does not carry it.
+
 - Keep textless `UserPromptSubmit` hooks observable and require non-whitespace
   prompt text for `user_message` activity on Claude and Codex.
 - Contain Promise rejections from `warning` and warning `activity` listeners on

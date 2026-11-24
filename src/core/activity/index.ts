@@ -11,7 +11,6 @@ import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "..
 import * as meta from "./meta.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
-
 export type ElwoodAgentKind = "claude" | "codex";
 export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
 export type ElwoodActivityKind =
@@ -88,6 +87,15 @@ export type ElwoodActivityEvent = ActivityFields &
       }
     | {
         readonly kind: "user_message";
+        readonly agent: "claude";
+        readonly source: "transcript";
+        readonly transcriptPath: string;
+        readonly turnId: string;
+        readonly label: "user";
+        readonly text: string;
+      }
+    | {
+        readonly kind: "user_message";
         readonly source: "hook";
         readonly hookEventName: "UserPromptSubmit";
         readonly label: "user";
@@ -128,11 +136,7 @@ function sharedHookActivity(
   return undefined;
 }
 
-/**
- * Claude hook → activity. Agent/event correlation stops a Claude event routing
- * through the Codex path. Claude tool/assistant activity is transcript-sourced
- * (C-CLAUDE-15), so those hooks stay plain `hook` here (no transcript duplicate).
- */
+/** Claude tool and assistant events come from the transcript (C-CLAUDE-15). */
 export function activityFromClaudeHook(
   elwoodSessionId: string,
   event: ClaudeHookEvent,

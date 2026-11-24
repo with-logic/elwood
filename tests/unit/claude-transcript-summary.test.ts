@@ -47,9 +47,7 @@ describe("C-CLAUDE-15 Claude transcript summarizer", () => {
     ]);
   });
 
-  test("C-CLAUDE-15 user prose is NOT emitted (stays hook-sourced, no double)", () => {
-    // User text comes from the UserPromptSubmit hook; emitting it from the
-    // transcript too would double every submitted prompt.
+  test("C-CLAUDE-15 the generic record summarizer leaves prompt text to hook and correlated recovery", () => {
     expect(
       summarizeClaudeRecord({ type: "user", message: { role: "user", content: "hi" } }),
     ).toEqual([]);

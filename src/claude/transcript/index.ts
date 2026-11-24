@@ -18,6 +18,7 @@ import {
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
+import type { UserPromptHookEvidence } from "./user-prompts.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
 export type { TranscriptNoticeHandlers } from "./watcher-config.ts";
@@ -76,6 +77,7 @@ export class ClaudeTranscriptWatcher {
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
     this.lines.turns.seed(path, turnId, () => this.guard.read(path, () => cursor.baselinePrompt()));
+    if (this.lines.turns.correlationDisabled) this.lines.userPrompts.clearUnpaired();
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {
@@ -88,6 +90,11 @@ export class ClaudeTranscriptWatcher {
     }
     this.ensurePolling();
   }
+  observeUserPromptHook({ path, turnId, hasText }: UserPromptHookEvidence): boolean {
+    const canRecover = !(this.finished || this.lines.turns.correlationDisabled);
+    return this.lines.userPrompts.observeHook(canRecover ? path : undefined, turnId, hasText);
+  }
+
   scan(): void {
     if (this.finished) return;
     const budget = { chunks: scanChunksPerScan };
@@ -107,6 +114,7 @@ export class ClaudeTranscriptWatcher {
     drainToBudget(this.drain, [cursor], this.terminalBudget);
     this.cursors.delete(path);
     this.lines.turns.forget(path);
+    this.lines.userPrompts.forget(path);
   }
 
   pollOnceForTests(): Promise<void> {
@@ -130,26 +138,21 @@ export class ClaudeTranscriptWatcher {
         this.afterScanForTests?.(); // test seam: drive finish() between cursors
       }
     } finally {
-      // Deliver this pass's drops ONLY while still live. If finish() ran during the
-      // awaited stat it already drained and emitted terminal:exit; flushing here would
-      // emit a warning/activity AFTER the permanent terminal latch (§5.4). Discard the
-      // unfinished pass instead so nothing escapes past exit.
+      // If finish ran while stat was pending, discard diagnostics after terminal:exit.
       if (this.finished) this.drops.discardPass();
       else this.drops.flushPass(); // one warning per (path, cause) per poll
       this.polling = false;
     }
   }
 
-  // Flush buffered partials, then permanently stop. `finished` set FIRST so an
-  // in-flight poll bails and later observe/scan/retire no-op — nothing emits past
-  // terminal:exit (§5.4); flushing must not prevent stop() (finally). The drain uses
-  // the shared budget's LEFTOVER and is wall-clock-slice-bounded (§9.2).
+  // Use the shared drain budget and latch finish before emitting any final events.
   finish(): void {
     if (this.finished) return;
     this.finished = true;
     try {
       drainToBudget(this.drain, [...this.cursors.values()], this.terminalBudget);
     } finally {
+      this.lines.userPrompts.clearUnpaired();
       this.stop();
     }
   }
@@ -160,9 +163,7 @@ export class ClaudeTranscriptWatcher {
   }
   private ensurePolling(): void {
     if (this.interval || this.finished) return;
-    // scanCursor can throw a listener error after the poll's await, which on the
-    // timer path would become an unhandled rejection; the catch stops the watcher
-    // and routes the failure (non-throwing recovery).
+    // A delivery failure reaching the background poll stops the watcher with a contained diagnostic.
     this.interval = outsideStopInput(() =>
       setInterval(() => {
         void this.poll().catch((error) => this.recoverFromPollError(error));

@@ -13,7 +13,21 @@ import {
 } from "../../core/transcript/warnings.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { boundedErrorToken, isPollErrorReason } from "../../core/warnings/reasons.ts";
+import type { ClaudePromptListenerErrorWarning } from "../../core/warnings/transcript.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
+
+export function promptListenerWarning(elwoodSessionId: string): ClaudePromptListenerErrorWarning {
+  return {
+    elwoodSessionId,
+    agent: "claude",
+    source: "terminal",
+    code: "claude_prompt_listener_error",
+    severity: "warning",
+    message: "Claude prompt activity listener failed; remaining transcript delivery continues.",
+    channel: "activity",
+    raw: "claude_prompt_listener_error channel=activity",
+  };
+}
 
 /** The shared drop warning, tagged for Claude. */
 export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {

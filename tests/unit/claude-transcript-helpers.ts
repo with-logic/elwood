@@ -1,7 +1,7 @@
 /**
  * Shared fixture helpers for the Claude transcript watcher/cursor unit tests
  * (PRD §5.4, C-CLAUDE-15): temp transcript paths, JSONL record builders, a typed
- * activity-emitter fake, and a cursor drain. Every claude-transcript-*.test.ts
+ * activity listener, and a cursor drain. Every claude-transcript-*.test.ts
  * imports from here instead of re-declaring its own copy.
  */
 
@@ -11,6 +11,7 @@ import type { TranscriptActivityEmitter } from "../../src/claude/session/transcr
 import type { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 import type { ClaudeTranscriptEvent } from "../../src/claude/transcript/index.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 /**
@@ -38,15 +39,24 @@ export const writeRecords = (path: string, ...records: unknown[]) =>
 export const appendRecords = (path: string, prior: unknown[], ...records: unknown[]) =>
   writeRecords(path, ...prior, ...records);
 
+export const nativeUser = (promptId: string, content: string) => ({
+  type: "user",
+  uuid: promptId,
+  promptId,
+  message: { role: "user", content },
+});
+
 /** Assistant text per event (or the summary kind for non-assistant events). */
 export const texts = (events: ClaudeTranscriptEvent[]) =>
   events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
 
-/** A typed activity-emitter fake that forwards each payload to `sink`. */
-export function fakeEmitter(
+/** A typed activity listener that forwards each payload to `sink`. */
+export function activityEmitterWithListener(
   sink: (event: ElwoodActivityEvent) => void = () => {},
 ): TranscriptActivityEmitter {
-  return { emit: (_event, payload) => sink(payload) };
+  const emitter = new TypedEmitter<{ activity: ElwoodActivityEvent }>();
+  emitter.on("activity", sink);
+  return emitter;
 }
 
 /** Drain a cursor to the end, returning the concatenated decoded text. */

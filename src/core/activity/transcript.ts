@@ -51,13 +51,25 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
 export function activityFromClaudeTranscript(
   event: ClaudeTranscriptEvent,
 ): ElwoodActivityEvent & ClaudeActivityFields {
-  const base = {
+  const origin = {
     elwoodSessionId: event.elwoodSessionId,
     agent: "claude",
     source: "transcript",
-    label: event.summary.label,
     transcriptPath: event.path,
-    ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+  } as const;
+  if (event.recovered) {
+    return {
+      ...origin,
+      kind: "user_message",
+      label: "user",
+      text: event.summary.text,
+      turnId: event.turnId,
+    };
+  }
+  const base = {
+    ...origin,
+    label: event.summary.label,
+    ...optional(event.turnId, "turnId"),
     ...(event.summary.kind === "other" ? {} : { raw: event.item }),
     ...claudeSpeedObservation(event.item),
     ...optional(event.tokenUsage, "tokenUsage"),
@@ -70,7 +82,9 @@ type ClaudeSummary = ClaudeTranscriptEvent["summary"];
 type ClaudeActivityFields<Summary extends ClaudeSummary = ClaudeSummary> =
   Summary extends ClaudeSummary ? Omit<Summary, "label"> : never;
 
-function claudeActivityFields(summary: ClaudeSummary): ClaudeActivityFields {
+function claudeActivityFields(
+  summary: Exclude<ClaudeSummary, { readonly kind: "user_message" }>,
+): Exclude<ClaudeActivityFields, { readonly kind: "user_message" }> {
   switch (summary.kind) {
     case "other":
       return { kind: "other" };

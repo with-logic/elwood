@@ -15,8 +15,8 @@ describe("C-API-48 positive turn acceptance", () => {
     const s = drive((s) => {
       s.emit("status", { status: "running" });
       s.emit("activity", activity({ kind: "warning", text: "go" }));
-      s.emit("activity", activity({ kind: "user_message", text: "different" }));
-      s.emit("activity", activity({ kind: "user_message", text: "go" }));
+      s.emit("activity", activity({ kind: "user_message", source: "hook", text: "different" }));
+      s.emit("activity", activity({ kind: "user_message", source: "hook", text: "go" }));
       s.emit("status", { status: "ready" });
     });
     const result = collect(runTurnFake(s, { fallbackQuietMs: 10 }).events);
@@ -65,6 +65,25 @@ describe("C-API-48 positive turn acceptance", () => {
     const rejected = expect(result).rejects.toMatchObject({ code: "wait_timeout" });
     await vi.advanceTimersByTimeAsync(31);
     await rejected;
+    expect(s.submissions).toBe(3);
+  });
+
+  test("C-API-48 late transcript text cannot acknowledge a newer identical submit", async () => {
+    vi.useFakeTimers();
+    const s = drive((session) => {
+      if (session.submissions !== 1) return;
+      session.emit("status", { status: "running" });
+      session.emit(
+        "activity",
+        activity({ kind: "user_message", source: "transcript", text: "go", turnId: "previous" }),
+      );
+      session.emit("status", { status: "ready" });
+    });
+    const result = collect(runTurnFake(s, { fallbackQuietMs: 10, drainMs: 1 }).events);
+    await Promise.all([
+      expect(result).rejects.toMatchObject({ code: "wait_timeout" }),
+      vi.advanceTimersByTimeAsync(31),
+    ]);
     expect(s.submissions).toBe(3);
   });
 

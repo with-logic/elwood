@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { assistant, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
+import { activityEmitterWithListener, assistant, tmpFile } from "./claude-transcript-helpers.ts";
 
 // These tests require a flush; budget-exhaustion behavior is covered separately.
 beforeEach(() => {
@@ -27,7 +27,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     // and surfaces a bounded, content-free transcript_poll_stopped.
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
-    const emitter = fakeEmitter((a) => {
+    const emitter = activityEmitterWithListener((a) => {
       if (a.kind === "assistant_message") throw new Error("flush listener bug");
     });
     const { watcher, finishSafely } = createTranscriptWatcher("s9", emitter, () => sink);
@@ -47,7 +47,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     // afterFlush carries the terminal:exit/status/reap work; it MUST run whether or
     // not the flush threw, so termination always completes (C-LIFE-10).
     const sink: WarningSink = { emitWarnings: () => {} };
-    const emitter = fakeEmitter((a) => {
+    const emitter = activityEmitterWithListener((a) => {
       if (a.kind === "assistant_message") throw new Error("flush listener bug");
     });
     const { watcher, finishSafely } = createTranscriptWatcher("s9", emitter, () => sink);
@@ -71,7 +71,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
         throw new Error("sink bug");
       },
     };
-    const emitter = fakeEmitter((a) => {
+    const emitter = activityEmitterWithListener((a) => {
       if (a.kind === "assistant_message") throw new Error("flush listener bug");
     });
     const { watcher, finishSafely } = createTranscriptWatcher("s9", emitter, () => sink);
@@ -87,7 +87,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
 
 test("C-LIFE-10 finishing from a transcript callback preserves the current record batch", async () => {
   const order: string[] = [];
-  const emitter = fakeEmitter((event) => {
+  const emitter = activityEmitterWithListener((event) => {
     if (event.kind !== "assistant_message") return;
     order.push(event.text ?? "");
     if (order.length === 1) built.finishSafely(() => order.push("exit"));

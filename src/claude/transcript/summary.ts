@@ -10,11 +10,11 @@ import { stringify } from "../../core/serialize.ts";
 const noResponsePlaceholder = "No response requested.";
 
 /**
- * A committed transcript item, discriminated by kind so each variant carries
+ * A summary produced directly by summarizeClaudeRecord, discriminated by kind so each variant carries
  * only the fields it can have (an `assistant_message` always has `text`; a
  * `tool_call` always has `toolName`; a `tool_result` always has `toolUseId`).
  */
-export type ClaudeTranscriptSummary =
+export type ClaudeDirectRecordSummary =
   | { readonly kind: "assistant_message"; readonly label: string; readonly text: string }
   | { readonly kind: "reasoning"; readonly label: string; readonly text: string }
   | {
@@ -37,12 +37,10 @@ type ClaudeTranscriptRole = "assistant" | "user";
 /**
  * Expands one transcript record into zero or more summaries. A Claude record is
  * an Anthropic Messages-API turn (`{ type, message: { role, content } }`) whose
- * `content` is `text` / `tool_use` / `tool_result` blocks. Only committed
- * ASSISTANT text and tool calls/results become activity (C-CLAUDE-15): user
- * prose stays hook-sourced from `UserPromptSubmit`, so it is NOT emitted here
- * (that would double every submitted prompt). Non-message records yield nothing.
+ * `content` holds text, tool calls, and results. User text uses the separate
+ * exact prompt correlation path (C-API-63). Non-message records yield nothing.
  */
-export function summarizeClaudeRecord(item: unknown): readonly ClaudeTranscriptSummary[] {
+export function summarizeClaudeRecord(item: unknown): readonly ClaudeDirectRecordSummary[] {
   const record = asRecord(item);
   const type = stringValue(record["type"]);
   if (type !== "assistant" && type !== "user") return [];
@@ -69,7 +67,7 @@ function isNoResponsePlaceholder(content: unknown): boolean {
 function summarizeBlock(
   role: ClaudeTranscriptRole,
   block: unknown,
-): readonly ClaudeTranscriptSummary[] {
+): readonly ClaudeDirectRecordSummary[] {
   const record = asRecord(block);
   const type = stringValue(record["type"]);
   if (type === "text") return assistantText(role, stringValue(record["text"]) ?? "");
@@ -87,21 +85,21 @@ function summarizeBlock(
  * dropped. The plaintext is committed to the transcript by the CLI, so it needs no
  * hook and is surfaced as a `reasoning` activity — mirroring Codex (§5.4, §7A.4).
  */
-function reasoning(role: ClaudeTranscriptRole, text: string): readonly ClaudeTranscriptSummary[] {
+function reasoning(role: ClaudeTranscriptRole, text: string): readonly ClaudeDirectRecordSummary[] {
   if (role !== "assistant" || text.length === 0) return [];
   return [{ kind: "reasoning", label: "thinking", text }];
 }
 
-/** Assistant prose only: user text is intentionally dropped (hook-sourced). */
+/** Ordinary transcript summaries include assistant prose only. */
 function assistantText(
   role: ClaudeTranscriptRole,
   text: string,
-): readonly ClaudeTranscriptSummary[] {
+): readonly ClaudeDirectRecordSummary[] {
   if (role !== "assistant" || text.length === 0) return [];
   return [{ kind: "assistant_message", label: role, text }];
 }
 
-function toolCall(block: Record<string, unknown>): ClaudeTranscriptSummary {
+function toolCall(block: Record<string, unknown>): ClaudeDirectRecordSummary {
   const name = stringValue(block["name"]) ?? "tool";
   return {
     kind: "tool_call",
@@ -112,7 +110,7 @@ function toolCall(block: Record<string, unknown>): ClaudeTranscriptSummary {
   };
 }
 
-function toolResult(block: Record<string, unknown>): ClaudeTranscriptSummary {
+function toolResult(block: Record<string, unknown>): ClaudeDirectRecordSummary {
   const id = stringValue(block["tool_use_id"]) ?? "tool";
   return {
     kind: "tool_result",

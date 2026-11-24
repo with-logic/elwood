@@ -31,6 +31,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
   private observerError: ((error: unknown) => void) | undefined;
   private retainObserverError = false;
   private rejectionError: ((error: unknown) => void) | undefined;
+  private allowRejectionReport: (() => boolean) | undefined;
 
   constructor() {
     this.handlers = new Map();
@@ -81,7 +82,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     // this round; `live` is consulted so one a prior handler removed is skipped.
     const snapshot = entry.list;
     const onError = this.observerError;
-    const onRejection = onError ?? this.rejectionError;
+    const onRejection = this.rejectionSink(onError ?? this.rejectionError);
     let firstError: unknown;
     let failed = false;
     for (const { handler } of snapshot) {
@@ -125,15 +126,32 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     }
   }
 
-  /** Contain returned native Promise rejections while preserving synchronous throws. */
-  observeRejections<T>(onError: (error: unknown) => void, operation: () => T): T {
+  /** Contain returned native Promise rejections while preserving synchronous throws.
+   * The optional predicate is evaluated when a Promise rejects and may suppress the
+   * report, including reports routed through an enclosing hook observer. */
+  observeRejections<T>(
+    onError: (error: unknown) => void,
+    operation: () => T,
+    allowReport?: () => boolean,
+  ): T {
     const previous = this.rejectionError;
+    const previousAllowance = this.allowRejectionReport;
     this.rejectionError = onError;
+    this.allowRejectionReport = allowReport ?? previousAllowance;
     try {
       return operation();
     } finally {
       this.rejectionError = previous;
+      this.allowRejectionReport = previousAllowance;
     }
+  }
+
+  private rejectionSink(sink: ((error: unknown) => void) | undefined) {
+    const allowed = this.allowRejectionReport;
+    if (!(sink && allowed)) return sink;
+    return (error: unknown) => {
+      if (allowed()) sink(error);
+    };
   }
 
   hasListeners<E extends EventKey<M>>(event: E): boolean {

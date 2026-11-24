@@ -4,6 +4,7 @@
  */
 
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
+import { claudePromptId } from "../../claude/hooks/prompt-id.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
 import { type CodexTranscriptEvent, toolOutputText } from "../../codex/transcript/index.ts";
 import { optional } from "../optional.ts";
@@ -25,9 +26,7 @@ export function hookActivityBase(
     source: "hook",
     hookEventName: event.hook_event_name,
     ...optionalMeta(
-      agent === "claude"
-        ? stringValue(source["prompt_id"]) || undefined
-        : stringValue(source["turn_id"]),
+      agent === "claude" ? claudePromptId(source["prompt_id"]) : stringValue(source["turn_id"]),
       "turnId",
     ),
     ...optionalMeta(stringValue(source["tool_name"]), "toolName"),

@@ -1,0 +1,122 @@
+/** Claude only repairs a blank prompt from a directly matched committed user record (PRD §5.4). */
+import { appendFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, expect, test } from "vitest";
+import { type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
+import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+
+afterEach(resetFakes);
+
+function user(promptId: string, content: unknown) {
+  return { type: "user", uuid: `user-${promptId}`, promptId, message: { content } };
+}
+
+async function startActivitySession() {
+  installFakes();
+  const cwd = tempDir();
+  const transcript = join(cwd, "transcript.jsonl");
+  writeFileSync(transcript, "");
+  const session = await startClaude({ cwd });
+  const events: ElwoodActivityEvent[] = [];
+  session.on("activity", (event) => events.push(event));
+  return {
+    session,
+    events,
+    hook: (fields: Record<string, unknown>) =>
+      ptys.at(-1)!.dispatchHook(session.elwoodSessionId, {
+        session_id: "claude-native",
+        cwd,
+        transcript_path: transcript,
+        ...fields,
+      }),
+    append: (...items: unknown[]) =>
+      appendFileSync(transcript, `${items.map((item) => JSON.stringify(item)).join("\n")}\n`),
+  };
+}
+
+test("C-API-63 repairs an earlier blank hook once the matched text commits", async () => {
+  const { session, hook, events, append } = await startActivitySession();
+  const submit = (prompt_id: string, prompt?: string) =>
+    hook({
+      hook_event_name: "UserPromptSubmit",
+      prompt_id,
+      ...(prompt === undefined ? {} : { prompt }),
+    });
+  try {
+    append(user("historical", "old conversation"), user("baseline", "unmatched prior turn"));
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    await session.sendPrompt("submitted from API");
+    expect(await submit("first")).toMatchObject({ exitCode: 0 });
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: "hook", hookEventName: "UserPromptSubmit", turnId: "first" }),
+    );
+    expect(events.filter(({ kind }) => kind === "user_message")).toEqual([]);
+    await submit("historical", "\n");
+    await submit("next", "neighbor hook prompt");
+    append(
+      user("wrong", "different transcript prompt"),
+      user("first", [{ type: "tool_result", tool_use_id: "tool", content: "tool output" }]),
+      user("first", [{ type: "text", text: "submitted from API" }]),
+      user("first", "duplicate record"),
+      user("next", "neighbor hook prompt"),
+    );
+    await hook({ hook_event_name: "Stop" });
+    await submit("first", "submitted from API");
+    expect(events.filter(({ kind }) => kind === "user_message")).toMatchObject([
+      { text: "neighbor hook prompt", turnId: "next", source: "hook" },
+      { text: "submitted from API", turnId: "first", source: "transcript" },
+    ]);
+  } finally {
+    await session.teardown();
+  }
+});
+
+test.each([
+  "live",
+  "after exit",
+])("C-API-63 a hook-scoped recovered prompt rejection is handled %s", async (timing) => {
+  const { session, hook, events, append } = await startActivitySession();
+  const pending = Promise.withResolvers<void>();
+  const warningCodes: string[] = [];
+  session.on("warning", ({ code }) => warningCodes.push(code));
+  session.on("activity", (event) =>
+    event.kind === "user_message" && event.source === "transcript" ? pending.promise : undefined,
+  );
+  try {
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first" });
+    append(user("first", "native prompt"));
+    await hook({ hook_event_name: "Stop" });
+    expect(events.filter(({ kind }) => kind === "user_message")).toHaveLength(1);
+    if (timing === "after exit") {
+      const exit = new Promise<void>((resolve) => session.on("terminal:exit", () => resolve()));
+      ptys.at(-1)!.emitExit({ exitCode: 0 });
+      await exit;
+    }
+    pending.reject(new Error("listener failure"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const expected = timing === "live" ? ["hook_observer_failed"] : [];
+    expect(warningCodes).toEqual(expected);
+    expect(events.filter(({ kind }) => kind === "warning").map(({ label }) => label)).toEqual(
+      expected,
+    );
+  } finally {
+    await session.teardown();
+  }
+});
+
+test("C-API-63 recovered activity omits the raw transcript record", async () => {
+  const { session, hook, events, append } = await startActivitySession();
+  try {
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first" });
+    append(user("first", "native prompt"));
+    await hook({ hook_event_name: "Stop" });
+    const recovered = events.filter(({ kind }) => kind === "user_message");
+    expect(recovered).toMatchObject([{ text: "native prompt", turnId: "first" }]);
+    expect(recovered[0]).not.toHaveProperty("raw");
+    expect(events.filter(({ kind }) => kind === "assistant_message")).toEqual([]);
+  } finally {
+    await session.teardown();
+  }
+});

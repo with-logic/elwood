@@ -9,9 +9,10 @@ import { optional } from "../../core/optional.ts";
 import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
-import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
+import { type ClaudeDirectRecordSummary, summarizeClaudeRecord } from "./summary.ts";
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 import { claudeTokenUsage } from "./usage.ts";
+import { ClaudeUserPrompts, type RecoveredUserPrompt } from "./user-prompts.ts";
 
 type ClaudeTranscriptFields = {
   readonly elwoodSessionId: string;
@@ -20,18 +21,29 @@ type ClaudeTranscriptFields = {
   readonly turnId?: string;
 };
 
-export type ClaudeTranscriptEvent = ClaudeTranscriptFields &
-  (
-    | { readonly summary: ClaudeTranscriptSummary; readonly tokenUsage?: ClaudeTokenUsage }
+type ClaudeRecoveredPromptEvent = RecoveredUserPrompt & {
+  readonly elwoodSessionId: string;
+  readonly recovered: true;
+  readonly item?: never;
+  readonly tokenUsage?: never;
+};
+
+type ClaudeDirectEvent = ClaudeTranscriptFields & {
+  readonly recovered?: never;
+} & (
+    | { readonly summary: ClaudeDirectRecordSummary; readonly tokenUsage?: ClaudeTokenUsage }
     | {
         readonly summary: { readonly kind: "other"; readonly label: "token_usage" };
         readonly tokenUsage: ClaudeTokenUsage;
       }
   );
 
+export type ClaudeTranscriptEvent = ClaudeDirectEvent | ClaudeRecoveredPromptEvent;
+
 /** Turns raw transcript text into parsed activity events for one watcher. */
 export class LineEmitter {
   readonly turns = new ClaudeTranscriptTurns();
+  readonly userPrompts: ClaudeUserPrompts;
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
   private readonly drops: DropReporter;
@@ -40,13 +52,17 @@ export class LineEmitter {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;
+    this.userPrompts = new ClaudeUserPrompts((prompt) =>
+      emit({ ...prompt, elwoodSessionId: id, recovered: true }),
+    );
   }
 
   /** Emit complete lines from `text`; a cursor retains any trailing partial line. */
   emitLines(path: string, text: string, cursor?: TranscriptCursor): void {
     if (text.length === 0) return;
     if (!cursor) {
-      for (const line of text.split(/\r?\n/)) this.emitLine(path, line);
+      // A backward baseline tail is history and cannot supply recovered prompt text.
+      for (const line of text.split(/\r?\n/)) this.emitLine(path, line, false);
       return;
     }
     const { lines, startedOversizedDrop } = cursor.takeLines(text);
@@ -57,7 +73,7 @@ export class LineEmitter {
   }
 
   /** Emit one line taken as complete (a transcript's last, un-terminated record at its end). */
-  emitLine(path: string, line: string): void {
+  emitLine(path: string, line: string, eligibleForPromptRecovery = true): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
@@ -65,6 +81,9 @@ export class LineEmitter {
       return;
     }
     const turnId = this.turns.observe(path, item);
+    if (this.turns.correlationDisabled) this.userPrompts.clearUnpaired();
+    if (eligibleForPromptRecovery && turnId !== undefined)
+      this.userPrompts.observeForwardRecord(path, turnId, item);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
     if (summaries.length === 0) {

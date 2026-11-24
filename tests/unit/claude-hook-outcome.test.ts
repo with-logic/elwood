@@ -36,7 +36,7 @@ test.each([
     options: { cwd: "/tmp" },
     emitter,
     ready: initialReady(() => {}),
-    transcriptWatcher: { scan: () => {} },
+    transcriptWatcher: { scan: () => {}, observeUserPromptHook: ({ hasText }) => hasText },
     getSession: () => undefined,
     getTurnWatcher: () => new TurnStateWatcher(),
     observeHookTranscript: () => {},
