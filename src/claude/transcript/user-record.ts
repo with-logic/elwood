@@ -11,6 +11,8 @@ function userContent(item: unknown): unknown {
   return message["content"];
 }
 
+/** Read nonblank string content or newline-joined text blocks from a genuine user record.
+ * Metadata, malformed blocks, and records containing a tool result are ineligible. */
 export function userPromptText(item: unknown): string | undefined {
   const content = userContent(item);
   if (typeof content === "string") return hasPromptText(content) ? content : undefined;

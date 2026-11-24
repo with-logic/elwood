@@ -105,18 +105,16 @@ test.each([
   }
 });
 
-test("C-API-63 changing recovered raw data cannot add uncommitted activity", async () => {
+test("C-API-63 recovered activity omits the raw transcript record", async () => {
   const { session, hook, events, append } = await startActivitySession();
-  session.on("activity", (event) => {
-    if (event.kind !== "user_message" || event.source !== "transcript") return;
-    Object.assign(event.raw as object, { type: "assistant", message: { content: "uncommitted" } });
-  });
   try {
     await hook({ hook_event_name: "SessionStart", source: "startup" });
     await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first" });
     append(user("first", "native prompt"));
     await hook({ hook_event_name: "Stop" });
-    expect(events.filter(({ kind }) => kind === "user_message")).toHaveLength(1);
+    const recovered = events.filter(({ kind }) => kind === "user_message");
+    expect(recovered).toMatchObject([{ text: "native prompt", turnId: "first" }]);
+    expect(recovered[0]).not.toHaveProperty("raw");
     expect(events.filter(({ kind }) => kind === "assistant_message")).toEqual([]);
   } finally {
     await session.teardown();

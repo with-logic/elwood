@@ -115,16 +115,26 @@ test("C-CLAUDE-15 a baseline identity overflow prevents later blank-hook recover
   try {
     writeFileSync(first, "");
     watcher.observe(first);
-    expect(watcher.observeUserPromptHook(first, "pending", false)).toBe(false);
+    expect(watcher.observeUserPromptHook({ path: first, turnId: "pending", hasText: false })).toBe(
+      false,
+    );
     appendFileSync(first, `${prompt("cached-before-overflow", "cached")}\n`);
     watcher.scan();
     writeFileSync(overflow, `${prompt("overflow", "x".repeat(1_025))}\n`);
     watcher.observe(overflow, false, "overflow");
     appendFileSync(first, `${prompt("pending", "valid")}\n`);
     watcher.scan();
-    expect(watcher.observeUserPromptHook(first, "cached-before-overflow", false)).toBe(false);
+    expect(
+      watcher.observeUserPromptHook({
+        path: first,
+        turnId: "cached-before-overflow",
+        hasText: false,
+      }),
+    ).toBe(false);
     expect(events).toEqual([]);
-    expect(watcher.observeUserPromptHook(first, "known", true)).toBe(true);
+    expect(watcher.observeUserPromptHook({ path: first, turnId: "known", hasText: true })).toBe(
+      true,
+    );
   } finally {
     watcher.stop();
   }
@@ -149,8 +159,8 @@ test("C-CLAUDE-15 retirement forgets only its own unpaired prompt evidence", () 
     }
     watcher.scan();
     watcher.retire(retired);
-    watcher.observeUserPromptHook(retired, "old", false);
-    watcher.observeUserPromptHook(retained, "live", false);
+    watcher.observeUserPromptHook({ path: retired, turnId: "old", hasText: false });
+    watcher.observeUserPromptHook({ path: retained, turnId: "live", hasText: false });
     expect(events).toMatchObject([
       { path: retained, summary: { kind: "user_message", text: "live" } },
     ]);

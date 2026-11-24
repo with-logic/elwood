@@ -3,7 +3,6 @@
  * Implements PRD §5.4 (C-CLAUDE-15 and the Codex transcript activity contract).
  */
 
-import { isRecoveredClaudePrompt } from "../../claude/transcript/emit.ts";
 import type { ClaudeTranscriptEvent } from "../../claude/transcript/index.ts";
 import { claudeSpeedObservation } from "../../claude/transcript/speed.ts";
 import type { CodexTranscriptEvent } from "../../codex/transcript/index.ts";
@@ -58,14 +57,13 @@ export function activityFromClaudeTranscript(
     source: "transcript",
     transcriptPath: event.path,
   } as const;
-  if (isRecoveredClaudePrompt(event)) {
+  if (event.recovered) {
     return {
       ...origin,
       kind: "user_message",
       label: "user",
       text: event.summary.text,
       turnId: event.turnId,
-      raw: event.item,
     };
   }
   const base = {

@@ -126,7 +126,9 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     }
   }
 
-  /** Contain returned native Promise rejections while preserving synchronous throws. */
+  /** Contain returned native Promise rejections while preserving synchronous throws.
+   * The optional predicate is evaluated when a Promise rejects and may suppress the
+   * report, including reports routed through an enclosing hook observer. */
   observeRejections<T>(
     onError: (error: unknown) => void,
     operation: () => T,

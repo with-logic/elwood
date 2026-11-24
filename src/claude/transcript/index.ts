@@ -18,6 +18,7 @@ import {
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
+import type { UserPromptHookEvidence } from "./user-prompts.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
 export type { TranscriptNoticeHandlers } from "./watcher-config.ts";
@@ -89,10 +90,9 @@ export class ClaudeTranscriptWatcher {
     }
     this.ensurePolling();
   }
-  /** Register native submit evidence and decide whether its hook still needs user activity. */
-  observeUserPromptHook(path: string | undefined, id: string, hasText: boolean): boolean {
+  observeUserPromptHook({ path, turnId, hasText }: UserPromptHookEvidence): boolean {
     const canRecover = !(this.finished || this.lines.turns.correlationDisabled);
-    return this.lines.userPrompts.observeHook(canRecover ? path : undefined, id, hasText);
+    return this.lines.userPrompts.observeHook(canRecover ? path : undefined, turnId, hasText);
   }
 
   scan(): void {

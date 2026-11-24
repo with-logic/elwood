@@ -19,7 +19,7 @@ test("keeps exact matching evidence separate across transcript paths", () => {
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   const commit = (target: string, id: string, text?: string) => {
     const item = record(id, text);
-    prompts.observeForwardRecord(target, id, item, JSON.stringify(item));
+    prompts.observeForwardRecord(target, id, item);
   };
   commit(path, "cached");
   commit(path, "cached", "duplicate");
@@ -40,8 +40,7 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   const events: unknown[] = [];
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   const commit = (target: string, id: string, padding = "") => {
-    const item = record(id);
-    prompts.observeForwardRecord(target, id, item, `${padding}${JSON.stringify(item)}`);
+    prompts.observeForwardRecord(target, id, record(id, `native prompt${padding}`));
   };
   expect(prompts.observeHook(undefined, "pathless", false)).toBe(false);
   expect(prompts.observeHook(undefined, "pathless", true)).toBe(true);
@@ -96,8 +95,8 @@ test("C-API-63 a malformed live identity stops transcript correlation without su
   writeRecords(path);
   try {
     watcher.observe(path);
-    watcher.observeUserPromptHook(path, "first", false);
-    watcher.observeUserPromptHook(path, "shown", false);
+    watcher.observeUserPromptHook({ path, turnId: "first", hasText: false });
+    watcher.observeUserPromptHook({ path, turnId: "shown", hasText: false });
     writeRecords(path, nativeUser("shown", "delivered once"));
     watcher.scan();
     expect(events).toHaveLength(1);
@@ -108,8 +107,8 @@ test("C-API-63 a malformed live identity stops transcript correlation without su
     appendFileSync(path, `${JSON.stringify(nativeUser("first", "must stay hidden"))}\n`);
     watcher.scan();
     expect(events).toHaveLength(1);
-    expect(watcher.observeUserPromptHook(path, "shown", true)).toBe(false);
-    expect(watcher.observeUserPromptHook(path, "first", true)).toBe(true);
+    expect(watcher.observeUserPromptHook({ path, turnId: "shown", hasText: true })).toBe(false);
+    expect(watcher.observeUserPromptHook({ path, turnId: "first", hasText: true })).toBe(true);
   } finally {
     watcher.finish();
   }
@@ -122,7 +121,7 @@ test("C-API-63 a valid final record can recover prompt text without a trailing n
   writeRecords(path);
   try {
     watcher.observe(path);
-    watcher.observeUserPromptHook(path, "final", false);
+    watcher.observeUserPromptHook({ path, turnId: "final", hasText: false });
     appendFileSync(path, JSON.stringify(nativeUser("final", "native final text")));
     watcher.scan();
     expect(events).toEqual([]);

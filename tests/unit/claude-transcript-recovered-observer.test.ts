@@ -30,7 +30,7 @@ test.each([
   }));
   writeRecords(path);
   watcher.observe(path);
-  watcher.observeUserPromptHook(path, "first", false);
+  watcher.observeUserPromptHook({ path, turnId: "first", hasText: false });
   writeRecords(path, nativeUser("first", "native text"), assistant("final reply"));
   finishSafely(() => eventOrder.push("exit"));
   await expect
@@ -66,8 +66,8 @@ test.each([
   writeRecords(path);
   try {
     watcher.observe(path);
-    watcher.observeUserPromptHook(path, "first", false);
-    watcher.observeUserPromptHook(path, "next", false);
+    watcher.observeUserPromptHook({ path, turnId: "first", hasText: false });
+    watcher.observeUserPromptHook({ path, turnId: "next", hasText: false });
     writeRecords(path, nativeUser("first", "committed text"), {
       ...assistant("reply"),
       parentUuid: "first",

@@ -7,10 +7,15 @@ import { userPromptText } from "./user-record.ts";
 const maxEntries = 64;
 const maxRetainedBytes = 4 * 1024 * 1024;
 
+export type UserPromptHookEvidence = {
+  readonly path: string | undefined;
+  readonly turnId: string;
+  readonly hasText: boolean;
+};
+
 export type RecoveredUserPrompt = {
   readonly path: string;
   readonly turnId: string;
-  readonly item: unknown;
   readonly summary: {
     readonly kind: "user_message";
     readonly label: "user";
@@ -19,7 +24,6 @@ export type RecoveredUserPrompt = {
 };
 type RecordEvidence = {
   readonly kind: "record";
-  readonly recordBytes: Buffer;
   readonly text: string;
   readonly retainedSizeBytes: number;
 };
@@ -60,14 +64,13 @@ export class ClaudeUserPrompts {
     const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") {
-      // The owned bytes were validated together with the stored text at insertion.
-      const item: unknown = JSON.parse(known.recordBytes.toString("utf8"));
-      this.publish(identity.path, turnId, key, item, known.text);
+      this.publish(identity.path, turnId, key, known.text);
     } else if (known === undefined) this.remember(key, { kind: "hook", path: identity.path });
     return false;
   }
 
-  observeForwardRecord(path: string, turnId: string, item: unknown, line: string): void {
+  /** Publish an exact pending path/ID match or retain text for a hook that arrives later. */
+  observeForwardRecord(path: string, turnId: string, item: unknown): void {
     if (
       !isRecord(item) ||
       item["type"] !== "user" ||
@@ -83,27 +86,23 @@ export class ClaudeUserPrompts {
     const text = userPromptText(item);
     if (text === undefined) return;
     if (known?.kind === "hook") {
-      // The exposed raw payload must not mutate the parsed item used for other activity.
-      this.publish(path, turnId, key, JSON.parse(line) as unknown, text);
+      this.publish(path, turnId, key, text);
       return;
     }
-    const recordBytes = Buffer.from(line);
     this.remember(key, {
       kind: "record",
       path,
-      recordBytes,
       text,
-      retainedSizeBytes: recordBytes.length + Buffer.byteLength(text),
+      retainedSizeBytes: Buffer.byteLength(text),
     });
   }
 
-  private publish(path: string, turnId: string, key: string, item: unknown, text: string): void {
+  private publish(path: string, turnId: string, key: string, text: string): void {
     this.rememberShown(turnId);
     this.remove(key);
     this.emit({
       path,
       turnId,
-      item,
       summary: { kind: "user_message", label: "user", text },
     });
   }

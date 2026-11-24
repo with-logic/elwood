@@ -93,6 +93,7 @@ export function runTurn(
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
     if (identity && !identity.acceptsContent(event.turnId)) return;
+    // Recovered transcript text is observational and cannot acknowledge this submission.
     if (
       simple ||
       (!identity &&

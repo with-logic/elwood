@@ -55,16 +55,16 @@ export function buildClaudeHookHandler(
     const observe = () => observation.run("transcript", () => deps.observeHookTranscript(event));
     const submit = event.hook_event_name === "UserPromptSubmit";
     const hasText = projected.kind === "user_message";
-    const id = projected.turnId;
+    const turnId = projected.turnId;
     let show = true;
     const note = () =>
       observation.run("transcript", () => {
-        if (submit && id !== undefined) {
-          const emitHookMessage = transcriptWatcher.observeUserPromptHook(
-            event.transcript_path,
-            id,
+        if (submit && turnId !== undefined) {
+          const emitHookMessage = transcriptWatcher.observeUserPromptHook({
+            path: event.transcript_path,
+            turnId,
             hasText,
-          );
+          });
           if (hasText) show = emitHookMessage;
         }
       });

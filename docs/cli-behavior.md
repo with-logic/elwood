@@ -2271,6 +2271,18 @@ at the PTY launch seam. Native hooks, readiness, and input queues remained real.
 All processes and temporary credential copies were cleaned up. These observations
 do not establish successful model output or correlation of a hook to a prompt.
 
+## Claude prompt identity in live records (2026-11-24)
+
+A Claude Code 2.1.331 PTY session launched in a fresh temporary workspace
+received one ordinary Elwood submission. The authenticated `UserPromptSubmit`
+hook carried nonblank text, a `prompt_id`, and a transcript path. The transcript
+at that path contained exactly one committed user record whose `promptId`
+equaled the hook's ID and whose content included the submitted text. The probe
+compared the IDs in memory and logged only the match and record count.
+
+The probe exercised a text-bearing submission. The test for recovery from a
+textless hook uses the real Elwood hook bridge and a fixture transcript.
+
 ## Live staged text and ambiguous working frames (2026-09-24)
 
 The 2026-09-24 no-submission captures of Claude Code 2.1.281 and
