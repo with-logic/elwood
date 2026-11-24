@@ -7,7 +7,6 @@
  * raw fs errno string (a system-controlled code, never transcript content).
  * Warnings are live-only: emitted once when observed, never persisted.
  */
-
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
 import type { LoginExpiredWarning, LoginExpiringWarning } from "./auth.ts";
@@ -45,6 +44,7 @@ export type ElwoodWarningEvent =
       readonly message: string;
       readonly raw: string;
     }
+  | lifecycle.CodexRolloutLocatorWriteFailedWarning
   | lifecycle.AgentUpdateFailedWarning
   | lifecycle.ObserverFailureWarning
   | lifecycle.TurnCommitWaitExpiredWarning

@@ -2,6 +2,7 @@
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
+import type { CodexHookEventFor } from "../../src/codex/hooks/index.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { defaultStateDir, sessionDir } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -25,7 +26,7 @@ test("C-STATE-15 only the current authenticated conversation updates its private
       session_id,
       transcript_path,
       cwd,
-    });
+    } satisfies CodexHookEventFor<"SessionStart">);
   const read = () => JSON.parse(readFileSync(stored, "utf8"));
   try {
     await submit(0, nativeId, rollout);
@@ -34,11 +35,16 @@ test("C-STATE-15 only the current authenticated conversation updates its private
     await submit(0, "other", join(cwd, "unrelated.jsonl"));
     expect(read()).toEqual({ nativeSessionId: nativeId, path: rollout });
 
-    await original.stop();
     successor = await resumeCodex({ cwd, elwoodSessionId });
     expect(read()).toEqual({ nativeSessionId: nativeId, path: rollout });
     const relocated = join(cwd, "relocated.jsonl");
     await submit(1, nativeId, relocated);
+    expect(read()).toEqual({ nativeSessionId: nativeId, path: relocated });
+    expect(await submit(0, nativeId, join(cwd, "superseded.jsonl"))).toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
     expect(read()).toEqual({ nativeSessionId: nativeId, path: relocated });
   } finally {
     await successor?.teardown();
@@ -56,7 +62,8 @@ test("C-STATE-15 an unavailable optional locator cannot stop SessionStart or rea
     events.push(session_id);
     return undefined;
   });
-  session.on("warning", ({ code }) => events.push(code));
+  session.on("warning", ({ code, raw }) => events.push(`${code}:${raw}`));
+  // A directory at the destination makes the atomic temp-file rename fail.
   mkdirSync(join(sessionDir(defaultStateDir(cwd), elwoodSessionId), "codex-rollout.json"));
   try {
     const reply = await ptys[0]!.dispatchHook(elwoodSessionId, {
@@ -65,9 +72,15 @@ test("C-STATE-15 an unavailable optional locator cannot stop SessionStart or rea
       cwd,
       session_id: nativeId,
       transcript_path: join(cwd, "transcript.jsonl"),
-    });
+    } satisfies CodexHookEventFor<"SessionStart">);
     expect(reply).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(events).toEqual([nativeId, "hook_observer_failed"]);
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        nativeId,
+        "codex_rollout_locator_write_failed:codex_rollout_locator_write_failed",
+      ]),
+    );
     expect(session.status).toBe("ready");
   } finally {
     await session.teardown();

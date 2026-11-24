@@ -27,6 +27,17 @@ export type AgentUpdateFailedWarning = {
   readonly exitStatus?: number;
 };
 
+/** A failed optional Codex locator publication (§8.2, C-STATE-15). */
+export type CodexRolloutLocatorWriteFailedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "codex_rollout_locator_write_failed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: "codex_rollout_locator_write_failed";
+};
+
 /** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */
 export type HookObserverFailedWarning = {
   readonly elwoodSessionId: string;

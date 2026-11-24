@@ -1,43 +1,62 @@
-/** Keep authenticated native Codex rollout metadata separate from core session state (C-STATE-15). */
+/** Publish authenticated Codex rollout metadata after launch activation (C-STATE-15). */
 import { isAbsolute, join } from "node:path";
-import { isRecord } from "../core/predicates.ts";
+import type { CodexRolloutLocatorWriteFailedWarning } from "../core/warnings/lifecycle.ts";
 import type { LaunchOwnership } from "./launch-ownership.ts";
 
-type LocatorIO = Pick<LaunchOwnership, "readFile" | "persistFile">;
+const maxRolloutPathBytes = 4_096;
+type RolloutLocator = { readonly nativeSessionId: string; readonly path: string };
+type LocatorIO = Pick<LaunchOwnership, "canPersist" | "persistFile">;
 
-export function codexRolloutPath(value: unknown): string | undefined {
-  return typeof value === "string" &&
+function codexRolloutPath(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
     isAbsolute(value) &&
-    Buffer.byteLength(value) <= 4_096 &&
+    Buffer.byteLength(value) <= maxRolloutPathBytes &&
     !value.includes("\0")
-    ? value
-    : undefined;
+  );
 }
 
-export function loadCodexRollout(
-  directory: string,
-  nativeSessionId: string,
-  read: LocatorIO["readFile"],
+export function bindCodexRolloutLocator(
+  { sessionDir, sessionId }: { readonly sessionDir: string; readonly sessionId: string },
+  io: LocatorIO,
 ) {
-  const text = read(join(directory, "codex-rollout.json"));
-  if (text === undefined) return undefined;
-  try {
-    const record: unknown = JSON.parse(text);
-    if (!isRecord(record) || record["nativeSessionId"] !== nativeSessionId) return undefined;
-    return codexRolloutPath(record["path"]);
-  } catch {
-    return undefined;
-  }
-}
+  let active = false;
+  let pending: RolloutLocator | undefined;
+  const target = join(sessionDir, "codex-rollout.json");
 
-export function bindCodexRolloutWriter(directory: string, io: LocatorIO) {
-  return (nativeSessionId: string, reportedPath: unknown): void => {
-    const path = codexRolloutPath(reportedPath);
-    if (path === undefined || loadCodexRollout(directory, nativeSessionId, io.readFile) === path)
-      return;
-    io.persistFile(
-      join(directory, "codex-rollout.json"),
-      `${JSON.stringify({ nativeSessionId, path })}\n`,
-    );
+  const write = (locator: RolloutLocator): readonly CodexRolloutLocatorWriteFailedWarning[] => {
+    if (!io.canPersist()) return [];
+    try {
+      io.persistFile(target, `${JSON.stringify(locator)}\n`);
+      return [];
+    } catch {
+      return [
+        {
+          elwoodSessionId: sessionId,
+          agent: "codex",
+          source: "lifecycle",
+          code: "codex_rollout_locator_write_failed",
+          severity: "warning",
+          message: "Elwood could not save the Codex transcript locator.",
+          raw: "codex_rollout_locator_write_failed",
+        },
+      ];
+    }
+  };
+
+  return {
+    observe(nativeSessionId: string, path: unknown) {
+      if (!codexRolloutPath(path)) return [];
+      const locator = { nativeSessionId, path };
+      if (active) return write(locator);
+      pending = locator;
+      return [];
+    },
+    activate() {
+      active = true;
+      const locator = pending;
+      pending = undefined;
+      return locator === undefined ? [] : write(locator);
+    },
   };
 }

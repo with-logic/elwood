@@ -2,7 +2,6 @@
  * In-memory Codex session object exposed to callers.
  * Implements PRD §5.7, §7A, §8, and §9.
  */
-
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { HookObservation } from "../../core/hook-observation.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
@@ -15,7 +14,7 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
-import { bindCodexRolloutWriter } from "../../state/codex-rollout.ts";
+import { bindCodexRolloutLocator } from "../../state/codex-rollout.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -41,7 +40,6 @@ import { clipboardRestoreFailedWarning } from "./warnings.ts";
 
 /** How long a setModel interrupted by close waits for the CLI to exit before restoring. */
 const cliExitWaitMs = 5_000;
-
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   override async listModels(options?: { readonly timeoutMs?: number }) {
     return codexModelOptions(await super.listModels(options));
@@ -54,10 +52,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
-  private readonly writeRollout: ReturnType<typeof bindCodexRolloutWriter>;
+  readonly rolloutLocator: ReturnType<typeof bindCodexRolloutLocator>;
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
-  // The PTY's own exit proves shutdown; recorded session status alone does not.
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
@@ -93,7 +90,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
-    this.writeRollout = bindCodexRolloutWriter(runtime.sessionDir, runtime.stateOwnership);
+    this.rolloutLocator = bindCodexRolloutLocator(
+      { sessionDir: runtime.sessionDir, sessionId: this.elwoodSessionId },
+      runtime.stateOwnership,
+    );
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.resolveConfigPath = resolveConfigPath;
     // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
@@ -141,7 +141,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  // Codex has no staged chip; the composer still shows the paste's last line.
   protected readonly recoveryComposer = createCodexRecoveryComposer(this.terminal);
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
   // held while a dialog is on screen so it never confirms one (C-API-46/37).
@@ -153,15 +152,16 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
-  rememberCodexSessionId(
+  persistSessionStartMetadata(
     event: CodexHookEventFor<"SessionStart">,
     observation: HookObservation,
   ): void {
     const { session_id: nativeId, transcript_path: path } = event;
     if (!this.record.codex.resumeId)
       this.persist(updateSessionResumeId(this.record, "codex", nativeId));
-    if (this.record.codex.resumeId === nativeId)
-      observation.run("lifecycle", () => this.writeRollout(nativeId, path));
+    if (this.record.codex.resumeId !== nativeId) return;
+    const warnings = this.rolloutLocator.observe(nativeId, path);
+    observation.run("lifecycle", () => this.emitWarnings(warnings));
   }
   setInitialReadyHook(fire: () => void): void {
     this.onInitialReady = fire;

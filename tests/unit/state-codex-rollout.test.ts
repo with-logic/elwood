@@ -1,34 +1,48 @@
-/** Scope optional Codex rollout locators to one native ID (C-STATE-15). */
-import { join } from "node:path";
+/** Validate and defer authenticated Codex rollout locator writes (C-STATE-15). */
 import { expect, test, vi } from "vitest";
-import { bindCodexRolloutWriter, loadCodexRollout } from "../../src/state/codex-rollout.ts";
+import { bindCodexRolloutLocator } from "../../src/state/codex-rollout.ts";
 
-const directory = "/session";
-const path = "/native/rollout.jsonl";
-const id = "conversation";
+const sessionDir = "/session";
+const sessionId = "elwood-session";
+const nativeId = "conversation";
 
-test("C-STATE-15 reject recovered paths without exact native identity or valid shape", () => {
-  for (const text of [
-    undefined,
-    "{",
-    "[]",
-    JSON.stringify({ nativeSessionId: "other", path }),
-    JSON.stringify({ nativeSessionId: id, path: "relative" }),
-    JSON.stringify({ nativeSessionId: id, path: `${path}\0` }),
-    JSON.stringify({ nativeSessionId: id, path: `/${"x".repeat(4096)}` }),
-  ]) {
-    expect(loadCodexRollout(directory, id, () => text)).toBeUndefined();
-  }
+test.each([
+  ["missing", undefined],
+  ["wrong type", 123],
+  ["relative", "relative"],
+  ["NUL", "/native/rollout\0.jsonl"],
+  ["over the UTF-8 byte limit", `/${"é".repeat(2048)}`],
+])("C-STATE-15 ignores a %s reported locator path", (_case, path) => {
+  const persistFile = vi.fn();
+  const locator = bindCodexRolloutLocator(
+    { sessionDir, sessionId },
+    {
+      canPersist: () => true,
+      persistFile,
+    },
+  );
+  expect(locator.activate()).toEqual([]);
+  expect(locator.observe(nativeId, path)).toEqual([]);
+  expect(persistFile).not.toHaveBeenCalled();
 });
 
-test("C-STATE-15 invalid paths and repeat observations do not rewrite the locator", () => {
+test("C-STATE-15 defers only the latest valid report to commit", () => {
   const persistFile = vi.fn();
-  const readFile = vi.fn(() => JSON.stringify({ nativeSessionId: id, path }));
-  const remember = bindCodexRolloutWriter(directory, { readFile, persistFile });
-  remember(id, null);
-  remember(id, path);
-  expect(readFile).toHaveBeenCalledExactlyOnceWith(join(directory, "codex-rollout.json"));
+  const locator = bindCodexRolloutLocator(
+    { sessionDir, sessionId },
+    {
+      canPersist: () => true,
+      persistFile,
+    },
+  );
+  const path = `/${"x".repeat(4095)}`;
+  expect(locator.observe(nativeId, "/older")).toEqual([]);
+  expect(locator.observe(nativeId, path)).toEqual([]);
+  expect(locator.observe(nativeId, null)).toEqual([]);
   expect(persistFile).not.toHaveBeenCalled();
-  remember(id, "/native/replacement.jsonl");
-  expect(persistFile).toHaveBeenCalledOnce();
+  expect(locator.activate()).toEqual([]);
+  expect(persistFile).toHaveBeenCalledExactlyOnceWith(
+    "/session/codex-rollout.json",
+    `${JSON.stringify({ nativeSessionId: nativeId, path })}\n`,
+  );
 });
