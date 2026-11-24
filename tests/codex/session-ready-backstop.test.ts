@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
   type CodexSessionApi,
+  type ElwoodActivityEvent,
   type ElwoodSessionStatus,
   type ElwoodWarningEvent,
   startCodex,
@@ -28,12 +29,14 @@ async function start() {
   sessions.push(session);
   const warnings: ElwoodWarningEvent[] = [];
   const statuses: ElwoodSessionStatus[] = [];
+  const activity: ElwoodActivityEvent[] = [];
   session.on("warning", (warning) => warnings.push(warning));
   session.on("status", ({ status }) => statuses.push(status));
+  session.on("activity", (event) => activity.push(event));
   // The startup warning gate opens on a real timer before this test takes over the clock.
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.useFakeTimers();
-  return { session, warnings, statuses };
+  return { session, warnings, statuses, activity };
 }
 
 /** Render the frame so its readiness timer is armed before fake time advances. */
@@ -47,7 +50,7 @@ test.each([
   "sendMessage",
   "sendPrompt",
 ] as const)("C-API-28 Codex backstop warns once while %s remains held", async (method) => {
-  const { session, warnings, statuses } = await start();
+  const { session, warnings, statuses, activity } = await start();
   ptys[0]!.emitData(codexTty(boot.replace("loading", `loading ${sentinel}`)));
   await settleFrame(session);
   await vi.advanceTimersByTimeAsync(59_900);
@@ -72,8 +75,20 @@ test.each([
   void sent.catch(() => {});
   expect(session.terminal.snapshot().text).toContain(sentinel);
   expect(JSON.stringify(warnings)).not.toContain(sentinel);
+  const unrecognized = () => activity.filter((event) => event.kind === "unrecognized_startup");
+  expect(unrecognized()).toEqual([
+    {
+      elwoodSessionId: session.elwoodSessionId,
+      agent: "codex",
+      source: "terminal",
+      kind: "unrecognized_startup",
+      label: "initial_ready_backstop",
+      text: expect.stringContaining(sentinel),
+    },
+  ]);
   await vi.advanceTimersByTimeAsync(60_000);
   expect(warnings).toHaveLength(1);
+  expect(unrecognized()).toHaveLength(1);
   expect(ptys[0]!.writes).toEqual([]);
   ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
   await settleFrame(session);
@@ -88,7 +103,7 @@ test.each([
   { label: "lowercase fast", frame: capturedFrame("codex-0.170.0/xhigh-fast-composer") },
   { label: "effort-only", frame: capturedFrame("codex-0.170.0/effort-only-composer") },
 ])("C-API-28 Codex $label composer releases startup input without warning", async ({ frame }) => {
-  const { session, warnings, statuses } = await start();
+  const { session, warnings, statuses, activity } = await start();
   const sent = session.sendMessage("ordinary initial prompt");
   void sent.catch(() => {});
   ptys[0]!.emitData(codexTty(boot));
@@ -103,18 +118,20 @@ test.each([
   await vi.advanceTimersByTimeAsync(60_000);
   expect(ptys[0]!.writes).toEqual(["\u001b[200~ordinary initial prompt\u001b[201~", "\r"]);
   expect(warnings).toEqual([]);
+  expect(activity.some((event) => event.kind === "unrecognized_startup")).toBe(false);
 });
 
 test.each([
   "sendMessage",
   "sendPrompt",
 ] as const)("C-API-28 %s remains held after the backstop until the update dialog clears", async (method) => {
-  const { session, warnings, statuses } = await start();
+  const { session, warnings, statuses, activity } = await start();
   ptys[0]!.emitData("\u001b[2J\u001b[HUpdate available! 0.167.2 -> 0.169.0\r\n1. Update now");
   await settleFrame(session);
   await vi.advanceTimersByTimeAsync(60_100);
   expect(session.status).toBe("blocked");
   expect(warnings.map((event) => event.code)).toContain("initial_ready_backstop");
+  expect(activity.some((event) => event.kind === "unrecognized_startup")).toBe(false);
   const sent = session[method]("queued after the update offer");
   const settled = vi.fn();
   void sent.then(settled, settled);
@@ -128,4 +145,29 @@ test.each([
   await sent;
   expect(statuses).toContain("ready");
   expect(ptys[0]!.writes.join("")).toContain("queued after the update offer");
+});
+
+test("C-ATTN-06 the startup activity uses live screen text while the host views history", async () => {
+  const { session, warnings, activity } = await start();
+  const pty = ptys[0]!;
+  pty.emitData("Earlier startup output\r\n".repeat(session.terminal.size.rows * 3));
+  await settleFrame(session);
+  session.terminal.xterm.scrollToTop();
+  pty.emitData("\u001b[2J\u001b[HNew native startup screen");
+  await settleFrame(session);
+  expect(session.terminal.snapshot().text).toContain("Earlier startup output");
+  session.on("activity", (event) => {
+    if (event.kind === "unrecognized_startup") throw new Error("listener failure");
+  });
+  session.on("activity", (event) =>
+    event.kind === "unrecognized_startup"
+      ? Promise.reject(new Error("listener rejection"))
+      : undefined,
+  );
+  await vi.advanceTimersByTimeAsync(60_100);
+  expect(activity.filter((event) => event.kind === "unrecognized_startup")).toMatchObject([
+    { text: "New native startup screen" },
+  ]);
+  expect(warnings.map(({ code }) => code)).toEqual(["initial_ready_backstop"]);
+  expect(pty.writes).toEqual([]);
 });

@@ -31,14 +31,15 @@ import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import { reportCallerInput } from "./caller-input.ts";
 import { buildCodexHookErrorHandler, dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
-import { createCodexReadinessGate } from "./readiness.ts";
+import { codexReadiness } from "./readiness.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
 import { bindCodexQuotaStats } from "./stats.ts";
 import * as transcript from "./transcript.ts";
 import type { CodexEventMap } from "./types.ts";
 import { emitUpdateAttention } from "./update-attention.ts";
-export type BuildCodexSessionInput = {
+
+type BuildCodexSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
@@ -64,7 +65,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => promptResponder.closingSignal.aborted,
     (deliver) => wired.duringDelivery(deliver),
   );
-  // Transcript diagnostics flow through the same startup warning gate.
   const wired = transcript.createCodexTranscriptWatcher(elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const bridge = currentCodexHookBridgeFactory()(
@@ -99,7 +99,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
   const snapshot = () => cachedLiveSnapshot(terminal);
-  const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate);
+  const readiness = codexReadiness(onReady, resumed, elwoodSessionId, warnGate, emitter);
   const clearance = liveCodexClearance(() => terminal);
   const observers = {
     turn: new TurnStateWatcher(),

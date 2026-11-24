@@ -1,7 +1,4 @@
-/**
- * Unified activity events shared across agent adapters.
- * Implements PRD §5.4.
- */
+/** Unified activity events shared across agent adapters (PRD §5.4). */
 
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
@@ -28,6 +25,7 @@ export type ElwoodActivityKind =
   | "notification"
   | "warning"
   | "startup_prompt"
+  | "unrecognized_startup"
   | "attention"
   | "hook"
   | "hook_result"
@@ -104,11 +102,7 @@ export type ElwoodActivityEvent = ActivityFields &
     | QuestionActivityFields
   );
 
-export {
-  activityFromStatus,
-  activityFromTerminalExit,
-  reapFailureWarning,
-} from "./lifecycle.ts";
+export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from "./lifecycle.ts";
 
 /** Hook events both adapters map identically; returns undefined for the rest. */
 function sharedHookActivity(

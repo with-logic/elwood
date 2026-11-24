@@ -46,7 +46,7 @@ export function createReadinessGate(
   resumed: boolean,
   composer?: {
     readonly configured: (frame: string, cols?: number) => boolean;
-    readonly onBackstop: () => void;
+    readonly onBackstop: (unrecognizedScreen: string | undefined) => void;
   },
 ): ReadinessGate {
   let readinessHeld = false;
@@ -78,7 +78,7 @@ export function createReadinessGate(
       shown,
       onBackstop: () => {
         backstopHold = () => !shown();
-        composer.onBackstop();
+        composer.onBackstop(readinessHeld ? undefined : latest?.frame);
       },
     };
   }

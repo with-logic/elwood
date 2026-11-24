@@ -175,8 +175,10 @@ untagged. Claude's synthetic interrupted-resume placeholder is omitted from
 normalized assistant activity.
 
 Codex's `initial_ready_backstop` warning means startup evidence is still missing:
-readiness and queued text remain held. Inspect or operate the terminal with raw
-keys, or stop the session; do not treat the diagnostic as prompt acceptance.
+readiness and queued text remain held. If there is no recognized dialog, the
+matching `unrecognized_startup` activity carries bounded live screen text for
+display. The text can contain whatever Codex showed, including account or
+workspace details.
 Recognized update menus are safely skipped or reported as `blocked` with
 `codex-update-prompt` attention. Elwood never chooses `Update now` in the TUI.
 
