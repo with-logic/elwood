@@ -13,7 +13,7 @@ export type ClaudeQuestionScreen =
   | {
       readonly kind: "question";
       readonly questionIndex: number;
-      readonly hasReviewTab: boolean;
+      readonly hasSubmitTab: boolean;
       /** Zero-based selection-list index: options, Other, then Next or Submit when present. */
       readonly cursor: number;
       readonly checked: readonly boolean[];
@@ -57,13 +57,13 @@ export function parseClaudeQuestionScreen(
 ): ClaudeQuestionScreen | undefined {
   const panel = readClaudeQuestionPanel(frame, questions);
   if (!panel) return undefined;
-  const { start, body, first, prompt, hasReviewTab } = panel;
+  const { start, body, first, prompt, hasSubmitTab } = panel;
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
   );
   const question = questions[questionIndex];
   if (!question) {
-    return hasReviewTab && prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)
+    return hasSubmitTab && prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)
       ? parseReview(frame, body, first)
       : undefined;
   }
@@ -92,7 +92,7 @@ export function parseClaudeQuestionScreen(
   return {
     kind: "question",
     questionIndex,
-    hasReviewTab,
+    hasSubmitTab,
     ...parsed,
     other: cursorPad ? parsed.other.slice(0, -1) : parsed.other,
   };
@@ -127,8 +127,8 @@ export function readClaudeQuestionPanel(
 ) {
   if (!claudeQuestionCandidate(frame.text)) return undefined;
   const start = questionPanelStart(frame.lines);
-  const hasReviewTab = reviewTabForHeader(frame.lines[start], questions);
-  if (hasReviewTab === undefined) return undefined;
+  const hasSubmitTab = parseSubmitTabPresence(frame.lines[start], questions);
+  if (hasSubmitTab === undefined) return undefined;
   const body = frame.lines.slice(start + 1);
   const first = body.findIndex((line) => row.test(line));
   if (first < 0) return undefined;
@@ -136,29 +136,23 @@ export function readClaudeQuestionPanel(
     start,
     body,
     first,
-    hasReviewTab,
+    hasSubmitTab,
     prompt: normalizeClaudeQuestionText(body.slice(0, first).join("\n")),
   };
 }
 
-export function matchesClaudeQuestionTabs(
-  frame: QuestionFrame,
-  questions: readonly QuestionDefinition[],
-): boolean {
-  return reviewTabForHeader(frame.lines[questionPanelStart(frame.lines)], questions) !== undefined;
-}
-
 /** Verify ordered native tabs and report whether submission goes through review. */
-function reviewTabForHeader(
+function parseSubmitTabPresence(
   title: string | undefined,
   questions: readonly QuestionDefinition[],
 ): boolean | undefined {
-  if (questions.length === 0 || questions.some((question) => !question.header)) return undefined;
+  const first = questions[0];
+  if (!first || questions.some((question) => !question.header)) return undefined;
   const tabs = questions.map((question) => `☐ ${question.header}`).join("  ");
   // Claude 2.1.310 pads the highlighted single-question chip with a trailing space.
   const visible = title?.replaceAll("☒", "☐").trimEnd();
   if (questions.length === 1 && visible === ` ${tabs}`) return false;
-  if (questions.length > 1 || questions[0]!.selection === "multiple") {
+  if (questions.length > 1 || first.selection === "multiple") {
     if (visible === `←  ${tabs}  ✔ Submit  →`) return true;
   }
   return undefined;
