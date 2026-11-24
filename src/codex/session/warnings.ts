@@ -2,7 +2,7 @@
  * Builders for the Codex session's lifecycle warnings: the config.toml restore
  * outcomes after a model switch (PRD §5.3, C-CODEX-14), the clipboard-restore
  * failure after an image attach and a pasted image's copy left after exit (§5.3, C-API-46),
- * a failed write of the optional rollout locator (§8.2, C-STATE-15), and a
+ * optional rollout locator failures (§8.2, C-STATE-15), and a
  * shutdown that signaled Codex before it recorded the ended turn (§5.7, C-LIFE-13).
  * Every warning is live-only (§5.7) and content-free. The `raw` field carries
  * only a path, a fixed token, or a bounded errno code.
@@ -13,7 +13,10 @@ import type {
   ImageCopyErrorCode,
   ImageCopyRemovalFailedWarning,
 } from "../../core/warnings/images.ts";
-import type { CodexRolloutLocatorWriteFailedWarning } from "../../core/warnings/lifecycle.ts";
+import type {
+  CodexRolloutLocatorUnavailableWarning,
+  CodexRolloutLocatorWriteFailedWarning,
+} from "../../core/warnings/lifecycle.ts";
 import { restoreFailureRaw } from "../config/restore.ts";
 import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../images/clipboard.ts";
 
@@ -128,5 +131,20 @@ export function codexRolloutLocatorWriteFailedWarning(
     severity: "warning",
     message: "Elwood could not save the Codex transcript locator.",
     raw: "codex_rollout_locator_write_failed",
+  };
+}
+
+/** Warn on unusable saved metadata while normal hook-based discovery remains active. */
+export function codexRolloutLocatorUnavailableWarning(
+  elwoodSessionId: string,
+): CodexRolloutLocatorUnavailableWarning {
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "lifecycle",
+    code: "codex_rollout_locator_unavailable",
+    severity: "warning",
+    message: "Elwood could not verify the saved Codex transcript location.",
+    raw: "codex_rollout_locator_unavailable",
   };
 }

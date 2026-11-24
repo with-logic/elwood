@@ -85,7 +85,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     });
   }
   const { pty, resolveConfigPath } = await spawnCodexPty(record, runtime, options, () =>
-    wired.seedResume(runtime.sessionDir, record.codex.resumeId),
+    wired.seedResume(runtime.sessionDir, record.codex.resumeId, runtime.stateOwnership.readFile),
   ).catch(async (error: unknown) => {
     await cleanupStartupResources({ bridge });
     throw error;

@@ -14,6 +14,8 @@ import {
   type TranscriptWarningSink,
 } from "../../core/transcript/warning-router.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
+import { loadCodexRolloutPath } from "../../state/codex-rollout.ts";
+import type { LaunchOwnership } from "../../state/launch-ownership.ts";
 import { CodexClipboardCopies } from "../images/clipboard-copies.ts";
 import {
   CodexTranscriptWatcher,
@@ -22,14 +24,20 @@ import {
   codexReadErrorWarning,
 } from "../transcript/index.ts";
 import { seedCodexResumeCursor } from "../transcript/resume-cursor.ts";
-import { loadCodexRolloutLocator } from "./rollout-locator.ts";
 import type { CodexEventMap } from "./types.ts";
-import { imageCopyRemovalFailedWarning } from "./warnings.ts";
+import {
+  codexRolloutLocatorUnavailableWarning,
+  imageCopyRemovalFailedWarning,
+} from "./warnings.ts";
 
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 type WiredCodexTranscriptWatcher = {
   readonly watcher: CodexTranscriptWatcher;
-  readonly seedResume: (sessionDir: string, nativeSessionId: string | undefined) => void;
+  readonly seedResume: (
+    sessionDir: string,
+    nativeSessionId: string | undefined,
+    read: LaunchOwnership["readFile"],
+  ) => void;
   /** Include deferred startup-warning fan-out in the exit-order barrier. */
   readonly duringDelivery: (work: () => void) => void;
   readonly flushPendingWarnings: () => void;
@@ -134,10 +142,24 @@ export function createCodexTranscriptWatcher(
       });
     }
   };
-  const seedResume = (sessionDir: string, nativeSessionId: string | undefined): void => {
+  const seedResume: WiredCodexTranscriptWatcher["seedResume"] = (
+    sessionDir,
+    nativeSessionId,
+    read,
+  ) => {
     if (!nativeSessionId) return;
-    const path = loadCodexRolloutLocator(sessionDir, nativeSessionId);
-    if (path !== undefined) watcher.seedResume(seedCodexResumeCursor(path, nativeSessionId));
+    try {
+      const path = loadCodexRolloutPath(sessionDir, nativeSessionId, read);
+      if (path === undefined) return;
+      const cursor = seedCodexResumeCursor(path, nativeSessionId);
+      if (cursor !== undefined) {
+        watcher.seedResume(cursor);
+        return;
+      }
+    } catch {
+      // Invalid optional state leaves the ordinary authenticated hook path available.
+    }
+    route(codexRolloutLocatorUnavailableWarning(elwoodSessionId));
   };
   return { watcher, duringDelivery, flushPendingWarnings, finishSafely, seedResume };
 }

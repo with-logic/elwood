@@ -38,6 +38,17 @@ export type CodexRolloutLocatorWriteFailedWarning = {
   readonly raw: "codex_rollout_locator_write_failed";
 };
 
+/** An existing locator or named rollout could not be verified on resume (§8.2). */
+export type CodexRolloutLocatorUnavailableWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "codex_rollout_locator_unavailable";
+  readonly severity: "warning";
+  readonly message: "Elwood could not verify the saved Codex transcript location.";
+  readonly raw: "codex_rollout_locator_unavailable";
+};
+
 /** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */
 export type HookObserverFailedWarning = {
   readonly elwoodSessionId: string;

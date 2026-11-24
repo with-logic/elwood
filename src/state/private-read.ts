@@ -54,11 +54,17 @@ function inspect(path: string, owner: FileOwner | undefined, maxBytes?: number):
     const fault = privacyFault(stat, owner);
     if (fault !== undefined) return { fault };
     if (maxBytes === undefined) return { text: readFileSync(fd, "utf8") };
-    const buffer = Buffer.allocUnsafe(maxBytes + 1);
-    const count = readSync(fd, buffer, 0, buffer.length, 0);
-    return count !== stat.size || count > maxBytes
-      ? { fault: "invalid bounded private file length" }
-      : { text: buffer.toString("utf8", 0, count) };
+    const invalidLength = { fault: "invalid bounded private file length" };
+    if (stat.size > maxBytes) return invalidLength;
+    // One extra byte detects growth after fstat. A short positive read is not EOF.
+    const buffer = Buffer.allocUnsafe(stat.size + 1);
+    let count = 0;
+    while (count < buffer.length) {
+      const read = readSync(fd, buffer, count, buffer.length - count, count);
+      if (read === 0) break;
+      count += read;
+    }
+    return count === stat.size ? { text: buffer.toString("utf8", 0, count) } : invalidLength;
   } catch (error) {
     if (errnoCode(error) === "ENOENT") return undefined;
     return { fault: toError(error).message };

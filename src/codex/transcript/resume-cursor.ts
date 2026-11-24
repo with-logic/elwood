@@ -1,23 +1,24 @@
 /** Verify the saved rollout and anchor forward observation at its pre-launch EOF (C-STATE-15). */
-import { type BigIntStats, closeSync, constants, fstatSync, openSync } from "node:fs";
+import { type BigIntStats, closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { isRecord } from "../../core/predicates.ts";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { type RangeRead, readRange, readTranscriptBytes } from "../../core/transcript/cursor-io.ts";
 import { payloadOf } from "./payload.ts";
 
 const maxHeaderBytes = 256 * 1024;
+const headerReadSize = 16 * 1024;
+const groupOrOtherWriteBits = 0o022n;
 type FileIdentity = Readonly<Pick<BigIntStats, "dev" | "ino">>;
 
+/** Verify the first session_meta ID and baseline the rollout at its pre-launch EOF.
+ * Missing, unsafe, malformed, or mismatched rollouts return undefined for hook-based discovery. */
 export function seedCodexResumeCursor(
   path: string,
   nativeSessionId: string,
 ): BoundedTranscriptCursor | undefined {
   try {
     return withOwnedRollout(path, (fd, stat) => {
-      const prefix = readTranscriptBytes(fd, 0, maxHeaderBytes);
-      const newline = prefix.indexOf(0x0a);
-      if (newline === -1) return undefined;
-      const header: unknown = JSON.parse(prefix.toString("utf8", 0, newline));
+      const header = readRolloutHeader(fd);
       if (!isRecord(header) || header["type"] !== "session_meta") return undefined;
       if (payloadOf(header)?.["id"] !== nativeSessionId) return undefined;
       return new CodexResumeCursor(path, stat);
@@ -25,6 +26,21 @@ export function seedCodexResumeCursor(
   } catch {
     return undefined;
   }
+}
+
+function readRolloutHeader(fd: number): unknown {
+  const bytes = Buffer.allocUnsafe(maxHeaderBytes);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const length = Math.min(bytes.length - offset, headerReadSize);
+    const count = readSync(fd, bytes, offset, length, offset);
+    if (count === 0) break;
+    const end = offset + count;
+    const lineEnd = bytes.subarray(offset, end).indexOf(0x0a);
+    if (lineEnd !== -1) return JSON.parse(bytes.toString("utf8", 0, offset + lineEnd));
+    offset = end;
+  }
+  return undefined;
 }
 
 class CodexResumeCursor extends BoundedTranscriptCursor {
@@ -68,8 +84,10 @@ function withOwnedRollout<T>(path: string, use: (fd: number, stat: BigIntStats) 
   const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd, { bigint: true });
-    if (!stat.isFile() || Number(stat.uid) !== process.getuid?.() || (stat.mode & 0o022n) !== 0n)
-      throw staleRollout();
+    const regularFile = stat.isFile();
+    const ownedByCurrentUser = Number(stat.uid) === process.getuid?.();
+    const writableByOthers = (stat.mode & groupOrOtherWriteBits) !== 0n;
+    if (!(regularFile && ownedByCurrentUser) || writableByOthers) throw staleRollout();
     return use(fd, stat);
   } finally {
     closeSync(fd);

@@ -48,3 +48,23 @@ test("C-STATE-15 defers only the latest valid report to commit", () => {
     `${JSON.stringify({ nativeSessionId, path })}\n`,
   );
 });
+
+test("C-STATE-15 writes only locators within the UTF-8 read limit", () => {
+  const persistFile = vi.fn<StateFileWriter>();
+  const locator = bindCodexRolloutLocator(
+    { sessionDir, elwoodSessionId },
+    { canPersist: () => true, persistFile },
+  );
+  const path = "/native/rollout.jsonl";
+  const fixedBytes = Buffer.byteLength(`${JSON.stringify({ nativeSessionId: "", path })}\n`);
+  const exactId = `${"x".repeat(32 * 1024 - fixedBytes - 2)}é`;
+  locator.onLaunchCommitted();
+  expect(locator.observe(exactId, path)).toEqual([]);
+  expect(locator.observe(`${exactId}é`, path)).toMatchObject([
+    { code: "codex_rollout_locator_write_failed", elwoodSessionId },
+  ]);
+  expect(persistFile).toHaveBeenCalledExactlyOnceWith(
+    "/session/codex-rollout.json",
+    `${JSON.stringify({ nativeSessionId: exactId, path })}\n`,
+  );
+});

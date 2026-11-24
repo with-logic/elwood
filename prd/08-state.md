@@ -226,10 +226,12 @@ rollout owned by the current user and writable only by its owner. The
 first native `session_meta` record must confirm that ID within the first
 256 KiB of the file. The seeded cursor reads appends only from that verified
 file. It delivers newly appended activity after startup commits, even without
-a new path-bearing hook. Missing or unusable locators leave ordinary hook-based
-transcript discovery available.
-A launch writes the locator through ordinary state ownership only after
-committing. If the hook arrives earlier, it retains the latest eligible report
+a new path-bearing hook. Ordinary hook-based discovery remains available
+when there is no usable locator. An absent locator is quiet. An existing
+unusable locator or rollout emits one content-free
+`codex_rollout_locator_unavailable` warning and warning activity during resume.
+A launch writes a locator of at most 32 KiB through ordinary state ownership
+only after committing. If the hook arrives earlier, it retains the latest eligible report
 until commit. A locator write failure reports a content-free warning and
 allows the authenticated hook and readiness signal to complete.
 

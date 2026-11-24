@@ -2,7 +2,7 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { resumeCodex, startCodex } from "../../src/index.ts";
+import { type CodexHookEventFor, resumeCodex, startCodex } from "../../src/index.ts";
 import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { setStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -88,7 +88,7 @@ test("C-STATE-15 an unusable locator falls back to authenticated hook discovery"
       transcript_path: rollout,
       cwd,
       source: "startup",
-    });
+    } satisfies CodexHookEventFor<"SessionStart">);
     const appended = message("after a path-bearing hook");
     appendFileSync(rollout, line(appended));
     await expect.poll(() => seen, { timeout: 3_000 }).toEqual([appended]);

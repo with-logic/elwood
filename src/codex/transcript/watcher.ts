@@ -74,8 +74,8 @@ export class CodexTranscriptWatcher {
   }
 
   // Begin watching `path`, baselining at its CURRENT end so history is NOT replayed.
-  // No-op if already watching this exact path or once finished (never restart polling
-  // past a terminal:exit). A switch to a new path drops the old.
+  // A matching pending resume keeps its pre-PTY cursor until launch commit. This
+  // also does nothing if already watching this path or finished. A switch drops the old path.
   observe(path: string): void {
     if (this.finished || this.cursor?.path === path || this.pendingResume?.path === path) return;
     this.pendingResume = undefined;

@@ -15,6 +15,30 @@ import { tempDirForUnit } from "./helpers.ts";
 const nativeSessionId = "native-session";
 const header = `${JSON.stringify({ type: "session_meta", payload: { id: nativeSessionId } })}\n`;
 
+const shortReads = vi.hoisted(() => ({
+  enabled: false,
+  history: [] as Array<readonly [position: number | null, count: number]>,
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...fs,
+    readSync(
+      fd: number,
+      buffer: Uint8Array,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) {
+      if (!shortReads.enabled) return fs.readSync(fd, buffer, offset, length, position);
+      const count = fs.readSync(fd, buffer, offset, Math.min(length, 8), position);
+      shortReads.history.push([position, count]);
+      return count;
+    },
+  };
+});
+
 function createRollout(contents = header) {
   const dir = tempDirForUnit();
   const path = join(dir, "rollout.jsonl");
@@ -33,8 +57,36 @@ test("C-STATE-15 reads only new bytes from the verified resume rollout", () => {
   expect(cursor.remainingBytes()).toBe(0);
 });
 
+test("C-STATE-15 reads a split native header and stops after its newline", () => {
+  const { path } = createRollout(`${header}{"type":"historical"}\n`);
+  let cursor: ReturnType<typeof seedCodexResumeCursor>;
+  shortReads.enabled = true;
+  try {
+    cursor = seedCodexResumeCursor(path, nativeSessionId);
+  } finally {
+    shortReads.enabled = false;
+  }
+
+  expect(cursor).toBeDefined();
+  expect(shortReads.history.length).toBeGreaterThan(1);
+  const [lastPosition, lastCount] = shortReads.history.at(-1)!;
+  expect(lastPosition).toBeLessThan(Buffer.byteLength(header));
+  expect(lastPosition! + lastCount).toBeGreaterThanOrEqual(Buffer.byteLength(header));
+  expect(cursor!.remainingBytes()).toBe(0);
+});
+
+test("C-STATE-15 accepts a header whose newline is at the byte limit", () => {
+  const { path } = createRollout(`${header.trimEnd().padEnd(256 * 1024 - 1)}\n`);
+  const cursor = seedCodexResumeCursor(path, nativeSessionId)!;
+  expect(cursor.readLiveChunk()).toEqual({ text: "", canContinueNow: false });
+  const appended = '{"type":"new"}\n';
+  appendFileSync(path, appended);
+  expect(cursor.readLiveChunk()).toEqual({ text: appended, canContinueNow: false });
+});
+
 test.each([
   ["malformed header", "{\n"],
+  ["EOF before header newline", header.trimEnd()],
   ["non-object header", "null\n"],
   ["wrong event type", '{"type":"other"}\n'],
   ["missing metadata ID", '{"type":"session_meta"}\n'],

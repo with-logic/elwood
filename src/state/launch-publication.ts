@@ -46,11 +46,16 @@ export class LaunchPublication {
     return this.directory(path);
   }
 
-  /** A new read always refreshes the snapshot paired with the next synchronous write. */
-  read(path: string, later: readonly LaunchPublication[]): string | undefined {
+  /** An unbounded read refreshes the snapshot paired with the next synchronous write. */
+  read(path: string, later: readonly LaunchPublication[], maxBytes?: number): string | undefined {
     this.snapshots.delete(path);
     const directory = this.authority(path, later);
-    const text = read(directory.pathInHeldDirectory(path));
+    const text = read(directory.pathInHeldDirectory(path), maxBytes);
+    if (maxBytes !== undefined) {
+      // Recheck the parent after reading the optional sidecar without saving a write snapshot.
+      directory.pathInHeldDirectory(path);
+      return text;
+    }
     const snapshot = { text, directory };
     this.snapshots.set(path, snapshot);
     queueMicrotask(() => {
@@ -136,9 +141,12 @@ export class LaunchPublication {
   }
 }
 
-function read(path: string): string | undefined {
+function read(path: string, maxBytes?: number): string | undefined {
   assertStatePath(path);
-  return readPrivateFile(path, currentFileOwner(), () =>
-    elwoodError("state_corrupt", "Launch state is not a valid private file."),
+  return readPrivateFile(
+    path,
+    currentFileOwner(),
+    () => elwoodError("state_corrupt", "Launch state is not a valid private file."),
+    maxBytes,
   );
 }

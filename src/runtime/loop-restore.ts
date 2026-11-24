@@ -17,7 +17,7 @@ export function loadRuntimeLoopDefinitions(
   now = Date.now(),
   read = readLoopSidecar,
 ): readonly PersistedLoopDefinition[] {
-  const { definitions } = read(stateDir, elwoodSessionId, access.readFile);
+  const { definitions } = read(stateDir, elwoodSessionId, (path) => access.readFile(path));
   const expired = definitions.find((definition) => definition.expiresAt <= now);
   if (expired === undefined) return definitions;
   const active = pruneExpiredLoopDefinitions(definitions, now);
