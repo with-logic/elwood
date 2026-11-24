@@ -85,7 +85,13 @@ test("pending warning listeners do not evict an earlier observed rejection", asy
   );
   emitter.on("warning", () => pendingWarning);
   emitter.on("activity", () => pendingWarning);
-  emitSessionWarningsWithRejectionHandling(Array.from({ length: 512 }, dropWarning), emitter);
+  // Each warning reaches two pending listeners. This many warning pairs would
+  // fill the observer's 1,024-entry diagnostics window if they occupied slots.
+  const warningsToFillDiagnosticWindow = 512;
+  emitSessionWarningsWithRejectionHandling(
+    Array.from({ length: warningsToFillDiagnosticWindow }, dropWarning),
+    emitter,
+  );
   original.reject(failure);
   await Promise.resolve();
   expect(errors).toEqual([failure]);
