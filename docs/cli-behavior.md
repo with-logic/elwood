@@ -720,7 +720,10 @@ footer without a model name, or a complete welcome box. Text-only callers
 conservatively reject approval-like rows; the live session additionally
 uses the actual visible input cursor to identify the composer, so transcript
 caret/numbered rows above that input remain legitimate history. Dialogs hide the
-cursor or leave it outside the composer. A bare caret never proves clearance.
+cursor or leave it outside the composer. Claude Code 2.1.331 can hide the
+hardware cursor after workspace trust and draw the empty input cursor as a
+reverse-video space at native column two. Both cursor forms require the
+verified composer and settled cursor coordinates. C-TRUST-01.
 Controlled post-settlement fixtures show that indented approval/trust headers or
 cursor-option blocks can coexist with a stale visible composer cursor. Clearance
 shares native trust-header classification without expanding C-ATTN-03 reporting.

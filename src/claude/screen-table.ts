@@ -52,15 +52,28 @@ export function liveClaudeClearance(
     const frame = settledLiveSnapshot(terminal);
     if (
       frame?.text !== text ||
-      !settledCursorVisible(terminal.xterm) ||
       frame.cursorX !== claudeComposerInputColumn ||
       claudeWorkingTitle.test(terminal.title)
     )
       return false;
     // xterm keeps cursorY inside the live row dimensions captured above.
     const composer = frame.lines[frame.cursorY]!;
-    return composer.startsWith("❯") && claudeComposerRow.test(composer) && textClearance(text);
+    return (
+      composer.startsWith("❯") &&
+      claudeComposerRow.test(composer) &&
+      claudeInputCursorVisible(terminal, composer) &&
+      textClearance(text)
+    );
   };
+}
+
+function claudeInputCursorVisible(terminal: ElwoodTerminal, composer: string): boolean {
+  if (settledCursorVisible(terminal.xterm)) return true;
+  if (composer.trimEnd() !== "❯") return false;
+  // Claude 2.1.331 can hide the hardware cursor and draw a reverse-video space.
+  const buffer = terminal.xterm.buffer.active;
+  const cell = buffer.getLine(buffer.baseY + buffer.cursorY)!.getCell(buffer.cursorX)!;
+  return cell.getChars() === " " && cell.isInverse() !== 0;
 }
 
 /**
