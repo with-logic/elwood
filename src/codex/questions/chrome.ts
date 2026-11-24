@@ -3,14 +3,17 @@ export const composerInputPrefix = /^[›»] /;
 export const queuedPanelHeader = "• Queued follow-up inputs";
 export const questionHeader = /^\s*Question (\d+)\/(\d+) \(\d+ unanswered\)$/;
 
-const modalFooter =
+const modalFooterWithNavigation =
   /^tab to add notes \| enter to submit (?:answer|all) \| ←\/→ to navigate questions \| esc to interrupt$/;
-const standaloneModalFooter = /^tab to add notes \| enter to submit answer \| esc to interrupt$/;
+const modalFooterWithoutNavigation =
+  /^tab to add notes \| enter to submit answer \| esc to interrupt$/;
 const notesFooter = /^tab or esc to clear notes \| enter to submit (?:answer|all)$/;
-/** Identify the native footer once for blocking detection and editor parsing. */
-export function modalQuestionFooter(footer: string): "group" | "standalone" | "notes" | undefined {
-  if (modalFooter.test(footer)) return "group";
-  if (standaloneModalFooter.test(footer)) return "standalone";
+export type ModalQuestionFooter = "withNavigation" | "withoutNavigation" | "notes";
+
+/** Classify footer text for the input hold. The editor separately validates the header. */
+export function modalQuestionFooter(footer: string): ModalQuestionFooter | undefined {
+  if (modalFooterWithNavigation.test(footer)) return "withNavigation";
+  if (modalFooterWithoutNavigation.test(footer)) return "withoutNavigation";
   if (notesFooter.test(footer)) return "notes";
   return undefined;
 }

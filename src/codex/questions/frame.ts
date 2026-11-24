@@ -4,6 +4,7 @@ import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
+  type ModalQuestionFooter,
   modalQuestionFooter,
   queuedFooter,
   queuedPanelHeader,
@@ -67,11 +68,9 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   let count: number;
   let index: number;
   let kind: QuestionView["kind"];
-  const modal = modalQuestionFooter(footer);
+  const modal = modalQuestionPosition(lines, modalQuestionFooter(footer));
   if (modal) {
-    const position = modalQuestionPosition(lines, modal === "standalone");
-    if (!position) return undefined;
-    ({ start, count, index } = position);
+    ({ start, count, index } = modal);
     kind = "blocking";
   } else if (queuedFooter.test(footer)) {
     start = lines.lastIndexOf(queuedPanelHeader);
@@ -95,7 +94,7 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     body,
     rawBody,
     selected: nativeSelection(rawBody, kind === "queued" && count > 1),
-    notes: modal === "notes",
+    notes: modal?.notes ?? false,
     cursor: {
       row: frame.cursorRow - start - 1,
       visible: frame.cursorVisible,
@@ -104,13 +103,21 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     },
   };
 }
-function modalQuestionPosition(lines: readonly string[], standalone: boolean) {
+const modalEditorLayouts = {
+  withNavigation: { requireSingleQuestion: false, notes: false },
+  withoutNavigation: { requireSingleQuestion: true, notes: false },
+  notes: { requireSingleQuestion: false, notes: true },
+} satisfies Record<ModalQuestionFooter, { requireSingleQuestion: boolean; notes: boolean }>;
+
+function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooter | undefined) {
+  if (!footer) return undefined;
+  const { requireSingleQuestion, notes } = modalEditorLayouts[footer];
   const start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
   const match = nativeQuestionHeader.exec(lines[start] ?? "");
   if (!match) return undefined;
   const count = Number(match[2]);
-  if (standalone && count !== 1) return undefined;
-  return { start, count, index: Number(match[1]) - 1 };
+  if (requireSingleQuestion && count !== 1) return undefined;
+  return { start, count, index: Number(match[1]) - 1, notes };
 }
 /** Native choice lists hide the cursor; a working redraw leaves its position above the panel. */
 function questionCursor(

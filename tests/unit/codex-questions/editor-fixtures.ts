@@ -30,7 +30,7 @@ export function notesFrame(source: QuestionFrame, text = "Add notes"): QuestionF
   return editorFrame(
     frame(
       source.text.replace(
-        /^ {2}tab to add notes \| enter to submit (answer|all) \| ←\/→ to navigate questions \| esc to interrupt/m,
+        /^ {2}tab to add notes \| enter to submit (answer|all)(?: \| ←\/→ to navigate questions)? \| esc to interrupt/m,
         `  › ${text}\n\n  tab or esc to clear notes | enter to submit $1`,
       ),
     ),

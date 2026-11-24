@@ -36,13 +36,12 @@ test("a queued question with choices submits its native Other text", async () =>
   expect(submitting).toHaveBeenCalledOnce();
 });
 
-test("a selected modal choice submits its associated notes", async () => {
+test("C-QUESTION-04 a standalone modal without navigation submits its selected choice and notes", async () => {
   const questions = [definitions("blocking-records.json")[0]!];
   const first = frame(
-    captured("blocking-modal-first.txt").text.replace(
-      "Question 1/2 (2 unanswered)",
-      "Question 1/1 (1 unanswered)",
-    ),
+    captured("blocking-modal-first.txt")
+      .text.replace("Question 1/2 (2 unanswered)", "Question 1/1 (1 unanswered)")
+      .replace(" | ←/→ to navigate questions", ""),
   );
   const blue = frame(
     first.text.replace("  › 1. Amber", "    1. Amber").replace("    2. Blue", "  › 2. Blue"),

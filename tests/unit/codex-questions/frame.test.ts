@@ -54,6 +54,7 @@ test("C-QUESTION-04 a Codex 0.171 standalone modal omits the question navigation
     index: 0,
     count: 1,
     selected: 0,
+    notes: false,
   });
   expect(
     questionView(frame(text.replace("1/1 (1 unanswered)", "1/2 (2 unanswered)"))),
