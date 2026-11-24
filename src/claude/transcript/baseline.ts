@@ -48,7 +48,7 @@ export type BaselineTail = {
  * newest-first and reversed ONCE at return (no repeated prepend), and only each
  * block's OWN lines are scanned for a boundary (the seam line re-merges with the
  * carried head), so total work stays linear. Returns the current-turn lines and
- * whether the scan stopped at the cap/BOF without finding the boundary.
+ * whether a limit or stalled read left earlier records unrecovered.
  */
 export function scanBaselineTail(path: string, size: number): BaselineTail {
   if (size === 0) return { lines: [], truncated: false, unrecoveredBytes: 0 };
