@@ -95,7 +95,7 @@ async function observeAndRequest(
   const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
   observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
   if (event.hook_event_name === "SessionStart") {
-    session?.rememberCodexSessionId(event.session_id);
+    session?.rememberCodexSessionId(event, observation);
     // Codex's authoritative pre-input readiness signal: release the first queued
     // message here, not on the boot-time composer placeholder (C-API-28).
     // The actual ready transition can be deferred by a startup hold; its own

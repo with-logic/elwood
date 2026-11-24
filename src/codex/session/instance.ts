@@ -15,12 +15,14 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
+import { bindCodexRolloutWriter } from "../../state/codex-rollout.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexTurnIdentity } from "../accepted-turn.ts";
 import { enrichCodexModels } from "../config/default-model.ts";
+import type { CodexHookEventFor } from "../hooks/index.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
 import { codexModelOptions } from "../models/options.ts";
@@ -52,6 +54,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
+  private readonly writeRollout: ReturnType<typeof bindCodexRolloutWriter>;
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
   // The PTY's own exit proves shutdown; recorded session status alone does not.
@@ -90,6 +93,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
+    this.writeRollout = bindCodexRolloutWriter(runtime.sessionDir, runtime.stateOwnership);
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.resolveConfigPath = resolveConfigPath;
     // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
@@ -97,8 +101,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
-    // REGISTER before replaying buffered `terminal:data` (mirrors Claude): a throwing replay
-    // handler must still be subscribed for FUTURE data. Replay is synchronous, so nothing interleaves.
+    // Register before replay so a throwing subscriber still receives future output.
     const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event as string, handler);
     return unsubscribe;
@@ -116,7 +119,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     };
     return super.setModel(id, options, (flow, signal) => switchCodexModel(session, flow, signal));
   }
-  // A closing session's dying CLI can still persist a confirmed selection: await its exit.
   private waitForCliExit(): Promise<unknown> | undefined {
     if (!this.closing.signal.aborted) return undefined;
     return this.cliExit.within(cliExitWaitMs, { unref: true }); // never holds the host open
@@ -151,17 +153,20 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
-  rememberCodexSessionId(sessionId: string): void {
-    if (this.record.codex.resumeId) return;
-    this.persist(updateSessionResumeId(this.record, "codex", sessionId));
+  rememberCodexSessionId(
+    event: CodexHookEventFor<"SessionStart">,
+    observation: HookObservation,
+  ): void {
+    const { session_id: nativeId, transcript_path: path } = event;
+    if (!this.record.codex.resumeId)
+      this.persist(updateSessionResumeId(this.record, "codex", nativeId));
+    if (this.record.codex.resumeId === nativeId)
+      observation.run("lifecycle", () => this.writeRollout(nativeId, path));
   }
-  /** Installs the authoritative SessionStart readiness trigger (C-API-28). */
   setInitialReadyHook(fire: () => void): void {
     this.onInitialReady = fire;
   }
-  /** Fires initial readiness from the `SessionStart` hook so the first queued
-   * message is released only once Codex is actually accepting input, not on the
-   * boot-time composer placeholder that would swallow it (C-API-28). */
+  /** SessionStart proves Codex can accept input at the composer (C-API-28). */
   markInitialReadyFromHook(observation: HookObservation): void {
     const previous = this.hookReadyObservation;
     this.hookReadyObservation = observation;

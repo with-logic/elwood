@@ -213,6 +213,14 @@ Session records are not intended to be portable across unrelated state
 directories. Session IDs are opaque path components: absolute paths, path
 separators, and traversal segments are invalid.
 
+Codex sessions keep an optional private `codex-rollout.json` sidecar containing
+the current native conversation ID and the absolute transcript path reported by
+that conversation's authenticated `SessionStart` hook. A missing or unusable
+locator does not invalidate the core session record. Core record publication does
+not replace the sidecar. Locator persistence uses the launch's ordinary state
+ownership and reportable errors do not suppress the authenticated hook or
+its readiness signal.
+
 Loop definitions are stored separately so existing schema-version-1 session
 records remain backward-readable. A versioned loop sidecar under the same
 owner-only session directory contains exactly each validated loop's stable ID,

@@ -28,6 +28,8 @@ back each entry are listed in `prd/14-conformance.md`.
   initial transcript.
 - Keep transcript observation responsive if a watched file is replaced by a pipe.
 
+- Preserve authenticated Codex rollout locations across session restart.
+
 - Preserve native prompt holds and readiness while an embedded terminal views
   scrollback.
 - Recover Claude prompt text from matching user records in the live transcript
