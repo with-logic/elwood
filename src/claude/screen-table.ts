@@ -7,7 +7,7 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
-import type { ElwoodTerminal } from "../terminal/headless.ts";
+import type { ElwoodTerminal, TerminalSnapshot } from "../terminal/headless.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
 import { readClaudeInputCursor } from "./composer/cursor.ts";
 import {
@@ -53,15 +53,23 @@ export function liveClaudeClearance(
     if (claudeWorkingTitle.test(terminal.title)) return false;
     const cursor = readClaudeInputCursor(terminal);
     if (!cursor || cursor.frame.text !== text) return false;
-    const { frame, kind } = cursor;
-    // A painted cell needs its own row's fence and footer to establish ownership.
-    const composer = frame.lines[frame.cursorY]!;
-    const verified =
-      kind === "hardware"
-        ? composer.startsWith("❯") && claudeComposerRow.test(composer)
-        : claudeEmptyInputRows(frame.lines, frame.cursorY);
-    return verified && textClearance(text);
+    return verifiesClaudeComposer(cursor.kind, cursor.frame) && textClearance(text);
   };
+}
+
+function verifiesClaudeComposer(
+  kind: NonNullable<ReturnType<typeof readClaudeInputCursor>>["kind"],
+  frame: TerminalSnapshot,
+): boolean {
+  switch (kind) {
+    case "hardware": {
+      const composer = frame.lines[frame.cursorY]!;
+      return composer.startsWith("❯") && claudeComposerRow.test(composer);
+    }
+    case "software":
+      // A painted cell needs its own row's fence and footer to establish ownership.
+      return claudeEmptyInputRows(frame.lines, frame.cursorY);
+  }
 }
 
 /**
