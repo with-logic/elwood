@@ -4,8 +4,7 @@ import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
-  modalFooter,
-  notesFooter,
+  modalQuestionFooter,
   queuedFooter,
   queuedPanelHeader,
 } from "./chrome.ts";
@@ -68,12 +67,11 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   let count: number;
   let index: number;
   let kind: QuestionView["kind"];
-  if (modalFooter.test(footer) || notesFooter.test(footer)) {
-    start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
-    const match = nativeQuestionHeader.exec(lines[start] ?? "");
-    if (!match) return undefined;
-    index = Number(match[1]) - 1;
-    count = Number(match[2]);
+  const modal = modalQuestionFooter(footer);
+  if (modal) {
+    const position = modalQuestionPosition(lines, modal === "standalone");
+    if (!position) return undefined;
+    ({ start, count, index } = position);
     kind = "blocking";
   } else if (queuedFooter.test(footer)) {
     start = lines.lastIndexOf(queuedPanelHeader);
@@ -97,7 +95,7 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     body,
     rawBody,
     selected: nativeSelection(rawBody, kind === "queued" && count > 1),
-    notes: notesFooter.test(footer),
+    notes: modal === "notes",
     cursor: {
       row: frame.cursorRow - start - 1,
       visible: frame.cursorVisible,
@@ -105,6 +103,14 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
       before: frame.cursorLineBefore,
     },
   };
+}
+function modalQuestionPosition(lines: readonly string[], standalone: boolean) {
+  const start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
+  const match = nativeQuestionHeader.exec(lines[start] ?? "");
+  if (!match) return undefined;
+  const count = Number(match[2]);
+  if (standalone && count !== 1) return undefined;
+  return { start, count, index: Number(match[1]) - 1 };
 }
 /** Native choice lists hide the cursor; a working redraw leaves its position above the panel. */
 function questionCursor(

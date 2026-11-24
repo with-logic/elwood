@@ -37,6 +37,28 @@ test("recognizes modal input blocking independently of queued availability", () 
     }).facts.blocking_prompt_visible,
   ).toBe(true);
 });
+test("C-QUESTION-04 a Codex 0.171 standalone modal omits the question navigation hint", () => {
+  const text = [
+    "  Question 1/1 (1 unanswered)",
+    "  Fixture modal. Which color?",
+    "",
+    "  › 1. Amber              Warm",
+    "    2. Blue               Cold",
+    "    3. None of the above  Optionally, add details in notes (tab)",
+    "",
+    "  tab to add notes | enter to submit answer | esc to interrupt",
+  ].join("\n");
+  expect(blockingQuestionVisible(text)).toBe(true);
+  expect(questionView(frame(text))).toMatchObject({
+    kind: "blocking",
+    index: 0,
+    count: 1,
+    selected: 0,
+  });
+  expect(
+    questionView(frame(text.replace("1/1 (1 unanswered)", "1/2 (2 unanswered)"))),
+  ).toBeUndefined();
+});
 test("rejects partial, unknown, quoted and stale cursor layouts", () => {
   const first = captured("async-editor-first.txt");
   for (const invalid of [

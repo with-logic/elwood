@@ -143,6 +143,12 @@ conversation already exists, so no `SessionStart` re-fires). To avoid that, on
 **resume only**, Elwood also accepts the rendered composer as a readiness signal
 (`createReadinessGate(onReady, resumed)`, `src/runtime/session/readiness.ts`).
 
+**Codex 0.171.0 can omit navigation from a single-question Plan-mode footer.**
+Its one-question editor ends with
+`tab to add notes | enter to submit answer | esc to interrupt`. The grouped
+footer includes the left and right arrow hint. Elwood recognizes the shorter
+footer only as a single-question editor for structured answers.
+
 **The composer marker is safe as a readiness signal on resume, but NOT on cold
 start.** On a cold start the composer (`›` for ordinary Codex effort, `»` for
 Codex `ultra`, `❯` for Claude) is a **boot-time placeholder** that paints ~1 s

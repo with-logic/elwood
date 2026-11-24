@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Raise and answer standalone Claude checkbox questions that use a Submit tab
   and final review.
+- Raise and answer a single-question Codex 0.171.0 Plan-mode panel when its
+  native footer omits the question navigation hint.
 
 ## [0.6.1] - 2026-11-20
 
