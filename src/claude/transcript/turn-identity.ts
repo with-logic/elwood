@@ -3,8 +3,8 @@ import { isRecord } from "../../core/predicates.ts";
 import type { BaselinePrompt } from "./baseline.ts";
 
 const maxTurnRecords = 4_096;
-const maxIdentifierBytes = 1_024;
-const maxPathBytes = 4_096;
+export const maxIdentifierBytes = 1_024;
+export const maxPathBytes = 4_096;
 const maxPaths = 128;
 const maxRetainedBytes = 1024 * 1024;
 type RetainedIdentity = { readonly turnId: string; readonly bytes: number };
@@ -18,6 +18,10 @@ export class ClaudeTranscriptTurns {
   private readonly paths = new Map<string, TranscriptIdentityState>();
   private bytes = 0;
   private disabled = false;
+
+  get correlationDisabled(): boolean {
+    return this.disabled;
+  }
 
   /** Bind only the native-ID-matching user prompt already within the cursor's EOF baseline. */
   seed(

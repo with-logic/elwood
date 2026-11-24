@@ -75,6 +75,7 @@ function claudeActivityFields(summary: ClaudeSummary): ClaudeActivityFields {
     case "other":
       return { kind: "other" };
     case "assistant_message":
+    case "user_message":
     case "reasoning":
       return { kind: summary.kind, text: summary.text };
     case "tool_call":

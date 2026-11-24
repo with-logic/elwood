@@ -93,7 +93,13 @@ export function runTurn(
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
     if (identity && !identity.acceptsContent(event.turnId)) return;
-    if (simple || (!identity && event.kind === "user_message" && event.text === prompt))
+    if (
+      simple ||
+      (!identity &&
+        event.kind === "user_message" &&
+        event.source === "hook" &&
+        event.text === prompt)
+    )
       acceptance.accept();
     if (simple) {
       started = true;

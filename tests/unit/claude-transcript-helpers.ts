@@ -11,6 +11,7 @@ import type { TranscriptActivityEmitter } from "../../src/claude/session/transcr
 import type { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 import type { ClaudeTranscriptEvent } from "../../src/claude/transcript/index.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 /**
@@ -38,6 +39,13 @@ export const writeRecords = (path: string, ...records: unknown[]) =>
 export const appendRecords = (path: string, prior: unknown[], ...records: unknown[]) =>
   writeRecords(path, ...prior, ...records);
 
+export const nativeUser = (promptId: string, content: string) => ({
+  type: "user",
+  uuid: promptId,
+  promptId,
+  message: { role: "user", content },
+});
+
 /** Assistant text per event (or the summary kind for non-assistant events). */
 export const texts = (events: ClaudeTranscriptEvent[]) =>
   events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
@@ -46,7 +54,9 @@ export const texts = (events: ClaudeTranscriptEvent[]) =>
 export function fakeEmitter(
   sink: (event: ElwoodActivityEvent) => void = () => {},
 ): TranscriptActivityEmitter {
-  return { emit: (_event, payload) => sink(payload) };
+  const emitter = new TypedEmitter<{ activity: ElwoodActivityEvent }>();
+  emitter.on("activity", sink);
+  return emitter;
 }
 
 /** Drain a cursor to the end, returning the concatenated decoded text. */

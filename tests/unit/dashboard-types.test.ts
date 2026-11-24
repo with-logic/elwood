@@ -39,12 +39,13 @@ test("C-STATS-01 C-STATS-02 dashboard observations narrow with their native sour
 });
 
 test("C-STATS-01 a Claude usage-only transcript event requires its counters", () => {
-  // @ts-expect-error A token_usage summary must carry response usage.
-  const missingUsage: ClaudeTranscriptEvent = {
+  const fixture = {
     elwoodSessionId: "s",
     path: "/claude.jsonl",
     item: {},
     summary: { kind: "other", label: "token_usage" },
-  };
+  } as const;
+  // @ts-expect-error A token_usage summary must carry response usage.
+  const missingUsage: ClaudeTranscriptEvent = fixture;
   void missingUsage;
 });

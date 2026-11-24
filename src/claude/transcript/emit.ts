@@ -12,6 +12,7 @@ import type { DropReporter } from "./drops.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 import { claudeTokenUsage } from "./usage.ts";
+import { ClaudeUserPrompts, type RecoveredUserPrompt } from "./user-prompts.ts";
 
 type ClaudeTranscriptFields = {
   readonly elwoodSessionId: string;
@@ -23,6 +24,7 @@ type ClaudeTranscriptFields = {
 export type ClaudeTranscriptEvent = ClaudeTranscriptFields &
   (
     | { readonly summary: ClaudeTranscriptSummary; readonly tokenUsage?: ClaudeTokenUsage }
+    | (RecoveredUserPrompt & { readonly tokenUsage?: never })
     | {
         readonly summary: { readonly kind: "other"; readonly label: "token_usage" };
         readonly tokenUsage: ClaudeTokenUsage;
@@ -32,6 +34,7 @@ export type ClaudeTranscriptEvent = ClaudeTranscriptFields &
 /** Turns raw transcript text into parsed activity events for one watcher. */
 export class LineEmitter {
   readonly turns = new ClaudeTranscriptTurns();
+  readonly userPrompts: ClaudeUserPrompts;
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
   private readonly drops: DropReporter;
@@ -40,6 +43,7 @@ export class LineEmitter {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;
+    this.userPrompts = new ClaudeUserPrompts((prompt) => emit({ ...prompt, elwoodSessionId: id }));
   }
 
   /** Emit complete lines from `text`; a cursor retains any trailing partial line. */
@@ -53,11 +57,11 @@ export class LineEmitter {
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
     if (startedOversizedDrop) this.drops.drop(path, "oversized");
-    for (const line of lines) this.emitLine(path, line);
+    for (const line of lines) this.emitLine(path, line, true);
   }
 
   /** Emit one line taken as complete (a transcript's last, un-terminated record at its end). */
-  emitLine(path: string, line: string): void {
+  emitLine(path: string, line: string, committed = false): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
@@ -65,6 +69,8 @@ export class LineEmitter {
       return;
     }
     const turnId = this.turns.observe(path, item);
+    if (this.turns.correlationDisabled) this.userPrompts.clear();
+    if (committed && turnId !== undefined) this.userPrompts.committed(path, turnId, item, line);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
     if (summaries.length === 0) {

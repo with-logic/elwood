@@ -1,11 +1,12 @@
-/** Codex transcript listener diagnostics that preserve delivery (PRD §5.7, C-CODEX-20). */
+/** Transcript listener diagnostics that preserve delivery (PRD §5.7). */
 export type TranscriptListenerErrorWarning = {
   readonly elwoodSessionId: string;
-  readonly agent: "codex";
   readonly source: "terminal";
   readonly code: "transcript_listener_error";
   readonly severity: "warning";
   readonly message: string;
-  readonly channel: "codex:transcript" | "activity";
   readonly raw: string;
-};
+} & (
+  | { readonly agent: "claude"; readonly channel: "activity" }
+  | { readonly agent: "codex"; readonly channel: "codex:transcript" | "activity" }
+);

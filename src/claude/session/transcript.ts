@@ -9,16 +9,24 @@ import {
   createTranscriptWarningRouter,
   type TranscriptWarningSink,
 } from "../../core/transcript/warning-router.ts";
+import type { TypedEmitter } from "../../events/emitter.ts";
+import { claudePromptId } from "../hooks/prompt-id.ts";
 import { ClaudeTranscriptWatcher } from "../transcript/index.ts";
-import { dropWarning, readErrorWarning, transcriptFailureWarning } from "../transcript/warnings.ts";
+import {
+  dropWarning,
+  promptListenerWarning,
+  readErrorWarning,
+  transcriptFailureWarning,
+} from "../transcript/warnings.ts";
 
 /** The session surface the watcher emits warnings through (live-only). */
 export type WarningSink = TranscriptWarningSink;
 
 /** The narrow emitter surface the transcript wiring needs (activity only). */
-export type TranscriptActivityEmitter = {
-  emit(event: "activity", payload: activity.ElwoodActivityEvent): void;
-};
+export type TranscriptActivityEmitter = Pick<
+  TypedEmitter<{ activity: activity.ElwoodActivityEvent }>,
+  "emit" | "observeRejections"
+>;
 
 /** A watcher plus a hook to flush any early-buffered warnings once the sink exists. */
 export type WiredTranscriptWatcher = {
@@ -77,10 +85,34 @@ export function createTranscriptWatcher(
   const route = (warning: Parameters<typeof warnings.route>[0]) =>
     duringDelivery(() => warnings.route(warning));
   const flushPendingWarnings = () => duringDelivery(warnings.flushPendingWarnings);
+  let deliveryFinished = false;
+  let listenerFailure: "none" | "pending" | "reported" = "none";
+  function flushListenerFailure(): void {
+    if (listenerFailure !== "pending") return;
+    listenerFailure = "reported";
+    route(promptListenerWarning(elwoodSessionId));
+  }
+  function reportListenerFailure(): void {
+    if (deliveryFinished || listenerFailure !== "none") return;
+    listenerFailure = "pending";
+    queueMicrotask(flushListenerFailure);
+  }
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
-    (event) =>
-      duringDelivery(() => emitter.emit("activity", activity.activityFromClaudeTranscript(event))),
+    (event) => {
+      const projected = activity.activityFromClaudeTranscript(event);
+      const deliver = () => duringDelivery(() => emitter.emit("activity", projected));
+      if (event.summary.kind !== "user_message") {
+        deliver();
+        return;
+      }
+      try {
+        // An active hook observation keeps precedence over standalone polling containment.
+        emitter.observeRejections(reportListenerFailure, deliver);
+      } catch {
+        reportListenerFailure();
+      }
+    },
     {
       onDrop: (notice) => route(dropWarning(notice)),
       onReadError: (notice) => route(readErrorWarning(notice)),
@@ -109,7 +141,12 @@ export function createTranscriptWatcher(
         route(transcriptFailureWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
-      afterFlush();
+      try {
+        flushListenerFailure();
+      } finally {
+        deliveryFinished = true;
+        afterFlush();
+      }
     }
   };
   return { watcher, duringDelivery, flushPendingWarnings, finishSafely };
@@ -125,7 +162,7 @@ export type ObservableTranscript = Pick<ClaudeTranscriptWatcher, "observe" | "re
  * Points the watcher at every transcript path the hook payload carries. A
  * `SubagentStop` event has both a main `transcript_path` and a required
  * `agent_transcript_path`; both must be observed (PRD §5.4). The watcher keeps
- * an independent cursor per path and no-ops on an already-observed path.
+ * one cursor per path and no-ops on an already-observed path.
  *
  * Backward tail recovery runs only when the FIRST observe of a path lands on a
  * turn-boundary hook (`Stop`/`SubagentStop`) — the case where a just-committed
@@ -142,9 +179,7 @@ export function observeTranscript(
   for (const key of ["transcript_path", "agent_transcript_path"]) {
     const path = event[key];
     if (typeof path !== "string" || path.length === 0) continue;
-    const promptId = event["prompt_id"];
-    const turnId = typeof promptId === "string" && promptId.length > 0 ? promptId : undefined;
-    watcher.observe(path, recoverTail, turnId);
+    watcher.observe(path, recoverTail, claudePromptId(event["prompt_id"]));
     // A SubagentStop's agent transcript is a one-shot input: flush it now and
     // retire it from active polling so a long session with many subagents does
     // not accumulate cursors statted twice a second forever (PRD §5.4). The flush
