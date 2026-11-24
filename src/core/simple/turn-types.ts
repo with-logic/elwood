@@ -10,6 +10,7 @@ import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.
 import type { ImageInput } from "../images/types.ts";
 import { sanitizePasteText } from "../input/sanitize.ts";
 import type { TurnEvent } from "./events.ts";
+import { hasSynthesizedPrompt } from "./native-prompt.ts";
 import type { NativeTurnReader } from "./turn-identity.ts";
 
 /**
@@ -69,7 +70,9 @@ export const defaultBoundarySignal: BoundarySignalReader = (event) =>
  */
 export const defaultAcceptanceSignal: AcceptanceSignalReader = (event, prompt) =>
   event.hook_event_name === "Stop" ||
-  (event.hook_event_name === "UserPromptSubmit" && event.prompt === sanitizePasteText(prompt));
+  (event.hook_event_name === "UserPromptSubmit" &&
+    !hasSynthesizedPrompt(event) &&
+    event.prompt === sanitizePasteText(prompt));
 
 /** A submit hook's identity without its prompt, which can be large and is not read again. */
 export function submitIdentity({

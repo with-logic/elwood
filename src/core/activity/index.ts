@@ -9,6 +9,7 @@ import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
+import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
 
 export type ElwoodAgentKind = "claude" | "codex";
@@ -98,7 +99,9 @@ function sharedHookActivity(
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
-    return withText(base, "user_message", "user", event.prompt);
+    return hasPromptText(event.prompt)
+      ? withText(base, "user_message", "user", event.prompt)
+      : undefined;
   }
   if (event.hook_event_name === "Notification") {
     return withText(base, "notification", event.notification_type, event.message);

@@ -3,7 +3,8 @@
  * Implements PRD §6.4 future-tool compatibility.
  */
 
-import type { ClaudeHookEvent } from "./hooks/index.ts";
+import { markSynthesizedPrompt } from "../core/simple/native-prompt.ts";
+import type { ClaudeCommonHookFields, ClaudeHookEvent, ClaudeHookEventFor } from "./hooks/index.ts";
 import type { KnownClaudeToolName } from "./hooks/tool-types.ts";
 
 // Compile-coupled to the public union in BOTH directions: `satisfies` rejects a name
@@ -59,8 +60,21 @@ const _knownToolNamesCoupled: AssertEqual<(typeof knownToolNameList)[number], Kn
 void _knownToolNamesCoupled;
 const knownToolNames: ReadonlySet<string> = new Set(knownToolNameList);
 
+type NativeSubmit = ClaudeHookEventFor<"UserPromptSubmit">;
+type WireHook =
+  | Exclude<ClaudeHookEvent, NativeSubmit>
+  | (ClaudeCommonHookFields & {
+      readonly hook_event_name: "UserPromptSubmit";
+      readonly prompt?: string | null;
+    });
+
 export function normalizeClaudeHookEvent(input: unknown): ClaudeHookEvent {
-  const event = input as ClaudeHookEvent;
+  const event = input as WireHook;
+  if (event.hook_event_name === "UserPromptSubmit") {
+    const normalized = { ...event, prompt: event.prompt ?? "" };
+    if (event.prompt == null) markSynthesizedPrompt(normalized);
+    return normalized;
+  }
   if (!("tool_name" in event) || typeof event.tool_name !== "string") return event;
   if (isPublicToolName(event.tool_name)) return event;
   return { ...event, tool_name: `unknown:${event.tool_name}` } as ClaudeHookEvent;

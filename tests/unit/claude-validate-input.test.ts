@@ -4,7 +4,9 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { normalizeClaudeHookEvent } from "../../src/claude/normalize.ts";
 import { isClaudeHookInput as isClaudeHookEvent } from "../../src/claude/validate/input.ts";
+import { defaultAcceptanceSignal } from "../../src/core/simple/turn-types.ts";
 import {
   base,
   batchToolCall,
@@ -16,6 +18,22 @@ import {
 } from "./claude-validate-input-helpers.ts";
 
 describe("Claude hook input validation (lifecycle)", () => {
+  test("C-API-USER-ACTIVITY missing text cannot acknowledge an explicitly empty submission", () => {
+    const nativeSubmit = (fields: Readonly<Record<string, unknown>>) => {
+      const event = normalizeClaudeHookEvent(base("UserPromptSubmit", fields));
+      if (event.hook_event_name !== "UserPromptSubmit") throw new Error("Expected a submit hook");
+      return event;
+    };
+    for (const fields of [{}, { prompt: null }]) {
+      const wire = base("UserPromptSubmit", fields);
+      expect(isClaudeHookEvent(wire)).toBe(true);
+      const normalized = nativeSubmit(fields);
+      expect(normalized).toMatchObject({ prompt: "" });
+      expect(defaultAcceptanceSignal(normalized, "")).toBe(false);
+    }
+    expect(defaultAcceptanceSignal(nativeSubmit({ prompt: "" }), "")).toBe(true);
+    expect(isClaudeHookEvent(base("UserPromptSubmit", { prompt: false }))).toBe(false);
+  });
   test("C-HOOK-07 C-HOOK-17 validates lifecycle hook inputs by event-specific schema", () => {
     expect(isClaudeHookEvent(null)).toBe(false);
     expect(isClaudeHookEvent({ hook_event_name: "Stop", session_id: "x" })).toBe(false);

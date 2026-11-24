@@ -45,7 +45,11 @@ Ergonomic `send`/`stream` turns and headless CLI runs fail such a turn with
 After validating the common hook envelope, ingress MUST admit missing or arbitrarily
 shaped `error`, `error_details`, and `last_assistant_message` fields. Their public
 TypeScript types are optional `unknown`; consumers must narrow them before use.
-Other event schemas retain their existing validation.
+
+`UserPromptSubmit.prompt` remains a string in the public Claude hook. A missing
+or null native prompt is normalized to `""` for observation. That placeholder
+does not itself acknowledge an explicitly empty ergonomic submission. Other
+non-string prompt values remain invalid.
 
 Human-readable rejection diagnostics prefer a nonblank string `error_details`, then
 `Claude rejected the turn: <error>` for a nonblank string `error`, and otherwise

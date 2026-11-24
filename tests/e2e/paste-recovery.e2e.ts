@@ -2,7 +2,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
@@ -11,6 +10,7 @@ import {
   cleanup,
   codexAuthMissing,
   type E2eSession,
+  type HookEvent,
   makeProject,
   observeSession,
   prepareInteractivePrompt,
@@ -102,12 +102,12 @@ for (const agent of ["claude", "codex"] as const) {
         const live = session;
         const observed = observeSession(live);
         const source: {
-          on(event: "activity", listener: (event: ElwoodActivityEvent) => void): () => void;
+          on(event: "hook", listener: (event: HookEvent) => void): () => void;
         } = live;
-        const unsubscribe = source.on("activity", (event) => {
-          if (event.kind === "user_message") {
+        const unsubscribe = source.on("hook", (event) => {
+          if (event.hook_event_name === "UserPromptSubmit") {
             submitted = true;
-            timeline.push({ event: "user_message", ms: Date.now() - phaseStarted });
+            timeline.push({ event: "UserPromptSubmit", ms: Date.now() - phaseStarted });
           }
         });
         try {
@@ -125,7 +125,9 @@ for (const agent of ["claude", "codex"] as const) {
           await live.sendMessage("Reply only OK.");
           await waitFor(
             () =>
-              observed.activities.some((event) => event.kind === "user_message") ? true : undefined,
+              observed.hooks.some((event) => event.hook_event_name === "UserPromptSubmit")
+                ? true
+                : undefined,
             `${agent} native submission evidence`,
             15_000,
           );

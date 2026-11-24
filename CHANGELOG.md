@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve raw textless submission hooks without emitting empty `user_message`
+  activity on Claude and Codex.
+
 - Contain Promise rejections from `warning` and warning `activity` listeners on
   both adapters, including buffered startup warnings.
 - Raise and answer standalone Claude checkbox questions that use a Submit tab

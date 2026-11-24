@@ -166,8 +166,9 @@ Use `usedPercent` for a used-first display. Refresh by calling the API again.
 
 `ready` describes terminal availability. Startup and dialog repaints can produce
 status changes without a user turn, and committed assistant text can arrive after
-`ready`. Use `user_message` activity as the accepted turn boundary and correlate
-Claude activity using its native `turnId` when present. Keep accepting matching
+`ready`. Use `UserPromptSubmit` hooks to observe submissions, including textless prompts.
+`user_message` activity carries native prompt text, and Claude activity can be
+correlated using its native `turnId` when present. Keep accepting matching
 assistant messages after a status transition; a status edge is not a transcript
 flush barrier. Older Claude records without native prompt identity can remain
 untagged. Claude's synthetic interrupted-resume placeholder is omitted from
