@@ -18,6 +18,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Surface the last live screen as structured activity when Codex startup is
   held on an unrecognized screen.
 
+- Recover matching textless Claude submissions already committed in an unchanged
+  initial transcript.
+
 - Preserve native prompt holds and readiness while an embedded terminal views
   scrollback.
 - Recover Claude prompt text from matching user records in the live transcript

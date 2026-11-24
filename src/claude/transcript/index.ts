@@ -18,6 +18,7 @@ import {
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
+import { observeInitialUserPrompt } from "./observe-initial.ts";
 import type { UserPromptHookEvidence } from "./user-prompts.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
@@ -38,6 +39,7 @@ export class ClaudeTranscriptWatcher {
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
   private readonly drops: DropReporter;
   private readonly guard: TranscriptFsGuard;
+  private readonly initialDrop: (path: string) => void;
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
@@ -56,6 +58,7 @@ export class ClaudeTranscriptWatcher {
     notices: TranscriptNoticeHandlers = {},
   ) {
     this.drops = new DropReporter(elwoodSessionId, notices.onDrop);
+    this.initialDrop = (path) => notices.onDrop?.({ elwoodSessionId, path, cause: "unparseable" });
     const readErrors = new ReadErrorReporter(elwoodSessionId, notices.onReadError);
     this.guard = new TranscriptFsGuard(readErrors, () => this.finished);
     this.onPollError = notices.onPollError;
@@ -69,15 +72,12 @@ export class ClaudeTranscriptWatcher {
     });
   }
 
-  // Begin watching `path`: baselines at EOF (history not replayed); a turn-boundary
-  // first-observe (recoverTail) replays the tail. No observation after finish (§5.4).
   observe(path: string, recoverTail = false, turnId?: string): void {
     if (this.finished) return;
     const cursor =
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
-    this.lines.turns.seed(path, turnId, () => this.guard.read(path, () => cursor.baselinePrompt()));
-    if (this.lines.turns.correlationDisabled) this.lines.userPrompts.clearUnpaired();
+    observeInitialUserPrompt(cursor, turnId, this.lines, this.guard, this.initialDrop);
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {
@@ -144,7 +144,6 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  // Use the shared drain budget and latch finish before emitting any final events.
   finish(): void {
     if (this.finished) return;
     this.finished = true;

@@ -120,3 +120,21 @@ test("C-API-63 recovered activity omits the raw transcript record", async () => 
     await session.teardown();
   }
 });
+
+test("C-API-63 a blank hook recovers its exact committed initial prompt once", async () => {
+  const { session, hook, events, append } = await startActivitySession();
+  try {
+    append(user("historical", "another turn"), user("first", "native pasted prompt"));
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    for (let index = 0; index < 2; index++) {
+      expect(
+        await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first", prompt: "" }),
+      ).toMatchObject({ exitCode: 0 });
+    }
+    expect(events.filter(({ kind }) => kind === "user_message")).toMatchObject([
+      { text: "native pasted prompt", source: "transcript", turnId: "first" },
+    ]);
+  } finally {
+    await session.teardown();
+  }
+});

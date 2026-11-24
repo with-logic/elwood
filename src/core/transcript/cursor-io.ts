@@ -7,7 +7,7 @@
  * top of the same injectable byte seam (see claude/transcript/cursor-io.ts).
  */
 
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, type Stats, statSync } from "node:fs";
 import { errnoCode } from "../errors.ts";
 import { completeUtf8Length } from "../utf8.ts";
 
@@ -27,8 +27,12 @@ export function fileSize(path: string): number {
  * (C-ERR-01).
  */
 export function observedSize(path: string): number | undefined {
+  return observedFile(path)?.size;
+}
+
+export function observedFile(path: string): Stats | undefined {
   try {
-    return statSync(path).size;
+    return statSync(path);
   } catch (error) {
     if (errnoCode(error) === "ENOENT") return undefined;
     throw error;

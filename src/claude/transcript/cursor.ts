@@ -9,7 +9,9 @@
 
 import { stat } from "node:fs/promises";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
+import { observedFile } from "../../core/transcript/cursor-io.ts";
 import { type BaselinePrompt, scanBaselineTail } from "./baseline.ts";
+import { InitialClaudePrompt } from "./initial-prompt.ts";
 
 export type { ChunkRead, TakenLines } from "../../core/transcript/cursor.ts";
 export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
@@ -21,6 +23,17 @@ export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
  * path is a turn-boundary hook.
  */
 export class TranscriptCursor extends BoundedTranscriptCursor {
+  private readonly initial: InitialClaudePrompt;
+  constructor(path: string) {
+    const registration = observedFile(path);
+    super(path, { size: registration?.size });
+    this.initial = new InitialClaudePrompt(registration);
+  }
+
+  takeInitialPrompt(turnId: string) {
+    return this.initial.take(this.path, turnId);
+  }
+
   /** Read only within the EOF baseline; callers contain filesystem failures with the guard. */
   baselinePrompt(): BaselinePrompt | undefined {
     return scanBaselineTail(this.path, this.offset).prompt;

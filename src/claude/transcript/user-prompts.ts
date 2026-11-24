@@ -1,6 +1,7 @@
 /** Match blank authenticated Claude hooks to committed user records (PRD §5.4). */
 import { isAbsolute } from "node:path";
 import { isRecord } from "../../core/predicates.ts";
+import type { InitialUserPrompt } from "./initial-prompt.ts";
 import { maxIdentifierBytes, maxPathBytes } from "./turn-identity.ts";
 import { userPromptText } from "./user-record.ts";
 
@@ -67,6 +68,15 @@ export class ClaudeUserPrompts {
       this.publish(identity.path, turnId, key, known.text);
     } else if (known === undefined) this.remember(key, { kind: "hook", path: identity.path });
     return false;
+  }
+
+  /** Resolve only an authenticated blank hook for the matching initial prompt. */
+  recoverInitial(path: string, turnId: string, read: () => InitialUserPrompt | undefined): void {
+    const identity = promptLocation(path, turnId);
+    if (!identity || this.shown.has(turnId) || this.entries.get(identity.key)?.kind !== "hook")
+      return;
+    const prompt = read();
+    if (prompt?.turnId === turnId) this.publish(path, turnId, identity.key, prompt.text);
   }
 
   /** Publish an exact pending path/ID match or retain text for a hook that arrives later. */
