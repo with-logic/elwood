@@ -151,15 +151,17 @@ const hooks = {
 function activity(
   kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress" | "question">,
 ): ElwoodActivityEvent {
-  return {
+  const body = {
     elwoodSessionId: "s1",
     agent: "codex",
     source: "transcript",
-    kind,
     label: "label",
     text: "body",
     raw: { kind },
-  };
+  } as const;
+  return kind === "user_message"
+    ? { ...body, kind, source: "hook", hookEventName: "UserPromptSubmit", label: "user" }
+    : { ...body, kind };
 }
 
 function warning(): ElwoodWarningEvent {

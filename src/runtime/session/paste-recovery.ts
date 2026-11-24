@@ -1,4 +1,4 @@
-/** Native submission activity revokes background recovery (PRD §5.3/C-API-31). */
+/** Native submit hooks revoke background recovery (PRD §5.3/C-API-31). */
 import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
 import { captureRenderProgress, subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
@@ -8,9 +8,9 @@ export class PasteRecoveryRevocation {
   private generation = 0;
 
   constructor(events: SessionStatusEmitter, closing: AbortSignal) {
-    const unsubscribe = events.on("activity", (event) => {
+    const unsubscribe = events.on("hook", (event) => {
       // Conservative revocation, not proof of prompt/turn correlation.
-      if (event.kind === "user_message") this.generation += 1;
+      if (event.hook_event_name === "UserPromptSubmit") this.generation += 1;
     });
     closing.addEventListener("abort", unsubscribe, { once: true });
   }

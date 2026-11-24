@@ -2287,7 +2287,7 @@ Actual session/PTY tests distinguish the current cursor-owned composer from
 identical transcript text. Startup or resume replay and accepted native work can
 produce indistinguishable working frames before readiness. Recovery therefore
 withholds Enter during work without permanently inferring acceptance. A fresh
-positive empty input frame or native user-message activity ends that submission’s
+positive empty input frame or authenticated `UserPromptSubmit` hook ends that submission’s
 recovery; otherwise a later verified idle draft remains eligible within the
 four-observation/two-Enter bound. This is a conservative policy tested with
 controlled frames, not a newly observed native correlation guarantee.
@@ -2344,8 +2344,8 @@ frame can remain cached until a later native repaint; a second Enter must not be
 authorized from that pre-attempt frame. Recovery now captures the render revision
 before each physical Enter attempt and requires later completed output plus the
 adapter's live idle-composer check. Resizing or scrolling changes snapshot geometry
-without establishing this output ordering. Native user-message activity retains
-its independent, permanent revocation of recovery.
+without establishing this output ordering. The authenticated `UserPromptSubmit`
+hook permanently revokes recovery, including when it carries no prompt text.
 
 The attachment-to-submission regressions use the real adapters and terminal parser,
 with controlled PTY output and a stubbed Codex platform clipboard. They retain the

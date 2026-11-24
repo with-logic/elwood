@@ -3,9 +3,13 @@
  * Implements PRD §7A.2.
  */
 
-import { isOneOf, isRecord, optionalString } from "../../core/predicates.ts";
+import {
+  isOneOf,
+  isRecord,
+  optionalNullableString,
+  optionalString,
+} from "../../core/predicates.ts";
 import type { CodexHookEvent, CodexHookEventName, CodexHookResult } from "./index.ts";
-import { optionalNullableString } from "./values.ts";
 
 export function isCodexHookResult(
   event: CodexHookEventName | CodexHookEvent,

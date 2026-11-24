@@ -9,6 +9,7 @@ import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
+import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
 
 export type ElwoodAgentKind = "claude" | "codex";
@@ -70,7 +71,12 @@ export type ElwoodActivityEvent = ActivityFields &
   DashboardActivityFields &
   SpeedActivityFields &
   (
-    | { readonly kind: Exclude<ElwoodActivityKind, "question" | "assistant_progress"> }
+    | {
+        readonly kind: Exclude<
+          ElwoodActivityKind,
+          "question" | "assistant_progress" | "user_message"
+        >;
+      }
     | {
         readonly kind: "assistant_progress";
         readonly agent: "codex";
@@ -79,6 +85,13 @@ export type ElwoodActivityEvent = ActivityFields &
         readonly text: string;
         readonly transcriptPath: string;
         readonly raw: unknown;
+      }
+    | {
+        readonly kind: "user_message";
+        readonly source: "hook";
+        readonly hookEventName: "UserPromptSubmit";
+        readonly label: "user";
+        readonly text: string;
       }
     | QuestionActivityFields
   );
@@ -98,10 +111,19 @@ function sharedHookActivity(
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
-    return withText(base, "user_message", "user", event.prompt);
+    return hasPromptText(event.prompt)
+      ? {
+          ...base,
+          kind: "user_message",
+          source: "hook",
+          hookEventName: "UserPromptSubmit",
+          label: "user",
+          text: event.prompt,
+        }
+      : undefined;
   }
   if (event.hook_event_name === "Notification") {
-    return withText(base, "notification", event.notification_type, event.message);
+    return { ...base, kind: "notification", label: event.notification_type, text: event.message };
   }
   return undefined;
 }
@@ -172,15 +194,3 @@ export {
   activityFromClaudeTranscript,
   activityFromCodexTranscript,
 } from "./transcript.ts";
-
-function withText(
-  base: Omit<
-    ElwoodActivityEvent,
-    "kind" | "label" | "text" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
-  >,
-  kind: "user_message" | "notification",
-  label: string,
-  text: string,
-): ElwoodActivityEvent {
-  return { ...base, kind, label, text };
-}

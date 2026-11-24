@@ -15,12 +15,31 @@ import {
 import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";
 
 describe("Elwood activity events", () => {
-  test("C-API-12 maps hook prompts with Elwood session identity", () => {
+  test.each([
+    "",
+    "\u0085",
+  ])("C-API-62 a textless Codex submit stays native hook activity (%j)", (prompt) => {
+    const event = activityFromCodexHook("elwood-1", {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "codex-session",
+      turn_id: "turn",
+      cwd: "/repo",
+      prompt,
+    });
+    expect(event).toMatchObject({ kind: "hook", hookEventName: "UserPromptSubmit" });
+    expect(event.text).toBeUndefined();
+  });
+  test.each([
+    "hello",
+    "\ufeff",
+  ])("C-API-12 maps hook prompts with Elwood session identity (%j)", (prompt) => {
     const event = activityFromClaudeHook("elwood-1", {
       hook_event_name: "UserPromptSubmit",
       session_id: "claude-session",
+      prompt_id: "native-claude-turn",
+      turn_id: "unrelated-extension",
       cwd: "/repo",
-      prompt: "hello",
+      prompt,
     });
     expect(event).toMatchObject({
       elwoodSessionId: "elwood-1",
@@ -28,8 +47,9 @@ describe("Elwood activity events", () => {
       source: "hook",
       kind: "user_message",
       label: "user",
-      text: "hello",
+      text: prompt,
       hookEventName: "UserPromptSubmit",
+      turnId: "native-claude-turn",
     });
   });
 

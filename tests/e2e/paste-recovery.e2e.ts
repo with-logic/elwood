@@ -2,7 +2,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { resumeClaude, resumeCodex, startClaude, startCodex } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
@@ -11,6 +10,7 @@ import {
   cleanup,
   codexAuthMissing,
   type E2eSession,
+  type HookEvent,
   makeProject,
   observeSession,
   prepareInteractivePrompt,
@@ -38,7 +38,7 @@ for (const agent of ["claude", "codex"] as const) {
     let failure: CodexTestEnd["failure"];
     let armed = false;
     let resuming = false;
-    let submitted = false;
+    let userHooks = 0;
     let attemptsAfterSubmission = 0;
     let phaseStarted = 0;
     let timeline: { event: string; ms: number }[] = [];
@@ -65,7 +65,7 @@ for (const agent of ["claude", "codex"] as const) {
             // Pre-hook retries are outside this hook-only guarantee. Count and
             // intercept every retry, including those that must fail the assertion.
             if (attempted > 1) {
-              if (submitted) attemptsAfterSubmission += 1;
+              if (userHooks > 0) attemptsAfterSubmission += 1;
               throw new Error("Native proof intercepted an extra Enter.");
             }
             delivered += 1;
@@ -102,12 +102,12 @@ for (const agent of ["claude", "codex"] as const) {
         const live = session;
         const observed = observeSession(live);
         const source: {
-          on(event: "activity", listener: (event: ElwoodActivityEvent) => void): () => void;
+          on(event: "hook", listener: (event: HookEvent) => void): () => void;
         } = live;
-        const unsubscribe = source.on("activity", (event) => {
-          if (event.kind === "user_message") {
-            submitted = true;
-            timeline.push({ event: "user_message", ms: Date.now() - phaseStarted });
+        const unsubscribe = source.on("hook", (event) => {
+          if (armed && event.hook_event_name === "UserPromptSubmit") {
+            userHooks += 1;
+            timeline.push({ event: "UserPromptSubmit", ms: Date.now() - phaseStarted });
           }
         });
         try {
@@ -117,22 +117,18 @@ for (const agent of ["claude", "codex"] as const) {
             `${agent} ready`,
             30_000,
           );
-          submitted = false;
+          userHooks = 0;
           attemptsAfterSubmission = 0;
           phaseStarted = Date.now();
           timeline = [];
           armed = true;
           await live.sendMessage("Reply only OK.");
           await waitFor(
-            () =>
-              observed.activities.some((event) => event.kind === "user_message") ? true : undefined,
+            () => (userHooks > 0 ? true : undefined),
             `${agent} native submission evidence`,
             15_000,
           );
           await delay(6_000);
-          const userHooks = observed.hooks.filter(
-            (event) => event.hook_event_name === "UserPromptSubmit",
-          ).length;
           t.diagnostic(
             JSON.stringify({
               agent,

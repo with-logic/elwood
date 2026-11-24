@@ -4,8 +4,13 @@
  * Implements PRD §6.4.
  */
 
-import { isOneOf, isRecord, isString, optionalString } from "../../core/predicates.ts";
-import type { ClaudeHookEvent } from "../hooks/index.ts";
+import {
+  isOneOf,
+  isRecord,
+  isString,
+  optionalNullableString,
+  optionalString,
+} from "../../core/predicates.ts";
 import {
   type ClaudeEffortLevel,
   type ClaudeHookEventName,
@@ -39,7 +44,7 @@ const eventChecks: { readonly [E in Exclude<ClaudeHookEventName, ToolEvent>]: Ev
   SessionStart: strings("source"),
   Setup: (value) => isOneOf(value["trigger"], ["init", "maintenance"]),
   InstructionsLoaded: hasInstructionsLoaded,
-  UserPromptSubmit: strings("prompt"),
+  UserPromptSubmit: (value) => optionalNullableString(value["prompt"]),
   UserPromptExpansion: hasUserPromptExpansion,
   PostToolBatch: (value) => hasPostToolBatch(value["tool_calls"]),
   Notification: strings("message", "notification_type"),
@@ -70,7 +75,7 @@ type ToolEvent =
   | "PostToolUseFailure"
   | "PermissionDenied";
 
-export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
+export function isClaudeHookInput(value: unknown): boolean {
   if (!(isRecord(value) && hasStrings(value, ["hook_event_name", "session_id", "cwd"]))) {
     return false;
   }

@@ -13,7 +13,7 @@ import { TypedEmitter } from "../../src/events/emitter.ts";
 
 type Map = { activity: ElwoodActivityEvent };
 const event = (
-  kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress" | "question">,
+  kind: Exclude<ElwoodActivityEvent["kind"], "assistant_progress" | "question" | "user_message">,
   label: string,
 ): ElwoodActivityEvent => ({
   elwoodSessionId: "s1",
