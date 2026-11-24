@@ -72,15 +72,18 @@ export class DropReporter {
     else causes.add(cause); // Set.add is a no-op if already surfacing this (path, cause)
   }
 
+  /** Emit one caller-coalesced drop immediately without changing a pending poll pass. */
+  emitDrop(path: string, cause: DropCause): void {
+    this.onDrop?.({ elwoodSessionId: this.elwoodSessionId, path, cause });
+  }
+
   /** Deliver each coalesced (path, cause) incident once, then clear the pass. */
   flushPass(): void {
     if (this.pending.size === 0) return;
     const pending = [...this.pending];
     this.pending.clear(); // clear FIRST so a throwing listener cannot re-fire the batch
     for (const [path, causes] of pending) {
-      for (const cause of causes) {
-        this.onDrop?.({ elwoodSessionId: this.elwoodSessionId, path, cause });
-      }
+      for (const cause of causes) this.emitDrop(path, cause);
     }
   }
 

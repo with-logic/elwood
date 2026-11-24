@@ -1,8 +1,8 @@
 /**
  * Best-effort live observation of Claude transcript JSONL files.
  * Implements PRD §5.4 (C-CLAUDE-15): committed assistant text, tool calls, and
- * tool results are sourced from the transcript(s) the CLI writes (no ghost-text);
- * reads are bounded, per-path, no replay.
+ * tool results come from the CLI transcript. Forward observation uses bounded
+ * reads and supplements them with current-turn replay and initial prompt recovery.
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
@@ -18,6 +18,7 @@ import {
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
+import { observeTranscriptBaseline } from "./observe-initial.ts";
 import type { UserPromptHookEvidence } from "./user-prompts.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
@@ -69,15 +70,12 @@ export class ClaudeTranscriptWatcher {
     });
   }
 
-  // Begin watching `path`: baselines at EOF (history not replayed); a turn-boundary
-  // first-observe (recoverTail) replays the tail. No observation after finish (§5.4).
   observe(path: string, recoverTail = false, turnId?: string): void {
     if (this.finished) return;
     const cursor =
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
-    this.lines.turns.seed(path, turnId, () => this.guard.read(path, () => cursor.baselinePrompt()));
-    if (this.lines.turns.correlationDisabled) this.lines.userPrompts.clearUnpaired();
+    observeTranscriptBaseline(cursor, turnId, this.lines, this.guard, this.drops);
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {
@@ -99,6 +97,7 @@ export class ClaudeTranscriptWatcher {
     const budget = { chunks: scanChunksPerScan };
     for (const cursor of this.cursors.values()) {
       if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
+      cursor.runInitialRetry(budget);
       this.scanCursor(cursor, budget);
     }
     this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
@@ -133,6 +132,7 @@ export class ClaudeTranscriptWatcher {
         if (this.finished) return;
         if (this.cursors.get(cursor.path) !== cursor) continue;
         if (budget.chunks <= 0) break; // watcher-wide budget spent this tick
+        cursor.runInitialRetry(budget);
         if (changed) this.scanCursor(cursor, budget);
         this.afterScanForTests?.(); // test seam: drive finish() between cursors
       }
@@ -144,7 +144,6 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  // Use the shared drain budget and latch finish before emitting any final events.
   finish(): void {
     if (this.finished) return;
     this.finished = true;
