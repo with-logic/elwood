@@ -31,11 +31,10 @@ export async function answerClaudeQuestions(
   const initial = io.frame();
   const first = initial && parseClaudeQuestionScreen(initial, request.questions);
   if (first?.kind !== "question" || first.questionIndex !== 0) throw questionLayoutFailed();
-  // Claude shows the final review only for grouped requests.
-  const hasNativeReviewStage = request.questions.length > 1;
+  const { hasReviewTab } = first;
   for (const entry of bound) {
     const index = entry.questionIndex;
-    await answerOne(request, entry, io, request.questions.length === 1 ? submitting : undefined);
+    await answerOne(request, entry, io, hasReviewTab, submitting);
     if (index + 1 < request.questions.length) {
       await io.wait((frame) => {
         const screen = parseClaudeQuestionScreen(frame, request.questions);
@@ -43,16 +42,17 @@ export async function answerClaudeQuestions(
       });
     }
   }
-  if (hasNativeReviewStage) await submitReview(request, bound, io, submitting);
+  if (hasReviewTab) await submitReview(request, bound, io, submitting);
 }
 async function answerOne(
   request: ElwoodQuestionRequest,
   bound: BoundClaudeQuestionAnswer,
   io: QuestionIo,
-  submitting: (() => void) | undefined,
+  hasReviewTab: boolean,
+  submitting: () => void,
 ): Promise<void> {
   const { question, questionIndex, answer, otherCursorIndex, targetCursorIndex } = bound;
-  const navigation = questionNavigation(request, questionIndex, io);
+  const navigation = questionNavigation(request, questionIndex, io, hasReviewTab);
   if (usesCheckboxes[question.selection]) {
     if (navigation.read().checked[otherCursorIndex]) throw questionAnswerFailed();
     for (let option = 0; option < question.options.length; option += 1) {
@@ -87,7 +87,7 @@ async function answerOne(
       } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
       return matchesBySelection[question.selection]();
     },
-    submitting,
+    hasReviewTab ? undefined : submitting,
   );
 }
 async function submitReview(

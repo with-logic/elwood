@@ -13,6 +13,7 @@ export type ClaudeQuestionScreen =
   | {
       readonly kind: "question";
       readonly questionIndex: number;
+      readonly hasReviewTab: boolean;
       /** Zero-based selection-list index: options, Other, then Next or Submit when present. */
       readonly cursor: number;
       readonly checked: readonly boolean[];
@@ -56,13 +57,13 @@ export function parseClaudeQuestionScreen(
 ): ClaudeQuestionScreen | undefined {
   const panel = readClaudeQuestionPanel(frame, questions);
   if (!panel) return undefined;
-  const { start, body, first, prompt } = panel;
+  const { start, body, first, prompt, hasReviewTab } = panel;
   const questionIndex = questions.findIndex(
     (question) => normalizeClaudeQuestionText(question.prompt) === prompt,
   );
   const question = questions[questionIndex];
   if (!question) {
-    return prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)
+    return hasReviewTab && prompt.startsWith(`${CLAUDE_REVIEW_TITLE} ● `)
       ? parseReview(frame, body, first)
       : undefined;
   }
@@ -91,6 +92,7 @@ export function parseClaudeQuestionScreen(
   return {
     kind: "question",
     questionIndex,
+    hasReviewTab,
     ...parsed,
     other: cursorPad ? parsed.other.slice(0, -1) : parsed.other,
   };
@@ -123,9 +125,10 @@ export function readClaudeQuestionPanel(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
 ) {
-  if (!(claudeQuestionCandidate(frame.text) && matchesClaudeQuestionTabs(frame, questions)))
-    return undefined;
+  if (!claudeQuestionCandidate(frame.text)) return undefined;
   const start = questionPanelStart(frame.lines);
+  const hasReviewTab = reviewTabForHeader(frame.lines[start], questions);
+  if (hasReviewTab === undefined) return undefined;
   const body = frame.lines.slice(start + 1);
   const first = body.findIndex((line) => row.test(line));
   if (first < 0) return undefined;
@@ -133,6 +136,7 @@ export function readClaudeQuestionPanel(
     start,
     body,
     first,
+    hasReviewTab,
     prompt: normalizeClaudeQuestionText(body.slice(0, first).join("\n")),
   };
 }
@@ -141,12 +145,23 @@ export function matchesClaudeQuestionTabs(
   frame: QuestionFrame,
   questions: readonly QuestionDefinition[],
 ): boolean {
-  if (questions.length === 0 || questions.some((question) => !question.header)) return false;
-  const title = frame.lines[questionPanelStart(frame.lines)];
+  return reviewTabForHeader(frame.lines[questionPanelStart(frame.lines)], questions) !== undefined;
+}
+
+/** Verify ordered native tabs and report whether submission goes through review. */
+function reviewTabForHeader(
+  title: string | undefined,
+  questions: readonly QuestionDefinition[],
+): boolean | undefined {
+  if (questions.length === 0 || questions.some((question) => !question.header)) return undefined;
   const tabs = questions.map((question) => `☐ ${question.header}`).join("  ");
-  const expected = questions.length === 1 ? ` ${tabs}` : `←  ${tabs}  ✔ Submit  →`;
   // Claude 2.1.310 pads the highlighted single-question chip with a trailing space.
-  return title?.replaceAll("☒", "☐").trimEnd() === expected;
+  const visible = title?.replaceAll("☒", "☐").trimEnd();
+  if (questions.length === 1 && visible === ` ${tabs}`) return false;
+  if (questions.length > 1 || questions[0]!.selection === "multiple") {
+    if (visible === `←  ${tabs}  ✔ Submit  →`) return true;
+  }
+  return undefined;
 }
 
 /** Below the footer: blank rows, plus at most one named session's border (`──── Name ─`). */

@@ -6,16 +6,19 @@ import { questionError } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
-/** questionIndex addresses request.questions, not an option; only that native question
- * may authorize navigation. Each move waits for its completed successor frame. */
+/** Verify the active request question and its original review-tab layout.
+ * Each move waits for its completed successor frame. */
 export function questionNavigation(
   request: ElwoodQuestionRequest,
   questionIndex: number,
   io: QuestionIo,
+  hasReviewTab: boolean,
 ) {
   const at = (frame: QuestionFrame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
-    return screen?.kind === "question" && screen.questionIndex === questionIndex
+    return screen?.kind === "question" &&
+      screen.questionIndex === questionIndex &&
+      screen.hasReviewTab === hasReviewTab
       ? screen
       : undefined;
   };

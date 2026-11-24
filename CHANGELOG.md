@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Raise and answer standalone Claude checkbox questions that use a Submit tab
+  and final review.
+
 ## [0.6.1] - 2026-11-20
 
 - Read Claude subscription quota for direct sign-ins even when the login shell

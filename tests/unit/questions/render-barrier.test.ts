@@ -24,7 +24,7 @@ test("Claude navigation completes its render barrier before reading the next cur
   const request = registry().publish("native", "blocking", definitions)!;
   const successor = fixture("color-blue-highlight");
   const { io, writes } = scriptedQuestionIo(fixture("questions"), [successor]);
-  await questionNavigation(request, 0, io).move(1);
+  await questionNavigation(request, 0, io, true).move(1);
   expect(writes).toEqual(["\x1b[B"]);
   expect(io.frame()).toBe(successor);
 });
