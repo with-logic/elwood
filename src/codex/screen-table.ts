@@ -20,7 +20,7 @@ import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 
 const verifiedAgainst =
-  "codex-cli 0.142.5; work pulses/questions: 0.163.0; resume: 0.164.0; ultra composer: 0.169.0";
+  "codex-cli 0.142.5; work pulses/questions: 0.163.0; resume: 0.164.0; ultra composer: 0.169.0; standalone question footer: 0.171.0";
 
 /**
  * Original rules verified against codex-cli 0.142.5; 0.163.0 captures additionally
