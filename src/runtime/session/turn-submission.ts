@@ -14,7 +14,7 @@ export function bindTurnSubmission<
 >(session: Session, observers: RenderedObservers): Session {
   session.stopCompletion.bindRenderedReset(() => {
     const hasFreshFrame = captureRenderProgress(session.terminal);
-    const frame = currentRenderedFrame(session.terminal);
+    const frame = currentRenderedFrame(session.terminal, "live");
     // A missing baseline is conservative uncertainty, not observed banner visibility.
     // Only a pristine terminal proves absence without a completed frame.
     const ignoreRetainedInterrupt = frame

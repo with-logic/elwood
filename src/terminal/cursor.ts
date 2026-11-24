@@ -38,18 +38,22 @@ export function subscribeRender(terminal: ElwoodTerminal, listener: () => void):
   return tracked.get(terminal.xterm)?.subscribe(listener) ?? (() => undefined);
 }
 
-/** Completed-render and post-parse picker observations share text with subsequent trust reads. */
+/** Internal readers share captured rows when their selected buffer ranges match. */
 export function renderedSnapshot(
   terminal: ElwoodTerminal,
   location: ScreenLocation = "viewport",
 ): TerminalSnapshot {
   const { baseY, viewportY } = terminal.xterm.buffer.active;
   const hiddenLive = location === "live" && baseY !== viewportY;
-  const top = hiddenLive ? baseY : viewportY;
+  const firstBufferRow = hiddenLive ? baseY : viewportY;
   const read = () =>
-    hiddenLive ? terminalSnapshot(terminal.xterm, terminal.size, top) : terminal.snapshot();
+    hiddenLive
+      ? terminalSnapshot(terminal.xterm, terminal.size, firstBufferRow)
+      : terminal.snapshot();
   return (
-    tracked.get(terminal.xterm)?.snapshot(read, hiddenLive ? "live" : "viewport", top) ?? read()
+    tracked
+      .get(terminal.xterm)
+      ?.snapshot(read, firstBufferRow === baseY ? "live" : "viewport", firstBufferRow) ?? read()
   );
 }
 
@@ -127,7 +131,7 @@ export class RenderCursor {
   snapshot(
     capture: () => TerminalSnapshot,
     location: ScreenLocation,
-    top: number,
+    firstBufferRow: number,
   ): TerminalSnapshot {
     const buffer = this.terminal.buffer.active;
     const position = [
@@ -135,7 +139,7 @@ export class RenderCursor {
       this.terminal.rows,
       buffer.cursorX,
       buffer.cursorY,
-      top,
+      firstBufferRow,
       buffer.baseY,
     ].join(":");
     const known = this.frames[location];

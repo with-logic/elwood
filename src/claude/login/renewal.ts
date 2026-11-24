@@ -57,8 +57,10 @@ function renewalDays(
 /** Requires the visible input cursor on the same completed native empty-composer frame. */
 function hasNativeEmptyComposerFrame(terminal: ElwoodTerminal, rows: readonly string[]): boolean {
   return (
-    emptyInputFrame(terminal, (_frameRows, cursorRow) =>
-      claudeEmptyInputRows(rows.slice(cursorRow - 1), 1),
+    emptyInputFrame(
+      terminal,
+      (_frameRows, cursorRow) => claudeEmptyInputRows(rows.slice(cursorRow - 1), 1),
+      "live",
     ) !== undefined
   );
 }

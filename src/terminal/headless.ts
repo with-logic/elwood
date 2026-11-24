@@ -13,7 +13,9 @@ export type TerminalSnapshot = {
   readonly cols: number;
   readonly rows: number;
   readonly cursorX: number;
+  /** Zero-based cursor row relative to the live buffer base. */
   readonly cursorY: number;
+  /** Rows from the selected viewport in a public snapshot. */
   readonly lines: readonly string[];
   readonly text: string;
 };

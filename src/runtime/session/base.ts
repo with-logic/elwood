@@ -30,6 +30,7 @@ import {
   enqueueSubmission,
   type SubmitKind,
 } from "./image-attach.ts";
+import { liveInputTerminal } from "./live-terminal.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import { SessionInputOwnership } from "./session-input.ts";
@@ -70,11 +71,11 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     // `picker` is a subclass field initializer that runs AFTER this constructor, so the
     // surface resolves it per call rather than capturing it here.
     this.commands = new CommandSurface({
-      terminal: ownership.automated,
+      terminal: liveInputTerminal(ownership.automated),
       inputSignal: () => ownership.signal(),
       observeRendered: (listener) => {
         // xterm runs this after the ordered completed-frame observers.
-        const read = () => renderedSnapshot(terminal).text;
+        const read = () => renderedSnapshot(terminal, "live").text;
         terminal.xterm.onWriteParsed(() => listener(read));
       },
       subscribeRender: (listener) => subscribeRender(terminal, listener),
@@ -166,7 +167,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
 
   /** A stable completed frame only when the native composer is positively empty (C-API-56). */
   protected emptyComposerFrame(): object | undefined {
-    const frame = currentRenderedFrame(this.terminal);
+    const frame = currentRenderedFrame(this.terminal, "live");
     return frame && this.composerIsEmpty(frame.text) ? frame : undefined;
   }
   protected composerIsEmpty(text: string): boolean {

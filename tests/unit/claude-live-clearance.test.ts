@@ -55,3 +55,18 @@ test.each([
     terminal.dispose();
   }
 });
+
+test("C-TRUST-01 raw xterm resize does not prove a cursor row outside the snapshot", async () => {
+  const terminal = createHeadlessTerminal({ cols: 173, rows: 35 }, () => undefined);
+  const clear = liveClaudeClearance(() => terminal);
+  try {
+    terminal.xterm.resize(173, 40);
+    await terminal.writeOutput(`${claudeNativeIdlePaint}\u001b[38;3H\u001b[?25h`);
+    const frame = terminal.snapshot();
+    expect(frame.cursorY).toBe(37);
+    expect(frame.lines).toHaveLength(35);
+    expect(clear(frame.text)).toBe(false);
+  } finally {
+    terminal.dispose();
+  }
+});
