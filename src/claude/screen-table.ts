@@ -7,11 +7,14 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
-import { settledLiveSnapshot } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
-import { claudeComposerCursor } from "./composer/cursor.ts";
-import { claudeComposerRow, claudeEmptyInputRows } from "./composer/empty-input.ts";
+import { readClaudeInputCursor } from "./composer/cursor.ts";
+import {
+  claudeComposerRow,
+  claudeComposerText,
+  claudeEmptyInputRows,
+} from "./composer/empty-input.ts";
 import { claudeComposerFooterRow } from "./composer/footer.ts";
 import { isClaudeLoginSuccessDialog } from "./login/screens.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
@@ -21,10 +24,8 @@ import { claudeQuestionCandidate } from "./questions/screen.ts";
 // (`◐`, `◑`); the idle title is `✳`. Reading `◑` as idle reported `ready` mid-turn (C-TURN-05).
 const claudeWorkingTitle = /^[⠀-⣿◐◑]\s/;
 
-export { claudeComposerInputColumn } from "./composer/cursor.ts";
-
 /** A composer fenced by rules; a named session labels the top rule (`claudeNamedLabel`). */
-const fence = String.raw`(?:^|\n)[─━]{3,}(?:${claudeNamedLabel})?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}`;
+const fence = String.raw`(?:^|\n)[─━]{3,}(?:${claudeNamedLabel})?\s*\n${claudeComposerText}\s*\n[─━]{3,}`;
 const fencedComposer = new RegExp(fence);
 /** The fence with Claude's footer as the very next row, where transcript text cannot sit. */
 const footedComposer = new RegExp(String.raw`${fence}[ \t]*\n${claudeComposerFooterRow}(?:\n|$)`);
@@ -49,18 +50,17 @@ export function liveClaudeClearance(
 ): TrustClearance {
   return (text) => {
     const terminal = readTerminal();
-    const frame = settledLiveSnapshot(terminal);
-    if (frame?.text !== text || claudeWorkingTitle.test(terminal.title)) return false;
-    // xterm keeps cursorY inside the live row dimensions captured above.
+    if (claudeWorkingTitle.test(terminal.title)) return false;
+    const cursor = readClaudeInputCursor(terminal);
+    if (!cursor || cursor.frame.text !== text) return false;
+    const { frame, kind } = cursor;
+    // A painted cell needs its own row's fence and footer to establish ownership.
     const composer = frame.lines[frame.cursorY]!;
-    const cursor = claudeComposerCursor(terminal, frame);
-    return (
-      cursor !== undefined &&
-      composer.startsWith("❯") &&
-      claudeComposerRow.test(composer) &&
-      (cursor === "hardware" || claudeEmptyInputRows(frame.lines, frame.cursorY)) &&
-      textClearance(text)
-    );
+    const verified =
+      kind === "hardware"
+        ? composer.startsWith("❯") && claudeComposerRow.test(composer)
+        : claudeEmptyInputRows(frame.lines, frame.cursorY);
+    return verified && textClearance(text);
   };
 }
 

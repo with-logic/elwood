@@ -26,7 +26,7 @@ export class PasteRecoveryRevocation {
       beforeEnter,
       subscribeRender: (listener) => subscribeRender(terminal, listener),
       captureRecovery: () => this.captureRevocationGuard(),
-      captureRenderProgress: () => captureRenderProgress(terminal),
+      captureRenderProgress: () => captureRenderProgress(terminal, "pty"),
       prepareStaged: (payload) => composer().prepareStaged(payload),
       emptyFrame: () => composer().emptyFrame(),
       blocked,

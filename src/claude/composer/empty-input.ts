@@ -1,18 +1,18 @@
 /** Observe native empty Claude input without requiring an idle turn (PRD §5.3, C-API-56). */
-import { settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { loginRenewalNotice } from "../login/notice.ts";
 import { claudeNamedBorder } from "./border.ts";
-import { claudeComposerCursor } from "./cursor.ts";
+import { readClaudeInputCursor } from "./cursor.ts";
 import { claudeComposerFooter, claudeFooterOverflow } from "./footer.ts";
 
 /** Native empty-composer row shape. Callers verify native activity and dialogs. */
-export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
+export const claudeComposerText = String.raw`❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")`;
+export const claudeComposerRow = new RegExp(String.raw`^\s*${claudeComposerText}\s*$`, "m");
 
 const rule = /^[─━]{3,}\s*$/;
 export function claudeEmptyInputFrame(terminal: ElwoodTerminal) {
-  const frame = settledLiveSnapshot(terminal);
-  if (!(frame && claudeComposerCursor(terminal, frame))) return undefined;
+  const frame = readClaudeInputCursor(terminal)?.frame;
+  if (!frame) return undefined;
   return claudeEmptyInputRows(frame.lines, frame.cursorY) ? frame : undefined;
 }
 

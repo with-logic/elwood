@@ -19,13 +19,17 @@ afterEach(() => {
   codex.resetFakes();
 });
 
-test("C-API-56 awaited Claude input completes on a post-Enter native software cursor", async () => {
+test("C-API-56 awaited Claude input needs a fresh PTY render at the software cursor", async () => {
   claude.installFakes();
   const cwd = claude.tempDir();
   const session = await startClaude({ cwd });
   const pty = claude.ptys[0]!;
   try {
     await ready(cwd, session);
+    const input = claudeComposer.replace(/^❯.*$/m, "❯ \u001b[7m \u001b[27m");
+    const composer = `\u001b[2J\u001b[H${claudeTty(input, false)}`;
+    pty.emitData(composer);
+    await session.terminal.settled();
     vi.useFakeTimers();
     const expected = ["\u001b[200~probe prompt\u001b[201~", "\r"];
     let consumed = false;
@@ -39,8 +43,13 @@ test("C-API-56 awaited Claude input completes on a post-Enter native software cu
     expect(pty.writes).toEqual(expected);
     expect(consumed).toBe(false);
 
-    const input = claudeComposer.replace(/^❯.*$/m, "❯ \u001b[7m \u001b[27m");
-    pty.emitData(`\u001b[2J\u001b[H${claudeTty(input, false)}`);
+    const hostOutput = session.terminal.writeOutput("\u001b[0m");
+    await vi.advanceTimersByTimeAsync(1_100);
+    await hostOutput;
+    expect(consumed).toBe(false);
+    expect(pty.writes).toEqual(expected);
+
+    pty.emitData(composer);
     await vi.advanceTimersByTimeAsync(1_100);
     expect(consumed).toBe(true);
     await pending;
