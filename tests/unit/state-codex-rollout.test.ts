@@ -1,9 +1,9 @@
 /** Validate and defer authenticated Codex rollout locator writes (C-STATE-15). */
 import { expect, test, vi } from "vitest";
-import { bindCodexRolloutLocator } from "../../src/state/codex-rollout.ts";
+import { bindCodexRolloutLocator } from "../../src/codex/session/rollout-locator.ts";
 
 const sessionDir = "/session";
-const sessionId = "elwood-session";
+const elwoodSessionId = "elwood-session";
 const nativeId = "conversation";
 
 test.each([
@@ -15,13 +15,13 @@ test.each([
 ])("C-STATE-15 ignores a %s reported locator path", (_case, path) => {
   const persistFile = vi.fn();
   const locator = bindCodexRolloutLocator(
-    { sessionDir, sessionId },
+    { sessionDir, elwoodSessionId },
     {
       canPersist: () => true,
       persistFile,
     },
   );
-  expect(locator.activate()).toEqual([]);
+  expect(locator.onLaunchCommitted()).toEqual([]);
   expect(locator.observe(nativeId, path)).toEqual([]);
   expect(persistFile).not.toHaveBeenCalled();
 });
@@ -29,7 +29,7 @@ test.each([
 test("C-STATE-15 defers only the latest valid report to commit", () => {
   const persistFile = vi.fn();
   const locator = bindCodexRolloutLocator(
-    { sessionDir, sessionId },
+    { sessionDir, elwoodSessionId },
     {
       canPersist: () => true,
       persistFile,
@@ -39,8 +39,9 @@ test("C-STATE-15 defers only the latest valid report to commit", () => {
   expect(locator.observe(nativeId, "/older")).toEqual([]);
   expect(locator.observe(nativeId, path)).toEqual([]);
   expect(locator.observe(nativeId, null)).toEqual([]);
+  expect(locator.observe("", "/native/ignored")).toEqual([]);
   expect(persistFile).not.toHaveBeenCalled();
-  expect(locator.activate()).toEqual([]);
+  expect(locator.onLaunchCommitted()).toEqual([]);
   expect(persistFile).toHaveBeenCalledExactlyOnceWith(
     "/session/codex-rollout.json",
     `${JSON.stringify({ nativeSessionId: nativeId, path })}\n`,

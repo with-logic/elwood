@@ -64,12 +64,17 @@ test.each([
   }
 });
 
-test("C-API-20 failed pending startup rolls back its first hook record publication", async () => {
+test.each([
+  { phase: "failed", fails: true },
+  { phase: "successful", fails: false },
+])("C-STATE-15 $phase startup defers its locator until launch commit", async ({ fails }) => {
   installFakes();
   const cwd = tempDir();
   const stateDir = join(cwd, "state");
   const id = "pending-hook";
   const dir = join(stateDir, "sessions", id);
+  const locator = join(dir, "codex-rollout.json");
+  const rollout = join(cwd, "transcript.jsonl");
   const launched = Promise.withResolvers<void>();
   const factory = currentPtyFactory();
   setPtyFactoryForTests((options) => {
@@ -79,26 +84,45 @@ test("C-API-20 failed pending startup rolls back its first hook record publicati
   });
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   setStartupWaitMsForTests(1_000);
-  const starting = startCodexWithId({ cwd, stateDir }, id).catch((error: unknown) => error);
+  const starting = startCodexWithId({ cwd, stateDir }, id).then(
+    (session) => ({ session }),
+    (error: unknown) => ({ error }),
+  );
   try {
     await launched.promise;
     await ptys[0]!.dispatchHook(
       id,
-      { hook_event_name: "SessionStart", session_id: "pending-id", cwd, source: "startup" },
+      {
+        hook_event_name: "SessionStart",
+        session_id: "pending-id",
+        transcript_path: rollout,
+        cwd,
+        source: "startup",
+      },
       stateDir,
     );
     expect(readSessionRecord(stateDir, id).codex.resumeId).toBe("pending-id");
-    ptys[0]!.emitExit({ exitCode: 1 });
+    expect(existsSync(locator)).toBe(false);
+    if (fails) ptys[0]!.emitExit({ exitCode: 1 });
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(await starting).toMatchObject({ code: "codex_start_failed" });
-    expect(existsSync(join(dir, "session.json"))).toBe(false);
-    expect(readdirSync(dir)).toEqual([]);
-    expect(hasLaunchOwner(dir)).toBe(false);
+    if (fails) {
+      expect(await starting).toMatchObject({ error: { code: "codex_start_failed" } });
+      expect(existsSync(join(dir, "session.json"))).toBe(false);
+      expect(readdirSync(dir)).toEqual([]);
+      expect(hasLaunchOwner(dir)).toBe(false);
+    } else {
+      expect(await starting).toHaveProperty("session");
+      expect(JSON.parse(readFileSync(locator, "utf8"))).toEqual({
+        nativeSessionId: "pending-id",
+        path: rollout,
+      });
+    }
   } finally {
     ptys[0]?.emitExit({ exitCode: 1 });
     await vi.advanceTimersByTimeAsync(1_000);
-    await starting;
+    const result = await starting;
     vi.useRealTimers();
+    if ("session" in result) await result.session.teardown();
     removeSessionIdentity(stateDir, id, "codex");
   }
 });

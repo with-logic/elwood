@@ -186,7 +186,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       activeSession.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(activeSession);
       input.activate();
-      warnGate.emitWarnings(activeSession.rolloutLocator.activate());
+      warnGate.emitWarnings(activeSession.rolloutLocator.onLaunchCommitted());
     },
     { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

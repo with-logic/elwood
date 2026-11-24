@@ -1,9 +1,9 @@
 /** Preserve optional Codex rollout locators beside independent session state (C-STATE-15). */
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import type { CodexHookEventFor } from "../../src/codex/hooks/index.ts";
-import { resumeCodex, startCodex } from "../../src/index.ts";
+import { type ElwoodWarningEvent, resumeCodex, startCodex } from "../../src/index.ts";
 import { defaultStateDir, sessionDir } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -29,6 +29,8 @@ test("C-STATE-15 only the current authenticated conversation updates its private
     } satisfies CodexHookEventFor<"SessionStart">);
   const read = () => JSON.parse(readFileSync(stored, "utf8"));
   try {
+    expect(await submit(0, "", rollout)).toMatchObject({ exitCode: 0 });
+    expect(existsSync(stored)).toBe(false);
     await submit(0, nativeId, rollout);
     expect(read()).toEqual({ nativeSessionId: nativeId, path: rollout });
     expect(statSync(stored).mode & 0o777).toBe(0o600);
@@ -62,7 +64,11 @@ test("C-STATE-15 an unavailable optional locator cannot stop SessionStart or rea
     events.push(session_id);
     return undefined;
   });
-  session.on("warning", ({ code, raw }) => events.push(`${code}:${raw}`));
+  const warnings: ElwoodWarningEvent[] = [];
+  session.on("warning", (warning) => warnings.push(warning));
+  session.on("warning", () => {
+    throw new Error("warning observer fixture");
+  });
   // A directory at the destination makes the atomic temp-file rename fail.
   mkdirSync(join(sessionDir(defaultStateDir(cwd), elwoodSessionId), "codex-rollout.json"));
   try {
@@ -74,13 +80,18 @@ test("C-STATE-15 an unavailable optional locator cannot stop SessionStart or rea
       transcript_path: join(cwd, "transcript.jsonl"),
     } satisfies CodexHookEventFor<"SessionStart">);
     expect(reply).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(events).toHaveLength(2);
-    expect(events).toEqual(
-      expect.arrayContaining([
-        nativeId,
-        "codex_rollout_locator_write_failed:codex_rollout_locator_write_failed",
-      ]),
-    );
+    expect(events).toEqual([nativeId]);
+    expect(warnings).toEqual([
+      {
+        elwoodSessionId,
+        agent: "codex",
+        source: "lifecycle",
+        code: "codex_rollout_locator_write_failed",
+        severity: "warning",
+        message: "Elwood could not save the Codex transcript locator.",
+        raw: "codex_rollout_locator_write_failed",
+      },
+    ]);
     expect(session.status).toBe("ready");
   } finally {
     await session.teardown();

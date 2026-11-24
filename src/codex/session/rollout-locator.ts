@@ -1,7 +1,8 @@
 /** Publish authenticated Codex rollout metadata after launch activation (C-STATE-15). */
 import { isAbsolute, join } from "node:path";
-import type { CodexRolloutLocatorWriteFailedWarning } from "../core/warnings/lifecycle.ts";
-import type { LaunchOwnership } from "./launch-ownership.ts";
+import type { CodexRolloutLocatorWriteFailedWarning } from "../../core/warnings/lifecycle.ts";
+import type { LaunchOwnership } from "../../state/launch-ownership.ts";
+import { codexRolloutLocatorWriteFailedWarning } from "./warnings.ts";
 
 const maxRolloutPathBytes = 4_096;
 type RolloutLocator = { readonly nativeSessionId: string; readonly path: string };
@@ -17,7 +18,10 @@ function codexRolloutPath(value: unknown): value is string {
 }
 
 export function bindCodexRolloutLocator(
-  { sessionDir, sessionId }: { readonly sessionDir: string; readonly sessionId: string },
+  {
+    sessionDir,
+    elwoodSessionId,
+  }: { readonly sessionDir: string; readonly elwoodSessionId: string },
   io: LocatorIO,
 ) {
   let active = false;
@@ -30,29 +34,19 @@ export function bindCodexRolloutLocator(
       io.persistFile(target, `${JSON.stringify(locator)}\n`);
       return [];
     } catch {
-      return [
-        {
-          elwoodSessionId: sessionId,
-          agent: "codex",
-          source: "lifecycle",
-          code: "codex_rollout_locator_write_failed",
-          severity: "warning",
-          message: "Elwood could not save the Codex transcript locator.",
-          raw: "codex_rollout_locator_write_failed",
-        },
-      ];
+      return [codexRolloutLocatorWriteFailedWarning(elwoodSessionId)];
     }
   };
 
   return {
     observe(nativeSessionId: string, path: unknown) {
-      if (!codexRolloutPath(path)) return [];
+      if (!(nativeSessionId && codexRolloutPath(path))) return [];
       const locator = { nativeSessionId, path };
       if (active) return write(locator);
       pending = locator;
       return [];
     },
-    activate() {
+    onLaunchCommitted() {
       active = true;
       const locator = pending;
       pending = undefined;

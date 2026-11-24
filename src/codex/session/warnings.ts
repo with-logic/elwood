@@ -13,6 +13,7 @@ import type {
   ImageCopyErrorCode,
   ImageCopyRemovalFailedWarning,
 } from "../../core/warnings/images.ts";
+import type { CodexRolloutLocatorWriteFailedWarning } from "../../core/warnings/lifecycle.ts";
 import { restoreFailureRaw } from "../config/restore.ts";
 import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../images/clipboard.ts";
 
@@ -112,5 +113,20 @@ export function turnCommitWaitExpiredWarning(
     severity: "warning",
     message: `Elwood did not see Codex record the turn its Stop hook ended within ${waitMs / 1000} seconds of the shutdown request, and is shutting Codex down anyway. A resumed conversation may show that turn as interrupted.`,
     raw: "turn_commit_wait_expired",
+  };
+}
+
+/** Optional rollout persistence never exposes paths, native IDs, or filesystem errors. */
+export function codexRolloutLocatorWriteFailedWarning(
+  elwoodSessionId: string,
+): CodexRolloutLocatorWriteFailedWarning {
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "lifecycle",
+    code: "codex_rollout_locator_write_failed",
+    severity: "warning",
+    message: "Elwood could not save the Codex transcript locator.",
+    raw: "codex_rollout_locator_write_failed",
   };
 }

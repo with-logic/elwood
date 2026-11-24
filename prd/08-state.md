@@ -218,7 +218,8 @@ string fields `nativeSessionId` and `path`. The ID exactly matches the current
 native conversation and the path is the absolute transcript path from that
 conversation's authenticated `SessionStart` hook. The path has no NUL and is
 at most 4,096 UTF-8 bytes. A missing or unusable locator leaves the core session
-record valid. Core record publication preserves the sidecar. A launch writes
+record valid. Core record publication preserves the sidecar. The session resume
+command continues to use the native ID from the core session record. A launch writes
 the locator through ordinary state ownership only after committing. If the
 hook arrives earlier, the launch retains its latest eligible report in memory
 until commit. A locator write failure reports a content-free warning and

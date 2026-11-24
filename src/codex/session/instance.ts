@@ -7,6 +7,7 @@ import type { HookObservation } from "../../core/hook-observation.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import { registerNativeTurnReader } from "../../core/simple/submission-context.ts";
+import { deliverFrameWarnings } from "../../core/startup/frame.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import { emitSessionWarningsWithRejectionHandling } from "../../core/warnings/session.ts";
@@ -14,7 +15,6 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
-import { bindCodexRolloutLocator } from "../../state/codex-rollout.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -34,6 +34,7 @@ import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
 import { observeCodexInitialReady } from "./initial-ready.ts";
+import { bindCodexRolloutLocator } from "./rollout-locator.ts";
 import { CodexTurnCommit } from "./turn-commit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import { clipboardRestoreFailedWarning } from "./warnings.ts";
@@ -91,7 +92,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
     this.rolloutLocator = bindCodexRolloutLocator(
-      { sessionDir: runtime.sessionDir, sessionId: this.elwoodSessionId },
+      { sessionDir: runtime.sessionDir, elwoodSessionId: this.elwoodSessionId },
       runtime.stateOwnership,
     );
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
@@ -152,16 +153,13 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
-  persistSessionStartMetadata(
-    event: CodexHookEventFor<"SessionStart">,
-    observation: HookObservation,
-  ): void {
+  captureSessionStartMetadata(event: CodexHookEventFor<"SessionStart">): void {
     const { session_id: nativeId, transcript_path: path } = event;
     if (!this.record.codex.resumeId)
       this.persist(updateSessionResumeId(this.record, "codex", nativeId));
     if (this.record.codex.resumeId !== nativeId) return;
     const warnings = this.rolloutLocator.observe(nativeId, path);
-    observation.run("lifecycle", () => this.emitWarnings(warnings));
+    deliverFrameWarnings(this, warnings);
   }
   setInitialReadyHook(fire: () => void): void {
     this.onInitialReady = fire;
