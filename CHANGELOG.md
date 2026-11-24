@@ -12,7 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Contain rejected warning listeners on both adapters, including buffered startup warnings.
+- Contain Promise rejections from `warning` and warning `activity` listeners on
+  both adapters, including buffered startup warnings.
 - Raise and answer standalone Claude checkbox questions that use a Submit tab
   and final review.
 - Raise and answer a single-question Codex 0.171.0 Plan-mode panel when its

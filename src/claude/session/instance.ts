@@ -11,7 +11,7 @@ import type {
   ElwoodWarningEvent,
   TerminalSize,
 } from "../../core/types.ts";
-import { emitWarningsToSession } from "../../core/warnings/session.ts";
+import { emitSessionWarningsWithRejectionHandling } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
@@ -153,7 +153,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));
   }
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
-    emitWarningsToSession(warnings, this.emitter);
+    emitSessionWarningsWithRejectionHandling(warnings, this.emitter);
   }
   // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
   // readiness (startup handles it fatally), edge-detected. FULLY non-throwing — runs
