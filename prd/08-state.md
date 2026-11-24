@@ -213,6 +213,28 @@ Session records are not intended to be portable across unrelated state
 directories. Session IDs are opaque path components: absolute paths, path
 separators, and traversal segments are invalid.
 
+Codex sessions keep an optional private `codex-rollout.json` sidecar with the
+string fields `nativeSessionId` and `path`. The ID exactly matches the current
+native conversation and the path is the absolute transcript path from that
+conversation's authenticated `SessionStart` hook. The path has no NUL and is
+at most 4,096 UTF-8 bytes. A missing or unusable locator leaves the core session
+record valid. Core record publication preserves the sidecar. Resume still uses
+the native ID from the core record. Before starting the resumed PTY, Elwood
+reads the owner-only sidecar, limited to 32 KiB, and verifies its ID against
+the core record. It seeds a forward-only cursor at the end of a regular
+rollout owned by the current user and writable only by its owner. The
+first native `session_meta` record must confirm that ID within the first
+256 KiB of the file. The seeded cursor reads appends only from that verified
+file. It delivers newly appended activity after startup commits, even without
+a new path-bearing hook. Ordinary hook-based discovery remains available
+when there is no usable locator. An absent locator is quiet. An existing
+unusable locator or rollout emits one content-free
+`codex_rollout_locator_unavailable` warning and warning activity during resume.
+A launch writes a locator of at most 32 KiB through ordinary state ownership
+only after committing. If the hook arrives earlier, it retains the latest eligible report
+until commit. A locator write failure reports a content-free warning and
+allows the authenticated hook and readiness signal to complete.
+
 Loop definitions are stored separately so existing schema-version-1 session
 records remain backward-readable. A versioned loop sidecar under the same
 owner-only session directory contains exactly each validated loop's stable ID,

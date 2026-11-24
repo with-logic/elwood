@@ -15,7 +15,7 @@
 
 import { statSync } from "node:fs";
 import { errnoCode } from "../errors.ts";
-import { byteLen, fileSize, observedSize, readRange } from "./cursor-io.ts";
+import { byteLen, fileSize, observedSize, type RangeRead, readRange } from "./cursor-io.ts";
 
 const maxChunkBytes = 256 * 1024; // bytes read per scan pass (a large delta streams)
 // Max bytes a single un-terminated record may buffer before it is discarded through
@@ -99,6 +99,10 @@ export class BoundedTranscriptCursor {
     if (this.created || errnoCode(error) !== "ENOENT") throw error;
   }
 
+  protected readRange(start: number, length: number): RangeRead {
+    return readRange(this.path, start, length);
+  }
+
   /**
    * Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed.
    * `size` comes from the policy-aware stat that sized this read.
@@ -118,7 +122,7 @@ export class BoundedTranscriptCursor {
       return { text: "", canContinueNow: false };
     }
     const want = Math.min(maxChunkBytes, size - from);
-    const { text, bytes } = readRange(this.path, from, want);
+    const { text, bytes } = this.readRange(from, want);
     // Advance by bytes actually consumed (a split code point waits), no drift.
     this.offset = from + bytes;
     // A read that consumed ZERO bytes (the window is entirely an incomplete UTF-8

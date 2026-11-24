@@ -8,6 +8,7 @@
 import { afterEach } from "vitest";
 import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
 import { resetCodexSessionSeamsForTests } from "../../src/codex/session/index.ts";
+import type { CodexHookEventFor } from "../../src/index.ts";
 import {
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
@@ -91,7 +92,9 @@ export function tempDir(): string {
 export function becomeReady(
   elwoodSessionId: string,
   cwd: string,
-  overrides: Record<string, unknown> = {},
+  overrides: Partial<
+    Pick<CodexHookEventFor<"SessionStart">, "session_id" | "transcript_path">
+  > = {},
 ) {
   return ptys[0]!.dispatchHook(elwoodSessionId, {
     hook_event_name: "SessionStart",
@@ -100,5 +103,5 @@ export function becomeReady(
     model: "gpt-5.3-codex",
     source: "startup",
     ...overrides,
-  });
+  } satisfies CodexHookEventFor<"SessionStart">);
 }

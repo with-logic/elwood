@@ -2,10 +2,10 @@
  * Builders for the Codex session's lifecycle warnings: the config.toml restore
  * outcomes after a model switch (PRD §5.3, C-CODEX-14), the clipboard-restore
  * failure after an image attach and a pasted image's copy left after exit (§5.3, C-API-46),
- * and a shutdown that signaled Codex
- * before it recorded the ended turn (§5.7, C-LIFE-13). Every warning is live-only
- * (§5.7) and content-free: `raw` carries a path, a fixed token, or a bounded errno
- * code, never config contents, clipboard data, or a raw error message.
+ * optional rollout locator failures (§8.2, C-STATE-15), and a
+ * shutdown that signaled Codex before it recorded the ended turn (§5.7, C-LIFE-13).
+ * Every warning is live-only (§5.7) and content-free. The `raw` field carries
+ * only a path, a fixed token, or a bounded errno code.
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
@@ -13,6 +13,10 @@ import type {
   ImageCopyErrorCode,
   ImageCopyRemovalFailedWarning,
 } from "../../core/warnings/images.ts";
+import type {
+  CodexRolloutLocatorUnavailableWarning,
+  CodexRolloutLocatorWriteFailedWarning,
+} from "../../core/warnings/lifecycle.ts";
 import { restoreFailureRaw } from "../config/restore.ts";
 import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../images/clipboard.ts";
 
@@ -112,5 +116,35 @@ export function turnCommitWaitExpiredWarning(
     severity: "warning",
     message: `Elwood did not see Codex record the turn its Stop hook ended within ${waitMs / 1000} seconds of the shutdown request, and is shutting Codex down anyway. A resumed conversation may show that turn as interrupted.`,
     raw: "turn_commit_wait_expired",
+  };
+}
+
+/** Optional rollout persistence never exposes paths, native IDs, or filesystem errors. */
+export function codexRolloutLocatorWriteFailedWarning(
+  elwoodSessionId: string,
+): CodexRolloutLocatorWriteFailedWarning {
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "lifecycle",
+    code: "codex_rollout_locator_write_failed",
+    severity: "warning",
+    message: "Elwood could not save the Codex transcript locator.",
+    raw: "codex_rollout_locator_write_failed",
+  };
+}
+
+/** Warn on unusable saved metadata while normal hook-based discovery remains active. */
+export function codexRolloutLocatorUnavailableWarning(
+  elwoodSessionId: string,
+): CodexRolloutLocatorUnavailableWarning {
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "lifecycle",
+    code: "codex_rollout_locator_unavailable",
+    severity: "warning",
+    message: "Elwood could not verify the saved Codex transcript location.",
+    raw: "codex_rollout_locator_unavailable",
   };
 }

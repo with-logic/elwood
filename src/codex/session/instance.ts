@@ -2,12 +2,12 @@
  * In-memory Codex session object exposed to callers.
  * Implements PRD §5.7, §7A, §8, and §9.
  */
-
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { HookObservation } from "../../core/hook-observation.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import { registerNativeTurnReader } from "../../core/simple/submission-context.ts";
+import { deliverFrameWarnings } from "../../core/startup/frame.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import { emitSessionWarningsWithRejectionHandling } from "../../core/warnings/session.ts";
@@ -21,6 +21,7 @@ import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts"
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexTurnIdentity } from "../accepted-turn.ts";
 import { enrichCodexModels } from "../config/default-model.ts";
+import type { CodexHookEventFor } from "../hooks/index.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
 import { codexModelOptions } from "../models/options.ts";
@@ -33,13 +34,13 @@ import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
 import { observeCodexInitialReady } from "./initial-ready.ts";
+import { bindCodexRolloutLocator } from "./rollout-locator.ts";
 import { CodexTurnCommit } from "./turn-commit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import { clipboardRestoreFailedWarning } from "./warnings.ts";
 
 /** How long a setModel interrupted by close waits for the CLI to exit before restoring. */
 const cliExitWaitMs = 5_000;
-
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   override async listModels(options?: { readonly timeoutMs?: number }) {
     return codexModelOptions(await super.listModels(options));
@@ -52,9 +53,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
+  readonly rolloutLocator: ReturnType<typeof bindCodexRolloutLocator>;
   private onInitialReady: (() => void) | undefined;
   private hookReadyObservation: HookObservation | undefined;
-  // The PTY's own exit proves shutdown; recorded session status alone does not.
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
@@ -90,15 +91,18 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
+    this.rolloutLocator = bindCodexRolloutLocator(
+      { sessionDir: runtime.sessionDir, elwoodSessionId: this.elwoodSessionId },
+      runtime.stateOwnership,
+    );
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.resolveConfigPath = resolveConfigPath;
-    // Codex fires no `Stop` for a turn it rejects; its failed `task_complete` ends it (C-API-60).
+    // A rejected Codex turn has a failed `task_complete` in place of `Stop` (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
-    // REGISTER before replaying buffered `terminal:data` (mirrors Claude): a throwing replay
-    // handler must still be subscribed for FUTURE data. Replay is synchronous, so nothing interleaves.
+    // Register before replay so a throwing subscriber still receives future output.
     const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event as string, handler);
     return unsubscribe;
@@ -116,7 +120,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     };
     return super.setModel(id, options, (flow, signal) => switchCodexModel(session, flow, signal));
   }
-  // A closing session's dying CLI can still persist a confirmed selection: await its exit.
   private waitForCliExit(): Promise<unknown> | undefined {
     if (!this.closing.signal.aborted) return undefined;
     return this.cliExit.within(cliExitWaitMs, { unref: true }); // never holds the host open
@@ -139,7 +142,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  // Codex has no staged chip; the composer still shows the paste's last line.
   protected readonly recoveryComposer = createCodexRecoveryComposer(this.terminal);
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
   // held while a dialog is on screen so it never confirms one (C-API-46/37).
@@ -151,17 +153,19 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
-  rememberCodexSessionId(sessionId: string): void {
-    if (this.record.codex.resumeId) return;
-    this.persist(updateSessionResumeId(this.record, "codex", sessionId));
+  /** Match the native ID before buffering or writing its locator. Write failures only warn. */
+  captureSessionStartMetadata(event: CodexHookEventFor<"SessionStart">): void {
+    const { session_id: nativeSessionId, transcript_path: path } = event;
+    if (!this.record.codex.resumeId)
+      this.persist(updateSessionResumeId(this.record, "codex", nativeSessionId));
+    if (this.record.codex.resumeId !== nativeSessionId) return;
+    const warnings = this.rolloutLocator.observe(nativeSessionId, path);
+    deliverFrameWarnings(this, warnings);
   }
-  /** Installs the authoritative SessionStart readiness trigger (C-API-28). */
   setInitialReadyHook(fire: () => void): void {
     this.onInitialReady = fire;
   }
-  /** Fires initial readiness from the `SessionStart` hook so the first queued
-   * message is released only once Codex is actually accepting input, not on the
-   * boot-time composer placeholder that would swallow it (C-API-28). */
+  /** SessionStart proves Codex can accept input at the composer (C-API-28). */
   markInitialReadyFromHook(observation: HookObservation): void {
     const previous = this.hookReadyObservation;
     this.hookReadyObservation = observation;

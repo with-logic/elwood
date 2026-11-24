@@ -1,13 +1,11 @@
 /**
- * Non-fatal adapter warnings (PRD §5.7, §8.2): named variants carrying only
- * diagnostics (cause/phase labels, error codes, recovery hints) — no event counts or
- * byte magnitudes — and never raw prompts, transcripts, or conversation content.
+ * Non-fatal adapter warnings (PRD §5.7, §8.2) carry diagnostic fields only.
+ * They exclude counts, byte magnitudes, prompts, and transcript content.
  * Most error-code fields are allowlisted tokens (`reasons.ts`); the one
  * exception is `transcript_read_error.lastErrorCode`, which the PRD types as the
  * raw fs errno string (a system-controlled code, never transcript content).
  * Warnings are live-only: emitted once when observed, never persisted.
  */
-
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
 import type { LoginExpiredWarning, LoginExpiringWarning } from "./auth.ts";
@@ -45,6 +43,8 @@ export type ElwoodWarningEvent =
       readonly message: string;
       readonly raw: string;
     }
+  | lifecycle.CodexRolloutLocatorUnavailableWarning
+  | lifecycle.CodexRolloutLocatorWriteFailedWarning
   | lifecycle.AgentUpdateFailedWarning
   | lifecycle.ObserverFailureWarning
   | lifecycle.TurnCommitWaitExpiredWarning

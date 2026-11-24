@@ -32,7 +32,7 @@ export type LaunchOwnership = {
   readonly current: () => boolean;
   /** Ordinary loop and record writes may continue on a predecessor while resume is pending. */
   readonly canPersist: () => boolean;
-  readonly readFile: (path: string) => string | undefined;
+  readonly readFile: (path: string, maxBytes?: number) => string | undefined;
   readonly persistFile: StateFileWriter;
   readonly publishFile: StateFileWriter;
   readonly release: () => void;
@@ -72,12 +72,13 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   return {
     current,
     canPersist,
-    readFile: (file) => {
+    readFile: (file, maxBytes) => {
       const later = successors();
       if (later === undefined) throw elwoodError("session_not_running", "Launch was superseded.");
       return publication.read(
         file,
         later.map((generation) => generation.publication),
+        maxBytes,
       );
     },
     persistFile: (file, text) => {
