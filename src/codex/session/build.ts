@@ -98,7 +98,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
-  const snapshot = () => renderedSnapshot(terminal);
+  const snapshot = () => renderedSnapshot(terminal, "live");
   const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate);
   const clearance = liveCodexClearance(() => terminal);
   const observers = {
@@ -128,18 +128,18 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
-      const { text, cols } = renderedSnapshot(renderedTerminal);
+      const { text, cols } = renderedSnapshot(renderedTerminal, "live");
       const frame = { text, cols, title: renderedTerminal.title };
       const send = (input: string) =>
         withAutomatedInput(renderedTerminal, () => callerInput.automation(input));
-      const read = () => renderedSnapshot(renderedTerminal).text;
+      const read = () => renderedSnapshot(renderedTerminal, "live").text;
       const guarded = guardedCodexAutomationWrite(
         renderedTerminal,
         send,
         read,
         promptResponder.closingSignal,
       );
-      const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
+      const trustRead = () => currentRenderedFrame(renderedTerminal, "live")?.text;
       const result = promptResponder.handle(frame.text, send, read, guarded, trustRead);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartup(emitter, "codex", record.elwoodSessionId, result.outcomes, warnGate);

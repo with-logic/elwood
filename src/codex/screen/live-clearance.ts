@@ -1,7 +1,6 @@
 /** Live native cursor, text, and title prove Codex trust clearance (C-TRUST-01). */
 
 import type { TrustClearance } from "../../core/trust/clearance.ts";
-import { cursorViewportRow } from "../../terminal/coordinates.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import { codexComposerRowsClearance } from "./clearance.ts";
@@ -14,7 +13,7 @@ export function liveCodexClearance(readTerminal: () => ElwoodTerminal): TrustCle
   return (text) => {
     const terminal = readTerminal();
     if (codexWorkingTitle.test(terminal.title)) return false;
-    const frame = currentRenderedFrame(terminal);
+    const frame = currentRenderedFrame(terminal, "live");
     // Native input follows the two-cell "› " or "» " prefix (zero-based column 2).
     if (
       frame === undefined ||
@@ -23,15 +22,10 @@ export function liveCodexClearance(readTerminal: () => ElwoodTerminal): TrustCle
       frame.cursorX !== 2
     )
       return false;
-    const buffer = terminal.xterm.buffer.active;
-    // cursorY is relative to the active buffer base; snapshot rows start at viewportY.
-    // Example: cursorY=3, baseY=10, viewportY=8 identifies snapshot row 5.
-    const viewportCursorRow = cursorViewportRow(frame.cursorY, buffer);
-    // RenderCursor replaces this private snapshot on a render or viewport change.
-    // Live evidence above is rechecked even when its row classification is reusable.
+    // The cursor and snapshot rows both start at the live buffer's base.
     if (frame !== previous) {
       classification = codexComposerRowsClearance(frame.lines, {
-        cursorRow: viewportCursorRow,
+        cursorRow: frame.cursorY,
         cols: frame.cols,
       });
       previous = frame;

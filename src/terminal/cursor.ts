@@ -1,19 +1,25 @@
 /** Cursor evidence belongs to one completed render, never queued bytes (C-TRUST-01). */
 import type { Terminal } from "@xterm/headless";
 import type { ElwoodTerminal, TerminalSnapshot } from "./headless.ts";
+import { terminalSnapshot } from "./snapshot.ts";
 
 const tracked = new WeakMap<Terminal, RenderCursor>();
+type ScreenLocation = "viewport" | "live";
+type CachedFrame = { readonly position: string; readonly frame: TerminalSnapshot };
 
 export function settledCursorVisible(terminal: Terminal): boolean {
   return tracked.get(terminal)?.settledVisible === true && !terminal.modes.synchronizedOutputMode;
 }
 
 /** Both trust reads and clearance require all received output to be rendered successfully. */
-export function currentRenderedFrame(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
+export function currentRenderedFrame(
+  terminal: ElwoodTerminal,
+  location: ScreenLocation = "viewport",
+): TerminalSnapshot | undefined {
   const cursor = tracked.get(terminal.xterm);
   if (terminal.renderFailed || !cursor?.settled || terminal.xterm.modes.synchronizedOutputMode)
     return undefined;
-  return cursor.snapshot(() => terminal.snapshot());
+  return renderedSnapshot(terminal, location);
 }
 
 /** True for unknown tracking or received output; this does not attest banner visibility. */
@@ -33,8 +39,18 @@ export function subscribeRender(terminal: ElwoodTerminal, listener: () => void):
 }
 
 /** Completed-render and post-parse picker observations share text with subsequent trust reads. */
-export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
-  return tracked.get(terminal.xterm)?.snapshot(() => terminal.snapshot()) ?? terminal.snapshot();
+export function renderedSnapshot(
+  terminal: ElwoodTerminal,
+  location: ScreenLocation = "viewport",
+): TerminalSnapshot {
+  const { baseY, viewportY } = terminal.xterm.buffer.active;
+  const hiddenLive = location === "live" && baseY !== viewportY;
+  const top = hiddenLive ? baseY : viewportY;
+  const read = () =>
+    hiddenLive ? terminalSnapshot(terminal.xterm, terminal.size, top) : terminal.snapshot();
+  return (
+    tracked.get(terminal.xterm)?.snapshot(read, hiddenLive ? "live" : "viewport", top) ?? read()
+  );
 }
 
 export class RenderCursor {
@@ -54,8 +70,7 @@ export class RenderCursor {
 
   private readonly terminal: Terminal;
   private readonly hasStagedOutput: () => boolean;
-  private frame: TerminalSnapshot | undefined;
-  private viewportKey = "";
+  private frames: Partial<Record<ScreenLocation, CachedFrame>> = {};
 
   constructor(terminal: Terminal, hasStagedOutput: () => boolean) {
     this.terminal = terminal;
@@ -76,7 +91,7 @@ export class RenderCursor {
       terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset),
       {
         dispose: invalidateOnMutation(terminal, () => {
-          this.frame = undefined;
+          this.frames = {};
         }),
       },
     ];
@@ -96,7 +111,7 @@ export class RenderCursor {
   rendered(revision: number, arrival: number): void {
     this.renderedRevision = revision;
     this.renderedArrivals = arrival;
-    this.frame = undefined;
+    this.frames = {};
     for (const listener of this.listeners) listener();
   }
   captureProgress(): () => boolean {
@@ -109,21 +124,25 @@ export class RenderCursor {
   get settledVisible(): boolean {
     return this.visible && this.settled;
   }
-  snapshot(capture: () => TerminalSnapshot): TerminalSnapshot {
+  snapshot(
+    capture: () => TerminalSnapshot,
+    location: ScreenLocation,
+    top: number,
+  ): TerminalSnapshot {
     const buffer = this.terminal.buffer.active;
-    const viewportKey = [
+    const position = [
       this.terminal.cols,
       this.terminal.rows,
       buffer.cursorX,
       buffer.cursorY,
-      buffer.viewportY,
+      top,
       buffer.baseY,
     ].join(":");
-    if (this.frame === undefined || this.viewportKey !== viewportKey) {
-      this.frame = capture();
-      this.viewportKey = viewportKey;
-    }
-    return this.frame;
+    const known = this.frames[location];
+    if (known?.position === position) return known.frame;
+    const frame = capture();
+    this.frames[location] = { position, frame };
+    return frame;
   }
   dispose(): void {
     tracked.delete(this.terminal);

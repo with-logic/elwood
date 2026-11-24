@@ -2,11 +2,15 @@
 import type { TerminalSize } from "../core/types.ts";
 import type { TerminalSnapshot, XtermTerminal } from "./headless.ts";
 
-export function terminalSnapshot(xterm: XtermTerminal, size: TerminalSize): TerminalSnapshot {
+export function terminalSnapshot(
+  xterm: XtermTerminal,
+  size: TerminalSize,
+  top = xterm.buffer.active.viewportY,
+): TerminalSnapshot {
   const buffer = xterm.buffer.active;
   const lines = Array.from(
     { length: size.rows },
-    (_, index) => buffer.getLine(buffer.viewportY + index)?.translateToString(true) ?? "",
+    (_, index) => buffer.getLine(top + index)?.translateToString(true) ?? "",
   );
   return {
     cols: size.cols,
