@@ -7,9 +7,11 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
-import { settledCursorVisible, settledLiveSnapshot } from "../terminal/cursor.ts";
+import { settledLiveSnapshot } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
+import { claudeComposerCursor } from "./composer/cursor.ts";
+import { claudeComposerRow, claudeEmptyInputRows } from "./composer/empty-input.ts";
 import { claudeComposerFooterRow } from "./composer/footer.ts";
 import { isClaudeLoginSuccessDialog } from "./login/screens.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
@@ -18,10 +20,8 @@ import { claudeQuestionCandidate } from "./questions/screen.ts";
 // Claude's working title: a braille spinner, or the half circles 2.1.310 alternates between
 // (`◐`, `◑`); the idle title is `✳`. Reading `◑` as idle reported `ready` mid-turn (C-TURN-05).
 const claudeWorkingTitle = /^[⠀-⣿◐◑]\s/;
-/** Zero-based input position after Claude's two-cell "❯ " composer prefix. */
-export const claudeComposerInputColumn = 2;
-/** Native empty-composer row shape; callers own activity and dialog checks. */
-export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
+
+export { claudeComposerInputColumn } from "./composer/cursor.ts";
 
 /** A composer fenced by rules; a named session labels the top rule (`claudeNamedLabel`). */
 const fence = String.raw`(?:^|\n)[─━]{3,}(?:${claudeNamedLabel})?\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}`;
@@ -50,30 +50,18 @@ export function liveClaudeClearance(
   return (text) => {
     const terminal = readTerminal();
     const frame = settledLiveSnapshot(terminal);
-    if (
-      frame?.text !== text ||
-      frame.cursorX !== claudeComposerInputColumn ||
-      claudeWorkingTitle.test(terminal.title)
-    )
-      return false;
+    if (frame?.text !== text || claudeWorkingTitle.test(terminal.title)) return false;
     // xterm keeps cursorY inside the live row dimensions captured above.
     const composer = frame.lines[frame.cursorY]!;
+    const cursor = claudeComposerCursor(terminal, frame);
     return (
+      cursor !== undefined &&
       composer.startsWith("❯") &&
       claudeComposerRow.test(composer) &&
-      claudeInputCursorVisible(terminal, composer) &&
+      (cursor === "hardware" || claudeEmptyInputRows(frame.lines, frame.cursorY)) &&
       textClearance(text)
     );
   };
-}
-
-function claudeInputCursorVisible(terminal: ElwoodTerminal, composer: string): boolean {
-  if (settledCursorVisible(terminal.xterm)) return true;
-  if (composer.trimEnd() !== "❯") return false;
-  // Claude 2.1.331 can hide the hardware cursor and draw a reverse-video space.
-  const buffer = terminal.xterm.buffer.active;
-  const cell = buffer.getLine(buffer.baseY + buffer.cursorY)!.getCell(buffer.cursorX)!;
-  return cell.getChars() === " " && cell.isInverse() !== 0;
 }
 
 /**

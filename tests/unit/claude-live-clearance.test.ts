@@ -75,3 +75,31 @@ test("C-TRUST-01 live clearance reads the actual xterm geometry after a raw resi
     terminal.dispose();
   }
 });
+
+test("C-TRUST-01 a hidden cursor at the two-column wrap boundary cannot prove input", async () => {
+  const terminal = createHeadlessTerminal({ cols: 2, rows: 4 }, () => undefined);
+  const clear = liveClaudeClearance(() => terminal);
+  try {
+    await terminal.writeOutput("\u001b[?25l❯ ");
+    const frame = terminal.snapshot();
+    expect(frame.cursorX).toBe(frame.cols);
+    expect(clear(frame.text)).toBe(false);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test("C-TRUST-01 a drawn cursor requires the fence on its own composer row", async () => {
+  const terminal = createHeadlessTerminal({ cols: 173, rows: 35 }, () => undefined);
+  const clear = liveClaudeClearance(() => terminal);
+  try {
+    await terminal.writeOutput(
+      `\u001b[?25l${claudeNativeIdlePaint}\u001b[5;1H❯ \u001b[7m \u001b[27m\u001b[5;3H`,
+    );
+    const frame = terminal.snapshot();
+    expect(frame.cursorY).toBe(4);
+    expect(clear(frame.text)).toBe(false);
+  } finally {
+    terminal.dispose();
+  }
+});

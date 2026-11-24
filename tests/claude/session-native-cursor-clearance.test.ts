@@ -91,7 +91,7 @@ test("C-TRUST-01 Claude 2.1.331 clears trust at its drawn empty input cursor", a
 
     // The native renderer sits at column two, with DEC cursor visibility off.
     const idle = `${claudeNativeIdlePaint}\u001b[2K\u001b[1G❯ `;
-    for (const paint of [" ", "\u001b[4G\u001b[7m \u001b[27m"]) {
+    for (const paint of [" ", "\u001b[7m\u00a0\u001b[27m", "\u001b[4G\u001b[7m \u001b[27m"]) {
       pty.emitData(`\u001b[2J\u001b[H${idle}${paint}\u001b[3G`);
       await vi.advanceTimersByTimeAsync(500);
       expect(pty.writes).toEqual([]);

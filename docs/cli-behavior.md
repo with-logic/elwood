@@ -722,8 +722,9 @@ uses the actual visible input cursor to identify the composer, so transcript
 caret/numbered rows above that input remain legitimate history. Dialogs hide the
 cursor or leave it outside the composer. Claude Code 2.1.331 can hide the
 hardware cursor after workspace trust and draw the empty input cursor as a
-reverse-video space at native column two. Both cursor forms require the
-verified composer and settled cursor coordinates. C-TRUST-01.
+reverse-video space at native column two. Claude trust clearance and empty-input
+recovery both accept this cursor on the verified composer in a settled render.
+C-TRUST-01, C-API-56.
 Controlled post-settlement fixtures show that indented approval/trust headers or
 cursor-option blocks can coexist with a stale visible composer cursor. Clearance
 shares native trust-header classification without expanding C-ATTN-03 reporting.

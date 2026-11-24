@@ -47,7 +47,7 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
     autotrust: false,
   });
   const active = session;
-  // Independent oracle: native DEC25 mode and the actual cursor's fenced composer row.
+  // Independent oracle: DEC25 or the drawn input cursor, on the fenced composer row.
   active.on("terminal:data", ({ data }) => {
     for (const part of data.split("\u001b")) {
       const mode = /^\[\?25([hl])/.exec(part);
@@ -57,11 +57,14 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
     if (folderTrustScreenVisible(frame.text)) observedTrust = true;
     const buffer = active.terminal.xterm.buffer.active;
     const row = frame.cursorY + buffer.baseY - buffer.viewportY;
+    const composer = frame.lines[row] ?? "";
+    const cell = buffer.getLine(buffer.baseY + frame.cursorY)?.getCell(frame.cursorX);
+    const drawnCursor = composer.trimEnd() === "❯" && cell?.getChars() === " " && cell.isInverse();
     if (
       observedTrust &&
-      cursorVisible &&
+      (cursorVisible || drawnCursor) &&
       frame.cursorX === 2 &&
-      /^❯(?:\s|$)/.test(frame.lines[row] ?? "") &&
+      /^❯(?:\s|$)/.test(composer) &&
       /^[─━]{3,}/.test(frame.lines[row - 1] ?? "") &&
       /^[─━]{3,}/.test(frame.lines[row + 1] ?? "") &&
       !folderTrustScreenVisible(frame.text)

@@ -1,7 +1,9 @@
 /** A positive empty composer ends recovery even with submitted history (C-API-31). */
 import { afterEach, expect, test, vi } from "vitest";
+import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
+import { ready } from "../claude/login-helpers.ts";
 import * as codex from "../codex/helpers.ts";
 import {
   claudeComposer,
@@ -15,6 +17,38 @@ afterEach(() => {
   vi.restoreAllMocks();
   claude.resetFakes();
   codex.resetFakes();
+});
+
+test("C-API-56 awaited Claude input completes on a post-Enter native software cursor", async () => {
+  claude.installFakes();
+  const cwd = claude.tempDir();
+  const session = await startClaude({ cwd });
+  const pty = claude.ptys[0]!;
+  try {
+    await ready(cwd, session);
+    vi.useFakeTimers();
+    const expected = ["\u001b[200~probe prompt\u001b[201~", "\r"];
+    let consumed = false;
+    const pending = session
+      .sendMessage("probe prompt", cancellableSubmission(undefined, new AbortController().signal))
+      .then(() => {
+        consumed = true;
+      });
+    void pending.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(pty.writes).toEqual(expected);
+    expect(consumed).toBe(false);
+
+    const input = claudeComposer.replace(/^❯.*$/m, "❯ \u001b[7m \u001b[27m");
+    pty.emitData(`\u001b[2J\u001b[H${claudeTty(input, false)}`);
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(consumed).toBe(true);
+    await pending;
+    expect(pty.writes).toEqual(expected);
+  } finally {
+    vi.useRealTimers();
+    await session.teardown();
+  }
 });
 
 for (const agent of ["claude", "codex"] as const) {

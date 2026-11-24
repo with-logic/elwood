@@ -12,8 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Recognize Claude Code 2.1.331's drawn input cursor so queued input resumes
-  after workspace trust.
+- Recognize Claude Code 2.1.331's drawn input cursor after workspace trust and
+  when waiting for Claude to consume a submitted prompt.
 
 - Keep host terminal writes from counting as native PTY progress during
   composer cleanup.
