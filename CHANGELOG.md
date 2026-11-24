@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Require native PTY output to confirm composer cleanup, even when an embedding
+  host also renders output to the terminal.
+
 - Keep Claude transcript recovery responsive when invalid UTF-8 prevents a
   backward scan from advancing.
 

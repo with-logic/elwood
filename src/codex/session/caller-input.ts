@@ -38,7 +38,7 @@ export function reportCallerInput(
     get title() {
       return inner.title;
     },
-    writeOutput: (...args) => inner.writeOutput(...args),
+    writeOutput: (data) => inner.writeOutput(data),
     sendInput: (input) => {
       onInput();
       return inner.sendInput(input);
