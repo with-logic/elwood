@@ -1,26 +1,54 @@
 /**
  * Bounded, per-path incremental reader for a Claude transcript JSONL file.
  * Implements PRD §5.4 / §5.7 (C-CLAUDE-15, C-CLAUDE-24). The forward bounded-read core is
- * shared with Codex (core/transcript/cursor); Claude extends it with a backward
- * baseline-tail scan (recovering just the current turn already on disk) and an async
- * `needsScan` idle gate. Every Claude read, live, baseline, or drain, applies the shared
- * not-created-versus-removed policy.
+ * shared with Codex. Claude adds current-turn replay, a bounded initial prompt
+ * lookup against the registered file version, and an async idle gate.
  */
 
 import { stat } from "node:fs/promises";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
+import { statIfPresent } from "../../core/transcript/cursor-io.ts";
+import type { ChunkBudget } from "../../core/transcript/drain.ts";
 import { type BaselinePrompt, scanBaselineTail } from "./baseline.ts";
+import { InitialClaudePrompt } from "./initial-prompt.ts";
 
 export type { ChunkRead, TakenLines } from "../../core/transcript/cursor.ts";
 export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
 
 /**
- * The forward bounded cursor plus Claude-only baseline-tail recovery. A new cursor
- * starts at the file's CURRENT end (its history is NOT replayed); `baselineTail()`
- * recovers just the current turn already-on-disk when the first hook to carry the
- * path is a turn-boundary hook.
+ * Forward observation starts at the file's current end. Claude uses the baseline
+ * tail to seed native turn identity or replay the current turn. Initial prompt
+ * text recovery separately verifies the registered file version.
  */
 export class TranscriptCursor extends BoundedTranscriptCursor {
+  private readonly initial: InitialClaudePrompt;
+  private retryInitial: (() => void) | undefined;
+  constructor(path: string) {
+    const registration = statIfPresent(path);
+    super(path, { size: registration?.size });
+    this.initial = new InitialClaudePrompt(registration);
+  }
+
+  takeLatestInitialPrompt(pendingToken: object) {
+    return this.initial.take(this.path, pendingToken);
+  }
+
+  recordInitialLookupReadFailure(pendingToken: object): void {
+    this.initial.recordAttempt(pendingToken);
+  }
+
+  scheduleInitialRetry(retry: () => void): void {
+    this.retryInitial ??= retry;
+  }
+
+  runInitialRetry(budget: ChunkBudget): void {
+    const retry = this.retryInitial;
+    if (!retry) return;
+    this.retryInitial = undefined;
+    budget.chunks -= 1;
+    retry();
+  }
+
   /** Read only within the EOF baseline; callers contain filesystem failures with the guard. */
   baselinePrompt(): BaselinePrompt | undefined {
     return scanBaselineTail(this.path, this.offset).prompt;

@@ -58,8 +58,8 @@ export class BoundedTranscriptCursor {
 
   /** Starts at the file's current end. One stat gives both that offset and whether the
    *  file exists, so the two never disagree about a file removed in between. */
-  constructor(path: string) {
-    const size = observedSize(path);
+  constructor(path: string, initial?: { readonly size: number | undefined }) {
+    const size = initial === undefined ? observedSize(path) : initial.size;
     this.path = path;
     this.offset = size ?? 0;
     this.created = size !== undefined;

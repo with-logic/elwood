@@ -120,3 +120,40 @@ test("C-API-63 recovered activity omits the raw transcript record", async () => 
     await session.teardown();
   }
 });
+
+test("C-API-63 a blank hook recovers its exact committed initial prompt once", async () => {
+  const { session, hook, events, append } = await startActivitySession();
+  try {
+    append(user("historical", "another turn"), user("first", "native pasted prompt"));
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    const submit = () =>
+      hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first", prompt: "" });
+    const recovered = () => events.filter(({ kind }) => kind === "user_message");
+    expect(await submit()).toMatchObject({ exitCode: 0 });
+    expect(recovered()).toMatchObject([
+      { text: "native pasted prompt", source: "transcript", turnId: "first" },
+    ]);
+    expect(await submit()).toMatchObject({ exitCode: 0 });
+    expect(recovered()).toHaveLength(1);
+  } finally {
+    await session.teardown();
+  }
+});
+
+test("C-API-63 an older initial prompt cannot match or leave the lookup open", async () => {
+  const { session, hook, events, append } = await startActivitySession();
+  try {
+    append(user("older", "historical prompt"), user("latest", "newest native prompt"));
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    for (const prompt_id of ["older", "latest"]) {
+      expect(
+        await hook({ hook_event_name: "UserPromptSubmit", prompt_id, prompt: "" }),
+      ).toMatchObject({
+        exitCode: 0,
+      });
+      expect(events.filter(({ kind }) => kind === "user_message")).toEqual([]);
+    }
+  } finally {
+    await session.teardown();
+  }
+});
