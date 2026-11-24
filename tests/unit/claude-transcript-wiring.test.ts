@@ -12,14 +12,19 @@ import {
 } from "../../src/claude/transcript/cursor.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { assistant, eisdirError, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
+import {
+  activityEmitterWithListener,
+  assistant,
+  eisdirError,
+  tmpFile,
+} from "./claude-transcript-helpers.ts";
 
 afterEach(resetByteReaderForTests);
 
 describe("C-CLAUDE-15 transcript session wiring", () => {
   test("a LONE drop buffered before the sink exists is flushed by flushPendingWarnings", () => {
     const activities: ElwoodActivityEvent[] = [];
-    const emitter = fakeEmitter((a) => activities.push(a));
+    const emitter = activityEmitterWithListener((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
     let sink: WarningSink | undefined; // not ready yet (early startup)
     const { watcher, flushPendingWarnings } = createTranscriptWatcher("s9", emitter, () => sink);
@@ -41,7 +46,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   });
 
   test("§5.4 a pre-sink notice is delivered once; if delivery throws it is dropped, not retried", () => {
-    const emitter = fakeEmitter(() => undefined);
+    const emitter = activityEmitterWithListener(() => undefined);
     const recorded: ElwoodWarningEvent[] = [];
     let failNext = true;
     let sink: WarningSink | undefined; // buffer the notice before the sink exists
@@ -72,7 +77,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     // whose listener throws: the throw must be CONTAINED (scan does not throw) so
     // observation continues, and the warning is DROPPED — live-only, a human's
     // terminal does not re-show a banner, so it is never re-delivered on a later scan.
-    const emitter = fakeEmitter(() => undefined);
+    const emitter = activityEmitterWithListener(() => undefined);
     const recorded: ElwoodWarningEvent[] = [];
     let failNext = true;
     const sink: WarningSink = {
@@ -98,7 +103,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
 
   test("with a warning sink, a drop is routed through emitWarnings as a live warning", () => {
     const activities: ElwoodActivityEvent[] = [];
-    const emitter = fakeEmitter((a) => activities.push(a));
+    const emitter = activityEmitterWithListener((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
@@ -120,7 +125,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   });
 
   test("a contained fs read error is routed to the sink as a transcript_read_error warning", () => {
-    const emitter = fakeEmitter();
+    const emitter = activityEmitterWithListener();
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);

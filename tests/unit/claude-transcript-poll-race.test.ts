@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { assistant, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
+import { activityEmitterWithListener, assistant, tmpFile } from "./claude-transcript-helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -31,7 +31,7 @@ describe("C-CLAUDE-15 transcript poll/finish race", () => {
     const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     // The activity listener throws ONLY on B's assistant line (not A's, which the poll
     // scans first — a throw there would break the poll before the race even sets up).
-    const emitter = fakeEmitter((ev) => {
+    const emitter = activityEmitterWithListener((ev) => {
       if (ev.kind === "assistant_message" && ev.text?.includes("boom-b")) {
         throw new Error("listener boom");
       }
@@ -61,7 +61,7 @@ describe("C-CLAUDE-15 transcript poll/finish race", () => {
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     // The transcript event emitter throws — a programming error on the timer path.
-    const emitter = fakeEmitter((a) => {
+    const emitter = activityEmitterWithListener((a) => {
       if (a.kind === "assistant_message") throw new Error("listener bug");
     });
     // A short poll cadence via the seam + waitFor makes the timer-path assertion

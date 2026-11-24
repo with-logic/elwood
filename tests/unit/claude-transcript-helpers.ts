@@ -1,7 +1,7 @@
 /**
  * Shared fixture helpers for the Claude transcript watcher/cursor unit tests
  * (PRD §5.4, C-CLAUDE-15): temp transcript paths, JSONL record builders, a typed
- * activity-emitter fake, and a cursor drain. Every claude-transcript-*.test.ts
+ * activity listener, and a cursor drain. Every claude-transcript-*.test.ts
  * imports from here instead of re-declaring its own copy.
  */
 
@@ -50,8 +50,8 @@ export const nativeUser = (promptId: string, content: string) => ({
 export const texts = (events: ClaudeTranscriptEvent[]) =>
   events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
 
-/** A typed activity-emitter fake that forwards each payload to `sink`. */
-export function fakeEmitter(
+/** A typed activity listener that forwards each payload to `sink`. */
+export function activityEmitterWithListener(
   sink: (event: ElwoodActivityEvent) => void = () => {},
 ): TranscriptActivityEmitter {
   const emitter = new TypedEmitter<{ activity: ElwoodActivityEvent }>();

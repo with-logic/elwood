@@ -116,12 +116,44 @@ test("C-CLAUDE-15 a baseline identity overflow prevents later blank-hook recover
     writeFileSync(first, "");
     watcher.observe(first);
     expect(watcher.observeUserPromptHook(first, "pending", false)).toBe(false);
+    appendFileSync(first, `${prompt("cached-before-overflow", "cached")}\n`);
+    watcher.scan();
     writeFileSync(overflow, `${prompt("overflow", "x".repeat(1_025))}\n`);
     watcher.observe(overflow, false, "overflow");
     appendFileSync(first, `${prompt("pending", "valid")}\n`);
     watcher.scan();
+    expect(watcher.observeUserPromptHook(first, "cached-before-overflow", false)).toBe(false);
     expect(events).toEqual([]);
     expect(watcher.observeUserPromptHook(first, "known", true)).toBe(true);
+  } finally {
+    watcher.stop();
+  }
+});
+
+test("C-CLAUDE-15 retirement forgets only its own unpaired prompt evidence", () => {
+  const retired = tmpFile();
+  const retained = tmpFile();
+  const events: ClaudeTranscriptEvent[] = [];
+  const watcher = new ClaudeTranscriptWatcher("session", (event) => events.push(event));
+  try {
+    for (const [path, promptId] of [
+      [retired, "old"],
+      [retained, "live"],
+    ] as const) {
+      writeFileSync(path, "");
+      watcher.observe(path);
+      appendFileSync(
+        path,
+        `${JSON.stringify({ type: "user", promptId, message: { content: promptId } })}\n`,
+      );
+    }
+    watcher.scan();
+    watcher.retire(retired);
+    watcher.observeUserPromptHook(retired, "old", false);
+    watcher.observeUserPromptHook(retained, "live", false);
+    expect(events).toMatchObject([
+      { path: retained, summary: { kind: "user_message", text: "live" } },
+    ]);
   } finally {
     watcher.stop();
   }

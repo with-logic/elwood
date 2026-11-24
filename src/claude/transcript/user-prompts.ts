@@ -19,11 +19,11 @@ export type RecoveredUserPrompt = {
 };
 type RecordEvidence = {
   readonly kind: "record";
-  readonly bytes: Buffer;
+  readonly recordBytes: Buffer;
   readonly text: string;
-  readonly size: number;
+  readonly retainedSizeBytes: number;
 };
-type PromptEvidence = RecordEvidence | { readonly kind: "hook" };
+type PromptEvidence = { readonly path: string } & (RecordEvidence | { readonly kind: "hook" });
 
 export class ClaudeUserPrompts {
   private readonly entries = new Map<string, PromptEvidence>();
@@ -38,6 +38,12 @@ export class ClaudeUserPrompts {
   clearUnpaired(): void {
     this.entries.clear();
     this.retainedBytes = 0;
+  }
+
+  forget(path: string): void {
+    for (const [key, entry] of this.entries) {
+      if (entry.path === path) this.remove(key);
+    }
   }
 
   /** Returns whether a nonblank hook still needs user activity, even without a path. */
@@ -55,9 +61,9 @@ export class ClaudeUserPrompts {
     const known = this.entries.get(key);
     if (known?.kind === "record") {
       // The owned bytes were validated together with the stored text at insertion.
-      const item: unknown = JSON.parse(known.bytes.toString("utf8"));
+      const item: unknown = JSON.parse(known.recordBytes.toString("utf8"));
       this.publish(identity.path, turnId, key, item, known.text);
-    } else if (known === undefined) this.remember(key, { kind: "hook" });
+    } else if (known === undefined) this.remember(key, { kind: "hook", path: identity.path });
     return false;
   }
 
@@ -77,15 +83,17 @@ export class ClaudeUserPrompts {
     const text = userPromptText(item);
     if (text === undefined) return;
     if (known?.kind === "hook") {
-      this.publish(path, turnId, key, item, text);
+      // The exposed raw payload must not mutate the parsed item used for other activity.
+      this.publish(path, turnId, key, JSON.parse(line) as unknown, text);
       return;
     }
-    const bytes = Buffer.from(line);
+    const recordBytes = Buffer.from(line);
     this.remember(key, {
       kind: "record",
-      bytes,
+      path,
+      recordBytes,
       text,
-      size: bytes.length + Buffer.byteLength(text),
+      retainedSizeBytes: recordBytes.length + Buffer.byteLength(text),
     });
   }
 
@@ -107,7 +115,7 @@ export class ClaudeUserPrompts {
 
   private remember(key: string, evidence: PromptEvidence): void {
     this.entries.set(key, evidence);
-    if (evidence.kind === "record") this.retainedBytes += evidence.size;
+    if (evidence.kind === "record") this.retainedBytes += evidence.retainedSizeBytes;
     while (this.entries.size > maxEntries || this.retainedBytes > maxRetainedBytes) {
       this.remove(this.entries.keys().next().value);
     }
@@ -116,7 +124,7 @@ export class ClaudeUserPrompts {
   private remove(key: string | undefined): void {
     if (key === undefined) return;
     const evidence = this.entries.get(key);
-    if (evidence?.kind === "record") this.retainedBytes -= evidence.size;
+    if (evidence?.kind === "record") this.retainedBytes -= evidence.retainedSizeBytes;
     this.entries.delete(key);
   }
 }

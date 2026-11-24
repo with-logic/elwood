@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { ClaudeTranscriptSummary } from "../../src/claude/transcript/summary.ts";
+import type { ClaudeDirectRecordSummary } from "../../src/claude/transcript/summary.ts";
 import { summarizeTranscriptItem } from "../../src/codex/transcript/index.ts";
 import {
   activityFromClaudeTranscript,
@@ -149,11 +149,11 @@ describe("Elwood activity tool input/output", () => {
     // tool_call its `toolName`, and a tool_result its correlating `toolUseId`. A
     // future summary variant that omits a required field fails to typecheck here.
     // @ts-expect-error assistant_message without `text` is rejected at the boundary
-    const badMessage: ClaudeTranscriptSummary = { kind: "assistant_message", label: "a" };
+    const badMessage: ClaudeDirectRecordSummary = { kind: "assistant_message", label: "a" };
     // @ts-expect-error tool_call without `toolName` is rejected at the boundary
-    const badCall: ClaudeTranscriptSummary = { kind: "tool_call", label: "Bash" };
+    const badCall: ClaudeDirectRecordSummary = { kind: "tool_call", label: "Bash" };
     // @ts-expect-error tool_result without `toolUseId` is rejected at the boundary
-    const badResult: ClaudeTranscriptSummary = { kind: "tool_result", label: "c" };
+    const badResult: ClaudeDirectRecordSummary = { kind: "tool_result", label: "c" };
     void [badMessage, badCall, badResult]; // the `@ts-expect-error`s above are the assertion
   });
 

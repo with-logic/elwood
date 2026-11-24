@@ -114,6 +114,7 @@ export class ClaudeTranscriptWatcher {
     drainToBudget(this.drain, [cursor], this.terminalBudget);
     this.cursors.delete(path);
     this.lines.turns.forget(path);
+    this.lines.userPrompts.forget(path);
   }
 
   pollOnceForTests(): Promise<void> {
@@ -162,7 +163,7 @@ export class ClaudeTranscriptWatcher {
   }
   private ensurePolling(): void {
     if (this.interval || this.finished) return;
-    // A background listener failure stops the watcher with a contained diagnostic.
+    // A delivery failure reaching the background poll stops the watcher with a contained diagnostic.
     this.interval = outsideStopInput(() =>
       setInterval(() => {
         void this.poll().catch((error) => this.recoverFromPollError(error));

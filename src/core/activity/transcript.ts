@@ -3,6 +3,7 @@
  * Implements PRD §5.4 (C-CLAUDE-15 and the Codex transcript activity contract).
  */
 
+import { isRecoveredClaudePrompt } from "../../claude/transcript/emit.ts";
 import type { ClaudeTranscriptEvent } from "../../claude/transcript/index.ts";
 import { claudeSpeedObservation } from "../../claude/transcript/speed.ts";
 import type { CodexTranscriptEvent } from "../../codex/transcript/index.ts";
@@ -51,26 +52,26 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
 export function activityFromClaudeTranscript(
   event: ClaudeTranscriptEvent,
 ): ElwoodActivityEvent & ClaudeActivityFields {
-  if (event.summary.kind === "user_message") {
+  const origin = {
+    elwoodSessionId: event.elwoodSessionId,
+    agent: "claude",
+    source: "transcript",
+    transcriptPath: event.path,
+  } as const;
+  if (isRecoveredClaudePrompt(event)) {
     return {
-      elwoodSessionId: event.elwoodSessionId,
-      agent: "claude",
-      source: "transcript",
+      ...origin,
       kind: "user_message",
       label: "user",
       text: event.summary.text,
-      transcriptPath: event.path,
-      ...optional(event.turnId, "turnId"),
+      turnId: event.turnId,
       raw: event.item,
     };
   }
   const base = {
-    elwoodSessionId: event.elwoodSessionId,
-    agent: "claude",
-    source: "transcript",
+    ...origin,
     label: event.summary.label,
-    transcriptPath: event.path,
-    ...(event.turnId === undefined ? {} : { turnId: event.turnId }),
+    ...optional(event.turnId, "turnId"),
     ...(event.summary.kind === "other" ? {} : { raw: event.item }),
     ...claudeSpeedObservation(event.item),
     ...optional(event.tokenUsage, "tokenUsage"),

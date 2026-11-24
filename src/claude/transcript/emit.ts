@@ -9,7 +9,7 @@ import { optional } from "../../core/optional.ts";
 import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
-import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
+import { type ClaudeDirectRecordSummary, summarizeClaudeRecord } from "./summary.ts";
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 import { claudeTokenUsage } from "./usage.ts";
 import { ClaudeUserPrompts, type RecoveredUserPrompt } from "./user-prompts.ts";
@@ -21,15 +21,24 @@ type ClaudeTranscriptFields = {
   readonly turnId?: string;
 };
 
+type ClaudeRecoveredPromptEvent = ClaudeTranscriptFields &
+  RecoveredUserPrompt & { readonly tokenUsage?: never };
+
 export type ClaudeTranscriptEvent = ClaudeTranscriptFields &
   (
-    | { readonly summary: ClaudeTranscriptSummary; readonly tokenUsage?: ClaudeTokenUsage }
-    | (RecoveredUserPrompt & { readonly tokenUsage?: never })
+    | { readonly summary: ClaudeDirectRecordSummary; readonly tokenUsage?: ClaudeTokenUsage }
+    | ClaudeRecoveredPromptEvent
     | {
         readonly summary: { readonly kind: "other"; readonly label: "token_usage" };
         readonly tokenUsage: ClaudeTokenUsage;
       }
   );
+
+export function isRecoveredClaudePrompt(
+  event: ClaudeTranscriptEvent,
+): event is ClaudeRecoveredPromptEvent {
+  return event.summary.kind === "user_message";
+}
 
 /** Turns raw transcript text into parsed activity events for one watcher. */
 export class LineEmitter {

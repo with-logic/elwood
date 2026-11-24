@@ -23,6 +23,7 @@ export function activity(partial: Partial<FixtureActivity> = {}) {
       source: "transcript",
       label: "user",
       transcriptPath: fields.transcriptPath ?? "/fixture.jsonl",
+      turnId: fields.turnId ?? "native-prompt",
       text: fields.text ?? "fixture prompt",
     } as const;
   }

@@ -108,7 +108,7 @@ export function createTranscriptWatcher(
       }
       try {
         // An active hook observation keeps precedence over standalone polling containment.
-        emitter.observeRejections(reportListenerFailure, deliver);
+        emitter.observeRejections(reportListenerFailure, deliver, () => !deliveryFinished);
       } catch {
         reportListenerFailure();
       }

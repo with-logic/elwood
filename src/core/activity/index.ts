@@ -11,7 +11,6 @@ import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "..
 import * as meta from "./meta.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
-
 export type ElwoodAgentKind = "claude" | "codex";
 export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
 export type ElwoodActivityKind =
@@ -91,6 +90,7 @@ export type ElwoodActivityEvent = ActivityFields &
         readonly agent: "claude";
         readonly source: "transcript";
         readonly transcriptPath: string;
+        readonly turnId: string;
         readonly label: "user";
         readonly text: string;
       }

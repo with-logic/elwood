@@ -70,3 +70,55 @@ test("C-API-63 repairs an earlier blank hook once the matched text commits", asy
     await session.teardown();
   }
 });
+
+test.each([
+  "live",
+  "after exit",
+])("C-API-63 a hook-scoped recovered prompt rejection is handled %s", async (timing) => {
+  const { session, hook, events, append } = await startActivitySession();
+  const pending = Promise.withResolvers<void>();
+  const warningCodes: string[] = [];
+  session.on("warning", ({ code }) => warningCodes.push(code));
+  session.on("activity", (event) =>
+    event.kind === "user_message" && event.source === "transcript" ? pending.promise : undefined,
+  );
+  try {
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first" });
+    append(user("first", "native prompt"));
+    await hook({ hook_event_name: "Stop" });
+    expect(events.filter(({ kind }) => kind === "user_message")).toHaveLength(1);
+    if (timing === "after exit") {
+      const exit = new Promise<void>((resolve) => session.on("terminal:exit", () => resolve()));
+      ptys.at(-1)!.emitExit({ exitCode: 0 });
+      await exit;
+    }
+    pending.reject(new Error("listener failure"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const expected = timing === "live" ? ["hook_observer_failed"] : [];
+    expect(warningCodes).toEqual(expected);
+    expect(events.filter(({ kind }) => kind === "warning").map(({ label }) => label)).toEqual(
+      expected,
+    );
+  } finally {
+    await session.teardown();
+  }
+});
+
+test("C-API-63 changing recovered raw data cannot add uncommitted activity", async () => {
+  const { session, hook, events, append } = await startActivitySession();
+  session.on("activity", (event) => {
+    if (event.kind !== "user_message" || event.source !== "transcript") return;
+    Object.assign(event.raw as object, { type: "assistant", message: { content: "uncommitted" } });
+  });
+  try {
+    await hook({ hook_event_name: "SessionStart", source: "startup" });
+    await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first" });
+    append(user("first", "native prompt"));
+    await hook({ hook_event_name: "Stop" });
+    expect(events.filter(({ kind }) => kind === "user_message")).toHaveLength(1);
+    expect(events.filter(({ kind }) => kind === "assistant_message")).toEqual([]);
+  } finally {
+    await session.teardown();
+  }
+});

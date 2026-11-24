@@ -61,34 +61,42 @@ test.each([
     "session",
     emitter,
     () => ({ emitWarnings: (batch) => warnings.push(...batch) }),
-    5,
+    60_000,
   );
   writeRecords(path);
   try {
     watcher.observe(path);
     watcher.observeUserPromptHook(path, "first", false);
     watcher.observeUserPromptHook(path, "next", false);
+    writeRecords(path, nativeUser("first", "committed text"), {
+      ...assistant("reply"),
+      parentUuid: "first",
+    });
+    await watcher.pollOnceForTests();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(warnings).toHaveLength(1);
     writeRecords(
       path,
       nativeUser("first", "committed text"),
-      {
-        ...assistant("reply"),
-        parentUuid: "first",
-      },
+      { ...assistant("reply"), parentUuid: "first" },
       nativeUser("next", "next text"),
     );
-    await expect
-      .poll(() => events)
-      .toMatchObject([
-        { kind: "user_message", turnId: "first", text: "committed text" },
-        { kind: "assistant_message", turnId: "first", text: "reply" },
-        { kind: "user_message", turnId: "next", text: "next text" },
-      ]);
-    await expect
-      .poll(() => warnings)
-      .toMatchObject([
-        { code: "claude_prompt_listener_error", agent: "claude", channel: "activity" },
-      ]);
+    await watcher.pollOnceForTests();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(events).toMatchObject([
+      { kind: "user_message", turnId: "first", text: "committed text" },
+      { kind: "assistant_message", turnId: "first", text: "reply" },
+      { kind: "user_message", turnId: "next", text: "next text" },
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      code: "claude_prompt_listener_error",
+      agent: "claude",
+      channel: "activity",
+      source: "terminal",
+      severity: "warning",
+    });
+    expect(JSON.stringify(warnings)).not.toMatch(/observer failed|committed text|next text/);
   } finally {
     finishSafely();
   }
