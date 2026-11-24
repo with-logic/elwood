@@ -9,7 +9,7 @@
 
 import { stat } from "node:fs/promises";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
-import { observedFile } from "../../core/transcript/cursor-io.ts";
+import { statIfPresent } from "../../core/transcript/cursor-io.ts";
 import { type BaselinePrompt, scanBaselineTail } from "./baseline.ts";
 import { InitialClaudePrompt } from "./initial-prompt.ts";
 
@@ -25,13 +25,17 @@ export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
 export class TranscriptCursor extends BoundedTranscriptCursor {
   private readonly initial: InitialClaudePrompt;
   constructor(path: string) {
-    const registration = observedFile(path);
+    const registration = statIfPresent(path);
     super(path, { size: registration?.size });
     this.initial = new InitialClaudePrompt(registration);
   }
 
-  takeInitialPrompt(turnId: string) {
-    return this.initial.take(this.path, turnId);
+  takeLatestInitialPrompt(pendingToken: object) {
+    return this.initial.take(this.path, pendingToken);
+  }
+
+  recordInitialLookupReadFailure(pendingToken: object): void {
+    this.initial.recordAttempt(pendingToken);
   }
 
   /** Read only within the EOF baseline; callers contain filesystem failures with the guard. */

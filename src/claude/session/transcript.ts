@@ -162,9 +162,10 @@ export type ObservableTranscript = Pick<ClaudeTranscriptWatcher, "observe" | "re
  * Points the watcher at every transcript path the hook payload carries. A
  * `SubagentStop` event has both a main `transcript_path` and a required
  * `agent_transcript_path`; both must be observed (PRD §5.4). The watcher keeps
- * one cursor per path and no-ops on an already-observed path.
+ * one cursor per path. A pending textless submit can use the initial prompt
+ * evidence even on an already-observed path.
  *
- * Backward tail recovery runs only when the FIRST observe of a path lands on a
+ * Assistant and tool tail replay runs only when the first observe lands on a
  * turn-boundary hook (`Stop`/`SubagentStop`) — the case where a just-committed
  * turn would otherwise be missed. On `SessionStart`/resume the first observe
  * baselines at EOF with no recovery, so a resumed session never republishes the

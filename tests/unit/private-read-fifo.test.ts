@@ -65,3 +65,30 @@ function runReader(code: string, path: string) {
     });
   });
 }
+
+test("C-API-63 the Claude watcher cannot hang on a replacement FIFO", async () => {
+  const path = join(tempDir("elwood-transcript-fifo-"), "pipe");
+  expect(spawnSync("mkfifo", [path]).status).toBe(0);
+  const module = new URL("../../src/claude/transcript/index.ts", import.meta.url).href;
+  const code = `
+    import { renameSync, writeFileSync } from "node:fs";
+    import { ClaudeTranscriptWatcher } from ${JSON.stringify(module)};
+    const pipe = process.argv[1];
+    const path = pipe + ".jsonl";
+    writeFileSync(path, '{"type":"user","promptId":"first","message":{"content":"prompt"}}\\n');
+    const watcher = new ClaudeTranscriptWatcher("session", () => process.exit(2), {
+      onReadError() { console.log("transcript read rejected"); },
+    });
+    watcher.observe(path);
+    renameSync(pipe, path);
+    process.send("ready");
+    process.disconnect();
+    watcher.observeUserPromptHook({ path, turnId: "first", hasText: false });
+    watcher.observe(path, false, "first");
+    watcher.finish();
+  `;
+  const result = await runReader(code, path);
+  expect(result.timeoutPhase).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain("transcript read rejected");
+});

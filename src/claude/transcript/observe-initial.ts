@@ -1,4 +1,5 @@
 /** Resolve a pending Claude hook from bounded initial transcript evidence (C-API-63). */
+import type { DropReporter } from "../../core/transcript/drops.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { LineEmitter } from "./emit.ts";
 import type { TranscriptFsGuard } from "./fs-guard.ts";
@@ -8,7 +9,7 @@ export function observeInitialUserPrompt(
   turnId: string | undefined,
   { turns, userPrompts }: LineEmitter,
   guard: TranscriptFsGuard,
-  drop: (path: string) => void,
+  drops: DropReporter,
 ): void {
   const { path } = cursor;
   let seedReadFailed = false;
@@ -18,13 +19,17 @@ export function observeInitialUserPrompt(
     return seed?.prompt;
   });
   if (turns.correlationDisabled) userPrompts.clearUnpaired();
-  // A failed identity read has already reported the filesystem problem for this hook.
-  if (turnId === undefined || seedReadFailed) return;
+  if (turnId === undefined) return;
   let malformed = false;
-  userPrompts.recoverInitial(path, turnId, () => {
-    const initial = guard.read(path, () => cursor.takeInitialPrompt(turnId));
+  userPrompts.recoverInitial(path, turnId, (pendingToken) => {
+    // Do not read the same file twice after an earlier failure in this hook.
+    if (seedReadFailed) {
+      cursor.recordInitialLookupReadFailure(pendingToken);
+      return undefined;
+    }
+    const initial = guard.read(path, () => cursor.takeLatestInitialPrompt(pendingToken));
     malformed = initial?.malformed === true;
     return initial?.prompt;
   });
-  if (malformed) drop(path);
+  if (malformed) drops.report(path, "unparseable");
 }

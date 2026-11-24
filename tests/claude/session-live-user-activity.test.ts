@@ -126,14 +126,15 @@ test("C-API-63 a blank hook recovers its exact committed initial prompt once", a
   try {
     append(user("historical", "another turn"), user("first", "native pasted prompt"));
     await hook({ hook_event_name: "SessionStart", source: "startup" });
-    for (let index = 0; index < 2; index++) {
-      expect(
-        await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first", prompt: "" }),
-      ).toMatchObject({ exitCode: 0 });
-    }
-    expect(events.filter(({ kind }) => kind === "user_message")).toMatchObject([
+    const submit = () =>
+      hook({ hook_event_name: "UserPromptSubmit", prompt_id: "first", prompt: "" });
+    const recovered = () => events.filter(({ kind }) => kind === "user_message");
+    expect(await submit()).toMatchObject({ exitCode: 0 });
+    expect(recovered()).toMatchObject([
       { text: "native pasted prompt", source: "transcript", turnId: "first" },
     ]);
+    expect(await submit()).toMatchObject({ exitCode: 0 });
+    expect(recovered()).toHaveLength(1);
   } finally {
     await session.teardown();
   }

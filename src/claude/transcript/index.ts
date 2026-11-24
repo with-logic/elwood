@@ -39,7 +39,6 @@ export class ClaudeTranscriptWatcher {
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
   private readonly drops: DropReporter;
   private readonly guard: TranscriptFsGuard;
-  private readonly initialDrop: (path: string) => void;
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
@@ -58,7 +57,6 @@ export class ClaudeTranscriptWatcher {
     notices: TranscriptNoticeHandlers = {},
   ) {
     this.drops = new DropReporter(elwoodSessionId, notices.onDrop);
-    this.initialDrop = (path) => notices.onDrop?.({ elwoodSessionId, path, cause: "unparseable" });
     const readErrors = new ReadErrorReporter(elwoodSessionId, notices.onReadError);
     this.guard = new TranscriptFsGuard(readErrors, () => this.finished);
     this.onPollError = notices.onPollError;
@@ -77,7 +75,7 @@ export class ClaudeTranscriptWatcher {
     const cursor =
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
-    observeInitialUserPrompt(cursor, turnId, this.lines, this.guard, this.initialDrop);
+    observeInitialUserPrompt(cursor, turnId, this.lines, this.guard, this.drops);
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {

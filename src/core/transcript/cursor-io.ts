@@ -7,7 +7,7 @@
  * top of the same injectable byte seam (see claude/transcript/cursor-io.ts).
  */
 
-import { closeSync, openSync, readSync, type Stats, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync, type Stats, statSync } from "node:fs";
 import { errnoCode } from "../errors.ts";
 import { completeUtf8Length } from "../utf8.ts";
 
@@ -27,10 +27,10 @@ export function fileSize(path: string): number {
  * (C-ERR-01).
  */
 export function observedSize(path: string): number | undefined {
-  return observedFile(path)?.size;
+  return statIfPresent(path)?.size;
 }
 
-export function observedFile(path: string): Stats | undefined {
+export function statIfPresent(path: string): Stats | undefined {
   try {
     return statSync(path);
   } catch (error) {
@@ -46,8 +46,13 @@ export type ByteReader = (path: string, start: number, length: number) => Buffer
 
 function realReadBytes(path: string, start: number, length: number): Buffer {
   const buffer = Buffer.allocUnsafe(length);
-  const fd = openSync(path, "r");
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
   try {
+    const status = fstatSync(fd);
+    if (!status.isFile()) {
+      const code = status.isDirectory() ? "EISDIR" : "EINVAL";
+      throw Object.assign(new Error("The transcript path is not a regular file."), { code });
+    }
     const read = readSync(fd, buffer, 0, length, start);
     return buffer.subarray(0, read);
   } finally {
@@ -56,8 +61,8 @@ function realReadBytes(path: string, start: number, length: number): Buffer {
 }
 
 // Indirection so a test can force a read failure (proving the offset is committed
-// only AFTER a successful read) or count read amplification. All range reads,
-// forward and (in Claude) backward, funnel through this ONE seam.
+// only AFTER a successful read) or count read amplification. Forward reads and
+// Claude current-turn replay both use this seam.
 let readBytesImpl: ByteReader = realReadBytes;
 export const readBytes: ByteReader = (p, s, l) => readBytesImpl(p, s, l);
 

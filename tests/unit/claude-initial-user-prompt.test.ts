@@ -1,10 +1,10 @@
 /** Verify bounded, complete native row evidence even around malformed bytes (C-API-63). */
-import { execFileSync } from "node:child_process";
-import { renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { statSync, utimesSync, writeFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { InitialClaudePrompt } from "../../src/claude/transcript/initial-prompt.ts";
 import { nativeUser, tmpFile } from "./claude-transcript-helpers.ts";
 
+const pending = {};
 const user = (turnId: string, text: string) => `${JSON.stringify(nativeUser(turnId, text))}\n`;
 
 test("C-API-63 invalid bytes at an arbitrary boundary do not turn into prompt text", () => {
@@ -21,22 +21,22 @@ test("C-API-63 invalid bytes at an arbitrary boundary do not turn into prompt te
     ]),
   );
   const initial = new InitialClaudePrompt(statSync(path));
-  expect(initial.take(path, "first")).toEqual({
+  expect(initial.take(path, pending)).toEqual({
     malformed: true,
     prompt: { turnId: "first", text: "valid native prompt" },
   });
-  expect(initial.take(path, "first")).toBeUndefined();
+  expect(initial.take(path, pending)).toBeUndefined();
 });
 
 test("C-API-63 an unchanged file must already contain a complete committed row", () => {
   const path = tmpFile();
   writeFileSync(path, user("first", "committed prompt") + user("pending", "incomplete").trimEnd());
-  expect(new InitialClaudePrompt(statSync(path)).take(path, "first")).toEqual({
+  expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({
     malformed: false,
     prompt: { turnId: "first", text: "committed prompt" },
   });
   writeFileSync(path, user("pending", "incomplete").trimEnd());
-  expect(new InitialClaudePrompt(statSync(path)).take(path, "pending")).toEqual({
+  expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({
     malformed: false,
   });
 });
@@ -49,17 +49,7 @@ test("C-API-63 a rewrite of the same inode cannot introduce baseline evidence", 
   writeFileSync(path, user("first", "new prompt"));
   utimesSync(path, new Date(0), new Date(0));
   expect(statSync(path)).toMatchObject({ ino: before.ino, size: before.size });
-  expect(initial.take(path, "first")).toBeUndefined();
-});
-
-test("C-API-63 a replacement FIFO is refused without waiting for a writer", () => {
-  const path = tmpFile();
-  const pipe = tmpFile();
-  writeFileSync(path, user("first", "native prompt"));
-  const initial = new InitialClaudePrompt(statSync(path));
-  execFileSync("mkfifo", [pipe]);
-  renameSync(pipe, path);
-  expect(initial.take(path, "first")).toBeUndefined();
+  expect(initial.take(path, pending)).toBeUndefined();
 });
 
 test("C-API-63 a clipped row is never decoded from its suffix", () => {
@@ -67,9 +57,9 @@ test("C-API-63 a clipped row is never decoded from its suffix", () => {
   const text = user("first", "native prompt");
   writeFileSync(path, "x".repeat(1024 * 1024) + text);
   const before = statSync(path);
-  expect(new InitialClaudePrompt(before).take(path, "first")).toEqual({ malformed: false });
+  expect(new InitialClaudePrompt(before).take(path, pending)).toEqual({ malformed: false });
   writeFileSync(path, `${"x".repeat(1024 * 1024)}\n${text}`);
-  expect(new InitialClaudePrompt(statSync(path)).take(path, "first")).toEqual({
+  expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({
     malformed: false,
     prompt: { turnId: "first", text: "native prompt" },
   });
