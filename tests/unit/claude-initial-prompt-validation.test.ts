@@ -160,3 +160,25 @@ test("C-API-63 an evicted pending entry cannot reclaim its reserved retry", () =
     watcher.finish();
   }
 });
+
+test.each([
+  "removed",
+  "retargeted",
+])("C-API-63 the initial path is %s during reading", async (change) => {
+  const { path } = stored();
+  const link = `${path}.link`;
+  fs.symlinkSync(path, link);
+  const initial = new InitialClaudePrompt(fs.statSync(link));
+  const real = await vi.importActual<typeof import("node:fs")>("node:fs");
+  vi.mocked(fs.readSync).mockImplementationOnce((fd, buffer) => {
+    const count = real.readSync(fd, buffer, { position: 0 });
+    fs.rmSync(link);
+    if (change === "retargeted") {
+      const replacement = stored();
+      fs.symlinkSync(replacement.path, link);
+    }
+    return count;
+  });
+  expect(initial.take(link, pending)).toBeUndefined();
+  expect(initial.take(link, pending)).toBeUndefined();
+});

@@ -1,8 +1,8 @@
 /**
  * Best-effort live observation of Claude transcript JSONL files.
  * Implements PRD §5.4 (C-CLAUDE-15): committed assistant text, tool calls, and
- * tool results are sourced from the transcript(s) the CLI writes (no ghost-text);
- * reads are bounded, per-path, no replay.
+ * tool results come from the CLI transcript. Forward observation uses bounded
+ * reads and supplements them with current-turn replay and initial prompt recovery.
  */
 
 import { outsideStopInput } from "../../core/stop-input.ts";
@@ -18,7 +18,7 @@ import {
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
-import { observeInitialUserPrompt } from "./observe-initial.ts";
+import { observeTranscriptBaseline } from "./observe-initial.ts";
 import type { UserPromptHookEvidence } from "./user-prompts.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
@@ -75,7 +75,7 @@ export class ClaudeTranscriptWatcher {
     const cursor =
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
-    observeInitialUserPrompt(cursor, turnId, this.lines, this.guard, this.drops);
+    observeTranscriptBaseline(cursor, turnId, this.lines, this.guard, this.drops);
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {

@@ -1,10 +1,10 @@
-/** Resolve a pending Claude hook from bounded initial transcript evidence (C-API-63). */
+/** Seed Claude turn correlation and recover matching pending submissions (C-API-63). */
 import type { DropReporter } from "../../core/transcript/drops.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { LineEmitter } from "./emit.ts";
 import type { TranscriptFsGuard } from "./fs-guard.ts";
 
-export function observeInitialUserPrompt(
+export function observeTranscriptBaseline(
   cursor: TranscriptCursor,
   turnId: string | undefined,
   { turns, userPrompts }: LineEmitter,
@@ -31,5 +31,5 @@ export function observeInitialUserPrompt(
     malformed = initial?.malformed === true;
     return initial?.prompt;
   });
-  if (malformed) drops.report(path, "unparseable");
+  if (malformed) drops.emitDrop(path, "unparseable");
 }

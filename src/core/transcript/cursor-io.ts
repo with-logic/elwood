@@ -44,20 +44,25 @@ export type RangeRead = { readonly text: string; readonly bytes: number };
 /** The injectable read seam: returns the RAW bytes read at `[start, start+length)`. */
 export type ByteReader = (path: string, start: number, length: number) => Buffer;
 
-function realReadBytes(path: string, start: number, length: number): Buffer {
-  const buffer = Buffer.allocUnsafe(length);
+export function withTranscriptFile<T>(path: string, read: (fd: number, status: Stats) => T): T {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
   try {
-    const status = fstatSync(fd);
+    return read(fd, fstatSync(fd));
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function realReadBytes(path: string, start: number, length: number): Buffer {
+  return withTranscriptFile(path, (fd, status) => {
     if (!status.isFile()) {
       const code = status.isDirectory() ? "EISDIR" : "EINVAL";
       throw Object.assign(new Error("The transcript path is not a regular file."), { code });
     }
+    const buffer = Buffer.allocUnsafe(length);
     const read = readSync(fd, buffer, 0, length, start);
     return buffer.subarray(0, read);
-  } finally {
-    closeSync(fd);
-  }
+  });
 }
 
 // Indirection so a test can force a read failure (proving the offset is committed

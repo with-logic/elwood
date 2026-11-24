@@ -70,7 +70,10 @@ export class ClaudeUserPrompts {
     return false;
   }
 
-  /** Resolve only an authenticated blank hook for the matching initial prompt. */
+  /**
+   * Resolve only the matching authenticated blank hook. The read gets the retained
+   * entry by reference, so eviction ends its eligibility to retry.
+   */
   recoverInitial(
     path: string,
     turnId: string,

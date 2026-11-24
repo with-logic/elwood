@@ -72,8 +72,8 @@ export class DropReporter {
     else causes.add(cause); // Set.add is a no-op if already surfacing this (path, cause)
   }
 
-  /** Report one lookup's drop without flushing a concurrent polling pass. */
-  report(path: string, cause: DropCause): void {
+  /** Emit one caller-coalesced drop immediately without changing a pending poll pass. */
+  emitDrop(path: string, cause: DropCause): void {
     this.onDrop?.({ elwoodSessionId: this.elwoodSessionId, path, cause });
   }
 
@@ -83,7 +83,7 @@ export class DropReporter {
     const pending = [...this.pending];
     this.pending.clear(); // clear FIRST so a throwing listener cannot re-fire the batch
     for (const [path, causes] of pending) {
-      for (const cause of causes) this.report(path, cause);
+      for (const cause of causes) this.emitDrop(path, cause);
     }
   }
 

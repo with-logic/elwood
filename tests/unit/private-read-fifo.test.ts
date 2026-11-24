@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmodSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { readBytes } from "../../src/core/transcript/cursor-io.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 describe("private file FIFO rejection", () => {
@@ -91,4 +92,10 @@ test("C-API-63 the Claude watcher cannot hang on a replacement FIFO", async () =
   expect(result.timeoutPhase).toBeUndefined();
   expect(result.status).toBe(0);
   expect(result.stdout).toContain("transcript read rejected");
+});
+
+test("C-API-63 the shared transcript reader rejects non-regular descriptors", () => {
+  const directory = tempDir("elwood-transcript-directory-");
+  expect(() => readBytes(directory, 0, 1)).toThrow(expect.objectContaining({ code: "EISDIR" }));
+  expect(() => readBytes("/dev/null", 0, 1)).toThrow(expect.objectContaining({ code: "EINVAL" }));
 });

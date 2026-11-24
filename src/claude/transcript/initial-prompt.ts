@@ -1,7 +1,8 @@
 /** Recover one authenticated prompt from an unchanged initial Claude transcript tail (C-API-63). */
 import { isUtf8 } from "node:buffer";
-import { closeSync, constants, fstatSync, openSync, readSync, type Stats } from "node:fs";
+import { fstatSync, readSync, type Stats } from "node:fs";
 import { isRecord } from "../../core/predicates.ts";
+import { statIfPresent, withTranscriptFile } from "../../core/transcript/cursor-io.ts";
 import { claudePromptId } from "../hooks/prompt-id.ts";
 import { userPromptText } from "./user-record.ts";
 
@@ -58,14 +59,13 @@ function sameInitialVersion(left: Stats, right: Stats): boolean {
 }
 
 function readInitialPrompt(path: string, initial: Stats): InitialPromptScan | undefined {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
-  try {
-    if (!sameInitialVersion(initial, fstatSync(fd))) return undefined;
+  return withTranscriptFile(path, (fd, opened) => {
+    if (!sameInitialVersion(initial, opened)) return undefined;
     const scan = scanInitialTail(fd, initial.size);
-    return sameInitialVersion(initial, fstatSync(fd)) ? scan : undefined;
-  } finally {
-    closeSync(fd);
-  }
+    if (!sameInitialVersion(initial, fstatSync(fd))) return undefined;
+    const current = statIfPresent(path);
+    return current && sameInitialVersion(initial, current) ? scan : undefined;
+  });
 }
 
 function scanInitialTail(fd: number, size: number): InitialPromptScan {
