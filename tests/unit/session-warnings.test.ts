@@ -6,8 +6,14 @@
  */
 
 import { describe, expect, test } from "vitest";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { emitSessionWarnings, type WarningEmit } from "../../src/core/warnings/session.ts";
+import {
+  emitSessionWarnings,
+  emitSessionWarningsWithRejectionHandling,
+  type WarningEmit,
+} from "../../src/core/warnings/session.ts";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 
 function dropWarning(): ElwoodWarningEvent {
   return {
@@ -45,6 +51,66 @@ function harness() {
   };
   return { emitted, emit };
 }
+
+type SessionEvents = {
+  warning: ElwoodWarningEvent;
+  activity: ElwoodActivityEvent;
+  nested: undefined;
+};
+
+test("warning delivery preserves the enclosing rejection handler for nested events", async () => {
+  const emitter = new TypedEmitter<SessionEvents>();
+  const errors: unknown[] = [];
+  const nested = new Error("nested event failed");
+  emitter.on("warning", () => emitter.emit("nested", undefined));
+  emitter.on("nested", () => Promise.reject(nested));
+  emitter.observeRejections(
+    (error) => errors.push(error),
+    () => emitSessionWarningsWithRejectionHandling([dropWarning()], emitter),
+  );
+  await Promise.resolve();
+  expect(errors).toEqual([nested]);
+});
+
+test("pending warning listeners do not evict an earlier observed rejection", async () => {
+  const emitter = new TypedEmitter<SessionEvents>();
+  const errors: unknown[] = [];
+  const failure = new Error("earlier listener failed");
+  const original = Promise.withResolvers<void>();
+  const pendingWarning = new Promise<void>(() => undefined);
+  emitter.on("nested", () => original.promise);
+  emitter.observeRejections(
+    (error) => errors.push(error),
+    () => emitter.emit("nested", undefined),
+  );
+  emitter.on("warning", () => pendingWarning);
+  emitter.on("activity", () => pendingWarning);
+  // Each warning reaches two pending listeners. This many warning pairs would
+  // fill the observer's 1,024-entry diagnostics window if they occupied slots.
+  const warningsToFillDiagnosticWindow = 512;
+  emitSessionWarningsWithRejectionHandling(
+    Array.from({ length: warningsToFillDiagnosticWindow }, dropWarning),
+    emitter,
+  );
+  original.reject(failure);
+  await Promise.resolve();
+  expect(errors).toEqual([failure]);
+});
+
+test("unusable native Promise metadata does not fail warning delivery", () => {
+  const emitter = new TypedEmitter<SessionEvents>();
+  const fulfilled = Promise.resolve();
+  Object.defineProperty(fulfilled, "constructor", {
+    get() {
+      throw new Error("unusable reaction metadata");
+    },
+  });
+  const events: ElwoodActivityEvent[] = [];
+  emitter.on("warning", () => fulfilled);
+  emitter.on("activity", (event) => events.push(event));
+  expect(() => emitSessionWarningsWithRejectionHandling([dropWarning()], emitter)).not.toThrow();
+  expect(events).toMatchObject([{ kind: "warning", label: "transcript_records_dropped" }]);
+});
 
 describe("emitSessionWarnings", () => {
   test("each warning emits warning + activity once, in order", () => {

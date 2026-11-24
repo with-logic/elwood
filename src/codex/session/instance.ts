@@ -10,7 +10,7 @@ import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session
 import { registerNativeTurnReader } from "../../core/simple/submission-context.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
-import { emitSessionWarnings } from "../../core/warnings/session.ts";
+import { emitSessionWarningsWithRejectionHandling } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
@@ -187,12 +187,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   /** One bounded per-pass scan of the committed transcript (an unblocked `Stop`, §7A.3). */
   readonly scanTranscript = (): void => this.transcriptWatcher?.scan();
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
-    // No cast: each callback is the emitter's own `emit` bound to a correlated
-    // event name, so a map/payload drift is a compile error here.
-    emitSessionWarnings(warnings, {
-      warning: (event) => this.emitter.emit("warning", event),
-      activity: (event) => this.emitter.emit("activity", event),
-    });
+    emitSessionWarningsWithRejectionHandling(warnings, this.emitter);
   }
   protected async stopRuntime(): Promise<void> {
     await stopCodexRuntime(this.bridge, this.transcriptWatcher, this.terminal, this.pty);

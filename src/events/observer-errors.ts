@@ -50,8 +50,7 @@ export class ObserverErrors {
   private readonly promises = new WeakMap<Promise<unknown>, Pending>();
   private readonly registrations = new Set<Registration>();
 
-  /** The caller keeps reused session sinks live; overflow records retain only weak references. */
-  observe(promise: Promise<unknown>, sink: Sink, retainOnOverflow: boolean): void {
+  private pendingFor(promise: Promise<unknown>): Pending {
     let pending = this.promises.get(promise);
     if (!pending || pending.settled) {
       pending = { settled: false, entries: new Set(), overflowSink: undefined };
@@ -60,6 +59,21 @@ export class ObserverErrors {
       attach(promise, pending);
       this.promises.set(promise, pending);
     }
+    return pending;
+  }
+
+  /** Contain a listener rejection without retaining a diagnostic registration. */
+  consume(promise: Promise<unknown>): void {
+    try {
+      this.pendingFor(promise);
+    } catch {
+      // Caller-controlled reaction metadata must not abort warning delivery.
+    }
+  }
+
+  /** The caller keeps reused session sinks live; overflow records retain only weak references. */
+  observe(promise: Promise<unknown>, sink: Sink, retainOnOverflow: boolean): void {
+    const pending = this.pendingFor(promise);
     const registrations = this.registrations;
     const entry: Registration = {
       pending,

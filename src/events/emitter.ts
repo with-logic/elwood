@@ -69,7 +69,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     entry.list = entry.list.filter((existing) => existing.handler !== h);
   }
 
-  emit<E extends EventKey<M>>(event: E, payload: M[E]): void {
+  emit<E extends EventKey<M>>(event: E, payload: M[E], containRejections = false): void {
     const entry = this.handlers.get(event);
     if (!entry) return;
     // Deliver to every subscriber before surfacing any failure: one throwing
@@ -88,8 +88,11 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       if (!entry.live.has(handler)) continue;
       try {
         const returned = handler(payload);
-        if (onRejection && types.isPromise(returned))
-          this.observerErrors.observe(returned, onRejection, this.retainObserverError);
+        if ((onRejection || containRejections) && types.isPromise(returned)) {
+          if (onRejection)
+            this.observerErrors.observe(returned, onRejection, this.retainObserverError);
+          else this.observerErrors.consume(returned);
+        }
       } catch (error) {
         if (!failed) {
           failed = true;

@@ -19,7 +19,7 @@ afterEach(() => {
 test.each([
   false,
   true,
-])("C-API-20 final-flush diagnostic stop preserves ordering (startup gate open=%s)", async (open) => {
+])("C-API-20 final-flush diagnostic stop contains rejected listeners (startup gate open=%s)", async (open) => {
   installFakes();
   const factory = currentCodexHookBridgeFactory();
   let dispatch!: Parameters<CodexHookBridgeFactory>[3];
@@ -48,13 +48,16 @@ test.each([
     if (open) await new Promise<void>((resolve) => setTimeout(resolve, 0));
     session.on("activity", (event) => {
       if (event.source === "transcript") order.push("transcript");
-      if (event.kind === "warning") order.push("warning:activity");
+      if (event.kind !== "warning") return undefined;
+      order.push("warning:activity");
+      return Promise.reject(new Error("consumer activity rejection"));
     });
     session.on("warning", (warning) => {
-      if (warning.code !== "transcript_poll_stopped") return;
+      if (warning.code !== "transcript_poll_stopped") return undefined;
       expect(warning.phase).toBe("final_flush");
       order.push("warning");
       stopped ??= session.stop();
+      return Promise.reject(new Error("consumer warning rejection"));
     });
     session.on("terminal:exit", () => order.push("exit"));
     session.on("status", ({ status }) => {

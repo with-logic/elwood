@@ -20,6 +20,22 @@ export type WarningEmit = {
   readonly activity: (event: ElwoodActivityEvent) => void;
 };
 
+type SessionWarningEmitter = {
+  readonly emit: ((name: "warning", event: ElwoodWarningEvent, containRejections: true) => void) &
+    ((name: "activity", event: ElwoodActivityEvent, containRejections: true) => void);
+};
+
+/** Scope actual delivery, including buffered startup warnings delivered on a later tick. */
+export function emitSessionWarningsWithRejectionHandling(
+  warnings: readonly ElwoodWarningEvent[],
+  emitter: SessionWarningEmitter,
+): void {
+  emitSessionWarnings(warnings, {
+    warning: (event) => emitter.emit("warning", event, true),
+    activity: (event) => emitter.emit("activity", event, true),
+  });
+}
+
 export function emitSessionWarnings(
   warnings: readonly ElwoodWarningEvent[],
   emit: WarningEmit,
