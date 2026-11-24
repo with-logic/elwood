@@ -175,3 +175,17 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     expect(third.startedOversizedDrop).toBe(false); // consumed terminating newline (no new drop)
   });
 });
+
+test("C-CLAUDE-15 a malformed UTF-8 seam cannot reread the same backward window", () => {
+  const path = tmpFile();
+  const corrupted = Buffer.alloc(128 * 1024, 0x80);
+  const latest = JSON.stringify({ type: "assistant", message: { content: "retained" } });
+  writeFileSync(path, Buffer.concat([corrupted, Buffer.from(`\n${latest}\n`)]));
+  setMaxRecordsForTests(12);
+  const counter = { bytes: 0 };
+  setByteReaderForTests(countingReader(counter));
+  const scan = scanBaselineTail(path, fileBytes(path));
+  expect(scan).toMatchObject({ truncated: true, unrecoveredBytes: corrupted.length });
+  expect(scan.lines).toContain(latest);
+  expect(counter.bytes).toBeLessThan(fileBytes(path) * 2);
+});

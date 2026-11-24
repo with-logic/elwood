@@ -29,9 +29,9 @@ export type BaselinePrompt = Readonly<Record<string, unknown>>;
 
 /**
  * Recovered current turn: the committed record lines plus whether the scan hit
- * its byte/record cap before the user PROMPT boundary. `truncated` is true only
- * on that cap path (NOT on a clean BOF with no boundary, which has no turn to
- * recover); `unrecoveredBytes` is then the magnitude of the earlier-in-file
+ * its byte/record cap or encountered an unreadable UTF-8 seam before the user
+ * prompt boundary. A clean beginning of file with no prompt has no turn to
+ * recover. On truncated paths, `unrecoveredBytes` measures the earlier-in-file
  * portion that fell outside the window, so the caller can surface it as a bounded,
  * content-free drop rather than silently losing it.
  */
@@ -59,6 +59,8 @@ export function scanBaselineTail(path: string, size: number): BaselineTail {
   while (size - end < maxBytes && records < maxRecords) {
     const start = Math.max(0, end - stepBytes);
     const block = readBackwardBlock(path, start, end);
+    // A block of invalid UTF-8 continuation bytes may leave no boundary to advance to.
+    if (block.start === end) break;
     const lines = block.text.split(/\r?\n/);
     lines[lines.length - 1] += head; // re-merge the seam-split line with the carry
     records += lines.length;
@@ -77,7 +79,7 @@ export function scanBaselineTail(path: string, size: number): BaselineTail {
     chunks.push(lines.slice(1));
     end = block.start;
   }
-  // Cap/record-budget hit BEFORE the boundary (the turn is larger than the cap):
+  // The scan stopped before the prompt boundary:
   // recover the in-window bounded records rather than discarding the whole turn.
   // The carried `head` is a partial first line (the window began mid-file), so it
   // is dropped, not emitted; every complete in-window record is kept. `end` is the
