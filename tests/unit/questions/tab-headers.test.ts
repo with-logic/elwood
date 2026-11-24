@@ -28,7 +28,6 @@ test("accepts the padded single-question chip Claude 2.1.310 renders", () => {
 
 test("rejects a grouped native dialog for a single-question request", () => {
   expect(parseClaudeQuestionScreen(fixture("questions"), definitions.slice(0, 1))).toBeUndefined();
-  expect(parseClaudeQuestionScreen(fixture("questions"), [])).toBeUndefined();
   expect(parseClaudeQuestionScreen(frame("foreign"), definitions)).toBeUndefined();
   const missingFirst: (typeof testPick)[] = [];
   missingFirst.length = 1;

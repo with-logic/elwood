@@ -124,6 +124,15 @@ test("C-QUESTION-03 rejects Submit tabs on an otherwise matching standalone radi
   expect(parseClaudeQuestionScreen(tabbed, [testPick])).toBeUndefined();
 });
 
+test("C-QUESTION-03 stops when the Submit tab disappears after a successful checkbox write", async () => {
+  const [selected] = checkboxFrames(bareHeader);
+  const { io, writes } = scriptedQuestionIo(initial, [selected!]);
+  await expect(answerClaudeQuestions(requestForFruits(), answers, io)).rejects.toThrow(
+    "Unexpected native wait stage",
+  );
+  expect(writes).toEqual([" "]);
+});
+
 test("C-QUESTION-03 rejects a standalone review without the native Submit tab", () => {
   const bare = frame(review.text.replace("←  ☒ Repos  ✔ Submit  →", bareHeader));
   expect(parseClaudeQuestionScreen(bare, requestForFruits().questions)).toBeUndefined();

@@ -2939,8 +2939,8 @@ With the corrected driver, Claude returned all four expected answers in each run
 
 Claude Code 2.1.331 can use the tabbed editor for a single checkbox question.
 The captured `Which fruits?` screen shows the question tab and the separate
-Submit tab. After selecting apple and cherry, its first Submit activates the
-review and the next Enter commits the answer. The same CLI accepted one
+Submit tab. After selecting apple and cherry, Enter on the bottom `Submit`
+row opens the review. Enter on `Submit answers` commits it. The same CLI accepted one
 structured answer batch for a group containing both checkbox and radio
 questions.
 

@@ -1,4 +1,4 @@
-/** Private native Claude questionnaire grammar (PRD §4). */
+/** Parse native Claude questionnaire layouts (PRD §5.10, C-QUESTION-03). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { claudeNamedBorder } from "../composer/border.ts";

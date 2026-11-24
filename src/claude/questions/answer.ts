@@ -1,4 +1,4 @@
-/** Drive proven private Claude question stages and native review (PRD §4). */
+/** Drive verified Claude question stages and native review (PRD §5.10, C-QUESTION-03). */
 import { bracketedPasteEnd, bracketedPasteStart } from "../../core/input/constants.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";

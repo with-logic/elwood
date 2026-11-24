@@ -1,4 +1,4 @@
-/** Verify every private Claude question navigation step (PRD §4). */
+/** Verify each Claude question navigation step (PRD §5.10, C-QUESTION-03). */
 
 import { arrowDown, arrowUp } from "../../core/input/constants.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
