@@ -16,7 +16,7 @@ export function readStagedComposer(
   );
 }
 
-/** Reuse one completed idle-frame classification for normal and whitespace drafts. */
+/** Read staged text from settled candidate rows and verify composer geometry. */
 export function readStagedComposerFrame(
   current: ReturnType<typeof readCandidateComposerFrame>,
   matchesEmptyInput: (rows: readonly string[], cursorRow: number) => boolean,

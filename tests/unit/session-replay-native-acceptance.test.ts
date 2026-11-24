@@ -28,7 +28,14 @@ test.each([
   { agent: "codex", nativeHook: true, payload: " \t\n", scrolled: false },
   { agent: "claude", nativeHook: false, payload: "", scrolled: true },
   { agent: "codex", nativeHook: false, payload: "", scrolled: true },
-] as const)("C-API-56 $agent replay awaits empty input after nativeHook=$nativeHook scrolled=$scrolled", async ({
+  {
+    agent: "claude",
+    nativeHook: false,
+    payload: Array.from({ length: 17 }, (_, index) => `distinctive draft line ${index}`).join("\n"),
+    scrolled: true,
+  },
+  { agent: "codex", nativeHook: false, payload: "alpha draft\nbeta draft", scrolled: true },
+] as const)("C-API-56 $agent replay awaits empty input after nativeHook=$nativeHook scrolled=$scrolled with payload=$payload", async ({
   agent,
   nativeHook,
   payload,
@@ -70,9 +77,28 @@ test.each([
     await vi.advanceTimersByTimeAsync(150);
     const caret = agent === "claude" ? "❯" : "›";
     const idle = agent === "claude" ? claudeComposer : codexSmallComposer;
-    const draft = idle.replace(new RegExp(`^${caret}.*$`, "m"), `${caret} [Image #1]`);
-    const paintDraft = () =>
-      pty.emitData(`\u001b[2J\u001b[H${(agent === "claude" ? claudeTty : codexTty)(draft)}`);
+    const [firstLine, secondLine] = payload.split("\n");
+    const displayedDraft = payload.trim() ? `${firstLine}\n  ${secondLine}` : "[Image #1]";
+    const draft = idle.replace(new RegExp(`^${caret}.*$`, "m"), `${caret} ${displayedDraft}`);
+    const paintDraft = () => {
+      if (payload.trim() && agent === "claude") {
+        const nativeDraft = readNativeInputFrame(
+          new URL("../fixtures/claude-2.1.281/staged-text-2.json", import.meta.url),
+        );
+        pty.emitData(
+          cursorFrame(
+            nativeDraft.text,
+            nativeDraft.cursorX,
+            nativeDraft.cursorY,
+            nativeDraft.visible,
+            nativeDraft.title,
+          ),
+        );
+      } else if (payload.trim()) {
+        const row = draft.split("\n").findIndex((line) => line.trim() === secondLine);
+        pty.emitData(cursorFrame(draft, secondLine!.length + 2, row, true, ""));
+      } else pty.emitData(`\u001b[2J\u001b[H${(agent === "claude" ? claudeTty : codexTty)(draft)}`);
+    };
     paintDraft();
     await vi.advanceTimersByTimeAsync(1);
     if (nativeHook) {

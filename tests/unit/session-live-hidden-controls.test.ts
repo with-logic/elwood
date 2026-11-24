@@ -1,6 +1,11 @@
 /** Settled live trust and foreign picker holds keep working during scrollback (PRD §5.3). */
 import { afterEach, expect, test, vi } from "vitest";
-import { type ElwoodActivityEvent, startClaude, startCodex } from "../../src/index.ts";
+import {
+  type ElwoodActivityEvent,
+  type ElwoodSessionStatus,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import { cachedLiveSnapshot, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import * as claude from "../claude/helpers.ts";
 import { instructionsLoaded } from "../claude/login-helpers.ts";
@@ -98,14 +103,34 @@ const approval = {
     "Would you like to run the following command?\n $ echo fixture\n› 1. Yes (y)\n  2. No (esc)\nPress enter to confirm or esc to cancel",
 };
 
+const send = ["\u001b[200~safe fixture input\u001b[201~", "\r"];
+const liveApproval = {
+  screen: "live",
+  viewportText: "Historical output",
+  initialStatus: "blocked",
+  initialWrites: [],
+  readyDuringClearance: true,
+} as const;
+const historicalApproval = {
+  screen: "history",
+  viewportText: "echo fixture",
+  initialStatus: "ready",
+  initialWrites: send,
+  readyDuringClearance: false,
+} as const;
+
 test.each([
-  { agent: "claude", historicalOnly: false },
-  { agent: "claude", historicalOnly: true },
-  { agent: "codex", historicalOnly: false },
-  { agent: "codex", historicalOnly: true },
-] as const)("C-ATTN-03 $agent follows live approval and clearance with historicalOnly=$historicalOnly", async ({
+  { agent: "claude", ...liveApproval },
+  { agent: "claude", ...historicalApproval },
+  { agent: "codex", ...liveApproval },
+  { agent: "codex", ...historicalApproval },
+] as const)("C-ATTN-03 $agent follows live state when approval is in $screen", async ({
   agent,
-  historicalOnly,
+  screen,
+  viewportText,
+  initialStatus,
+  initialWrites,
+  readyDuringClearance,
 }) => {
   const helper = agent === "claude" ? claude : codex;
   helper.installFakes();
@@ -113,8 +138,9 @@ test.each([
   const session = await (agent === "claude" ? startClaude : startCodex)({ cwd });
   const terminal = session.terminal;
   const pty = helper.ptys[0]!;
-  const status: { on(event: "status", listener: (event: { status: string }) => void): void } =
-    session;
+  const status: {
+    on(event: "status", listener: (event: { status: ElwoodSessionStatus }) => void): void;
+  } = session;
   try {
     if (agent === "claude")
       await pty.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
@@ -123,15 +149,13 @@ test.each([
     const { isScrolled, paint } = await viewTerminalHistory(
       terminal,
       pty,
-      historicalOnly ? `${menu}\r\n` : "",
+      screen === "history" ? `${menu}\r\n` : "",
     );
     const composer = agent === "claude" ? claudeTty(claudeComposer) : codexTty(codexComposer);
-    await paint(historicalOnly ? composer : menu);
+    await paint(screen === "history" ? composer : menu);
     expect(isScrolled()).toBe(true);
-    expect(terminal.snapshot().text).toContain(
-      historicalOnly ? "echo fixture" : "Historical output",
-    );
-    expect(session.status).toBe(historicalOnly ? "ready" : "blocked");
+    expect(terminal.snapshot().text).toContain(viewportText);
+    expect(session.status).toBe(initialStatus);
     expect(settledLiveSnapshot(terminal)).toBe(cachedLiveSnapshot(terminal));
     let readyWhileScrolled = false;
     status.on("status", ({ status }) => {
@@ -141,15 +165,13 @@ test.each([
     const sent = session.sendMessage("safe fixture input");
     void sent.catch(() => undefined);
     await vi.advanceTimersByTimeAsync(250);
-    if (!historicalOnly) {
-      expect(pty.writes).toEqual([]);
-      const cleared = paint(composer);
-      await vi.advanceTimersByTimeAsync(250);
-      await cleared;
-      expect(readyWhileScrolled).toBe(true);
-    }
+    expect(pty.writes).toEqual(initialWrites);
+    const cleared = paint(composer);
+    await vi.advanceTimersByTimeAsync(250);
+    await cleared;
+    expect(readyWhileScrolled).toBe(readyDuringClearance);
     await sent;
-    expect(pty.writes).toEqual(["\u001b[200~safe fixture input\u001b[201~", "\r"]);
+    expect(pty.writes).toEqual(send);
   } finally {
     vi.useRealTimers();
     await session.stop();

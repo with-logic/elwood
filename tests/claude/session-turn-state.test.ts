@@ -38,19 +38,23 @@ describe("ClaudeSessionApi turn boundaries", () => {
     await ptys[0]!.dispatchHook(session.elwoodSessionId, userSubmission(cwd));
     await session.stop();
     const resumed = await resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
-    const { isScrolled } = await viewTerminalHistory(resumed.terminal, ptys[1]!);
-    const first = resumed.sendMessage("after permission");
-    void first.catch(() => undefined);
-    ptys[1]!.emitData(
-      "\u001b[2J\u001b[HDo you want to run this tool?\r\n❯ 1. Yes\r\n  2. No\r\nEsc to cancel",
-    );
-    await resumed.terminal.settled();
-    expect(resumed.status).toBe("blocked");
-    expect(ptys[1]!.writes).toEqual([]);
-    ptys[1]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
-    await first;
-    expect(isScrolled()).toBe(true);
-    expect(ptys[1]!.writes).toEqual(["\u001b[200~after permission\u001b[201~", "\r"]);
+    try {
+      const { isScrolled } = await viewTerminalHistory(resumed.terminal, ptys[1]!);
+      const first = resumed.sendMessage("after permission");
+      void first.catch(() => undefined);
+      ptys[1]!.emitData(
+        "\u001b[2J\u001b[HDo you want to run this tool?\r\n❯ 1. Yes\r\n  2. No\r\nEsc to cancel",
+      );
+      await resumed.terminal.settled();
+      expect(resumed.status).toBe("blocked");
+      expect(ptys[1]!.writes).toEqual([]);
+      ptys[1]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
+      await first;
+      expect(isScrolled()).toBe(true);
+      expect(ptys[1]!.writes).toEqual(["\u001b[200~after permission\u001b[201~", "\r"]);
+    } finally {
+      await resumed.teardown();
+    }
   });
 
   test("C-TURN-02 an interrupted turn transitions to ready without a Stop hook", async () => {

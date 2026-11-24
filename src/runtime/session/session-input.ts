@@ -68,10 +68,11 @@ export class SessionInputOwnership {
       origin = undefined;
       try {
         if (writing === undefined) revoke();
-        // Keep xterm's input fast path at the live edge and retain history during automation.
+        // Suppress xterm's scroll to live when automation runs with scrollback selected.
         const buffer = inner.xterm.buffer.active;
-        const keepHistory = writing === "automation" && buffer.viewportY !== buffer.baseY;
-        input(data, keepHistory ? false : wasUserInput);
+        const preserveSelectedViewport =
+          writing === "automation" && buffer.viewportY !== buffer.baseY;
+        input(data, preserveSelectedViewport ? false : wasUserInput);
       } finally {
         origin = writing;
       }
