@@ -64,3 +64,13 @@ test("C-API-63 a clipped row is never decoded from its suffix", () => {
     prompt: { turnId: "first", text: "native prompt" },
   });
 });
+
+test("C-API-63 a valid prompt immediately outside the 1 MiB tail is excluded", () => {
+  const path = tmpFile();
+  const maxBytes = 1024 * 1024;
+  const rowPrefix = '{"type":"assistant","message":"';
+  const rowSuffix = '"}\n';
+  const filler = "x".repeat(maxBytes - rowPrefix.length - rowSuffix.length + 1);
+  writeFileSync(path, user("first", "outside the tail") + rowPrefix + filler + rowSuffix);
+  expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({ malformed: false });
+});

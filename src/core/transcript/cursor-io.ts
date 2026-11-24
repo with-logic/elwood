@@ -44,6 +44,8 @@ export type RangeRead = { readonly text: string; readonly bytes: number };
 /** The injectable read seam: returns the RAW bytes read at `[start, start+length)`. */
 export type ByteReader = (path: string, start: number, length: number) => Buffer;
 
+/** Keep the opened descriptor scoped to the callback and always close it.
+ * A replacement FIFO must fail the caller's file-type check instead of blocking at open. */
 export function withTranscriptFile<T>(path: string, read: (fd: number, status: Stats) => T): T {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
   try {

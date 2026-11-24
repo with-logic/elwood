@@ -20,16 +20,24 @@ export function observeTranscriptBaseline(
   });
   if (turns.correlationDisabled) userPrompts.clearUnpaired();
   if (turnId === undefined) return;
-  let malformed = false;
-  userPrompts.recoverInitial(path, turnId, (pendingToken) => {
-    // Do not read the same file twice after an earlier failure in this hook.
-    if (seedReadFailed) {
-      cursor.recordInitialLookupReadFailure(pendingToken);
-      return undefined;
-    }
-    const initial = guard.read(path, () => cursor.takeLatestInitialPrompt(pendingToken));
-    malformed = initial?.malformed === true;
-    return initial?.prompt;
-  });
-  if (malformed) drops.emitDrop(path, "unparseable");
+  const attempt = (seedFailed: boolean) => {
+    let readFailed = false;
+    let malformed = false;
+    userPrompts.recoverInitial(path, turnId, (pendingToken) => {
+      if (seedFailed) {
+        cursor.recordInitialLookupReadFailure(pendingToken);
+        readFailed = true;
+        return undefined;
+      }
+      const read = guard.read(path, () => ({
+        result: cursor.takeLatestInitialPrompt(pendingToken),
+      }));
+      readFailed = read === undefined;
+      malformed = read?.result?.malformed === true;
+      return read?.result?.prompt;
+    });
+    if (malformed) drops.emitDrop(path, "unparseable");
+    return readFailed;
+  };
+  if (attempt(seedReadFailed)) cursor.scheduleInitialRetry(() => attempt(false));
 }

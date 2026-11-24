@@ -97,6 +97,7 @@ export class ClaudeTranscriptWatcher {
     const budget = { chunks: scanChunksPerScan };
     for (const cursor of this.cursors.values()) {
       if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
+      cursor.runInitialRetry(budget);
       this.scanCursor(cursor, budget);
     }
     this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
@@ -131,6 +132,7 @@ export class ClaudeTranscriptWatcher {
         if (this.finished) return;
         if (this.cursors.get(cursor.path) !== cursor) continue;
         if (budget.chunks <= 0) break; // watcher-wide budget spent this tick
+        cursor.runInitialRetry(budget);
         if (changed) this.scanCursor(cursor, budget);
         this.afterScanForTests?.(); // test seam: drive finish() between cursors
       }

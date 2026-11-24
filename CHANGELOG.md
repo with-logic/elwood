@@ -20,6 +20,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Recover matching textless Claude submissions already committed in an unchanged
   initial transcript.
+- Keep transcript observation responsive if a watched file is replaced by a pipe.
 
 - Preserve native prompt holds and readiness while an embedded terminal views
   scrollback.

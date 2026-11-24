@@ -1,8 +1,8 @@
 /** Recover one authenticated prompt from an unchanged initial Claude transcript tail (C-API-63). */
 import { isUtf8 } from "node:buffer";
-import { fstatSync, readSync, type Stats } from "node:fs";
+import { fstatSync, readSync, type Stats, statSync } from "node:fs";
 import { isRecord } from "../../core/predicates.ts";
-import { statIfPresent, withTranscriptFile } from "../../core/transcript/cursor-io.ts";
+import { withTranscriptFile } from "../../core/transcript/cursor-io.ts";
 import { claudePromptId } from "../hooks/prompt-id.ts";
 import { userPromptText } from "./user-record.ts";
 
@@ -30,7 +30,7 @@ export class InitialClaudePrompt {
     this.registration = registration;
   }
 
-  /** A seed read failure belongs to the matching pending lookup in that same hook. */
+  /** Reserve one retry for this retained authenticated submission, including later scans. */
   recordAttempt(pendingToken: object): boolean {
     const state = this.state;
     if (state === "closed" || (state !== "fresh" && state.retryFor !== pendingToken)) return false;
@@ -63,32 +63,44 @@ function readInitialPrompt(path: string, initial: Stats): InitialPromptScan | un
     if (!sameInitialVersion(initial, opened)) return undefined;
     const scan = scanInitialTail(fd, initial.size);
     if (!sameInitialVersion(initial, fstatSync(fd))) return undefined;
-    const current = statIfPresent(path);
-    return current && sameInitialVersion(initial, current) ? scan : undefined;
+    return sameInitialVersion(initial, statSync(path)) ? scan : undefined;
   });
 }
 
 function scanInitialTail(fd: number, size: number): InitialPromptScan {
-  const limit = Math.max(0, size - maxBytes);
-  const recent = Math.max(0, size - firstWindowBytes);
-  const first = scanWindow(fd, recent, size, maxRows);
-  if (recent <= limit || first.result.prompt || first.rows === maxRows) return first.result;
+  const tailStartOffset = Math.max(0, size - maxBytes);
+  const recentStartOffset = Math.max(0, size - firstWindowBytes);
+  const first = scanWindow(fd, recentStartOffset, size, maxRows);
+  const firstWindowCoversTail = recentStartOffset <= tailStartOffset;
+  const foundPrompt = first.result.prompt !== undefined;
+  const rowBudgetExhausted = first.rows === maxRows;
+  if (firstWindowCoversTail || foundPrompt || rowBudgetExhausted) return first.result;
 
   // The first unexamined delimiter ends the clipped row at the front of that read.
   // If the short window contains no delimiter, the older window must find its own.
-  const older = scanWindow(fd, limit, first.unreadEnd ?? size, maxRows - first.rows);
+  const older = scanWindow(
+    fd,
+    tailStartOffset,
+    first.unreadEndOffset ?? size,
+    maxRows - first.rows,
+  );
   return { ...older.result, malformed: first.result.malformed || older.result.malformed };
 }
 
 type WindowScan = {
   readonly result: InitialPromptScan;
   readonly rows: number;
-  readonly unreadEnd: number | undefined;
+  readonly unreadEndOffset: number | undefined;
 };
 
-function scanWindow(fd: number, start: number, limit: number, remaining: number): WindowScan {
-  const offset = Math.max(0, start - 1);
-  const bytes = Buffer.allocUnsafe(limit - offset);
+function scanWindow(
+  fd: number,
+  windowStartOffset: number,
+  windowEndOffset: number,
+  remainingRows: number,
+): WindowScan {
+  const offset = Math.max(0, windowStartOffset - 1);
+  const bytes = Buffer.allocUnsafe(windowEndOffset - offset);
   if (readSync(fd, bytes, 0, bytes.length, offset) !== bytes.length) {
     throw Object.assign(new Error("The initial Claude transcript read was incomplete."), {
       code: "EIO",
@@ -97,9 +109,9 @@ function scanWindow(fd: number, start: number, limit: number, remaining: number)
   let malformed = false;
   let end = bytes.lastIndexOf(newline);
   let rows = 0;
-  while (end > 0 && rows < remaining) {
+  while (end > 0 && rows < remainingRows) {
     const boundary = bytes.lastIndexOf(newline, end - 1);
-    if (boundary < 0 && start > 0) break;
+    if (boundary < 0 && windowStartOffset > 0) break;
     const row = bytes.subarray(boundary + 1, end);
     end = boundary;
     rows++;
@@ -108,9 +120,9 @@ function scanWindow(fd: number, start: number, limit: number, remaining: number)
     const parsed = parseCandidate(row);
     if (parsed === null) malformed = true;
     else if (parsed !== undefined)
-      return { result: { prompt: parsed, malformed }, rows, unreadEnd: undefined };
+      return { result: { prompt: parsed, malformed }, rows, unreadEndOffset: undefined };
   }
-  return { result: { malformed }, rows, unreadEnd: end < 0 ? undefined : offset + end + 1 };
+  return { result: { malformed }, rows, unreadEndOffset: end < 0 ? undefined : offset + end + 1 };
 }
 
 /** A null result is a malformed candidate. Undefined means the record cannot supply text. */

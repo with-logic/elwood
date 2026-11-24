@@ -117,7 +117,11 @@ test("C-API-63 an all-pending recent window still finds a complete older row", (
   expect(vi.mocked(fs.readSync)).toHaveBeenCalledTimes(2);
 });
 
-test("C-API-63 seed-read failure reserves one retry for the existing pending entry", () => {
+test.each([
+  "hook",
+  "scan",
+  "poll",
+])("C-API-63 the same pending prompt can retry through %s", async (source) => {
   const { path } = stored();
   const events: unknown[] = [];
   const watcher = new ClaudeTranscriptWatcher("s", (event) => events.push(event));
@@ -133,7 +137,9 @@ test("C-API-63 seed-read failure reserves one retry for the existing pending ent
     hook("first");
     hook("different");
     expect(events).toEqual([]);
-    hook("first");
+    if (source === "poll") await watcher.pollOnceForTests();
+    else if (source === "scan") watcher.scan();
+    else hook("first");
     expect(events).toMatchObject([{ turnId: "first", summary: { text: "native prompt" } }]);
   } finally {
     watcher.finish();
@@ -179,6 +185,12 @@ test.each([
     }
     return count;
   });
-  expect(initial.take(link, pending)).toBeUndefined();
+  if (change === "removed") {
+    expect(() => initial.take(link, pending)).toThrow(expect.objectContaining({ code: "ENOENT" }));
+    fs.symlinkSync(path, link);
+    expect(initial.take(link, pending)?.prompt?.text).toBe("native prompt");
+  } else {
+    expect(initial.take(link, pending)).toBeUndefined();
+  }
   expect(initial.take(link, pending)).toBeUndefined();
 });

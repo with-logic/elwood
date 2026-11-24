@@ -8,6 +8,7 @@
 import { stat } from "node:fs/promises";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { statIfPresent } from "../../core/transcript/cursor-io.ts";
+import type { ChunkBudget } from "../../core/transcript/drain.ts";
 import { type BaselinePrompt, scanBaselineTail } from "./baseline.ts";
 import { InitialClaudePrompt } from "./initial-prompt.ts";
 
@@ -21,6 +22,7 @@ export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
  */
 export class TranscriptCursor extends BoundedTranscriptCursor {
   private readonly initial: InitialClaudePrompt;
+  private retryInitial: (() => void) | undefined;
   constructor(path: string) {
     const registration = statIfPresent(path);
     super(path, { size: registration?.size });
@@ -33,6 +35,18 @@ export class TranscriptCursor extends BoundedTranscriptCursor {
 
   recordInitialLookupReadFailure(pendingToken: object): void {
     this.initial.recordAttempt(pendingToken);
+  }
+
+  scheduleInitialRetry(retry: () => void): void {
+    this.retryInitial ??= retry;
+  }
+
+  runInitialRetry(budget: ChunkBudget): void {
+    const retry = this.retryInitial;
+    if (!retry) return;
+    this.retryInitial = undefined;
+    budget.chunks -= 1;
+    retry();
   }
 
   /** Read only within the EOF baseline; callers contain filesystem failures with the guard. */
