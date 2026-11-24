@@ -15,6 +15,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Keep host terminal writes from counting as native PTY progress during
   composer cleanup.
 
+- Keep ordinary Claude input held until native question closure or turn end
+  when an interrupted answer already sent a navigation or editing key.
+
 - Keep Claude transcript recovery responsive when invalid UTF-8 prevents a
   backward scan from advancing.
 

@@ -177,8 +177,13 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       this.registry.get(request.id) !== request
     )
       throw questionAnswerFailed();
-    return await answerClaudeQuestions(request, answers, io, () => {
-      candidate.awaitingNativeHookClosure = true;
+    // Composer repaints cannot release native ownership after a guarded write.
+    return await answerClaudeQuestions(request, answers, {
+      ...io,
+      write: (input, matches) =>
+        io.write(input, matches, () => {
+          candidate.awaitingNativeHookClosure = true;
+        }),
     });
   }
 }
