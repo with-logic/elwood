@@ -25,6 +25,7 @@ export interface ElwoodTerminal {
   readonly size: TerminalSize;
   /** Latest OSC 0/1/2 window title, or "" before any title is set. */
   readonly title: string;
+  /** Renders host output without advancing native PTY progress. */
   writeOutput(data: string | Uint8Array): Promise<void>;
   sendInput(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): void;
@@ -51,32 +52,15 @@ export function attachPtyTerminal(
   pty: PtyProcess,
   onRendered: (data: string, terminal: ElwoodTerminal) => void,
 ): ElwoodTerminal {
-  const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
-  const output = new PtyOutput(
-    (data) => terminal.writeOutput(data, () => onRendered(data, terminal), true),
-    pty.flowControl,
-  );
-  terminal.attachOutput(output);
-  // Resume at child exit so unread tail output is not stranded behind backpressure.
-  const off = [
-    pty.onData((data) => {
-      if (data.length > 0) terminal.cursor.received();
-      output.push(data);
-    }),
-    pty.onExit(() => output.releaseFlowControl()),
-  ];
-  terminal.onDispose(() => {
-    for (const unsubscribe of off) unsubscribe();
-  });
-  return terminal;
+  return HeadlessTerminal.fromPty(size, pty, onRendered);
 }
 
 class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
-  readonly cursor: RenderCursor;
+  readonly #cursor: RenderCursor;
   private currentSize: TerminalSize;
   private readonly renders: RenderQueue;
-  private ptyOutput: PtyOutput | undefined;
+  #ptyOutput: PtyOutput | undefined;
   private readonly onInput: (input: string | Uint8Array) => void;
   private readonly inputWaiters: Array<{
     readonly resolve: () => void;
@@ -86,6 +70,28 @@ class HeadlessTerminal implements ElwoodTerminal {
   private disposed = false;
   private currentTitle = "";
 
+  static fromPty(
+    size: TerminalSize,
+    pty: PtyProcess,
+    onRendered: (data: string, terminal: ElwoodTerminal) => void,
+  ): HeadlessTerminal {
+    const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
+    const output = new PtyOutput(
+      (data) => terminal.#enqueueOutput(data, () => onRendered(data, terminal)),
+      pty.flowControl,
+    );
+    terminal.#ptyOutput = output;
+    // Resume at child exit so unread tail output is not stranded behind backpressure.
+    terminal.disposers.push(
+      pty.onData((data) => {
+        if (data.length > 0) terminal.#cursor.received();
+        output.push(data);
+      }),
+      pty.onExit(() => output.releaseFlowControl()),
+    );
+    return terminal;
+  }
+
   constructor(size: TerminalSize, onInput: (input: string | Uint8Array) => void) {
     this.currentSize = size;
     this.onInput = onInput;
@@ -94,11 +100,11 @@ class HeadlessTerminal implements ElwoodTerminal {
       cols: size.cols,
       rows: size.rows,
     });
-    this.cursor = new RenderCursor(this.xterm, () => this.ptyOutput?.hasStagedOutput === true);
-    this.disposers.push(() => this.cursor.dispose());
+    this.#cursor = new RenderCursor(this.xterm, () => this.#ptyOutput?.hasStagedOutput === true);
+    this.disposers.push(() => this.#cursor.dispose());
     this.renders = new RenderQueue(
       (data, done) => this.xterm.write(data, done),
-      () => this.ptyOutput?.flush(),
+      () => this.#ptyOutput?.flush(),
     );
     this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {
@@ -115,19 +121,20 @@ class HeadlessTerminal implements ElwoodTerminal {
     return this.renders.renderFailed;
   }
 
-  // PTY batches were counted on arrival; direct writes introduce their own output.
-  writeOutput(
-    data: string | Uint8Array,
-    onRendered?: () => void,
-    alreadyReceived = false,
-  ): Promise<void> {
+  writeOutput(data: string | Uint8Array): Promise<void> {
+    return this.#enqueueOutput(data);
+  }
+
+  // Only the PTY callback can tag a render as native. Its bytes were counted on receipt.
+  #enqueueOutput(data: string | Uint8Array, onPtyRendered?: () => void): Promise<void> {
     if (this.disposed) return Promise.resolve();
-    this.ptyOutput?.flush(); // keep a direct write ordered after PTY output already received
-    const revision = alreadyReceived ? this.cursor.queued() : this.cursor.received();
-    const arrival = this.cursor.arrival;
+    this.#ptyOutput?.flush(); // keep a direct write ordered after PTY output already received
+    const fromPty = onPtyRendered !== undefined;
+    const revision = fromPty ? this.#cursor.queued() : this.#cursor.received();
+    const arrival = this.#cursor.arrival;
     return this.renders.enqueue(data, () => {
-      this.cursor.rendered(revision, arrival, alreadyReceived);
-      onRendered?.();
+      this.#cursor.rendered(revision, arrival, fromPty);
+      onPtyRendered?.();
     });
   }
 
@@ -157,17 +164,9 @@ class HeadlessTerminal implements ElwoodTerminal {
     if (this.disposed) return;
     this.disposed = true;
     for (const dispose of this.disposers.splice(0)) dispose();
-    this.ptyOutput?.dispose();
+    this.#ptyOutput?.dispose();
     this.renders.dispose();
     this.xterm.dispose();
-  }
-
-  onDispose(dispose: () => void): void {
-    this.disposers.push(dispose);
-  }
-
-  attachOutput(output: PtyOutput): void {
-    this.ptyOutput = output;
   }
 
   private forwardInput(input: string): void {

@@ -1,6 +1,8 @@
 /** Native arrival watermarks survive PTY batching and ordered rendering (C-API-31). */
 import { expect, test, vi } from "vitest";
+import { reportCallerInput } from "../../src/codex/session/caller-input.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
+import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
 import { captureRenderProgress, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { attachPtyTerminal, type ElwoodTerminal } from "../../src/terminal/headless.ts";
 import { renderBatchBytes } from "../../src/terminal/pty-output.ts";
@@ -76,6 +78,44 @@ test("C-API-31 a direct write follows staged native output and owns fresh progre
     expect(rendered).toEqual(["native "]);
     expect(terminal.snapshot().text).toContain("native direct");
     expect(captured()).toBe(true);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+const terminalViews = [
+  { name: "attached terminal", view: (terminal: ElwoodTerminal) => terminal },
+  {
+    name: "session terminal",
+    view: (terminal: ElwoodTerminal) => new SessionInputOwnership(terminal).caller,
+  },
+  {
+    name: "Codex startup terminal",
+    view: (terminal: ElwoodTerminal) => reportCallerInput(terminal, () => {}).terminal,
+  },
+];
+
+test.each(
+  terminalViews,
+)("C-API-56 host writes through the $name cannot satisfy PTY-only progress", async ({ view }) => {
+  const { terminal: inner, emit } = setup();
+  const terminal = view(inner);
+  try {
+    const progressed = captureRenderProgress(terminal, "pty");
+    await terminal.writeOutput("host ");
+    expect(progressed()).toBe(false);
+
+    // Exercise an untyped host call with extra arguments.
+    const callback = vi.fn();
+    await Reflect.apply(terminal.writeOutput, terminal, ["output", callback, true]);
+    expect(terminal.snapshot().text).toContain("host output");
+    expect(progressed()).toBe(false);
+    expect(callback).not.toHaveBeenCalled();
+
+    emit(" from PTY");
+    await terminal.settled();
+    expect(terminal.snapshot().text).toContain("host output from PTY");
+    expect(progressed()).toBe(true);
   } finally {
     terminal.dispose();
   }

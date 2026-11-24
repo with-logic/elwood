@@ -135,7 +135,7 @@ function view(
     get renderFailed() {
       return inner.renderFailed;
     },
-    writeOutput: (...args) => inner.writeOutput(...args),
+    writeOutput: (data) => inner.writeOutput(data),
     sendInput,
     resize: (size) => inner.resize(size),
     snapshot,

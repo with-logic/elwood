@@ -5,7 +5,7 @@
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
 export type CallerInput = {
-  /** The session's view of the terminal: every write through it is caller input. */
+  /** Reports terminal input as caller input. Host output only updates the display. */
   readonly terminal: ElwoodTerminal;
   /** Startup automation's writer: the only input that does not end startup. */
   readonly automation: (input: string) => Promise<void>;
@@ -38,7 +38,7 @@ export function reportCallerInput(
     get title() {
       return inner.title;
     },
-    writeOutput: (...args) => inner.writeOutput(...args),
+    writeOutput: (data) => inner.writeOutput(data),
     sendInput: (input) => {
       onInput();
       return inner.sendInput(input);
