@@ -130,9 +130,10 @@ answers. Avoid logging them if your host treats those answers as sensitive.
 
 Claude's `AskUserQuestion` can group tabbed questions into one request, including
 single choice, checkboxes and alternative text on single-select questions.
-Checkbox questions currently advertise `textMode: "none"`. Elwood submits the group through
-its review page. A caller's direct Claude hook answer keeps precedence and does
-not create a phantom terminal question. The supported automation starts from the
+A standalone checkbox question can use a Submit tab and final review as well.
+Checkbox questions advertise `textMode: "none"`. Elwood submits through the
+review page when the CLI shows it. A caller's direct Claude hook answer keeps
+precedence and does not create a phantom terminal question. The automation starts from the
 recognized first question; unsupported partial navigation fails safely. Completion
 hooks must match the native Claude tool-use ID (`tool_use_id`), or the ordered
 question definitions when the hook omits that ID. Unrelated Claude hooks cannot

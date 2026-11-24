@@ -2935,6 +2935,15 @@ app that embeds Elwood, shipped a driver that passed that action and then stalle
 on typed text or the final review.
 With the corrected driver, Claude returned all four expected answers in each run.
 
+### Standalone Claude checkbox review
+
+Claude Code 2.1.331 can use the tabbed editor for a single checkbox question.
+The captured `Which fruits?` screen shows the question tab and the separate
+Submit tab. After selecting apple and cherry, Enter on the bottom `Submit`
+row opens the review. Enter on `Submit answers` commits it. The same CLI accepted one
+structured answer batch for a group containing both checkbox and radio
+questions.
+
 ## Account quota before the first turn
 
 On 2026-11-19, Claude Code 2.1.328 answered a lone stream-json control request

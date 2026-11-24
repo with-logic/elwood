@@ -1,4 +1,4 @@
-/** Verify every private Claude question navigation step (PRD §4). */
+/** Verify each Claude question navigation step (PRD §5.10, C-QUESTION-03). */
 
 import { arrowDown, arrowUp } from "../../core/input/constants.ts";
 import type { QuestionFrame, QuestionIo } from "../../core/questions/adapter.ts";
@@ -6,16 +6,19 @@ import { questionError } from "../../core/questions/errors.ts";
 import type { ElwoodQuestionRequest } from "../../core/questions/types.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
-/** questionIndex addresses request.questions, not an option; only that native question
- * may authorize navigation. Each move waits for its completed successor frame. */
+/** Verify the active request question and its original Submit-tab layout.
+ * Each move waits for its completed successor frame. */
 export function questionNavigation(
   request: ElwoodQuestionRequest,
   questionIndex: number,
   io: QuestionIo,
+  hasSubmitTab: boolean,
 ) {
   const at = (frame: QuestionFrame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
-    return screen?.kind === "question" && screen.questionIndex === questionIndex
+    return screen?.kind === "question" &&
+      screen.questionIndex === questionIndex &&
+      screen.hasSubmitTab === hasSubmitTab
       ? screen
       : undefined;
   };

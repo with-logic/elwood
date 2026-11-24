@@ -1,9 +1,6 @@
 /** Native tab identity must match the complete request (PRD §4). */
 import { expect, test } from "vitest";
-import {
-  matchesClaudeQuestionTabs,
-  parseClaudeQuestionScreen,
-} from "../../../src/claude/questions/screen.ts";
+import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
 import { definitions, fixture, frame, testPick } from "./helpers.ts";
 
 test.each([
@@ -20,18 +17,19 @@ test.each([
 test("accepts the padded single-question chip Claude 2.1.310 renders", () => {
   const padded = fixture("single-question", "2.1.310");
   expect(padded.lines).toContain(" ☐ Test pick ");
-  expect(matchesClaudeQuestionTabs(padded, [testPick])).toBe(true);
   expect(parseClaudeQuestionScreen(padded, [testPick])).toMatchObject({
     kind: "question",
     questionIndex: 0,
     cursor: 0,
   });
   // Only trailing padding is chrome: a different header still fails.
-  expect(matchesClaudeQuestionTabs(padded, [{ ...testPick, header: "Test" }])).toBe(false);
+  expect(parseClaudeQuestionScreen(padded, [{ ...testPick, header: "Test" }])).toBeUndefined();
 });
 
 test("rejects a grouped native dialog for a single-question request", () => {
   expect(parseClaudeQuestionScreen(fixture("questions"), definitions.slice(0, 1))).toBeUndefined();
-  expect(parseClaudeQuestionScreen(fixture("questions"), [])).toBeUndefined();
-  expect(matchesClaudeQuestionTabs(frame("foreign"), definitions)).toBe(false);
+  expect(parseClaudeQuestionScreen(frame("foreign"), definitions)).toBeUndefined();
+  const missingFirst: (typeof testPick)[] = [];
+  missingFirst.length = 1;
+  expect(parseClaudeQuestionScreen(fixture("questions"), missingFirst)).toBeUndefined();
 });

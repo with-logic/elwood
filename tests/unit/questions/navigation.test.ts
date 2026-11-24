@@ -22,7 +22,7 @@ test("validates frames and uses Up for an earlier choice", async () => {
       return Promise.resolve(current!);
     },
   };
-  const navigation = questionNavigation(request, 0, io);
+  const navigation = questionNavigation(request, 0, io, true);
   expect(navigation.at(fixture("features-initial"))).toBeUndefined();
   expect(navigation.at(frame("foreign"))).toBeUndefined();
   await navigation.move(0);

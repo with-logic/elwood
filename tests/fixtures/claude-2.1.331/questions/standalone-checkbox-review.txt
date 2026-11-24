@@ -1,0 +1,10 @@
+────────────────────────────────────────────────────────────────────────
+←  ☒ Repos  ✔ Submit  →
+
+Review your answers
+
+ ● Which fruits?
+   → apple, cherry
+
+❯ 1. Submit answers
+  2. Cancel
