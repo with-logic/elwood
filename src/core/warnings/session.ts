@@ -6,6 +6,7 @@
  * warning per channel per watcher. This emitter delivers every supplied warning.
  */
 
+import type { TypedEmitter } from "../../events/emitter.ts";
 import { activityFromWarning, type ElwoodActivityEvent } from "../activity/index.ts";
 import type { ElwoodWarningEvent } from "../types.ts";
 
@@ -19,6 +20,26 @@ export type WarningEmit = {
   readonly warning: (event: ElwoodWarningEvent) => void;
   readonly activity: (event: ElwoodActivityEvent) => void;
 };
+
+type SessionWarningEmitter = Pick<
+  TypedEmitter<{ warning: ElwoodWarningEvent; activity: ElwoodActivityEvent }>,
+  "emit" | "observeRejections"
+>;
+
+const ignoreWarningRejection = () => undefined;
+
+/** Scope actual delivery, including buffered startup warnings delivered on a later tick. */
+export function emitWarningsToSession(
+  warnings: readonly ElwoodWarningEvent[],
+  emitter: SessionWarningEmitter,
+): void {
+  emitter.observeRejections(ignoreWarningRejection, () =>
+    emitSessionWarnings(warnings, {
+      warning: (event) => emitter.emit("warning", event),
+      activity: (event) => emitter.emit("activity", event),
+    }),
+  );
+}
 
 export function emitSessionWarnings(
   warnings: readonly ElwoodWarningEvent[],
