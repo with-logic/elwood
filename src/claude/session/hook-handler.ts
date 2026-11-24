@@ -19,7 +19,6 @@ import type { InitialReady } from "../../runtime/readiness/initial-ready.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
-import { claudePromptId } from "../hooks/prompt-id.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
@@ -31,7 +30,7 @@ export type ClaudeHookHandlerDeps = {
   readonly record: SessionRecord;
   readonly options: StartClaudeOptions;
   readonly emitter: TypedEmitter<ClaudeEventMap>;
-  readonly transcriptWatcher: Pick<ClaudeTranscriptWatcher, "scan" | "observeUserPrompt">;
+  readonly transcriptWatcher: Pick<ClaudeTranscriptWatcher, "scan" | "observeUserPromptHook">;
   readonly ready: InitialReady;
   readonly getSession: () => ClaudeSessionImpl | undefined;
   readonly getTurnWatcher: () => TurnStateWatcher;
@@ -56,13 +55,17 @@ export function buildClaudeHookHandler(
     const observe = () => observation.run("transcript", () => deps.observeHookTranscript(event));
     const submit = event.hook_event_name === "UserPromptSubmit";
     const hasText = projected.kind === "user_message";
-    const id = claudePromptId(event["prompt_id"]);
+    const id = projected.turnId;
     let show = true;
     const note = () =>
       observation.run("transcript", () => {
         if (submit && id !== undefined) {
-          const unseen = transcriptWatcher.observeUserPrompt(event.transcript_path, id, hasText);
-          if (hasText) show = unseen;
+          const emitHookMessage = transcriptWatcher.observeUserPromptHook(
+            event.transcript_path,
+            id,
+            hasText,
+          );
+          if (hasText) show = emitHookMessage;
         }
       });
     // Register nonblank text before scanning so its transcript copy stays deduplicated.

@@ -30,7 +30,7 @@ test.each([
   }));
   writeRecords(path);
   watcher.observe(path);
-  watcher.observeUserPrompt(path, "first", false);
+  watcher.observeUserPromptHook(path, "first", false);
   writeRecords(path, nativeUser("first", "native text"), assistant("final reply"));
   finishSafely(() => eventOrder.push("exit"));
   await expect
@@ -66,8 +66,8 @@ test.each([
   writeRecords(path);
   try {
     watcher.observe(path);
-    watcher.observeUserPrompt(path, "first", false);
-    watcher.observeUserPrompt(path, "next", false);
+    watcher.observeUserPromptHook(path, "first", false);
+    watcher.observeUserPromptHook(path, "next", false);
     writeRecords(
       path,
       nativeUser("first", "committed text"),
@@ -86,7 +86,9 @@ test.each([
       ]);
     await expect
       .poll(() => warnings)
-      .toMatchObject([{ code: "transcript_listener_error", agent: "claude", channel: "activity" }]);
+      .toMatchObject([
+        { code: "claude_prompt_listener_error", agent: "claude", channel: "activity" },
+      ]);
   } finally {
     finishSafely();
   }

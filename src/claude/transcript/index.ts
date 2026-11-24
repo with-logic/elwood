@@ -76,6 +76,7 @@ export class ClaudeTranscriptWatcher {
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
     this.lines.turns.seed(path, turnId, () => this.guard.read(path, () => cursor.baselinePrompt()));
+    if (this.lines.turns.correlationDisabled) this.lines.userPrompts.clearUnpaired();
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
     if (recoverTail) {
@@ -88,10 +89,10 @@ export class ClaudeTranscriptWatcher {
     }
     this.ensurePolling();
   }
-  observeUserPrompt(path: string | undefined, id: string, hasText: boolean): boolean {
-    return this.finished || this.lines.turns.correlationDisabled
-      ? hasText
-      : this.lines.userPrompts.observeHook(path, id, hasText);
+  /** Register native submit evidence and decide whether its hook still needs user activity. */
+  observeUserPromptHook(path: string | undefined, id: string, hasText: boolean): boolean {
+    const canRecover = !(this.finished || this.lines.turns.correlationDisabled);
+    return this.lines.userPrompts.observeHook(canRecover ? path : undefined, id, hasText);
   }
 
   scan(): void {
@@ -150,7 +151,7 @@ export class ClaudeTranscriptWatcher {
     try {
       drainToBudget(this.drain, [...this.cursors.values()], this.terminalBudget);
     } finally {
-      this.lines.userPrompts.clear();
+      this.lines.userPrompts.clearUnpaired();
       this.stop();
     }
   }

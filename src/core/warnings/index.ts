@@ -24,13 +24,17 @@ import type {
   ReapErrorCode,
   ResizeErrorCode,
 } from "./reasons.ts";
-import type { TranscriptListenerErrorWarning } from "./transcript.ts";
+import type {
+  ClaudePromptListenerErrorWarning,
+  TranscriptListenerErrorWarning,
+} from "./transcript.ts";
 
 export type ElwoodWarningEvent =
   | QuestionAutomationDisabledWarning
   | QuestionObserverFailedWarning
   | LoginExpiringWarning
   | TranscriptListenerErrorWarning
+  | ClaudePromptListenerErrorWarning
   | ImageCopyRemovalFailedWarning
   | {
       readonly elwoodSessionId: string;
@@ -111,10 +115,7 @@ export type ElwoodWarningEvent =
       readonly code: "transcript_read_error";
       readonly severity: "warning";
       readonly message: string;
-      // The raw fs errno string (or "UNKNOWN") and path only — never raw
-      // transcript content. Per the PRD this is the one error-code field NOT
-      // collapsed to an allowlist. One live warning per contained read error —
-      // never a running count.
+      // Native errno and path only, once per contained read error.
       readonly lastErrorCode: string;
       readonly transcriptPath: string;
       readonly raw: string;

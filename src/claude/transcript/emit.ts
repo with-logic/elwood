@@ -50,18 +50,18 @@ export class LineEmitter {
   emitLines(path: string, text: string, cursor?: TranscriptCursor): void {
     if (text.length === 0) return;
     if (!cursor) {
-      for (const line of text.split(/\r?\n/)) this.emitLine(path, line);
+      for (const line of text.split(/\r?\n/)) this.emitLine(path, line, false);
       return;
     }
     const { lines, startedOversizedDrop } = cursor.takeLines(text);
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
     if (startedOversizedDrop) this.drops.drop(path, "oversized");
-    for (const line of lines) this.emitLine(path, line, true);
+    for (const line of lines) this.emitLine(path, line);
   }
 
   /** Emit one line taken as complete (a transcript's last, un-terminated record at its end). */
-  emitLine(path: string, line: string, committed = false): void {
+  emitLine(path: string, line: string, eligibleForPromptRecovery = true): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
@@ -69,8 +69,9 @@ export class LineEmitter {
       return;
     }
     const turnId = this.turns.observe(path, item);
-    if (this.turns.correlationDisabled) this.userPrompts.clear();
-    if (committed && turnId !== undefined) this.userPrompts.committed(path, turnId, item, line);
+    if (this.turns.correlationDisabled) this.userPrompts.clearUnpaired();
+    if (eligibleForPromptRecovery && turnId !== undefined)
+      this.userPrompts.observeForwardRecord(path, turnId, item, line);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
     if (summaries.length === 0) {

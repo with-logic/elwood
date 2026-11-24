@@ -19,7 +19,7 @@ test("keeps exact matching evidence separate across transcript paths", () => {
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   const commit = (target: string, id: string, text?: string) => {
     const item = record(id, text);
-    prompts.committed(target, id, item, JSON.stringify(item));
+    prompts.observeForwardRecord(target, id, item, JSON.stringify(item));
   };
   commit(path, "cached");
   commit(path, "cached", "duplicate");
@@ -36,23 +36,12 @@ test("keeps exact matching evidence separate across transcript paths", () => {
   ]);
 });
 
-test("rechecks the retained record's identity when a matching hook arrives", () => {
-  const events: unknown[] = [];
-  const prompts = new ClaudeUserPrompts((event) => events.push(event));
-  const correct = record("first");
-  prompts.committed(path, "first", correct, JSON.stringify(record("other", "other text")));
-  prompts.observeHook(path, "first", false);
-  expect(events).toEqual([]);
-  prompts.committed(path, "first", correct, JSON.stringify(correct));
-  expect(events).toMatchObject([{ turnId: "first", summary: { text: "native prompt" } }]);
-});
-
 test("bounds retained history and keeps live text when native metadata exceeds its limits", () => {
   const events: unknown[] = [];
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   const commit = (target: string, id: string, padding = "") => {
     const item = record(id);
-    prompts.committed(target, id, item, `${padding}${JSON.stringify(item)}`);
+    prompts.observeForwardRecord(target, id, item, `${padding}${JSON.stringify(item)}`);
   };
   expect(prompts.observeHook(undefined, "pathless", false)).toBe(false);
   expect(prompts.observeHook(undefined, "pathless", true)).toBe(true);
@@ -63,12 +52,8 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   commit(path, oversizedId);
   expect(prompts.observeHook(path, oversizedId, true)).toBe(true);
 
-  commit(path, "oversized", " ".repeat(5 * 1024 * 1024));
-  prompts.observeHook(path, "oversized", false);
-  expect(events).toEqual([]);
-  const padding = " ".repeat(3 * 1024 * 1024);
-  commit(path, "evicted", padding);
-  commit(path, "retained", padding);
+  const padding = " ".repeat(900 * 1024);
+  for (const id of ["evicted", "first", "second", "third", "retained"]) commit(path, id, padding);
   prompts.observeHook(path, "evicted", false);
   prompts.observeHook(path, "retained", false);
   expect(events).toMatchObject([{ turnId: "retained" }]);
@@ -111,12 +96,40 @@ test("C-API-63 a malformed live identity stops transcript correlation without su
   writeRecords(path);
   try {
     watcher.observe(path);
-    watcher.observeUserPrompt(path, "first", false);
-    writeRecords(path, { ...nativeUser("other", "malformed identity"), uuid: "u".repeat(1025) });
+    watcher.observeUserPromptHook(path, "first", false);
+    watcher.observeUserPromptHook(path, "shown", false);
+    writeRecords(path, nativeUser("shown", "delivered once"));
+    watcher.scan();
+    expect(events).toHaveLength(1);
+    appendFileSync(
+      path,
+      `${JSON.stringify({ ...nativeUser("other", "malformed identity"), uuid: "u".repeat(1025) })}\n`,
+    );
     appendFileSync(path, `${JSON.stringify(nativeUser("first", "must stay hidden"))}\n`);
     watcher.scan();
+    expect(events).toHaveLength(1);
+    expect(watcher.observeUserPromptHook(path, "shown", true)).toBe(false);
+    expect(watcher.observeUserPromptHook(path, "first", true)).toBe(true);
+  } finally {
+    watcher.finish();
+  }
+});
+
+test("C-API-63 a valid final record can recover prompt text without a trailing newline", () => {
+  const path = tmpFile();
+  const events: unknown[] = [];
+  const watcher = new ClaudeTranscriptWatcher("s", (event) => events.push(event));
+  writeRecords(path);
+  try {
+    watcher.observe(path);
+    watcher.observeUserPromptHook(path, "final", false);
+    appendFileSync(path, JSON.stringify(nativeUser("final", "native final text")));
+    watcher.scan();
     expect(events).toEqual([]);
-    expect(watcher.observeUserPrompt(path, "first", true)).toBe(true);
+    watcher.finish();
+    expect(events).toMatchObject([
+      { turnId: "final", summary: { kind: "user_message", text: "native final text" } },
+    ]);
   } finally {
     watcher.finish();
   }

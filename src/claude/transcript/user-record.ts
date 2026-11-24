@@ -1,4 +1,4 @@
-/** Recognize native Claude user records for transcript boundaries and prompt recovery (PRD §5.4). */
+/** Recognize native Claude user records eligible for prompt text recovery (PRD §5.4). */
 import { hasPromptText } from "../../core/activity/prompt-text.ts";
 import { isRecord } from "../../core/predicates.ts";
 
@@ -11,7 +11,7 @@ function userContent(item: unknown): unknown {
   return message["content"];
 }
 
-function nonToolBlock(block: unknown): block is Readonly<Record<string, unknown>> {
+function isNonToolResultBlock(block: unknown): block is Readonly<Record<string, unknown>> {
   return isRecord(block) && block["type"] !== "tool_result";
 }
 
@@ -20,7 +20,7 @@ function userPromptContent(
 ): string | readonly Readonly<Record<string, unknown>>[] | undefined {
   const content = userContent(item);
   if (typeof content === "string") return content;
-  if (Array.isArray(content) && content.length > 0 && content.every(nonToolBlock)) {
+  if (Array.isArray(content) && content.length > 0 && content.every(isNonToolResultBlock)) {
     return content;
   }
   return undefined;

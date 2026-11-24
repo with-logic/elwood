@@ -20,6 +20,8 @@ export type RecoveredUserPrompt = {
 type RecordEvidence = {
   readonly kind: "record";
   readonly bytes: Buffer;
+  readonly text: string;
+  readonly size: number;
 };
 type PromptEvidence = RecordEvidence | { readonly kind: "hook" };
 
@@ -33,9 +35,8 @@ export class ClaudeUserPrompts {
     this.emit = emit;
   }
 
-  clear(): void {
+  clearUnpaired(): void {
     this.entries.clear();
-    this.shown.clear();
     this.retainedBytes = 0;
   }
 
@@ -43,42 +44,49 @@ export class ClaudeUserPrompts {
   observeHook(path: string | undefined, turnId: string, hasText: boolean): boolean {
     if (Buffer.byteLength(turnId) > maxIdentifierBytes) return hasText;
     if (this.shown.has(turnId)) return false;
-    const key = promptKey(path, turnId);
+    const identity = promptLocation(path, turnId);
     if (hasText) {
       this.rememberShown(turnId);
-      this.remove(key);
+      this.remove(identity?.key);
       return true;
     }
-    if (key === undefined) return false;
+    if (!identity) return false;
+    const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") {
-      // This buffer is an owned copy of the exact JSONL line checked at insertion.
+      // The owned bytes were validated together with the stored text at insertion.
       const item: unknown = JSON.parse(known.bytes.toString("utf8"));
-      const text = matchingPromptText(item, turnId);
-      if (text !== undefined) {
-        this.publish(path!, turnId, key, item, text);
-        return false;
-      }
-      this.remove(key);
-    }
-    if (known?.kind !== "hook") this.remember(key, { kind: "hook" });
+      this.publish(identity.path, turnId, key, item, known.text);
+    } else if (known === undefined) this.remember(key, { kind: "hook" });
     return false;
   }
 
-  committed(path: string, turnId: string, item: unknown, line: string): void {
-    if (this.shown.has(turnId)) return;
-    const key = promptKey(path, turnId);
-    if (key === undefined) return;
+  observeForwardRecord(path: string, turnId: string, item: unknown, line: string): void {
+    if (
+      !isRecord(item) ||
+      item["type"] !== "user" ||
+      item["promptId"] !== turnId ||
+      this.shown.has(turnId)
+    )
+      return;
+    const identity = promptLocation(path, turnId);
+    if (!identity) return;
+    const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") return;
-    const text = matchingPromptText(item, turnId);
+    const text = userPromptText(item);
     if (text === undefined) return;
     if (known?.kind === "hook") {
       this.publish(path, turnId, key, item, text);
       return;
     }
-    const bytes = Buffer.byteLength(line);
-    if (bytes <= maxRetainedBytes) this.remember(key, { kind: "record", bytes: Buffer.from(line) });
+    const bytes = Buffer.from(line);
+    this.remember(key, {
+      kind: "record",
+      bytes,
+      text,
+      size: bytes.length + Buffer.byteLength(text),
+    });
   }
 
   private publish(path: string, turnId: string, key: string, item: unknown, text: string): void {
@@ -99,7 +107,7 @@ export class ClaudeUserPrompts {
 
   private remember(key: string, evidence: PromptEvidence): void {
     this.entries.set(key, evidence);
-    if (evidence.kind === "record") this.retainedBytes += evidence.bytes.length;
+    if (evidence.kind === "record") this.retainedBytes += evidence.size;
     while (this.entries.size > maxEntries || this.retainedBytes > maxRetainedBytes) {
       this.remove(this.entries.keys().next().value);
     }
@@ -108,20 +116,16 @@ export class ClaudeUserPrompts {
   private remove(key: string | undefined): void {
     if (key === undefined) return;
     const evidence = this.entries.get(key);
-    if (evidence?.kind === "record") this.retainedBytes -= evidence.bytes.length;
+    if (evidence?.kind === "record") this.retainedBytes -= evidence.size;
     this.entries.delete(key);
   }
 }
 
-function matchingPromptText(item: unknown, turnId: string): string | undefined {
-  return isRecord(item) && item["promptId"] === turnId ? userPromptText(item) : undefined;
-}
-
-function promptKey(path: string | undefined, turnId: string): string | undefined {
+function promptLocation(path: string | undefined, turnId: string) {
   return path !== undefined &&
     isAbsolute(path) &&
     Buffer.byteLength(path) <= maxPathBytes &&
     Buffer.byteLength(turnId) <= maxIdentifierBytes
-    ? JSON.stringify([path, turnId])
+    ? { path, key: JSON.stringify([path, turnId]) }
     : undefined;
 }
