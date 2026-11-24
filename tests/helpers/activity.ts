@@ -15,6 +15,17 @@ export function activity(partial: Partial<FixtureActivity> = {}) {
     label: "assistant",
     ...fields,
   } as const;
+  if (kind === "user_message" && fields.source === "transcript") {
+    return {
+      ...base,
+      kind,
+      agent: "claude",
+      source: "transcript",
+      label: "user",
+      transcriptPath: fields.transcriptPath ?? "/fixture.jsonl",
+      text: fields.text ?? "fixture prompt",
+    } as const;
+  }
   return kind === "user_message"
     ? ({
         ...base,

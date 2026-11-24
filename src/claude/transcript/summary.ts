@@ -37,10 +37,8 @@ type ClaudeTranscriptRole = "assistant" | "user";
 /**
  * Expands one transcript record into zero or more summaries. A Claude record is
  * an Anthropic Messages-API turn (`{ type, message: { role, content } }`) whose
- * `content` is `text` / `tool_use` / `tool_result` blocks. Only committed
- * ASSISTANT text and tool calls/results become activity (C-CLAUDE-15): user
- * prose stays hook-sourced from `UserPromptSubmit`, so it is NOT emitted here
- * (that would double every submitted prompt). Non-message records yield nothing.
+ * `content` holds text, tool calls, and results. User text uses the separate
+ * exact prompt correlation path (C-API-63). Non-message records yield nothing.
  */
 export function summarizeClaudeRecord(item: unknown): readonly ClaudeTranscriptSummary[] {
   const record = asRecord(item);
@@ -92,7 +90,7 @@ function reasoning(role: ClaudeTranscriptRole, text: string): readonly ClaudeTra
   return [{ kind: "reasoning", label: "thinking", text }];
 }
 
-/** Assistant prose only: user text is intentionally dropped (hook-sourced). */
+/** Ordinary transcript summaries include assistant prose only. */
 function assistantText(
   role: ClaudeTranscriptRole,
   text: string,

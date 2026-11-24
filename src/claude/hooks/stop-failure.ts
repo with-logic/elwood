@@ -9,6 +9,7 @@ import {
   defaultBoundarySignal,
   type TurnBoundaryHook,
 } from "../../core/simple/turn-types.ts";
+import { claudePromptId } from "./prompt-id.ts";
 
 /** Accepts the structural diagnostic fields so internal adapters share one selector. */
 export function stopFailureDiagnostic(event: {
@@ -43,16 +44,10 @@ type ClaudeBoundaryHook = TurnBoundaryHook & {
 export const claudeBoundarySignal: BoundarySignalReader = (event: ClaudeBoundaryHook) => {
   if (event.hook_event_name !== "StopFailure") return defaultBoundarySignal(event);
   const { message, agentError } = stopFailureDiagnostic(event);
-  const rejected = promptId(event);
+  const rejected = claudePromptId(event.prompt_id);
   const belongsTo = (acceptedBy: ClaudeBoundaryHook) => {
-    const own = promptId(acceptedBy);
+    const own = claudePromptId(acceptedBy.prompt_id);
     return rejected === undefined || own === undefined || own === rejected;
   };
   return { text: "", failure: { message, agentError, belongsTo } };
 };
-
-function promptId(event: ClaudeBoundaryHook): string | undefined {
-  return typeof event.prompt_id === "string" && event.prompt_id !== ""
-    ? event.prompt_id
-    : undefined;
-}

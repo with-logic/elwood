@@ -1,5 +1,6 @@
 /** Correlate committed Claude records within retained-identity limits (PRD §5.4). */
 import { isRecord } from "../../core/predicates.ts";
+import { claudePromptId } from "../hooks/prompt-id.ts";
 import type { BaselinePrompt } from "./baseline.ts";
 
 const maxTurnRecords = 4_096;
@@ -40,7 +41,7 @@ export class ClaudeTranscriptTurns {
   /** Native IDs win; every inherited ID needs a known parent UUID, never a pending hook. */
   observe(path: string, item: unknown): string | undefined {
     if (!isRecord(item)) return undefined;
-    const native = nonempty(item["promptId"]);
+    const native = claudePromptId(item["promptId"]);
     const parent = nonempty(item["parentUuid"]);
     const uuid = nonempty(item["uuid"]);
     if (![native, parent, uuid].every(withinIdentifierLimit)) return this.disable();

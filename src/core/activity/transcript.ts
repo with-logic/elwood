@@ -51,6 +51,19 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
 export function activityFromClaudeTranscript(
   event: ClaudeTranscriptEvent,
 ): ElwoodActivityEvent & ClaudeActivityFields {
+  if (event.summary.kind === "user_message") {
+    return {
+      elwoodSessionId: event.elwoodSessionId,
+      agent: "claude",
+      source: "transcript",
+      kind: "user_message",
+      label: "user",
+      text: event.summary.text,
+      transcriptPath: event.path,
+      ...optional(event.turnId, "turnId"),
+      raw: event.item,
+    };
+  }
   const base = {
     elwoodSessionId: event.elwoodSessionId,
     agent: "claude",
@@ -70,12 +83,13 @@ type ClaudeSummary = ClaudeTranscriptEvent["summary"];
 type ClaudeActivityFields<Summary extends ClaudeSummary = ClaudeSummary> =
   Summary extends ClaudeSummary ? Omit<Summary, "label"> : never;
 
-function claudeActivityFields(summary: ClaudeSummary): ClaudeActivityFields {
+function claudeActivityFields(
+  summary: Exclude<ClaudeSummary, { readonly kind: "user_message" }>,
+): Exclude<ClaudeActivityFields, { readonly kind: "user_message" }> {
   switch (summary.kind) {
     case "other":
       return { kind: "other" };
     case "assistant_message":
-    case "user_message":
     case "reasoning":
       return { kind: summary.kind, text: summary.text };
     case "tool_call":
