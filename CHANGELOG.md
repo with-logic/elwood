@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve native prompt holds and readiness while an embedded terminal views
+  scrollback.
 - Recover Claude prompt text from matching user records in the live transcript
   when the native submission hook does not carry it.
 

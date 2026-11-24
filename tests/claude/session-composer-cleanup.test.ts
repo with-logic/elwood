@@ -13,7 +13,7 @@ afterEach(() => {
   resetFakes();
 });
 
-async function staged() {
+async function staged(replyToClear = true) {
   installFakes();
   const session = await startClaude({ cwd: tempDir() });
   if (!(session instanceof AgentSessionBase)) throw new Error("session expected");
@@ -22,7 +22,8 @@ async function staged() {
   const write = pty.write.bind(pty);
   vi.spyOn(pty, "write").mockImplementation((data) => {
     write(data);
-    if (String(data) === clear) pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
+    if (replyToClear && String(data) === clear)
+      pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
   });
   const send = ControlQueue.prototype.send;
   vi.spyOn(ControlQueue.prototype, "send").mockImplementation(function (
@@ -108,6 +109,47 @@ test.each([
       if (mode === "clear")
         expect(writes.indexOf(clear)).toBeLessThan(writes.indexOf("\u001b[200~next\u001b[201~"));
     }
+  } finally {
+    vi.useRealTimers();
+    await session.teardown();
+  }
+});
+
+test("C-API-56 a resize or host repaint cannot acknowledge draft cleanup", async () => {
+  const { session, abort } = await staged(false);
+  const pty = ptys[0]!;
+  const composer = `\u001b[2J\u001b[H${claudeTty(claudeComposer)}`;
+  try {
+    pty.emitData(composer);
+    await session.terminal.settled();
+    vi.useFakeTimers();
+    const submission = session.sendPrompt("old");
+    const rejected = expect(submission).rejects.toThrow("cancelled");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(pty.writes).toEqual(["\u001b[200~old\u001b[201~"]);
+    session.inputBlocking = true;
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(200);
+    await rejected;
+    session.inputBlocking = false;
+    const successor = session.sendPrompt("next");
+    void successor.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(pty.writes.at(-1)).toBe(clear);
+    const { xterm } = session.terminal;
+    const width = xterm.cols;
+    xterm.resize(width + 2, xterm.rows);
+    xterm.resize(width, xterm.rows);
+    await vi.advanceTimersByTimeAsync(350);
+    expect(pty.writes.at(-1)).toBe(clear);
+    const hostRepaint = session.terminal.writeOutput(composer);
+    await vi.advanceTimersByTimeAsync(100);
+    await hostRepaint;
+    expect(pty.writes.at(-1)).toBe(clear);
+    pty.emitData(composer);
+    await vi.advanceTimersByTimeAsync(350);
+    await successor;
+    expect(pty.writes.slice(-2)).toEqual(["\u001b[200~next\u001b[201~", "\r"]);
   } finally {
     vi.useRealTimers();
     await session.teardown();

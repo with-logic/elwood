@@ -1,7 +1,7 @@
 /** Codex recovery matches sanitized text or images only within the live idle composer (PRD §5.3). */
 import { imageChipCount } from "../../core/images/chip-wait.ts";
 import {
-  readIdleComposerFrame,
+  readCandidateComposerFrame,
   readStagedComposerFrame,
   readStagedWhitespace,
 } from "../../core/input/staged-composer.ts";
@@ -18,9 +18,9 @@ function prepareCodexStaged(terminal: ElwoodTerminal, payload: string): () => bo
   let whitespaceOnly: boolean | undefined;
   const matchesEmptyInput = codexEmptyInputMatcherFor(terminal);
   return () => {
-    const current = readIdleComposerFrame(terminal, codexScreenFactTable);
+    const current = readCandidateComposerFrame(terminal, codexScreenFactTable);
     const prompt = current?.frame.lines.findLast(
-      (row, index) => index <= current.viewportCursorRow && /^[›»](?:[ \u00a0]|$)/.test(row),
+      (row, index) => index <= current.cursorRow && /^[›»](?:[ \u00a0]|$)/.test(row),
     );
     const placeholder = `${prompt?.charAt(0) ?? "›"} Ask Codex to do anything`;
     if (readStagedWhitespace(current, matchesEmptyInput, placeholder)) {

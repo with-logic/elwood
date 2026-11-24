@@ -28,10 +28,16 @@ test("C-API-55 terminal observation and picker-owned writes preserve input autho
     expect(terminal.title).toBe("Picker title");
     expect(terminal.snapshot().text).toContain("screen");
     expect(terminal.renderFailed).toBe(false);
+    await terminal.writeOutput("\r\n".repeat(95));
+    const { active } = terminal.xterm.buffer;
+    terminal.xterm.scrollToLine(5);
+    expect(active.viewportY).toBe(5);
     await owner.automated.sendInput("/model");
+    expect(active.viewportY).toBe(5);
     expect(writes).toEqual(["/model"]);
     expect(signal.aborted).toBe(false);
     await terminal.sendInput("human");
+    expect(active.viewportY).toBe(active.baseY);
     expect(signal.reason).toMatchObject({ code: "model_automation_failed" });
     const next = owner.signal();
     terminal.xterm.input("replacement");

@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import {
   asScreen,
   claudeEffortCacheConfirmation,
@@ -37,12 +38,14 @@ describe("ClaudeSessionApi model picker", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    await viewTerminalHistory(session.terminal, ptys[0]!);
     const listing = session.listModels({ timeoutMs: 4_000 });
     await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(claudePicker));
     await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
     ptys[0]!.emitData(asScreen("❯ "));
     const options = await listing;
+    expect(session.terminal.snapshot().text).toContain("Historical output");
     expect(options.map((option) => option.id)).toEqual([
       "default",
       "opus",

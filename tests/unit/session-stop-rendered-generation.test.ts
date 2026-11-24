@@ -9,6 +9,7 @@ import {
   codexSmallComposer,
   codexTty,
 } from "../fixtures/trust-composer.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -21,6 +22,7 @@ for (const agent of ["claude", "codex"] as const) {
   test.each([
     "idle",
     "retained-banner",
+    "scrolled-retained-banner",
     "pending-banner",
     "fresh-banner",
     "write-working",
@@ -90,13 +92,19 @@ for (const agent of ["claude", "codex"] as const) {
         });
       } else await codex.becomeReady(session.elwoodSessionId, cwd);
       await expect.poll(() => session.status).toBe("ready");
+      if (mode === "scrolled-retained-banner") {
+        const terminal = session.terminal;
+        const { isScrolled } = await viewTerminalHistory(terminal, pty);
+        expect(isScrolled()).toBe(true);
+      }
       vi.useFakeTimers();
       const first = session.sendPrompt("first");
       await vi.advanceTimersByTimeAsync(200);
       await settled("first physical input", first);
       await paint(working);
       expect(session.status).toBe("running");
-      if (mode === "retained-banner") await paint(banner);
+      const retainsBanner = mode === "retained-banner" || mode === "scrolled-retained-banner";
+      if (retainsBanner) await paint(banner);
       handleStop = async () => {
         if (mode === "pending-banner") {
           pty.emitData("\u001b[?2026h");
@@ -137,7 +145,7 @@ for (const agent of ["claude", "codex"] as const) {
         expect(pty.writes.some((value) => value.includes("queued successor"))).toBe(false);
         await paint(working);
         await paint("");
-      } else if (mode === "retained-banner" || mode === "pending-banner") {
+      } else if (retainsBanner || mode === "pending-banner") {
         await paint(banner);
         expect(pty.writes.some((value) => value.includes("queued successor"))).toBe(false);
         await paint("");

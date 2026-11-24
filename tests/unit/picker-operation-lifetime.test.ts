@@ -45,7 +45,7 @@ test("C-API-55 a failed model command never authorizes cleanup of a foreign pick
   expect(await result).toBe(failedWrite);
   expect(writes).toEqual([]);
   expect(picker.blocksInput()).toBe(false);
-  expect(picker.foreignDialogVisible()).toBe(true);
+  expect(picker.foreignPickerHoldsInput()).toBe(true);
   queue.close();
 });
 

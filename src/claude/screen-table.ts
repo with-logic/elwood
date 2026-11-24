@@ -7,8 +7,7 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
-import { cursorViewportRow } from "../terminal/coordinates.ts";
-import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
+import { settledCursorVisible, settledLiveSnapshot } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
 import { claudeComposerFooterRow } from "./composer/footer.ts";
@@ -50,7 +49,7 @@ export function liveClaudeClearance(
 ): TrustClearance {
   return (text) => {
     const terminal = readTerminal();
-    const frame = currentRenderedFrame(terminal);
+    const frame = settledLiveSnapshot(terminal);
     if (
       frame?.text !== text ||
       !settledCursorVisible(terminal.xterm) ||
@@ -58,10 +57,8 @@ export function liveClaudeClearance(
       claudeWorkingTitle.test(terminal.title)
     )
       return false;
-    const buffer = terminal.xterm.buffer.active;
-    // cursorY is relative to baseY; snapshot row zero starts at viewportY.
-    const viewportCursorRow = cursorViewportRow(frame.cursorY, buffer);
-    const composer = frame.lines[viewportCursorRow] ?? "";
+    // xterm keeps cursorY inside the live row dimensions captured above.
+    const composer = frame.lines[frame.cursorY]!;
     return composer.startsWith("❯") && claudeComposerRow.test(composer) && textClearance(text);
   };
 }

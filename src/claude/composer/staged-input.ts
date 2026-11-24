@@ -9,8 +9,8 @@ import { claudeTokenCount } from "./footer.ts";
 const stagedFooter = new RegExp(
   String.raw`^\s*(?:paste again to expand(?: +${claudeTokenCount})?|Ctrl\+Y to paste deleted text|ctrl\+g to edit in Nvim)\s*$`,
 );
-const matchesEmptyInputWithStagedFooter = (rows: readonly string[], viewportCursorRow: number) =>
-  claudeEmptyInputRows(rows, viewportCursorRow, stagedFooter);
+const matchesEmptyInputWithStagedFooter = (rows: readonly string[], cursorRow: number) =>
+  claudeEmptyInputRows(rows, cursorRow, stagedFooter);
 
 export function claudeInputStaged(terminal: ElwoodTerminal): boolean {
   return /\[Pasted text|\[Image #\d+\]/.test(

@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { preparePasteNudges } from "../../src/core/input/paste-nudge.ts";
 import {
   captureRenderProgress,
-  currentRenderedFrame,
+  settledLiveSnapshot,
   subscribeRender,
 } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
@@ -18,7 +18,7 @@ test("C-API-31 completed output immediately releases awaited input and removes i
     prepareStaged: () => () => false,
     emptyFrame: () => {
       observations += 1;
-      return currentRenderedFrame(terminal);
+      return settledLiveSnapshot(terminal);
     },
   };
   await terminal.writeOutput("before");

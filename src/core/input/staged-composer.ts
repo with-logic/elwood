@@ -1,33 +1,32 @@
 /** Read only a live idle native draft, excluding submitted history (PRD §5.3, C-API-31). */
-import { cursorViewportRow } from "../../terminal/coordinates.ts";
-import { currentRenderedFrame, settledCursorVisible } from "../../terminal/cursor.ts";
+import { settledCursorVisible, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { readScreenFacts, type ScreenFactTable } from "../screen-facts.ts";
 
 export function readStagedComposer(
   terminal: ElwoodTerminal,
-  matchesEmptyInput: (rows: readonly string[], viewportCursorRow: number) => boolean,
+  matchesEmptyInput: (rows: readonly string[], cursorRow: number) => boolean,
   table: ScreenFactTable,
   emptyRow: string,
 ): string | undefined {
   return readStagedComposerFrame(
-    readIdleComposerFrame(terminal, table),
+    readCandidateComposerFrame(terminal, table),
     matchesEmptyInput,
     emptyRow,
   );
 }
 
-/** Reuse one completed idle-frame classification for normal and whitespace drafts. */
+/** Read staged text from settled candidate rows and verify composer geometry. */
 export function readStagedComposerFrame(
-  current: ReturnType<typeof readIdleComposerFrame>,
-  matchesEmptyInput: (rows: readonly string[], viewportCursorRow: number) => boolean,
+  current: ReturnType<typeof readCandidateComposerFrame>,
+  matchesEmptyInput: (rows: readonly string[], cursorRow: number) => boolean,
   emptyRow: string,
 ): string | undefined {
   if (!current) return undefined;
-  const { frame, viewportCursorRow } = current;
+  const { frame, cursorRow } = current;
   // Placeholder-shaped input remains ambiguous even with a stale advanced cursor.
-  if (matchesEmptyInput(frame.lines, viewportCursorRow)) return undefined;
-  const rows = frame.lines.slice(0, viewportCursorRow + 1);
+  if (matchesEmptyInput(frame.lines, cursorRow)) return undefined;
+  const rows = frame.lines.slice(0, cursorRow + 1);
   const start = rows.findLastIndex(
     (row) => row.startsWith(emptyRow.charAt(0)) && /^[ \u00a0]$/.test(row.charAt(1)),
   );
@@ -37,35 +36,33 @@ export function readStagedComposerFrame(
   const normalized = [
     ...frame.lines.slice(0, start),
     emptyRow,
-    ...frame.lines.slice(viewportCursorRow + 1),
+    ...frame.lines.slice(cursorRow + 1),
   ];
   return matchesEmptyInput(normalized, start) ? rows.slice(start).join("\n") : undefined;
 }
 
 /** A whitespace draft is visible only through its advanced caret on the live prompt row. */
 export function readStagedWhitespace(
-  current: ReturnType<typeof readIdleComposerFrame>,
-  matchesEmptyInput: (rows: readonly string[], viewportCursorRow: number) => boolean,
+  current: ReturnType<typeof readCandidateComposerFrame>,
+  matchesEmptyInput: (rows: readonly string[], cursorRow: number) => boolean,
   emptyRow: string,
 ): boolean {
   if (!current || current.frame.cursorX <= 2) return false;
-  const { frame, viewportCursorRow } = current;
-  const row = frame.lines[viewportCursorRow]!;
+  const { frame, cursorRow, cursorLine: row } = current;
   if (row.charAt(0) !== emptyRow.charAt(0) || !/^[ \u00a0]*$/.test(row.slice(1))) return false;
   const normalized = [...frame.lines];
-  normalized[viewportCursorRow] = emptyRow;
-  return matchesEmptyInput(normalized, viewportCursorRow);
+  normalized[cursorRow] = emptyRow;
+  return matchesEmptyInput(normalized, cursorRow);
 }
 
-export function readIdleComposerFrame(terminal: ElwoodTerminal, table: ScreenFactTable) {
-  const frame = currentRenderedFrame(terminal);
+/** Candidate live rows. The caller still verifies native composer geometry. */
+export function readCandidateComposerFrame(terminal: ElwoodTerminal, table: ScreenFactTable) {
+  const frame = settledLiveSnapshot(terminal);
   // The native caret prefix occupies two cells; staged text/chips advance beyond them.
   if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX < 2) return undefined;
   const { facts } = readScreenFacts(table, { text: frame.text, title: terminal.title });
   if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
-  const buffer = terminal.xterm.buffer.active;
-  // xterm cursorY is buffer-relative; translate to the snapshot viewport row.
-  const viewportCursorRow = cursorViewportRow(frame.cursorY, buffer);
-  if (viewportCursorRow >= frame.lines.length) return undefined;
-  return { frame, viewportCursorRow };
+  const cursorRow = frame.cursorY;
+  // The live snapshot has xterm's actual row count, which bounds cursorY.
+  return { frame, cursorRow, cursorLine: frame.lines[cursorRow]! };
 }

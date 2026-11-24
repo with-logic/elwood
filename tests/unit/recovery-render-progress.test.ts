@@ -1,7 +1,7 @@
 /** Recovery freshness tracks completed native output, not snapshot geometry (C-API-31). */
 import { expect, test, vi } from "vitest";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
-import { captureRenderProgress, currentRenderedFrame } from "../../src/terminal/cursor.ts";
+import { captureRenderProgress, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 test("C-API-31 output already received at Enter and viewport changes cannot authorize recovery", async () => {
@@ -34,12 +34,14 @@ test("C-API-31 scroll-only viewport changes remain pending until later native ou
   const terminal = createHeadlessTerminal({ cols: 80, rows: 3 }, () => undefined);
   try {
     await terminal.writeOutput("history one\r\nhistory two\r\nhistory three\r\ndraft");
-    const before = currentRenderedFrame(terminal);
+    const before = settledLiveSnapshot(terminal);
+    const publicBefore = terminal.snapshot().text;
     expect(terminal.xterm.buffer.active.viewportY).toBeGreaterThan(0);
     const progressed = captureRenderProgress(terminal);
     terminal.xterm.scrollToLine(0);
     expect(terminal.xterm.buffer.active.viewportY).toBe(0);
-    expect(currentRenderedFrame(terminal)).not.toBe(before);
+    expect(settledLiveSnapshot(terminal)).toBe(before);
+    expect(terminal.snapshot().text).not.toBe(publicBefore);
     expect(progressed()).toBe(false);
     await terminal.writeOutput("\r\nfresh draft");
     expect(progressed()).toBe(true);

@@ -93,7 +93,7 @@ export class CodexStartupPromptResponder {
   /**
    * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
    * where a trust gate must withhold unrelated automated keys.
-   * Live adapters must supply `readTrustFrame` from `currentRenderedFrame`, returning
+   * Live adapters must supply `readTrustFrame` from `settledLiveSnapshot`, returning
    * undefined for pending rendering, synchronized output, or render failure.
    * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
    * reader must not replace the settlement-aware reader in a live session.

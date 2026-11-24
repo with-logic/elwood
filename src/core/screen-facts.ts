@@ -34,7 +34,7 @@ export type ScreenFactRule = {
   /** Stable id surfaced in diagnostics and explain traces. */
   readonly id: string;
   readonly fact: ScreenFactKind;
-  /** Where the patterns are evaluated; defaults to the viewport text. */
+  /** Where the patterns are evaluated; defaults to the supplied frame text. */
   readonly region?: ScreenFactRegion;
   /** Evaluated only while no earlier rule has set this fact, so a specific rule keeps its label. */
   readonly fallback?: true;

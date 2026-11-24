@@ -1,6 +1,6 @@
 /**
  * Rendered-TUI turn-state watching driven by adapter screen-fact tables for
- * hook-independent turn boundaries. Frames carry both the viewport text and
+ * hook-independent turn boundaries. Frames carry the live terminal rows and
  * the OSC window title, so a width-independent title spinner can reveal a
  * turn the elided footer hides.
  * Implements PRD §5.3 and C-TURN-01 through C-TURN-05.

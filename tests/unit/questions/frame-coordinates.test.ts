@@ -1,9 +1,9 @@
-/** Native question coordinates and visibility belong to one viewport (PRD §4.1). */
+/** Native question coordinates and visibility belong to the live terminal (PRD §4.1). */
 import { expect, test } from "vitest";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 
-test("scrollback maps the native cursor to its visible snapshot row and retains visibility", async () => {
+test("scrollback preserves the live question cursor and the public viewport", async () => {
   const terminal = createHeadlessTerminal({ cols: 30, rows: 4 }, () => {});
   try {
     await terminal.writeOutput(
@@ -14,7 +14,8 @@ test("scrollback maps the native cursor to its visible snapshot row and retains 
     expect(buffer.baseY - buffer.viewportY).toBe(2);
     const current = readQuestionFrame(terminal)!;
     expect(current.cursorY).toBe(1);
-    expect(current.cursorRow).toBe(3);
+    expect(current.cursorRow).toBe(1);
+    expect(terminal.snapshot().lines[1]).toContain("line-5");
     expect(current.lines[current.cursorRow]).toContain("line-7");
     expect(current.cursorVisible).toBe(true);
     await terminal.writeOutput("\x1b[?25l");

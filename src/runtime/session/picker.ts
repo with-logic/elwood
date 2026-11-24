@@ -28,21 +28,10 @@ export class PickerTransactions {
   private readonly survivorHold = new PickerHold();
   constructor(deps: PickerDeps) {
     this.deps = deps;
-    deps.observeRendered?.((read) => this.foreignDialogVisible(read));
+    deps.observeRendered?.((read) => this.foreignPickerHoldsInput(read));
   }
 
-  /**
-   * Whether a model dialog is on screen that queued input must not be written into.
-   *
-   * TWO cases, and the difference matters. A SURVIVOR is a dialog our own cleanup could not
-   * cancel, or what its cleanup left on a frame that is not positively clear (a blank or
-   * half-painted repaint): it is ours, and it is remembered until the composer is clear. A
-   * dialog nobody here opened — a human who typed `/model` themselves — is NOT ours and
-   * never becomes a survivor, but Enter on it still applies its highlighted row, and Escape
-   * still discards the human's state. So writes are held on any visible model dialog,
-   * whoever opened it; ownership decides what Elwood may DRIVE, not what it may safely type
-   * over (C-API-55).
-   */
+  /** Hold input for a picker that survived Elwood's cleanup until verified clearance. */
   blocksInput(): boolean {
     if (this.survivor === undefined) return false;
     const text = this.deps.terminal.snapshot().text;
@@ -65,14 +54,11 @@ export class PickerTransactions {
   }
 
   /**
-   * Whether a model dialog nobody here opened is on screen — a human who typed `/model`
-   * themselves. It is NOT ours, so it never becomes a `survivor` and must not suppress
-   * readiness (that would deadlock our own picker, whose dialog is visible by design).
-   * But Enter on it still applies its highlighted row and Escape still discards the
-   * human's state, so a WRITE that is not part of a picker transaction — `/login`
-   * recovery, a queued paste — must be withheld while it is up (C-API-55).
+   * Observe a human-opened model picker and hold ordinary writes through ambiguous
+   * redraws until the live composer verifies clearance. Picker ownership and
+   * readiness continue to use their own checks (C-API-55).
    */
-  foreignDialogVisible(read?: () => string): boolean {
+  foreignPickerHoldsInput(read?: () => string): boolean {
     if (this.survivor !== undefined) return false;
     if (this.active?.progress.commandSubmitted && !this.active.signal.aborted) return false;
     return this.foreign.observe(read?.() ?? this.deps.terminal.snapshot().text, this.deps.picker());

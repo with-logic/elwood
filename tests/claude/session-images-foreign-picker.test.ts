@@ -20,6 +20,7 @@ const { installFakes, ptys, resetFakes, tempDir } = await import("./helpers.ts")
 
 import { claudeTty } from "../fixtures/trust-composer.ts";
 
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { asScreen, claudePicker } from "../helpers/model-pickers.ts";
 
 afterEach(() => {
@@ -30,7 +31,7 @@ afterEach(() => {
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const paste = (text: string) => `\u001b[200~${text}\u001b[201~`;
 
-test("C-API-44 image and text writes wait for a foreign model picker to close", async () => {
+test("C-API-44 image and text wait for a live model picker while history stays selected", async () => {
   installFakes();
   const cwd = tempDir();
   const image = join(cwd, "shot.png");
@@ -46,6 +47,7 @@ test("C-API-44 image and text writes wait for a foreign model picker to close", 
       load_reason: "session_start",
     });
     await expect.poll(() => session.status).toBe("ready");
+    await viewTerminalHistory(session.terminal, ptys[0]!);
     ptys[0]!.emitData(asScreen(claudePicker));
     await session.terminal.settled();
     const sent = session.sendMessage("caption", { images: [{ path: image }] });
@@ -64,6 +66,7 @@ test("C-API-44 image and text writes wait for a foreign model picker to close", 
     await expect.poll(() => ptys[0]!.writes).toEqual([paste(image)]);
     ptys[0]!.emitData("\u001b[999;1H\u001b[K❯ [Image #1]");
     await sent;
+    expect(session.terminal.snapshot().text).toContain("Historical output");
     expect(ptys[0]!.writes).toEqual([paste(image), paste("caption"), "\r"]);
   } finally {
     await session.stop();

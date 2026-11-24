@@ -2,6 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -135,4 +136,22 @@ test("C-CLAUDE-23 wrapped notices above the native composer preserve its cursor 
     "Claude Code v2.1.305\n⚠ Your login expires in\n3 days · run /login to renew\n───\n❯ \n───\n  ⏸ manual mode on\nYour login expires in\n1 day · run /login to renew";
   ptys[0]!.emitData(`${asScreen(screen)}\u001b[?25h\u001b[5;3H`);
   await expect.poll(() => warnings).toMatchObject([{ code: "login_expiring", expiresInDays: 1 }]);
+});
+
+test("C-CLAUDE-23 live composer cursor proves a renewal footer while viewing history", async () => {
+  installFakes();
+  const session = await startClaude({ cwd: tempDir() });
+  const warnings: unknown[] = [];
+  session.on("warning", (event) => warnings.push(event));
+  try {
+    const { isScrolled, paint } = await viewTerminalHistory(session.terminal, ptys[0]!);
+    await paint("❯ \r\n");
+    await paint(
+      `───\r\n❯ \r\n───\r\n  ⏸ manual mode on\r\nYour login expires in 1 day · run /login to renew\u001b[?25h\u001b[2;3H`,
+    );
+    expect(isScrolled()).toBe(true);
+    expect(warnings).toMatchObject([{ code: "login_expiring", expiresInDays: 1 }]);
+  } finally {
+    await session.stop();
+  }
 });

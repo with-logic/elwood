@@ -2,55 +2,51 @@
 import xtermHeadless from "@xterm/headless";
 import { expect, test, vi } from "vitest";
 import {
+  cachedLiveSnapshot,
   captureRenderProgress,
-  currentRenderedFrame,
   hasUnknownOrNonPristineOutput,
   RenderCursor,
-  renderedSnapshot,
+  settledLiveSnapshot,
   subscribeRender,
 } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on output and resize", async () => {
   const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, () => undefined);
-  const capture = vi.spyOn(terminal, "snapshot");
   try {
-    expect(currentRenderedFrame(terminal)).toBeUndefined();
+    expect(settledLiveSnapshot(terminal)).toBeUndefined();
     expect(hasUnknownOrNonPristineOutput(terminal)).toBe(false);
     await terminal.writeOutput("first");
     expect(hasUnknownOrNonPristineOutput(terminal)).toBe(true);
-    const first = renderedSnapshot(terminal);
-    expect(currentRenderedFrame(terminal)).toBe(first);
-    expect(renderedSnapshot(terminal)).toBe(first);
-    expect(capture).toHaveBeenCalledTimes(1);
+    const first = cachedLiveSnapshot(terminal);
+    expect(settledLiveSnapshot(terminal)).toBe(first);
+    expect(cachedLiveSnapshot(terminal)).toBe(first);
     const pending = terminal.writeOutput(" second");
-    expect(currentRenderedFrame(terminal)).toBeUndefined();
+    expect(settledLiveSnapshot(terminal)).toBeUndefined();
     await pending;
-    const second = currentRenderedFrame(terminal);
+    const second = settledLiveSnapshot(terminal);
     expect(second?.text).toContain("first second");
     expect(second).not.toBe(first);
     terminal.resize({ cols: 30, rows: 5 });
-    const resized = currentRenderedFrame(terminal);
+    const resized = settledLiveSnapshot(terminal);
     expect(resized?.cols).toBe(30);
     expect(resized?.rows).toBe(5);
     expect(resized).not.toBe(second);
     await terminal.writeOutput("\u001b[?2026h");
-    expect(currentRenderedFrame(terminal)).toBeUndefined();
+    expect(settledLiveSnapshot(terminal)).toBeUndefined();
     await terminal.writeOutput("\u001b[?2026l");
-    expect(currentRenderedFrame(terminal)).toBeDefined();
+    expect(settledLiveSnapshot(terminal)).toBeDefined();
     vi.spyOn(terminal.xterm, "write").mockImplementationOnce(() => {
       throw new Error("render failed");
     });
     await expect(terminal.writeOutput("failed")).rejects.toThrow("render failed");
-    expect(currentRenderedFrame(terminal)).toBeUndefined();
+    expect(settledLiveSnapshot(terminal)).toBeUndefined();
   } finally {
     terminal.dispose();
   }
-  expect(currentRenderedFrame(terminal)).toBeUndefined();
+  expect(settledLiveSnapshot(terminal)).toBeUndefined();
   expect(hasUnknownOrNonPristineOutput(terminal)).toBe(true);
-  const snapshot = { cols: 1, rows: 1, cursorX: 0, cursorY: 0, lines: [""], text: "" };
-  capture.mockReturnValue(snapshot);
-  expect(renderedSnapshot(terminal)).toBe(snapshot);
+  expect(cachedLiveSnapshot(terminal).text).toContain("first second");
 });
 
 test("C-API-15 disposal detaches frame invalidation from retained raw xterm handles", async () => {
@@ -86,7 +82,7 @@ test.each(rawWrites)("C-API-15 raw $method refreshes frames (callback: $callback
   try {
     // A partial scroll region keeps even writeln's final cursor/viewport geometry equal.
     await terminal.writeOutput("\u001b[2;3r\u001b[3;1Hfirst\u001b[3;1H");
-    const first = currentRenderedFrame(terminal);
+    const first = settledLiveSnapshot(terminal);
     const progressed = captureRenderProgress(terminal);
     const parsed = Promise.withResolvers<void>();
     const listener = terminal.xterm.onWriteParsed(() => {
@@ -94,11 +90,11 @@ test.each(rawWrites)("C-API-15 raw $method refreshes frames (callback: $callback
       parsed.resolve();
     });
     const done = vi.fn(() => {
-      expect(currentRenderedFrame(terminal)?.text).toContain("other");
+      expect(settledLiveSnapshot(terminal)?.text).toContain("other");
     });
     terminal.xterm[method]("\u001b[3;1Hother\u001b[3;1H", callback ? done : undefined);
     await parsed.promise;
-    const next = currentRenderedFrame(terminal);
+    const next = settledLiveSnapshot(terminal);
     expect(next?.text).toContain("other");
     expect(next?.cursorX).toBe(first?.cursorX);
     expect(next?.cursorY).toBe(first?.cursorY);
@@ -114,9 +110,9 @@ test("C-API-15 a raw tail in the owned write's drain refreshes its cached frame"
   const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, () => undefined);
   const parsed: string[] = [];
   const owned: string[] = [];
-  terminal.xterm.onWriteParsed(() => parsed.push(renderedSnapshot(terminal).text));
+  terminal.xterm.onWriteParsed(() => parsed.push(cachedLiveSnapshot(terminal).text));
   const unsubscribe = subscribeRender(terminal, () => {
-    owned.push(renderedSnapshot(terminal).text);
+    owned.push(cachedLiveSnapshot(terminal).text);
     terminal.xterm.write("\u001b[Hother\u001b[H");
   });
   // xterm parses queued writes in 12 ms slices timed by performance.now(). On a loaded
@@ -130,7 +126,7 @@ test("C-API-15 a raw tail in the owned write's drain refreshes its cached frame"
     expect(owned[0]).toContain("first");
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toContain("other");
-    expect(currentRenderedFrame(terminal)?.text).toBe(parsed[0]);
+    expect(settledLiveSnapshot(terminal)?.text).toBe(parsed[0]);
   } finally {
     unsubscribe();
     terminal.dispose();
@@ -142,9 +138,9 @@ test("C-API-15 writeln's synchronous first parse cannot reuse the prior frame", 
   const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, () => undefined);
   try {
     await terminal.writeOutput("\u001b[2;3r\u001b[3;1Hfirst\u001b[3;1H");
-    expect(currentRenderedFrame(terminal)?.text).toContain("first");
+    expect(settledLiveSnapshot(terminal)?.text).toContain("first");
     const parsed: string[] = [];
-    terminal.xterm.onWriteParsed(() => parsed.push(renderedSnapshot(terminal).text));
+    terminal.xterm.onWriteParsed(() => parsed.push(cachedLiveSnapshot(terminal).text));
     terminal.xterm.input("x");
     await new Promise<void>((resolve) => {
       terminal.xterm.writeln("\u001b[3;1Hother\u001b[3;1H", resolve);
@@ -160,20 +156,35 @@ test("C-API-15 writeln's synchronous first parse cannot reuse the prior frame", 
 test.each([
   false,
   true,
-])("C-API-15 clear/reset refresh cached viewport contents (clear: %s)", async (clear) => {
+])("C-API-15 clear/reset refresh cached live rows (clear: %s)", async (clear) => {
   const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, () => undefined);
   try {
     await terminal.writeOutput(clear ? "\u001b[Hstale\u001b[3;1H" : "\u001b[2;1Hstale\u001b[H");
-    const first = currentRenderedFrame(terminal);
+    const first = settledLiveSnapshot(terminal);
     expect(first?.text).toContain("stale");
     if (clear) terminal.xterm.clear();
     else terminal.xterm.reset();
-    const next = currentRenderedFrame(terminal);
+    const next = settledLiveSnapshot(terminal);
     expect(next?.text).not.toContain("stale");
     expect(next?.cursorX).toBe(0);
     expect(next?.cursorY).toBe(0);
     if (!clear) expect(first?.cursorY).toBe(next?.cursorY);
     expect(next).not.toBe(first);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test("a resize round trip invalidates cached live rows without manufacturing render progress", async () => {
+  const terminal = createHeadlessTerminal({ cols: 80, rows: 4 }, () => undefined);
+  try {
+    await terminal.writeOutput("\u001b[4;1HSelect model\u001b[1;1H");
+    expect(cachedLiveSnapshot(terminal).text).toContain("Select model");
+    const advanced = captureRenderProgress(terminal);
+    terminal.xterm.resize(80, 2);
+    terminal.xterm.resize(80, 4);
+    expect(cachedLiveSnapshot(terminal).text).not.toContain("Select model");
+    expect(advanced()).toBe(false);
   } finally {
     terminal.dispose();
   }

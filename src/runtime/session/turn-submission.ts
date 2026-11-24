@@ -3,8 +3,8 @@ import type { RenderedObservers } from "../../core/rendered-observers.ts";
 import { readScreenFacts } from "../../core/screen-facts.ts";
 import {
   captureRenderProgress,
-  currentRenderedFrame,
   hasUnknownOrNonPristineOutput,
+  settledLiveSnapshot,
 } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { StopCompletion } from "./stop-completion.ts";
@@ -14,7 +14,7 @@ export function bindTurnSubmission<
 >(session: Session, observers: RenderedObservers): Session {
   session.stopCompletion.bindRenderedReset(() => {
     const hasFreshFrame = captureRenderProgress(session.terminal);
-    const frame = currentRenderedFrame(session.terminal);
+    const frame = settledLiveSnapshot(session.terminal);
     // A missing baseline is conservative uncertainty, not observed banner visibility.
     // Only a pristine terminal proves absence without a completed frame.
     const ignoreRetainedInterrupt = frame

@@ -1,7 +1,7 @@
 /** Native arrival watermarks survive PTY batching and ordered rendering (C-API-31). */
 import { expect, test, vi } from "vitest";
 import type { PtyProcess } from "../../src/pty/types.ts";
-import { captureRenderProgress, currentRenderedFrame } from "../../src/terminal/cursor.ts";
+import { captureRenderProgress, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { attachPtyTerminal, type ElwoodTerminal } from "../../src/terminal/headless.ts";
 import { renderBatchBytes } from "../../src/terminal/pty-output.ts";
 
@@ -54,7 +54,7 @@ test("C-API-31 a split native chunk needs every render before proving fresh outp
     for (const callback of callbacks.slice(0, -1)) {
       callback();
       expect(captured()).toBe(false);
-      expect(currentRenderedFrame(terminal)).toBeUndefined();
+      expect(settledLiveSnapshot(terminal)).toBeUndefined();
     }
     callbacks.at(-1)?.();
     await settled;
@@ -85,7 +85,7 @@ test("C-API-31 raw output received by a render observer stays unsettled until it
   const facts: boolean[] = [];
   const { terminal, emit } = setup((data) => {
     if (data === "first") emit("second");
-    facts.push(currentRenderedFrame(terminal) !== undefined);
+    facts.push(settledLiveSnapshot(terminal) !== undefined);
   });
   try {
     const captured = captureRenderProgress(terminal);
@@ -133,13 +133,13 @@ test("C-API-31 an older render callback cannot complete newer native bytes", asy
     emit("second");
     const captured = captureRenderProgress(terminal);
     callbacks[0]?.();
-    expect(currentRenderedFrame(terminal)).toBeUndefined();
+    expect(settledLiveSnapshot(terminal)).toBeUndefined();
     expect(captured()).toBe(false);
     await vi.waitFor(() => expect(callbacks).toHaveLength(2));
-    expect(currentRenderedFrame(terminal)).toBeUndefined();
+    expect(settledLiveSnapshot(terminal)).toBeUndefined();
     callbacks[1]?.();
     await settled;
-    expect(currentRenderedFrame(terminal)).toBeDefined();
+    expect(settledLiveSnapshot(terminal)).toBeDefined();
     expect(captured()).toBe(false);
   } finally {
     write.mockRestore();

@@ -130,7 +130,7 @@ export function guardedPickerHarness(
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {
       blocked: () =>
-        holds.picker?.blocksInput() === true || holds.picker?.foreignDialogVisible() === true,
+        holds.picker?.blocksInput() === true || holds.picker?.foreignPickerHoldsInput() === true,
       // The fake composer never shows a staged paste, so each Enter submits.
       prepareStaged: () => () => false,
     }),

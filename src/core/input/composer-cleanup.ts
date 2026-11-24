@@ -47,6 +47,7 @@ export class ComposerCleanup {
   private readonly closing: AbortSignal;
   private readonly rawInputSignal: () => AbortSignal;
   private readonly observeEmpty: EmptyComposerObserver;
+  private readonly captureRenderProgress: () => () => boolean;
   /** Register this owner before any stage/submit hooks or queued operation. */
   constructor(
     terminal: InputTerminal,
@@ -54,12 +55,14 @@ export class ComposerCleanup {
     closing: AbortSignal,
     rawInputSignal: () => AbortSignal,
     observeEmpty: EmptyComposerObserver,
+    captureRenderProgress: () => () => boolean,
   ) {
     this.terminal = terminal;
     this.blocked = blocked;
     this.closing = closing;
     this.rawInputSignal = rawInputSignal;
     this.observeEmpty = observeEmpty;
+    this.captureRenderProgress = captureRenderProgress;
     this.baseline = rawInputSignal();
     owners.set(terminal, this);
     closing.addEventListener(
@@ -137,7 +140,13 @@ export class ComposerCleanup {
     const draft = this.draft!;
     const signal = AbortSignal.any([preparationSignal, this.closing, draft.rawInputSignal]);
     try {
-      await clearAndObserveComposer(this.terminal, this.blocked, this.observeEmpty, signal);
+      await clearAndObserveComposer(
+        this.terminal,
+        this.blocked,
+        this.observeEmpty,
+        signal,
+        this.captureRenderProgress,
+      );
     } catch {
       throwIfInputAborted(signal);
       throw elwoodError("wait_timeout", "Could not clear the staged composer draft.");

@@ -1,6 +1,7 @@
 /** Native Claude cursor placement distinguishes its completed input surface (C-TRUST-01). */
 import { expect, test } from "vitest";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
+import { settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { claudeNativeIdlePaint } from "../fixtures/claude-cursor-278.ts";
 
@@ -51,6 +52,25 @@ test.each([
     await terminal.writeOutput("\u001b]0;✳ Ready\u0007");
     expect(terminal.snapshot()).toEqual(idle);
     expect(clear(idle.text)).toBe(true);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test("C-TRUST-01 live clearance reads the actual xterm geometry after a raw resize", async () => {
+  const terminal = createHeadlessTerminal({ cols: 173, rows: 35 }, () => undefined);
+  const clear = liveClaudeClearance(() => terminal);
+  try {
+    terminal.xterm.resize(173, 40);
+    await terminal.writeOutput(`${claudeNativeIdlePaint}\u001b[38;3H\u001b[?25h`);
+    const frame = terminal.snapshot();
+    expect(frame.cursorY).toBe(37);
+    expect(frame.lines).toHaveLength(35);
+    expect(clear(frame.text)).toBe(false);
+    const live = settledLiveSnapshot(terminal)!;
+    expect(live.lines).toHaveLength(40);
+    expect(live.cursorY).toBe(37);
+    expect(clear(live.text)).toBe(false);
   } finally {
     terminal.dispose();
   }

@@ -157,7 +157,7 @@ export class CommandSurface {
   }
 
   /** A model dialog nobody here opened; a non-picker WRITE must be withheld while it is up. */
-  foreignDialogVisible(): boolean {
-    return this.picker.foreignDialogVisible();
+  foreignPickerHoldsInput(): boolean {
+    return this.picker.foreignPickerHoldsInput();
   }
 }

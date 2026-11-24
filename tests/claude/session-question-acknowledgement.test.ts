@@ -1,6 +1,7 @@
 /** Public hook IPC cannot acknowledge a different native question request (C-QUESTION-02/03). */
 import { afterEach, expect, test } from "vitest";
 import type { AskUserQuestionInput } from "../../src/index.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { fixture, frame } from "../unit/questions/helpers.ts";
 import { disposeQuestionSessions, questionSession } from "./question-session-helpers.ts";
 
@@ -16,6 +17,7 @@ const question = {
 } satisfies AskUserQuestionInput["questions"][number];
 test("C-QUESTION-03 unrelated and prior ID-less completions cannot settle public answers", async () => {
   const { session, pty, hook, show: showFrame } = await questionSession({ questions: [question] });
+  await viewTerminalHistory(session.terminal, pty);
   const show = (prompt: string) =>
     showFrame(frame(fixture("freeform-questions").text.replaceAll(question.question, prompt)));
   // Changed definitions replace one native identity; distinct IDs remain independent.
@@ -71,6 +73,7 @@ test("C-QUESTION-03 unrelated and prior ID-less completions cannot settle public
       tool_response: { answers: { [replacement.question]: "Brief (short)" } },
     });
     expect(await answering).toBe("accepted");
+    expect(session.terminal.snapshot().text).toContain("Historical output");
     expect(await session.listQuestions()).toEqual([]);
   } finally {
     await session.kill();

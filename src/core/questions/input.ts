@@ -1,9 +1,8 @@
 /** Guard native writes with settled, fresh terminal evidence (PRD §4). */
-import { cursorViewportRow } from "../../terminal/coordinates.ts";
 import {
   captureRenderProgress,
-  currentRenderedFrame,
   settledCursorVisible,
+  settledLiveSnapshot,
   subscribeRender,
 } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
@@ -22,13 +21,11 @@ type WriteObserver = {
 };
 
 export function readQuestionFrame(terminal: ElwoodTerminal): QuestionFrame | undefined {
-  const frame = currentRenderedFrame(terminal);
-  const buffer = terminal.xterm.buffer.active;
+  const frame = settledLiveSnapshot(terminal);
   return (
     frame && {
       ...frame,
-      // Snapshot rows use the viewport; xterm cursorY is relative to the scrollback base.
-      cursorRow: cursorViewportRow(frame.cursorY, buffer),
+      cursorRow: frame.cursorY,
       cursorVisible: settledCursorVisible(terminal.xterm),
       ...questionCursorProvenance(terminal, frame),
     }
