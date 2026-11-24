@@ -68,7 +68,7 @@ test("C-QUESTION-01 publishes a standalone checkbox only after its matching tabb
 test.each([
   { label: "tabbed", header: tabbedHeader, afterCheckbox: [review], extraEnters: ["\r"] },
   { label: "bare", header: bareHeader, afterCheckbox: [], extraEnters: [] },
-])("C-QUESTION-03 dispatches only the final Enter as submission on the $label layout", async ({
+])("C-QUESTION-03 writes the checkbox and confirmation sequence on the $label layout", async ({
   header,
   afterCheckbox,
   extraEnters,
@@ -77,12 +77,8 @@ test.each([
     ...checkboxFrames(header),
     ...afterCheckbox,
   ]);
-  const submissionAttempts: number[] = [];
-  await answerClaudeQuestions(requestForFruits(), answers, io, () => {
-    submissionAttempts.push(writes.length);
-  });
+  await answerClaudeQuestions(requestForFruits(), answers, io);
   expect(writes).toEqual([...checkboxWrites, "\r", ...extraEnters]);
-  expect(submissionAttempts).toEqual([writes.length - 1]);
 });
 
 test("C-QUESTION-03 rejects altered standalone review values before final Enter", async () => {

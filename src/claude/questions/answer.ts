@@ -15,17 +15,11 @@ const usesCheckboxes = {
   none: false,
 } satisfies Readonly<Record<ElwoodQuestion["selection"], boolean>>;
 
-/** Requires native question 0 and a complete normalized batch in request order.
- * `submitting` reports final Enter dispatch after live/frame guards, immediately
- * before terminal.sendInput. It proves neither physical delivery nor native
- * acceptance; the transaction owns the native acknowledgement. */
+/** Requires native question 0 and a complete normalized batch in request order. */
 export async function answerClaudeQuestions(
   request: ElwoodQuestionRequest,
   answers: readonly ValidatedQuestionAnswer[],
   io: QuestionIo,
-  submitting: () => void = () => {
-    // Standalone driver callers have no candidate lifecycle to notify.
-  },
 ): Promise<void> {
   const bound = bindClaudeQuestionAnswers(request, answers);
   const initial = io.frame();
@@ -34,7 +28,7 @@ export async function answerClaudeQuestions(
   const { hasSubmitTab } = first;
   for (const entry of bound) {
     const index = entry.questionIndex;
-    await answerOne(request, entry, io, hasSubmitTab, submitting);
+    await answerOne(request, entry, io, hasSubmitTab);
     if (index + 1 < request.questions.length) {
       await io.wait((frame) => {
         const screen = parseClaudeQuestionScreen(frame, request.questions);
@@ -42,14 +36,13 @@ export async function answerClaudeQuestions(
       });
     }
   }
-  if (hasSubmitTab) await submitReview(request, bound, io, submitting);
+  if (hasSubmitTab) await submitReview(request, bound, io);
 }
 async function answerOne(
   request: ElwoodQuestionRequest,
   bound: BoundClaudeQuestionAnswer,
   io: QuestionIo,
   hasSubmitTab: boolean,
-  submitting: () => void,
 ): Promise<void> {
   const { question, questionIndex, answer, otherCursorIndex, targetCursorIndex } = bound;
   const navigation = questionNavigation(request, questionIndex, io, hasSubmitTab);
@@ -72,29 +65,22 @@ async function answerOne(
     await io.wait((frame) => navigation.at(frame)?.other === answer.text);
   }
   await navigation.move(targetCursorIndex);
-  await io.write(
-    "\r",
-    (frame) => {
-      const current = navigation.at(frame);
-      if (current?.cursor !== targetCursorIndex) return false;
-      const matchesBySelection = {
-        single: () => answer.text === undefined || current.other === answer.text,
-        multiple: () =>
-          current.checked.every(
-            (checked, index) => checked === answer.optionIndexes.includes(index),
-          ),
-        none: () => current.other === answer.text,
-      } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
-      return matchesBySelection[question.selection]();
-    },
-    hasSubmitTab ? undefined : submitting,
-  );
+  await io.write("\r", (frame) => {
+    const current = navigation.at(frame);
+    if (current?.cursor !== targetCursorIndex) return false;
+    const matchesBySelection = {
+      single: () => answer.text === undefined || current.other === answer.text,
+      multiple: () =>
+        current.checked.every((checked, index) => checked === answer.optionIndexes.includes(index)),
+      none: () => current.other === answer.text,
+    } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
+    return matchesBySelection[question.selection]();
+  });
 }
 async function submitReview(
   request: ElwoodQuestionRequest,
   answers: readonly BoundClaudeQuestionAnswer[],
   io: QuestionIo,
-  submitting: () => void,
 ): Promise<void> {
   const reviewFrame = await io.wait(
     (frame) => parseClaudeQuestionScreen(frame, request.questions)?.kind === "review",
@@ -107,5 +93,5 @@ async function submitReview(
     return screen?.kind === "review" && screen.summary === expected ? screen : undefined;
   };
   if (!matchingReview(reviewFrame)) throw questionAnswerFailed();
-  await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0, submitting);
+  await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0);
 }

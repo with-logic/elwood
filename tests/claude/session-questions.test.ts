@@ -5,7 +5,9 @@ import type {
   ClaudeHookHandlers,
   ElwoodQuestionEvent,
 } from "../../src/index.ts";
+import { claudeTty } from "../fixtures/trust-composer.ts";
 import { fixture } from "../unit/questions/helpers.ts";
+import { composer } from "../unit/questions/lifecycle-helpers.ts";
 import { disposeQuestionSessions, questionSession } from "./question-session-helpers.ts";
 
 afterEach(disposeQuestionSessions);
@@ -66,13 +68,21 @@ describe("C-QUESTION public Claude session", () => {
     expect(await h.session.listQuestions()).toEqual([]);
     expect(events.at(-1)).toMatchObject({ phase: "closed", reason: "unavailable" });
   });
-  test("C-QUESTION-02 answers around an already-held ordinary writer and preserves its no-write hold", async () => {
+  test("C-QUESTION-02 holds ordinary input until native closure when raw input revokes an answer after navigation", async () => {
     const h = await setup();
+    const showComposer = async () => {
+      h.pty.emitData(`\x1b[2J\x1b[H${claudeTty(composer().text)}`);
+      await h.session.terminal.settled();
+    };
+    const events: ElwoodQuestionEvent[] = [];
+    h.session.on("question", (event) => events.push(event));
+    await showComposer();
+    await expect.poll(() => h.session.status).toBe("ready");
     await h.hook("PreToolUse");
     await h.show("questions");
     const [request] = await h.session.listQuestions();
-    const writer = h.session.sendMessage("must remain held");
-    const rejection = writer.catch((error) => error);
+    const writer = h.session.sendMessage("held until native closure");
+    void writer.catch(() => undefined);
     await expect(h.session.answerQuestions(request!.id, [])).rejects.toMatchObject({
       code: "invalid_question_answer",
     });
@@ -94,9 +104,31 @@ describe("C-QUESTION public Claude session", () => {
     await expect.poll(() => h.pty.writes, { timeout: 5000 }).toContain("\x1b[B");
     await h.session.sendKeys("human");
     await expect(answering).rejects.toMatchObject({ code: "question_answer_failed" });
-    expect(h.pty.writes.join("")).not.toContain("must remain held");
-    await h.session.kill();
-    expect(await rejection).toMatchObject({ code: "session_not_running" });
+    expect(await h.session.listQuestions()).toEqual([]);
+    await showComposer();
+    await h.hook("PostToolUse", { tool_use_id: "unrelated", tool_response: {} });
+    expect(h.pty.writes).toEqual(["\x1b[B", "human"]);
+
+    await h.hook("PreToolUse");
+    await h.show("questions");
+    expect(await h.session.listQuestions()).toEqual([]);
+    await expect(h.session.answerQuestions(request!.id, [])).rejects.toMatchObject({
+      code: "question_not_found",
+    });
+
+    await showComposer();
+    await h.hook("PostToolUse", { tool_use_id: "unrelated", tool_response: {} });
+    expect(h.pty.writes).toEqual(["\x1b[B", "human"]);
+    await h.hook("PostToolUse", { tool_response: {} });
+    await writer;
+    expect(h.pty.writes).toEqual([
+      "\x1b[B",
+      "human",
+      "\x1b[200~held until native closure\x1b[201~",
+      "\r",
+    ]);
+    expect(events.map((event) => event.phase)).toEqual(["raised", "closed"]);
+    expect(events.at(-1)).toMatchObject({ phase: "closed", reason: "unavailable" });
   });
   test("C-QUESTION-03 direct hook answers have no phantom and stale completion cannot close a newer question", async () => {
     let answerDirectly = true;

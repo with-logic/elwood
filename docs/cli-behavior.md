@@ -2549,14 +2549,14 @@ These captures establish the questionnaire and manual-footer additions on
 The private adapter/controller tests retain native input ownership when a
 composer repaint precedes the matching completion hook. Successful submissions
 keep their request pending; a post-write abort retires the public ID while the
-native hold remains until matching completion, replacement or turn end. A
+native hold remains until matching completion, turn end, or shutdown. A
 predecessor review panel cannot publish a newly observed successor.
 
 Live sessions connect this adapter to the session-owned question controller,
 completed terminal renders, hook routing and the ordinary-input gate. Claude's
 hook-decision gate resolves the exact caller hook outcome before publishing a
 request; direct answers and denials withdraw automation while retaining native
-ownership until matching completion, replacement or turn end. The captured frames
+ownership until matching completion, turn end, or shutdown. The captured frames
 establish the native layouts; the capture-specific version and screen-pattern
 limitations above still apply.
 
@@ -2567,12 +2567,11 @@ regardless of their order. The live screen-fact rule also holds input while the
 questionnaire is visible.
 
 
-A final Enter rejected before physical dispatch, including by a current-frame or
-abort guard, does not count as submission. Once dispatch begins, a rejection or
-abort leaves delivery uncertain: the native identity and input hold survive an
-empty composer until matching native completion, replacement or turn end.
-A semantic replacement of a known questionnaire must show matching new choices
-before a retained composer can retire it.
+An attempt stopped before its first guarded dispatch leaves no physical answer
+reservation. After a navigation, editing, or confirmation key is dispatched, an
+abort or failure can leave the native outcome uncertain. The input hold survives
+an empty composer and duplicate metadata until matching native completion, turn
+end, or shutdown.
 
 ### Codex question panels, work pulses, and Plan footer (2026-10-20)
 
