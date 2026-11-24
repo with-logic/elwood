@@ -104,3 +104,25 @@ test("C-CLAUDE-15 a failed baseline identity read is contained and cannot seed u
     watcher.stop();
   }
 });
+
+test("C-CLAUDE-15 a baseline identity overflow prevents later blank-hook recovery", () => {
+  const first = tmpFile();
+  const overflow = tmpFile();
+  const events: ClaudeTranscriptEvent[] = [];
+  const watcher = new ClaudeTranscriptWatcher("session", (event) => events.push(event));
+  const prompt = (promptId: string, uuid: string) =>
+    JSON.stringify({ type: "user", uuid, promptId, message: { content: "prompt" } });
+  try {
+    writeFileSync(first, "");
+    watcher.observe(first);
+    expect(watcher.observeUserPromptHook(first, "pending", false)).toBe(false);
+    writeFileSync(overflow, `${prompt("overflow", "x".repeat(1_025))}\n`);
+    watcher.observe(overflow, false, "overflow");
+    appendFileSync(first, `${prompt("pending", "valid")}\n`);
+    watcher.scan();
+    expect(events).toEqual([]);
+    expect(watcher.observeUserPromptHook(first, "known", true)).toBe(true);
+  } finally {
+    watcher.stop();
+  }
+});
