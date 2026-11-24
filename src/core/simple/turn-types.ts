@@ -10,7 +10,7 @@ import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.
 import type { ImageInput } from "../images/types.ts";
 import { sanitizePasteText } from "../input/sanitize.ts";
 import type { TurnEvent } from "./events.ts";
-import { hasSynthesizedPrompt } from "./native-prompt.ts";
+import { hasSynthesizedPrompt } from "./synthesized-prompt.ts";
 import type { NativeTurnReader } from "./turn-identity.ts";
 
 /**

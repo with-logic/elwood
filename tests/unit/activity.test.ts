@@ -18,7 +18,7 @@ describe("Elwood activity events", () => {
   test.each([
     "",
     "\u0085",
-  ])("C-API-USER-ACTIVITY a textless Codex submit stays native hook activity (%j)", (prompt) => {
+  ])("C-API-62 a textless Codex submit stays native hook activity (%j)", (prompt) => {
     const event = activityFromCodexHook("elwood-1", {
       hook_event_name: "UserPromptSubmit",
       session_id: "codex-session",

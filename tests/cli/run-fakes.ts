@@ -93,10 +93,13 @@ export class FakeCliSession implements CliSessionFacade {
   emitActivity(
     partial: Partial<
       Omit<
-        Exclude<ElwoodActivityEvent, { readonly kind: "assistant_progress" | "question" }>,
+        Exclude<
+          ElwoodActivityEvent,
+          { readonly kind: "assistant_progress" | "question" | "user_message" }
+        >,
         "speed" | "tokenUsage" | "rateLimits" | "subagent"
       >
-    >,
+    > & { readonly kind?: Exclude<ElwoodActivityEvent["kind"], "user_message"> },
   ): void {
     this.emitter.emit("activity", {
       elwoodSessionId: this.id,

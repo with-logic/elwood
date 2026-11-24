@@ -71,7 +71,12 @@ export type ElwoodActivityEvent = ActivityFields &
   DashboardActivityFields &
   SpeedActivityFields &
   (
-    | { readonly kind: Exclude<ElwoodActivityKind, "question" | "assistant_progress"> }
+    | {
+        readonly kind: Exclude<
+          ElwoodActivityKind,
+          "question" | "assistant_progress" | "user_message"
+        >;
+      }
     | {
         readonly kind: "assistant_progress";
         readonly agent: "codex";
@@ -81,6 +86,7 @@ export type ElwoodActivityEvent = ActivityFields &
         readonly transcriptPath: string;
         readonly raw: unknown;
       }
+    | { readonly kind: "user_message"; readonly text: string }
     | QuestionActivityFields
   );
 
@@ -100,11 +106,11 @@ function sharedHookActivity(
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
     return hasPromptText(event.prompt)
-      ? withText(base, "user_message", "user", event.prompt)
+      ? { ...base, kind: "user_message", label: "user", text: event.prompt }
       : undefined;
   }
   if (event.hook_event_name === "Notification") {
-    return withText(base, "notification", event.notification_type, event.message);
+    return { ...base, kind: "notification", label: event.notification_type, text: event.message };
   }
   return undefined;
 }
@@ -175,15 +181,3 @@ export {
   activityFromClaudeTranscript,
   activityFromCodexTranscript,
 } from "./transcript.ts";
-
-function withText(
-  base: Omit<
-    ElwoodActivityEvent,
-    "kind" | "label" | "text" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
-  >,
-  kind: "user_message" | "notification",
-  label: string,
-  text: string,
-): ElwoodActivityEvent {
-  return { ...base, kind, label, text };
-}

@@ -38,7 +38,7 @@ for (const agent of ["claude", "codex"] as const) {
     let failure: CodexTestEnd["failure"];
     let armed = false;
     let resuming = false;
-    let submitted = false;
+    let userHooks = 0;
     let attemptsAfterSubmission = 0;
     let phaseStarted = 0;
     let timeline: { event: string; ms: number }[] = [];
@@ -65,7 +65,7 @@ for (const agent of ["claude", "codex"] as const) {
             // Pre-hook retries are outside this hook-only guarantee. Count and
             // intercept every retry, including those that must fail the assertion.
             if (attempted > 1) {
-              if (submitted) attemptsAfterSubmission += 1;
+              if (userHooks > 0) attemptsAfterSubmission += 1;
               throw new Error("Native proof intercepted an extra Enter.");
             }
             delivered += 1;
@@ -105,8 +105,8 @@ for (const agent of ["claude", "codex"] as const) {
           on(event: "hook", listener: (event: HookEvent) => void): () => void;
         } = live;
         const unsubscribe = source.on("hook", (event) => {
-          if (event.hook_event_name === "UserPromptSubmit") {
-            submitted = true;
+          if (armed && event.hook_event_name === "UserPromptSubmit") {
+            userHooks += 1;
             timeline.push({ event: "UserPromptSubmit", ms: Date.now() - phaseStarted });
           }
         });
@@ -117,24 +117,18 @@ for (const agent of ["claude", "codex"] as const) {
             `${agent} ready`,
             30_000,
           );
-          submitted = false;
+          userHooks = 0;
           attemptsAfterSubmission = 0;
           phaseStarted = Date.now();
           timeline = [];
           armed = true;
           await live.sendMessage("Reply only OK.");
           await waitFor(
-            () =>
-              observed.hooks.some((event) => event.hook_event_name === "UserPromptSubmit")
-                ? true
-                : undefined,
+            () => (userHooks > 0 ? true : undefined),
             `${agent} native submission evidence`,
             15_000,
           );
           await delay(6_000);
-          const userHooks = observed.hooks.filter(
-            (event) => event.hook_event_name === "UserPromptSubmit",
-          ).length;
           t.diagnostic(
             JSON.stringify({
               agent,

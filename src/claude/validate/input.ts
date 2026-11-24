@@ -4,7 +4,13 @@
  * Implements PRD §6.4.
  */
 
-import { isOneOf, isRecord, isString, optionalString } from "../../core/predicates.ts";
+import {
+  isOneOf,
+  isRecord,
+  isString,
+  optionalNullableString,
+  optionalString,
+} from "../../core/predicates.ts";
 import {
   type ClaudeEffortLevel,
   type ClaudeHookEventName,
@@ -38,7 +44,7 @@ const eventChecks: { readonly [E in Exclude<ClaudeHookEventName, ToolEvent>]: Ev
   SessionStart: strings("source"),
   Setup: (value) => isOneOf(value["trigger"], ["init", "maintenance"]),
   InstructionsLoaded: hasInstructionsLoaded,
-  UserPromptSubmit: (value) => value["prompt"] == null || typeof value["prompt"] === "string",
+  UserPromptSubmit: (value) => optionalNullableString(value["prompt"]),
   UserPromptExpansion: hasUserPromptExpansion,
   PostToolBatch: (value) => hasPostToolBatch(value["tool_calls"]),
   Notification: strings("message", "notification_type"),

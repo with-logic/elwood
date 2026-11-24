@@ -3,7 +3,7 @@
  * Implements PRD §6.4 future-tool compatibility.
  */
 
-import { markSynthesizedPrompt } from "../core/simple/native-prompt.ts";
+import { markSynthesizedPrompt } from "../core/simple/synthesized-prompt.ts";
 import type { ClaudeCommonHookFields, ClaudeHookEvent, ClaudeHookEventFor } from "./hooks/index.ts";
 import type { KnownClaudeToolName } from "./hooks/tool-types.ts";
 
@@ -60,19 +60,23 @@ const _knownToolNamesCoupled: AssertEqual<(typeof knownToolNameList)[number], Kn
 void _knownToolNamesCoupled;
 const knownToolNames: ReadonlySet<string> = new Set(knownToolNameList);
 
-type NativeSubmit = ClaudeHookEventFor<"UserPromptSubmit">;
-type WireHook =
-  | Exclude<ClaudeHookEvent, NativeSubmit>
-  | (ClaudeCommonHookFields & {
-      readonly hook_event_name: "UserPromptSubmit";
-      readonly prompt?: string | null;
-    });
+type NormalizedSubmit = ClaudeHookEventFor<"UserPromptSubmit">;
+type TextlessWireSubmit = ClaudeCommonHookFields & {
+  readonly hook_event_name: "UserPromptSubmit";
+  readonly prompt?: null;
+};
+type WireHook = ClaudeHookEvent | TextlessWireSubmit;
+
+function hasNativePrompt(event: NormalizedSubmit | TextlessWireSubmit): event is NormalizedSubmit {
+  return typeof event.prompt === "string";
+}
 
 export function normalizeClaudeHookEvent(input: unknown): ClaudeHookEvent {
   const event = input as WireHook;
   if (event.hook_event_name === "UserPromptSubmit") {
-    const normalized = { ...event, prompt: event.prompt ?? "" };
-    if (event.prompt == null) markSynthesizedPrompt(normalized);
+    if (hasNativePrompt(event)) return event;
+    const normalized = { ...event, prompt: "" };
+    markSynthesizedPrompt(normalized);
     return normalized;
   }
   if (!("tool_name" in event) || typeof event.tool_name !== "string") return event;

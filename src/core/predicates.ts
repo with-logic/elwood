@@ -21,6 +21,10 @@ export function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
+export function optionalNullableString(value: unknown): boolean {
+  return value === null || optionalString(value);
+}
+
 /**
  * A JSON-representable number. `NaN` and `±Infinity` are `typeof "number"` but
  * `JSON.stringify` emits them as `null`, so accepting them here would let a hook

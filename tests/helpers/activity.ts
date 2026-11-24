@@ -6,13 +6,16 @@ type FixtureActivity = Omit<
   "speed" | "tokenUsage" | "rateLimits" | "subagent"
 > & { readonly speed?: never };
 
-export function activity(partial: Partial<FixtureActivity> = {}): FixtureActivity {
-  return {
+export function activity(partial: Partial<FixtureActivity> = {}) {
+  const { kind = "assistant_message", ...fields } = partial;
+  const base = {
     elwoodSessionId: "s1",
     agent: "claude",
     source: "transcript",
-    kind: "assistant_message",
     label: "assistant",
-    ...partial,
-  };
+    ...fields,
+  } as const;
+  return kind === "user_message"
+    ? { ...base, kind, text: fields.text ?? "fixture prompt" }
+    : { ...base, kind };
 }
