@@ -57,7 +57,6 @@ test.each([
     await expect.poll(() => session.status).toBe("ready");
     if (scrolled) {
       await viewTerminalHistory(session.terminal, pty);
-      session.terminal.xterm.onData(() => session.terminal.xterm.scrollToTop());
     }
     vi.useFakeTimers();
     let accepted = false;

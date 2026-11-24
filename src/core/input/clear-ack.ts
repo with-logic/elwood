@@ -20,9 +20,11 @@ export async function clearAndObserveComposer(
   blocked: () => boolean,
   observeEmpty: EmptyComposerObserver,
   signal: AbortSignal,
+  captureProgress: () => () => boolean,
 ): Promise<void> {
   const before = observeEmpty();
   throwIfInputAborted(signal);
+  const progressed = captureProgress();
   await terminal.sendInput(composerClearKeys);
   const deadline = new AbortController();
   const timer = setTimeout(
@@ -36,7 +38,7 @@ export async function clearAndObserveComposer(
       if (await writeUnsafe(terminal, { blocked }, waiting))
         throw new Error("Composer observation is unsafe.");
       const after = observeEmpty();
-      if (after !== undefined && after !== before) return;
+      if (after !== undefined && after !== before && progressed()) return;
       await waitForInput(unsafeWriteRetryMs, waiting);
     }
   } finally {

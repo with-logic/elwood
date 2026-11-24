@@ -12,9 +12,9 @@ export function claudeEmptyInputFrame(terminal: ElwoodTerminal) {
 }
 
 /**
- * Whether viewport `rows` show Claude's live, empty composer (PRD §5.3, §5.4; C-API-56).
+ * Whether the live rows show Claude's empty composer (PRD §5.3, §5.4; C-API-56).
  *
- * `cursorRow` is the viewport index of the terminal cursor's row. That row must be the empty
+ * `cursorRow` is the native cursor index in these rows. That row must be the empty
  * `❯` composer, with the composer's top rule (plain, or labelled by a named session) at
  * `cursorRow - 1` and a plain bottom rule at `cursorRow + 1`.
  *

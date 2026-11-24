@@ -48,7 +48,6 @@ test("C-API-44 image and text wait for a live model picker while history stays s
     });
     await expect.poll(() => session.status).toBe("ready");
     await viewTerminalHistory(session.terminal, ptys[0]!);
-    session.terminal.xterm.onData(() => session.terminal.xterm.scrollToTop());
     ptys[0]!.emitData(asScreen(claudePicker));
     await session.terminal.settled();
     const sent = session.sendMessage("caption", { images: [{ path: image }] });

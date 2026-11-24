@@ -2,18 +2,18 @@
 import { expect, test } from "vitest";
 import { questionCursorProvenance } from "../../../src/core/questions/cursor-provenance.ts";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
-import { currentRenderedFrame } from "../../../src/terminal/cursor.ts";
+import { settledLiveSnapshot } from "../../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 
 test("placeholder style and Unicode prefix come from the same completed frame", async () => {
   const terminal = createHeadlessTerminal({ cols: 30, rows: 3 }, () => undefined);
   try {
     await terminal.writeOutput("  \x1b[2mType your answer\x1b[0m\x1b[1;3H");
-    const empty = currentRenderedFrame(terminal)!;
+    const empty = settledLiveSnapshot(terminal)!;
     const captured = questionCursorProvenance(terminal, empty);
     expect(captured).toEqual({ cursorCellDimmed: true, cursorLineBefore: "  " });
     await terminal.writeOutput("\x1b[2J\x1b[H  界🦊Type your answer");
-    const typed = currentRenderedFrame(terminal)!;
+    const typed = settledLiveSnapshot(terminal)!;
     expect(questionCursorProvenance(terminal, typed)).toEqual({
       cursorCellDimmed: false,
       cursorLineBefore: "  界🦊Type your answer",
@@ -27,7 +27,7 @@ test("deferred wrap retains a physical row prefix without cursor-cell style", as
   const terminal = createHeadlessTerminal({ cols: 5, rows: 3 }, () => undefined);
   try {
     await terminal.writeOutput("abcde");
-    const frame = currentRenderedFrame(terminal)!;
+    const frame = settledLiveSnapshot(terminal)!;
     expect(frame.cursorX).toBe(frame.cols);
     expect(questionCursorProvenance(terminal, frame)).toEqual({ cursorLineBefore: "abcde" });
   } finally {
@@ -39,7 +39,7 @@ test("an unavailable cursor row returns no provenance", async () => {
   const terminal = createHeadlessTerminal({ cols: 30, rows: 3 }, () => undefined);
   try {
     await terminal.writeOutput("answer");
-    const frame = currentRenderedFrame(terminal)!;
+    const frame = settledLiveSnapshot(terminal)!;
     expect(questionCursorProvenance(terminal, { ...frame, cursorY: frame.rows })).toEqual({});
   } finally {
     terminal.dispose();
@@ -55,7 +55,7 @@ test("question frames retain same-render cursor provenance across scrollback off
     terminal.xterm.scrollLines(-2);
     expect(terminal.xterm.buffer.active.baseY).toBe(6);
     expect(terminal.xterm.buffer.active.viewportY).toBe(4);
-    const lines = ["line-4", "line-5", "line-6", "  Type your answer"];
+    const lines = ["line-6", "  Type your answer", "line-8", "line-9"];
     expect(readQuestionFrame(terminal)).toEqual({
       cols: 30,
       rows: 4,
@@ -63,7 +63,7 @@ test("question frames retain same-render cursor provenance across scrollback off
       cursorY: 1,
       lines,
       text: lines.join("\n"),
-      cursorRow: 3,
+      cursorRow: 1,
       cursorVisible: true,
       cursorCellDimmed: true,
       cursorLineBefore: "  ",

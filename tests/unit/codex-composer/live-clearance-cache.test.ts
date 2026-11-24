@@ -2,7 +2,7 @@
 import { expect, test, vi } from "vitest";
 import * as clearance from "../../../src/codex/screen/clearance.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
-import { currentRenderedFrame } from "../../../src/terminal/cursor.ts";
+import { settledLiveSnapshot } from "../../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 import { codexSmallComposer, codexTty } from "../../fixtures/trust-composer.ts";
 
@@ -13,11 +13,11 @@ test("C-TRUST-01 retries classify one unchanged snapshot once and recheck live t
   try {
     await terminal.writeOutput(codexTty(codexSmallComposer));
     const clear = liveCodexClearance(() => terminal);
-    const frame = currentRenderedFrame(terminal)!;
+    const frame = settledLiveSnapshot(terminal)!;
     for (let retry = 0; retry < 250; retry += 1) expect(clear(frame.text)).toBe(true);
     expect(classify).toHaveBeenCalledTimes(1);
     title.mockReturnValue("⠋ Working");
-    expect(currentRenderedFrame(terminal)).toBe(frame);
+    expect(settledLiveSnapshot(terminal)).toBe(frame);
     expect(clear(frame.text)).toBe(false);
     title.mockReturnValue("idle");
     expect(clear("an earlier frame")).toBe(false);

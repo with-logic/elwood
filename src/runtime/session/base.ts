@@ -21,7 +21,7 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
-import { currentRenderedFrame, renderedSnapshot, subscribeRender } from "../../terminal/cursor.ts";
+import { cachedLiveSnapshot, settledLiveSnapshot, subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { CommandSurface } from "./commands.ts";
 import {
@@ -74,7 +74,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
       inputSignal: () => ownership.signal(),
       observeRendered: (listener) => {
         // xterm runs this after the ordered completed-frame observers.
-        const read = () => renderedSnapshot(terminal, "live").text;
+        const read = () => cachedLiveSnapshot(terminal).text;
         terminal.xterm.onWriteParsed(() => listener(read));
       },
       subscribeRender: (listener) => subscribeRender(terminal, listener),
@@ -104,19 +104,9 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     return super.isInputBlocked() || this.commands.blocksInput();
   }
 
-  /**
-   * Writes that are NOT part of a picker transaction (`/login` recovery) must additionally
-   * stand off a model dialog a human opened. It is deliberately not part of
-   * `isInputBlocked`: that feeds readiness, and suppressing readiness while any picker is
-   * visible would deadlock Elwood's own picker, whose dialog is on screen by design.
-   */
-  protected foreignPickerHoldsInput(): boolean {
-    return this.commands.foreignPickerHoldsInput();
-  }
-
   /** Ordinary queued text and attachments cannot drive a model dialog that they did not open. */
   protected queuedInputBlocked(): boolean {
-    return this.isInputBlocked() || this.foreignPickerHoldsInput();
+    return this.isInputBlocked() || this.commands.foreignPickerHoldsInput();
   }
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
@@ -166,7 +156,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
 
   /** A stable completed frame only when the native composer is positively empty (C-API-56). */
   protected emptyComposerFrame(): object | undefined {
-    const frame = currentRenderedFrame(this.terminal, "live");
+    const frame = settledLiveSnapshot(this.terminal);
     return frame && this.composerIsEmpty(frame.text) ? frame : undefined;
   }
   protected composerIsEmpty(text: string): boolean {

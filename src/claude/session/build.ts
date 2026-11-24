@@ -15,7 +15,7 @@ import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/sta
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
 import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
-import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
+import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
@@ -121,7 +121,7 @@ export async function buildClaudeSession(
   const loginExpiring = new LoginExpiringWatcher();
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     terminalReplay.push(data);
-    const snapshot = renderedSnapshot(renderedTerminal, "live");
+    const snapshot = cachedLiveSnapshot(renderedTerminal);
     latestRenderedText = snapshot.text;
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
     const send = (input: string) =>
@@ -134,7 +134,7 @@ export async function buildClaudeSession(
       () => promptResponder.closing,
       promptResponder.closingSignal,
     );
-    const trustRead = () => currentRenderedFrame(renderedTerminal, "live")?.text;
+    const trustRead = () => settledLiveSnapshot(renderedTerminal)?.text;
     const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),

@@ -4,7 +4,6 @@ import type { ElwoodTerminal, TerminalSnapshot } from "./headless.ts";
 import { terminalSnapshot } from "./snapshot.ts";
 
 const tracked = new WeakMap<Terminal, RenderCursor>();
-type ScreenLocation = "viewport" | "live";
 type CachedFrame = { readonly position: string; readonly frame: TerminalSnapshot };
 
 export function settledCursorVisible(terminal: Terminal): boolean {
@@ -12,11 +11,8 @@ export function settledCursorVisible(terminal: Terminal): boolean {
 }
 
 /** Both trust reads and clearance require all received output to be rendered successfully. */
-export function currentRenderedFrame(
-  terminal: ElwoodTerminal,
-  location: ScreenLocation = "viewport",
-): TerminalSnapshot | undefined {
-  return renderIsSettled(terminal) ? renderedSnapshot(terminal, location) : undefined;
+export function settledLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
+  return renderIsSettled(terminal) ? cachedLiveSnapshot(terminal) : undefined;
 }
 
 function renderIsSettled(terminal: ElwoodTerminal): boolean {
@@ -43,23 +39,13 @@ export function subscribeRender(terminal: ElwoodTerminal, listener: () => void):
   return tracked.get(terminal.xterm)?.subscribe(listener) ?? (() => undefined);
 }
 
-/** Internal readers share captured rows when their selected buffer ranges match. */
-export function renderedSnapshot(
-  terminal: ElwoodTerminal,
-  location: ScreenLocation = "viewport",
-): TerminalSnapshot {
-  const { baseY, viewportY } = terminal.xterm.buffer.active;
-  const hiddenLive = location === "live" && baseY !== viewportY;
-  const firstBufferRow = hiddenLive ? baseY : viewportY;
+/** Current live rows. Guard input with `settledLiveSnapshot` when output may still be pending. */
+export function cachedLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
+  const { xterm } = terminal;
+  const firstBufferRow = xterm.buffer.active.baseY;
   const read = () =>
-    hiddenLive
-      ? terminalSnapshot(terminal.xterm, terminal.size, firstBufferRow)
-      : terminal.snapshot();
-  return (
-    tracked
-      .get(terminal.xterm)
-      ?.snapshot(read, firstBufferRow === baseY ? "live" : "viewport", firstBufferRow) ?? read()
-  );
+    terminalSnapshot(xterm, { cols: xterm.cols, rows: xterm.rows }, firstBufferRow);
+  return tracked.get(terminal.xterm)?.snapshot(read, firstBufferRow) ?? read();
 }
 
 export class RenderCursor {
@@ -79,7 +65,7 @@ export class RenderCursor {
 
   private readonly terminal: Terminal;
   private readonly hasStagedOutput: () => boolean;
-  private frames: Partial<Record<ScreenLocation, CachedFrame>> = {};
+  private cachedFrame: CachedFrame | undefined;
 
   constructor(terminal: Terminal, hasStagedOutput: () => boolean) {
     this.terminal = terminal;
@@ -90,7 +76,7 @@ export class RenderCursor {
       return false;
     };
     const invalidate = () => {
-      this.frames = {};
+      this.cachedFrame = undefined;
     };
     this.handlers = [
       ...(["h", "l"] as const).map((final) =>
@@ -120,7 +106,7 @@ export class RenderCursor {
   rendered(revision: number, arrival: number): void {
     this.renderedRevision = revision;
     this.renderedArrivals = arrival;
-    this.frames = {};
+    this.cachedFrame = undefined;
     for (const listener of this.listeners) listener();
   }
   captureProgress(): () => boolean {
@@ -133,11 +119,7 @@ export class RenderCursor {
   get settledVisible(): boolean {
     return this.visible && this.settled;
   }
-  snapshot(
-    capture: () => TerminalSnapshot,
-    location: ScreenLocation,
-    firstBufferRow: number,
-  ): TerminalSnapshot {
+  snapshot(capture: () => TerminalSnapshot, firstBufferRow: number): TerminalSnapshot {
     const buffer = this.terminal.buffer.active;
     const position = [
       this.terminal.cols,
@@ -147,10 +129,10 @@ export class RenderCursor {
       firstBufferRow,
       buffer.baseY,
     ].join(":");
-    const known = this.frames[location];
+    const known = this.cachedFrame;
     if (known?.position === position) return known.frame;
     const frame = capture();
-    this.frames[location] = { position, frame };
+    this.cachedFrame = { position, frame };
     return frame;
   }
   dispose(): void {
@@ -160,7 +142,7 @@ export class RenderCursor {
   }
 }
 
-/** Raw xterm mutations bypass owned revisions, but must never reuse older viewport text. */
+/** Raw xterm mutations bypass owned revisions and must invalidate cached rows. */
 function invalidateOnMutation(terminal: Terminal, invalidate: () => void): () => void {
   const restore: Array<() => void> = [];
   const writes: readonly ("write" | "writeln")[] = ["write", "writeln"];

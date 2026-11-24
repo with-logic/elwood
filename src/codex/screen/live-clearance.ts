@@ -1,7 +1,7 @@
 /** Live native cursor, text, and title prove Codex trust clearance (C-TRUST-01). */
 
 import type { TrustClearance } from "../../core/trust/clearance.ts";
-import { currentRenderedFrame, settledCursorVisible } from "../../terminal/cursor.ts";
+import { settledCursorVisible, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import { codexComposerRowsClearance } from "./clearance.ts";
 import { codexWorkingTitle } from "./working.ts";
@@ -13,7 +13,7 @@ export function liveCodexClearance(readTerminal: () => ElwoodTerminal): TrustCle
   return (text) => {
     const terminal = readTerminal();
     if (codexWorkingTitle.test(terminal.title)) return false;
-    const frame = currentRenderedFrame(terminal, "live");
+    const frame = settledLiveSnapshot(terminal);
     // Native input follows the two-cell "› " or "» " prefix (zero-based column 2).
     if (
       frame === undefined ||

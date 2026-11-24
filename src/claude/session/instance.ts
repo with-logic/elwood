@@ -179,7 +179,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
       this.emitter.on("status", (e) => e.status === "ready" && handler());
     // Login writes `/login` and an Enter outside any picker transaction, so it must also
     // stand off a model dialog a human opened: Enter there applies the highlighted row.
-    const blocked = () => this.isInputBlocked() || this.foreignPickerHoldsInput();
+    const blocked = () => this.queuedInputBlocked();
     const terminal = this.automatedTerminal;
     const deps = { controlQueue: this.controlQueue, terminal, blocked, onReady };
     return this.inSession(() => runSessionLogin(deps, options));

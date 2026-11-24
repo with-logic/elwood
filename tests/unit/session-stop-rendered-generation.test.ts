@@ -96,7 +96,6 @@ for (const agent of ["claude", "codex"] as const) {
         const terminal = session.terminal;
         const { isScrolled } = await viewTerminalHistory(terminal, pty);
         expect(isScrolled()).toBe(true);
-        terminal.xterm.onData(() => terminal.xterm.scrollToTop());
       }
       vi.useFakeTimers();
       const first = session.sendPrompt("first");

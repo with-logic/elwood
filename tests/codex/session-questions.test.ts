@@ -32,7 +32,6 @@ test("C-QUESTION-01 C-QUESTION-02 answers queued questions while showing history
   try {
     await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
     await viewTerminalHistory(session.terminal, ptys[0]!);
-    session.terminal.xterm.onData(() => session.terminal.xterm.scrollToTop());
     const activity: string[] = [];
     const transcripts: CodexTranscriptEvent[] = [];
     session.on("activity", (event) => activity.push(event.kind));

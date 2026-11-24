@@ -8,7 +8,7 @@ import { codexEmptyInputFrame } from "../../../src/codex/screen/empty-input.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
 import { CodexRetainedComposerHold } from "../../../src/codex/screen/retained-clearance.ts";
 import { codexInputStaged } from "../../../src/codex/screen/staged-input.ts";
-import { renderedSnapshot } from "../../../src/terminal/cursor.ts";
+import { cachedLiveSnapshot } from "../../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 import {
   type CapturedFooter,
@@ -96,7 +96,7 @@ test.each(
   try {
     const clear = liveCodexClearance(() => terminal);
     const text = terminal.snapshot().text;
-    const hold = new CodexRetainedComposerHold(clear, () => renderedSnapshot(terminal));
+    const hold = new CodexRetainedComposerHold(clear, () => cachedLiveSnapshot(terminal));
     expect(hold.observe("Update available! 0.169.0 -> 0.170.0", true)).toBe(true);
     expect(hold.observe(text, false)).toBe(false);
     // A reader that carries no width cannot prove the wrapped composer, so the hold stays.

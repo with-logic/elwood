@@ -10,7 +10,7 @@ resume a session across parent-app restarts.
 - A late `terminal:data` subscriber first receives the replay buffer as one
   coalesced chunk, then live chunks, with no gap and no duplicates. The buffer
   is bounded at 128 KB (oldest data dropped); use
-  `session.terminal.snapshot()` for current-screen ground truth.
+  `session.terminal.snapshot()` to read the selected viewport, including scrollback.
 - `stop()` / `kill()` after exit do not re-signal the PTY and preserve the exit
   status, but they still confirm or retry the process-group reap and may
   reject with `termination_failed`. `teardown()` is safe to call twice.

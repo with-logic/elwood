@@ -1,5 +1,5 @@
 /** Read only a live idle native draft, excluding submitted history (PRD §5.3, C-API-31). */
-import { currentRenderedFrame, settledCursorVisible } from "../../terminal/cursor.ts";
+import { settledCursorVisible, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { readScreenFacts, type ScreenFactTable } from "../screen-facts.ts";
 
@@ -48,8 +48,7 @@ export function readStagedWhitespace(
   emptyRow: string,
 ): boolean {
   if (!current || current.frame.cursorX <= 2) return false;
-  const { frame, cursorRow } = current;
-  const row = frame.lines[cursorRow]!;
+  const { frame, cursorRow, cursorLine: row } = current;
   if (row.charAt(0) !== emptyRow.charAt(0) || !/^[ \u00a0]*$/.test(row.slice(1))) return false;
   const normalized = [...frame.lines];
   normalized[cursorRow] = emptyRow;
@@ -57,12 +56,13 @@ export function readStagedWhitespace(
 }
 
 export function readIdleComposerFrame(terminal: ElwoodTerminal, table: ScreenFactTable) {
-  const frame = currentRenderedFrame(terminal, "live");
+  const frame = settledLiveSnapshot(terminal);
   // The native caret prefix occupies two cells; staged text/chips advance beyond them.
   if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX < 2) return undefined;
   const { facts } = readScreenFacts(table, { text: frame.text, title: terminal.title });
   if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
   const cursorRow = frame.cursorY;
-  if (cursorRow >= frame.lines.length) return undefined;
-  return { frame, cursorRow };
+  const cursorLine = frame.lines[cursorRow];
+  if (cursorLine === undefined) return undefined;
+  return { frame, cursorRow, cursorLine };
 }

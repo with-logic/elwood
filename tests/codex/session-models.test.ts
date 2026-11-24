@@ -6,6 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { CodexSession, startCodex } from "../../src/index.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
@@ -29,12 +30,14 @@ describe("CodexSessionApi model picker", () => {
     const session = await startCodex({ cwd });
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
+    await viewTerminalHistory(session.terminal, ptys[0]!);
     const listing = session.listModels({ timeoutMs: 30_000 });
     await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(codexPickerCurrentMarkerOnly));
     await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
     ptys[0]!.emitData(asScreen("\u203a "));
     const options = await listing;
+    expect(session.terminal.snapshot().text).toContain("Historical output");
     expect(options.map((option) => option.id)).toEqual([
       "gpt-5.5",
       "gpt-5.4",

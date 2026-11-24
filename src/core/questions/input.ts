@@ -1,8 +1,8 @@
 /** Guard native writes with settled, fresh terminal evidence (PRD §4). */
 import {
   captureRenderProgress,
-  currentRenderedFrame,
   settledCursorVisible,
+  settledLiveSnapshot,
   subscribeRender,
 } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
@@ -21,7 +21,7 @@ type WriteObserver = {
 };
 
 export function readQuestionFrame(terminal: ElwoodTerminal): QuestionFrame | undefined {
-  const frame = currentRenderedFrame(terminal, "live");
+  const frame = settledLiveSnapshot(terminal);
   return (
     frame && {
       ...frame,

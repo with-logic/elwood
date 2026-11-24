@@ -1,7 +1,7 @@
 /** Settled live trust and foreign picker holds keep working during scrollback (PRD §5.3). */
 import { afterEach, expect, test, vi } from "vitest";
 import { type ElwoodActivityEvent, startClaude, startCodex } from "../../src/index.ts";
-import { currentRenderedFrame, renderedSnapshot } from "../../src/terminal/cursor.ts";
+import { cachedLiveSnapshot, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import * as claude from "../claude/helpers.ts";
 import { instructionsLoaded } from "../claude/login-helpers.ts";
 import * as codex from "../codex/helpers.ts";
@@ -40,7 +40,6 @@ test.each([
   try {
     const terminal = session.terminal;
     const { isScrolled, paint } = await viewTerminalHistory(terminal, pty);
-    terminal.xterm.onData(() => terminal.xterm.scrollToTop());
     await paint(
       tty(
         agent === "claude"
@@ -133,7 +132,7 @@ test.each([
       historicalOnly ? "echo fixture" : "Historical output",
     );
     expect(session.status).toBe(historicalOnly ? "ready" : "blocked");
-    expect(currentRenderedFrame(terminal, "live")).toBe(renderedSnapshot(terminal, "live"));
+    expect(settledLiveSnapshot(terminal)).toBe(cachedLiveSnapshot(terminal));
     let readyWhileScrolled = false;
     status.on("status", ({ status }) => {
       if (status === "ready") readyWhileScrolled = isScrolled();

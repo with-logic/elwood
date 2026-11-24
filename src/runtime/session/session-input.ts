@@ -10,7 +10,7 @@
 import type { EmptyComposerObserver } from "../../core/input/clear-ack.ts";
 import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import { callerInputIntervention } from "../../core/models/intervention.ts";
-import { renderedSnapshot } from "../../terminal/cursor.ts";
+import { cachedLiveSnapshot, captureRenderProgress } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
 type AutomatedWork = () => Promise<void>;
@@ -48,7 +48,7 @@ export class SessionInputOwnership {
   private current = new AbortController();
 
   constructor(inner: ElwoodTerminal) {
-    let automating = false;
+    let origin: "automation" | "caller" | undefined;
     const listeners = new Set<() => void>();
     callerInputListeners.set(inner.xterm, listeners);
     // Runs before the caller's keys are written: picker operations and the startup
@@ -64,30 +64,32 @@ export class SessionInputOwnership {
     inner.xterm.input = (data, wasUserInput) => {
       // Each write consumes the automation marker while xterm runs it, so input that an
       // `onData` listener sends from inside an automated write is the caller's and revokes.
-      const automated = automating;
-      automating = false;
+      const writing = origin;
+      origin = undefined;
       try {
-        if (!automated) revoke();
-        input(data, wasUserInput);
+        if (writing === undefined) revoke();
+        // Caller keys keep xterm's scroll policy. Internal keys stay behind scrollback.
+        input(data, writing === "automation" ? false : wasUserInput);
       } finally {
-        automating = automated;
+        origin = writing;
       }
     };
-    const automate = (work: AutomatedWork) => {
-      const prior = automating;
-      automating = true;
+    const writeAs = (writing: "automation" | "caller", work: AutomatedWork) => {
+      const prior = origin;
+      origin = writing;
       try {
         return work();
       } finally {
-        automating = prior;
+        origin = prior;
       }
     };
+    const automate = (work: AutomatedWork) => writeAs("automation", work);
     automationScopes.set(inner.xterm, automate);
     const send = (input: string | Uint8Array) => automate(() => inner.sendInput(input));
-    this.automated = view(inner, send, () => renderedSnapshot(inner, "live"));
+    this.automated = view(inner, send, () => cachedLiveSnapshot(inner));
     this.caller = view(inner, (input) => {
       revoke();
-      return send(input);
+      return writeAs("caller", () => inner.sendInput(input));
     });
   }
 
@@ -102,6 +104,7 @@ export class SessionInputOwnership {
       closing,
       () => this.signal(),
       observeEmpty,
+      () => captureRenderProgress(this.automated),
     );
     return (work, signal) => cleanup.run(work, signal);
   }

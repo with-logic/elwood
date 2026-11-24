@@ -14,7 +14,7 @@ import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { currentRenderedFrame } from "../../src/terminal/cursor.ts";
+import { settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
 import {
   cleanup,
@@ -136,7 +136,7 @@ for (const agent of ["claude", "codex"] as const) {
         closing.signal,
         () => closing.signal,
         () => {
-          const frame = currentRenderedFrame(session.terminal);
+          const frame = settledLiveSnapshot(session.terminal);
           return frame && isEmpty(frame.text) ? frame : undefined;
         },
       );
