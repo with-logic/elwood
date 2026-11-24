@@ -3,6 +3,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { type CodexTranscriptEvent, resumeCodex, startCodex } from "../../src/index.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { captured, records } from "../unit/codex-questions/helpers.ts";
 import { snapshot } from "../unit/codex-questions/snapshot-fixtures.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -22,7 +23,7 @@ const nativePanel = (name: string) => {
   const text = captured(name).text;
   return text.slice(text.lastIndexOf("• Queued follow-up inputs")).trimEnd();
 };
-test("C-QUESTION-01 C-QUESTION-02 answers queued questions while an ordinary writer is already held", async () => {
+test("C-QUESTION-01 C-QUESTION-02 answers queued questions while showing history and releases an ordinary writer", async () => {
   installFakes();
   const cwd = tempDir();
   const path = join(cwd, "transcript.jsonl");
@@ -30,6 +31,8 @@ test("C-QUESTION-01 C-QUESTION-02 answers queued questions while an ordinary wri
   const session = await startCodex({ cwd, initialSize: { cols: 140, rows: 45 } });
   try {
     await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
+    await viewTerminalHistory(session.terminal, ptys[0]!);
+    session.terminal.xterm.onData(() => session.terminal.xterm.scrollToTop());
     const activity: string[] = [];
     const transcripts: CodexTranscriptEvent[] = [];
     session.on("activity", (event) => activity.push(event.kind));
@@ -78,6 +81,7 @@ test("C-QUESTION-01 C-QUESTION-02 answers queued questions while an ordinary wri
       { questionId: note.id, text: "ELWOOD_NOTE_74" },
     ]);
     await ordinary;
+    expect(session.terminal.snapshot().text).toContain("Historical output");
     expect(ptys[0]!.writes).toEqual([
       "\x1b[1;2D",
       "\x1b[B",

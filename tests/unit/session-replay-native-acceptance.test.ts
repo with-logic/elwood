@@ -14,6 +14,7 @@ import {
   codexSmallComposer,
   codexTty,
 } from "../fixtures/trust-composer.ts";
+import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -21,14 +22,17 @@ afterEach(() => {
 });
 
 test.each([
-  { agent: "claude", nativeHook: false, payload: "" },
-  { agent: "codex", nativeHook: false, payload: "" },
-  { agent: "claude", nativeHook: true, payload: " \t\n" },
-  { agent: "codex", nativeHook: true, payload: " \t\n" },
-] as const)("C-API-56 $agent replay awaits empty input after nativeHook=$nativeHook", async ({
+  { agent: "claude", nativeHook: false, payload: "", scrolled: false },
+  { agent: "codex", nativeHook: false, payload: "", scrolled: false },
+  { agent: "claude", nativeHook: true, payload: " \t\n", scrolled: false },
+  { agent: "codex", nativeHook: true, payload: " \t\n", scrolled: false },
+  { agent: "claude", nativeHook: false, payload: "", scrolled: true },
+  { agent: "codex", nativeHook: false, payload: "", scrolled: true },
+] as const)("C-API-56 $agent replay awaits empty input after nativeHook=$nativeHook scrolled=$scrolled", async ({
   agent,
   nativeHook,
   payload,
+  scrolled,
 }) => {
   const helper = agent === "claude" ? claude : codex;
   helper.installFakes();
@@ -51,6 +55,10 @@ test.each([
   try {
     await native.ready();
     await expect.poll(() => session.status).toBe("ready");
+    if (scrolled) {
+      await viewTerminalHistory(session.terminal, pty);
+      session.terminal.xterm.onData(() => session.terminal.xterm.scrollToTop());
+    }
     vi.useFakeTimers();
     let accepted = false;
     const replay = session.sendMessage(payload, cancellableSubmission(undefined, abort.signal));
@@ -92,6 +100,7 @@ test.each([
     await paint(frame.text); // actual native empty input while the turn is still active
     await vi.advanceTimersByTimeAsync(1_000);
     expect(accepted).toBe(true);
+    if (scrolled) expect(session.terminal.snapshot().text).toContain("Historical output");
     await replay;
   } finally {
     abort.abort();

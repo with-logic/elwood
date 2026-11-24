@@ -178,3 +178,18 @@ test.each([
     terminal.dispose();
   }
 });
+
+test("a resize round trip invalidates cached live rows without manufacturing render progress", async () => {
+  const terminal = createHeadlessTerminal({ cols: 80, rows: 4 }, () => undefined);
+  try {
+    await terminal.writeOutput("\u001b[4;1HSelect model\u001b[1;1H");
+    expect(renderedSnapshot(terminal, "live").text).toContain("Select model");
+    const advanced = captureRenderProgress(terminal);
+    terminal.xterm.resize(80, 2);
+    terminal.xterm.resize(80, 4);
+    expect(renderedSnapshot(terminal, "live").text).not.toContain("Select model");
+    expect(advanced()).toBe(false);
+  } finally {
+    terminal.dispose();
+  }
+});

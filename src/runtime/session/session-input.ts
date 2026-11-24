@@ -10,6 +10,7 @@
 import type { EmptyComposerObserver } from "../../core/input/clear-ack.ts";
 import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import { callerInputIntervention } from "../../core/models/intervention.ts";
+import { renderedSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
 type AutomatedWork = () => Promise<void>;
@@ -83,7 +84,7 @@ export class SessionInputOwnership {
     };
     automationScopes.set(inner.xterm, automate);
     const send = (input: string | Uint8Array) => automate(() => inner.sendInput(input));
-    this.automated = view(inner, send);
+    this.automated = view(inner, send, () => renderedSnapshot(inner, "live"));
     this.caller = view(inner, (input) => {
       revoke();
       return send(input);
@@ -110,7 +111,11 @@ export class SessionInputOwnership {
   }
 }
 
-function view(inner: ElwoodTerminal, sendInput: ElwoodTerminal["sendInput"]): ElwoodTerminal {
+function view(
+  inner: ElwoodTerminal,
+  sendInput: ElwoodTerminal["sendInput"],
+  snapshot = () => inner.snapshot(),
+): ElwoodTerminal {
   return {
     get xterm() {
       return inner.xterm;
@@ -127,7 +132,7 @@ function view(inner: ElwoodTerminal, sendInput: ElwoodTerminal["sendInput"]): El
     writeOutput: (...args) => inner.writeOutput(...args),
     sendInput,
     resize: (size) => inner.resize(size),
-    snapshot: () => inner.snapshot(),
+    snapshot,
     settled: () => inner.settled(),
     dispose: () => inner.dispose(),
   };

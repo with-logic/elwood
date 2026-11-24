@@ -14,13 +14,13 @@ test("C-API-55 a foreign picker remains held through missing rows and blank fram
     () => {},
     codexModelPicker,
   );
-  expect(picker.foreignDialogVisible()).toBe(true);
+  expect(picker.foreignPickerHoldsInput()).toBe(true);
   for (const repaint of ["Select Model and Effort", "", "›", "› 1. gpt-5.5"]) {
     screen.text = repaint;
-    for (let read = 0; read < 6; read += 1) expect(picker.foreignDialogVisible()).toBe(true);
+    for (let read = 0; read < 6; read += 1) expect(picker.foreignPickerHoldsInput()).toBe(true);
   }
   screen.text = "› Ask Codex to do anything\n  gpt-5.5 high";
-  expect(releasesAfterClearStreak(() => picker.foreignDialogVisible())).toBe(true);
+  expect(releasesAfterClearStreak(() => picker.foreignPickerHoldsInput())).toBe(true);
   queue.close();
 });
 
@@ -30,9 +30,9 @@ test("C-API-55 a first partial picker frame holds input before its rows finish",
     () => {},
     codexModelPicker,
   );
-  expect(picker.foreignDialogVisible()).toBe(true);
+  expect(picker.foreignPickerHoldsInput()).toBe(true);
   screen.text = "";
-  expect(picker.foreignDialogVisible()).toBe(true);
+  expect(picker.foreignPickerHoldsInput()).toBe(true);
   queue.close();
 });
 
@@ -47,6 +47,6 @@ test.each([
   ],
 ])("C-API-55 quoted $agent picker rows above a composer do not start a hold", (spec, quote) => {
   const { picker, queue } = pickerHarness(quote, () => {}, spec);
-  expect(picker.foreignDialogVisible()).toBe(false);
+  expect(picker.foreignPickerHoldsInput()).toBe(false);
   queue.close();
 });

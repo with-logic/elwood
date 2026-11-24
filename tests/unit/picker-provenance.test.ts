@@ -100,17 +100,17 @@ test("C-API-55 a human's model picker withholds non-picker writes but not readin
   // Nobody here opened it, so it is not a survivor and must not suppress readiness.
   expect(picker.blocksInput()).toBe(false);
   // But a non-picker write must still stand off it.
-  expect(picker.foreignDialogVisible()).toBe(true);
+  expect(picker.foreignPickerHoldsInput()).toBe(true);
   // Once the human closes it, writes resume.
   screen.text =
     "Claude Code v2.1.278\n────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
-  expect(releasesAfterClearStreak(() => picker.foreignDialogVisible())).toBe(true);
+  expect(releasesAfterClearStreak(() => picker.foreignPickerHoldsInput())).toBe(true);
   queue.close();
 });
 
 /**
  * A dialog our OWN cleanup could not cancel is already held by `blocksInput`, which feeds
- * readiness. `foreignDialogVisible` is only for a dialog nobody here opened, so once a
+ * readiness. `foreignPickerHoldsInput` is only for a dialog nobody here opened, so once a
  * survivor is latched it defers rather than reporting the same dialog twice (C-API-55).
  */
 test("C-API-55 a survivor is not also reported as a foreign dialog", async () => {
@@ -145,6 +145,6 @@ test("C-API-55 a survivor is not also reported as a foreign dialog", async () =>
     }),
   ).rejects.toBe(failure);
   expect(picker.blocksInput()).toBe(true);
-  expect(picker.foreignDialogVisible()).toBe(false);
+  expect(picker.foreignPickerHoldsInput()).toBe(false);
   queue.close();
 }, 10_000);

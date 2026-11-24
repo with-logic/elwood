@@ -30,7 +30,6 @@ import {
   enqueueSubmission,
   type SubmitKind,
 } from "./image-attach.ts";
-import { liveInputTerminal } from "./live-terminal.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import { SessionInputOwnership } from "./session-input.ts";
@@ -71,7 +70,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     // `picker` is a subclass field initializer that runs AFTER this constructor, so the
     // surface resolves it per call rather than capturing it here.
     this.commands = new CommandSurface({
-      terminal: liveInputTerminal(ownership.automated),
+      terminal: ownership.automated,
       inputSignal: () => ownership.signal(),
       observeRendered: (listener) => {
         // xterm runs this after the ordered completed-frame observers.
@@ -111,13 +110,13 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
    * `isInputBlocked`: that feeds readiness, and suppressing readiness while any picker is
    * visible would deadlock Elwood's own picker, whose dialog is on screen by design.
    */
-  protected foreignDialogBlocksWrite(): boolean {
-    return this.commands.foreignDialogVisible();
+  protected foreignPickerHoldsInput(): boolean {
+    return this.commands.foreignPickerHoldsInput();
   }
 
   /** Ordinary queued text and attachments cannot drive a model dialog that they did not open. */
   protected queuedInputBlocked(): boolean {
-    return this.isInputBlocked() || this.foreignDialogBlocksWrite();
+    return this.isInputBlocked() || this.foreignPickerHoldsInput();
   }
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {

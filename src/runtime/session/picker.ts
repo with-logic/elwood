@@ -28,7 +28,7 @@ export class PickerTransactions {
   private readonly survivorHold = new PickerHold();
   constructor(deps: PickerDeps) {
     this.deps = deps;
-    deps.observeRendered?.((read) => this.foreignDialogVisible(read));
+    deps.observeRendered?.((read) => this.foreignPickerHoldsInput(read));
   }
 
   /**
@@ -72,7 +72,7 @@ export class PickerTransactions {
    * human's state, so a WRITE that is not part of a picker transaction — `/login`
    * recovery, a queued paste — must be withheld while it is up (C-API-55).
    */
-  foreignDialogVisible(read?: () => string): boolean {
+  foreignPickerHoldsInput(read?: () => string): boolean {
     if (this.survivor !== undefined) return false;
     if (this.active?.progress.commandSubmitted && !this.active.signal.aborted) return false;
     return this.foreign.observe(read?.() ?? this.deps.terminal.snapshot().text, this.deps.picker());

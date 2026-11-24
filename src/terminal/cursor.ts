@@ -16,10 +16,15 @@ export function currentRenderedFrame(
   terminal: ElwoodTerminal,
   location: ScreenLocation = "viewport",
 ): TerminalSnapshot | undefined {
-  const cursor = tracked.get(terminal.xterm);
-  if (terminal.renderFailed || !cursor?.settled || terminal.xterm.modes.synchronizedOutputMode)
-    return undefined;
-  return renderedSnapshot(terminal, location);
+  return renderIsSettled(terminal) ? renderedSnapshot(terminal, location) : undefined;
+}
+
+function renderIsSettled(terminal: ElwoodTerminal): boolean {
+  return (
+    !terminal.renderFailed &&
+    tracked.get(terminal.xterm)?.settled === true &&
+    !terminal.xterm.modes.synchronizedOutputMode
+  );
 }
 
 /** True for unknown tracking or received output; this does not attest banner visibility. */
@@ -30,7 +35,7 @@ export function hasUnknownOrNonPristineOutput(terminal: ElwoodTerminal): boolean
 /** A recovery Enter requires output received after its own physical attempt (C-API-31). */
 export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
   const progressed = tracked.get(terminal.xterm)?.captureProgress();
-  return () => progressed?.() === true && currentRenderedFrame(terminal) !== undefined;
+  return () => progressed?.() === true && renderIsSettled(terminal);
 }
 
 /** Private queued-input notification; terminal wrappers share the tracked xterm identity. */
@@ -84,6 +89,9 @@ export class RenderCursor {
       this.visible = true;
       return false;
     };
+    const invalidate = () => {
+      this.frames = {};
+    };
     this.handlers = [
       ...(["h", "l"] as const).map((final) =>
         terminal.parser.registerCsiHandler({ prefix: "?", final }, (params) => {
@@ -93,11 +101,8 @@ export class RenderCursor {
       ),
       terminal.parser.registerEscHandler({ final: "c" }, reset),
       terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset),
-      {
-        dispose: invalidateOnMutation(terminal, () => {
-          this.frames = {};
-        }),
-      },
+      terminal.onResize(invalidate),
+      { dispose: invalidateOnMutation(terminal, invalidate) },
     ];
   }
 

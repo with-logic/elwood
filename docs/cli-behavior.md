@@ -745,7 +745,8 @@ Both adapters now apply the same received/rendered boundary to human trust
 clearance and every retry read. A render failure permanently invalidates that
 terminal view; an unavailable view withholds automation within its existing
 deadline. This guards bytes already received, not future output the CLI has yet
-to send. A completed snapshot is reused until its render or viewport changes.
+to send. Live snapshot rows are cached until new rendering or live terminal
+geometry invalidates them.
 That includes an oversized receipt's staged tail: completion of its first 64-KiB
 batch alone is not a complete render. The native working row includes elapsed
 time before the interrupt hint (seconds, minutes/seconds, or hours/minutes/seconds),
