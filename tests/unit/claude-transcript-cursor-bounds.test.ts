@@ -6,7 +6,7 @@
 
 import { closeSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   resetMaxRecordsForTests,
   scanBaselineTail,
@@ -174,4 +174,19 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     expect(third.lines).toEqual(["next"]);
     expect(third.startedOversizedDrop).toBe(false); // consumed terminating newline (no new drop)
   });
+});
+
+test("C-CLAUDE-15 a malformed UTF-8 seam cannot reread the same backward window", () => {
+  const path = tmpFile();
+  const corrupted = Buffer.alloc(128 * 1024, 0x80);
+  const latest = JSON.stringify({ type: "assistant", message: { content: "retained" } });
+  writeFileSync(path, Buffer.concat([corrupted, Buffer.from(`\n${latest}\n`)]));
+  // A broken scanner must repeat the stalled read without reaching the default budget.
+  setMaxRecordsForTests(12);
+  const read = vi.fn(countingReader({ bytes: 0 }));
+  setByteReaderForTests(read);
+  const scan = scanBaselineTail(path, fileBytes(path));
+  expect(scan).toMatchObject({ truncated: true, unrecoveredBytes: corrupted.length });
+  expect(scan.lines).toContain(latest);
+  expect(read).toHaveBeenCalledTimes(2);
 });

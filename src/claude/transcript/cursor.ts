@@ -27,13 +27,9 @@ export class TranscriptCursor extends BoundedTranscriptCursor {
   }
 
   // The current (final) turn already on disk (the Stop-first edge). Delegates to
-  // the bounded backward scan (`scanBaselineTail`): UTF-8-seam-safe, linear, and —
-  // when the turn is larger than the cap — recovering the in-window committed
-  // records rather than silently dropping the whole turn (§5.4, C-CLAUDE-15).
-  // Returns the joined tail text PLUS whether the scan hit its cap (`truncated`)
-  // and, if so, the bytes beyond the window that were NOT recovered — so the caller
-  // can surface that loss as a bounded, content-free drop instead of dropping it
-  // silently.
+  // the bounded backward scan (`scanBaselineTail`). A scan limit or unreadable
+  // seam leaves `truncated` and the unrecovered byte count even when complete
+  // later records can still be recovered (§5.4, C-CLAUDE-15).
   // Sized under the existence policy: a file not created yet has no tail, and one removed
   // after it existed throws for the fs guard rather than reading as empty (C-CLAUDE-24).
   baselineTail(): { text: string; truncated: boolean; droppedBytes: number } {
