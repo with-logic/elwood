@@ -3,7 +3,8 @@
  * Implements PRD §5.8/§12A.2 and C-E2E-21 for C-API-60/C-CLI-28. Codex fires no `Stop` for
  * a rejected turn, so its failed transcript `task_complete` is the only evidence. A bogus
  * `--model` is refused before any model quota is consumed, so this needs no model quota.
- * Codex names the refusal in `codex_error_info`; its `message` is prose that names the model.
+ * From Codex 0.171.0 the refusal code is `codex_error_info` (`model_not_found`) and `message`
+ * is prose naming the model; 0.164.0 reported `other` with the code in a JSON `message`.
  */
 
 import assert from "node:assert/strict";
@@ -111,7 +112,9 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
       );
       assert.ok(outcome.error instanceof ElwoodError, String(outcome.error));
       assert.equal(outcome.error.code, "turn_failed", outcome.error.message);
-      assert.equal(outcome.error.details["agentError"], "model_not_found", outcome.error.message);
+      // Codex 0.171.0+ supplies the code as `agentError`; 0.164.0 left it in the message.
+      const { message, details } = outcome.error;
+      assert.match(`${String(details["agentError"])} ${message}`, /model_not_found/u, message);
       assert.ok(outcome.error.message.includes(bogusCodexModel), outcome.error.message);
     }
     // Codex accepted both submissions and fired no `Stop` for either.

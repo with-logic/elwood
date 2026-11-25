@@ -360,11 +360,12 @@ the message (2026-11-25).** For the same bogus model, the failed
 `task_complete` carries `error.message: "The '<model>' model is not supported
 when using Codex with a ChatGPT account."` and `error.codex_error_info:
 "model_not_found"`. The service's JSON body, which carried the code on
-0.164.0, is gone. `elwood run` still exits 1 with `turn_failed`, and
-`CodexSession.send` still rejects with `turn_failed`. Their message is now
-that sentence, and `details.agentError` is `model_not_found`. C-E2E-21
-failed on both versions while it looked for `model_not_found` in the message.
-It now checks `details.agentError`. The 0.172.0 runs used
+0.164.0, is gone. `elwood run` still exits 1 with a `turn_failed` document,
+whose message is now that sentence; the CLI document carries no structured
+code. `CodexSession.send` still rejects with `turn_failed`, the same message,
+and `details.agentError: "model_not_found"`. Read the code from
+`details.agentError`, not the message. C-E2E-21 checks it there on `send`, and
+checks that both messages name the refused model. The 0.172.0 runs used
 `~/.local/bin/codex`, which the login shell resolves in a project without a
 `.node-version`. The 0.171.0 runs put the npm `codex` 0.171.0 first on the
 login shell's `PATH` through a temporary `ZDOTDIR`. C-E2E-21.
