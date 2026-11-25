@@ -73,7 +73,8 @@ function checkboxActionIndex(
   otherIndex: number,
   grouped: boolean,
 ): number {
-  const action = grouped ? /^(?:❯| ) {4}(?:Next|Submit)$/ : /^(?:❯| ) {4}Submit$/;
+  // A notice Claude replaced on this row leaves blank cells after the label.
+  const action = grouped ? /^(?:❯| ) {4}(?:Next|Submit) *$/ : /^(?:❯| ) {4}Submit *$/;
   return rows.findIndex((line, index) => index > otherIndex && action.test(line));
 }
 

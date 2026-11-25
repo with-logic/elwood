@@ -153,8 +153,12 @@ or malformed secret flags leave the complete request unavailable for automation.
 Ordinary prose questions, permission prompts, trust gates, model pickers and login
 flows retain their existing surfaces. Unknown question layouts remain available
 through the terminal view and do not receive guessed answer keys. Native behavior
-was characterized on Claude Code 2.1.305 and Codex 0.163.0; see
+was first characterized on Claude Code 2.1.305 and Codex 0.163.0; see
 [CLI behavior](cli-behavior.md#native-interactive-question-records-2026-10-20) for evidence.
+The public [native question proofs](native-question-proofs.md) run against Claude
+Code 2.1.332 and Codex 0.163.0; see
+[the Claude notice residue](cli-behavior.md#claude-notice-residue-on-the-last-questionnaire-row-2026-11-25)
+for the 2.1.332 layout they exercise.
 
 Codex question automation is bounded to 256 pending native requests and 1 MiB
 of candidate metadata; each call is limited to 256 definitions and 1 MiB of
