@@ -25,3 +25,5 @@ concepts in this section, including the stable `ElwoodErrorName` union.
 - [5.12 Dashboard statistics](5.12-dashboard-stats.md)
 
 - [5.13 Native dialog discovery](5.13-dialogs.md)
+
+- [5.14 Reading the screen as text](5.14-screen.md)

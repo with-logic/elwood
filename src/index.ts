@@ -179,3 +179,4 @@ export type {
 export { createAccountUsageReader, readAccountUsage } from "./core/usage/index.ts";
 export type { AccountUsage, UsageAccount, UsageWindow } from "./core/usage/types.ts";
 export type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "./terminal/headless.ts";
+export type { ElwoodScreen, ReadScreenOptions } from "./terminal/screen.ts";
