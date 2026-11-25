@@ -3,16 +3,16 @@ import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import * as gitPaths from "../../src/codex/workspace-trust/git-paths.ts";
 import {
   captureLaunchTrustEvidence,
   captureStartupTrustEvidence,
 } from "../../src/codex/workspace-trust/launch-evidence.ts";
 import { boundedTrustEvidence } from "../../src/core/trust/evidence-deadline.ts";
+import * as gitPaths from "../../src/core/trust/git-paths.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 vi.mock("node:fs/promises", { spy: true });
-vi.mock("../../src/codex/workspace-trust/git-paths.ts", { spy: true });
+vi.mock("../../src/core/trust/git-paths.ts", { spy: true });
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -100,12 +100,11 @@ function checkedLaunch(cwd: string) {
 }
 
 async function holdCanonicalPathAfter(earlierCalls: number) {
-  const native = (
-    await vi.importActual<typeof gitPaths>("../../src/codex/workspace-trust/git-paths.ts")
-  ).canonicalGitPath;
+  const native = (await vi.importActual<typeof gitPaths>("../../src/core/trust/git-paths.ts"))
+    .canonicalTrustPath;
   const reached = Promise.withResolvers<void>();
   const held = Promise.withResolvers<void>();
-  const realpath = vi.mocked(gitPaths.canonicalGitPath);
+  const realpath = vi.mocked(gitPaths.canonicalTrustPath);
   for (let index = 0; index < earlierCalls; index++) realpath.mockImplementationOnce(native);
   realpath.mockImplementationOnce(async (path, signal) => {
     const result = await native(path, signal);

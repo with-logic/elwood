@@ -1,88 +1,109 @@
-/** Resolve the Git scope associated with a checked Claude launch (PRD §5.1). */
-import { lstatSync, realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
-import { sameDirectoryIdentity } from "../../core/directory-identity.ts";
-import {
-  matchesGitHeadMarkerShape,
-  parseGitMetadataLine,
-  readBoundedGitMetadata,
-} from "../../core/git-metadata.ts";
-import type { PathUser } from "../../core/path-trust.ts";
-import {
-  assertLaunchDirectoryUnchanged,
-  type CheckedLaunchDirectory,
-} from "../../runtime/session/launch-directory.ts";
-import { trustedGitDirectoryPath, trustedGitFile } from "./path-trust.ts";
+/** Capture and revalidate the physical scope associated with a checked Claude launch (PRD §5.1). */
+import { lstat, stat } from "node:fs/promises";
+import { isAbsolute } from "node:path";
+import { type DirectoryIdentity, sameDirectoryIdentity } from "../../core/directory-identity.ts";
+import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
+import { canonicalTrustPath } from "../../core/trust/git-paths.ts";
+import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
+import { claudeRepositoryTarget, nearestGitMarker } from "./repository.ts";
 
-type WorkspaceTrustTarget = {
+type ClaudeWorkspaceTrustScope = {
   readonly physicalLaunchPath: string;
   readonly targetPath: string;
   readonly targetScope: "folder" | "repository";
 };
-
-// HEAD and worktree pointers are short single lines. Decline longer evidence
-// so a revalidation never reads more than 4 KiB per metadata file.
-const maximumMetadataBytes = 4096;
-const gitDirectoryPrefix = "gitdir: ";
+export type ClaudeLaunchTrustEvidence = {
+  /** Launch-time scope. Revalidate with isCurrent before exposing or using it. */
+  readonly scope: ClaudeWorkspaceTrustScope;
+  /**
+   * A completed check that cannot verify the captured scope revokes it for this launch.
+   * A canceled check returns false and preserves the capture for a later check.
+   */
+  readonly isCurrent: (signal?: AbortSignal) => Promise<boolean>;
+};
 
 /**
- * Capture the checked launch's scope before starting Claude. Every later read rechecks
- * that evidence. Missing or changed evidence permanently revokes the captured scope.
+ * Capture the launch and target identities. The caller controls cancellation
+ * through the signal. Startup uses captureClaudeStartupTrustEvidence to bound the wait.
  */
-export function captureClaudeWorkspaceTrustTarget(
+export async function captureClaudeLaunchTrustEvidence(
   directory: CheckedLaunchDirectory,
-): () => WorkspaceTrustTarget | undefined {
-  let captured = verifyWorkspaceTarget(directory);
-  return () => {
-    if (!captured) return undefined;
-    const verified = verifyWorkspaceTarget(directory);
-    if (
-      verified?.key !== captured.key ||
-      !sameDirectoryIdentity(verified.identity, captured.identity)
-    ) {
-      captured = undefined;
-      return undefined;
-    }
-    return verified.scope;
+  signal?: AbortSignal,
+): Promise<ClaudeLaunchTrustEvidence | undefined> {
+  const captured = await verifyWorkspaceTarget(directory, signal);
+  if (!captured) return undefined;
+  const { scope, key, targetIdentity } = captured;
+  let current = true;
+  return {
+    scope,
+    isCurrent: async (signal) => {
+      if (!current) return false;
+      const verified = await verifyWorkspaceTarget(directory, signal);
+      if (signal?.aborted) return false;
+      if (verified?.key !== key || !sameDirectoryIdentity(verified.targetIdentity, targetIdentity))
+        current = false;
+      return current;
+    },
   };
 }
 
-function verifyWorkspaceTarget(directory: CheckedLaunchDirectory) {
-  if (!directory.identity) return undefined;
+/** Capture within the startup deadline. Expiry cancels the capture and yields undefined. */
+export function captureClaudeStartupTrustEvidence(directory: CheckedLaunchDirectory) {
+  return boundedTrustEvidence((signal) => captureClaudeLaunchTrustEvidence(directory, signal));
+}
+
+async function verifyWorkspaceTarget(
+  { cwd, identity: launchIdentity }: CheckedLaunchDirectory,
+  signal: AbortSignal | undefined,
+) {
+  if (!launchIdentity) return undefined;
   try {
-    assertLaunchDirectoryUnchanged(directory);
-    const scope = resolveClaudeWorkspaceTrustTarget(directory.cwd);
+    if (!(await isLaunchDirectory(cwd, launchIdentity, signal))) return undefined;
+    const scope = await resolveClaudeWorkspaceTrustTarget(cwd, signal);
     if (!scope) return undefined;
-    const identity = lstatSync(scope.targetPath, { bigint: true });
-    if (!identity.isDirectory()) return undefined;
-    assertLaunchDirectoryUnchanged({ ...directory, cwd: scope.physicalLaunchPath });
-    if (scope.physicalLaunchPath !== directory.cwd) assertLaunchDirectoryUnchanged(directory);
+    signal?.throwIfAborted();
+    const targetIdentity = await lstat(scope.targetPath, { bigint: true });
+    if (!targetIdentity.isDirectory()) return undefined;
+    if (!(await isLaunchDirectory(scope.physicalLaunchPath, launchIdentity, signal)))
+      return undefined;
+    if (scope.physicalLaunchPath !== cwd && !(await isLaunchDirectory(cwd, launchIdentity, signal)))
+      return undefined;
+    signal?.throwIfAborted();
     const key = [scope.physicalLaunchPath, scope.targetPath, scope.targetScope].join("\0");
-    return { scope, key, identity };
+    return { scope, key, targetIdentity };
   } catch {
     return undefined;
   }
 }
 
-/** Inspect the current directory and Git layout. Launch identity is checked at capture and revalidation. */
-export function resolveClaudeWorkspaceTrustTarget(
+async function isLaunchDirectory(
+  path: string,
+  identity: DirectoryIdentity,
+  signal: AbortSignal | undefined,
+) {
+  signal?.throwIfAborted();
+  const current = await stat(path, { bigint: true });
+  return current.isDirectory() && sameDirectoryIdentity(current, identity);
+}
+
+/** Determine the directory Claude would trust from its workspace path and current Git metadata. */
+export async function resolveClaudeWorkspaceTrustTarget(
   launchCwd: string,
-): WorkspaceTrustTarget | undefined {
+  signal?: AbortSignal,
+): Promise<ClaudeWorkspaceTrustScope | undefined> {
   if (!isAbsolute(launchCwd)) return undefined;
   try {
-    const physicalLaunchPath = realpathSync(launchCwd);
-    if (!lstatSync(physicalLaunchPath).isDirectory()) return undefined;
-
-    const gitMarker = nearestGitMarker(physicalLaunchPath);
-    if (!gitMarker)
+    const physicalLaunchPath = await canonicalTrustPath(launchCwd, signal);
+    signal?.throwIfAborted();
+    if (!(await lstat(physicalLaunchPath)).isDirectory()) return undefined;
+    const marker = await nearestGitMarker(physicalLaunchPath, signal);
+    if (!marker)
       return { physicalLaunchPath, targetPath: physicalLaunchPath, targetScope: "folder" };
-
     const uid = process.getuid?.();
     const gid = process.getgid?.();
     if (uid === undefined || gid === undefined) return undefined;
     const user = { uid, gid };
-    if (!trustedGitDirectoryPath(gitMarker.directory, user)) return undefined;
-    const targetPath = resolveRepositoryTarget(gitMarker, user);
+    const targetPath = await claudeRepositoryTarget(marker, user, signal);
     return targetPath === undefined
       ? undefined
       : { physicalLaunchPath, targetPath, targetScope: "repository" };
@@ -90,97 +111,4 @@ export function resolveClaudeWorkspaceTrustTarget(
     // Inaccessible, disappearing, or unsupported Git metadata cannot attest a trust target.
     return undefined;
   }
-}
-
-function nearestGitMarker(physicalLaunchPath: string) {
-  let directory = physicalLaunchPath;
-  while (true) {
-    const metadata = lstatSync(join(directory, ".git"), { throwIfNoEntry: false });
-    if (metadata) return { directory, metadata };
-    const parent = dirname(directory);
-    if (parent === directory) return undefined;
-    directory = parent;
-  }
-}
-
-function resolveRepositoryTarget(
-  gitMarker: NonNullable<ReturnType<typeof nearestGitMarker>>,
-  user: PathUser,
-): string | undefined {
-  const { directory, metadata } = gitMarker;
-  const marker = join(directory, ".git");
-  if (metadata.isDirectory()) {
-    return trustedGitDirectoryPath(marker, user) && hasValidGitHead(marker, user)
-      ? directory
-      : undefined;
-  }
-  if (!metadata.isFile()) return undefined;
-
-  const pointer = readGitMetadata(marker, user);
-  if (!pointer?.startsWith(gitDirectoryPrefix)) return undefined;
-  const gitDir = resolveGitPointer(directory, pointer.slice(gitDirectoryPrefix.length), user);
-  if (!(gitDir && hasValidGitHead(gitDir, user))) return undefined;
-
-  const commonFile = join(gitDir, "commondir");
-  if (
-    !(
-      lstatSync(commonFile, { throwIfNoEntry: false }) ||
-      lstatSync(join(gitDir, "gitdir"), { throwIfNoEntry: false })
-    )
-  )
-    return directory;
-  return mainCheckout(gitDir, commonFile, marker, pointer, user);
-}
-
-function mainCheckout(
-  gitDir: string,
-  commonFile: string,
-  marker: string,
-  pointer: string,
-  user: PathUser,
-): string | undefined {
-  const commonPointer = readGitMetadata(commonFile, user);
-  const backlink = readGitMetadata(join(gitDir, "gitdir"), user);
-  // Claude also treats backslashes as separators when it checks linked registration.
-  if ([pointer, marker, gitDir, commonPointer, backlink].some((path) => path?.includes("\\")))
-    return undefined;
-  const commonDir = resolveGitPointer(gitDir, commonPointer, user);
-  if (!commonDir) return undefined;
-  const registeredLayout =
-    basename(commonDir) === ".git" && dirname(gitDir) === join(commonDir, "worktrees");
-  if (!(registeredLayout && hasValidGitHead(commonDir, user))) return undefined;
-
-  // Git's reciprocal link identifies which checkout this administrative directory belongs to.
-  return resolveGitPointer(gitDir, backlink, user, "file") === marker
-    ? dirname(commonDir)
-    : undefined;
-}
-
-function hasValidGitHead(gitDir: string, user: PathUser): boolean {
-  const head = readGitMetadata(join(gitDir, "HEAD"), user);
-  return head !== undefined && matchesGitHeadMarkerShape(head);
-}
-
-function resolveGitPointer(
-  base: string,
-  path: string | undefined,
-  user: PathUser,
-  kind: "directory" | "file" = "directory",
-): string | undefined {
-  if (!path || path.trim() !== path) return undefined;
-  // Native lookup must reject a missing component in a pointer such as missing/../.git
-  // before lexical normalization can erase it.
-  const absolute = isAbsolute(path) ? path : `${base}${sep}${path}`;
-  const canonical = realpathSync.native(absolute);
-  const lookupPath = kind === "directory" ? absolute : absolute.slice(0, absolute.lastIndexOf(sep));
-  return canonical === resolve(base, path) && trustedGitDirectoryPath(lookupPath, user)
-    ? canonical
-    : undefined;
-}
-
-function readGitMetadata(path: string, user: PathUser): string | undefined {
-  const contents = readBoundedGitMetadata(path, maximumMetadataBytes, (info) =>
-    trustedGitFile(info, user, path),
-  );
-  return parseGitMetadataLine(contents);
 }

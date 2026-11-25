@@ -5,7 +5,7 @@ import {
   parseGitMetadataLine,
   readBoundedGitMetadataAsync,
 } from "../../core/git-metadata.ts";
-import { canonicalGitPath, lstatGitPath } from "./git-paths.ts";
+import { canonicalTrustPath, lstatGitPath } from "../../core/trust/git-paths.ts";
 
 // These metadata pointers are single lines. Bound the descriptor read before allocating.
 const maxGitMarkerBytes = 64 * 1024;
@@ -40,7 +40,7 @@ async function gitFileRepositoryRoot(
 ): Promise<CodexRepositoryTrustRoot | undefined> {
   const directory = await gitFileTarget(marker, signal);
   if (!(await lstatGitPath(directory, signal))?.isDirectory()) throw unprovedRepository();
-  const canonical = await canonicalGitPath(directory, signal);
+  const canonical = await canonicalTrustPath(directory, signal);
   const backlink = join(canonical, "gitdir");
   const commondir = join(canonical, "commondir");
   const hasBacklink = (await lstatGitPath(backlink, signal)) !== undefined;
@@ -56,14 +56,14 @@ async function gitFileRepositoryRoot(
   if (!registeredWorktreeLayout) throw unprovedRepository();
   const common = dirname(worktrees);
   const registeredGitFile = absoluteGitPointer(canonical, await readMarker(backlink, signal));
-  const registered = await canonicalGitPath(dirname(registeredGitFile), signal);
-  const commonFromCheckout = await canonicalGitPath(
+  const registered = await canonicalTrustPath(dirname(registeredGitFile), signal);
+  const commonFromCheckout = await canonicalTrustPath(
     absoluteGitPointer(canonical, await readMarker(commondir, signal)),
     signal,
   );
   const registrationMatchesCheckout =
     basename(registeredGitFile) === ".git" &&
-    registered === (await canonicalGitPath(checkout, signal)) &&
+    registered === (await canonicalTrustPath(checkout, signal)) &&
     commonFromCheckout === common;
   if (!registrationMatchesCheckout) throw unprovedRepository();
 
@@ -73,7 +73,7 @@ async function gitFileRepositoryRoot(
   // An external common directory cannot identify its main checkout from the worktree.
   if (!main) return undefined;
   const mainGit = main.isDirectory() ? mainMarker : await gitFileTarget(mainMarker, signal);
-  if ((await canonicalGitPath(mainGit, signal)) !== common) throw unprovedRepository();
+  if ((await canonicalTrustPath(mainGit, signal)) !== common) throw unprovedRepository();
   return { path: root, allowsFolderFallback: false };
 }
 
