@@ -2,7 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import { isRecord } from "../../src/core/predicates.ts";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -13,6 +13,7 @@ test("C-HOOK-21 activity mutation cannot unblock Stop or change its wire respons
     cwd,
     hooks: { Stop: () => ({ decision: "block", reason: "still working" }) },
   });
+  showComposer();
   await session.sendPrompt("busy");
   let mutations = 0;
   session.on("activity", (event) => {

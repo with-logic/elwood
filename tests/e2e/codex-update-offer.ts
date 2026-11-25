@@ -1,6 +1,6 @@
 /**
  * Forces Codex's own in-TUI update offer in a private `CODEX_HOME`, and keeps application
- * input away from it (PRD §5.3, §12, C-API-28, C-E2E-26). The offer's default choice is
+ * input away from it (PRD §5.3, §12, C-API-28, C-E2E-26, C-E2E-27). The offer's default choice is
  * "Update now", which runs a global installer on the host, so a test that opens a session
  * on the offer must be able to prove that nothing reached the CLI, and must never let an
  * Enter through. docs/cli-behavior.md, "Codex 0.171.0 update offer".
@@ -56,6 +56,20 @@ export type CodexUpdateOffer = {
   /** Restores the real PTY factory and command runner. */
   dispose(): void;
 };
+
+/** The digit of the offer's plain `Skip` row, or undefined while no `N. Update now` row shows. */
+export function offerSkipDigit(screen: string): string | undefined {
+  if (!/^\s*›?\s*\d+\. Update now\b/m.test(screen)) return undefined;
+  return /^\s*›?\s*(\d+)\. Skip\s*$/m.exec(screen)?.[1];
+}
+
+/** Each refused write with the marked rows of the screen it met, to show on failure. */
+export function refusedAtMarkedRows(refused: readonly RefusedInput[]) {
+  return refused.map(({ data, screen }) => ({
+    data,
+    marked: screen.split("\n").filter((row) => /^\s*›/.test(row)),
+  }));
+}
 
 /**
  * A standalone Codex offers an update only from its home's own managed release, and the

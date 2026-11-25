@@ -34,18 +34,39 @@ export async function sendObservedImage(
   blocked: BlockedGuard | undefined,
   signal: AbortSignal,
 ): Promise<number> {
-  const guard = blocked === undefined ? undefined : { blocked };
-  for (;;) {
-    assertAttachNotAbortedOrRenderFailed(terminal, signal);
-    const unsafe = await writeUnsafe(terminal, guard, signal);
-    assertAttachNotAbortedOrRenderFailed(terminal, signal);
-    if (!unsafe) break;
-    await delay(unsafeWriteRetryMs);
-  }
+  await waitUntilAttachSafe(terminal, blocked, signal);
   const before = imageChipCount(terminal.snapshot().text);
   stageComposer(terminal);
   await terminal.sendInput(data);
   return before;
+}
+
+/**
+ * Waits, observing received output, until an image key could be written. Cancellation or
+ * a permanent render failure rejects with `image_attach_failed`.
+ */
+export async function waitUntilAttachSafe(
+  terminal: AttachTerminal,
+  blocked: BlockedGuard | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  while (await attachUnsafe(terminal, blocked, signal)) await delay(unsafeWriteRetryMs);
+}
+
+/** One observation of everything received: true while an image key must wait. */
+export async function attachUnsafe(
+  terminal: AttachTerminal,
+  blocked: BlockedGuard | undefined,
+  signal: AbortSignal,
+): Promise<boolean> {
+  assertAttachNotAbortedOrRenderFailed(terminal, signal);
+  const unsafe = await writeUnsafe(
+    terminal,
+    blocked === undefined ? undefined : { blocked },
+    signal,
+  );
+  assertAttachNotAbortedOrRenderFailed(terminal, signal);
+  return unsafe;
 }
 
 function assertAttachNotAbortedOrRenderFailed(terminal: AttachTerminal, signal: AbortSignal): void {

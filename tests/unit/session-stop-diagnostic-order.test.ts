@@ -27,6 +27,7 @@ for (const agent of ["claude", "codex"] as const) {
     let nextDone = false;
     try {
       vi.useFakeTimers();
+      helper.showComposer(pty);
       let firstDone = false;
       const first = session.sendPrompt("first").then(() => {
         firstDone = true;

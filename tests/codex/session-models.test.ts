@@ -6,6 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { CodexSession, startCodex } from "../../src/index.ts";
+import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -78,8 +79,11 @@ describe("CodexSessionApi model picker", () => {
     installFakes();
     const session = await startCodex({ cwd });
     // A working spinner keeps the session in `running` (e.g. MCP boot). The
-    // picker command must still dispatch rather than stall behind readiness.
-    ptys[0]!.emitData("\u2022 Working (2s \u2022 esc to interrupt)\r\n\u203a ");
+    // picker command must still dispatch rather than stall behind readiness, onto
+    // the configured composer Codex paints beneath it (C-API-28).
+    ptys[0]!.emitData(
+      codexTty(`\u2022 Working (2s \u2022 esc to interrupt)\n${codexSmallComposer}`),
+    );
     expect(session.status).toBe("running");
     const listing = session.listModels({ timeoutMs: 30_000 });
     await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
