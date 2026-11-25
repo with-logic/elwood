@@ -95,6 +95,7 @@ for (const agent of ["claude", "codex"] as const) {
       });
       try {
         vi.useFakeTimers();
+        helper.showComposer(pty);
         const first = session.sendPrompt("first");
         await vi.advanceTimersByTimeAsync(200);
         await first;

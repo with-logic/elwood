@@ -87,6 +87,22 @@ describe("tui-screen primitives", () => {
     }
   });
 
+  test("C-API-23 a submitted command whose picker never opens times out waiting for it", async () => {
+    await expect(
+      openCommandScreen({
+        terminal: scripted("still the composer"),
+        submit: () => Promise.resolve(),
+        isOpen: () => false,
+        timeoutMs: 100,
+        label: "test picker",
+        nudgeDelayMs: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      code: "model_automation_failed",
+      message: "Timed out waiting for test picker.",
+    });
+  });
+
   test("C-API-23 waitForScreen times out with model_automation_failed", async () => {
     const terminal = scripted("nothing to see");
     await expect(
@@ -114,7 +130,11 @@ test("C-API-23 a late initial submission cannot arm retries after its deadline",
       label: "picker",
       nudgeDelayMs: 10,
     });
-    const check = expect(result).rejects.toMatchObject({ code: "model_automation_failed" });
+    // The command was never submitted, so the timeout does not blame the picker.
+    const check = expect(result).rejects.toMatchObject({
+      code: "model_automation_failed",
+      message: "Timed out before the command that opens the picker could be submitted.",
+    });
     await vi.advanceTimersByTimeAsync(100);
     await check;
     expect(signal.aborted).toBe(true);

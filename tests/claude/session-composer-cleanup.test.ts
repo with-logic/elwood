@@ -4,7 +4,7 @@ import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { AgentSessionBase } from "../../src/runtime/session/base.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 const clear = "\u0015\u000b";
 afterEach(() => {
@@ -57,6 +57,8 @@ test.each([
 ] as const)("C-API-56 cancelled draft cleanup respects %s before successor input", async (mode) => {
   const { session, abort } = await staged();
   try {
+    showComposer();
+    await session.terminal.settled();
     vi.useFakeTimers();
     const submission = session.sendPrompt("old");
     const rejected = expect(submission).rejects.toThrow("cancelled");
