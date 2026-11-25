@@ -31,7 +31,7 @@ back each entry are listed in `prd/14-conformance.md`.
   `sendMessage` queued at resume cannot land on Codex's loading placeholder or on
   a startup screen Elwood does not recognize, such as the update offer of Codex
   0.171. A resumed session now reaches `ready` when the configured composer
-  paints, about a second later than before.
+  paints, in about two seconds rather than one.
 
 ## [0.7.0] - 2026-11-24
 
