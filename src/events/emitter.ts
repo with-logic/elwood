@@ -18,12 +18,9 @@ type Registration = { readonly handler: Handler; readonly provenance: HandlerPro
 type EventKey<M> = Extract<keyof M, string>;
 type HandlerFor<M, E extends EventKey<M>> = (event: M[E]) => unknown;
 
-// Per-event listeners as a COPY-ON-WRITE array plus a membership set. `emit`
-// iterates the immutable `list` snapshot with no per-emission allocation (the hot
-// path for `terminal:data` PTY chunks), while `on`/`off` — comparatively rare —
-// replace `list` and mutate `live`. `live` lets `emit` skip an entry a prior
-// handler unsubscribed mid-emission, so an unsubscribe takes effect immediately.
-type Listeners = { list: readonly Registration[]; readonly live: Set<Handler> };
+// Dispatch iterates a copy-on-write snapshot without allocating per event. Compare
+// registrations against the live map because a handler may have been re-registered.
+type Listeners = { list: readonly Registration[]; readonly live: Map<Handler, Registration> };
 
 export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
@@ -51,14 +48,15 @@ export class TypedEmitter<M extends Record<string, unknown>> {
   ): void {
     const entry = this.handlers.get(event);
     const h = handler as Handler;
-    if (!entry) {
-      this.handlers.set(event, { list: [{ handler: h, provenance }], live: new Set([h]) });
-      return;
+    if (entry?.live.has(h)) return;
+    const registration = { handler: h, provenance };
+    if (entry) {
+      entry.live.set(h, registration);
+      // Copy-on-write: a fresh array so any in-flight dispatch snapshot is unaffected.
+      entry.list = [...entry.list, registration];
+    } else {
+      this.handlers.set(event, { list: [registration], live: new Map([[h, registration]]) });
     }
-    if (entry.live.has(h)) return;
-    entry.live.add(h);
-    // Copy-on-write: a fresh array so any in-flight `emit` snapshot is unaffected.
-    entry.list = [...entry.list, { handler: h, provenance }];
   }
 
   off<E extends EventKey<M>>(event: E, handler: HandlerFor<M, E>): void {
@@ -85,8 +83,9 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     const onRejection = this.rejectionSink(onError ?? this.rejectionError);
     let firstError: unknown;
     let failed = false;
-    for (const { handler } of snapshot) {
-      if (!entry.live.has(handler)) continue;
+    for (const registration of snapshot) {
+      const { handler } = registration;
+      if (entry.live.get(handler) !== registration) continue;
       try {
         const returned = handler(payload);
         if ((onRejection || containRejections) && types.isPromise(returned)) {
@@ -169,8 +168,9 @@ export class TypedEmitter<M extends Record<string, unknown>> {
   ): Promise<HandlerResponse | undefined> {
     const entry = this.handlers.get(event);
     if (!entry) return undefined;
-    for (const { handler, provenance } of entry.list) {
-      if (!entry.live.has(handler)) continue;
+    for (const registration of entry.list) {
+      const { handler, provenance } = registration;
+      if (entry.live.get(handler) !== registration) continue;
       const returned = handler(payload);
       // Direct data must reach validation without Promise thenable assimilation.
       const value = types.isPromise(returned) ? await returned : returned;
