@@ -21,7 +21,7 @@ import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
 import { claudeTurnFailureActivity } from "../hooks/stop-failure.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
-import { claudePasteEnvelopeId, claudePromptPresentation } from "../pasted-content.ts";
+import { claudePasteEnvelopeId, claudeSubmitPresentation } from "../pasted-content.ts";
 import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
@@ -62,7 +62,7 @@ export function buildClaudeHookHandler(
         ? {
             ...native,
             agent: "claude" as const,
-            ...claudePromptPresentation(native.text, pasteEnvelopeId),
+            ...claudeSubmitPresentation(event, native.text, pasteEnvelopeId),
           }
         : native;
     const hasText = projected.kind === "user_message";

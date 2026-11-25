@@ -46,3 +46,23 @@ export function claudePromptPresentation(
         promptProvenance: { origin: "unknown", input: "pasted" },
       };
 }
+
+const submitPresentations = new WeakMap<object, UserPromptPresentation>();
+
+/**
+ * One submit hook's presentation, computed once per hook event. The hook handler projects the
+ * event's `user_message` first and turn acceptance reads the same frozen event afterward, so a
+ * large prompt is scanned for its envelope once. Both callers pass that event's own prompt and
+ * session-derived envelope ID.
+ */
+export function claudeSubmitPresentation(
+  hookEvent: object,
+  prompt: string,
+  envelopeId: string | undefined,
+): UserPromptPresentation {
+  const cached = submitPresentations.get(hookEvent);
+  if (cached) return cached;
+  const presentation = claudePromptPresentation(prompt, envelopeId);
+  submitPresentations.set(hookEvent, presentation);
+  return presentation;
+}

@@ -12,6 +12,7 @@ import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { ClaudeSession } from "../../src/index.ts";
 import { effectiveRequest } from "../cli/main-fakes.ts";
+import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 import { claudeIdle as idle, claudeWorking as working } from "../fixtures/owned-turn/composer.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -39,11 +40,18 @@ function facade(kind: "public" | "cli" | "cli persona", cwd: string, prompt: str
   return { session, turn };
 }
 
+// Claude 2.1.332 echoes a paste of more than two line breaks inside the session's envelope
+// (sha256("claude-1") starts c26a), with CRLF as LF and each tab as four spaces (C-CLAUDE-25).
+const pasted = "one\r\n\ttwo\nthree\nfour";
+const wrapped = claudePasteEnvelope("one\n    two\nthree\nfour", "c26a");
+
 test.each([
-  ["public", "go"],
-  ["cli", "go"],
-  ["cli persona", "be careful"],
-] as const)("C-API-59 C-CLI-28 a %s Claude turn ended by StopFailure fails as turn_failed", async (kind, prompt) => {
+  ["public", "go", "go"],
+  ["cli", "go", "go"],
+  ["cli persona", "be careful", "be careful"],
+  ["public", pasted, wrapped],
+  ["cli", pasted, wrapped],
+] as const)("C-API-59 C-CLI-28 C-CLAUDE-25 a %s Claude turn ended by StopFailure fails as turn_failed (%j)", async (kind, prompt, echo) => {
   installFakes();
   const cwd = tempDir();
   const transcript = join(cwd, "transcript.jsonl");
@@ -72,7 +80,7 @@ test.each([
       load_reason: "session_start",
     });
     await vi.advanceTimersByTimeAsync(500);
-    await hook({ hook_event_name: "UserPromptSubmit", prompt });
+    await hook({ hook_event_name: "UserPromptSubmit", prompt: echo });
     pty.emitData(working);
     await vi.advanceTimersByTimeAsync(50);
     pty.emitData(idle);
