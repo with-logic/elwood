@@ -114,6 +114,7 @@ export function createTranscriptWatcher(
       }
     },
     {
+      onUsageLimit: route,
       onDrop: (notice) => route(dropWarning(notice)),
       onReadError: (notice) => route(readErrorWarning(notice)),
       onPollError: (error) => route(transcriptFailureWarning(elwoodSessionId, error)),

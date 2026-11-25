@@ -12,11 +12,22 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A matched Claude low-level text submission can include the original API text,
+  the exact native hook prompt, API paste provenance, and a caller `sendId`.
+
+- A matched Codex `user_message` can include the original API prompt, the
+  exact hook prompt, API paste provenance, and an optional caller `sendId`.
+
 - A Claude `send` or `stream` turn that the agent rejects now fails with
   `turn_failed` even when Claude changed the prompt on submit: it wrapped it in
   `<pasted_content>` tags, turned CRLF or CR into LF, turned a tab into four spaces,
   dropped trailing whitespace, or escaped a `<pasted_content` look-alike. Such a turn used to resolve with the
   rejection text as its reply.
+
+- Report Claude usage-limit rejections from live native transcript evidence,
+  including the limit name and reset time when available.
+- Report Codex quota and credit rejections from native usage snapshots,
+  including the native reason and both window resets when supplied.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A

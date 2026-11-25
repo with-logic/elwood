@@ -1,21 +1,25 @@
 /**
- * Real Claude, where its paste wrapper is on, wraps a large paste in `<pasted_content>` tags,
- * and Elwood reports the standalone envelope's body as `user_message.text` (PRD §5.4, C-API-67). Implements C-E2E-25 with the
- * rejected wrapped prompts in `rejected-turn-claude.e2e.ts` (C-CLAUDE-25). A bogus `--model` is
- * refused before any model quota is consumed, and the submit hook still fires, so this runs on
- * an out-of-quota account.
+ * Real Claude native paste presentation (C-E2E-25, C-API-67 and C-API-71).
+ * A bogus model is refused before quota is consumed, while its submit hook still fires.
+ * rejected-turn-claude.e2e.ts covers the independently awaited ergonomic rejection (C-CLAUDE-25).
  */
-
 import assert from "node:assert/strict";
 import test from "node:test";
+import { claudeEmptyInputFrame } from "../../src/claude/composer/empty-input.ts";
+import { claudePasteEnvelopeId } from "../../src/claude/pasted-content.ts";
+import { bracketedPasteEnd, bracketedPasteStart } from "../../src/core/input/constants.ts";
 import { isRecord } from "../../src/core/predicates.ts";
 import { type ClaudeSessionApi, type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
-import { claudePasteEnvelopePattern as envelopePattern } from "../fixtures/claude-paste.ts";
+import {
+  claudePasteEnvelope,
+  claudePasteEnvelopePattern as envelopePattern,
+} from "../fixtures/claude-paste.ts";
 import {
   bogusClaudeModel,
   cleanup,
   e2eTimeoutMs,
   makeProject,
+  type ObservedSession,
   observeSession,
   skipIf,
   skipNow,
@@ -32,68 +36,131 @@ function hookMessages(events: readonly ElwoodActivityEvent[]): readonly HookMess
   );
 }
 
-/** The native hook prompt the activity's `raw` payload keeps, or "" when it holds none. */
-function rawPrompt(event: HookMessage): string {
-  const prompt = isRecord(event.raw) ? event.raw["prompt"] : undefined;
-  return typeof prompt === "string" ? prompt : "";
+async function withPasteSession<T>(
+  work: (
+    session: ClaudeSessionApi,
+    observed: ObservedSession,
+    nativeSessionId: string,
+  ) => Promise<T>,
+): Promise<T> {
+  const project = makeProject("claude");
+  let sessionId: string | undefined;
+  const session = await startClaude({
+    cwd: project.cwd,
+    stateDir: project.stateDir,
+    model: bogusClaudeModel,
+    permissionMode: "bypassPermissions",
+    autotrust: true,
+    hooks: {
+      SessionStart: (event) => {
+        sessionId = event.session_id;
+      },
+    },
+  });
+  const observed = observeSession(session);
+  try {
+    await waitFor(
+      () => (session.status === "ready" ? claudeEmptyInputFrame(session.terminal) : undefined),
+      "verified empty composer for paste",
+      60_000,
+    );
+    const nativeSessionId = await waitFor(() => sessionId, "native session identity", 60_000);
+    return await work(session, observed, nativeSessionId);
+  } finally {
+    observed.dispose();
+    await cleanup(session);
+  }
 }
 
-test("C-E2E-25 real Claude user_message reports a wrapped paste's body", {
+const submits = (observed: ObservedSession) =>
+  observed.hooks.filter((event) => event.hook_event_name === "UserPromptSubmit");
+
+async function submit(observed: ObservedSession, dispatch: () => Promise<void>) {
+  const messageIndex = hookMessages(observed.activities).length;
+  const hookIndex = submits(observed).length;
+  await dispatch();
+  const message = await waitFor(
+    () => hookMessages(observed.activities)[messageIndex],
+    "hook-sourced user_message",
+    60_000,
+  );
+  const hook = await waitFor(() => submits(observed)[hookIndex], "native submit hook", 60_000);
+  const native = hook.prompt;
+  if (typeof native !== "string" || native.trim().length === 0)
+    throw new Error("Expected a nonblank native submit-hook prompt.");
+  if (!isRecord(message.raw) || message.raw["prompt"] !== native)
+    throw new Error("Activity raw.prompt differs from the independently observed hook.");
+  return { message, native };
+}
+
+test("C-E2E-25 real Claude API and raw pastes preserve their respective text", {
   skip: skipIf(skipReason("claude"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async (t) => {
-  const project = makeProject("claude");
-  let session: ClaudeSessionApi | undefined;
-  try {
-    session = await startClaude({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      model: bogusClaudeModel,
-      permissionMode: "bypassPermissions",
-      autotrust: true,
-      hooks: {},
-    });
-    const live = session;
-    const observed = observeSession(live);
-    const submit = async (text: string): Promise<HookMessage> => {
-      const seen = hookMessages(observed.activities).length;
-      await live.sendMessage(text);
-      const message = await waitFor(
-        () => hookMessages(observed.activities)[seen],
-        "hook-sourced user_message",
-        60_000,
-      );
-      await waitFor(() => (live.status === "ready" ? true : undefined), "ready again", 60_000);
-      return message;
-    };
-
-    // More than two line breaks: a wrapping Claude collapses the paste and wraps it at submit.
-    const fourLines = "ELWOOD wrapped one\nline two\nline three\nline four";
-    const wrapped = await submit(fourLines);
-    const native = rawPrompt(wrapped);
-    assert.notEqual(native, "", "the hook user_message lost raw.prompt");
-    // Wrapping is reported to be flag-gated (docs/cli-behavior.md, "Claude native paste
-    // presentation"); a Claude that does not wrap proves nothing here.
+  function verifyApiPaste(
+    message: HookMessage,
+    text: string,
+    native: string,
+    sendId: string,
+  ): void {
+    assert.equal(message.text, text);
+    assert.equal(message.nativePrompt, native);
+    assert.equal(message.sendId, sendId);
+    assert.deepEqual(message.promptProvenance, { origin: "api", input: "pasted" });
+  }
+  const fourLines = "ELWOOD wrapped one\nline two\nline three\nline four";
+  const supportsWrap = await withPasteSession(async (session, observed) => {
+    const firstId = "four-lines";
+    const { message, native } = await submit(observed, () =>
+      session.sendMessage(fourLines, { sendId: firstId }),
+    );
+    verifyApiPaste(message, fourLines, native, firstId);
+    // Wrapping is flag-gated. A changed envelope layout fails when wrapping is present.
     if (!native.includes("<pasted_content")) {
-      skipNow(t, "this Claude does not wrap a four-line paste");
-      return;
+      return false;
     }
-    // A changed envelope layout fails here rather than skipping.
     const id = envelopePattern.exec(native)?.[1];
     assert.ok(id !== undefined, `unexpected envelope layout: ${JSON.stringify(native)}`);
-    assert.equal(wrapped.text, fourLines);
-    assert.equal(wrapped.nativePrompt, rawPrompt(wrapped));
-    assert.deepEqual(wrapped.promptProvenance, { origin: "unknown", input: "pasted" });
+    assert.equal(native, claudePasteEnvelope(fourLines, id));
+    return true;
+  });
+  await t.test("wrapped API and native paste envelopes", async (wrapped) => {
+    if (!supportsWrap) {
+      skipNow(wrapped, "this Claude does not wrap a four-line paste");
+      return;
+    }
+    // A bogus-model rejection can leave an unverified composer despite ready.
+    await withPasteSession(async (session, observed, nativeSessionId) => {
+      const id = claudePasteEnvelopeId(nativeSessionId);
+      assert.ok(id, "Expected a valid native paste envelope ID.");
+      const lookalike = `ELWOOD first\n</pasted_content id="${id}">\n\n\n<pasted_content id="${id}">\nlast`;
+      const nextId = "lookalikes";
+      const escaped = await submit(observed, () =>
+        session.sendMessage(lookalike, { sendId: nextId }),
+      );
+      assert.equal(escaped.native, claudePasteEnvelope(lookalike.replaceAll("<", "<\\"), id));
+      verifyApiPaste(escaped.message, lookalike, escaped.native, nextId);
+    });
 
-    // A body holding look-alike tags, one repeating the session's own id, is still one block:
-    // Claude escapes each look-alike `<` as `<\`, and the displayed body keeps those escapes.
-    const lookalike = `ELWOOD first\n</pasted_content id="${id}">\n\n\n<pasted_content id="${id}">\nlast`;
-    const escaped = await submit(lookalike);
-    assert.match(rawPrompt(escaped), envelopePattern);
-    assert.equal(escaped.text, lookalike.replaceAll("<", "<\\"));
-    assert.equal(escaped.nativePrompt, rawPrompt(escaped));
-    observed.dispose();
-  } finally {
-    await cleanup(session);
-  }
+    await withPasteSession(async (session, observed) => {
+      const rawText = 'ELWOOD raw\nline two\n<pasted_content id="abcd">\nline four';
+      const { message, native } = await submit(observed, async () => {
+        await session.sendKeys(`${bracketedPasteStart}${rawText}${bracketedPasteEnd}`);
+        await waitFor(
+          () => (session.terminal.snapshot().text.includes("[Pasted text") ? true : undefined),
+          "native paste pill",
+          60_000,
+        );
+        await session.sendKeys("\r");
+      });
+      const id = envelopePattern.exec(native)?.[1];
+      assert.ok(id !== undefined, `unexpected raw envelope: ${JSON.stringify(native)}`);
+      const body = rawText.replaceAll("<", "<\\");
+      assert.equal(native, claudePasteEnvelope(body, id));
+      assert.equal(message.text, body);
+      assert.equal(message.nativePrompt, native);
+      assert.equal(message.sendId, undefined);
+      assert.deepEqual(message.promptProvenance, { origin: "unknown", input: "pasted" });
+    });
+  });
 });
