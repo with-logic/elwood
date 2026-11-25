@@ -11,7 +11,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
-import { captureClaudeWorkspaceTrustTarget } from "../../src/claude/workspace-trust/target.ts";
+import {
+  captureClaudeWorkspaceTrustTarget,
+  resolveClaudeWorkspaceTrustTarget,
+} from "../../src/claude/workspace-trust/target.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 vi.mock("node:fs", { spy: true });
@@ -49,17 +52,25 @@ test("moving the checked launch directory revokes its scope", () => {
 });
 
 test.each([
-  "file",
-  "directory",
-])("replacing the checked target with another %s revokes scope", async (kind) => {
+  {
+    kind: "file",
+    create: () => {
+      const file = join(tempDir(), "file");
+      writeFileSync(file, "");
+      return file;
+    },
+  },
+  { kind: "directory", create: tempDir },
+])("replacing the checked target with another $kind revokes scope", async ({ create }) => {
+  const replacement = lstatSync(create(), { bigint: true });
   const cwd = realpathSync(tempDir());
   const readTarget = capture(cwd);
-  expect(readTarget()).toEqual({ launchPath: cwd, targetPath: cwd, targetScope: "folder" });
+  expect(readTarget()).toEqual({
+    physicalLaunchPath: cwd,
+    targetPath: cwd,
+    targetScope: "folder",
+  });
 
-  const directory = tempDir();
-  const file = join(directory, "file");
-  writeFileSync(file, "");
-  const replacement = lstatSync(kind === "file" ? file : directory, { bigint: true });
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
   const mock = vi.mocked(lstatSync).mockImplementation((path, options) => {
     if (path === cwd && options?.bigint === true) return replacement;
@@ -120,7 +131,7 @@ test("a launch alias retargeted after the identity read cannot establish proof",
   mkdirSync(original);
   mkdirSync(replacement);
   symlinkSync(original, alias);
-  expect(capture(alias)()?.launchPath).toBe(original);
+  expect(capture(alias)()?.physicalLaunchPath).toBe(original);
   const identity = statSync(alias, { bigint: true });
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
   const repoint = (target: string) => {
@@ -139,4 +150,35 @@ test("a launch alias retargeted after the identity read cannot establish proof",
   } finally {
     mock.mockRestore();
   }
+});
+
+test("replacing a linked worktree's main checkout revokes its captured target", () => {
+  const parent = realpathSync(tempDir());
+  const root = join(parent, "main");
+  const worktree = join(parent, "linked");
+  const common = join(root, ".git");
+  const administrative = join(common, "worktrees", "linked");
+  mkdirSync(administrative, { recursive: true });
+  mkdirSync(worktree);
+  writeFileSync(join(common, "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(join(administrative, "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(join(administrative, "commondir"), "../..\n");
+  writeFileSync(join(administrative, "gitdir"), join(worktree, ".git"));
+  writeFileSync(join(worktree, ".git"), `gitdir: ${administrative}\n`);
+  const target = { physicalLaunchPath: worktree, targetPath: root, targetScope: "repository" };
+  const readTarget = capture(worktree);
+  expect(readTarget()).toEqual(target);
+
+  const former = join(parent, "former-main");
+  renameSync(root, former);
+  mkdirSync(root);
+  renameSync(join(former, ".git"), common);
+  expect(resolveClaudeWorkspaceTrustTarget(worktree)).toEqual(target);
+  expect(readTarget()).toBeUndefined();
+
+  renameSync(common, join(former, ".git"));
+  renameSync(root, join(parent, "replacement"));
+  renameSync(former, root);
+  expect(resolveClaudeWorkspaceTrustTarget(worktree)).toEqual(target);
+  expect(readTarget()).toBeUndefined();
 });

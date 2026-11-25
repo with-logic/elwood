@@ -33,7 +33,7 @@ test.each([
   const alias = join(parent, "alias");
   symlinkSync(path, alias);
   expect(resolveClaudeWorkspaceTrustTarget(alias)).toEqual({
-    launchPath: path,
+    physicalLaunchPath: path,
     targetPath: path,
     targetScope: "folder",
   });
@@ -44,7 +44,7 @@ test("a Claude workspace in a Git subfolder resolves the repository root", () =>
   const child = join(root, "src");
   mkdirSync(child);
   expect(resolveClaudeWorkspaceTrustTarget(child)).toEqual({
-    launchPath: child,
+    physicalLaunchPath: child,
     targetPath: root,
     targetScope: "repository",
   });
@@ -83,7 +83,7 @@ test("a Claude linked worktree resolves the registered main checkout", () => {
   const child = join(worktree, "src");
   mkdirSync(child);
   expect(resolveClaudeWorkspaceTrustTarget(child)).toEqual({
-    launchPath: child,
+    physicalLaunchPath: child,
     targetPath: root,
     targetScope: "repository",
   });
@@ -110,6 +110,13 @@ test("a Claude linked worktree resolves the registered main checkout", () => {
   expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
   writeFileSync(commonFile, "\n");
   expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
+  writeFileSync(commonFile, "..\n");
+  expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
+  writeFileSync(commonFile, "../..\n");
+  const mainHead = join(root, ".git", "HEAD");
+  unlinkSync(mainHead);
+  expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
+  writeFileSync(mainHead, "ref: refs/heads/main\n");
   unlinkSync(commonFile);
   mkdirSync(commonFile);
   expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
@@ -121,7 +128,7 @@ test("an ordinary Git directory pointer keeps trust at its own checkout", () => 
   mkdirSync(checkout);
   git(checkout, "init", "--quiet", "--template=", "--separate-git-dir", join(parent, "metadata"));
   expect(resolveClaudeWorkspaceTrustTarget(checkout)).toEqual({
-    launchPath: checkout,
+    physicalLaunchPath: checkout,
     targetPath: checkout,
     targetScope: "repository",
   });
@@ -151,14 +158,19 @@ test("Claude workspace evidence requires an existing absolute directory", () => 
 });
 
 test.each([
-  ["missing", undefined],
   ["empty", ""],
   ["malformed", "not Git metadata"],
   ["oversized", `ref: refs/heads/${"a".repeat(4096)}`],
 ])("a %s Git HEAD withholds Claude's target", (_, contents) => {
   const directory = tempDir();
   mkdirSync(join(directory, ".git"));
-  if (contents !== undefined) writeFileSync(join(directory, ".git", "HEAD"), contents);
+  writeFileSync(join(directory, ".git", "HEAD"), contents);
+  expect(resolveClaudeWorkspaceTrustTarget(directory)).toBeUndefined();
+});
+
+test("a missing Git HEAD withholds Claude's target", () => {
+  const directory = tempDir();
+  mkdirSync(join(directory, ".git"));
   expect(resolveClaudeWorkspaceTrustTarget(directory)).toBeUndefined();
 });
 

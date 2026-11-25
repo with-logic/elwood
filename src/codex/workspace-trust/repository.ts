@@ -1,7 +1,11 @@
 /** Corroborate local Codex repository trust scope from Git's on-disk layout (PRD §5.5). */
 import { lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
-import { readBoundedGitMetadata } from "../../core/git-metadata.ts";
+import {
+  matchesGitHeadMarkerShape,
+  parseGitMetadataLine,
+  readBoundedGitMetadata,
+} from "../../core/git-metadata.ts";
 
 // These metadata pointers are single lines. Bound the descriptor read before allocating.
 const maxGitMarkerBytes = 64 * 1024;
@@ -82,19 +86,14 @@ function absoluteGitPointer(base: string, pointer: string): string {
   return isAbsolute(pointer) ? pointer : `${base}${sep}${pointer}`;
 }
 
-/** Accept a symbolic ref or a detached SHA-1 or SHA-256 object ID. */
 function verifyHead(file: string): void {
-  if (!/^(?:ref: refs\/\S+|[a-f0-9]{40}(?:[a-f0-9]{24})?)$/i.test(readMarker(file)))
-    throw unprovedRepository();
+  if (!matchesGitHeadMarkerShape(readMarker(file))) throw unprovedRepository();
 }
 
 function readMarker(file: string): string {
-  const contents = readBoundedGitMetadata(file, maxGitMarkerBytes);
+  const contents = parseGitMetadataLine(readBoundedGitMetadata(file, maxGitMarkerBytes));
   if (contents === undefined) throw unprovedRepository();
-  // Git paths can end in ASCII spaces. Strip only their line terminator.
-  const value = contents.replace(/\r?\n$/, "");
-  if (value.length === 0 || /[\r\n\0]/.test(value)) throw unprovedRepository();
-  return value;
+  return contents;
 }
 
 function unprovedRepository(): Error {
