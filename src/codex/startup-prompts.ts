@@ -12,9 +12,9 @@ import { codexNumberedRetry } from "./trust-retry.ts";
 import { safeUpdateOption } from "./update/selection.ts";
 import { startCodexUpdateSkip } from "./update/skip-attempt.ts";
 import { CodexUpdatePromptTracker } from "./update/tracker.ts";
+import type { CodexWorkspaceTrustHooks } from "./workspace-trust/prelude-input.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
-
 /** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
 export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
 
@@ -29,7 +29,7 @@ export class CodexStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly clearance: TrustClearance;
   private readonly sessionInputHeld: () => boolean;
-  private readonly onWorkspaceTrustTakeover: (() => void) | undefined;
+  private readonly workspaceTrust: CodexWorkspaceTrustHooks | undefined;
   private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
@@ -48,16 +48,17 @@ export class CodexStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = codexTrustClearance,
     sessionInputHeld?: () => boolean,
-    onWorkspaceTrustTakeover?: () => void,
+    workspaceTrust?: CodexWorkspaceTrustHooks,
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.clearance = clearance;
     this.sessionInputHeld = sessionInputHeld ?? (() => false);
-    this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
+    this.workspaceTrust = workspaceTrust;
     this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
       onStateChange,
       numberedRetry: codexNumberedRetry,
+      consumeWorkspacePreludeClaim: workspaceTrust?.prelude.consumePendingClaim,
     });
   }
 
@@ -85,11 +86,12 @@ export class CodexStartupPromptResponder {
   /** Raw caller input owns the startup prompt on screen (C-TRUST-01, C-CODEX-12). */
   callerInput(): void {
     const priorPrompt = this.humanOwnedPrompt;
+    this.workspaceTrust?.prelude.record();
     this.trust.callerInput();
     this.updateAttempt?.cancel();
     this.updateCallerOwned ||= this.updatePrompt.unresolved;
     const prompt = this.humanOwnedPrompt;
-    if (prompt === "workspace_trust" && priorPrompt !== prompt) this.onWorkspaceTrustTakeover?.();
+    if (prompt === "workspace_trust" && priorPrompt !== prompt) this.workspaceTrust?.onTakeover();
   }
 
   get inputBlocking(): boolean {
@@ -97,12 +99,10 @@ export class CodexStartupPromptResponder {
   }
 
   /**
-   * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
-   * where a trust gate must withhold unrelated automated keys.
+   * `write` answers trust. A trust hold withholds `writeAutomation` keys for other prompts.
    * Live adapters must supply `readTrustFrame` from `settledLiveSnapshot`, returning
    * undefined for pending rendering, synchronized output, or render failure.
-   * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
-   * reader must not replace the settlement-aware reader in a live session.
+   * The `readFrame` fallback is for static callers.
    */
   handle(
     screenText: string,

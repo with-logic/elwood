@@ -4,7 +4,7 @@ import type { StartupWriteCompletion } from "../startup/write.ts";
 import { optionInput, type SelectableOption } from "../terminal-options.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
 import { freshPhase, type NumberedRetry, type TrustPhase } from "./step.ts";
-import { choiceIdentity, type TrustCandidate } from "./view.ts";
+import { choiceIdentity, type TrustCandidate, type TrustView } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
 
 export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
@@ -17,6 +17,9 @@ export type TrustHooks = {
   readonly onStateChange?: (() => void) | undefined;
   /** What a numbered retry writes; the default retypes only after a rendered frame. */
   readonly numberedRetry?: NumberedRetry;
+  /** Observe every rendered trust view. True transfers the pending prelude claim to
+   * the question before automatic input. False can retire an abandoned claim. */
+  readonly consumeWorkspacePreludeClaim?: ((view: TrustView) => boolean) | undefined;
 };
 /** Raw PTY result; the coordinator separately owns cancellation and clearance. */
 export type TrustWriteResult = void | Promise<void>;

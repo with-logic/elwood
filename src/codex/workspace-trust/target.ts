@@ -3,14 +3,14 @@ import { isGenericTrustDialogFooter, type TrustDialog } from "../../core/trust/d
 import { codexFolderAccessFooter, codexFolderAccessLabels } from "../../core/trust/options.ts";
 import { trustView } from "../../core/trust/view.ts";
 import type { TerminalSnapshot } from "../../terminal/headless.ts";
+import { folderAccessPrelude, legacyLocationPrelude } from "../screen/workspace-trust-copy.ts";
 import type { WorkspaceTrustTarget } from "./types.ts";
 
 const repositoryNote =
   "Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:";
-const legacyLocation = "> You are in ";
 const folderAccess = {
   acceptLabel: codexFolderAccessLabels.accept,
-  isPrelude: (text: string) => text.trimEnd() === "Folder access",
+  isPrelude: (text: string) => text.trimEnd() === folderAccessPrelude,
   matches: modernMatches,
 } as const;
 const codexWorkspaceLayouts = [
@@ -18,7 +18,7 @@ const codexWorkspaceLayouts = [
     acceptLabel: "Yes, continue",
     declineLabel: "No, quit",
     footer: "Press enter to continue",
-    isPrelude: (text: string) => text.startsWith(legacyLocation),
+    isPrelude: (text: string) => text.startsWith(legacyLocationPrelude),
     matches: legacyMatches,
   },
   {
@@ -161,7 +161,7 @@ function legacyMatches(
   const cwdRowFits = cwd && fits({ rowIndex: cwd.index, rightInsetCols: 0 });
   if (!cwdRowFits) return false;
   const matchingAliases = launchDirectoryPaths.filter(
-    (alias) => cwd.text === legacyLocation + stripRowPadding(alias),
+    (alias) => cwd.text === legacyLocationPrelude + stripRowPadding(alias),
   );
   if (note.length === 0) return !requiresRepositoryNote && matchingAliases.includes(targetPath);
   const repositoryDisclosed =

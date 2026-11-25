@@ -27,6 +27,8 @@ import {
 } from "./options.ts";
 import type { TrustPromptSpec } from "./prompts.ts";
 
+export const codexFolderAccessHeader = /^Trust this folder\?(?:\s|$)/;
+
 // Affirmative option shapes. Each rejects decline words so "No, ..." never
 // matches. Prompts with a SPECIFIC affirmative (MCP, hook trust, bypass
 // acceptance) get their own matcher so a nearby dialog's generic "Yes" cannot
@@ -140,7 +142,7 @@ export const trustPromptAllowlist = [
     // Codex 0.164 ends it in its own footer when hook trust is not bypassed.
     id: "workspace_trust",
     agent: "codex",
-    headerPattern: /^Trust this folder\?(?:\s|$)/,
+    headerPattern: codexFolderAccessHeader,
     descriptionPattern: codexFolderAccessDescription,
     optionPattern: codexFolderAccessOptions,
     accept: codexFolderAccessAccept,

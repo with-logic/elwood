@@ -27,6 +27,7 @@ import { codexScreenFactTableForTrustPolicy as screenFacts } from "../screen-tab
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
 import { CodexWorkspaceTrustEvents } from "../workspace-trust/events.ts";
+import { trackWorkspacePreludeInput } from "../workspace-trust/prelude-input.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import type { BuildCodexSessionInput } from "./build-input.ts";
 import { reportCallerInput } from "./caller-input.ts";
@@ -75,6 +76,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const { pty, resolveConfigPath } = launched;
   const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   const clearance = liveCodexClearance(() => terminal);
+  const prelude = trackWorkspacePreludeInput(() => terminal);
   const dialogs: CodexWorkspaceTrustEvents = new CodexWorkspaceTrustEvents({
     elwoodSessionId,
     evidence: launched.trustEvidence,
@@ -89,6 +91,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   terminalReplay.captureStartupAttention(emitter);
   const onReady = () => {
     dialogs.discovery.endStartup();
+    prelude.end();
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
@@ -114,7 +117,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => dialogs.reconcileAfter(frameObserver.refresh),
     clearance,
     () => activeSession.inputBlocking || activeSession.trustInputBlocking,
-    dialogs.refreshAfterWorkspaceTrustTakeover,
+    { prelude, onTakeover: dialogs.refreshAfterWorkspaceTrustTakeover },
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
