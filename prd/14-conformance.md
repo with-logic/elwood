@@ -25,7 +25,7 @@ Each criterion has:
 | C-API-05 | §5.3 | `sendPrompt` writes through the PTY input path, not through Claude print mode or SDK APIs. |
 | C-API-06 | §5.3 | `sendPrompt` supports multi-line prompt text as one submitted user prompt. |
 | C-API-07 | §5.3 | Calling `sendPrompt` while Claude is busy writes input immediately rather than waiting for turn readiness, serializes against queue-backed prompt/message/command submissions, and resolves after its submitting Enter is dispatched; terminated sessions may still fail with `session_not_running`. |
-| C-API-08 | §5.4 | Consumers can subscribe and unsubscribe from typed session events. Live event and hook dispatch skips listeners removed before their callback runs. A replacement registration joins future dispatches. |
+| C-API-08 | §5.4 | Consumers can subscribe and unsubscribe from typed session events. Live event delivery and hook-specific response dispatch skip registrations removed before their callback runs. A replacement registration joins future dispatches. |
 | C-API-09 | §5.5 | `startCodex({ cwd })` returns a `CodexSessionApi` with a stable non-empty `elwoodSessionId`. |
 | C-API-10 | §5.6 | `resumeCodex({ elwoodSessionId })` resumes using Elwood metadata without requiring a Codex session ID from the caller, provided project-local state is discoverable from the current process cwd or caller-supplied `cwd`/`stateDir`. It relaunches Codex in the record's `cwd` even when a different `cwd` is supplied, since that `cwd` only locates the state store. |
 | C-API-11 | §5.7 | `CodexSessionApi` exposes the same terminal control and lifecycle methods as `ClaudeSessionApi`. |

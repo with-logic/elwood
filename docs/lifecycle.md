@@ -6,9 +6,8 @@ resume a session across parent-app restarts.
 ## Event delivery guarantees
 
 - `terminal:exit` is emitted exactly once per session process exit.
-- A handler never fires after its unsubscribe function returns.
-- A replacement listener joins live deliveries and hook requests that begin
-  after it registers.
+- Live event and hook-specific response dispatches skip a removed registration
+  if its callback has yet to run. A replacement joins subsequent dispatches.
 - A late `terminal:data` subscriber first receives the replay buffer as one
   coalesced chunk, then live chunks, with no gap and no duplicates. The buffer
   is bounded at 128 KB (oldest data dropped); use
