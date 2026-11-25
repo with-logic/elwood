@@ -55,6 +55,7 @@ test("C-ATTN-07 reads the same live request while the viewport selects scrollbac
     expect(request).toBeDefined();
 
     session.terminal.xterm.scrollToTop();
+    await paint(menu(cwd).replace("› 1.", "  1.").replace("  2.", "› 2."));
     expect(isScrolled()).toBe(true);
     expect(session.terminal.xterm.buffer.active.getLine(0)?.translateToString(true)).toBe(
       "Historical output",
