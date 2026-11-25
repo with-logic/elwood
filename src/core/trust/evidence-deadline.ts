@@ -3,7 +3,10 @@
 // Allow routine local metadata reads while limiting how long optional proof can delay launch.
 const trustEvidenceWaitMs = 500;
 
-/** Signal the collector on expiry so it stops issuing reads. Native calls in flight may finish later. */
+/**
+ * Resolve undefined on expiry or cancellation and signal the collector to stop.
+ * Pre-cancelled calls skip collection. Native filesystem calls in flight may finish later.
+ */
 export async function boundedTrustEvidence<T>(
   collect: (signal: AbortSignal) => Promise<T>,
   cancellation?: AbortSignal,

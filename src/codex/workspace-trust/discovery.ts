@@ -4,10 +4,10 @@ import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
 import { onNativeRenderEvidenceInvalidated, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
-import { matchTrustFrame, type WorkspaceTrustFrame } from "./menu-frame.ts";
+import { createTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu-frame.ts";
 import type { ElwoodDialogRequest } from "./types.ts";
 
-export type VerifiedWorkspaceTrust = {
+type VerifiedWorkspaceTrust = {
   readonly frame: TerminalSnapshot;
   readonly request: ElwoodDialogRequest;
 };
@@ -19,15 +19,17 @@ type Verification = {
 
 export class CodexWorkspaceTrustDiscovery {
   private open: Open | undefined;
-  private candidate: WorkspaceTrustFrame | undefined;
+  private sampled:
+    | { readonly frame: TerminalSnapshot; readonly candidate: WorkspaceTrustFrame | undefined }
+    | undefined;
   private checking: Verification | undefined;
   private readonly lifetime = new AbortController();
   private readonly input: WorkspaceTrustDiscoveryInput;
-  private readonly match: ReturnType<typeof matchTrustFrame> | undefined;
+  private readonly match: ReturnType<typeof createTrustFrameMatcher> | undefined;
 
   constructor(input: WorkspaceTrustDiscoveryInput) {
     this.input = input;
-    this.match = input.evidence && matchTrustFrame(input.evidence);
+    this.match = input.evidence && createTrustFrameMatcher(input.evidence);
   }
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal): void {
@@ -62,7 +64,7 @@ export class CodexWorkspaceTrustDiscovery {
 
   async list(): Promise<readonly ElwoodDialogRequest[]> {
     const verified = await this.read();
-    return verified && this.isCurrent(verified) ? [verified.request] : [];
+    return verified && this.isRequestFrameCurrent(verified) ? [verified.request] : [];
   }
 
   async read(): Promise<VerifiedWorkspaceTrust | undefined> {
@@ -80,7 +82,7 @@ export class CodexWorkspaceTrustDiscovery {
     return await result;
   }
 
-  isCurrent({ frame, request }: VerifiedWorkspaceTrust): boolean {
+  isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust): boolean {
     return this.currentRequestId === request.id && this.isFrameCurrent(frame);
   }
 
@@ -97,9 +99,9 @@ export class CodexWorkspaceTrustDiscovery {
       this.retire();
       return undefined;
     }
-    const candidate =
-      this.candidate?.frame === frame ? this.candidate : this.match(terminal, frame);
-    this.candidate = candidate;
+    if (this.sampled?.frame !== frame)
+      this.sampled = { frame, candidate: this.match(terminal, frame) };
+    const { candidate } = this.sampled;
     if (!candidate || (this.open && this.open.identity !== candidate.identity)) this.retire();
     return candidate;
   }
@@ -144,7 +146,7 @@ export class CodexWorkspaceTrustDiscovery {
 
   private end(): void {
     this.lifetime.abort();
-    this.candidate = undefined;
+    this.sampled = undefined;
     this.retire();
   }
 

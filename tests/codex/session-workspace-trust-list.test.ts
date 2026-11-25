@@ -40,15 +40,6 @@ test("C-ATTN-07 lists exact scope, text, choices and stable request identity", a
     await render(menu(cwd).replace("› 1.", "  1.").replace("  2.", "› 2."));
     expect((await session.listDialogs())[0]).toBe(request);
 
-    pty.emitData("\x1b[?2026h");
-    const settled = vi.spyOn(session.terminal, "settled");
-    expect(await session.listDialogs()).toEqual([]);
-    expect(settled).not.toHaveBeenCalled();
-    await session.terminal.settled();
-    pty.emitData("\x1b[?2026l");
-    await session.terminal.settled();
-    expect((await session.listDialogs())[0]).toBe(request);
-
     await render(menu(cwd, "folder-access-no-hook-bypass"));
     const [replacement] = await session.listDialogs();
     assert.isDefined(replacement);

@@ -115,12 +115,16 @@ test("withholds when Git root registration changes without replacing the candida
   const { checkout, repo } = createLinkedCheckout(root);
   const alternate = join(root, "project");
   mkdirSync(alternate);
+  const originalInode = statSync(repo, { bigint: true }).ino;
+  const alternateInode = statSync(alternate, { bigint: true }).ino;
   const evidence = await captureLaunchTrustEvidence(launch(checkout));
   expect(evidence.targets.map(({ target }) => target)).toEqual([
     { targetPath: repo, targetScope: "repository" },
   ]);
   await expect(evidence.isCurrent()).resolves.toBe(true);
   registerWorktree(checkout, alternate);
+  expect(statSync(repo, { bigint: true }).ino).toBe(originalInode);
+  expect(statSync(alternate, { bigint: true }).ino).toBe(alternateInode);
   await expect(evidence.isCurrent()).resolves.toBe(false);
 });
 

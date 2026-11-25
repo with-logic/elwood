@@ -15,7 +15,7 @@ export type WorkspaceTrustFrame = {
   readonly revalidateLaunchEvidence: CodexLaunchTrustEvidence["isCurrent"];
 };
 
-export function matchTrustFrame(evidence: CodexLaunchTrustEvidence) {
+export function createTrustFrameMatcher(evidence: CodexLaunchTrustEvidence) {
   const match = createCodexWorkspaceTrustMatcher({
     launchDirectoryPaths: evidence.aliases,
     targets: evidence.targets,

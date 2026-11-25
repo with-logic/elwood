@@ -36,6 +36,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
     return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
   }
+  /** A rearmed automatic attempt can retain the public blocked status. */
   get humanOwnedPrompt(): TrustPromptIdFor<A> | undefined {
     const episode = this.episode;
     const needsHuman = episode?.callerOwned || episode?.expired;
@@ -80,7 +81,6 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.reportedPending = true;
       return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
     }
-    // Running now, answered without a reader, or this choice was already attempted.
     const attemptAlreadyHandled =
       episode.attempt !== undefined ||
       episode.legacyAnswered ||
