@@ -6,6 +6,7 @@ import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { ClaudeSession, CodexSession } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
+import { claudeIdle, claudeWorking } from "../fixtures/owned-turn/composer.ts";
 import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 
 afterEach(() => {
@@ -74,14 +75,12 @@ test.each([
     await hook({ hook_event_name: "UserPromptSubmit", turn_id: "persona", prompt: "persona" });
     pty.emitData(
       agent === "claude"
-        ? "\u001b[2J\u001b[H❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents"
+        ? claudeWorking
         : "\u001b[2J\u001b[H• Working (1s • esc to interrupt)\r\n› ",
     );
     await vi.advanceTimersByTimeAsync(50);
     pty.emitData(
-      agent === "claude"
-        ? "\u001b[2J\u001b[H❯ \r\n  ⏵⏵ bypass permissions · ← for agents"
-        : "\u001b[2J\u001b[H■ Conversation interrupted\r\n› ",
+      agent === "claude" ? claudeIdle : "\u001b[2J\u001b[H■ Conversation interrupted\r\n› ",
     );
     await vi.advanceTimersByTimeAsync(100);
     expect(sawReady).toBe(true);

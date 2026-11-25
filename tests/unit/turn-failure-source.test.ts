@@ -16,12 +16,16 @@ const oversized = JSON.stringify({
 });
 
 test("Codex preserves the supplied reset even when the display diagnostic truncates", () => {
-  const failure = codexTurnFailureActivity("s1", "/tmp/rollout", {
-    type: "event_msg",
-    payload: {
-      type: "task_complete",
-      turn_id: "codex-prior",
-      error: { message: oversized, codex_error_info: "other" },
+  const failure = codexTurnFailureActivity({
+    elwoodSessionId: "s1",
+    path: "/tmp/rollout",
+    item: {
+      type: "event_msg",
+      payload: {
+        type: "task_complete",
+        turn_id: "codex-prior",
+        error: { message: oversized, codex_error_info: "other" },
+      },
     },
   });
   expect(failure).toMatchObject({
@@ -45,12 +49,16 @@ test.each([
   ["usage_limit_exceeded", "You've hit your usage limit. Try again later.", "usage_limit"],
   ["other", ownerCreditsMessage, "unknown"],
 ])("C-API-65 Codex classifies %s with diagnostic %s", (nativeCode, message, category) => {
-  const failure = codexTurnFailureActivity("s1", "/tmp/rollout", {
-    type: "event_msg",
-    payload: {
-      type: "task_complete",
-      turn_id: "codex-prior",
-      error: { message, codex_error_info: nativeCode },
+  const failure = codexTurnFailureActivity({
+    elwoodSessionId: "s1",
+    path: "/tmp/rollout",
+    item: {
+      type: "event_msg",
+      payload: {
+        type: "task_complete",
+        turn_id: "codex-prior",
+        error: { message, codex_error_info: nativeCode },
+      },
     },
   });
   expect(failure).toMatchObject({
@@ -67,6 +75,7 @@ test("Claude preserves the supplied reset even when the display diagnostic trunc
     error: "rate_limit",
     error_details: oversized,
   });
+  expect(failure).not.toHaveProperty("turnId");
   expect(failure).toMatchObject({
     label: "usage_limit",
     turnFailure: {

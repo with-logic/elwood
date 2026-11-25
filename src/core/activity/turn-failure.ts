@@ -24,6 +24,10 @@ type NormalizedFailure = {
   [Category in ElwoodTurnFailureCategory]: NormalizedFailureFields<Category>;
 }[ElwoodTurnFailureCategory];
 
+/**
+ * Payload of `turn_failure.turnFailure`. The diagnostic is bounded to 2,000 UTF-16
+ * code units plus an ellipsis. A supplied Unix reset timestamp belongs to a usage limit.
+ */
 export type ElwoodTurnFailure = NormalizedFailure["turnFailure"];
 
 export type TurnFailureActivity = { readonly kind: "turn_failure" } & NormalizedFailure &
@@ -97,14 +101,17 @@ const finalFailureBuilder =
 const finalFailureByCategory = {
   quota_or_credit: finalFailureBuilder("quota_or_credit"),
   rate_limited: finalFailureBuilder("rate_limited"),
-  usage_limit(message: string, reset: unknown): NormalizedFailureFields<"usage_limit"> {
+  usage_limit(
+    message: string,
+    resetsAtUnixSeconds: unknown,
+  ): NormalizedFailureFields<"usage_limit"> {
     return {
       label: "usage_limit",
       turnFailure: {
         category: "usage_limit",
         message,
         disposition: "final",
-        ...(isNonnegativeSafeInteger(reset) ? { resetsAtUnixSeconds: reset } : {}),
+        ...(isNonnegativeSafeInteger(resetsAtUnixSeconds) ? { resetsAtUnixSeconds } : {}),
       },
     };
   },
@@ -116,7 +123,7 @@ const finalFailureByCategory = {
 } satisfies {
   [Category in ElwoodTurnFailureCategory]: (
     message: string,
-    reset: unknown,
+    resetsAtUnixSeconds: unknown,
   ) => NormalizedFailureFields<Category>;
 };
 

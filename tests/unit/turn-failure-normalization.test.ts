@@ -39,11 +39,10 @@ test.each([
       displayMessage: "harness message",
       boundedNativeErrorCode: code,
       nativeDiagnostic: "harness message",
-    }).turnFailure,
+    }),
   ).toEqual({
-    category,
-    message: "harness message",
-    disposition: "final",
+    label: category,
+    turnFailure: { category, message: "harness message", disposition: "final" },
   });
 });
 
@@ -61,6 +60,22 @@ test("C-API-65 a service code makes a generic Codex error specific", () => {
     message,
     disposition: "final",
   });
+});
+
+test.each([
+  0,
+  Number.MAX_SAFE_INTEGER,
+])("C-API-65 preserves reset seconds at boundary %s", (resetsAtUnixSeconds) => {
+  const message = JSON.stringify({
+    error: { code: "usage_limit_reached", resets_at: resetsAtUnixSeconds },
+  });
+  expect(
+    normalizeFinalTurnFailure({
+      displayMessage: message,
+      boundedNativeErrorCode: "other",
+      nativeDiagnostic: message,
+    }).turnFailure,
+  ).toEqual({ category: "usage_limit", message, disposition: "final", resetsAtUnixSeconds });
 });
 
 test.each([
@@ -105,15 +120,23 @@ test.each([
 
 test("C-API-65 does not treat an ordinary assistant record as authoritative failure", () => {
   expect(
-    codexTurnFailureActivity("s1", "/tmp/rollout", {
-      type: "response_item",
-      payload: { type: "message", role: "assistant", content: [{ text: "model_not_found" }] },
+    codexTurnFailureActivity({
+      elwoodSessionId: "s1",
+      path: "/tmp/rollout",
+      item: {
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ text: "model_not_found" }] },
+      },
     }),
   ).toBeUndefined();
   expect(
-    codexTurnFailureActivity("s1", "/tmp/rollout", {
-      type: "event_msg",
-      payload: { type: "task_complete", turn_id: "turn", error: null },
+    codexTurnFailureActivity({
+      elwoodSessionId: "s1",
+      path: "/tmp/rollout",
+      item: {
+        type: "event_msg",
+        payload: { type: "task_complete", turn_id: "turn", error: null },
+      },
     }),
   ).toBeUndefined();
 });

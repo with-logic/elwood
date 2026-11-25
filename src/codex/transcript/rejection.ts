@@ -9,6 +9,7 @@ import { normalizeFinalTurnFailure } from "../../core/activity/turn-failure.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { boundedDiagnostic, type TurnFailure } from "../../core/simple/boundary-signal.ts";
 import { confirmNativeBoundary } from "../../core/simple/native-boundary.ts";
+import type { CodexTranscriptEvent } from "./types.ts";
 
 // Codex 0.171.0 collapses workspace-credit depletion into usage_limit_exceeded.
 // Its committed ErrorEvent carries these fixed diagnostics without the original subtype.
@@ -44,11 +45,13 @@ export function codexTurnRejection(item: unknown) {
 }
 
 /** Project a committed failed task without interpreting any transcript prose. */
-export function codexTurnFailureActivity(
-  elwoodSessionId: string,
-  path: string,
-  item: unknown,
-): ElwoodActivityEvent | undefined {
+export function codexTurnFailureActivity({
+  elwoodSessionId,
+  path: transcriptPath,
+  item,
+}: Pick<CodexTranscriptEvent, "elwoodSessionId" | "path" | "item">):
+  | ElwoodActivityEvent
+  | undefined {
   const task = readFailedTask(item);
   if (!task) return undefined;
   const { turnId, error } = task;
@@ -69,7 +72,7 @@ export function codexTurnFailureActivity(
     source: "transcript",
     kind: "turn_failure",
     ...failure,
-    transcriptPath: path,
+    transcriptPath,
     turnId,
   };
 }

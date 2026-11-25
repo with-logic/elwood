@@ -110,7 +110,7 @@ export function createCodexTranscriptWatcher(
       duringDelivery(() => {
         clipboardCopies.observe(event.item);
         const projected = activity.activityFromCodexTranscript(event);
-        const failure = codexTurnFailureActivity(event.elwoodSessionId, event.path, event.item);
+        const failure = codexTurnFailureActivity(event);
         deliver("codex:transcript", event);
         deliver("activity", projected);
         if (failure) {
