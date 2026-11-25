@@ -93,13 +93,13 @@ export function runTurn(
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
     if (identity && !identity.acceptsContent(event.turnId)) return;
-    // Recovered transcript text is observational and cannot acknowledge this submission.
+    // Use the native hook text for acknowledgement so display formatting stays observational.
     if (
       simple ||
       (!identity &&
         event.kind === "user_message" &&
         event.source === "hook" &&
-        event.text === prompt)
+        (event.nativePrompt ?? event.text) === prompt)
     )
       acceptance.accept();
     if (simple) {

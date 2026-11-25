@@ -23,7 +23,7 @@ test("C-API-63 invalid bytes at an arbitrary boundary do not turn into prompt te
   const initial = new InitialClaudePrompt(statSync(path));
   expect(initial.take(path, pending)).toEqual({
     malformed: true,
-    prompt: { turnId: "first", text: "valid native prompt" },
+    prompt: { turnId: "first", text: "valid native prompt", isSingleTextContent: true },
   });
   expect(initial.take(path, pending)).toBeUndefined();
 });
@@ -33,7 +33,7 @@ test("C-API-63 an unchanged file must already contain a complete committed row",
   writeFileSync(path, user("first", "committed prompt") + user("pending", "incomplete").trimEnd());
   expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({
     malformed: false,
-    prompt: { turnId: "first", text: "committed prompt" },
+    prompt: { turnId: "first", text: "committed prompt", isSingleTextContent: true },
   });
   writeFileSync(path, user("pending", "incomplete").trimEnd());
   expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({
@@ -61,7 +61,7 @@ test("C-API-63 a clipped row is never decoded from its suffix", () => {
   writeFileSync(path, `${"x".repeat(1024 * 1024)}\n${text}`);
   expect(new InitialClaudePrompt(statSync(path)).take(path, pending)).toEqual({
     malformed: false,
-    prompt: { turnId: "first", text: "native prompt" },
+    prompt: { turnId: "first", text: "native prompt", isSingleTextContent: true },
   });
 });
 

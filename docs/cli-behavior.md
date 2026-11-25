@@ -1773,6 +1773,25 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
 
+### Claude native paste presentation
+
+A Claude Code 2.1.332 PTY capture showed a paste pill for inputs longer than
+800 characters or with more than two line breaks. The authenticated
+`UserPromptSubmit` hook and committed user transcript record contained the
+expanded paste inside `<pasted_content id="…">` tags. Both tags used the first
+four lowercase SHA-256 hex digits of the native session ID. Text typed around
+a paste remained outside the envelope. Claude escaped look-alike tags, converted
+CRLF and CR to LF and tabs to four spaces, and reused a body's final LF as the
+closing tag separator. A literal backslash can match a native escape.
+
+Elwood displays the native body for a strictly matched standalone envelope.
+It preserves the exact delivered string as `nativePrompt` and reports
+`promptProvenance: { origin: "unknown", input: "pasted" }`. Native input
+transformations can make the original bytes unrecoverable. Offline PTY probes
+on 2.1.331 and 2.1.332 confirmed the same authenticated opener and repeated-ID
+closer around a synthetic multiline paste longer than 1,000 characters. Other
+layouts retain their delivered text.
+
 ## Hook bridge request FIN and delayed decisions
 
 The generated bridge child calls `client.end(request)` after connecting. That FIN

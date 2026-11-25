@@ -6,6 +6,7 @@ import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
+import type { UserMessageActivity } from "./prompt-presentation.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
 import type { UnrecognizedStartupActivity } from "./startup.ts";
@@ -84,22 +85,7 @@ type UnmarkedActivity =
       readonly transcriptPath: string;
       readonly raw: unknown;
     }
-  | {
-      readonly kind: "user_message";
-      readonly agent: "claude";
-      readonly source: "transcript";
-      readonly transcriptPath: string;
-      readonly turnId: string;
-      readonly label: "user";
-      readonly text: string;
-    }
-  | {
-      readonly kind: "user_message";
-      readonly source: "hook";
-      readonly hookEventName: "UserPromptSubmit";
-      readonly label: "user";
-      readonly text: string;
-    }
+  | UserMessageActivity
   | TurnFailureActivity
   | QuestionActivityFields;
 

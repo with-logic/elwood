@@ -51,13 +51,9 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
 }
 
 /**
- * Projects a committed Claude summary into activity. Rather than spreading the
- * summary's fields (which would WIDEN each per-variant guarantee back to
- * optional), it switches on the discriminant and builds each variant explicitly,
- * so the compiler enforces C-CLAUDE-15's required fields AT THIS BOUNDARY: an
- * `assistant_message` must carry `text`, a `tool_call` its `toolName`, and a
- * `tool_result` its correlating `toolUseId`. A future summary variant that omits
- * one fails to typecheck here rather than silently producing a field-less event.
+ * Direct transcript variants are projected explicitly so the compiler checks required
+ * assistant text, tool names, and result IDs (C-CLAUDE-15). The recovered prompt is
+ * already shaped for activity, including any native paste metadata.
  */
 export function activityFromClaudeTranscript(
   event: ClaudeTranscriptEvent,
@@ -71,9 +67,7 @@ export function activityFromClaudeTranscript(
   if (event.recovered) {
     return {
       ...origin,
-      kind: "user_message",
-      label: "user",
-      text: event.summary.text,
+      ...event.summary,
       turnId: event.turnId,
     };
   }

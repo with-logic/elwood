@@ -17,7 +17,16 @@ export function hookActivityBase(
   event: ClaudeHookEvent | CodexHookEvent,
 ): Omit<
   ElwoodActivityEvent,
-  "kind" | "label" | "text" | "final" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
+  | "kind"
+  | "label"
+  | "text"
+  | "final"
+  | "speed"
+  | "tokenUsage"
+  | "rateLimits"
+  | "subagent"
+  | "promptProvenance"
+  | "nativePrompt"
 > {
   const source = record(event);
   return {

@@ -4,6 +4,7 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { runTurn } from "../../src/core/simple/turn.ts";
 import { TurnAcceptance } from "../../src/core/simple/turn-acceptance.ts";
 import { activity, collect, drive, runTurnFake } from "./simple-turn-fakes.ts";
 
@@ -85,6 +86,41 @@ describe("C-API-48 positive turn acceptance", () => {
       vi.advanceTimersByTimeAsync(31),
     ]);
     expect(s.submissions).toBe(3);
+  });
+
+  test.each([
+    false,
+    true,
+  ])("C-API-67 native prompt equality %s controls acknowledgement of a displayed paste", async (matchingNativePrompt) => {
+    vi.useFakeTimers();
+    const nativePrompt = '<pasted_content id="0e08">\ngo\n</pasted_content id="0e08">';
+    const s = drive((session) => {
+      if (session.submissions !== 1) return;
+      session.emit("status", { status: "running" });
+      session.emit("activity", {
+        kind: "user_message",
+        source: "hook",
+        hookEventName: "UserPromptSubmit",
+        agent: "claude",
+        elwoodSessionId: "s1",
+        label: "user",
+        text: "go",
+        nativePrompt,
+        promptProvenance: { origin: "unknown", input: "pasted" },
+      });
+      session.emit("status", { status: "ready" });
+    });
+    const result = collect(
+      runTurn(s, matchingNativePrompt ? nativePrompt : "go", {
+        fallbackQuietMs: 10,
+        drainMs: 1,
+      }).events,
+    );
+    const outcome = matchingNativePrompt
+      ? expect(result).resolves.toEqual([])
+      : expect(result).rejects.toMatchObject({ code: "wait_timeout" });
+    await Promise.all([outcome, vi.advanceTimersByTimeAsync(31)]);
+    expect(s.submissions).toBe(matchingNativePrompt ? 1 : 3);
   });
 
   test("a successful replay with no later event still exhausts the bounded attempts", async () => {

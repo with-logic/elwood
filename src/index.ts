@@ -94,6 +94,7 @@ export type {
   ElwoodActivitySource,
   ElwoodAgentKind,
 } from "./core/activity/index.ts";
+export type { ElwoodPromptProvenance } from "./core/activity/prompt-presentation.ts";
 export type { ElwoodTurnFailure, ElwoodTurnFailureCategory } from "./core/activity/turn-failure.ts";
 export type {
   ElwoodAgentSession,

@@ -21,6 +21,7 @@ import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
 import { claudeTurnFailureActivity } from "../hooks/stop-failure.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
+import { claudePasteEnvelopeId, claudePromptPresentation } from "../pasted-content.ts";
 import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
@@ -52,9 +53,18 @@ export function buildClaudeHookHandler(
     );
   };
   function publish(event: ClaudeHookEvent, observation: HookObservation): void {
-    const projected = activity.activityFromClaudeHook(record.elwoodSessionId, event);
+    const native = activity.activityFromClaudeHook(record.elwoodSessionId, event);
     const observe = () => observation.run("transcript", () => deps.observeHookTranscript(event));
     const submit = event.hook_event_name === "UserPromptSubmit";
+    const pasteEnvelopeId = submit ? claudePasteEnvelopeId(event.session_id) : undefined;
+    const projected =
+      native.kind === "user_message"
+        ? {
+            ...native,
+            agent: "claude" as const,
+            ...claudePromptPresentation(native.text, pasteEnvelopeId),
+          }
+        : native;
     const hasText = projected.kind === "user_message";
     const turnId = projected.turnId;
     let show = true;
@@ -65,6 +75,7 @@ export function buildClaudeHookHandler(
             path: event.transcript_path,
             turnId,
             hasText,
+            pasteEnvelopeId,
           });
           if (hasText) show = emitHookMessage;
         }

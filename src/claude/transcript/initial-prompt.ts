@@ -4,7 +4,7 @@ import { fstatSync, readSync, type Stats, statSync } from "node:fs";
 import { isRecord } from "../../core/predicates.ts";
 import { withTranscriptFile } from "../../core/transcript/cursor-io.ts";
 import { claudePromptId } from "../hooks/prompt-id.ts";
-import { userPromptText } from "./user-record.ts";
+import { type UserPromptRecord, userPromptRecord } from "./user-record.ts";
 
 const maxBytes = 1024 * 1024;
 const firstWindowBytes = 64 * 1024;
@@ -13,10 +13,7 @@ const newline = 0x0a;
 const userMarker = Buffer.from('"user"');
 const backslash = 0x5c;
 
-export type InitialUserPrompt = {
-  readonly turnId: string;
-  readonly text: string;
-};
+export type InitialUserPrompt = UserPromptRecord & { readonly turnId: string };
 
 type InitialPromptScan = {
   readonly prompt?: InitialUserPrompt;
@@ -132,8 +129,8 @@ function parseCandidate(bytes: Buffer): InitialUserPrompt | undefined | null {
     const row: unknown = JSON.parse(bytes.toString("utf8"));
     if (!isRecord(row) || row["type"] !== "user") return undefined;
     const turnId = claudePromptId(row["promptId"]);
-    const text = userPromptText(row);
-    return turnId !== undefined && text !== undefined ? { turnId, text } : undefined;
+    const prompt = userPromptRecord(row);
+    return turnId !== undefined && prompt !== undefined ? { turnId, ...prompt } : undefined;
   } catch {
     return null;
   }
