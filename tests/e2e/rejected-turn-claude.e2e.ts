@@ -10,7 +10,6 @@ import type { CliError } from "../../src/cli/output/types.ts";
 import { ClaudeSession, ElwoodError } from "../../src/index.ts";
 import { invoke, parse } from "./cli-commands-helpers.ts";
 import {
-  bogusClaudeModel,
   e2eTimeoutMs,
   type HookEvent,
   makeProject,
@@ -18,6 +17,8 @@ import {
   skipReason,
   skipTurns,
 } from "./helpers.ts";
+
+const bogusModel = "elwood-bogus-model";
 
 test("C-E2E-20 elwood run reports a rejected real Claude turn as turn_failed with status 1", {
   skip: skipIf(skipReason("claude"), skipTurns),
@@ -27,7 +28,7 @@ test("C-E2E-20 elwood run reports a rejected real Claude turn as turn_failed wit
   const result = await invoke(
     [
       "--agent=claude",
-      `--model=${bogusClaudeModel}`,
+      `--model=${bogusModel}`,
       `--state-dir=${project.stateDir}`,
       "--ephemeral",
       "--output=json",
@@ -54,7 +55,7 @@ test("C-E2E-20 ClaudeSession.send rejects a real Claude rejection with turn_fail
   const session = new ClaudeSession({
     cwd: project.cwd,
     stateDir: project.stateDir,
-    model: bogusClaudeModel,
+    model: bogusModel,
     permissionMode: "bypassPermissions",
     autotrust: true,
   });

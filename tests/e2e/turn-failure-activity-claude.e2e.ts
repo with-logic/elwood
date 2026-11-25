@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { type ClaudeHookEventFor, type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import {
-  bogusClaudeModel,
   cleanup,
   e2eTimeoutMs,
   makeProject,
@@ -19,6 +18,9 @@ import {
   skipTurns,
 } from "./helpers.ts";
 import { isTurnFailure, turnReadyIndex, waitWithEvidence } from "./turn-failure.ts";
+
+/** A model Claude does not serve: it refuses a turn on it before any quota is used. */
+const bogusClaudeModel = "elwood-bogus-model";
 
 test("C-API-65 a rejected real Claude turn reaches a raw activity listener as turn_failure", {
   skip: skipIf(skipReason("claude"), skipTurns),
