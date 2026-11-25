@@ -1,19 +1,23 @@
 /**
  * Conformance for Claude bounded initial-readiness (PRD §5.3, C-API-19, C-API-28):
- * initial readiness is hook-backed on `InstructionsLoaded`, but a missing or failed
- * hook bridge must NOT starve queued persona/messages forever — a bounded deadline
- * after the first rendered frame fires readiness exactly once as the only fallback.
- * All process signals go through injected fakes — no real signal is issued.
+ * readiness is hook-backed. The fallback deadline requires the verified composer,
+ * and the backstop diagnoses an unfamiliar screen while holding queued input.
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { ClaudeSessionApi, ElwoodActivityEvent, ElwoodWarningEvent } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
+import { claudeComposer, claudeTty, tty } from "../fixtures/trust-composer.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const PASTE = "[200~hello[201~";
 
-afterEach(() => {
+const sessions: ClaudeSessionApi[] = [];
+
+afterEach(async () => {
   vi.useRealTimers();
+  await Promise.all(sessions.splice(0).map((session) => session.teardown()));
   resetFakes();
 });
 
@@ -22,6 +26,7 @@ describe("ClaudeSessionApi bounded initial readiness", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
+    sessions.push(session);
     // A message queued before readiness stays unwritten while no readiness fires.
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
@@ -30,13 +35,13 @@ describe("ClaudeSessionApi bounded initial readiness", () => {
     // `InstructionsLoaded` hook entirely: the hook bridge is treated as never
     // firing, so only the deadline can release the queue.
     vi.useFakeTimers();
-    ptys[0]!.emitData("claude rendered\r\n> ");
+    ptys[0]!.emitData(claudeTty(claudeComposer));
     expect(ptys[0]!.writes).toEqual([]); // nothing before the deadline elapses
 
     // Advance past the 10s bounded deadline (readiness fires) and flush the
     // paste's settle-delayed Enter, then let `queued` settle.
     await vi.advanceTimersByTimeAsync(10_000);
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(500);
     vi.useRealTimers();
     await queued;
 
@@ -50,12 +55,13 @@ describe("ClaudeSessionApi bounded initial readiness", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
+    sessions.push(session);
     const queued = session.sendMessage("hello");
 
     vi.useFakeTimers();
-    ptys[0]!.emitData("claude rendered\r\n> ");
+    ptys[0]!.emitData(claudeTty(claudeComposer));
     await vi.advanceTimersByTimeAsync(10_000);
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(500);
     vi.useRealTimers();
     await queued;
     expect(ptys[0]!.writes.filter((w) => w === PASTE)).toHaveLength(1);
@@ -72,4 +78,85 @@ describe("ClaudeSessionApi bounded initial readiness", () => {
     });
     expect(ptys[0]!.writes.filter((w) => w === PASTE)).toHaveLength(1);
   });
+});
+
+const themePicker = [
+  "Choose the text style that looks best with your terminal",
+  "To change this later, run /theme",
+  "",
+  "❯ ✔ Auto (match terminal)",
+  "    Light mode",
+  "    Dark mode",
+].join("\n");
+
+async function startObservedSession() {
+  installFakes();
+  const session = await startClaude({ cwd: tempDir() });
+  sessions.push(session);
+  const warnings: ElwoodWarningEvent[] = [];
+  const activities: ElwoodActivityEvent[] = [];
+  session.on("warning", (event) => warnings.push(event));
+  session.on("activity", (event) => activities.push(event));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  vi.useFakeTimers();
+  return { session, warnings, activities };
+}
+
+async function paint(session: ClaudeSessionApi, bytes: string): Promise<void> {
+  ptys[0]!.emitData(`\u001b[2J\u001b[H${bytes}`);
+  const settled = session.terminal.settled();
+  await vi.advanceTimersByTimeAsync(0);
+  await settled;
+}
+
+test.each([
+  "sendMessage",
+  "sendPrompt",
+] as const)("C-API-28 C-ATTN-06 a Claude onboarding screen holds %s until the verified composer", async (method) => {
+  const { session, warnings, activities } = await startObservedSession();
+  await paint(session, tty(themePicker));
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(session.status).toBe("running");
+  expect(warnings).toEqual([]);
+  await vi.advanceTimersByTimeAsync(50_000);
+  expect(session.status).toBe("running");
+  expect(warnings).toEqual([
+    expect.objectContaining({
+      agent: "claude",
+      source: "lifecycle",
+      code: "initial_ready_backstop",
+      raw: "initial_ready_backstop",
+    }),
+  ]);
+  expect(JSON.stringify(warnings)).not.toContain(themePicker.split("\n")[0]);
+  expect(activities.filter(({ kind }) => kind === "unrecognized_startup")).toEqual([
+    {
+      elwoodSessionId: session.elwoodSessionId,
+      agent: "claude",
+      source: "terminal",
+      kind: "unrecognized_startup",
+      label: "initial_ready_backstop",
+      text: themePicker,
+    },
+  ]);
+  const sent = session[method]("hello");
+  void sent.catch(() => undefined);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(ptys[0]!.writes).toEqual([]);
+
+  await paint(session, claudeTty(claudeComposer));
+  await vi.advanceTimersByTimeAsync(500);
+  await sent;
+  expect(activities).toContainEqual(expect.objectContaining({ kind: "status", status: "ready" }));
+  expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
+});
+
+test("C-ATTN-06 the Claude backstop keeps recognized workspace trust on its attention surface", async () => {
+  const { session, warnings, activities } = await startObservedSession();
+  await paint(session, tty(capturedFrame("claude-2.1.310/folder-trust-no").trimEnd()));
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(session.status).toBe("blocked");
+  expect(warnings).toEqual([expect.objectContaining({ code: "initial_ready_backstop" })]);
+  expect(activities.some(({ kind }) => kind === "unrecognized_startup")).toBe(false);
+  expect(ptys[0]!.writes).toEqual([]);
 });

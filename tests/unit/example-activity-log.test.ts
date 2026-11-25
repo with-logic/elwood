@@ -5,7 +5,7 @@ import { unrecognizedStartupActivity } from "../../src/core/activity/startup.ts"
 import { activity } from "../helpers/activity.ts";
 
 test("C-ATTN-06 the example logs startup diagnostics without screen text", () => {
-  const event = unrecognizedStartupActivity("session", "private screen sentinel");
+  const event = unrecognizedStartupActivity("codex", "session", "private screen sentinel");
   expect(activityLogLine(event)).toBe(
     "[activity] codex:unrecognized_startup:initial_ready_backstop\n",
   );

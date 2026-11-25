@@ -74,13 +74,13 @@ export type InitialReadyObserverFailedWarning = {
 };
 
 /**
- * Codex's initial-readiness backstop elapsed without a configured composer.
+ * The initial-readiness backstop elapsed without a configured composer.
  * Readiness and queued input remain held until positive readiness evidence.
  * Content-free (§5.3, C-API-28).
  */
 export type InitialReadyBackstopWarning = {
   readonly elwoodSessionId: string;
-  readonly agent: "codex";
+  readonly agent: ElwoodAgentKind;
   readonly source: "lifecycle";
   readonly code: "initial_ready_backstop";
   readonly severity: "warning";

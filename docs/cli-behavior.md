@@ -107,6 +107,16 @@ first render frame (`src/runtime/readiness/initial-ready.ts`): after 10 s
 below, and after 60 s (`initialBackstopMs`) it warns if that evidence is still missing.
 Readiness and queued input remain held; the backstop cannot establish input safety. C-API-28.
 
+**Claude 2.1.331's theme selection can wait indefinitely before any composer
+appears.** An isolated first launch showed `Choose the text style that looks best
+with your terminal` and a line-leading `❯` on its default choice. Without a
+readiness hook, the old ten-second deadline reported `ready` over this menu.
+Claude's deadline now requires a settled idle composer with the native input
+cursor and surrounding fence and chrome. A separately configured launch showed
+the native composer with its auto-mode footer and passed this check without a
+prompt. At the 60-second backstop, an unfamiliar screen stays held and appears
+in live-only `unrecognized_startup` activity. C-API-28, C-ATTN-06.
+
 **Codex 0.164 paints a boot composer before its session is configured
 (2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
 anything` and `? for shortcuts` with no model footer; the header may read

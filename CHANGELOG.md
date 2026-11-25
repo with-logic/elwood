@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep Claude startup input held when no configured composer appears and expose
+  the last live screen through `unrecognized_startup` activity.
+
 - Recognize Claude Code 2.1.331's drawn input cursor after workspace trust and
   when waiting for Claude to consume a submitted prompt. Report login-renewal
   notices below the composer when it uses that cursor.

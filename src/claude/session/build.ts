@@ -8,7 +8,6 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { createReadinessGate } from "../../runtime/session/readiness.ts";
 import { withAutomatedInput } from "../../runtime/session/session-input.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
@@ -33,7 +32,7 @@ import {
   spawnClaudePty,
   writeRuntimeFiles,
 } from "./runtime.ts";
-import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
+import { createClaudeReadinessGate, createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
 export async function buildClaudeSession(
   input: BuildClaudeSessionInput,
@@ -57,10 +56,14 @@ export async function buildClaudeSession(
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
-  const readiness = createReadinessGate(() => {
-    observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    void session?.completeInitialReady();
-  }, resumed);
+  const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
+  const readiness = createClaudeReadinessGate(
+    () => {
+      observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
+      void session?.completeInitialReady();
+    },
+    { resumed, record, warnGate, emitter, configured: idleComposerClearance },
+  );
   const { ready } = readiness;
   const bridge = currentClaudeHookBridgeFactory()(
     runtime.socketPath,
@@ -104,7 +107,6 @@ export async function buildClaudeSession(
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
   const frameObserver = createSessionFrameObserver(
     observers,
     () => session,
@@ -121,6 +123,7 @@ export async function buildClaudeSession(
   const loginExpiring = new LoginExpiringWatcher();
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     terminalReplay.push(data);
+    readiness.captureStartupScreen(renderedTerminal);
     const snapshot = cachedLiveSnapshot(renderedTerminal);
     latestRenderedText = snapshot.text;
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
