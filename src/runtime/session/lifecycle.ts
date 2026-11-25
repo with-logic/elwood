@@ -1,7 +1,7 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
-import { ControlQueue } from "../../core/control-queue/index.ts";
-import { queuedInputSubmitter, type RecoveryComposer } from "../../core/input/index.ts";
+import type { ControlQueue } from "../../core/control-queue/index.ts";
+import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -15,9 +15,9 @@ import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
 import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
-import { bindNativeInput } from "./native-submission.ts";
-import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
-import { PasteRecoveryRevocation } from "./paste-recovery.ts";
+import { bindSessionControl } from "./native-submission.ts";
+import { closingController, runSessionOperation } from "./not-running.ts";
+import type { PromptNormalizer, PromptSubmissions } from "./prompt-submissions.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import type { SessionInputOwnership } from "./session-input.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
@@ -31,6 +31,7 @@ export abstract class SessionLifecycle {
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
   readonly stopCompletion = new StopCompletion(this);
+  readonly promptSubmissions: PromptSubmissions | undefined;
   protected everReady = false;
   private initialReadinessHeld: (() => boolean) | undefined;
   inputBlocking = false;
@@ -42,7 +43,11 @@ export abstract class SessionLifecycle {
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
-  protected readonly pasteGuard: ReturnType<PasteRecoveryRevocation["createGuard"]>;
+  protected readonly pasteGuard: PasteGuard;
+  /** Adapters can provide a static normalizer before their instance fields initialize. */
+  protected get promptNormalizer(): PromptNormalizer | undefined {
+    return undefined;
+  }
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
@@ -63,28 +68,23 @@ export abstract class SessionLifecycle {
     this.pty = pty;
     this.terminal = input.caller;
     this.automatedTerminal = input.automated;
-    this.pasteGuard = new PasteRecoveryRevocation(statusEvents, this.closing.signal).createGuard(
-      this.terminal,
-      () => this.recoveryComposer,
-      () => this.queuedInputBlocked(),
-      this.stopCompletion.prepareRenderedReset,
-    );
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
-    const submit = queuedInputSubmitter(this.automatedTerminal, this.pasteGuard);
-    const native = bindNativeInput(this, statusEvents, () => this.emptyComposerFrame(), submit);
-    this.controlQueue = new ControlQueue(
-      native.submit,
-      () => notRunningError(agent),
-      (origin) => {
+    const controls = bindSessionControl(this, input, statusEvents, {
+      agent,
+      resumed: record[agent].resumeId !== undefined,
+      promptNormalizer: this.promptNormalizer,
+      composer: () => this.recoveryComposer,
+      blocked: () => this.queuedInputBlocked(),
+      readEmpty: () => this.emptyComposerFrame(),
+      turnStarted: (origin) => {
         this.loops.turnStarted(origin);
         this.submitEvidence("caller_submitted");
       },
-      () => this.status === "running",
-      this.stopCompletion.submitted,
-      input.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, native.readEmpty),
-      native.admit,
-    );
+    });
+    this.controlQueue = controls.controlQueue;
+    this.pasteGuard = controls.pasteGuard;
+    this.promptSubmissions = controls.promptSubmissions;
     registerTurnLoopHold(this, () => this.controlQueue.holdLoops());
     this.loops = new SessionLoops({
       stateDir,

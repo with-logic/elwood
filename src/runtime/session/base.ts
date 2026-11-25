@@ -39,7 +39,6 @@ import { SessionInputOwnership } from "./session-input.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 type Timeout = { readonly timeoutMs?: number };
-
 export abstract class AgentSessionBase extends QuestionSessionBase {
   protected get interruptRetryMs(): number | undefined {
     return undefined;
@@ -70,8 +69,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
       terminalReplay,
       loopDefinitions,
     );
-    // `picker` is a subclass field initializer that runs AFTER this constructor, so the
-    // surface resolves it per call rather than capturing it here.
+    // Resolve the picker lazily because subclass fields initialize after super().
     this.commands = new CommandSurface({
       terminal: ownership.automated,
       inputSignal: () => ownership.signal(),
@@ -147,7 +145,6 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
   ): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options, around));
   }
-  /** No status guard: the screen a CLI left stays readable until disposal (C-SCREEN-03). */
   async readScreen(options?: ReadScreenOptions): Promise<ElwoodScreen> {
     const screen = await readTerminalScreen(this.terminal, options);
     if (screen === undefined) throw notRunningError(this.record.adapter);
@@ -163,7 +160,6 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     return this.inSession(() => this.loops.cancel(loopId), true);
   }
 
-  /** A stable completed frame only when the native composer is positively empty (C-API-56). */
   protected emptyComposerFrame(): object | undefined {
     const frame = settledLiveSnapshot(this.terminal);
     return frame && this.composerIsEmpty(frame.text) ? frame : undefined;
@@ -171,7 +167,6 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
   protected composerIsEmpty(text: string): boolean {
     return this.picker.isClear(text);
   }
-  /** Attach `paths` to the composer before the queued text is submitted (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
   /** Re-apply a resize that was held during startup (a best-effort restore). */
   protected restoreHeldSize(size: TerminalSize): void {
@@ -184,14 +179,18 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     } catch (error) {
       return Promise.reject(toError(error));
     }
-    const attempt = submissionAttempt(this);
+    const ledger = this.promptSubmissions;
+    const attempt = submissionAttempt(this)?.beforeEnter;
+    const beforeEnter = ledger?.captureCaller(input, options, attempt) ?? attempt;
     const control = {
       ...submissionControlOptions(options),
-      ...(attempt ? { beforeEnter: attempt.beforeEnter } : {}),
+      ...(beforeEnter ? { beforeEnter } : {}),
     };
-    const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
+    const driver: AttachDriver = (paths, signal) => {
+      ledger?.revoke();
+      return this.attachImages(paths, signal);
+    };
     const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach, control);
-    // Looked up per call: a facade that launched this session shares ITS budget (C-API-44).
     const budget = sessionImageBudget(this);
     return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget));
   }

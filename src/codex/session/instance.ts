@@ -20,6 +20,7 @@ import { codexTurnIdentity } from "../accepted-turn.ts";
 import { enrichCodexModels } from "../config/default-model.ts";
 import type { CodexHookEventFor } from "../hooks/index.ts";
 import { attachCodexImages } from "../images/attach.ts";
+import { normalizeCodexPastedPayload } from "../input-text.ts";
 import { codexModelPicker } from "../model-picker.ts";
 import { codexModelOptions } from "../models/options.ts";
 import { codexSessionQuestions } from "../questions/session.ts";
@@ -39,6 +40,9 @@ import { clipboardRestoreFailedWarning } from "./warnings.ts";
 
 const cliExitWaitMs = 5_000;
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
+  protected override get promptNormalizer() {
+    return normalizeCodexPastedPayload;
+  }
   override async listModels(options?: { readonly timeoutMs?: number }) {
     return codexModelOptions(await super.listModels(options));
   }
@@ -56,7 +60,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
   private readonly dialogs: CodexWorkspaceTrustDialogs;
-  /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
   readonly turnCommit: CodexTurnCommit;
   constructor(
     record: SessionRecord,
@@ -111,8 +114,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   readonly answerDialog: CodexSessionApi["answerDialog"] = (requestId, choiceId, options) =>
     this.dialogs.answerDialog(requestId, choiceId, options);
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    // Reserve the queue slot before waiting on the config lock, so later sends
-    // cannot overtake the model switch and use the previous model.
+    // Reserve the queue slot first so later sends use the new model.
     const session = {
       elwoodSessionId: this.elwoodSessionId,
       resolveConfigPath: this.resolveConfigPath,
@@ -144,8 +146,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     return sessionWaitForActivity(this, match, timeoutMs);
   }
   protected readonly recoveryComposer = createCodexRecoveryComposer(this.terminal);
-  // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
-  // held while a dialog is on screen so it never confirms one (C-API-46/37).
+  // Hold Codex's clipboard paste while a dialog is on screen (C-API-46/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachCodexImages(
       this.automatedTerminal,
@@ -166,7 +167,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   setInitialReadyHook(fire: () => void): void {
     this.onInitialReady = fire;
   }
-  /** SessionStart proves Codex can accept input at the composer (C-API-28). */
   markInitialReadyFromHook(observation: HookObservation): void {
     const previous = this.hookReadyObservation;
     this.hookReadyObservation = observation;

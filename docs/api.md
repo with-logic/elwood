@@ -45,6 +45,13 @@ exact bytes matter. See [native paste presentation](cli-behavior.md#claude-nativ
 
 ## Codex
 
+Pass `{ sendId: "request-42" }` to `sendMessage`, `sendPrompt`, or
+`sendGuidance` to correlate supported text sends with a matching Codex
+`UserPromptSubmit` hook. Its `user_message` carries the original API text,
+the exact `nativePrompt`, API paste provenance, and the caller ID. It
+can omit these fields when composer ownership or the hook match is uncertain.
+See [the event contract](../prd/05-api/5.4-events.md) for eligibility.
+
 ```ts
 import { startCodex } from "@with-logic/elwood"; // deprecated; prefer `new CodexSession(...)`
 

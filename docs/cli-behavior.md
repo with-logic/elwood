@@ -3298,3 +3298,11 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
 - Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
   none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
   both break long lines themselves.
+
+## Codex preserves U+FEFF at the edges of submitted text (0.171.0 and 0.172.0)
+
+An isolated native TUI run submitted padded multiline text with U+FEFF at
+both ends through `sendMessage`. Codex removed the outer spaces and kept
+both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
+Use Rust's Unicode `White_Space` when comparing forwarded text with the
+hook. JavaScript `trim()` would remove U+FEFF and miss the match.
