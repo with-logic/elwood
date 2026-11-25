@@ -39,11 +39,12 @@ export async function buildClaudeSession(
   input: BuildClaudeSessionInput,
 ): Promise<ClaudeSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
+  const { elwoodSessionId } = record;
   secureMkdir(runtime.sessionDir);
   const publish = runtime.stateOwnership.publishFile;
   writeSessionRecord(record, runtime.sessionDir, publish);
   const files = { readFile: runtime.stateOwnership.readFile, writeFile: publish };
-  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId, files) : [];
+  const loopDefinitions = resumed ? loadLoops(stateDir, elwoodSessionId, files) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -53,18 +54,19 @@ export async function buildClaudeSession(
     () => promptResponder.closing,
     (deliver) => wired.duringDelivery(deliver),
   );
-  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
+  const wired = createTranscriptWatcher(elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const autotrust = options.autotrust ?? false;
-  const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
+  const observers = buildClaudeObservers(elwoodSessionId, autotrust, emitter);
   const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
   const dialogs: ClaudeWorkspaceTrustEvents = new ClaudeWorkspaceTrustEvents(emitter, {
-    elwoodSessionId: record.elwoodSessionId,
+    elwoodSessionId,
     evidence: input.workspaceTrustEvidence,
     terminal: () => terminal,
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance: idleComposerClearance,
     isLive: () => session?.closing.signal.aborted === false,
+    manualTrust: !autotrust,
   });
   const readiness = createStartupReadinessGate(
     () => {
@@ -78,7 +80,7 @@ export async function buildClaudeSession(
   const bridge = await startClaudeHookBridge(
     runtime.socketPath,
     runtime.bridgeToken,
-    record.elwoodSessionId,
+    elwoodSessionId,
     buildClaudeHookHandler({
       record,
       options,
@@ -92,9 +94,8 @@ export async function buildClaudeSession(
     }),
     buildClaudeHookErrorHandler(record, emitter, () => session),
   );
-  const requestedSize = options.initialSize ?? defaultTerminalSize;
-  const cols = Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS);
-  const startupSize = { ...requestedSize, cols };
+  const requested = options.initialSize ?? defaultTerminalSize;
+  const startupSize = { ...requested, cols: Math.max(requested.cols, CLAUDE_STARTUP_MIN_COLS) };
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
     pty = spawnClaudePty(record, runtime.settingsPath, { ...options, initialSize: startupSize });
@@ -104,7 +105,7 @@ export async function buildClaudeSession(
   }
   const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   let observedExit: PtyExit | undefined;
-  const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
+  const terminalReplay = new TerminalReplayBuffer(elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const frameObserver = createSessionFrameObserver(
     observers,
@@ -122,10 +123,10 @@ export async function buildClaudeSession(
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
+    dialogs.discovery.writer.recordConfirmation();
     terminalReplay.push(data);
     const snapshot = readiness.observeStartupFrame(renderedTerminal);
     latestRenderedText = snapshot.text;
-    const frame = { text: latestRenderedText, title: renderedTerminal.title };
     const send = (input: string) =>
       withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
     const read = () => latestRenderedText;
@@ -137,17 +138,15 @@ export async function buildClaudeSession(
       promptResponder.closingSignal,
     );
     const trustRead = () => settledLiveSnapshot(renderedTerminal)?.text;
-    const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
+    const autos = promptResponder.handle(snapshot.text, send, read, guarded, trustRead);
     dialogs.reconcile();
-    emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
+    emitSettledStartupOutcomes(emitter, "claude", elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
     });
-    frameObserver.observe(frame);
-    warnGate.emitWarnings(
-      loginExpiring.observeFrame(snapshot, record.elwoodSessionId, renderedTerminal),
-    );
-    session?.noteLoginExpiry(frame.text);
-    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
+    frameObserver.observe({ text: snapshot.text, title: renderedTerminal.title });
+    warnGate.emitWarnings(loginExpiring.observeFrame(snapshot, elwoodSessionId, renderedTerminal));
+    session?.noteLoginExpiry(snapshot.text);
+    emitter.emit("terminal:data", { elwoodSessionId, data });
   });
   session = new ClaudeSessionImpl(
     record,
@@ -155,10 +154,10 @@ export async function buildClaudeSession(
     runtime,
     pty,
     terminal,
-    { bridge, finishTranscriptWatcher: () => finishSafely() },
+    { bridge, finishTranscriptWatcher: finishSafely },
     emitter,
     terminalReplay,
-    requestedSize,
+    requested,
     loopDefinitions,
     dialogs,
   );
@@ -175,11 +174,12 @@ export async function buildClaudeSession(
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;
+        dialogs.discovery.writer.nativeExit(exit);
         active.beginExitFinalization();
         active.closing.abort();
         handleClaudeExit(
           emitter,
-          record.elwoodSessionId,
+          elwoodSessionId,
           exit,
           (afterFlush) => finishSafely(() => warnGate.afterDelivery(afterFlush)),
           () => active.submitExit(),
@@ -193,7 +193,7 @@ export async function buildClaudeSession(
     { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
   if (preflightWarning !== undefined)
-    warnGate.emitWarnings([preflightEvent(record.elwoodSessionId, preflightWarning)]);
+    warnGate.emitWarnings([preflightEvent(elwoodSessionId, preflightWarning)]);
   warnGate.openAfterReturn();
   terminalReplay.releaseStartupAttentionAfterReturn();
   return session;

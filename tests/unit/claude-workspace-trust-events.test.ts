@@ -32,6 +32,7 @@ async function openEvents() {
     .mockResolvedValue(verified);
   const events = new ClaudeWorkspaceTrustEvents(emitter, {
     evidence: undefined,
+    manualTrust: true,
     elwoodSessionId: verified.request.elwoodSessionId,
     terminal: () => {
       throw new Error("This test supplies checked native evidence directly.");
@@ -45,9 +46,17 @@ async function openEvents() {
   vi.spyOn(events.discovery, "reconcile").mockReturnValue({
     frame: verified.frame,
     identity: "captured trust menu",
+    gateIdentity: "1",
     menu: {
       target: { targetPath: "/workspace", targetScope: "folder" },
-      dialog: { header: "", options: [] },
+      dialog: {
+        header: "",
+        options: [
+          { label: "accept", style: "numbered", number: "1", selected: true },
+          { label: "exit", style: "numbered", number: "2" },
+        ],
+      },
+      promptHeaderKey: "trust",
     },
     revalidateLaunchEvidence: () => Promise.resolve(true),
   });

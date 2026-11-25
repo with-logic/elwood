@@ -8,7 +8,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
-import type { ElwoodDialogRequest } from "../../core/dialogs/types.ts";
+import type { ElwoodDialogAnswerOptions, ElwoodDialogRequest } from "../../core/dialogs/types.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { LoopControls } from "../../core/loops/loop-controls.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
@@ -40,6 +40,11 @@ export interface ClaudeSessionApi extends LoopControls, QuestionControls, StatsC
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
 
   listDialogs(): Promise<readonly ElwoodDialogRequest<"claude">[]>;
+  answerDialog(
+    requestId: string,
+    choiceId: string,
+    options?: ElwoodDialogAnswerOptions,
+  ): Promise<void>;
   sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
   sendMessage(message: string, options?: SendOptions): Promise<void>;
   sendGuidance(message: string, options?: SendOptions): Promise<void>;

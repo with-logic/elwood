@@ -21,7 +21,7 @@ export type TrustStep = {
  * guard settles, and a retried arrow can land after the first already moved; a bare
  * Enter decided from the earlier frame then confirms the decline. The absolute selection
  * lands on the same row however often it repeats, and Enter travels only in the same
- * write as it, once the rendered cursor sits on the affirmative.
+ * write as it, once the rendered cursor sits on the requested choice.
  */
 export function trustStep(option: SelectableOption): TrustStep {
   if (option.style === "numbered")

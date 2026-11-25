@@ -100,6 +100,8 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     if (event === "dialog") this.dialogs.onListenerRemoved(handler as ElwoodEventHandler<"dialog">);
   }
   readonly listDialogs = () => this.dialogs.discovery.list();
+  readonly answerDialog: ClaudeSessionApi["answerDialog"] = (requestId, choiceId, options) =>
+    this.dialogs.discovery.writer.answers.answer(requestId, choiceId, options);
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);
   }

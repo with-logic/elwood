@@ -1,34 +1,28 @@
-/** Verify Claude's workspace trust menu for listing and publication (C-ATTN-07, C-ATTN-08). */
+/** List Claude's human-owned workspace trust menu with settled native and Git evidence (C-ATTN-07). */
 import { runContained } from "../../core/contained.ts";
-import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../../core/dialogs/types.ts";
 import {
   type VerifiedWorkspaceTrust,
   WorkspaceTrustPolling,
 } from "../../core/dialogs/workspace-trust-polling.ts";
-import type { TrustClearance } from "../../core/trust/clearance.ts";
-import type { TrustPromptIdFor } from "../../core/trust/prompts.ts";
-import { settledNativeSnapshot } from "../../terminal/cursor.ts";
+import { nativeRenderEvidenceIntact, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
+import { type ClaudeTrustAppearance, claudeTrustWriter, openClaudeTrustAnswer } from "./answer.ts";
+import { verifyClaudeTrustAnswer } from "./answer-proof.ts";
+import type {
+  DialogRequest,
+  DiscoveryObserver,
+  Retirement,
+  WorkspaceTrustDiscoveryInput,
+} from "./discovery-input.ts";
 import { createClaudeWorkspaceTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu.ts";
-import type { ClaudeLaunchTrustEvidence } from "./target.ts";
+import { ClaudeTrustNativeAppearance } from "./native-appearance.ts";
 
-type DialogRequest = ElwoodDialogRequest<"claude">;
-export type WorkspaceTrustDiscoveryInput = {
-  readonly elwoodSessionId: string;
-  readonly evidence: ClaudeLaunchTrustEvidence | undefined;
-  readonly terminal: () => ElwoodTerminal;
-  readonly humanOwnedPrompt: () => TrustPromptIdFor<"claude"> | undefined;
-  readonly clearance: TrustClearance;
-};
-
-type Retirement = Extract<ElwoodDialogEvent<"claude">, { phase: "closed" }>["reason"];
-type DiscoveryObserver = {
-  readonly revision: () => number;
-  readonly onRetire: (request: DialogRequest, reason: Retirement) => void;
-  readonly onListDiscovery: (request: DialogRequest) => void;
-};
+export type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 
 export class ClaudeWorkspaceTrustDiscovery {
+  private answerRequest: ReturnType<typeof openClaudeTrustAnswer> | undefined;
+  readonly writer;
+  private readonly nativeAppearance = new ClaudeTrustNativeAppearance();
   private readonly polling = new WorkspaceTrustPolling<"claude", WorkspaceTrustFrame>();
   private readonly input: WorkspaceTrustDiscoveryInput;
   private readonly observer: DiscoveryObserver;
@@ -38,22 +32,54 @@ export class ClaudeWorkspaceTrustDiscovery {
     this.input = input;
     this.observer = observer;
     this.match = input.evidence && createClaudeWorkspaceTrustFrameMatcher(input.evidence);
+    this.writer = claudeTrustWriter(input, {
+      current: () => {
+        const answer = this.answerRequest;
+        if (
+          answer &&
+          answer.request === this.polling.currentRequest &&
+          nativeRenderEvidenceIntact(input.terminal())
+        )
+          return answer;
+        return undefined;
+      },
+      read: () => this.reconcile(),
+      verify: (candidate, signal) =>
+        verifyClaudeTrustAnswer({
+          candidate,
+          signal,
+          polling: this.polling,
+          revision: observer.revision,
+          canUseFrame: (frame) => this.canUseTrustFrame(frame),
+          scopeLost: (frame, proved) => this.retireIfScopeProofLost(frame, proved),
+          revoke: () => this.writer.answers.revoke("frame"),
+        }),
+      isFrameCurrent: (frame) => this.canUseTrustFrame(frame),
+      reconcile: () => this.observeNativeFrame(),
+      clear: () => {
+        this.retire("cleared");
+      },
+    });
   }
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal): void {
-    this.polling.bind(terminal, closing, this.invalidateEvidence);
+    this.polling.bind(terminal, closing, () =>
+      this.end("unavailable", closing.aborted ? "aborted" : "frame"),
+    );
+    this.writer.bindCallerInput(terminal);
   }
 
   endStartup(): void {
     let reason: Retirement = "unavailable";
-    if (this.polling.currentRequest) {
+    if (this.polling.currentRequest)
       runContained(() => {
         const frame = settledNativeSnapshot(this.input.terminal());
         if (frame && this.input.clearance(frame.text)) reason = "cleared";
       });
-    }
     this.end(reason);
   }
+
+  readonly invalidateEvidence = (): void => this.end("unavailable");
 
   async list(): Promise<readonly DialogRequest[]> {
     const prior = this.polling.currentRequest;
@@ -67,8 +93,14 @@ export class ClaudeWorkspaceTrustDiscovery {
     }
   }
 
+  observeNativeFrame(): ClaudeTrustAppearance | undefined {
+    const candidate = this.reconcile();
+    if (!this.polling.signal.aborted) this.writer.observePaint(candidate);
+    return candidate;
+  }
+
   /** Track settled menu changes between polls without consulting the filesystem. */
-  reconcile(): WorkspaceTrustFrame | undefined {
+  reconcile(): ClaudeTrustAppearance | undefined {
     if (this.polling.signal.aborted || !this.match) return undefined;
     const terminal = this.input.terminal();
     const frame = settledNativeSnapshot(terminal);
@@ -78,14 +110,15 @@ export class ClaudeWorkspaceTrustDiscovery {
       return undefined;
     }
     if (this.input.humanOwnedPrompt() !== "workspace_trust") {
+      this.nativeAppearance.clear();
       this.retire("unavailable");
       return undefined;
     }
     const prior = this.polling.currentRequest;
-    const candidate = this.polling.sample(terminal, frame, this.match);
+    const current = this.polling.sample(terminal, frame, this.match);
     if (prior && !this.polling.currentRequest)
-      this.observer.onRetire(prior, candidate ? "replaced" : "unavailable");
-    return candidate;
+      this.observer.onRetire(prior, current ? "replaced" : "unavailable");
+    return this.nativeAppearance.sample(frame, current);
   }
 
   private async read(revision: number): Promise<VerifiedWorkspaceTrust<"claude"> | undefined> {
@@ -104,7 +137,7 @@ export class ClaudeWorkspaceTrustDiscovery {
   }
 
   async readForPublication(
-    candidate: WorkspaceTrustFrame,
+    candidate: ClaudeTrustAppearance,
     cancellation: AbortSignal,
     onAvailable: () => void,
   ): Promise<VerifiedWorkspaceTrust<"claude"> | undefined> {
@@ -120,24 +153,23 @@ export class ClaudeWorkspaceTrustDiscovery {
     return cancellation.aborted ? undefined : this.acceptProof(candidate, proved);
   }
 
-  readonly invalidateEvidence = (): void => this.end("unavailable");
-
   private acceptProof(
-    candidate: WorkspaceTrustFrame,
+    candidate: ClaudeTrustAppearance,
     proved: boolean | undefined,
   ): VerifiedWorkspaceTrust<"claude"> | undefined {
-    // A completed Claude mismatch revokes the captured launch even after a repaint.
-    if (proved === false) {
-      this.end("unavailable");
-      return undefined;
-    }
-    if (!this.canUseTrustFrame(candidate.frame)) return undefined;
-    if (proved === undefined) {
-      this.end("unavailable");
-      return undefined;
-    }
+    this.retireIfScopeProofLost(candidate.frame, proved);
+    if (proved !== true || !this.canUseTrustFrame(candidate.frame)) return undefined;
 
-    return this.polling.acceptVerified("claude", this.input.elwoodSessionId, candidate);
+    const verified = this.polling.acceptVerified("claude", this.input.elwoodSessionId, candidate);
+    if (this.answerRequest?.request !== verified.request)
+      this.answerRequest = openClaudeTrustAnswer(candidate.gateIdentity, verified.request);
+    return verified;
+  }
+
+  private retireIfScopeProofLost(frame: TerminalSnapshot, proved: boolean | undefined): void {
+    // A completed mismatch revokes the captured launch even after a repaint.
+    if (proved === false || (proved === undefined && this.canUseTrustFrame(frame)))
+      this.end("unavailable");
   }
 
   isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust<"claude">): boolean {
@@ -148,9 +180,13 @@ export class ClaudeWorkspaceTrustDiscovery {
     return this.polling.canUseTrustFrame(frame, this.input);
   }
 
-  private end(reason: Retirement): void {
+  private end(reason: Retirement, category: "frame" | "aborted" = "frame"): void {
+    this.writer.answers.revoke(category);
+    this.writer.end();
     this.retire(reason);
     this.polling.end();
+    this.nativeAppearance.clear();
+    this.answerRequest = undefined;
   }
 
   private retire(reason: Retirement): void {

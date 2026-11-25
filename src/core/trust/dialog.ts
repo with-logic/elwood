@@ -78,10 +78,15 @@ export function isTrustDialogHeader(line: string): boolean {
   return headerStart.test(line.trim());
 }
 
+/** A native trust region cannot begin below a conversation row. */
+export function hasTrustConversationBefore(lines: readonly string[], row: number): boolean {
+  return lines.slice(0, row).some((line) => conversationRow.test(line));
+}
+
 function candidateAt(lines: readonly string[], start: number): Candidate | undefined {
   // Keep the provenance of a candidate when removing its prelude. Exact native
   // copy quoted below a conversation row is still conversation content.
-  if (lines.slice(0, start).some((line) => conversationRow.test(line))) return undefined;
+  if (hasTrustConversationBefore(lines, start)) return undefined;
   const tail = lines.slice(start);
   const unknownTail = tail.some((line) => /^\s*(?:[●•]|(?:user|assistant)\s*:)/i.test(line));
   const lastRow = tail.findLastIndex((line) => line.trim() !== "");

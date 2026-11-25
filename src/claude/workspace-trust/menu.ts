@@ -2,6 +2,8 @@
 import type { IBufferCell } from "@xterm/headless";
 import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
 import type { SelectableOption } from "../../core/terminal-options.ts";
+import { isClaudeWorkspaceQuestionPrefix } from "../../core/trust/allowlist.ts";
+import { hasTrustConversationBefore } from "../../core/trust/dialog.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
 import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";
 import { hasUnwrappedRowEndPadding } from "../../terminal/snapshot.ts";
@@ -10,10 +12,18 @@ import type { ClaudeLaunchTrustEvidence } from "./target.ts";
 // The captured prelude starts four rows above the question. Keep a nearby window
 // for layout spacing without accepting a detached disclosure elsewhere on screen.
 const workspacePreludeRows = 8;
+export const disclosedWorkspacePath = Symbol("Claude workspace path before its question");
+export type WorkspacePreludeEvidence = string | typeof disclosedWorkspacePath;
+export const claudeTrustExitLabel = "No, exit";
+export const claudeTrustFooter = "Enter to confirm · Esc to cancel";
 
+type WorkspaceTrustDialog = TrustCandidate["dialog"] & {
+  readonly options: readonly [SelectableOption, SelectableOption];
+};
 type MatchedWorkspaceTrustMenu = {
+  readonly promptHeaderKey: string;
   readonly target: Pick<ClaudeLaunchTrustEvidence["scope"], "targetPath" | "targetScope">;
-  readonly dialog: TrustCandidate["dialog"];
+  readonly dialog: WorkspaceTrustDialog;
 };
 
 export type WorkspaceTrustFrame = {
@@ -38,30 +48,59 @@ export function createClaudeWorkspaceTrustMenuMatcher(scope: ClaudeLaunchTrustEv
     terminal: ElwoodTerminal,
     frame: TerminalSnapshot,
   ): MatchedWorkspaceTrustMenu | undefined => {
-    const candidate = trustView(frame.text, "claude", () => false);
-    if (
-      candidate.kind !== "candidate" ||
-      candidate.spec.id !== "workspace_trust" ||
-      !candidate.valid ||
-      !hasWorkspaceMenu(frame, candidate)
-    )
-      return undefined;
-
-    const firstRow = Math.max(0, candidate.headerRow - workspacePreludeRows);
-    const prelude = frame.lines.slice(firstRow, candidate.headerRow);
-    const heading = prelude.findIndex((row) => row.trim() === "Accessing workspace:");
-    if (heading < 0) return undefined;
-    const details = prelude.slice(heading + 1);
-    const firstPathRow = details.findIndex((row) => row.trim().length > 0);
-    if (firstPathRow < 0) return undefined;
-    const lastPathRow = details.findLastIndex((row) => row.trim().length > 0);
-    const pathRows = details.slice(firstPathRow, lastPathRow + 1);
-    const viewportRow = firstRow + heading + 1 + firstPathRow;
-    if (!matchesWorkspacePath(terminal.xterm, viewportRow, pathRows, scope.physicalLaunchPath))
-      return undefined;
+    const candidate = workspaceTrustCandidate(scope, terminal, frame);
+    if (!(candidate?.valid && hasWorkspaceMenu(frame, candidate))) return undefined;
     const { targetPath, targetScope } = scope;
-    return { target: { targetPath, targetScope }, dialog: candidate.dialog };
+    return {
+      promptHeaderKey: candidate.key,
+      target: { targetPath, targetScope },
+      dialog: candidate.dialog,
+    };
   };
+}
+
+/** Partial native prelude can revoke writer authority before choices finish painting. */
+export function readWorkspaceTrustPrelude(
+  scope: ClaudeLaunchTrustEvidence["scope"],
+  terminal: ElwoodTerminal,
+  frame: TerminalSnapshot,
+): WorkspacePreludeEvidence | undefined {
+  const candidate = workspaceTrustCandidate(scope, terminal, frame);
+  if (candidate) return candidate.key;
+  // The exact path can settle before its question. This is revocation only.
+  const lastRow = frame.lines.findLastIndex((row) => row.trim() !== "");
+  const trailingText = frame.lines[lastRow]?.trim() ?? "";
+  const endRow = isClaudeWorkspaceQuestionPrefix(trailingText) ? lastRow : lastRow + 1;
+  return verifyPrelude(scope, terminal, frame, endRow) ? disclosedWorkspacePath : undefined;
+}
+
+function workspaceTrustCandidate(
+  scope: ClaudeLaunchTrustEvidence["scope"],
+  terminal: ElwoodTerminal,
+  frame: TerminalSnapshot,
+): TrustCandidate | undefined {
+  const candidate = trustView(frame.text, "claude", () => false);
+  if (candidate.kind !== "candidate" || candidate.spec.id !== "workspace_trust") return undefined;
+  return verifyPrelude(scope, terminal, frame, candidate.headerRow) ? candidate : undefined;
+}
+
+function verifyPrelude(
+  scope: ClaudeLaunchTrustEvidence["scope"],
+  terminal: ElwoodTerminal,
+  frame: TerminalSnapshot,
+  endRow: number,
+): boolean {
+  const first = Math.max(0, endRow - workspacePreludeRows);
+  const prelude = frame.lines.slice(first, endRow);
+  const heading = prelude.findIndex((row) => row.trim() === "Accessing workspace:");
+  if (heading < 0 || hasTrustConversationBefore(frame.lines, first + heading)) return false;
+  const details = prelude.slice(heading + 1);
+  const firstPathRow = details.findIndex((row) => row.trim().length > 0);
+  if (firstPathRow < 0) return false;
+  const lastPathRow = details.findLastIndex((row) => row.trim().length > 0);
+  const pathRows = details.slice(firstPathRow, lastPathRow + 1);
+  const viewportRow = first + heading + 1 + firstPathRow;
+  return matchesWorkspacePath(terminal.xterm, viewportRow, pathRows, scope.physicalLaunchPath);
 }
 
 function matchesWorkspacePath(
@@ -97,17 +136,19 @@ function isUnusedCell(cell: IBufferCell | undefined): boolean {
   return cell?.getChars() === "" && cell.getWidth() === 1;
 }
 
-function hasWorkspaceMenu(frame: TerminalSnapshot, candidate: TrustCandidate): boolean {
+function hasWorkspaceMenu(
+  frame: TerminalSnapshot,
+  candidate: TrustCandidate,
+): candidate is TrustCandidate & { readonly dialog: WorkspaceTrustDialog } {
   const choices = candidate.dialog.options;
   if (choices.length !== 2) return false;
   const [first, second] = [choices[0]!, choices[1]!];
   const labels = [first.label, second.label];
   return (
-    labels.includes("No, exit") &&
+    labels.includes(claudeTrustExitLabel) &&
     labels.includes("Yes, I trust this folder") &&
     hasWorkspaceOptionLayout(first, second) &&
-    frame.lines.findLast((line) => line.trim().length > 0)?.trim() ===
-      "Enter to confirm · Esc to cancel"
+    frame.lines.findLast((line) => line.trim().length > 0)?.trim() === claudeTrustFooter
   );
 }
 

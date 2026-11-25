@@ -48,7 +48,7 @@ export class ClaudeWorkspaceTrustEvents {
 
   reconcile(): void {
     try {
-      const candidate = this.discovery.reconcile();
+      const candidate = this.discovery.observeNativeFrame();
       if (this.proof && this.proof.candidate !== candidate) this.proof.cancellation.abort();
       if (candidate) this.wake();
     } catch {

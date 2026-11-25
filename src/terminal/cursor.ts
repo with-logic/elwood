@@ -19,8 +19,13 @@ export function settledLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot 
 
 /** A native dialog needs an unmodified live viewport. */
 export function settledNativeSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
-  if (tracked.get(terminal.xterm)?.nativeEvidence.intact !== true) return undefined;
+  if (!nativeRenderEvidenceIntact(terminal)) return undefined;
   return settledLiveSnapshot(terminal);
+}
+
+/** Proof stays revoked after mutations even if further native bytes arrive. */
+export function nativeRenderEvidenceIntact(terminal: ElwoodTerminal): boolean {
+  return tracked.get(terminal.xterm)?.nativeEvidence.intact === true;
 }
 
 /**

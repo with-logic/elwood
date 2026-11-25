@@ -100,6 +100,7 @@ export type {
   ElwoodCommonEventName,
 } from "./core/agent-session.ts";
 export type {
+  ElwoodDialogAnswerOptions,
   ElwoodDialogChoice,
   ElwoodDialogEvent,
   ElwoodDialogRequest,

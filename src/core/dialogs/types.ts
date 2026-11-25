@@ -28,3 +28,8 @@ export type ElwoodDialogEvent<Agent extends ElwoodAgentKind = "codex"> = {
   | { readonly phase: "raised" }
   | { readonly phase: "closed"; readonly reason: "cleared" | "replaced" | "unavailable" }
 );
+
+export type ElwoodDialogAnswerOptions = {
+  readonly signal?: AbortSignal;
+  readonly timeoutMs?: number;
+};

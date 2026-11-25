@@ -6,6 +6,7 @@
  * `startClaude` factory.
  */
 
+import type { ElwoodDialogAnswerOptions } from "../core/dialogs/types.ts";
 import { assertClaudeHighTrust } from "../core/high-trust.ts";
 import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
@@ -68,6 +69,10 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi, "claude"> {
     // Remove the registration matching this exact (event, handler) — detaching a live sub if
     // attached — so a handler reused across events is unsubscribed from the right one only.
     this.unsubscribe(event, handler);
+  }
+
+  async answerDialog(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
+    return (await this.start()).answerDialog(requestId, choiceId, options);
   }
 
   /** Drive the interactive `/login` re-authentication flow (Claude-only, C-API-43). */

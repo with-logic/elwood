@@ -118,6 +118,8 @@ and emit typed `dialog` events when verified requests appear or close. Each
 request names the exact folder or repository root and lists the native choices
 in display order. The `ElwoodDialogEvent` type defaults to Codex. Pass
 `ElwoodDialogEvent<"claude">` for Claude events. See [native dialog discovery](../prd/05-api/5.13-dialogs.md).
+With `autotrust: false`, Claude callers can use `answerDialog(requestId, choiceId, options?)`.
+The promise waits for Claude to acknowledge the selected choice.
 
 `sendMessage` is the adapter-neutral chat-loop operation. If the session is
 ready it writes through the PTY immediately. If the session is alive but busy,

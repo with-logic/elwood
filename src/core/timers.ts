@@ -7,6 +7,12 @@ export type DeadlineClock = {
   readonly clearTimer: (timer: unknown) => void;
 };
 
+export const deadlineClock: DeadlineClock = {
+  now: () => performance.now(),
+  setTimer: (handler, delayMs) => setTimeout(handler, delayMs),
+  clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+};
+
 /** Keep an absolute deadline across capped timer intervals; cancellation clears the latest one.
  * deadlineAtMs is an absolute millisecond reading in the supplied clock's time base.
  * The caller supplies its first delay to preserve when its deadline starts counting. */
