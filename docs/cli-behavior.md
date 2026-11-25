@@ -159,9 +159,9 @@ then a resume marked ready on its first frame with a line-leading marker and no
 recognized dialog. Codex 0.171.0 and 0.172.0 paint the `Resuming session…`
 placeholder composer first and, when an update is on offer, replace it about
 0.1 s later with a menu whose selected row is `› 1. Update now`. Elwood did not
-recognize that menu, so a message queued at resume was pasted at the placeholder
-and its Enter was aimed at the menu's default row, which runs a global
-installer. Resume readiness now needs the adapter's configured composer, the
+recognize that menu, so a message queued at resume had its paste and its Enter
+released at the placeholder, a tenth of a second before the menu replaced it.
+The menu's default row runs a global installer. Resume readiness now needs the adapter's configured composer, the
 same evidence as the deadline (Codex's status footer, Claude's verified idle
 composer). See "Codex 0.171.0 update offer" below. C-API-28, C-E2E-25.
 
