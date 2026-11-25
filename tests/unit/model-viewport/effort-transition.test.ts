@@ -4,10 +4,11 @@ import { claudeModelPicker } from "../../../src/claude/model-picker.ts";
 import { listPickerModels, setPickerModel } from "../../../src/core/models/picker.ts";
 import { scripted } from "../scripted-terminal.ts";
 
-// A success-path timeout. Each call ends with a close wait of five clear readings 40 ms
-// apart, so a timeout near that minimum fails whenever a loaded machine delays timers;
-// success returns as soon as the picker closes, so a generous timeout costs nothing.
-const pickerTimeoutMs = 5_000;
+// A success-path timeout, as in the other picker tests. Each call ends with a close wait of
+// five clear readings 40 ms apart, so a timeout near that minimum fails whenever a loaded
+// machine delays timers; success returns as soon as the picker closes, so a generous timeout
+// costs nothing. Four calls at 2 s stay inside Vitest's 15 s test timeout.
+const pickerTimeoutMs = 2_000;
 
 test.each([
   "inline",
