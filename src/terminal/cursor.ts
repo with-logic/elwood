@@ -12,6 +12,16 @@ export function settledCursorVisible(terminal: Terminal): boolean {
   return tracked.get(terminal)?.settledVisible === true && !terminal.modes.synchronizedOutputMode;
 }
 
+/** The cursor mode in the output parsed so far, settled or not. */
+export function parsedCursorVisible(terminal: Terminal): boolean {
+  return tracked.get(terminal)?.parsedVisible === true;
+}
+
+/** Tracking lasts exactly as long as the terminal, so a missing entry means it was disposed. */
+export function terminalDisposed(terminal: Terminal): boolean {
+  return !tracked.has(terminal);
+}
+
 /** Both trust reads and clearance require all received output to be rendered successfully. */
 export function settledLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
   return renderIsSettled(terminal) ? cachedLiveSnapshot(terminal) : undefined;
@@ -157,6 +167,9 @@ export class RenderCursor {
   }
   get settled(): boolean {
     return this.receivedRevision === this.renderedRevision && !this.hasStagedOutput();
+  }
+  get parsedVisible(): boolean {
+    return this.visible;
   }
   get settledVisible(): boolean {
     return this.visible && this.settled;

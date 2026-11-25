@@ -162,13 +162,49 @@ To check several sign-ins, pass an array such as
 A label names the CLI profile you supply. The CLI resolves its own credentials.
 Use `usedPercent` for a used-first display. Refresh by calling the API again.
 
+## Reading the screen as text
+
+Call `await session.readScreen()` to show or inspect what a session displays
+without feeding `terminal:data` through your own emulator. It returns the live
+rows as `lines`, the terminal size, the cursor in cells, the active buffer, and
+`outputLost`, which turns true if Elwood ever failed to draw output it received.
+On `ClaudeSession` and `CodexSession`, call it on `session.session` after start.
+
+- The text can contain anything the agent displayed, including account and
+  workspace details. Treat it like the terminal itself. Elwood keeps it in
+  memory only and never writes it to disk or to `elwood` CLI output.
+- Pass `{ scrollback: true }` or a row count for the rows above the live
+  screen. Claude Code 2.1.332 and Codex 0.171.0 and 0.172.0 draw on the
+  alternate screen by default, so that list is empty and `lines` holds only
+  the last screenful of a long reply. `outputLost` stays false then. Read
+  earlier output from `activity` events. Claude starts on the normal screen
+  instead after a fullscreen Claude launch on the same machine died within 10
+  seconds of its first frame. Set `CLAUDE_CODE_NO_FLICKER` to `1` or `0` in
+  `env` to pin its alternate or normal screen.
+- The cursor's `x` is a terminal column. It differs from a string index on a
+  row with wide characters.
+- A read can land in the middle of a repaint. Poll after `status` changes
+  rather than on a tight timer.
+- The call waits for output to pause and has no timeout, so race it against
+  your own timer if a session might print without a break.
+- After the session exits, the call returns the screen the CLI left until
+  Elwood's cleanup disposes the terminal, shortly after the exit. From then
+  on, including after `stop()` resolves, it rejects with
+  `session_not_running`. Read the screen before you stop a session if you
+  need it.
+
+For a pixel-faithful terminal view, keep rendering the raw `terminal:data`
+stream.
+
 ## Turns and startup input
 
 `ready` describes terminal availability. Startup and dialog repaints can produce
 status changes without a user turn, and committed assistant text can arrive after
 `ready`. Use `UserPromptSubmit` hooks to observe submissions, including textless prompts.
-`user_message` activity carries native prompt text, and Claude activity can be
-correlated using its native `turnId` when present. Keep accepting matching
+`user_message` activity carries native prompt text, except that Claude's standalone
+`<pasted_content>` envelope is reported as its body with the envelope in `nativePrompt`
+(see [native paste presentation](cli-behavior.md#claude-native-paste-presentation)).
+Claude activity can be correlated using its native `turnId` when present. Keep accepting matching
 assistant messages after a status transition; a status edge is not a transcript
 flush barrier. Older Claude records without native prompt identity can remain
 untagged. Claude's synthetic interrupted-resume placeholder is omitted from

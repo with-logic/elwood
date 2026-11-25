@@ -1,6 +1,6 @@
 /**
  * Forces Codex's own in-TUI update offer in a private `CODEX_HOME`, and keeps application
- * input away from it (PRD §5.3, §12, C-API-28, C-E2E-25). The offer's default choice is
+ * input away from it (PRD §5.3, §12, C-API-28, C-E2E-26). The offer's default choice is
  * "Update now", which runs a global installer on the host, so a test that opens a session
  * on the offer must be able to prove that nothing reached the CLI, and must never let an
  * Enter through. docs/cli-behavior.md, "Codex 0.171.0 update offer".

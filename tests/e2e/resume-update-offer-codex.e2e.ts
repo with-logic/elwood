@@ -1,6 +1,6 @@
 /**
  * Real-CLI proof that a RESUMED Codex which opens on a screen Elwood does not recognize
- * receives no queued input (PRD §5.3, C-API-28, C-E2E-25). Codex 0.171.0 paints a
+ * receives no queued input (PRD §5.3, C-API-28, C-E2E-26). Codex 0.171.0 paints a
  * `› Ask Codex to do anything` placeholder and then its update offer, whose selected row
  * is `› 1. Update now`; Elwood's update recognizer matches only Codex 0.155's layout.
  * Both carry the composer marker, and Enter on the offer runs a global installer. The
@@ -51,7 +51,7 @@ function skipDigit(screen: string): string | undefined {
   return /^\s*›?\s*(\d+)\. Skip\s*$/m.exec(screen)?.[1];
 }
 
-test("C-E2E-25 a resumed Codex that opens on its update offer receives no queued input", {
+test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued input", {
   skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
   timeout: TEST_TIMEOUT_MS,
 }, async () => {

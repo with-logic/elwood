@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Claude `send` or `stream` turn that the agent rejects now fails with
+  `turn_failed` even when Claude changed the prompt on submit: it wrapped it in
+  `<pasted_content>` tags, turned CRLF or CR into LF, turned a tab into four spaces,
+  dropped trailing whitespace, or escaped a `<pasted_content` look-alike. Such a turn used to resolve with the
+  rejection text as its reply.
+
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
 
@@ -32,6 +38,11 @@ back each entry are listed in `prd/14-conformance.md`.
   a startup screen Elwood does not recognize, such as the update offer of Codex
   0.171. A resumed session now reaches `ready` when the configured composer
   paints, in about two seconds rather than one.
+
+- Read a session's live screen as text with `readScreen()` on the low-level
+  Claude and Codex sessions, with optional scrollback, a cell cursor and the
+  active buffer. It returns the live rows even when the host scrolled the
+  terminal handle back.
 
 ## [0.7.0] - 2026-11-24
 

@@ -1,5 +1,6 @@
 /** Normalize strictly supported native Claude paste envelopes in public user activity (C-API-67). */
 import { afterEach, expect, test } from "vitest";
+import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 import { resetFakes } from "./helpers.ts";
 import { startActivitySession, user } from "./session-user-activity-helpers.ts";
 
@@ -7,8 +8,7 @@ afterEach(resetFakes);
 
 const pasteId = "0e08"; // SHA-256 prefix of this fixture's native session ID
 const provenance = { origin: "unknown", input: "pasted" };
-const wrap = (body: string, id = pasteId) =>
-  `\n\n<pasted_content id="${id}">\n${body}\n</pasted_content id="${id}">\n`;
+const wrap = (body: string, id = pasteId) => claudePasteEnvelope(body, id);
 
 test("C-API-67 authenticated Claude paste displays native body and preserves the hook", async () => {
   const { session, hook, events } = await startActivitySession();

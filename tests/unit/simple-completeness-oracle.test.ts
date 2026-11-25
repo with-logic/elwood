@@ -5,11 +5,12 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { defaultAcceptanceSignal } from "../../src/core/simple/acceptance-signal.ts";
 import {
   CompletenessOracle,
   expectedTextMax as EXPECTED_MAX,
 } from "../../src/core/simple/completeness-oracle.ts";
-import { defaultAcceptanceSignal, defaultBoundarySignal } from "../../src/core/simple/turn.ts";
+import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 
 describe("CompletenessOracle", () => {
   test("matches once the collected text contains the expected text", () => {
