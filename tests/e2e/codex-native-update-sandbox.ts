@@ -1,13 +1,5 @@
 /** Isolate the native updater; record input and permit only a live-validated safe selection (PRD §5.5, C-CODEX-12). */
-import {
-  chmodSync,
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nodePtyFactory } from "../../src/pty/node.ts";
@@ -18,8 +10,10 @@ import {
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
+import { writeCodexUpdateCheck } from "./codex-update-check.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
 import { type CodexSandbox, seedCodexHome } from "./scratch.ts";
+import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
 
 export async function nativeUpdaterSandbox(sourceBinary: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_update-")));
@@ -39,14 +33,7 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
       codexProofHome,
       `check_for_update_on_startup = true\n[projects."${project}"]\ntrust_level = "trusted"\n`,
     );
-    writeFileSync(
-      join(codexProofHome, "version.json"),
-      JSON.stringify({
-        latest_version: "0.156.1",
-        last_checked_at: new Date().toISOString(),
-        dismissed_version: null,
-      }),
-    );
+    writeCodexUpdateCheck(codexProofHome, "0.156.1");
     const probe = async (args: readonly string[]) => {
       const result = await runProbe("env", [`CODEX_HOME=${codexProofHome}`, binary, ...args]);
       unconfirmedGroup ??= result.error?.cleanupProcessGroupId;
@@ -77,8 +64,7 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
         ...pty,
         write(data) {
           const input = typeof data === "string" ? data : Buffer.from(data).toString();
-          // Exact cursor-position and primary-device replies observed from the real TUI.
-          if (input.startsWith("\x1b") && /^(?:\[\d+;\d+R|\[\?1;2c)$/.test(input.slice(1))) {
+          if (isTerminalProtocolReply(input)) {
             protocolReplies.push(input);
             pty.write(data);
           } else {
