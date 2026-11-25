@@ -3276,9 +3276,12 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
   turns fullscreen off until `/tui fullscreen` or an update
   (`fullscreenAutoDisabled`). One leftover entry in the user's own config, copied
   into the e2e config dir, was enough: the unpinned test read the normal buffer
-  with 71 scrollback rows, and read the alternate screen again once the copy
-  dropped `fullscreenBootPending`, `fullscreenBootStrikes` and
-  `fullscreenAutoDisabled`. `CLAUDE_CODE_NO_FLICKER=1` skips the check and keeps
+  with 71 scrollback rows. The e2e copy now drops `fullscreenBootPending`,
+  `fullscreenBootStrikes` and `fullscreenAutoDisabled`
+  (`tests/e2e/claude-global-config.ts`). `tests/e2e/claude-fullscreen-canary.e2e.ts`
+  leaves a genuine entry by SIGKILLing a Claude it spawned, and checks that the copy
+  starts on the alternate screen while the raw config costs a strike and starts on
+  the normal buffer. `CLAUDE_CODE_NO_FLICKER=1` skips the check and keeps
   the alternate screen, and `0` selects the main-screen renderer, so
   `tests/e2e/read-screen.e2e.ts` sets one or the other.
 - **The inline renderers keep scrollback.** `CLAUDE_CODE_NO_FLICKER=0` in the launch
