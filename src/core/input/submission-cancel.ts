@@ -23,6 +23,11 @@ export function cancellableSubmission(
   return submissionOptions;
 }
 
+/** Identifies options originating with the ergonomic send or stream helper. */
+export function isErgonomicSubmission(options?: SendOptions): boolean {
+  return options !== undefined && awaitedControls.has(options);
+}
+
 export function submissionControlOptions(options?: SendOptions): ControlSendOptions {
   return (options && awaitedControls.get(options)) ?? {};
 }

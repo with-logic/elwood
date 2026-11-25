@@ -6,7 +6,14 @@ type FixtureActivity = Omit<
     ElwoodActivityEvent,
     { kind: "question" | "assistant_progress" | "unrecognized_startup" | "turn_failure" }
   >,
-  "speed" | "tokenUsage" | "rateLimits" | "subagent" | "final"
+  | "speed"
+  | "tokenUsage"
+  | "rateLimits"
+  | "subagent"
+  | "final"
+  | "sendId"
+  | "nativePrompt"
+  | "promptProvenance"
 > & { readonly speed?: never };
 
 export type FixtureActivityKind = FixtureActivity["kind"];
@@ -32,14 +39,16 @@ export function activity(partial: Partial<FixtureActivity> = {}) {
       text: fields.text ?? "fixture prompt",
     } as const;
   }
-  return kind === "user_message"
-    ? ({
-        ...base,
-        kind,
-        source: "hook",
-        hookEventName: "UserPromptSubmit",
-        label: "user",
-        text: fields.text ?? "fixture prompt",
-      } as const)
-    : { ...base, kind };
+  if (kind !== "user_message") return { ...base, kind };
+  const user = {
+    ...base,
+    kind,
+    source: "hook",
+    hookEventName: "UserPromptSubmit",
+    label: "user",
+    text: fields.text ?? "fixture prompt",
+  } as const;
+  return base.agent === "codex"
+    ? ({ ...user, agent: "codex" } as const)
+    : ({ ...user, agent: "claude" } as const);
 }
