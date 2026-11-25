@@ -21,3 +21,22 @@ export function terminalSnapshot(
     text: lines.join("\n"),
   };
 }
+
+/** Verify that a native target row leaves enough padding for a complete path. */
+export function nativePathRowFits(
+  xterm: XtermTerminal,
+  row: number,
+  rightInset: number,
+  allowAsciiPadding = false,
+): boolean {
+  const buffer = xterm.buffer.active;
+  const line = buffer.getLine(buffer.baseY + row);
+  if (!line || line.isWrapped || buffer.getLine(buffer.baseY + row + 1)?.isWrapped) return false;
+  const end = xterm.cols - rightInset;
+  return [end - 2, end - 1].every((col) => {
+    const cell = line.getCell(col);
+    if (cell?.getWidth() !== 1) return false;
+    const chars = cell.getChars();
+    return chars === "" || (allowAsciiPadding && chars === " ");
+  });
+}

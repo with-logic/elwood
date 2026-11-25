@@ -1,6 +1,7 @@
 /** Cursor evidence belongs to one completed render, never queued bytes (C-TRUST-01). */
 import type { Terminal } from "@xterm/headless";
 import type { ElwoodTerminal, TerminalSnapshot } from "./headless.ts";
+import { trackRenderMutations } from "./render-mutations.ts";
 import { terminalSnapshot } from "./snapshot.ts";
 
 const tracked = new WeakMap<Terminal, RenderCursor>();
@@ -14,6 +15,16 @@ export function settledCursorVisible(terminal: Terminal): boolean {
 /** Both trust reads and clearance require all received output to be rendered successfully. */
 export function settledLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
   return renderIsSettled(terminal) ? cachedLiveSnapshot(terminal) : undefined;
+}
+
+/** A native dialog needs an unmodified live viewport. */
+export function settledNativeSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
+  if (tracked.get(terminal.xterm)?.nativeIntact !== true) return undefined;
+  return settledLiveSnapshot(terminal);
+}
+
+export function onNativeRenderLost(terminal: ElwoodTerminal, listener: () => void): () => void {
+  return tracked.get(terminal.xterm)?.subscribeNativeLoss(listener) ?? (() => undefined);
 }
 
 function renderIsSettled(terminal: ElwoodTerminal): boolean {
@@ -54,6 +65,37 @@ export function cachedLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
 
 export class RenderCursor {
   private readonly listeners = new Set<() => void>();
+  private readonly nativeLossListeners = new Set<() => void>();
+  private nextWriteFromPty = false;
+  private intact = true;
+
+  get nativeIntact(): boolean {
+    return this.intact;
+  }
+
+  subscribeNativeLoss(listener: () => void): () => void {
+    this.nativeLossListeners.add(listener);
+    return () => {
+      this.nativeLossListeners.delete(listener);
+    };
+  }
+
+  invalidateNativeRender(): void {
+    if (!this.intact) return;
+    this.intact = false;
+    for (const listener of this.nativeLossListeners) listener();
+    this.nativeLossListeners.clear();
+  }
+
+  /** A one-use marker consumed by the synchronous xterm dispatch. */
+  writePty<T>(dispatch: () => T): T {
+    this.nextWriteFromPty = true;
+    try {
+      return dispatch();
+    } finally {
+      this.nextWriteFromPty = false;
+    }
+  }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -93,7 +135,12 @@ export class RenderCursor {
       terminal.parser.registerEscHandler({ final: "c" }, reset),
       terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset),
       terminal.onResize(invalidate),
-      { dispose: invalidateOnMutation(terminal, invalidate) },
+      {
+        dispose: trackRenderMutations(terminal, invalidate, () => {
+          if (!this.nextWriteFromPty) this.invalidateNativeRender();
+          this.nextWriteFromPty = false;
+        }),
+      },
     ];
   }
 
@@ -141,38 +188,9 @@ export class RenderCursor {
     return frame;
   }
   dispose(): void {
+    this.invalidateNativeRender();
     tracked.delete(this.terminal);
     this.listeners.clear();
     for (const handler of this.handlers) handler.dispose();
   }
-}
-
-/** Raw xterm mutations bypass owned revisions and must invalidate cached rows. */
-function invalidateOnMutation(terminal: Terminal, invalidate: () => void): () => void {
-  const restore: Array<() => void> = [];
-  const writes: readonly ("write" | "writeln")[] = ["write", "writeln"];
-  for (const method of writes) {
-    const original = terminal[method];
-    const write = original.bind(terminal);
-    terminal[method] = (data, callback) => {
-      // writeln can parse its first internal write synchronously after user input.
-      invalidate();
-      write(data, () => {
-        invalidate();
-        callback?.();
-      });
-    };
-    restore.push(() => {
-      terminal[method] = original;
-    });
-  }
-  const reset = terminal.reset;
-  terminal.reset = () => {
-    reset.call(terminal);
-    invalidate();
-  };
-  return () => {
-    for (const method of restore) method();
-    terminal.reset = reset;
-  };
 }
