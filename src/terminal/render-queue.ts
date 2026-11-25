@@ -15,6 +15,8 @@ export class RenderQueue {
   /** True once any write has failed; nothing later can prove the screen complete again. */
   renderFailed = false;
   private readonly pending = new Set<PendingWrite>();
+  /** Pending writes xterm has drawn while their render observers run. */
+  private drawing = 0;
   private drained = Promise.resolve();
   private resolveDrained: (() => void) | undefined;
   private settling: Promise<void> | undefined;
@@ -33,6 +35,11 @@ export class RenderQueue {
     this.write = write;
     this.submitStaged = submitStaged;
     this.onFailure = onFailure;
+  }
+
+  /** True while a submitted write has not been drawn. One whose observers are running has. */
+  get hasUndrawnWrites(): boolean {
+    return this.pending.size > this.drawing;
   }
 
   enqueue(data: string | Uint8Array, onRendered?: () => void): Promise<void> {
@@ -94,6 +101,7 @@ export class RenderQueue {
 
   private complete(pending: PendingWrite, onRendered: (() => void) | undefined): void {
     if (!this.pending.has(pending)) return; // disposed while xterm still held the callback
+    this.drawing += 1;
     try {
       // Run observers inside the ordered render callback: a promise continuation
       // could otherwise observe a newer frame from the same xterm drain batch.
@@ -102,6 +110,7 @@ export class RenderQueue {
     } catch (error) {
       pending.reject(error);
     } finally {
+      this.drawing -= 1;
       this.finish(pending);
     }
   }
