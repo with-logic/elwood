@@ -36,6 +36,7 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
 }
 
 type Candidate = {
+  readonly startRow: number;
   readonly dialog: TrustDialog;
   readonly validTail: boolean;
   /**
@@ -99,6 +100,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     return afterHeader;
   });
   return {
+    startRow: start,
     dialog: {
       header: header.trim().replace(/\s+/g, " "),
       options,
