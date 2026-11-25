@@ -42,7 +42,7 @@ export class TurnStateWatcher {
   private resumeLoad: "none" | "pending" | "working" = "none";
   // The last frame before arming was a quiet composer after that load: the frame that
   // released readiness can be it, and an idle CLI may never repaint.
-  private loadedBeforeArm = false;
+  private quietAfterResumeLoadBeforeArm = false;
 
   /**
    * Watching starts only after initial readiness so startup spinners that borrow the
@@ -61,7 +61,7 @@ export class TurnStateWatcher {
    */
   arm(resumed = false): void {
     this.armed = true;
-    this.replaySettling = resumed && !this.loadedBeforeArm;
+    this.replaySettling = resumed && !this.quietAfterResumeLoadBeforeArm;
     this.quietStreak = 0;
   }
 
@@ -103,7 +103,7 @@ export class TurnStateWatcher {
   observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
     if (!this.armed) {
       this.trackResumeLoad(facts);
-      this.loadedBeforeArm = quietComposer(facts) && this.resumeLoad === "working";
+      this.quietAfterResumeLoadBeforeArm = quietComposer(facts) && this.resumeLoad === "working";
     }
     if (!this.canObserve(facts)) return undefined;
     if (this.replaySettling) {

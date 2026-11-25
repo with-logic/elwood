@@ -112,12 +112,12 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     // so a deadline-driven ready trails the configured composer by several seconds. A
     // composer already in the replay that subscribing delivers is dated to the resume's
     // start, which can only overstate.
-    let composerAt: number | undefined;
+    let configuredComposerAt: number | undefined;
     let replaying = true;
     resumedSession.on("terminal:data", () => {
       const frame = resumedSession.terminal.snapshot();
-      if (composerAt === undefined && codexComposerConfigured(frame.text, frame.cols))
-        composerAt = replaying ? startedAt : Date.now();
+      if (configuredComposerAt === undefined && codexComposerConfigured(frame.text, frame.cols))
+        configuredComposerAt = replaying ? startedAt : Date.now();
     });
     replaying = false;
     await waitForCondition(
@@ -128,11 +128,11 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     );
     const readyAt = Date.now();
     const composer =
-      composerAt === undefined
-        ? "no composer frame yet"
-        : `configured composer at ${composerAt - startedAt}ms`;
+      configuredComposerAt === undefined
+        ? "no configured composer frame observed"
+        : `configured composer at ${configuredComposerAt - startedAt}ms`;
     assert.ok(
-      composerAt !== undefined && readyAt - composerAt < COMPOSER_TO_READY_MS,
+      configuredComposerAt !== undefined && readyAt - configuredComposerAt < COMPOSER_TO_READY_MS,
       `resumed reached ready ${readyAt - startedAt}ms after resume began, ${composer};` +
         ` ready must follow the configured composer within ${COMPOSER_TO_READY_MS}ms`,
     );

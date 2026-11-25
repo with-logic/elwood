@@ -21,6 +21,7 @@ import {
   makeProject,
   sandboxedCodexHome,
   skipIf,
+  skipNow,
   skipReason,
   skipTurns,
 } from "./helpers.ts";
@@ -54,7 +55,7 @@ function skipDigit(screen: string): string | undefined {
 test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued input", {
   skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
   timeout: TEST_TIMEOUT_MS,
-}, async () => {
+}, async (t) => {
   const project = makeProject("codex");
   const sandbox = sandboxedCodexHome(project, CODEX_CONFIG);
   const opts = {
@@ -69,6 +70,8 @@ test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued
   const launches = codexLaunches();
   const input = codexUpdateOffer(sandbox.home);
   await runCodexTest({ sessions: () => [resumed, first], sandbox, launches }, async () => {
+    const unsupported = await input.unsupported(project.cwd);
+    if (unsupported !== undefined) return skipNow(t, unsupported);
     const session = await launches.track(startCodex({ ...opts, hooks: {} }));
     first = session;
     // Codex fires `SessionStart` at the first prompt; it carries the id a resume needs.

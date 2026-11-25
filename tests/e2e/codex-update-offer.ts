@@ -8,14 +8,16 @@
 
 import { constants, cpSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { compareVersions, parseVersion } from "../../src/core/versions.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import {
+  currentCommandRunner,
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
-import { shellQuote } from "../../src/runtime/shell.ts";
+import { probeShellCommand, shellQuote, userShell } from "../../src/runtime/shell.ts";
 import { userCodexAuthPath } from "./codex-home.ts";
 import { writeCodexUpdateCheck } from "./codex-update-check.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
@@ -24,12 +26,24 @@ import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
 /** A release no installed Codex has reached, so the offer does not depend on what is current. */
 const offeredCodexVersion = "99.0.0";
 
+/**
+ * The first release seen drawing the offer layout Elwood does not recognize. Earlier ones
+ * draw Codex 0.155's layout, which Elwood recognizes and skips with a key of its own, and
+ * the input guard would report that key as refused input.
+ */
+const unrecognizedOfferCodexVersion = "0.171.0";
+
 /** One application write that was kept from the CLI, with the screen it was aimed at. */
 export type RefusedInput = { readonly data: string; readonly screen: string };
 
 export type CodexUpdateOffer = {
   /** Application writes refused since `arm`, in order. Terminal protocol replies are not input. */
   readonly refused: readonly RefusedInput[];
+  /**
+   * Why the Codex that sessions in `cwd` run cannot take part, or undefined. It runs
+   * through the same pin as the sessions, since the install can differ per directory.
+   */
+  unsupported(cwd: string): Promise<string | undefined>;
   /**
    * Makes the next Codex started from the home open on its update offer, and from now on
    * records and drops application input instead of writing it.
@@ -95,6 +109,15 @@ export function codexUpdateOffer(home: string): CodexUpdateOffer {
   });
   return {
     refused,
+    async unsupported(cwd) {
+      const probe = probeShellCommand("codex --version", "codex");
+      const result = await currentCommandRunner()(userShell(), probe, { cwd });
+      const version = result.status === 0 ? parseVersion(result.stdout) : null;
+      if (version === null) throw new Error("Codex did not report its version");
+      return compareVersions(version, unrecognizedOfferCodexVersion) < 0
+        ? `The update offer proof needs Codex ${unrecognizedOfferCodexVersion} or newer; ${version} runs`
+        : undefined;
+    },
     arm() {
       writeCodexUpdateCheck(home, offeredCodexVersion);
       open = false;
