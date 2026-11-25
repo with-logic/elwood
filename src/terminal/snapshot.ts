@@ -22,16 +22,24 @@ export function terminalSnapshot(
   };
 }
 
-/** Verify that a native target row leaves enough padding for a complete path. */
-export function nativePathRowFits(
+/**
+ * Checks for two width-one padding cells before the right inset of an unwrapped
+ * live row. The caller verifies the path itself.
+ */
+export function hasUnwrappedRowEndPadding(
   xterm: XtermTerminal,
   row: number,
   rightInset: number,
   allowAsciiPadding = false,
 ): boolean {
   const buffer = xterm.buffer.active;
-  const line = buffer.getLine(buffer.baseY + row);
-  if (!line || line.isWrapped || buffer.getLine(buffer.baseY + row + 1)?.isWrapped) return false;
+  const line =
+    Number.isInteger(row) && row >= 0 && row < xterm.rows
+      ? buffer.getLine(buffer.baseY + row)
+      : undefined;
+  if (!line || line.isWrapped) return false;
+  const next = row + 1 < xterm.rows ? buffer.getLine(buffer.baseY + row + 1) : undefined;
+  if (next?.isWrapped) return false;
   const end = xterm.cols - rightInset;
   return [end - 2, end - 1].every((col) => {
     const cell = line.getCell(col);

@@ -105,7 +105,7 @@ class HeadlessTerminal implements ElwoodTerminal {
     this.renders = new RenderQueue(
       (data, done) => this.xterm.write(data, done),
       () => this.#ptyOutput?.flush(),
-      () => this.#cursor.invalidateNativeRender(),
+      () => this.#cursor.nativeEvidence.invalidate(),
     );
     this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {
@@ -138,7 +138,7 @@ class HeadlessTerminal implements ElwoodTerminal {
         this.#cursor.rendered(revision, arrival, fromPty);
         onPtyRendered?.();
       });
-    return fromPty ? this.#cursor.writePty(dispatch) : dispatch();
+    return fromPty ? this.#cursor.nativeEvidence.withPtyOutputWrite(dispatch) : dispatch();
   }
   sendInput(input: string | Uint8Array): Promise<void> {
     if (this.disposed) return Promise.reject(new Error("Terminal is disposed."));
