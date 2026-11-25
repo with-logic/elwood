@@ -1,4 +1,4 @@
-/** Track one unambiguous live Codex API prompt at a time (PRD §5.4, C-API-70). */
+/** Track one unambiguous live API prompt at a time (PRD §5.4, C-API-70). */
 import type { ApiPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { hasPromptText } from "../../core/activity/prompt-text.ts";
 import type { SendOptions } from "../../core/images/types.ts";
@@ -112,6 +112,7 @@ export class PromptSubmissions {
   observeNativeSubmit(
     turnId: string,
     prompt: string | undefined,
+    comparisonText?: string,
   ): ApiPromptPresentation | undefined {
     if (!this.track || this.nativeTurnIds.has(turnId)) return undefined;
     const validId = turnId.length > 0 && turnId.length <= maxNativeTurnIdCodeUnits;
@@ -124,7 +125,15 @@ export class PromptSubmissions {
     this.nativeTurnIds.add(turnId);
     const draft = this.draft;
     if (!draft?.entered) return undefined;
-    if (prompt === undefined || prompt !== draft.expectedHookPrompt || !hasPromptText(prompt)) {
+    if (prompt === undefined || draft.expectedHookPrompt === undefined || !hasPromptText(prompt)) {
+      this.revoke();
+      return undefined;
+    }
+    const comparable =
+      comparisonText === undefined
+        ? prompt
+        : this.normalizePayload(comparisonText, maxCorrelatedPromptCodeUnits);
+    if (comparable !== draft.expectedHookPrompt) {
       this.revoke();
       return undefined;
     }

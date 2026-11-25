@@ -8,7 +8,7 @@ import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
 import type {
-  CodexApiUserMessageActivity,
+  ApiUserMessageActivity,
   NativeUserMessageActivity,
   NoPromptEvidence,
 } from "./prompt-presentation.ts";
@@ -100,7 +100,7 @@ type NativeActivity = CommonEvent &
         NoPromptEvidence)
     | (NativeUserMessageActivity & { readonly final?: never })
   );
-export type ElwoodActivityEvent = NativeActivity | (CommonEvent & CodexApiUserMessageActivity);
+export type ElwoodActivityEvent = NativeActivity | (CommonEvent & ApiUserMessageActivity);
 
 export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from "./lifecycle.ts";
 

@@ -27,6 +27,7 @@ import { createClaudeRecoveryComposer } from "../composer/staged-input.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
+import { normalizeClaudePastedPayload } from "../input-text.ts";
 import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
@@ -35,8 +36,10 @@ import type { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
-
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
+  protected override get promptNormalizer() {
+    return normalizeClaudePastedPayload;
+  }
   protected override get interruptRetryMs(): number {
     return 250;
   }
@@ -88,7 +91,6 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     this.requestedSize = requestedSize;
     this.awaitingInitialReady = requestedSize.cols < CLAUDE_STARTUP_MIN_COLS;
   }
-
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
     // Register first so a synchronous buffered replay failure leaves the listener subscribed.
     const isRegistered = this.emitter.listen(event, handler);
@@ -111,7 +113,6 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     return sessionWaitForActivity(this, match, timeoutMs);
   }
   protected readonly recoveryComposer = createClaudeRecoveryComposer(this.terminal);
-
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachClaudeImages(this.automatedTerminal, paths, signal, () => this.queuedInputBlocked());

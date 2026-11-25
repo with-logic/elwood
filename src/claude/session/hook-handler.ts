@@ -25,6 +25,7 @@ import { claudePasteEnvelopeId, claudeSubmitPresentation } from "../pasted-conte
 import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
+import { associateClaudePrompt } from "./prompt-activity.ts";
 
 /** The live pieces the Claude hook handler drives; `session`/`turnWatcher` are read
  * lazily because both are assigned after the bridge is constructed. */
@@ -87,8 +88,11 @@ export function buildClaudeHookHandler(
       note();
       observe();
     }
+    const output = submit
+      ? associateClaudePrompt(deps.getSession()?.promptSubmissions, event, projected, show)
+      : projected;
     observation.run("hook", () => emitter.emit("hook", event));
-    if (show) observation.run("activity", () => emitter.emit("activity", projected));
+    if (show) observation.run("activity", () => emitter.emit("activity", output));
     if (event.hook_event_name === "StopFailure")
       observation.run("activity", () =>
         emitter.emit("activity", claudeTurnFailureActivity(record.elwoodSessionId, event)),

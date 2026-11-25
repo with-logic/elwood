@@ -1,4 +1,5 @@
 /** User message presentation and optional native paste evidence (PRD §5.4, C-API-67). */
+import type { ClaudeHookEventFor } from "../../claude/hooks/index.ts";
 import type { CodexHookEventFor } from "../../codex/hooks/index.ts";
 import { hookActivityBase } from "./meta.ts";
 
@@ -49,24 +50,42 @@ export type NativeUserMessageActivity = {
       }
   );
 
-export type CodexApiUserMessageActivity = ApiPromptPresentation & {
-  readonly agent: "codex";
-  readonly kind: "user_message";
-  readonly label: "user";
-  readonly source: "hook";
-  readonly hookEventName: "UserPromptSubmit";
-  readonly final?: never;
-};
+export type ApiUserMessageActivity<Agent extends "claude" | "codex" = "claude" | "codex"> =
+  ApiPromptPresentation & {
+    readonly agent: Agent;
+    readonly kind: "user_message";
+    readonly label: "user";
+    readonly source: "hook";
+    readonly hookEventName: "UserPromptSubmit";
+    readonly final?: never;
+  };
 
 export function codexApiUserActivity(
   elwoodSessionId: string,
   event: CodexHookEventFor<"UserPromptSubmit">,
   prompt: ApiPromptPresentation,
-): ReturnType<typeof hookActivityBase> & CodexApiUserMessageActivity {
+): ReturnType<typeof hookActivityBase> & ApiUserMessageActivity<"codex"> {
+  return apiUserActivity("codex", elwoodSessionId, event, prompt);
+}
+
+export function claudeApiUserActivity(
+  elwoodSessionId: string,
+  event: ClaudeHookEventFor<"UserPromptSubmit">,
+  prompt: ApiPromptPresentation,
+): ReturnType<typeof hookActivityBase> & ApiUserMessageActivity<"claude"> {
+  return apiUserActivity("claude", elwoodSessionId, event, prompt);
+}
+
+function apiUserActivity<Agent extends "claude" | "codex">(
+  agent: Agent,
+  elwoodSessionId: string,
+  event: ClaudeHookEventFor<"UserPromptSubmit"> | CodexHookEventFor<"UserPromptSubmit">,
+  prompt: ApiPromptPresentation,
+): ReturnType<typeof hookActivityBase> & ApiUserMessageActivity<Agent> {
   return {
-    ...hookActivityBase("codex", elwoodSessionId, event),
+    ...hookActivityBase(agent, elwoodSessionId, event),
     ...prompt,
-    agent: "codex",
+    agent,
     kind: "user_message",
     source: "hook",
     hookEventName: "UserPromptSubmit",
