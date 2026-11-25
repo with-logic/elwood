@@ -3,6 +3,7 @@
  * Implements PRD §5.8/§12A.2 and C-E2E-21 for C-API-60/C-CLI-28. Codex fires no `Stop` for
  * a rejected turn, so its failed transcript `task_complete` is the only evidence. A bogus
  * `--model` is refused before any model quota is consumed, so this needs no model quota.
+ * Codex names the refusal in `codex_error_info`; its `message` is prose that names the model.
  */
 
 import assert from "node:assert/strict";
@@ -71,7 +72,8 @@ test("C-E2E-21 elwood run reports a rejected real Codex turn as turn_failed with
     assert.equal(document.type, "error", output);
     assert.equal(document.agent, "codex");
     assert.equal(document.error.code, "turn_failed", output);
-    assert.match(document.error.message, /model_not_found/u);
+    // The CLI document carries only Codex's diagnostic, which names the refused model.
+    assert.ok(document.error.message.includes(bogusCodexModel), output);
   });
 });
 
@@ -109,8 +111,8 @@ test("C-E2E-21 CodexSession.send rejects a real Codex rejection with turn_failed
       );
       assert.ok(outcome.error instanceof ElwoodError, String(outcome.error));
       assert.equal(outcome.error.code, "turn_failed", outcome.error.message);
-      assert.match(outcome.error.message, /model_not_found/u);
-      assert.equal(typeof outcome.error.details["agentError"], "string");
+      assert.equal(outcome.error.details["agentError"], "model_not_found", outcome.error.message);
+      assert.ok(outcome.error.message.includes(bogusCodexModel), outcome.error.message);
     }
     // Codex accepted both submissions and fired no `Stop` for either.
     assert.equal(hooks.filter((name) => name === "UserPromptSubmit").length, 2, hooks.join(","));
