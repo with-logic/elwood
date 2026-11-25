@@ -125,3 +125,21 @@ test("C-API-64 only transcript assistant messages with text can be final", () =>
     throw new Error("Expected the native final-reply marker");
   }
 });
+
+test("C-API-67 only Claude activity can carry native paste metadata", () => {
+  const paste = {
+    elwoodSessionId: "s",
+    agent: "claude",
+    source: "hook",
+    kind: "user_message",
+    label: "user",
+    hookEventName: "UserPromptSubmit",
+    text: "body",
+    nativePrompt: "native envelope",
+    promptProvenance: { origin: "unknown", input: "pasted" },
+  } as const satisfies ElwoodActivityEvent;
+  // @ts-expect-error Native paste presentation is Claude evidence.
+  const codex: ElwoodActivityEvent = { ...paste, agent: "codex" };
+  void codex;
+  expect(paste.promptProvenance.input).toBe("pasted");
+});

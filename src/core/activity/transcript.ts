@@ -71,9 +71,7 @@ export function activityFromClaudeTranscript(
   if (event.recovered) {
     return {
       ...origin,
-      kind: "user_message",
-      label: "user",
-      text: event.summary.text,
+      ...event.summary,
       turnId: event.turnId,
     };
   }

@@ -37,6 +37,12 @@ session-scoped settings passed via `--settings`. Elwood does not mutate
 `.claude/settings.local.json`. `startClaude` also accepts `model`, forwarded
 to Claude's `--model` flag, and `reasoningEffort`, forwarded to `--effort`.
 
+Claude `user_message` activity can display the body of a supported native paste
+and include `nativePrompt` with the delivered envelope. `promptProvenance`
+reports `input: "pasted"` and `origin: "unknown"` for that case. The body retains
+Claude's transformations, so callers may need their own original text when
+exact bytes matter. See [native paste presentation](cli-behavior.md#claude-native-paste-presentation).
+
 ## Codex
 
 ```ts

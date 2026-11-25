@@ -3,7 +3,7 @@ import { appendFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { ClaudeTranscriptWatcher } from "../../src/claude/transcript/index.ts";
 import { ClaudeUserPrompts } from "../../src/claude/transcript/user-prompts.ts";
-import { userPromptText } from "../../src/claude/transcript/user-record.ts";
+import { userPromptRecord } from "../../src/claude/transcript/user-record.ts";
 
 import { nativeUser, tmpFile, writeRecords } from "./claude-transcript-helpers.ts";
 
@@ -23,12 +23,12 @@ test("keeps exact matching evidence separate across transcript paths", () => {
   };
   commit(path, "cached");
   commit(path, "cached", "duplicate");
-  prompts.observeHook("/other.jsonl", "cached", false);
-  prompts.observeHook(path, "waiting", false);
-  prompts.observeHook(path, "waiting", false);
+  prompts.observeHook({ path: "/other.jsonl", turnId: "cached", hasText: false }, true);
+  prompts.observeHook({ path: path, turnId: "waiting", hasText: false }, true);
+  prompts.observeHook({ path: path, turnId: "waiting", hasText: false }, true);
   commit("/other.jsonl", "waiting", "wrong path");
   expect(events).toEqual([]);
-  prompts.observeHook(path, "cached", false);
+  prompts.observeHook({ path: path, turnId: "cached", hasText: false }, true);
   commit(path, "waiting");
   expect(events).toMatchObject([
     { turnId: "cached", summary: { text: "native prompt" } },
@@ -42,46 +42,57 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   const commit = (target: string, id: string, padding = "") => {
     prompts.observeForwardRecord(target, id, record(id, `native prompt${padding}`));
   };
-  expect(prompts.observeHook(undefined, "pathless", false)).toBe(false);
-  expect(prompts.observeHook(undefined, "pathless", true)).toBe(true);
+  expect(prompts.observeHook({ path: undefined, turnId: "pathless", hasText: false }, true)).toBe(
+    false,
+  );
+  expect(prompts.observeHook({ path: undefined, turnId: "pathless", hasText: true }, true)).toBe(
+    true,
+  );
   const oversizedPath = `/${"p".repeat(4097)}`;
   const oversizedId = "t".repeat(1025);
-  expect(prompts.observeHook(oversizedPath, "unbound", false)).toBe(false);
+  expect(
+    prompts.observeHook({ path: oversizedPath, turnId: "unbound", hasText: false }, true),
+  ).toBe(false);
   commit(oversizedPath, "unbound");
   commit(path, oversizedId);
-  expect(prompts.observeHook(path, oversizedId, true)).toBe(true);
+  expect(prompts.observeHook({ path: path, turnId: oversizedId, hasText: true }, true)).toBe(true);
 
   const padding = " ".repeat(900 * 1024);
   for (const id of ["evicted", "first", "second", "third", "retained"]) commit(path, id, padding);
-  prompts.observeHook(path, "evicted", false);
-  prompts.observeHook(path, "retained", false);
+  prompts.observeHook({ path: path, turnId: "evicted", hasText: false }, true);
+  prompts.observeHook({ path: path, turnId: "retained", hasText: false }, true);
   expect(events).toMatchObject([{ turnId: "retained" }]);
 
   for (let index = 0; index < 64; index++) {
-    prompts.observeHook(path, `hook-${index}`, false);
-    expect(prompts.observeHook(path, `shown-${index}`, true)).toBe(true);
+    prompts.observeHook({ path: path, turnId: `hook-${index}`, hasText: false }, true);
+    expect(prompts.observeHook({ path: path, turnId: `shown-${index}`, hasText: true }, true)).toBe(
+      true,
+    );
   }
   // Consume the oldest retained hook before recording new evidence for the evicted one.
   commit(path, "hook-0");
   commit(path, "evicted");
   expect(events).toMatchObject([{ turnId: "retained" }, { turnId: "hook-0" }]);
-  expect(prompts.observeHook(path, "retained", true)).toBe(true);
+  expect(prompts.observeHook({ path: path, turnId: "retained", hasText: true }, true)).toBe(true);
 });
 
 test("requires user text and excludes transcript metadata and tool output", () => {
   expect(
-    userPromptText({ ...record("id"), message: { role: "assistant", content: "wrong role" } }),
+    userPromptRecord({ ...record("id"), message: { role: "assistant", content: "wrong role" } }),
   ).toBeUndefined();
-  expect(userPromptText({ ...record("id"), message: null })).toBeUndefined();
-  expect(userPromptText(record("id", " \n\t"))).toBeUndefined();
-  expect(userPromptText(record("id", "\u0085"))).toBeUndefined();
-  expect(userPromptText(record("id", "\ufeff"))).toBe("\ufeff");
-  expect(userPromptText({ ...record("id"), isMeta: true })).toBeUndefined();
+  expect(userPromptRecord({ ...record("id"), message: null })).toBeUndefined();
+  expect(userPromptRecord(record("id", " \n\t"))).toBeUndefined();
+  expect(userPromptRecord(record("id", "\u0085"))).toBeUndefined();
+  expect(userPromptRecord(record("id", "\ufeff"))).toEqual({
+    text: "\ufeff",
+    isSingleTextContent: true,
+  });
+  expect(userPromptRecord({ ...record("id"), isMeta: true })).toBeUndefined();
   expect(
-    userPromptText({ ...record("id"), message: { content: [{ type: "text", text: null }] } }),
+    userPromptRecord({ ...record("id"), message: { content: [{ type: "text", text: null }] } }),
   ).toBeUndefined();
   expect(
-    userPromptText({
+    userPromptRecord({
       ...record("id"),
       message: { content: [{ type: "text", text: "annotation" }, { type: "tool_result" }] },
     }),

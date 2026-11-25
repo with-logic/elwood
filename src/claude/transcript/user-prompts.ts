@@ -1,9 +1,11 @@
 /** Match blank authenticated Claude hooks to committed user records (PRD §5.4). */
 import { isAbsolute } from "node:path";
+import type { UserPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { isRecord } from "../../core/predicates.ts";
+import { claudePromptPresentation } from "../pasted-content.ts";
 import type { InitialUserPrompt } from "./initial-prompt.ts";
 import { maxIdentifierBytes, maxPathBytes } from "./turn-identity.ts";
-import { userPromptText } from "./user-record.ts";
+import { type UserPromptRecord, userPromptRecord } from "./user-record.ts";
 
 const maxEntries = 64;
 const maxRetainedBytes = 4 * 1024 * 1024;
@@ -12,23 +14,23 @@ export type UserPromptHookEvidence = {
   readonly path: string | undefined;
   readonly turnId: string;
   readonly hasText: boolean;
+  readonly pasteEnvelopeId?: string | undefined;
 };
 
 export type RecoveredUserPrompt = {
   readonly path: string;
   readonly turnId: string;
-  readonly summary: {
+  readonly summary: UserPromptPresentation & {
     readonly kind: "user_message";
     readonly label: "user";
-    readonly text: string;
   };
 };
-type RecordEvidence = {
+type RecordEvidence = UserPromptRecord & {
   readonly kind: "record";
-  readonly text: string;
   readonly retainedSizeBytes: number;
 };
-type PromptEvidence = { readonly path: string } & (RecordEvidence | { readonly kind: "hook" });
+type HookEvidence = { readonly kind: "hook"; readonly pasteEnvelopeId: string | undefined };
+type PromptEvidence = { readonly path: string } & (RecordEvidence | HookEvidence);
 
 export class ClaudeUserPrompts {
   private readonly entries = new Map<string, PromptEvidence>();
@@ -52,10 +54,13 @@ export class ClaudeUserPrompts {
   }
 
   /** Returns whether a nonblank hook still needs user activity, even without a path. */
-  observeHook(path: string | undefined, turnId: string, hasText: boolean): boolean {
+  observeHook(
+    { path, turnId, hasText, pasteEnvelopeId }: UserPromptHookEvidence,
+    canRecover: boolean,
+  ): boolean {
     if (Buffer.byteLength(turnId) > maxIdentifierBytes) return hasText;
     if (this.shown.has(turnId)) return false;
-    const identity = promptLocation(path, turnId);
+    const identity = promptLocation(canRecover ? path : undefined, turnId);
     if (hasText) {
       this.rememberShown(turnId);
       this.remove(identity?.key);
@@ -65,8 +70,9 @@ export class ClaudeUserPrompts {
     const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") {
-      this.publish(identity.path, turnId, key, known.text);
-    } else if (known === undefined) this.remember(key, { kind: "hook", path: identity.path });
+      this.publish(identity.path, turnId, key, known, pasteEnvelopeId);
+    } else if (known === undefined)
+      this.remember(key, { kind: "hook", path: identity.path, pasteEnvelopeId });
     return false;
   }
 
@@ -84,7 +90,8 @@ export class ClaudeUserPrompts {
     const pending = this.entries.get(identity.key);
     if (pending?.kind !== "hook") return;
     const prompt = read(pending);
-    if (prompt?.turnId === turnId) this.publish(path, turnId, identity.key, prompt.text);
+    if (prompt?.turnId === turnId)
+      this.publish(path, turnId, identity.key, prompt, pending.pasteEnvelopeId);
   }
 
   /** Publish an exact pending path/ID match or retain text for a hook that arrives later. */
@@ -101,27 +108,40 @@ export class ClaudeUserPrompts {
     const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") return;
-    const text = userPromptText(item);
-    if (text === undefined) return;
+    const prompt = userPromptRecord(item);
+    if (prompt === undefined) return;
     if (known?.kind === "hook") {
-      this.publish(path, turnId, key, text);
+      this.publish(path, turnId, key, prompt, known.pasteEnvelopeId);
       return;
     }
     this.remember(key, {
       kind: "record",
       path,
-      text,
-      retainedSizeBytes: Buffer.byteLength(text),
+      ...prompt,
+      retainedSizeBytes: Buffer.byteLength(prompt.text),
     });
   }
 
-  private publish(path: string, turnId: string, key: string, text: string): void {
+  private publish(
+    path: string,
+    turnId: string,
+    key: string,
+    prompt: UserPromptRecord,
+    pasteEnvelopeId: string | undefined,
+  ): void {
     this.rememberShown(turnId);
     this.remove(key);
     this.emit({
       path,
       turnId,
-      summary: { kind: "user_message", label: "user", text },
+      summary: {
+        kind: "user_message",
+        label: "user",
+        ...claudePromptPresentation(
+          prompt.text,
+          prompt.isSingleTextContent ? pasteEnvelopeId : undefined,
+        ),
+      },
     });
   }
 

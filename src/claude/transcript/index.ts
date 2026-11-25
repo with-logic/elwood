@@ -88,9 +88,9 @@ export class ClaudeTranscriptWatcher {
     }
     this.ensurePolling();
   }
-  observeUserPromptHook({ path, turnId, hasText }: UserPromptHookEvidence): boolean {
+  observeUserPromptHook(evidence: UserPromptHookEvidence): boolean {
     const canRecover = !(this.finished || this.lines.turns.correlationDisabled);
-    return this.lines.userPrompts.observeHook(canRecover ? path : undefined, turnId, hasText);
+    return this.lines.userPrompts.observeHook(evidence, canRecover);
   }
 
   scan(): void {

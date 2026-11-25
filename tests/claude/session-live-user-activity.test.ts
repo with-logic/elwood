@@ -1,38 +1,9 @@
 /** Claude only repairs a blank prompt from a directly matched committed user record (PRD §5.4). */
-import { appendFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { ptys, resetFakes } from "./helpers.ts";
+import { startActivitySession, user } from "./session-user-activity-helpers.ts";
 
 afterEach(resetFakes);
-
-function user(promptId: string, content: unknown) {
-  return { type: "user", uuid: `user-${promptId}`, promptId, message: { content } };
-}
-
-async function startActivitySession() {
-  installFakes();
-  const cwd = tempDir();
-  const transcript = join(cwd, "transcript.jsonl");
-  writeFileSync(transcript, "");
-  const session = await startClaude({ cwd });
-  const events: ElwoodActivityEvent[] = [];
-  session.on("activity", (event) => events.push(event));
-  return {
-    session,
-    events,
-    hook: (fields: Record<string, unknown>) =>
-      ptys.at(-1)!.dispatchHook(session.elwoodSessionId, {
-        session_id: "claude-native",
-        cwd,
-        transcript_path: transcript,
-        ...fields,
-      }),
-    append: (...items: unknown[]) =>
-      appendFileSync(transcript, `${items.map((item) => JSON.stringify(item)).join("\n")}\n`),
-  };
-}
 
 test("C-API-63 repairs an earlier blank hook once the matched text commits", async () => {
   const { session, hook, events, append } = await startActivitySession();
