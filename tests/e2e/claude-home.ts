@@ -26,9 +26,8 @@
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { isRecord } from "../../src/core/predicates.ts";
 import { privateTempDir, removeAtExit } from "../helpers/private-temp.ts";
-import { privateGlobalConfig } from "./claude-global-config.ts";
+import { parseGlobalConfig, privateGlobalConfig } from "./claude-global-config.ts";
 import {
   accessOnlyLogin,
   keychainLogin,
@@ -92,14 +91,7 @@ function seededGlobalConfig(): string {
   if (!existsSync(userGlobalConfig)) return privateGlobalConfig({});
   // A read failure throws as itself; only a parse failure is the file not being JSON.
   const text = readFileSync(userGlobalConfig, "utf8");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`${userGlobalConfig} is not JSON`);
-  }
-  if (!isRecord(parsed)) throw new Error(`${userGlobalConfig} does not hold a JSON object`);
-  return privateGlobalConfig(parsed);
+  return privateGlobalConfig(parseGlobalConfig(text, userGlobalConfig));
 }
 
 /**
