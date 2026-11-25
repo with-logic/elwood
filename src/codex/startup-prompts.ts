@@ -73,7 +73,9 @@ export class CodexStartupPromptResponder {
   get blockedPrompt() {
     return this.trust.blockedPrompt;
   }
-
+  get humanOwnedPrompt() {
+    return this.trust.humanOwnedPrompt;
+  }
   dispose(): void {
     this.lifetime.abort();
     this.trust.dispose();

@@ -631,6 +631,19 @@ with 73 and never starts Codex. C-CODEX-24.
 
 ## Trust prompts
 
+Codex 0.172's command-center path can show the checkout root in the folder
+access menu for a checkout initialized with `git init --separate-git-dir`.
+The native repository note identifies the root receiving trust. Its other
+startup layouts can show the launch folder on its own. The modern path rows
+may contain terminal padding, so Elwood verifies the exact path against the
+launch directory and Git metadata.
+
+A viewport resize after PTY output begins can turn clipped text into a
+seemingly complete path row. A later partial repaint can retain those cells.
+Elwood retires structured workspace trust discovery for that terminal after
+such a resize. The native dialog continues to hold prompt submissions and
+accepts the user's terminal input.
+
 The real Claude folder-trust prompt renders as **one dialog** spanning header →
 blank line(s) → descriptive prose → options, and the header question **wraps
 across physical rows** on a narrow terminal. Its option format is version-coupled:

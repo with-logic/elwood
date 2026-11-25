@@ -5,13 +5,10 @@ import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
 import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
 import { canonicalGitPath } from "./git-paths.ts";
 import { type CodexRepositoryTrustRoot, codexRepositoryTrustRoot } from "./repository.ts";
+import type { WorkspaceTrustTarget } from "./types.ts";
 
-type TrustTarget = {
-  readonly targetPath: string;
-  readonly targetScope: "folder" | "repository";
-};
 type CheckedTrustTarget = {
-  readonly target: TrustTarget;
+  readonly target: WorkspaceTrustTarget;
   readonly identity: DirectoryIdentity;
   readonly physicalPath: string;
   /** A distinct checkout root needs the native repository note when folder fallback is possible. */
@@ -92,7 +89,7 @@ async function captureLaunchTrustPaths(
 }
 
 async function checkTarget(
-  target: TrustTarget,
+  target: WorkspaceTrustTarget,
   requiresRepositoryNote: boolean,
   signal: AbortSignal | undefined,
 ): Promise<CheckedTrustTarget> {

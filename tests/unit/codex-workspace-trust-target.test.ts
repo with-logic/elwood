@@ -2,8 +2,8 @@
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import {
-  type CodexTrustTargetResolver,
-  createCodexTrustTargetResolver,
+  type CodexWorkspaceTrustMatcher,
+  createCodexWorkspaceTrustMatcher,
 } from "../../src/codex/workspace-trust/target.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 
@@ -16,16 +16,15 @@ const rootNote =
   "Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:";
 const root = "/tmp/workspace";
 const project = join(root, "project");
-type RowFits = Parameters<CodexTrustTargetResolver>[1];
+type RowFits = Parameters<CodexWorkspaceTrustMatcher>[1];
 
 function folder(...launchDirectoryPaths: string[]) {
-  return createCodexTrustTargetResolver({
+  return createCodexWorkspaceTrustMatcher({
     launchDirectoryPaths,
     targets: launchDirectoryPaths.map((targetPath) => ({
       target: { targetPath, targetScope: "folder" },
       requiresRepositoryNote: false,
     })),
-    isCurrent: () => true,
   });
 }
 
@@ -34,15 +33,14 @@ function repository(
   repo: string,
   requiresRepositoryNote = false,
 ) {
-  return createCodexTrustTargetResolver({
+  return createCodexWorkspaceTrustMatcher({
     launchDirectoryPaths,
     targets: [{ target: { targetPath: repo, targetScope: "repository" }, requiresRepositoryNote }],
-    isCurrent: () => true,
   });
 }
 
-function read(resolve: CodexTrustTargetResolver, text: string, rowFits: RowFits = () => true) {
-  return resolve({ lines: text.split("\n") }, rowFits);
+function read(resolve: CodexWorkspaceTrustMatcher, text: string, rowFits: RowFits = () => true) {
+  return resolve({ lines: text.split("\n") }, rowFits)?.target;
 }
 
 test("preserves meaningful ASCII spaces beside the modern renderer's padding", () => {
@@ -140,21 +138,6 @@ test("withholds a frame whose path row did not fit", () => {
   expect(read(resolve, text)).toEqual({ targetPath: project, targetScope: "folder" });
 });
 
-test("withholds a matching permitted path when live target verification changes", () => {
-  let current = true;
-  const resolve = createCodexTrustTargetResolver({
-    launchDirectoryPaths: [project],
-    targets: [
-      { target: { targetPath: project, targetScope: "folder" }, requiresRepositoryNote: false },
-    ],
-    isCurrent: () => current,
-  });
-  const text = folderFixture.replace(workspace, project);
-  expect(read(resolve, text)).toEqual({ targetPath: project, targetScope: "folder" });
-  current = false;
-  expect(read(resolve, text)).toBeUndefined();
-});
-
 test("requires the repository note when the directory offers two possible native scopes", () => {
   const repo = join(root, "project");
   const cwd = join(repo, "child");
@@ -191,10 +174,9 @@ test("withholds conflicting scopes for the same path", () => {
     target: { targetPath: project, targetScope },
     requiresRepositoryNote: false,
   }));
-  const resolve = createCodexTrustTargetResolver({
+  const resolve = createCodexWorkspaceTrustMatcher({
     launchDirectoryPaths: [project],
     targets,
-    isCurrent: () => true,
   });
   expect(read(resolve, folderFixture.replace(workspace, project))).toBeUndefined();
 });
