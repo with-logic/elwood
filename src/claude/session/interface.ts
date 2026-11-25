@@ -25,9 +25,14 @@ import type {
   Unsubscribe,
 } from "../../core/types.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import type { ScreenControls } from "../../terminal/screen.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 
-export interface ClaudeSessionApi extends LoopControls, QuestionControls, StatsControls {
+export interface ClaudeSessionApi
+  extends LoopControls,
+    QuestionControls,
+    StatsControls,
+    ScreenControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

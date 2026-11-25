@@ -8,10 +8,7 @@ export function terminalSnapshot(
   firstBufferRow = xterm.buffer.active.viewportY,
 ): TerminalSnapshot {
   const buffer = xterm.buffer.active;
-  const lines = Array.from(
-    { length: size.rows },
-    (_, index) => buffer.getLine(firstBufferRow + index)?.translateToString(true) ?? "",
-  );
+  const lines = bufferRows(xterm, firstBufferRow, size.rows);
   return {
     cols: size.cols,
     rows: size.rows,
@@ -20,6 +17,15 @@ export function terminalSnapshot(
     lines,
     text: lines.join("\n"),
   };
+}
+
+/** Right-trimmed text of `count` active-buffer rows from `first`; a missing row reads as "". */
+export function bufferRows(xterm: XtermTerminal, first: number, count: number): string[] {
+  const buffer = xterm.buffer.active;
+  return Array.from(
+    { length: count },
+    (_, index) => buffer.getLine(first + index)?.translateToString(true) ?? "",
+  );
 }
 
 type RowEndPaddingOptions = {

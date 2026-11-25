@@ -3115,3 +3115,35 @@ lost the quota reply. Keeping it open until the matching response produced the
 account buckets. Both probes ran before any model turn (C-STATS-03).
 Codex 0.171.0 returned an account window both with and without synthetic
 `OPENAI_API_KEY` and `CODEX_API_KEY` exports in a temporary `.zshrc`.
+
+## Screen buffers and scrollback (Claude 2.1.332, Codex 0.171.0 and 0.172.0, 2026-11-25)
+
+`readScreen()` (C-SCREEN-01/02) reads the headless emulator, so what it can return
+depends on the buffer each CLI draws on. `tests/e2e/read-screen.e2e.ts` asks each
+real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwards.
+
+- **Both CLIs use the alternate screen by default.** Claude ran in a private config
+  dir with no `settings.json` and no `tui` key, and Codex with stock TUI config.
+  Each had switched buffers (`CSI ? 1049 h`) by its first `ready`. After the turn
+  the emulator's normal buffer was still empty and scrollback was 0 rows. The live
+  rows held only the tail of the reply (numbers 58 to 80 on Claude, 61 to 80 on Codex)
+  above the composer. The CLI scrolls its own history inside the alternate screen,
+  so no terminal reader can recover the earlier rows. They are in the transcript
+  and the `activity` stream.
+- **The inline renderers keep scrollback.** `CLAUDE_CODE_NO_FLICKER=0` in the launch
+  environment and `-c tui.alternate_screen="never"` select them. Both then paint
+  the normal buffer, and `scrollback: true` returned the banner, the prompt and the
+  whole reply in order, with no repeated frames: 66 scrollback rows on Claude and
+  76 on Codex. A host that scrolled the handle to the top saw the banner in
+  `terminal.snapshot()` while `readScreen()` still returned the composer and the
+  end of the reply.
+- **Both park the terminal cursor in the composer and leave it visible.** On an idle
+  screen `cursor` was `{ x: 2, visible: true }` on the row that starts with the
+  composer glyph (`❯` on Claude, `›` on Codex), in both renderers.
+- **A leading glyph does not identify the composer.** Codex's fullscreen renderer
+  kept the submitted prompt on row 0 with the same `›`, and both inline renderers
+  leave the echoed prompt in scrollback with the composer glyph. The cursor row is
+  the reliable anchor.
+- Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
+  none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
+  both break long lines themselves.

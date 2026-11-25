@@ -30,6 +30,7 @@ import type {
 } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
+import type { ElwoodScreen } from "../../src/terminal/screen.ts";
 import { activity } from "../helpers/activity.ts";
 
 export type Emitter = TypedEmitter<ElwoodCommonEventMap>;
@@ -70,6 +71,7 @@ export class FakeUnderlying implements ElwoodAgentSession {
   getStats() {
     return Promise.resolve(emptySessionStats(this.status));
   }
+  readonly readScreen = (): Promise<ElwoodScreen> => Promise.reject(new Error("no fake screen"));
   on<E extends ElwoodCommonEventName>(
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,
