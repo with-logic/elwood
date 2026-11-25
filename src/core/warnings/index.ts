@@ -29,7 +29,7 @@ export type ElwoodWarningEvent =
   | LoginExpiringWarning
   | transcript.TranscriptListenerErrorWarning
   | transcript.ClaudePromptListenerErrorWarning
-  | transcript.ClaudeUsageLimitWarning
+  | transcript.UsageLimitWarning
   | ImageCopyRemovalFailedWarning
   | {
       readonly elwoodSessionId: string;

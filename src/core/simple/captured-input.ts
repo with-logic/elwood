@@ -3,6 +3,7 @@ import type { ElwoodAgentSession } from "../agent-session.ts";
 import { elwoodError } from "../errors.ts";
 import type { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
+import { readSendId } from "../input/send-id.ts";
 import { personaBoundary } from "../persona.ts";
 import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories.ts";
 import { assertStopInput } from "../stop-input.ts";
@@ -20,15 +21,10 @@ type Facade = {
   start(): Promise<ElwoodAgentSession>;
 };
 
-function capture<T extends SendOptions>(
-  captures: ImageCaptures,
-  facade: Facade,
-  options: T | undefined,
-) {
+function assertInputAvailable(facade: Facade): void {
   if (facade.session) assertStopInput(facade.session);
   if (terminalStatuses.has(facade.status))
     throw elwoodError("session_not_running", "Session is not running.");
-  return captures.capture(options);
 }
 
 export function capturedTurn(
@@ -42,7 +38,8 @@ export function capturedTurn(
 ): AsyncGenerator<TurnEvent> {
   let captured: { readonly options: TurnOptions | undefined; readonly release: () => void };
   try {
-    captured = capture(captures, facade, options);
+    assertInputAvailable(facade);
+    captured = captures.capture(options);
   } catch (error) {
     return failedTurn(error);
   }
@@ -98,7 +95,14 @@ export async function capturedSend(
   input: string,
   options?: SendOptions,
 ): Promise<void> {
-  const captured = capture(captures, facade, options);
+  assertInputAvailable(facade);
+  const sendId = readSendId(options);
+  const images = options?.images;
+  const snapshot = options && {
+    ...(sendId === undefined ? {} : { sendId }),
+    ...(images === undefined ? {} : { images }),
+  };
+  const captured = captures.capture(snapshot);
   try {
     return await (await facade.start())[method](input, captured.options);
   } finally {

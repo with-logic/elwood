@@ -100,6 +100,7 @@ export class SessionInputOwnership {
     blocked: () => boolean,
     closing: AbortSignal,
     observeEmpty: EmptyComposerObserver,
+    onCleared?: () => void,
   ): ComposerCleanup["run"] {
     const cleanup = new ComposerCleanup(
       this.automated,
@@ -108,6 +109,7 @@ export class SessionInputOwnership {
       () => this.signal(),
       observeEmpty,
       () => captureRenderProgress(this.automated, "pty"),
+      onCleared,
     );
     return (work, signal) => cleanup.run(work, signal);
   }
