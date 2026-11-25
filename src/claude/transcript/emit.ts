@@ -23,7 +23,6 @@ type ClaudeTranscriptFields = {
   readonly path: string;
   readonly item: unknown;
   readonly turnId?: string;
-  readonly final?: true;
 };
 
 type ClaudeRecoveredPromptEvent = RecoveredUserPrompt & {
@@ -36,10 +35,23 @@ type ClaudeRecoveredPromptEvent = RecoveredUserPrompt & {
 type ClaudeDirectEvent = ClaudeTranscriptFields & {
   readonly recovered?: never;
 } & (
-    | { readonly summary: ClaudeDirectRecordSummary; readonly tokenUsage?: ClaudeTokenUsage }
+    | {
+        readonly summary: Extract<
+          ClaudeDirectRecordSummary,
+          { readonly kind: "assistant_message" }
+        >;
+        readonly tokenUsage?: ClaudeTokenUsage;
+        readonly final: true;
+      }
+    | {
+        readonly summary: ClaudeDirectRecordSummary;
+        readonly tokenUsage?: ClaudeTokenUsage;
+        readonly final?: never;
+      }
     | {
         readonly summary: { readonly kind: "other"; readonly label: "token_usage" };
         readonly tokenUsage: ClaudeTokenUsage;
+        readonly final?: never;
       }
   );
 
@@ -112,12 +124,12 @@ export class LineEmitter {
       : claudeFinalReplyIndex(item, summaries);
     const base = this.eventFields(path, item, turnId);
     for (const [index, summary] of summaries.entries()) {
-      this.emit({
-        ...base,
-        summary,
-        ...(index === finalReplyIndex ? { final: true as const } : {}),
-        ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage"),
-      });
+      const fields = { ...base, ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage") };
+      this.emit(
+        summary.kind === "assistant_message" && index === finalReplyIndex
+          ? { ...fields, summary, final: true }
+          : { ...fields, summary },
+      );
     }
   }
 

@@ -75,8 +75,10 @@ shows common calls. [Dashboard stats](embedding.md#session-stats-snapshots)
 
 `ready` marks input availability. The final reply can arrive later through
 `activity`. When native transcript evidence identifies final reply text, the
-`assistant_message` event carries `final: true`. Use `turnId` when available to
-associate that message with its turn. If `final` is omitted, finality is unknown.
+`assistant_message` event carries `final: true`. The marker describes the reply
+text. Track hook results and the turn lifecycle separately. Use `turnId` when
+available to associate the message with its turn. If `final` is omitted,
+finality is unknown.
 
 ```ts
 interface ElwoodAgentSession {

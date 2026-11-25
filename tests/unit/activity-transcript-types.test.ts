@@ -1,5 +1,6 @@
 /** Required transcript payloads survive activity normalization (PRD §5.4, C-CODEX-22). */
 import { expect, test } from "vitest";
+import type { ClaudeTranscriptEvent } from "../../src/claude/transcript/index.ts";
 import type { CodexTranscriptSummary } from "../../src/codex/transcript/types.ts";
 import { activityFromClaudeTranscript } from "../../src/core/activity/index.ts";
 import type { ElwoodActivityEvent } from "../../src/index.ts";
@@ -104,7 +105,11 @@ test("C-API-64 only transcript assistant messages with text can be final", () =>
   const missingText: ElwoodActivityEvent = { ...base, kind: "assistant_message", final: true };
   // @ts-expect-error Lifecycle status cannot carry a final reply marker.
   const status: ElwoodActivityEvent = { ...base, kind: "status", label: "ready", final: true };
-  void [missingText, status];
+  const direct = { elwoodSessionId: "s", path: "/transcript.jsonl", item: {} };
+  const reasoning = { kind: "reasoning", label: "thinking", text: "Planning" } as const;
+  // @ts-expect-error A direct Claude summary can mark only assistant reply text.
+  const invalidFinal: ClaudeTranscriptEvent = { ...direct, summary: reasoning, final: true };
+  void [missingText, status, invalidFinal];
   if (reply.final === true) {
     const {
       source,

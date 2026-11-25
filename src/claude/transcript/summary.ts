@@ -60,12 +60,10 @@ export function claudeFinalReplyIndex(
 ): number {
   const record = asRecord(item);
   const message = asRecord(record["message"]);
-  if (
-    message["stop_reason"] !== "end_turn" ||
-    message["model"] === "<synthetic>" ||
-    record["isSidechain"] === true
-  )
-    return -1;
+  const endsTurn = message["stop_reason"] === "end_turn";
+  const isSynthetic = message["model"] === "<synthetic>";
+  const isSidechain = record["isSidechain"] === true;
+  if (!endsTurn || isSynthetic || isSidechain) return -1;
   return summaries.findLastIndex((summary) => summary.kind === "assistant_message");
 }
 

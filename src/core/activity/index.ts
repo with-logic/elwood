@@ -110,10 +110,7 @@ export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from
 
 /** Hook events both adapters map identically; returns undefined for the rest. */
 function sharedHookActivity(
-  base: Omit<
-    ElwoodActivityEvent,
-    "kind" | "label" | "text" | "final" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
-  >,
+  base: ReturnType<typeof meta.hookActivityBase>,
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {

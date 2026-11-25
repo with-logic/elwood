@@ -34,7 +34,7 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
   if (event.summary.kind === "commentary")
     return {
       ...base,
-      kind: "assistant_progress",
+      kind: transcriptActivityKind(event.summary.kind),
       label: event.summary.label,
       text: event.summary.text,
     };
@@ -85,7 +85,7 @@ export function activityFromClaudeTranscript(
     ...claudeSpeedObservation(event.item),
     ...optional(event.tokenUsage, "tokenUsage"),
   } as const;
-  if (event.final && event.summary.kind === "assistant_message")
+  if (event.final)
     return { ...base, kind: "assistant_message", text: event.summary.text, final: true };
   return { ...base, ...claudeActivityFields(event.summary) };
 }
