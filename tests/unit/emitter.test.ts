@@ -8,6 +8,46 @@ import type { ElwoodEventMap } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 
 describe("TypedEmitter", () => {
+  test("C-API-08 live delivery skips a listener replaced before its turn", () => {
+    const emitter = new TypedEmitter<{ event: number }>();
+    const seen: number[] = [];
+    const listener = (event: number) => seen.push(event);
+    emitter.on("event", (event) => {
+      if (event === 1) {
+        emitter.off("event", listener);
+        emitter.on("event", listener);
+      }
+    });
+    emitter.on("event", listener);
+    emitter.emit("event", 1);
+    expect(seen).toEqual([]);
+    emitter.emit("event", 2);
+    expect(seen).toEqual([2]);
+  });
+
+  test("C-API-08 a pending hook request skips a replaced listener and preserves later provenance", async () => {
+    const emitter = new TypedEmitter<{ event: number }>();
+    const release = Promise.withResolvers<void>();
+    const seen: number[] = [];
+    const listener = (event: number) => {
+      seen.push(event);
+      return event;
+    };
+    emitter.on("event", () => release.promise);
+    emitter.on("event", listener);
+    const request = emitter.requestWithProvenance("event", 1);
+    emitter.off("event", listener);
+    emitter.listen("event", listener, "tool-keyed");
+    release.resolve();
+    await expect(request).resolves.toBeUndefined();
+    expect(seen).toEqual([]);
+    await expect(emitter.requestWithProvenance("event", 2)).resolves.toEqual({
+      value: 2,
+      provenance: "tool-keyed",
+    });
+    expect(seen).toEqual([2]);
+  });
+
   test("C-API-08 event emitter handles empty emissions and explicit off", async () => {
     const emitter = new TypedEmitter<ElwoodEventMap>();
     emitter.emit("status", { elwoodSessionId: "x", status: "running" });

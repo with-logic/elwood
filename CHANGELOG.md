@@ -16,6 +16,8 @@ back each entry are listed in `prd/14-conformance.md`.
   when waiting for Claude to consume a submitted prompt. Report login-renewal
   notices below the composer when it uses that cursor.
 
+- Apply listener replacements to subsequent live event and hook response dispatches.
+
 - Keep host terminal writes from counting as native PTY progress during
   composer cleanup.
 
