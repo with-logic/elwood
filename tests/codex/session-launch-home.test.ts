@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { codexHomeReportPath } from "../helpers/codex-home.ts";
 import { asScreen, codexPickerCurrentMarkerOnly } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, tempDir } from "./helpers.ts";
@@ -118,7 +119,7 @@ test("C-CODEX-24 a resumed session reads its default from the CODEX_HOME its own
   const resumed = trackModelSession(
     await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId }),
   );
-  ptys[1]!.emitData(asScreen("› "));
+  ptys[1]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`); // configured composer
   await until(() => resumed.status === "ready", { label: "resumed codex ready" });
   expect(await listDefaults(resumed, ptys[1]!)).toEqual(["gpt-5.4-mini"]);
 });
