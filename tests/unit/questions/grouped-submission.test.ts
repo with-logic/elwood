@@ -26,7 +26,7 @@ test.each([
   "answered",
   "aborted",
   "mismatched",
-] as const)("a grouped final Enter holds input until matching native closure (%s)", async (outcome) => {
+] as const)("C-QUESTION-03 a grouped final Enter holds input until matching native closure (%s)", async (outcome) => {
   const h = submissionHarness(fixture("questions"), groupedFrames(), {
     questions: nativeQuestions,
   } satisfies AskUserQuestionInput);
@@ -82,7 +82,7 @@ test.each([
       expect(await pending).toBe("answered");
       expect(h.observed.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request });
     }
-    // C-QUESTION-03: a completion reporting other values fails the answer it acknowledged.
+    // The completion matches the request's identity but reports other values than Elwood submitted.
     if (outcome === "mismatched") {
       expect(await pending).toMatchObject({
         code: "question_answer_failed",

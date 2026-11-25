@@ -2930,7 +2930,10 @@ the `Type something.` editor and pressing Enter at the raw terminal. The
   spaces, also came back unchanged.
 - Checked labels come back in the order they were checked, not native order:
   checking Cherry and then Apple produced `Cherry, Apple` on the review and in
-  the completion. Elwood checks boxes in native order.
+  the completion. Unchecking a box drops its label, and checking it again adds
+  the label last. So when a person has checked Cherry, Elwood checks Apple,
+  then unchecks and rechecks Cherry, and the completion reports
+  `Apple, Cherry`.
 - The review of a grouped questionnaire draws each answer after `→`, with
   continuation rows indented three cells. It wraps at spaces, breaks a run too
   long for its row inside it, draws a tab as spaces and puts each line break on

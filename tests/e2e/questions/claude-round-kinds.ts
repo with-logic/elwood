@@ -1,4 +1,7 @@
 /** Each kind of native question round a Claude proof session can run (PRD §12, C-E2E-18). */
+import { setTimeout as delay } from "node:timers/promises";
+import { claudeDialogInputGraceMs } from "../../../src/claude/dialog-input-grace.ts";
+import { arrowDown } from "../../../src/core/input/constants.ts";
 import type { ElwoodQuestionRequest } from "../../../src/index.ts";
 import {
   checkboxFinal,
@@ -13,7 +16,30 @@ import {
 } from "./claude-cases.ts";
 import type { claudeQuestionRounds } from "./claude-round.ts";
 
-export type ClaudeRoundKind = "grouped" | "text" | "long-text" | "checkbox";
+export type ClaudeRoundKind = "grouped" | "text" | "long-text" | "checkbox" | "prechecked-checkbox";
+
+/** A person at the native terminal: keys that bypass Elwood, and the screen they see. */
+export type ClaudeProofPerson = {
+  readonly press: (input: string) => void;
+  readonly screen: () => string | undefined;
+};
+const personKeyGapMs = 300;
+const personCheckTimeoutMs = 10_000;
+
+/** Checks Cherry at the native terminal, as a person might before Elwood answers. */
+async function checkCherry(person: ClaudeProofPerson): Promise<void> {
+  // Claude ignores keys pressed before its dialog input grace ends.
+  await delay(claudeDialogInputGraceMs);
+  for (const key of [arrowDown, arrowDown, " "]) {
+    person.press(key);
+    await delay(personKeyGapMs);
+  }
+  const deadline = Date.now() + personCheckTimeoutMs;
+  while (!/\[✔\] Cherry/.test(person.screen() ?? "")) {
+    if (Date.now() > deadline) throw new Error("Cherry must be checked after the person's keys");
+    await delay(100);
+  }
+}
 
 /** The native option IDs for these labels, in the given order. */
 function optionIds(
@@ -34,7 +60,15 @@ function optionIds(
 export function claudeRoundsByKind(
   round: ReturnType<typeof claudeQuestionRounds>,
   texts: ReturnType<typeof claudeProofTexts>,
+  person: ClaudeProofPerson,
 ): Readonly<Record<ClaudeRoundKind, () => Promise<string>>> {
+  const fruits = (request: ElwoodQuestionRequest) =>
+    request.questions.map((question) => ({
+      questionId: question.id,
+      optionIds: optionIds(question, ["Apple", "Cherry"]),
+    }));
+  // Claude lists checked labels in check order; Elwood's completion must still be native order.
+  const fruitAnswers = { "Which test fruits?": "Apple, Cherry" };
   return {
     grouped: () =>
       round(
@@ -73,16 +107,8 @@ export function claudeRoundsByKind(
         },
         longTextFinal,
       ),
-    checkbox: () =>
-      round(
-        checkboxPrompt,
-        (request) =>
-          request.questions.map((question) => ({
-            questionId: question.id,
-            optionIds: optionIds(question, ["Apple", "Cherry"]),
-          })),
-        { "Which test fruits?": "Apple, Cherry" },
-        checkboxFinal,
-      ),
+    checkbox: () => round(checkboxPrompt, fruits, fruitAnswers, checkboxFinal),
+    "prechecked-checkbox": () =>
+      round(checkboxPrompt, fruits, fruitAnswers, checkboxFinal, () => checkCherry(person)),
   };
 }

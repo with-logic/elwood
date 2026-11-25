@@ -1,12 +1,16 @@
 /** A Claude completion acknowledges an Elwood answer only with its submitted values (PRD §5.10). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeDialogInputGraceMs } from "../../../src/claude/dialog-input-grace.ts";
-import { claudeCloseReason } from "../../../src/claude/questions/acceptance.ts";
+import {
+  claudeCloseReason,
+  claudeExpectedAnswers,
+} from "../../../src/claude/questions/acceptance.ts";
+import { bindClaudeQuestionAnswers } from "../../../src/claude/questions/bind-answers.ts";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../../src/core/questions/validate.ts";
-import { fixture, frame, nativeSnapshot, registry } from "./helpers.ts";
+import { definitions, fixture, frame, nativeSnapshot, registry } from "./helpers.ts";
 import { answeredHook, nativeHook, singleQuestionToolInput } from "./lifecycle-helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
@@ -128,4 +132,18 @@ test("C-QUESTION-03 a refused first write leaves a person's native answer confir
   const person = answeredHook({ "Which test note?": "Detailed (long)" }, singleQuestionToolInput);
   expect(adapter.observe(person)).toBe(true);
   expect(events.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request });
+});
+
+test("C-QUESTION-03 repeated prompts cannot be answered, since a completion keys answers by prompt", () => {
+  const request = registry().publish("native", "blocking", [definitions[0]!, definitions[0]!])!;
+  const bound = bindClaudeQuestionAnswers(
+    request,
+    request.questions.map((_, index) => ({ optionIndexes: [index] })),
+  );
+  expect(() => claudeExpectedAnswers(bound)).toThrow(
+    expect.objectContaining({ code: "question_answer_failed" }),
+  );
+  expect(claudeExpectedAnswers(bound.slice(0, 1))).toEqual(
+    new Map([["Which test color?", "Amber"]]),
+  );
 });

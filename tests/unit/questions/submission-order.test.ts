@@ -137,3 +137,17 @@ test("an early input failure reaches the answer operation as terminal_write", as
   });
   expect(result.inputWriteCount).toBe(1);
 });
+
+test("C-QUESTION-03 a mismatched completion during final dispatch fails the answer", async () => {
+  const reported = { ...orderAnswers, "Which test color?": "Amber" };
+  const result = await submit({ acknowledgementOrder: "hook-first", reported });
+  expect(result.outcome).toMatchObject({
+    kind: "failed",
+    error: { code: "question_answer_failed" },
+  });
+  expect(result.inputWriteCount).toBe(result.expectedInputWriteCount);
+  expect(result.observed.filter((event) => event.phase === "closed")).toEqual([
+    expect.objectContaining({ phase: "closed", reason: "unavailable", request: result.request }),
+  ]);
+  expect(result.holdsInputAfterAcknowledgement).toBe(false);
+});
