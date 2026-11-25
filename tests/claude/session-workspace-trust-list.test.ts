@@ -56,20 +56,24 @@ test("C-ATTN-07 Claude lists exact text and ordered choices across a cursor redr
     await render("\x1b[?2026l");
     expect((await session.listDialogs())[0]).toBe(request);
 
-    await render(
-      menu.replace(
-        "No, exit\r\n   Yes, I trust this folder",
-        "Yes, I trust this folder\r\n   No, exit",
-      ),
+    const reorderedMenu = menu.replace(
+      "No, exit\r\n   Yes, I trust this folder",
+      "Yes, I trust this folder\r\n   No, exit",
     );
+    await render(reorderedMenu);
     const [replacement] = await session.listDialogs();
     assert.isDefined(replacement);
     expect(replacement.id).not.toBe(request.id);
     expect(replacement.choices[0]?.label).toBe("Yes, I trust this folder");
 
-    await render(menu.replace("Accessing workspace:", "Verifying workspace:"));
-    await render(menu);
-    expect((await session.listDialogs())[0]?.id).not.toBe(request.id);
+    await render(reorderedMenu.replace("Accessing workspace:", "Verifying workspace:"));
+    await render(reorderedMenu);
+    const [restored] = await session.listDialogs();
+    assert.isDefined(restored);
+    expect(restored.id).not.toBe(replacement.id);
+    expect(restored.choices.map(({ id }) => id)).not.toEqual(
+      replacement.choices.map(({ id }) => id),
+    );
     expect(pty.writes).toEqual([]);
 
     await render(`\x1b[2J\x1b[H${claudeTty(claudeComposer)}`);

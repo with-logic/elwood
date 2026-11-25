@@ -22,7 +22,6 @@ import { preflightEvent } from "../preflight.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { ClaudeWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
-import { captureClaudeStartupTrustEvidence } from "../workspace-trust/target.ts";
 import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
@@ -61,7 +60,7 @@ export async function buildClaudeSession(
   const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
   const dialogs = new ClaudeWorkspaceTrustDiscovery({
     elwoodSessionId: record.elwoodSessionId,
-    evidence: await captureClaudeStartupTrustEvidence(options.launchDirectory),
+    evidence: input.workspaceTrustEvidence,
     terminal: () => terminal,
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance: idleComposerClearance,

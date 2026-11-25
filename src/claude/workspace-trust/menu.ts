@@ -5,6 +5,8 @@ import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.t
 import { hasUnwrappedRowEndPadding } from "../../terminal/snapshot.ts";
 import type { ClaudeLaunchTrustEvidence } from "./target.ts";
 
+// The captured prelude starts four rows above the question. Keep a nearby window
+// for layout spacing without accepting a detached disclosure elsewhere on screen.
 const workspacePreludeRows = 8;
 
 type MatchedWorkspaceTrustMenu = {

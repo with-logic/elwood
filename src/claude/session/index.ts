@@ -28,6 +28,7 @@ import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { preflightClaude } from "../preflight.ts";
+import { captureClaudeStartupTrustEvidence } from "../workspace-trust/target.ts";
 import { resetClaudeHookBridgeFactoryForTests, setHookBridgeFactoryForTests } from "./bridge.ts";
 import { buildClaudeSession } from "./build.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
@@ -130,7 +131,11 @@ export function startClaudeFromRecord(
   return withLaunchOwnership(
     safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
-    (owner, activate) => {
+    async (owner, activate) => {
+      // Keep socket-home creation and the start of bridge binding in one synchronous turn.
+      const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(
+        options.launchDirectory,
+      );
       const runtime = sessionRuntime(
         {
           stateDir,
@@ -150,6 +155,7 @@ export function startClaudeFromRecord(
             resumed,
             preflightWarning,
             activate,
+            workspaceTrustEvidence,
           }),
       );
     },

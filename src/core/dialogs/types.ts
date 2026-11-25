@@ -12,13 +12,12 @@ export type WorkspaceTrustTarget = {
   readonly targetScope: "folder" | "repository";
 };
 
-export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = ElwoodAgentKind> =
-  WorkspaceTrustTarget & {
-    readonly id: string;
-    readonly elwoodSessionId: string;
-    readonly agent: Agent;
-    readonly kind: "trust";
-    readonly label: "workspace_trust";
-    readonly text: string;
-    readonly choices: readonly ElwoodDialogChoice[];
-  };
+export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> = WorkspaceTrustTarget & {
+  readonly id: string;
+  readonly elwoodSessionId: string;
+  readonly agent: Agent;
+  readonly kind: "trust";
+  readonly label: "workspace_trust";
+  readonly text: string;
+  readonly choices: readonly ElwoodDialogChoice[];
+};
