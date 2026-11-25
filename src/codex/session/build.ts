@@ -71,6 +71,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   });
   const { pty, resolveConfigPath } = launched;
   const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
+  const autotrust = options.autotrust ?? false;
   const clearance = liveCodexClearance(() => terminal);
   const prelude = trackWorkspacePreludeInput(() => terminal);
   const send = (keys: string): Promise<void> =>
@@ -82,7 +83,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance,
     emitter,
-    manualTrust: !(options.autotrust ?? false),
+    manualTrust: !autotrust,
     write: send,
     isLive: () => session?.closing.signal.aborted === false,
   });
@@ -96,12 +97,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
   const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate, emitter);
-  const observers = codexFrameObservers(
-    emitter,
-    elwoodSessionId,
-    options.autotrust ?? false,
-    clearance,
-    () => cachedLiveSnapshot(terminal),
+  const observers = codexFrameObservers(emitter, elwoodSessionId, autotrust, clearance, () =>
+    cachedLiveSnapshot(terminal),
   );
   const frameObserver = createSessionFrameObserver(
     observers,
@@ -112,7 +109,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   const promptResponder = new CodexStartupPromptResponder(
     record.elwoodSessionId,
-    options.autotrust ?? false,
+    autotrust,
     () => dialogs.reconcileAfter(frameObserver.refresh),
     clearance,
     () => activeSession.inputBlocking || activeSession.trustInputBlocking,

@@ -1,5 +1,5 @@
 /** Recognize Codex's command center as a workspace-trust answer destination (C-ATTN-07). */
-import type { TerminalSnapshot } from "../terminal/headless.ts";
+import type { TerminalSnapshot } from "../../terminal/headless.ts";
 
 const heading = /^ {2}Agent command center {2}Group: (?:Project|Directory|Status|Model)(?: |$)/;
 const filters = /^ {2,}All \d+ {2,}Needs you \d+(?: |$)/;

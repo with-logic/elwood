@@ -37,7 +37,6 @@ export class WorkspaceTrustAnswers<
   constructor(io: AnswerIo<Option, ChoiceIndex>) {
     this.io = io;
   }
-
   async answer(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
     const current = this.io.currentRequest();
     if (!current || current.request.id !== requestId)
@@ -128,6 +127,7 @@ export class WorkspaceTrustAnswers<
       try {
         this.io.reconcileDialogEvidence();
       } catch {
+        // Contain observer failures and fail any answer still awaiting native confirmation.
         if (this.active === active) this.finish("frame");
       }
     } else {

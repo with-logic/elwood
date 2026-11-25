@@ -50,11 +50,12 @@ test("C-ATTN-07 a queued complete replacement cannot be hidden by a clean PTY ex
   }
 });
 
-test.each([
-  false,
-  true,
-])("C-ATTN-07 a released proof slot only resumes a live answer (aborted=%s)", async (aborted) => {
-  const { cwd, session, pty, render, request } = await setupWorkspaceAnswer();
+async function releaseProofSlot(
+  fixture: Awaited<ReturnType<typeof setupWorkspaceAnswer>>,
+  retry: AbortController,
+  beforeRelease: () => void,
+) {
+  const { cwd, session, pty, render, request } = fixture;
   const abandoned = proofPause();
   const busyList = proofPause();
   await interceptWorkspaceLookup(cwd, (index) => {
@@ -70,12 +71,10 @@ test.each([
     await abandoned.began;
     cancellation.abort();
     await first;
-    const cancelRetry = new AbortController();
-    const retry = session.answerDialog(request.id, request.choices[1]!.id, {
-      signal: cancelRetry.signal,
-    });
-    const completed = retry.catch((error: unknown) => error);
-    await expect.poll(() => pty.writes).toEqual(["\x1b[B"]);
+    const completed = session
+      .answerDialog(request.id, request.choices[1]!.id, { signal: retry.signal })
+      .catch((error: unknown) => error);
+    await vi.waitUntil(() => pty.writes.length === 1 && pty.writes[0] === "\x1b[B");
     let reading: ReturnType<typeof session.listDialogs> | undefined;
     const off = session.on("terminal:data", () => {
       reading ??= session.listDialogs();
@@ -83,25 +82,41 @@ test.each([
     try {
       await render(menuWithQuitSelected(cwd));
       await busyList.began;
-      if (aborted) cancelRetry.abort();
+      beforeRelease();
       abandoned.release();
       busyList.release();
       await reading;
-      if (aborted) {
-        expect(await completed).toMatchObject({ details: { category: "aborted" } });
-        expect(pty.writes).toEqual(["\x1b[B"]);
-        return;
-      }
-      await expect.poll(() => pty.writes).toEqual(["\x1b[B", "\r"]);
-      pty.emitExit({ exitCode: 0 });
-      expect(await completed).toBeUndefined();
+      return { completed };
     } finally {
       off();
     }
   } finally {
     abandoned.release();
     busyList.release();
-    await session.teardown();
+  }
+}
+
+test("C-ATTN-07 releasing the proof slot resumes navigation for a live answer", async () => {
+  const fixture = await setupWorkspaceAnswer();
+  try {
+    const { completed } = await releaseProofSlot(fixture, new AbortController(), () => undefined);
+    await expect.poll(() => fixture.pty.writes).toEqual(["\x1b[B", "\r"]);
+    fixture.pty.emitExit({ exitCode: 0 });
+    expect(await completed).toBeUndefined();
+  } finally {
+    await fixture.session.teardown();
+  }
+});
+
+test("C-ATTN-07 releasing the proof slot leaves canceled navigation stopped", async () => {
+  const fixture = await setupWorkspaceAnswer();
+  try {
+    const retry = new AbortController();
+    const { completed } = await releaseProofSlot(fixture, retry, () => retry.abort());
+    expect(await completed).toMatchObject({ details: { category: "aborted" } });
+    expect(fixture.pty.writes).toEqual(["\x1b[B"]);
+  } finally {
+    await fixture.session.teardown();
   }
 });
 

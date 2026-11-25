@@ -108,8 +108,8 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     return () => this.off(event, handler);
   }
   readonly listDialogs = () => this.dialogs.discovery.list();
-  readonly answerDialog: CodexSessionApi["answerDialog"] = (id, choice, options) =>
-    this.dialogs.answerDialog(id, choice, options);
+  readonly answerDialog: CodexSessionApi["answerDialog"] = (requestId, choiceId, options) =>
+    this.dialogs.answerDialog(requestId, choiceId, options);
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     // Reserve the queue slot before waiting on the config lock, so later sends
     // cannot overtake the model switch and use the previous model.

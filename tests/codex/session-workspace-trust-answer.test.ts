@@ -67,17 +67,23 @@ test("C-ATTN-07 a different native workspace menu cannot acknowledge the prior a
 });
 
 test.each([
-  false,
-  true,
-])("C-ATTN-07 raw input relinquishes trust (complete frame: %s)", async (complete) => {
-  const { cwd, session, render, request, pty } = await setupWorkspaceAnswer();
+  {
+    screen: "prelude",
+    paint: ({ cwd, render }: Awaited<ReturnType<typeof setupWorkspaceAnswer>>) =>
+      render(menu(cwd).split("  Trust this folder?")[0]!),
+    retainsRequest: false,
+  },
+  { screen: "complete menu", paint: () => undefined, retainsRequest: true },
+])("C-ATTN-07 raw input relinquishes trust on the $screen", async ({ paint, retainsRequest }) => {
+  const fixture = await setupWorkspaceAnswer();
+  const { cwd, session, render, request, pty } = fixture;
   try {
-    if (!complete) await render(menu(cwd).split("  Trust this folder?")[0]!);
+    await paint(fixture);
     await session.sendKeys("\x1b[B");
     await render(menu(cwd));
     const [current] = await session.listDialogs();
     assert.isDefined(current);
-    expect(current.id === request.id).toBe(complete);
+    expect(current.id === request.id).toBe(retainsRequest);
     await expect(session.answerDialog(current.id, current.choices[0]!.id)).rejects.toMatchObject({
       code: "dialog_answer_failed",
       details: { category: "frame" },

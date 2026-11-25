@@ -1,6 +1,6 @@
 /** Codex's destination matcher verifies the picker structure across keymaps (C-ATTN-07). */
 import { expect, test } from "vitest";
-import { isCodexAgentCommandCenter } from "../../src/codex/command-center-frame.ts";
+import { isCodexAgentCommandCenter } from "../../src/codex/workspace-trust/command-center-frame.ts";
 
 const cols = 100;
 const title = "  Agent command center  Group: Status";

@@ -109,17 +109,19 @@ test("C-ATTN-07 two canceled verification reads bound further filesystem work", 
   vi.mocked(fsp.lstat).mockClear();
   const lookups = () =>
     vi.mocked(fsp.lstat).mock.calls.filter(([path]) => path === join(cwd, ".git"));
+  async function cancelRead(count: number) {
+    const controller = new AbortController();
+    const answer = session.answerDialog(request.id, request.choices[0]!.id, {
+      signal: controller.signal,
+    });
+    const failed = expect(answer).rejects.toMatchObject({ details: { category: "aborted" } });
+    await expect.poll(() => lookups()).toHaveLength(count);
+    controller.abort();
+    await failed;
+  }
   try {
-    for (const count of [1, 2]) {
-      const controller = new AbortController();
-      const answer = session.answerDialog(request.id, request.choices[0]!.id, {
-        signal: controller.signal,
-      });
-      const failed = expect(answer).rejects.toMatchObject({ details: { category: "aborted" } });
-      await expect.poll(() => lookups()).toHaveLength(count);
-      controller.abort();
-      await failed;
-    }
+    await cancelRead(1);
+    await cancelRead(2);
     await expect(session.answerDialog(request.id, request.choices[0]!.id)).rejects.toMatchObject({
       details: { category: "frame" },
     });
@@ -133,30 +135,28 @@ test("C-ATTN-07 two canceled verification reads bound further filesystem work", 
 
 test("C-ATTN-07 a current proof timeout after Down ends the answer and preserves listing", async () => {
   const { cwd, session, pty, request, render } = await setupWorkspaceAnswer();
-  let failure: unknown;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   const answer = session.answerDialog(request.id, request.choices[1]!.id, { timeoutMs: 3_000 });
-  const result = answer.catch((error: unknown) => {
-    failure = error;
-  });
+  const result = answer.catch((error: unknown) => error);
   let held: Awaited<ReturnType<typeof holdWorkspaceProof>> | undefined;
   try {
-    await expect.poll(() => pty.writes).toEqual(["\x1b[B"]);
+    await vi.waitFor(() => expect(pty.writes).toEqual(["\x1b[B"]));
     held = await holdWorkspaceProof(cwd);
     const selected = menuWithQuitSelected(cwd);
-    await render(selected);
+    const painting = render(selected);
+    await vi.advanceTimersByTimeAsync(10);
+    await painting;
     await held.began;
-    await expect
-      .poll(() => failure, { timeout: 1_500 })
-      .toMatchObject({
-        details: { category: "frame" },
-      });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await result).toMatchObject({ details: { category: "frame" } });
+    vi.useRealTimers();
     held.release();
     await held.resumed;
     await render(selected);
     expect(await session.listDialogs()).toEqual([request]);
     expect(pty.writes).toEqual(["\x1b[B"]);
-    await result;
   } finally {
+    vi.useRealTimers();
     held?.release();
     await session.teardown();
   }

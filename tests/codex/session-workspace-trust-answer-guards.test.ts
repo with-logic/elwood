@@ -107,12 +107,16 @@ test("C-ATTN-07 viewport resizing revokes an answer before the native-exit obser
   }
 });
 
+const terminalExitFailure = expect.objectContaining({
+  details: expect.objectContaining({ category: "terminal_exit" }),
+});
+
 test.each([
-  { exit: { exitCode: 0 }, clean: true },
-  { exit: { exitCode: 0, signal: 0 }, clean: true },
-  { exit: { exitCode: 1 }, clean: false },
-  { exit: { exitCode: 0, signal: 9 }, clean: false },
-])("C-ATTN-07 Quit requires a selected row and clean exit ($exit)", async ({ exit, clean }) => {
+  { exit: { exitCode: 0 }, expected: undefined },
+  { exit: { exitCode: 0, signal: 0 }, expected: undefined },
+  { exit: { exitCode: 1 }, expected: terminalExitFailure },
+  { exit: { exitCode: 0, signal: 9 }, expected: terminalExitFailure },
+])("C-ATTN-07 Quit requires a selected row and clean exit ($exit)", async ({ exit, expected }) => {
   const { cwd, session, pty, render, request } = await setupWorkspaceAnswer();
   try {
     const answer = session.answerDialog(request.id, request.choices[1]!.id);
@@ -131,9 +135,7 @@ test.each([
     await expect.poll(() => pty.writes).toEqual(["\x1b[B", "\r"]);
     expect(settled).toBe(false);
     pty.emitExit(exit);
-    const result = await completion;
-    if (clean) expect(result).toBeUndefined();
-    else expect(result).toMatchObject({ details: { category: "terminal_exit" } });
+    expect(await completion).toEqual(expected);
     expect(await session.listDialogs()).toEqual([]);
   } finally {
     await session.teardown();

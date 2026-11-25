@@ -1,23 +1,13 @@
 /** Confirm verified Codex workspace trust choices through the live PTY (C-ATTN-07). */
 import { WorkspaceTrustAnswers } from "../../core/dialogs/trust-answer/index.ts";
 import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
-import type { PtyExit } from "../../pty/types.ts";
 import { onCallerInput } from "../../runtime/session/session-input.ts";
-import {
-  nativeRenderEvidenceIntact,
-  onNativeRenderEvidenceInvalidated,
-  settledNativeSnapshot,
-} from "../../terminal/cursor.ts";
-import type { ElwoodTerminal, XtermTerminal } from "../../terminal/headless.ts";
-import {
-  codexWorkspaceTrustStep,
-  type NumberedTrustOption,
-  workspaceTrustCompletion,
-} from "./answer-layout.ts";
+import { onNativeRenderEvidenceInvalidated } from "../../terminal/cursor.ts";
+import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import { codexTrustConfirmation } from "./answer-confirmation.ts";
+import { codexWorkspaceTrustStep, type NumberedTrustOption } from "./answer-layout.ts";
 import type { CodexWorkspaceTrustDiscovery } from "./discovery.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
-import { restoredQuitBuffer, settleQuitRender } from "./quit-render.ts";
-import { matchWorkspaceMenu } from "./target.ts";
 
 type WriterInput = Pick<WorkspaceTrustDiscoveryInput, "terminal" | "clearance"> & {
   readonly manualTrust: boolean;
@@ -34,56 +24,21 @@ export function codexTrustWriter({
   write,
 }: WriterInput) {
   let relinquished = false;
-  let claimedMenu: string | undefined;
-  let claimedBuffer: XtermTerminal["buffer"]["active"]["type"] | undefined;
-  let settlingQuitRender = false;
-  let replacedQuit = false;
-  const revokeAnswerIfRequestChanged = () =>
-    answers.revokeIfGateChanged(discovery.currentRequestId);
-  const inspectNativeOutcome = <T>(inspect: () => T): T | undefined => {
-    try {
-      return inspect();
-    } catch {
-      answers.revoke("frame");
-      return undefined;
-    }
-  };
-  const recordConfirmation = () => {
-    if (!answers.confirmationDispatched) return;
-    revokeAnswerIfRequestChanged();
-    const outcome = inspectNativeOutcome(() => {
-      const frame = settledNativeSnapshot(terminal());
-      return frame && workspaceTrustCompletion(frame, clearance);
-    });
-    if (outcome) answers.recordConfirmation(outcome);
-  };
-  const readQuitOutcome = (current: ElwoodTerminal) =>
-    inspectNativeOutcome(() => {
-      const frame = settledNativeSnapshot(current);
-      if (!frame) return undefined;
-      const match = discovery.matchObservedFrame(frame);
-      if (match && match.identity === claimedMenu) return match.menu.dialog.options[1].selected;
-      return restoredQuitBuffer(claimedBuffer, current, frame);
-    });
-  const observePendingQuitFrame = () => {
-    const frame = settledNativeSnapshot(terminal());
-    if (!(frame && matchWorkspaceMenu(frame.lines))) return;
-    replacedQuit ||= discovery.matchObservedFrame(frame)?.identity !== claimedMenu;
-  };
   const answers: WorkspaceTrustAnswers<NumberedTrustOption, 0 | 1> = new WorkspaceTrustAnswers({
     currentRequest: () => {
       const current = discovery.currentRequestWithDeclineOutcome;
       if (!(manualTrust && current)) return undefined;
       const { request, declineOutcome } = current;
+      const [accept, decline] = request.choices;
+      if (request.choices.length !== 2 || !accept || !decline) return undefined;
       answers.revokeIfGateChanged(request.id);
       return {
         request,
         gateIdentity: request.id,
-        choices: request.choices.map(({ id }, index) => ({
-          id,
-          choiceIndex: index === 0 ? 0 : 1,
-          outcome: index === 0 ? "affirmative" : declineOutcome,
-        })),
+        choices: [
+          { id: accept.id, choiceIndex: 0, outcome: "affirmative" },
+          { id: decline.id, choiceIndex: 1, outcome: declineOutcome },
+        ],
       };
     },
     readChoice: (_gate, index, requestId, previousFrame, finish, signal) => {
@@ -117,8 +72,7 @@ export function codexTrustWriter({
             option: menu.dialog.options[index],
             claim: () => {
               if (!stillCurrent()) return false;
-              claimedMenu = candidate.identity;
-              claimedBuffer = terminal().xterm.buffer.active.type;
+              confirmation.claim(candidate.identity);
               return true;
             },
           };
@@ -128,15 +82,16 @@ export function codexTrustWriter({
     },
     step: codexWorkspaceTrustStep,
     write,
-    reconcileDialogEvidence: recordConfirmation,
+    reconcileDialogEvidence: () => confirmation.recordConfirmation(),
     relinquish: () => {
       relinquished = true;
     },
   });
+  const confirmation = codexTrustConfirmation({ terminal, clearance, discovery, answers });
   return {
-    answerDialog: (id: string, choice: string, options?: ElwoodDialogAnswerOptions) =>
-      answers.answer(id, choice, options),
-    recordConfirmation,
+    answerDialog: (requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) =>
+      answers.answer(requestId, choiceId, options),
+    recordConfirmation: confirmation.recordConfirmation,
     retireNavigation: (id: string) => answers.retireNavigation(id),
     resumeAfterDialogDelivery: () => answers.resumeNavigation(),
     bind(current: ElwoodTerminal, closing: AbortSignal) {
@@ -150,48 +105,12 @@ export function codexTrustWriter({
         () => {
           offInput();
           offNative();
-          if (!settlingQuitRender) answers.revoke("frame");
+          confirmation.closing();
         },
         { once: true },
       );
     },
-    observeFrame(menuIdentity: string | undefined) {
-      if (settlingQuitRender) {
-        inspectNativeOutcome(observePendingQuitFrame);
-        return;
-      }
-      revokeAnswerIfRequestChanged();
-      if (answers.confirmationDispatched && menuIdentity !== claimedMenu) {
-        const replacement =
-          menuIdentity ??
-          inspectNativeOutcome(() => {
-            const frame = settledNativeSnapshot(terminal());
-            return frame && matchWorkspaceMenu(frame.lines);
-          });
-        if (replacement) answers.revoke("frame");
-      }
-      answers.resumeNavigation();
-    },
-    nativeExit({ exitCode, signal }: PtyExit) {
-      const current = terminal();
-      if (!nativeRenderEvidenceIntact(current)) {
-        answers.revoke();
-        return;
-      }
-      const cleanQuit = exitCode === 0 && !signal && answers.awaitingNativeExit;
-      const outcome = cleanQuit && readQuitOutcome(current);
-      if (outcome !== undefined) {
-        answers.nativeExit(outcome);
-        return;
-      }
-      // Let already-received native output veto Quit without delaying session exit.
-      settlingQuitRender = answers.awaitingNativeExit;
-      if (settlingQuitRender) {
-        settleQuitRender(current, (settled) => {
-          settlingQuitRender = false;
-          answers.nativeExit(settled && !replacedQuit && readQuitOutcome(current) === true);
-        });
-      }
-    },
+    observeFrame: confirmation.observeFrame,
+    nativeExit: confirmation.nativeExit,
   };
 }

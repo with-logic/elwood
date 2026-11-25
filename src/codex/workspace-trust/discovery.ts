@@ -125,7 +125,7 @@ export class CodexWorkspaceTrustDiscovery {
     return this.currentRequestId === id && this.canUseTrustFrame(frame);
   }
 
-  /** Compare a shutdown render with the claimed native menu after polling closes. */
+  /** Match captured launch evidence after polling closes. Callers must check the claimed menu identity. */
   matchObservedFrame(frame: TerminalSnapshot): WorkspaceTrustFrame | undefined {
     return this.match?.(this.input.terminal(), frame);
   }

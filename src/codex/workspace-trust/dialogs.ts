@@ -67,8 +67,8 @@ export class CodexWorkspaceTrustDialogs {
       deliveryRevision: () => this.deliveryRevision,
     });
   }
-  answerDialog(id: string, choice: string, options?: ElwoodDialogAnswerOptions): Promise<void> {
-    return this.writer.answerDialog(id, choice, options);
+  answerDialog(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
+    return this.writer.answerDialog(requestId, choiceId, options);
   }
   recordConfirmation(): void {
     this.writer.recordConfirmation();

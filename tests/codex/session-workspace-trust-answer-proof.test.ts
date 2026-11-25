@@ -17,11 +17,29 @@ afterEach(() => {
 });
 
 test.each([
-  "caller input",
-  "new frame",
-  "abort",
-] as const)("C-ATTN-07 %s revokes a held first-key proof", async (change) => {
-  const { cwd, session, pty, request, render } = await setupWorkspaceAnswer();
+  {
+    name: "caller input",
+    mutate: ({ session }: Awaited<ReturnType<typeof setupWorkspaceAnswer>>) =>
+      session.sendKeys("x"),
+    writes: ["x"],
+    category: "aborted",
+  },
+  {
+    name: "new frame",
+    mutate: ({ cwd, render }: Awaited<ReturnType<typeof setupWorkspaceAnswer>>) =>
+      render(menuWithQuitSelected(cwd)),
+    writes: [],
+    category: "frame",
+  },
+  {
+    name: "abort",
+    mutate: (_: unknown, abort: AbortController) => abort.abort(),
+    writes: [],
+    category: "aborted",
+  },
+])("C-ATTN-07 $name revokes a held first-key proof", async ({ mutate, writes, category }) => {
+  const fixture = await setupWorkspaceAnswer();
+  const { cwd, session, pty, request } = fixture;
   const held = await holdWorkspaceProof(cwd);
   const abort = new AbortController();
   try {
@@ -36,17 +54,15 @@ test.each([
     const first = await Promise.race([held.began.then(() => "proof"), outcome]);
     expect(first).toBe("proof");
     expect(pty.writes).toEqual([]);
-    if (change === "caller input") await session.sendKeys("x");
-    if (change === "new frame") await render(menuWithQuitSelected(cwd));
-    if (change === "abort") abort.abort();
+    await mutate(fixture, abort);
     held.release();
     await held.resumed;
     const result = await outcome;
     await session.listDialogs();
-    expect(pty.writes).toEqual(change === "caller input" ? ["x"] : []);
+    expect(pty.writes).toEqual(writes);
     expect(result).toMatchObject({
       code: "dialog_answer_failed",
-      details: { category: change === "new frame" ? "frame" : "aborted" },
+      details: { category },
     });
   } finally {
     held.release();
@@ -122,9 +138,12 @@ test("C-ATTN-07 navigation uses the proof of the same settled frame once", async
 });
 
 test.each([
-  "aborted",
-  "frame",
-] as const)("C-ATTN-07 writer proof failure (%s) leaves polling discovery available", async (category) => {
+  { category: "aborted", cancel: (controller: AbortController) => controller.abort() },
+  { category: "frame", cancel: () => undefined },
+])("C-ATTN-07 writer proof failure ($category) leaves polling discovery available", async ({
+  category,
+  cancel,
+}) => {
   const { cwd, session, pty, request } = await setupWorkspaceAnswer();
   const held = await holdWorkspaceProof(cwd);
   const controller = new AbortController();
@@ -135,7 +154,7 @@ test.each([
     });
     const rejected = expect(answer).rejects.toMatchObject({ details: { category } });
     await held.began;
-    if (category === "aborted") controller.abort();
+    cancel(controller);
     await vi.advanceTimersByTimeAsync(510);
     await rejected;
     held.release();
