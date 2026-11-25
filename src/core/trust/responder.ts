@@ -36,9 +36,10 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
     return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
   }
-  /** Includes immediate takeover without changing the status or attention deadline. */
   get humanOwnedPrompt(): TrustPromptIdFor<A> | undefined {
-    const id = this.episode?.callerOwned ? this.episode.candidate.spec.id : this.blockedPrompt;
+    const episode = this.episode;
+    const needsHuman = episode?.callerOwned || episode?.expired;
+    const id = needsHuman ? episode.candidate.spec.id : this.humanPrompt;
     return id as TrustPromptIdFor<A> | undefined;
   }
   /** Read the latest settled frame; undefined during pending/synchronized/failed rendering

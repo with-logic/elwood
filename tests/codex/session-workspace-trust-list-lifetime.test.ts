@@ -38,9 +38,14 @@ test("C-ATTN-07 a superseded stalled proof does not cancel a newer frame", async
     const old = session.listDialogs();
     await held.began;
     await render(menu(cwd, "folder-access-no-hook-bypass"));
-    const latest = session.listDialogs();
+    await expect(
+      Promise.race([
+        session.listDialogs(),
+        new Promise((resolve) => setImmediate(() => resolve("waiting"))),
+      ]),
+    ).resolves.toEqual([]);
     expect(await old).toEqual([]);
-    expect(await latest).toEqual([
+    expect(await session.listDialogs()).toEqual([
       expect.objectContaining({
         choices: [
           expect.objectContaining({ label: "Trust and continue" }),
@@ -48,25 +53,6 @@ test("C-ATTN-07 a superseded stalled proof does not cancel a newer frame", async
         ],
       }),
     ]);
-  } finally {
-    held.release();
-    await session.teardown();
-  }
-});
-
-test("C-ATTN-07 a queued read does not switch to a third native frame", async () => {
-  const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
-  try {
-    await render(menu(cwd));
-    const first = session.listDialogs();
-    await held.began;
-    await render(menu(cwd, "folder-access-no-hook-bypass"));
-    const second = session.listDialogs();
-    await render(menu(cwd));
-    held.release();
-    expect(await Promise.all([first, second])).toEqual([[], []]);
-    expect(await session.listDialogs()).toHaveLength(1);
   } finally {
     held.release();
     await session.teardown();
@@ -127,7 +113,9 @@ test.each([
     if (revoke === "host write") await session.terminal.writeOutput("host output");
     if (revoke === "resize") await session.resize({ rows: 20, cols: 84 });
     if (revoke === "composer") await render(codexTty(codexComposer));
-    expect(await listing).toEqual([]);
+    await expect(
+      Promise.race([listing, new Promise((resolve) => setImmediate(() => resolve("waiting")))]),
+    ).resolves.toEqual([]);
     held.release();
     await render(menu(cwd));
     expect(await session.listDialogs()).toEqual([]);

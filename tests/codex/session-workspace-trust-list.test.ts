@@ -58,8 +58,10 @@ test("C-ATTN-07 lists exact scope, text, choices and stable request identity", a
 
     await render("not a trust menu");
     expect(await session.listDialogs()).toEqual([]);
-    await render(menu(cwd));
-    expect((await session.listDialogs())[0]?.id).not.toBe(request.id);
+    await render(menu(cwd, "folder-access-no-hook-bypass"));
+    const [restored] = await session.listDialogs();
+    assert.isDefined(restored);
+    expect(restored.id).not.toBe(replacement.id);
     await becomeReady(session.elwoodSessionId, cwd);
     await render(codexTty(codexComposer));
     expect(await session.listDialogs()).toEqual([]);
@@ -139,6 +141,37 @@ test("C-ATTN-07 revalidates the exact linked Git root even if the native row is 
     expect(await session.listDialogs()).toEqual([]);
     expect(ptys[0]!.writes).toEqual([]);
   } finally {
+    await session.teardown();
+  }
+});
+
+test("C-ATTN-07 rearmed automatic trust keeps ownership until the current attempt expires", async () => {
+  installFakes({ supportsHookTrustBypass: false });
+  const cwd = realpathSync.native(tempDir());
+  const session = await startCodex({ cwd, autotrust: true });
+  const pty = ptys[0]!;
+  vi.useFakeTimers();
+  try {
+    const complete = menu(cwd);
+    const incomplete = complete.split("› 1.")[0];
+    assert.isDefined(incomplete);
+    pty.emitData(clear + incomplete);
+    await vi.advanceTimersByTimeAsync(5_020);
+    expect(session.status).toBe("blocked");
+    expect(await session.listDialogs()).toEqual([]);
+
+    pty.emitData(clear + complete);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(pty.writes).toContain("1\r");
+    expect(session.status).toBe("blocked");
+    expect(await session.listDialogs()).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await session.listDialogs()).toEqual([
+      expect.objectContaining({ targetPath: cwd, targetScope: "folder" }),
+    ]);
+  } finally {
+    vi.useRealTimers();
     await session.teardown();
   }
 });

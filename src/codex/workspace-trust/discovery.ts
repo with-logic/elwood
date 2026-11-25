@@ -55,9 +55,9 @@ export class CodexWorkspaceTrustDiscovery {
     this.end();
   }
 
-  /** The retained identity through an unsettled repaint. Delivery requires fresh proof. */
-  get currentRequest(): ElwoodDialogRequest | undefined {
-    return this.open?.request;
+  /** Identity persists through an unsettled repaint. Only read() verifies a request. */
+  get currentRequestId(): string | undefined {
+    return this.open?.request.id;
   }
 
   async list(): Promise<readonly ElwoodDialogRequest[]> {
@@ -69,11 +69,10 @@ export class CodexWorkspaceTrustDiscovery {
     const candidate = this.reconcile();
     if (!candidate) return undefined;
 
-    const previous = this.checking;
-    if (previous && previous.frame !== candidate.frame) await previous.result;
-    if (!this.isFrameCurrent(candidate.frame)) return undefined;
-
-    if (this.checking) return await this.checking.result;
+    if (this.checking) {
+      // Never queue the current frame behind an obsolete lookup and a second deadline.
+      return this.checking.frame === candidate.frame ? await this.checking.result : undefined;
+    }
     const result = this.verify(candidate).finally(() => {
       this.checking = undefined;
     });
@@ -82,7 +81,7 @@ export class CodexWorkspaceTrustDiscovery {
   }
 
   isCurrent({ frame, request }: VerifiedWorkspaceTrust): boolean {
-    return this.currentRequest === request && this.isFrameCurrent(frame);
+    return this.currentRequestId === request.id && this.isFrameCurrent(frame);
   }
 
   private reconcile(): WorkspaceTrustFrame | undefined {
