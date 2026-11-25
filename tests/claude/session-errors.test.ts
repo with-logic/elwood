@@ -157,10 +157,11 @@ describe("ClaudeSessionApi errors", () => {
     installFakes();
     setHookBridgeFactoryForTests(() => ({
       start: () => Promise.reject(new Error("bridge failed")),
-      stop: () => Promise.resolve(),
+      stop: () => Promise.reject(new Error("bridge cleanup failed")),
     }));
     await expect(startClaude({ cwd: tempDir() })).rejects.toMatchObject({
       code: "hook_bridge_failed",
+      details: { cause: "bridge failed" },
     });
   });
 

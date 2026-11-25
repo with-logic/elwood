@@ -3,12 +3,15 @@
  * Covers PRD §5.7 and C-API-27.
  */
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
   type ClaudeEventMap,
+  type ClaudeSession,
   type CodexEventMap,
+  type CodexSession,
   type ElwoodAgentSession,
   type ElwoodCommonEventMap,
+  type ElwoodDialogRequest,
   type ElwoodEventMap,
   type ElwoodLoopEvent,
   startClaude,
@@ -45,11 +48,24 @@ describe("ElwoodAgentSession", () => {
     void [deprecatedAlias, codexEvent]; // the assignments above are the (compile-time) assertion
   });
 
+  test("C-API-27 listDialogs exposes shared and adapter-specific request types", () => {
+    expectTypeOf<ReturnType<ElwoodAgentSession["listDialogs"]>>().toEqualTypeOf<
+      Promise<readonly ElwoodDialogRequest<"claude" | "codex">[]>
+    >();
+    expectTypeOf<ReturnType<ClaudeSession["listDialogs"]>>().toEqualTypeOf<
+      Promise<readonly ElwoodDialogRequest<"claude">[]>
+    >();
+    expectTypeOf<ReturnType<CodexSession["listDialogs"]>>().toEqualTypeOf<
+      Promise<readonly ElwoodDialogRequest<"codex">[]>
+    >();
+  });
+
   test("C-API-27 both adapters satisfy the common session type", async () => {
     const cwd = tempDir();
     installClaudeFakes();
     const claude: ElwoodAgentSession = await startClaude({ cwd });
     expect(claude.status).toBe("running");
+    expect(await claude.listDialogs()).toEqual([]);
     const statuses: string[] = [];
     const unsubscribe = claude.on("status", (event) => statuses.push(event.status));
     await claude.stop();
@@ -64,6 +80,7 @@ describe("ElwoodAgentSession", () => {
     const sessions: readonly ElwoodAgentSession[] = [codex];
     for (const session of sessions) {
       expect(typeof session.elwoodSessionId).toBe("string");
+      expect(await session.listDialogs()).toEqual([]);
       await session.resize({ cols: 100, rows: 30 });
       await session.stop();
     }

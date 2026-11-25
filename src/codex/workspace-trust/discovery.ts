@@ -1,29 +1,16 @@
 /** List the current workspace trust menu using native output and verified launch evidence (C-ATTN-07). */
-import { randomUUID } from "node:crypto";
-import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
-import { onNativeRenderEvidenceInvalidated, settledNativeSnapshot } from "../../terminal/cursor.ts";
+import {
+  type VerifiedWorkspaceTrust,
+  WorkspaceTrustPolling,
+} from "../../core/dialogs/workspace-trust-polling.ts";
+import { settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import { createTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu-frame.ts";
 import type { ElwoodDialogRequest } from "./types.ts";
 
-type VerifiedWorkspaceTrust = {
-  readonly frame: TerminalSnapshot;
-  readonly request: ElwoodDialogRequest;
-};
-type Open = { readonly identity: string; readonly request: ElwoodDialogRequest };
-type Verification = {
-  readonly frame: TerminalSnapshot;
-  readonly result: Promise<VerifiedWorkspaceTrust | undefined>;
-};
-
 export class CodexWorkspaceTrustDiscovery {
-  private open: Open | undefined;
-  private sampled:
-    | { readonly frame: TerminalSnapshot; readonly candidate: WorkspaceTrustFrame | undefined }
-    | undefined;
-  private checking: Verification | undefined;
-  private readonly lifetime = new AbortController();
+  private readonly polling = new WorkspaceTrustPolling<"codex", WorkspaceTrustFrame>();
   private readonly input: WorkspaceTrustDiscoveryInput;
   private readonly match: ReturnType<typeof createTrustFrameMatcher> | undefined;
 
@@ -33,15 +20,7 @@ export class CodexWorkspaceTrustDiscovery {
   }
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal): void {
-    const offNative = onNativeRenderEvidenceInvalidated(terminal, () => this.end());
-    closing.addEventListener(
-      "abort",
-      () => {
-        offNative();
-        this.end();
-      },
-      { once: true },
-    );
+    this.polling.bind(terminal, closing, () => this.end());
   }
 
   /** Track native layout changes without reading the filesystem. */
@@ -59,7 +38,7 @@ export class CodexWorkspaceTrustDiscovery {
 
   /** Identity persists through an unsettled repaint. Only read() verifies a request. */
   get currentRequestId(): string | undefined {
-    return this.open?.request.id;
+    return this.polling.currentRequest?.id;
   }
 
   async list(): Promise<readonly ElwoodDialogRequest[]> {
@@ -67,27 +46,20 @@ export class CodexWorkspaceTrustDiscovery {
     return verified && this.isRequestFrameCurrent(verified) ? [verified.request] : [];
   }
 
-  async read(): Promise<VerifiedWorkspaceTrust | undefined> {
+  async read(): Promise<VerifiedWorkspaceTrust<"codex"> | undefined> {
     const candidate = this.reconcile();
     if (!candidate) return undefined;
-
-    if (this.checking) {
-      // Never queue the current frame behind an obsolete lookup and a second deadline.
-      return this.checking.frame === candidate.frame ? await this.checking.result : undefined;
-    }
-    const result = this.verify(candidate).finally(() => {
-      this.checking = undefined;
-    });
-    this.checking = { frame: candidate.frame, result };
-    return await result;
+    return await this.polling.read(candidate.frame, candidate.revalidateLaunchEvidence, (proved) =>
+      this.acceptProof(candidate, proved),
+    );
   }
 
-  isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust): boolean {
+  isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust<"codex">): boolean {
     return this.currentRequestId === request.id && this.canUseTrustFrame(frame);
   }
 
   private reconcile(): WorkspaceTrustFrame | undefined {
-    if (this.lifetime.signal.aborted || !this.match) return undefined;
+    if (this.polling.signal.aborted || !this.match) return undefined;
     const terminal = this.input.terminal();
     const frame = settledNativeSnapshot(terminal);
     if (!frame) return undefined;
@@ -99,19 +71,14 @@ export class CodexWorkspaceTrustDiscovery {
       this.retire();
       return undefined;
     }
-    if (this.sampled?.frame !== frame)
-      this.sampled = { frame, candidate: this.match(terminal, frame) };
-    const { candidate } = this.sampled;
-    if (!candidate || (this.open && this.open.identity !== candidate.identity)) this.retire();
-    return candidate;
+    return this.polling.sample(terminal, frame, this.match);
   }
 
-  private async verify(
+  private acceptProof(
     candidate: WorkspaceTrustFrame,
-  ): Promise<VerifiedWorkspaceTrust | undefined> {
-    const { frame, menu, identity, revalidateLaunchEvidence } = candidate;
-    const proved = await boundedTrustEvidence(revalidateLaunchEvidence, this.lifetime.signal);
-    if (!this.canUseTrustFrame(frame)) return undefined;
+    proved: boolean | undefined,
+  ): VerifiedWorkspaceTrust<"codex"> | undefined {
+    if (!this.canUseTrustFrame(candidate.frame)) return undefined;
     // Expiry ends discovery. A completed mismatch only retires this request.
     if (proved === undefined) {
       this.end();
@@ -122,39 +89,18 @@ export class CodexWorkspaceTrustDiscovery {
       return undefined;
     }
 
-    if (this.open?.identity !== identity) {
-      const request: ElwoodDialogRequest = Object.freeze({
-        id: randomUUID(),
-        elwoodSessionId: this.input.elwoodSessionId,
-        agent: "codex",
-        kind: "trust",
-        label: "workspace_trust",
-        ...menu.target,
-        text: menu.dialog.header,
-        choices: Object.freeze(
-          menu.dialog.options.map(({ label }) => Object.freeze({ id: randomUUID(), label })),
-        ),
-      });
-      this.open = { identity, request };
-    }
-    return { frame, request: this.open.request };
+    return this.polling.acceptVerified("codex", this.input.elwoodSessionId, candidate);
   }
 
   private canUseTrustFrame(frame: TerminalSnapshot): boolean {
-    return (
-      !this.lifetime.signal.aborted &&
-      this.input.humanOwnedPrompt() === "workspace_trust" &&
-      settledNativeSnapshot(this.input.terminal()) === frame
-    );
+    return this.polling.canUseTrustFrame(frame, this.input);
   }
 
   private end(): void {
-    this.lifetime.abort();
-    this.sampled = undefined;
-    this.retire();
+    this.polling.end();
   }
 
   private retire(): void {
-    this.open = undefined;
+    this.polling.retire();
   }
 }

@@ -30,6 +30,7 @@ export type StateFileWriter = (path: string, text: string) => void;
 export type LaunchOwnership = {
   /** Exclusive authority for startup publication and destructive cleanup. */
   readonly current: () => boolean;
+  readonly assertCurrent: () => void;
   /** Ordinary loop and record writes may continue on a predecessor while resume is pending. */
   readonly canPersist: () => boolean;
   readonly readFile: (path: string, maxBytes?: number) => string | undefined;
@@ -53,6 +54,9 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   generations.set(path, token.entry);
   collected.register(token, token.entry, token);
   const current = () => generations.get(path) === token.entry;
+  const assertCurrent = () => {
+    if (!current()) throw elwoodError("session_not_running", "Launch was superseded.");
+  };
   let retryOwner: Entry | undefined;
   let failedPublications: LaunchPublication[] = [];
   /** The later launches on this path, newest first; `undefined` when this one may not persist. */
@@ -71,6 +75,7 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   const canPersist = () => successors() !== undefined;
   return {
     current,
+    assertCurrent,
     canPersist,
     readFile: (file, maxBytes) => {
       const later = successors();
@@ -95,7 +100,7 @@ export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
       for (const successor of later) successor.publication.forgetMatching(file, directory);
     },
     publishFile: (file, text) => {
-      if (!current()) throw elwoodError("session_not_running", "Launch was superseded.");
+      assertCurrent();
       if (token.phase === "pending") publication.write(file, text);
       else publication.persist(file, text, []);
     },

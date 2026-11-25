@@ -29,6 +29,7 @@ import { buildClaudeShellCommand, shellLaunch } from "../command.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
+import type { ClaudeLaunchTrustEvidence } from "../workspace-trust/target.ts";
 
 /** The environment snapshot and directory identity captured before this launch's preflight. */
 export type ClaudeLaunchOptions = StartClaudeOptions & {
@@ -44,6 +45,7 @@ export type BuildClaudeSessionInput = {
   readonly resumed: boolean;
   readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
+  readonly workspaceTrustEvidence: ClaudeLaunchTrustEvidence | undefined;
 };
 
 /** The rendered-frame observers (turn/attention/screen-fact) for a Claude session. */

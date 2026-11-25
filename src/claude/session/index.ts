@@ -28,6 +28,10 @@ import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { preflightClaude } from "../preflight.ts";
+import {
+  type ClaudeLaunchTrustEvidence,
+  captureClaudeStartupTrustEvidence,
+} from "../workspace-trust/target.ts";
 import { resetClaudeHookBridgeFactoryForTests, setHookBridgeFactoryForTests } from "./bridge.ts";
 import { buildClaudeSession } from "./build.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
@@ -85,6 +89,7 @@ export async function startClaudeWithId(
       env: options.env,
     }),
   );
+  const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(directory);
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {
       cwd: options.cwd,
@@ -99,7 +104,7 @@ export async function startClaudeWithId(
       stateDir,
       { ...options, launchDirectory: directory },
       false,
-      warning,
+      { preflightWarning: warning, workspaceTrustEvidence },
     );
   });
   return queuePersonaMessage(session, options.persona, session.closing.signal);
@@ -110,7 +115,10 @@ export function startClaudeFromRecord(
   stateDir: string,
   options: ClaudeLaunchOptions,
   resumed: boolean,
-  preflightWarning: ClaudePreflightWarning | undefined,
+  evidence: {
+    readonly preflightWarning: ClaudePreflightWarning | undefined;
+    readonly workspaceTrustEvidence: ClaudeLaunchTrustEvidence | undefined;
+  },
   ownership?: LaunchReservation,
 ) {
   // Validate the effort enum before any spawn (C-CLAUDE-20): both start and resume
@@ -123,7 +131,8 @@ export function startClaudeFromRecord(
   );
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
-  // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure
+  // in this same synchronous turn. This keeps a stopping predecessor from deleting an
+  // empty home before we bind. Wrap the WHOLE build so ANY failure
   // before the session takes ownership releases THIS launch's own socket file, and the
   // shared home only if no concurrent launch's socket is in it (§8.1, §9.1). On success
   // ownership transfers to the returned session; teardown removes the whole home.
@@ -131,6 +140,7 @@ export function startClaudeFromRecord(
     safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
     (owner, activate) => {
+      owner.assertCurrent();
       const runtime = sessionRuntime(
         {
           stateDir,
@@ -148,7 +158,7 @@ export function startClaudeFromRecord(
             runtime,
             options,
             resumed,
-            preflightWarning,
+            ...evidence,
             activate,
           }),
       );

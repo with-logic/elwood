@@ -113,6 +113,10 @@ export class FakeUnderlying implements ElwoodAgentSession {
   teardown(): Promise<void> {
     return this.record("teardown", []);
   }
+  listDialogs(): Promise<readonly []> {
+    return Promise.resolve([]);
+  }
+
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
     void this.record("listModels", [options]);
     return Promise.resolve([]);

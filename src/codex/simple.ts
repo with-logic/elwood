@@ -33,7 +33,7 @@ void _stopBoundaryCheck;
 /** Options for `CodexSession`: the low-level `startCodex` options with an optional `cwd`. */
 export type CodexSessionOptions = Omit<StartCodexOptions, "cwd"> & { readonly cwd?: string };
 
-export class CodexSession extends SessionBase<CodexSessionApi> {
+export class CodexSession extends SessionBase<CodexSessionApi, "codex"> {
   private readonly options: StartCodexOptions;
 
   constructor(options: CodexSessionOptions = {}) {
@@ -51,11 +51,6 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
   }
 
   declare readonly listModels: CodexSessionApi["listModels"];
-
-  /** Start the session if needed, then list any verified workspace trust prompt. */
-  async listDialogs() {
-    return (await this.start()).listDialogs();
-  }
 
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;

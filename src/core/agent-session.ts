@@ -4,7 +4,8 @@
  */
 
 import type { ElwoodTerminal } from "../terminal/headless.ts";
-import type { ElwoodActivityEvent } from "./activity/index.ts";
+import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
+import type { ElwoodDialogRequest } from "./dialogs/types.ts";
 import type { SendOptions } from "./images/types.ts";
 import type { LoopControls } from "./loops/loop-controls.ts";
 import type { AgentModelOption } from "./models/rows.ts";
@@ -29,7 +30,10 @@ export type { ElwoodCommonEventMap, ElwoodCommonEventName } from "./types.ts";
  * the shared events, io, commands, and lifecycle without adapter-specific
  * generics.
  */
-export interface ElwoodAgentSession extends LoopControls, QuestionControls, StatsControls {
+export interface ElwoodAgentSession<Agent extends ElwoodAgentKind = ElwoodAgentKind>
+  extends LoopControls,
+    QuestionControls,
+    StatsControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
@@ -49,6 +53,7 @@ export interface ElwoodAgentSession extends LoopControls, QuestionControls, Stat
     handler: (event: ElwoodCommonEventMap[E]) => void,
   ): void;
 
+  listDialogs(): Promise<readonly ElwoodDialogRequest<Agent>[]>;
   sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
   sendMessage(message: string, options?: SendOptions): Promise<void>;
   sendGuidance(message: string, options?: SendOptions): Promise<void>;

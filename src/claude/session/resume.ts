@@ -22,6 +22,7 @@ import {
 } from "../../state/launch-posture.ts";
 import { defaultStateDir, readSessionRecord, sessionDir } from "../../state/store.ts";
 import { preflightClaude } from "../preflight.ts";
+import { captureClaudeStartupTrustEvidence } from "../workspace-trust/target.ts";
 import { startClaudeFromRecord } from "./index.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 
@@ -63,6 +64,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.claude.launch, claudeLaunchPosture(options));
     const resumedRecord = withClaudeLaunch(record, launch);
+    const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(directory);
     const session = await recheckLaunchDirectoryOnFailure(directory, () =>
       startClaudeFromRecord(
         resumedRecord,
@@ -91,7 +93,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
             : { strictVersionCheck: options.strictVersionCheck }),
         },
         true, // resumed: mark ready on the first composer marker, symmetric with Codex
-        warning,
+        { preflightWarning: warning, workspaceTrustEvidence },
         ownership,
       ),
     );

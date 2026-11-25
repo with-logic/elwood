@@ -29,6 +29,7 @@ import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
+import type { ClaudeWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
 import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
@@ -46,6 +47,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
   private readonly runtimeParts: ClaudeRuntimeParts;
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
+  private readonly dialogs: ClaudeWorkspaceTrustDiscovery;
   private requestedSize: TerminalSize;
   // Only a session requested BELOW the 100-column startup floor bootstraps wide and
   // defers its restore to readiness (C-API-36); a 100+ session resizes immediately.
@@ -64,6 +66,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     terminalReplay: TerminalReplayBuffer,
     requestedSize: TerminalSize,
     loopDefinitions: readonly PersistedLoopDefinition[],
+    dialogs: ClaudeWorkspaceTrustDiscovery,
   ) {
     super(
       "claude",
@@ -79,6 +82,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     this.configureClaudeQuestions();
     this.runtimeParts = runtimeParts;
     this.emitter = emitter;
+    this.dialogs = dialogs;
     this.requestedSize = requestedSize;
     this.awaitingInitialReady = requestedSize.cols < CLAUDE_STARTUP_MIN_COLS;
   }
@@ -94,6 +98,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
+  readonly listDialogs = () => this.dialogs.list();
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);
   }
