@@ -2,25 +2,13 @@
 import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
-import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
 import { claudeNoticeResidue } from "../../e2e/questions/claude-notice.ts";
-import { nativeSnapshot, registry } from "./helpers.ts";
+import { registry } from "./helpers.ts";
+import { answerNoteWith, color, native, note } from "./native-note-helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
-const note: QuestionDefinition = {
-  prompt: "Which test note?",
-  header: "Note",
-  options: [
-    { label: "Brief", description: "Short" },
-    { label: "Detailed", description: "Long" },
-  ],
-  selection: "single",
-  textMode: "alternative",
-  supportsSecretInput: false,
-};
 const typedAnswer = "ELWOOD single line answer";
-const native = (name: string) => nativeSnapshot(name, "2.1.332");
 /** The single-choice Other row, which is the questionnaire's last row before its closing rule. */
 const otherRow = (name: string) => native(name).lines.find((line) => /^(?:❯| ) 3\. /.test(line));
 
@@ -61,16 +49,11 @@ test("C-QUESTION-03 keeps the answer's own trailing spaces before a notice's bla
 });
 
 test("C-QUESTION-03 types alternative text into an Other editor that keeps blank cells", async () => {
-  const request = registry().publish("native", "blocking", [note])!;
-  const answers = validateQuestionAnswers(request, [
-    { questionId: request.questions[0]!.id, text: typedAnswer },
+  expect(await answerNoteWith(typedAnswer, "single-other-typed-native")).toEqual([
+    "\x1b[B",
+    `\x1b[200~${typedAnswer}\x1b[201~`,
+    "\r",
   ]);
-  const { io, writes } = scriptedQuestionIo(native("single-other-notice-native"), [
-    native("single-other-placeholder-native"),
-    native("single-other-typed-native"),
-  ]);
-  await answerClaudeQuestions(request, answers, io);
-  expect(writes).toEqual(["\x1b[B", `\x1b[200~${typedAnswer}\x1b[201~`, "\r"]);
 });
 
 test("C-QUESTION-03 never pastes over an Other draft that keeps blank cells", async () => {
@@ -114,4 +97,15 @@ test("C-QUESTION-03 never pastes after a draft whose first line reads like the p
     "Native write was not authorized",
   );
   expect(writes).toEqual(["\x1b[B"]);
+});
+
+test("C-QUESTION-03 reads a shorter grouped question whose footer reached the notice row", () => {
+  // Five rows of Color text shrank the panel by four, so the footer kept the notice's cells.
+  const shrunk = native("grouped-shrunk-footer-native");
+  expect(shrunk.lines[40]).toMatch(/^Enter to select · .+ · Esc to cancel {20,}$/);
+  expect(parseClaudeQuestionScreen(shrunk, [color, note])).toMatchObject({
+    kind: "question",
+    questionIndex: 1,
+    cursor: 0,
+  });
 });

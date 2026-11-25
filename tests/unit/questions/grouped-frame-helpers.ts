@@ -20,3 +20,21 @@ export function groupedAnswerFrames(): readonly QuestionFrame[] {
     fixture("review"),
   ];
 }
+
+/** Successors for Color Other text the editor draws as `drawn`, then both features; the review shows `reviewed`. */
+export function groupedTextAnswerFrames(drawn: string, reviewed: string): readonly QuestionFrame[] {
+  const choices = groupedAnswerFrames();
+  const colorOther = frame(
+    fixture("questions")
+      .text.replace("❯ 1.", "  1.")
+      .replace("  3. Type something.", "❯ 3. Type something."),
+  );
+  return [
+    choices[0]!,
+    colorOther,
+    frame(colorOther.text.replace("Type something.", drawn)),
+    ...choices.slice(1, -1),
+    frame(fixture("review").text.replace("→ Blue", `→ ${reviewed}`)),
+    fixture("answered"),
+  ];
+}

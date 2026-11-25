@@ -6,7 +6,7 @@ import type { ElwoodQuestion, ElwoodQuestionRequest } from "../../core/questions
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { type BoundClaudeQuestionAnswer, bindClaudeQuestionAnswers } from "./bind-answers.ts";
 import { questionLayoutFailed, questionNavigation } from "./navigation.ts";
-import { normalizeClaudeQuestionText } from "./rows.ts";
+import { claudeRowsDrawText } from "./rows.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
 /** The empty Other editor; a notice Claude replaced on its row leaves blank cells after it. */
@@ -59,22 +59,29 @@ async function answerOne(
     }
   }
   if (answer.text !== undefined) {
+    const { text } = answer;
     await navigation.move(otherCursorIndex);
     await io.write(
-      `${bracketedPasteStart}${answer.text}${bracketedPasteEnd}`,
+      `${bracketedPasteStart}${text}${bracketedPasteEnd}`,
       (frame) => navigation.at(frame)?.other.replace(/ +$/, "") === EMPTY_OTHER_EDITOR,
     );
-    await io.wait((frame) => navigation.at(frame)?.other === answer.text);
+    await io.wait((frame) => {
+      const pasted = navigation.at(frame);
+      return pasted !== undefined && claudeRowsDrawText(pasted.other, text);
+    });
   }
   await navigation.move(targetCursorIndex);
   await io.write("\r", (frame) => {
     const current = navigation.at(frame);
     if (current?.cursor !== targetCursorIndex) return false;
+    // Validation requires text for a `none` question, so only `single` can skip this check.
+    const editorDrawsText =
+      answer.text === undefined || claudeRowsDrawText(current.other, answer.text);
     const matchesBySelection = {
-      single: () => answer.text === undefined || current.other === answer.text,
+      single: () => editorDrawsText,
       multiple: () =>
         current.checked.every((checked, index) => checked === answer.optionIndexes.includes(index)),
-      none: () => current.other === answer.text,
+      none: () => editorDrawsText,
     } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
     return matchesBySelection[question.selection]();
   });
@@ -87,12 +94,14 @@ async function submitReview(
   const reviewFrame = await io.wait(
     (frame) => parseClaudeQuestionScreen(frame, request.questions)?.kind === "review",
   );
-  const expected = normalizeClaudeQuestionText(
-    answers.map(({ question, reviewValue }) => `● ${question.prompt} → ${reviewValue}`).join(" "),
-  );
+  const expected = answers
+    .map(({ question, nativeValue }) => `● ${question.prompt} → ${nativeValue}`)
+    .join("\n");
   const matchingReview = (frame: QuestionFrame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
-    return screen?.kind === "review" && screen.summary === expected ? screen : undefined;
+    return screen?.kind === "review" && claudeRowsDrawText(screen.summary, expected)
+      ? screen
+      : undefined;
   };
   if (!matchingReview(reviewFrame)) throw questionAnswerFailed();
   await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0);
