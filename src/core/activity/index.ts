@@ -7,7 +7,11 @@ import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
-import type { UserMessageActivity } from "./prompt-presentation.ts";
+import type {
+  ApiUserMessageActivity,
+  NativeUserMessageActivity,
+  NoPromptEvidence,
+} from "./prompt-presentation.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
 import type { UnrecognizedStartupActivity } from "./startup.ts";
@@ -86,14 +90,19 @@ type UnmarkedActivity =
       readonly transcriptPath: string;
       readonly raw: unknown;
     }
-  | UserMessageActivity
   | TurnFailureActivity
   | QuestionActivityFields;
 
-export type ElwoodActivityEvent = ActivityFields &
-  DashboardActivityFields &
-  SpeedActivityFields &
-  (FinalAssistantActivity | (UnmarkedActivity & { readonly final?: never }));
+type CommonEvent = ActivityFields & DashboardActivityFields & SpeedActivityFields;
+type NativeActivity = CommonEvent &
+  (
+    | ((FinalAssistantActivity | (UnmarkedActivity & { readonly final?: never })) &
+        NoPromptEvidence)
+    | (NativeUserMessageActivity & { readonly final?: never })
+  );
+export type ElwoodActivityEvent =
+  | NativeActivity
+  | (CommonEvent & (ApiUserMessageActivity<"claude"> | ApiUserMessageActivity<"codex">));
 
 export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from "./lifecycle.ts";
 
@@ -101,18 +110,18 @@ export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from
 function sharedHookActivity(
   base: ReturnType<typeof meta.hookActivityBase>,
   event: ClaudeHookEvent | CodexHookEvent,
-): ElwoodActivityEvent | undefined {
+): NativeActivity | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
-    return hasPromptText(event.prompt)
-      ? {
-          ...base,
-          kind: "user_message",
-          source: "hook",
-          hookEventName: "UserPromptSubmit",
-          label: "user",
-          text: event.prompt,
-        }
-      : undefined;
+    if (!hasPromptText(event.prompt)) return undefined;
+    const user = {
+      ...base,
+      kind: "user_message",
+      source: "hook",
+      hookEventName: "UserPromptSubmit",
+      label: "user",
+      text: event.prompt,
+    } as const;
+    return base.agent === "codex" ? { ...user, agent: "codex" } : { ...user, agent: "claude" };
   }
   if (event.hook_event_name === "Notification") {
     return { ...base, kind: "notification", label: event.notification_type, text: event.message };
@@ -124,7 +133,7 @@ function sharedHookActivity(
 export function activityFromClaudeHook(
   elwoodSessionId: string,
   event: ClaudeHookEvent,
-): ElwoodActivityEvent {
+): NativeActivity {
   const base = meta.hookActivityBase("claude", elwoodSessionId, event);
   const shared = sharedHookActivity(base, event);
   return shared ?? { ...base, kind: "hook", label: event.hook_event_name };

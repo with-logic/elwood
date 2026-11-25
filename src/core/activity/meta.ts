@@ -27,6 +27,7 @@ export function hookActivityBase(
   | "subagent"
   | "promptProvenance"
   | "nativePrompt"
+  | "sendId"
 > {
   const source = record(event);
   return {

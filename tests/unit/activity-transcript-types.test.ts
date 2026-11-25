@@ -1,5 +1,5 @@
 /** Required transcript payloads survive activity normalization (PRD §5.4, C-CODEX-22). */
-import { expect, test } from "vitest";
+import { expect, expectTypeOf, test } from "vitest";
 import type { ClaudeTranscriptEvent } from "../../src/claude/transcript/index.ts";
 import type { CodexTranscriptSummary } from "../../src/codex/transcript/types.ts";
 import { activityFromClaudeTranscript } from "../../src/core/activity/index.ts";
@@ -142,4 +142,36 @@ test("C-API-67 only Claude activity can carry native paste metadata", () => {
   const codex: ElwoodActivityEvent = { ...paste, agent: "codex" };
   void codex;
   expect(paste.promptProvenance.input).toBe("pasted");
+});
+
+test("C-API-70 / C-API-71 per-agent activity types retain API and native user messages", () => {
+  type UserMessage<Agent extends "claude" | "codex"> = Extract<
+    ElwoodActivityEvent,
+    { kind: "user_message"; agent: Agent }
+  >;
+  type Native<Agent extends "claude" | "codex"> = {
+    readonly kind: "user_message";
+    readonly agent: Agent;
+    readonly source: "hook";
+    readonly hookEventName: "UserPromptSubmit";
+    readonly label: "user";
+    readonly elwoodSessionId: string;
+    readonly text: string;
+  };
+  type ApiEvidence = {
+    readonly nativePrompt: string;
+    readonly promptProvenance: { readonly origin: "api"; readonly input: "pasted" };
+    readonly sendId: string;
+  };
+  type Correlated<Agent extends "claude" | "codex"> = Native<Agent> &
+    ApiEvidence & { readonly turnId: string };
+
+  expectTypeOf<Correlated<"codex">>().toExtend<UserMessage<"codex">>();
+  expectTypeOf<Correlated<"claude">>().toExtend<UserMessage<"claude">>();
+  expectTypeOf<Native<"codex">>().toExtend<UserMessage<"codex">>();
+  expectTypeOf<Native<"codex"> & Pick<ApiEvidence, "sendId">>().not.toExtend<
+    UserMessage<"codex">
+  >();
+  expectTypeOf<Native<"claude"> & ApiEvidence>().not.toExtend<UserMessage<"claude">>();
+  expectTypeOf<Native<"codex"> & ApiEvidence>().not.toExtend<UserMessage<"codex">>();
 });

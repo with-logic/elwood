@@ -7,20 +7,23 @@ export const OTHER_CONTINUATION_INDENT_COLUMNS = 5;
 export const normalizeClaudeQuestionText = (text: string) => text.replace(/\s+/g, " ").trim();
 
 /**
- * Whether the LF-joined rows Claude drew show `text`. Claude wraps at a space, or inside a word
- * too long for its row, and draws tabs as spaces: whitespace runs fold, and a row break stands
- * for a space or for nothing. Only Claude's completion carries the exact text.
+ * Matches LF-joined rows Claude drew against `text`, folded once for every redraw it checks.
+ * Claude wraps at a space, or inside a word too long for its row, and draws tabs as spaces:
+ * whitespace runs fold, and a row break stands for a space or for nothing. Only Claude's
+ * completion carries the exact text.
  */
-export function claudeRowsDrawText(joinedRows: string, text: string): boolean {
+export function claudeDrawnTextMatcher(text: string): (joinedRows: string) => boolean {
   const expected = normalizeClaudeQuestionText(text);
-  let offset = 0;
-  for (const row of joinedRows.split("\n")) {
-    if (expected[offset] === " ") offset += 1;
-    const drawn = normalizeClaudeQuestionText(row);
-    if (!expected.startsWith(drawn, offset)) return false;
-    offset += drawn.length;
-  }
-  return offset === expected.length;
+  return (joinedRows) => {
+    let offset = 0;
+    for (const row of joinedRows.split("\n")) {
+      if (expected[offset] === " ") offset += 1;
+      const drawn = normalizeClaudeQuestionText(row);
+      if (!expected.startsWith(drawn, offset)) return false;
+      offset += drawn.length;
+    }
+    return offset === expected.length;
+  };
 }
 export type ClaudeQuestionRows = {
   /** Zero-based selection-list index: options, Other, then Next or Submit when present. */

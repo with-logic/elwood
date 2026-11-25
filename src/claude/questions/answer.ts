@@ -6,7 +6,7 @@ import type { ElwoodQuestion, ElwoodQuestionRequest } from "../../core/questions
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { type BoundClaudeQuestionAnswer, bindClaudeQuestionAnswers } from "./bind-answers.ts";
 import { questionLayoutFailed, questionNavigation } from "./navigation.ts";
-import { claudeRowsDrawText } from "./rows.ts";
+import { claudeDrawnTextMatcher } from "./rows.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
 /** The empty Other editor; a notice Claude replaced on its row leaves blank cells after it. */
@@ -56,6 +56,9 @@ async function answerOne(
 ): Promise<void> {
   const { question, questionIndex, answer, otherCursorIndex, targetCursorIndex } = bound;
   const navigation = questionNavigation(request, questionIndex, io, hasSubmitTab);
+  // Validation requires text for a `none` question, so only `single` can lack it.
+  const answerTextIsAbsentOrDrawn =
+    answer.text === undefined ? () => true : claudeDrawnTextMatcher(answer.text);
   if (usesCheckboxes[question.selection]) {
     if (navigation.read().checked[otherCursorIndex]) throw questionAnswerFailed();
     for (let option = 0; option < question.options.length; option += 1) {
@@ -75,21 +78,18 @@ async function answerOne(
     );
     await io.wait((frame) => {
       const pasted = navigation.at(frame);
-      return pasted !== undefined && claudeRowsDrawText(pasted.other, text);
+      return pasted !== undefined && answerTextIsAbsentOrDrawn(pasted.other);
     });
   }
   await navigation.move(targetCursorIndex);
   await io.write("\r", (frame) => {
     const current = navigation.at(frame);
     if (current?.cursor !== targetCursorIndex) return false;
-    // Validation requires text for a `none` question, so only `single` can skip this check.
-    const editorDrawsText =
-      answer.text === undefined || claudeRowsDrawText(current.other, answer.text);
     const matchesBySelection = {
-      single: () => editorDrawsText,
+      single: () => answerTextIsAbsentOrDrawn(current.other),
       multiple: () =>
         current.checked.every((checked, index) => checked === answer.optionIndexes.includes(index)),
-      none: () => editorDrawsText,
+      none: () => answerTextIsAbsentOrDrawn(current.other),
     } satisfies Readonly<Record<ElwoodQuestion["selection"], () => boolean>>;
     return matchesBySelection[question.selection]();
   });
@@ -102,14 +102,12 @@ async function submitReview(
   const reviewFrame = await io.wait(
     (frame) => parseClaudeQuestionScreen(frame, request.questions)?.kind === "review",
   );
-  const expected = answers
-    .map(({ question, nativeValue }) => `● ${question.prompt} → ${nativeValue}`)
-    .join("\n");
+  const showsAnswers = claudeDrawnTextMatcher(
+    answers.map(({ question, nativeValue }) => `● ${question.prompt} → ${nativeValue}`).join("\n"),
+  );
   const matchingReview = (frame: QuestionFrame) => {
     const screen = parseClaudeQuestionScreen(frame, request.questions);
-    return screen?.kind === "review" && claudeRowsDrawText(screen.summary, expected)
-      ? screen
-      : undefined;
+    return screen?.kind === "review" && showsAnswers(screen.summary) ? screen : undefined;
   };
   if (!matchingReview(reviewFrame)) throw questionAnswerFailed();
   await io.write("\r", (frame) => matchingReview(frame)?.cursor === 0);

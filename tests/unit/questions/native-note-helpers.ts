@@ -2,7 +2,7 @@
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
-import { nativeSnapshot, registry } from "./helpers.ts";
+import { definitions, nativeSnapshot332 as native, registry } from "./helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 export const note: QuestionDefinition = {
@@ -17,16 +17,7 @@ export const note: QuestionDefinition = {
   supportsSecretInput: false,
 };
 /** Asked before `note` in the grouped 2.1.332 captures. */
-export const color: QuestionDefinition = {
-  ...note,
-  prompt: "Which test color?",
-  header: "Color",
-  options: [
-    { label: "Amber", description: "Warm" },
-    { label: "Blue", description: "Cool" },
-  ],
-};
-export const native = (name: string) => nativeSnapshot(name, "2.1.332");
+export const color: QuestionDefinition = definitions[0]!;
 
 /** Answers `text` from the notice capture: Down to the empty editor, paste, then `afterPaste`. */
 export async function answerNoteWith(text: string, afterPaste: string): Promise<readonly string[]> {

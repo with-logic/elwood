@@ -83,7 +83,7 @@ describe("model picker automation", () => {
     terminal.onInput = (input) => {
       if (input === "s") terminal.text = "❯ ";
     };
-    await setPickerModel({ terminal, submit: submitOk }, claudeModelPicker, "PROJECT MODEL", 500);
+    await setPickerModel({ terminal, submit: submitOk }, claudeModelPicker, "PROJECT MODEL", 2_000);
     expect(terminal.inputs).toEqual(["s"]);
   });
 

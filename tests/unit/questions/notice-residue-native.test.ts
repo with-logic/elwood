@@ -4,8 +4,8 @@ import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
 import { claudeNoticeResidue } from "../../e2e/questions/claude-notice.ts";
-import { registry } from "./helpers.ts";
-import { answerNoteWith, color, native, note } from "./native-note-helpers.ts";
+import { nativeSnapshot332 as native, registry } from "./helpers.ts";
+import { answerNoteWith, color, note } from "./native-note-helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 const typedAnswer = "ELWOOD single line answer";
