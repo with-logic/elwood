@@ -107,7 +107,10 @@ async function observeAndRequest(
     recordNativeTurn(session, event.turn_id);
   const prompt =
     event.hook_event_name === "UserPromptSubmit"
-      ? session?.promptSubmissions?.observeNativeSubmit(event.turn_id, event.prompt)
+      ? session?.promptSubmissions?.observeNativeSubmit({
+          turnId: event.turn_id,
+          nativePrompt: event.prompt,
+        })
       : undefined;
   observation.run("hook", () => emitter.emit("hook", event));
   observation.run("activity", () => {

@@ -1,4 +1,4 @@
-/** Track one unambiguous live Codex API prompt at a time (PRD §5.4, C-API-70). */
+/** Track one unambiguous live API prompt at a time (PRD §5.4, C-API-70). */
 import type { ApiPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { hasPromptText } from "../../core/activity/prompt-text.ts";
 import type { SendOptions } from "../../core/images/types.ts";
@@ -16,10 +16,13 @@ const maxCorrelatedPromptCodeUnits = 65_536;
 const maxNativeTurnIds = 1_024;
 const maxNativeTurnIdCodeUnits = 128;
 
-export type PromptNormalizer = (payload: string, limit: number) => string | undefined;
+export type PromptNormalizer = (
+  payload: string,
+  maxNormalizedCodeUnits: number,
+) => string | undefined;
 
 type Submission = {
-  readonly expectedHookPrompt: string | undefined;
+  readonly expectedNormalizedPrompt: string | undefined;
   pasted: boolean;
   entered: boolean;
   api?: { readonly text: string; readonly sendId?: string };
@@ -65,11 +68,11 @@ export class PromptSubmissions {
       this.revoke();
       return undefined;
     }
-    const expectedHookPrompt =
+    const expectedNormalizedPrompt =
       empty && payload.length <= maxCorrelatedPromptCodeUnits
         ? this.normalizePayload(payload, maxCorrelatedPromptCodeUnits)
         : undefined;
-    const draft = { expectedHookPrompt, pasted: false, entered: false };
+    const draft = { expectedNormalizedPrompt, pasted: false, entered: false };
     this.draft = draft;
     return (data, dispatch) =>
       observeInputWrite(
@@ -97,7 +100,10 @@ export class PromptSubmissions {
     const sendId = readSendId(options);
     return (payload) => {
       const draft = this.draft;
-      if (draft?.expectedHookPrompt !== undefined && text.length <= maxCorrelatedPromptCodeUnits)
+      if (
+        draft?.expectedNormalizedPrompt !== undefined &&
+        text.length <= maxCorrelatedPromptCodeUnits
+      )
         draft.api = { text, ...(sendId === undefined ? {} : { sendId }) };
       beforeEnter?.(payload);
     };
@@ -108,11 +114,17 @@ export class PromptSubmissions {
     if (!this.draft?.entered) this.draft = undefined;
   };
 
-  /** Attribute only after forwarding and before publishing the authenticated hook activity. */
-  observeNativeSubmit(
-    turnId: string,
-    prompt: string | undefined,
-  ): ApiPromptPresentation | undefined {
+  /** Associate before publishing the hook activity. Claude supplies displayed text to normalize.
+   * Codex supplies its canonical hook prompt directly. */
+  observeNativeSubmit({
+    turnId,
+    nativePrompt,
+    displayedNativeText,
+  }: {
+    readonly turnId: string;
+    readonly nativePrompt: string | undefined;
+    readonly displayedNativeText?: string | undefined;
+  }): ApiPromptPresentation | undefined {
     if (!this.track || this.nativeTurnIds.has(turnId)) return undefined;
     const validId = turnId.length > 0 && turnId.length <= maxNativeTurnIdCodeUnits;
     const hasHistoryRoom = this.nativeTurnIds.size < maxNativeTurnIds;
@@ -124,7 +136,19 @@ export class PromptSubmissions {
     this.nativeTurnIds.add(turnId);
     const draft = this.draft;
     if (!draft?.entered) return undefined;
-    if (prompt === undefined || prompt !== draft.expectedHookPrompt || !hasPromptText(prompt)) {
+    if (
+      nativePrompt === undefined ||
+      draft.expectedNormalizedPrompt === undefined ||
+      !hasPromptText(nativePrompt)
+    ) {
+      this.revoke();
+      return undefined;
+    }
+    const comparable =
+      displayedNativeText === undefined
+        ? nativePrompt
+        : this.normalizePayload(displayedNativeText, maxCorrelatedPromptCodeUnits);
+    if (comparable !== draft.expectedNormalizedPrompt) {
       this.revoke();
       return undefined;
     }
@@ -132,7 +156,7 @@ export class PromptSubmissions {
     if (!draft.api) return undefined;
     return {
       ...draft.api,
-      nativePrompt: prompt,
+      nativePrompt,
       promptProvenance: { origin: "api", input: "pasted" },
       turnId,
     };

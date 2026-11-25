@@ -2,6 +2,7 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
+import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
 import { installFakes, ptys, tempDir } from "./helpers.ts";
 
 const nativeClaudeSessionId = "claude-native";
@@ -31,5 +32,31 @@ export async function startActivitySession() {
       }),
     append: (...items: unknown[]) =>
       appendFileSync(transcript, `${items.map((item) => JSON.stringify(item)).join("\n")}\n`),
+  };
+}
+
+export async function startPromptActivitySession() {
+  const { session, hook, events, append } = await startActivitySession();
+  const pty = ptys.at(-1)!;
+  const paint = async () => {
+    pty.emitData(emptyComposer("claude"));
+    await session.terminal.settled();
+  };
+  await hook({
+    hook_event_name: "InstructionsLoaded",
+    file_path: "/tmp/CLAUDE.md",
+    memory_type: "Project",
+    load_reason: "session_start",
+  });
+  await paint();
+  return {
+    session,
+    hook,
+    pty,
+    paint,
+    append,
+    messages: () => events.filter((event) => event.kind === "user_message"),
+    submit: (prompt: string | undefined, prompt_id?: string) =>
+      hook({ hook_event_name: "UserPromptSubmit", prompt, prompt_id }),
   };
 }
