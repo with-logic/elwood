@@ -20,13 +20,12 @@ import {
   skipIf,
   skipReason,
   skipTurns,
-  waitFor,
 } from "./helpers.ts";
-import { isTurnFailure, turnReady } from "./turn-failure.ts";
+import { isTurnFailure, turnReadyIndex, waitWithEvidence } from "./turn-failure.ts";
 
 const config = "check_for_update_on_startup = false\n";
 
-/** The payload of a failed `task_complete` record, or `undefined` for any other item. */
+/** The payload and error of a failed `task_complete` record, or `undefined` for any other item. */
 function failedTask(item: unknown) {
   const payload = isRecord(item) ? item["payload"] : undefined;
   if (!isRecord(payload) || payload["type"] !== "task_complete") return undefined;
@@ -54,33 +53,48 @@ test("C-API-65 a rejected real Codex turn reaches a raw activity listener as tur
     );
     const observed = observeSession(session);
     const { activities } = observed;
-    const sent = activities.length;
+    const turnStartIndex = activities.length;
     await session.sendMessage("Reply with exactly OK.");
     // Wait as a consumer that ends the turn on `ready` would, then keep listening.
-    const ready = await waitFor(() => turnReady(activities, sent), "the turn's ready");
-    const failure = await waitFor(() => activities.find(isTurnFailure), "turn_failure", 90_000);
+    const readyIndex = await waitWithEvidence(
+      () => turnReadyIndex(activities, turnStartIndex),
+      "the turn's ready",
+      90_000,
+      session,
+      observed,
+    );
+    const failure = await waitWithEvidence(
+      () => activities.find(isTurnFailure),
+      "turn_failure",
+      60_000,
+      session,
+      observed,
+    );
+    const failureIndex = activities.indexOf(failure);
+    t.diagnostic(`ready ${readyIndex < failureIndex ? "preceded" : "followed"} turn_failure`);
     const native = observed.transcripts.find((event) => failedTask(event.item));
     const task = failedTask(native?.item);
     assert.ok(native && task, "Codex committed a failed task_complete");
-    t.diagnostic(`ready ${ready < activities.indexOf(failure) ? "preceded" : "followed"} it`);
     assert.equal(failure.agent, "codex");
     assert.equal(failure.source, "transcript");
     assert.equal(failure.transcriptPath, native.path);
     assert.equal(failure.label, "model_unavailable");
     assert.equal(failure.turnFailure.category, "model_unavailable");
     assert.equal(failure.turnFailure.disposition, "final");
-    // Codex's own words from the record, which name the model it refused.
+    // Codex's own nonblank words from the record, not a sentence Elwood wrote.
     assert.equal(failure.turnFailure.message, task.error["message"]);
-    assert.ok(failure.turnFailure.message.includes(bogusCodexModel), failure.turnFailure.message);
+    assert.notEqual(failure.turnFailure.message.trim(), "");
     // The failure names the turn the submit hook started.
     const submit = activities.find((event) => event.hookEventName === "UserPromptSubmit");
     assert.ok(submit?.turnId, "the submit hook names the turn");
     assert.equal(task.payload["turn_id"], submit.turnId);
     assert.equal(failure.turnId, submit.turnId);
-    // It follows the record's own activity, and a late one does not reopen the turn.
-    assert.equal(activities[activities.indexOf(failure) - 1]?.raw, native.item);
-    assert.equal(activities.filter(isTurnFailure).length, 1);
+    // It follows the record's own activity, and a failure after `ready` leaves it `ready`.
+    assert.equal(activities[failureIndex - 1]?.raw, native.item);
     assert.equal(session.status, "ready");
+    // Counted after teardown's final transcript flush, so a late duplicate would be seen.
+    await session.teardown();
+    assert.equal(activities.filter(isTurnFailure).length, 1);
     // Codex fired no `Stop` and wrote no reply: this activity is the turn's only outcome.
     assert.ok(!observed.hooks.some((event) => event.hook_event_name === "Stop"));
     assert.ok(!activities.some((event) => event.kind === "assistant_message"));

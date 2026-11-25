@@ -370,10 +370,11 @@ is exposed when the structured diagnostic provides one. C-API-65.
 
 Measured on Claude Code 2.1.332 and codex-cli 0.172.0 without model quota. Claude
 ran with `ANTHROPIC_BASE_URL` set to a loopback server. Codex ran with a private
-`CODEX_HOME` whose `model_provider` was one (`wire_api = "responses"`,
-`requires_openai_auth = false`). The server gave every request the same answer.
-Elwood's login shell resolved `~/.local/bin/codex` (0.172.0), while another `codex`
-on the tool `PATH` reported 0.171.0. The captures are
+`CODEX_HOME` whose `model_provider` pointed at that loopback server
+(`wire_api = "responses"`, `requires_openai_auth = false`). The server gave every
+request the same answer. The versions are those of the binaries Elwood's login
+shell resolved: there `codex` was `~/.local/bin/codex` (0.172.0), while a
+non-login `codex --version` reported 0.171.0. The captures are
 `tests/fixtures/claude-2.1.332/turn-failures.jsonl` and
 `tests/fixtures/codex-0.172.0/turn-failures.jsonl`.
 
@@ -381,8 +382,8 @@ on the tool `PATH` reported 0.171.0. The captures are
 came after `ready` in every run.** Claude fired `StopFailure` and never `Stop`.
 In the four stubbed runs `ready` came 5 to 42 ms before the hook. Codex committed a
 failed `task_complete` and fired no `Stop`. In the ten stubbed runs `ready` came 42
-to 241 ms before the record. No shape went `running` → `ready` without a
-`turn_failure`.
+to 241 ms before the record. Every shape's `running` → `ready` was followed by
+exactly one `turn_failure` for that turn.
 
 | Claude server reply | Hook `error` | Category |
 | --- | --- | --- |
@@ -416,9 +417,9 @@ Codex wrote the workspace-credit sentences when the 429 carried the
 `x-codex-rate-limit-reached-type` response header. The record keeps only the
 sentence and the shared code. A `resets_at` in the body became the clock time in
 the sentence, not a field, so none of these Codex activities has
-`resetsAtUnixSeconds`. The usage-limit kinds fail
-on the first response. The 402 retried for 6 s, the 429 for 5 s, and the 500 for
-24.5 s (60 requests), with the status `running` throughout. A long `retry-after`
+`resetsAtUnixSeconds`. The usage-limit kinds fail on the first response. By the
+records' `duration_ms`, the 402 retried for 7 s, the 429 for 6.5 s, and the 500
+for 25 s (60 requests), with the status `running` throughout. A long `retry-after`
 stays `running` for minutes, as described under
 [A rate-limited Codex turn stays running for minutes](#a-rate-limited-codex-turn-stays-running-for-minutes-2026-10-25).
 C-API-65.
