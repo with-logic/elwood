@@ -3,14 +3,16 @@ import { execFileSync } from "node:child_process";
 import { realpathSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, assert, expect, test, vi } from "vitest";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 import { ClaudeSession, type ElwoodDialogEvent, startClaude } from "../../src/index.ts";
-import { currentPtyFactory, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { setStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
+import { assertStartupUsable, setStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
+vi.mock("../../src/runtime/startup/index.ts", { spy: true });
 afterEach(() => {
+  vi.restoreAllMocks();
   resetFakes();
 });
 
@@ -20,30 +22,37 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
   const session = new ClaudeSession({ cwd, autotrust: false });
   const raised = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", raised);
-  const launched = Promise.withResolvers<void>();
-  const factory = currentPtyFactory();
-  setPtyFactoryForTests((options) => {
-    const pty = factory(options);
-    launched.resolve();
-    return pty;
+  // Startup is held open until the trust frame has rendered, so the request is on screen
+  // before `start()` returns however long rendering takes.
+  const startupEntered = Promise.withResolvers<void>();
+  const finishStartup = Promise.withResolvers<void>();
+  const { assertStartupUsable: checkStartup } = await vi.importActual<
+    typeof import("../../src/runtime/startup/index.ts")
+  >("../../src/runtime/startup/index.ts");
+  vi.mocked(assertStartupUsable).mockImplementation(async (options) => {
+    startupEntered.resolve();
+    await finishStartup.promise;
+    await checkStartup(options);
   });
-  setStartupWaitMsForTests(150);
+  setStartupWaitMsForTests(0);
+  const emitted = vi.spyOn(TypedEmitter.prototype, "emit");
+  const renders = () => emitted.mock.calls.filter(([name]) => name === "terminal:data").length;
   const started = session.start();
   try {
-    await launched.promise;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await startupEntered.promise;
     ptys[0]!.emitData(trustFrame(cwd));
+    await expect.poll(renders).toBe(1);
     expect(session.session).toBeUndefined();
     expect(raised).not.toHaveBeenCalled();
 
+    finishStartup.resolve();
     const eager = await started;
-    // Listing does not flush pending output (§5.13): it needs the trust frame rendered,
-    // which the startup wait above does not guarantee.
-    await eager.terminal.settled();
+    // The replay to the listener attached before `start()`, not a list call, raises it.
+    await expect.poll(() => raised.mock.calls.length).toBe(1);
     const [request] = await eager.listDialogs();
     assert.isDefined(request);
     expect(request.targetPath).toBe(cwd);
-    await expect.poll(() => raised.mock.calls).toEqual([[{ phase: "raised", request }]]);
+    expect(raised.mock.calls).toEqual([[{ phase: "raised", request }]]);
     eager.on("dialog", raised);
 
     const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
@@ -54,6 +63,7 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
     expect(await eager.listDialogs()).toEqual([request]);
     expect(ptys[0]!.writes).toEqual([]);
   } finally {
+    finishStartup.resolve();
     await session.teardown();
   }
 });
@@ -86,6 +96,7 @@ test("C-ATTN-08 a Claude workspace request stays retired after Git scope is rest
 
     renameSync(backup, marker);
     pty.emitData(trustFrame(cwd));
+    await session.terminal.settled();
     expect(await session.listDialogs()).toEqual([]);
     expect(events).toHaveLength(2);
     expect(session.status).toBe("blocked");
