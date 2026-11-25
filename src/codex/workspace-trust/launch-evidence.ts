@@ -2,8 +2,8 @@
 import { stat } from "node:fs/promises";
 import { type DirectoryIdentity, sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
+import { canonicalGitPath } from "../../core/trust/git-paths.ts";
 import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
-import { canonicalGitPath } from "./git-paths.ts";
 import { type CodexRepositoryTrustRoot, codexRepositoryTrustRoot } from "./repository.ts";
 import type { WorkspaceTrustTarget } from "./types.ts";
 

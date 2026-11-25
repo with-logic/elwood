@@ -34,13 +34,14 @@ export async function readBoundedGitMetadataAsync(
   path: string,
   maxBytes: number,
   signal?: AbortSignal,
+  verifyFile?: (info: Stats) => boolean,
 ): Promise<string | undefined> {
   signal?.throwIfAborted();
   const fd = await open(path, metadataFlags);
   try {
     signal?.throwIfAborted();
     const info = await fd.stat();
-    if (!info.isFile() || info.size > maxBytes) return undefined;
+    if (!info.isFile() || info.size > maxBytes || verifyFile?.(info) === false) return undefined;
     return decodeGitMetadata(await readExactDescriptorBytesAsync(fd, info.size, signal));
   } finally {
     await fd.close();

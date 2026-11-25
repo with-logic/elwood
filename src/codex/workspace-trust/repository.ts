@@ -5,7 +5,7 @@ import {
   parseGitMetadataLine,
   readBoundedGitMetadataAsync,
 } from "../../core/git-metadata.ts";
-import { canonicalGitPath, lstatGitPath } from "./git-paths.ts";
+import { canonicalGitPath, lstatGitPath } from "../../core/trust/git-paths.ts";
 
 // These metadata pointers are single lines. Bound the descriptor read before allocating.
 const maxGitMarkerBytes = 64 * 1024;

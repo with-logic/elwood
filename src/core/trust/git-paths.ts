@@ -2,7 +2,7 @@
 import { realpath } from "node:fs";
 import { lstat } from "node:fs/promises";
 import { promisify } from "node:util";
-import { errnoCode } from "../../core/errors.ts";
+import { errnoCode } from "../errors.ts";
 
 const realpathNative = promisify(realpath.native);
 
