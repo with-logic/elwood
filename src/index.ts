@@ -88,6 +88,7 @@ export type {
   CodexTranscriptEvent,
   CodexTranscriptSummary,
 } from "./codex/transcript/index.ts";
+export type { ElwoodDialogEvent } from "./codex/workspace-trust/types.ts";
 export type {
   ElwoodActivityEvent,
   ElwoodActivityKind,

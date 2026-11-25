@@ -30,7 +30,7 @@ import type {
   CodexHookHandlers,
 } from "../hooks/index.ts";
 import type { CodexTranscriptEvent } from "../transcript/index.ts";
-import type { ElwoodDialogRequest } from "../workspace-trust/types.ts";
+import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../workspace-trust/types.ts";
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
@@ -78,6 +78,7 @@ export type ResumeCodexOptions = {
 
 export type CodexEventMap = ElwoodCommonEventMap & {
   readonly hook: CodexHookEvent;
+  readonly dialog: ElwoodDialogEvent;
   readonly "codex:transcript": CodexTranscriptEvent;
 } & {
   readonly [K in `hook:${CodexHookEventName}`]: K extends `hook:${infer N}`

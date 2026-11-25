@@ -4,6 +4,7 @@
  */
 
 import { types } from "node:util";
+import { runContained } from "../core/contained.ts";
 import { inertRecord } from "../core/inert-record.ts";
 import type { Unsubscribe } from "../core/types.ts";
 import { ObserverErrors } from "./observer-errors.ts";
@@ -41,14 +42,15 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     };
   }
 
+  /** Register a listener and report whether this call added a new registration. */
   listen<E extends EventKey<M>>(
     event: E,
     handler: HandlerFor<M, E>,
     provenance: HandlerProvenance = "event",
-  ): void {
+  ): boolean {
     const entry = this.handlers.get(event);
     const h = handler as Handler;
-    if (entry?.live.has(h)) return;
+    if (entry?.live.has(h)) return false;
     const registration = { handler: h, provenance };
     if (entry) {
       entry.live.set(h, registration);
@@ -57,6 +59,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     } else {
       this.handlers.set(event, { list: [registration], live: new Map([[h, registration]]) });
     }
+    return true;
   }
 
   off<E extends EventKey<M>>(event: E, handler: HandlerFor<M, E>): void {
@@ -87,12 +90,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       const { handler } = registration;
       if (entry.live.get(handler) !== registration) continue;
       try {
-        const returned = handler(payload);
-        if ((onRejection || containRejections) && types.isPromise(returned)) {
-          if (onRejection)
-            this.observerErrors.observe(returned, onRejection, this.retainObserverError);
-          else this.observerErrors.consume(returned);
-        }
+        this.notify(handler, payload, containRejections, onRejection);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -103,6 +101,24 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     if (failed) {
       if (onError) onError(firstError);
       else throw firstError;
+    }
+  }
+
+  /** Deliver a replay to the single registration already checked by its owner. */
+  notifyReplay<T>(handler: (payload: T) => unknown, payload: T): void {
+    runContained(() => this.notify(handler, payload, true));
+  }
+
+  private notify<T>(
+    handler: (payload: T) => unknown,
+    payload: T,
+    containRejections: boolean,
+    onRejection?: (error: unknown) => void,
+  ): void {
+    const returned = handler(payload);
+    if ((onRejection || containRejections) && types.isPromise(returned)) {
+      if (onRejection) this.observerErrors.observe(returned, onRejection, this.retainObserverError);
+      else this.observerErrors.consume(returned);
     }
   }
 

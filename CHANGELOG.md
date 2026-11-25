@@ -20,6 +20,9 @@ back each entry are listed in `prd/14-conformance.md`.
   the backstop expires. The activity and the `initial_ready_backstop` warning
   can now carry `agent: "claude"`. Codex-only handlers can check the `agent` field.
 
+- Receive Codex workspace trust prompt lifecycle events and verified late replays
+  through `dialog` listeners.
+
 - Expose verified Codex workspace trust prompts through `listDialogs()`.
 
 - Recognize Claude Code 2.1.331's drawn input cursor after workspace trust and

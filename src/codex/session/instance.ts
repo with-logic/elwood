@@ -1,7 +1,4 @@
-/**
- * In-memory Codex session object exposed to callers.
- * Implements PRD §5.7, §7A, §8, and §9.
- */
+/** Live Codex session API (PRD §5.7, §7A, §8, and §9). */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { HookObservation } from "../../core/hook-observation.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
@@ -30,7 +27,7 @@ import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import { confirmCodexRejection } from "../transcript/rejection.ts";
-import type { CodexWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
+import type { CodexWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
@@ -58,7 +55,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
-  private readonly dialogs: CodexWorkspaceTrustDiscovery;
+  private readonly dialogs: CodexWorkspaceTrustEvents;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
   readonly turnCommit: CodexTurnCommit;
   constructor(
@@ -73,7 +70,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     transcriptWatcher: CodexTranscriptWatcher | undefined,
     loopDefinitions: readonly PersistedLoopDefinition[],
     resolveConfigPath: (signal: AbortSignal) => Promise<string>,
-    dialogs: CodexWorkspaceTrustDiscovery,
+    dialogs: CodexWorkspaceTrustEvents,
   ) {
     super(
       "codex",
@@ -106,11 +103,13 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
     // Register first so a throwing replay handler still receives future live events.
-    const unsubscribe = this.emitter.on(event, handler);
+    const added = this.emitter.listen(event, handler);
+    if (event === "dialog" && added)
+      this.dialogs.listenerAdded(handler as CodexEventHandler<"dialog">);
     this.replayFor(event as string, handler);
-    return unsubscribe;
+    return () => this.off(event, handler);
   }
-  readonly listDialogs = () => this.dialogs.list();
+  readonly listDialogs = () => this.dialogs.discovery.list();
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     // Reserve the queue slot before waiting on the config lock, so later sends
     // cannot overtake the model switch and use the previous model.
@@ -128,6 +127,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
+    if (event === "dialog") this.dialogs.listenerRemoved(handler as CodexEventHandler<"dialog">);
   }
   completeInitialReady(): void {
     observeCodexInitialReady(

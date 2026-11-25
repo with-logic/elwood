@@ -2,11 +2,11 @@
 import { mkdirSync, realpathSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, assert, expect, test, vi } from "vitest";
-import { CodexSession, startCodex } from "../../src/index.ts";
+import { CodexSession, type ElwoodDialogRequest, startCodex } from "../../src/index.ts";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { createLinkedCheckout, registerWorktree } from "../helpers/codex-trust-worktree.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
-import { clear, menu, setup } from "./workspace-trust-discovery-fixture.ts";
+import { clear, menu, menuWithQuitSelected, setup } from "./workspace-trust-discovery-fixture.ts";
 
 afterEach(resetFakes);
 
@@ -37,7 +37,7 @@ test("C-ATTN-07 lists exact scope, text, choices and stable request identity", a
     const ids = [request.id, ...request.choices.map(({ id }) => id)];
     expect(ids.every((id) => id.length > 0)).toBe(true);
     expect(new Set(ids).size).toBe(3);
-    await render(menu(cwd).replace("› 1.", "  1.").replace("  2.", "› 2."));
+    await render(menuWithQuitSelected(cwd));
     expect((await session.listDialogs())[0]).toBe(request);
 
     await render(menu(cwd, "folder-access-no-hook-bypass"));
@@ -136,11 +136,17 @@ test("C-ATTN-07 revalidates the exact linked Git root even if the native row is 
   }
 });
 
-test("C-ATTN-07 rearmed automatic trust keeps ownership until the current attempt expires", async () => {
+test("C-ATTN-07/C-ATTN-08 rearmed automatic trust keeps ownership until the current attempt expires", async () => {
   installFakes({ supportsHookTrustBypass: false });
   const cwd = realpathSync.native(tempDir());
   const session = await startCodex({ cwd, autotrust: true });
   const pty = ptys[0]!;
+  const raised = Promise.withResolvers<ElwoodDialogRequest>();
+  const observed = vi.fn();
+  session.on("dialog", (event) => {
+    observed(event);
+    if (event.phase === "raised") raised.resolve(event.request);
+  });
   vi.useFakeTimers();
   try {
     const complete = menu(cwd);
@@ -157,10 +163,13 @@ test("C-ATTN-07 rearmed automatic trust keeps ownership until the current attemp
     expect(session.status).toBe("blocked");
     expect(await session.listDialogs()).toEqual([]);
 
+    expect(observed).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(await session.listDialogs()).toEqual([
-      expect.objectContaining({ targetPath: cwd, targetScope: "folder" }),
-    ]);
+    // No list read or PTY repaint can wake the event between ownership transfer and this assertion.
+    const request = await raised.promise;
+    expect(request).toMatchObject({ targetPath: cwd, targetScope: "folder" });
+    expect(observed).toHaveBeenCalledExactlyOnceWith({ phase: "raised", request });
+    expect(await session.listDialogs()).toEqual([request]);
     const [, ...retries] = pty.writes;
     expect(retries.length).toBeGreaterThan(0);
     expect(retries).toEqual(retries.map(() => "\r"));

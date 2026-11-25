@@ -26,7 +26,7 @@ import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
-import { CodexWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
+import { CodexWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import type { BuildCodexSessionInput } from "./build-input.ts";
 import { reportCallerInput } from "./caller-input.ts";
@@ -75,18 +75,19 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const { pty, resolveConfigPath } = launched;
   const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   const clearance = liveCodexClearance(() => terminal);
-  const dialogs: CodexWorkspaceTrustDiscovery = new CodexWorkspaceTrustDiscovery({
+  const dialogs: CodexWorkspaceTrustEvents = new CodexWorkspaceTrustEvents({
     elwoodSessionId,
     evidence: launched.trustEvidence,
     terminal: () => terminal,
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance,
+    emitter,
   });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const onReady = () => {
-    dialogs.endStartup();
+    dialogs.discovery.endStartup();
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
@@ -113,6 +114,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => dialogs.reconcileAfter(frameObserver.refresh),
     clearance,
     () => activeSession.inputBlocking || activeSession.trustInputBlocking,
+    dialogs.refreshAfterCallerTakeover,
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
@@ -152,7 +154,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   bindCodexQuotaStats(session, emitter);
   const activeSession = bindTurnSubmission(session, observers);
-  dialogs.bind(terminal, activeSession.closing.signal);
+  dialogs.discovery.bind(terminal, activeSession.closing.signal);
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
   const sessionCleanup = activeSession.startupCleanupResources(readiness.ready.cancel);
