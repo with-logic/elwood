@@ -1,6 +1,6 @@
 /** Resolve the Git scope associated with a checked Claude launch (PRD §5.1). */
 import { lstatSync, realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { readBoundedGitMetadata } from "../../core/git-metadata.ts";
 import {
@@ -17,7 +17,10 @@ type WorkspaceTrustTarget = {
 const maximumMetadataBytes = 4096;
 const gitDirectoryPrefix = "gitdir: ";
 
-/** Keep every later trust decision bound to the scope checked before the native launch. */
+/**
+ * Capture the checked launch's scope before starting Claude. Every later read rechecks
+ * that evidence. Missing or changed evidence permanently revokes the captured scope.
+ */
 export function captureClaudeWorkspaceTrustTarget(
   directory: CheckedLaunchDirectory,
 ): () => WorkspaceTrustTarget | undefined {
@@ -44,6 +47,8 @@ function verifyWorkspaceTarget(directory: CheckedLaunchDirectory) {
     if (!scope) return undefined;
     const identity = lstatSync(scope.targetPath, { bigint: true });
     if (!identity.isDirectory()) return undefined;
+    assertLaunchDirectoryUnchanged({ ...directory, cwd: scope.launchPath });
+    if (scope.launchPath !== directory.cwd) assertLaunchDirectoryUnchanged(directory);
     const key = [scope.launchPath, scope.targetPath, scope.targetScope].join("\0");
     return { scope, key, identity };
   } catch {
@@ -51,7 +56,7 @@ function verifyWorkspaceTarget(directory: CheckedLaunchDirectory) {
   }
 }
 
-/** Resolve only ordinary directories and Git layouts that identify their checkout unambiguously. */
+/** Inspect the current directory and Git layout. Launch identity is checked at capture and revalidation. */
 export function resolveClaudeWorkspaceTrustTarget(
   launchCwd: string,
 ): WorkspaceTrustTarget | undefined {
@@ -60,10 +65,10 @@ export function resolveClaudeWorkspaceTrustTarget(
     const launchPath = realpathSync(launchCwd);
     if (!lstatSync(launchPath).isDirectory()) return undefined;
 
-    const repository = nearestGitMarker(launchPath);
-    if (!repository) return { launchPath, targetPath: launchPath, targetScope: "folder" };
+    const gitMarker = nearestGitMarker(launchPath);
+    if (!gitMarker) return { launchPath, targetPath: launchPath, targetScope: "folder" };
 
-    const targetPath = resolveRepositoryTarget(repository);
+    const targetPath = resolveRepositoryTarget(gitMarker);
     return targetPath === undefined
       ? undefined
       : { launchPath, targetPath, targetScope: "repository" };
@@ -85,20 +90,26 @@ function nearestGitMarker(launchPath: string) {
 }
 
 function resolveRepositoryTarget(
-  repository: NonNullable<ReturnType<typeof nearestGitMarker>>,
+  gitMarker: NonNullable<ReturnType<typeof nearestGitMarker>>,
 ): string | undefined {
-  const { directory, metadata } = repository;
+  const { directory, metadata } = gitMarker;
   const marker = join(directory, ".git");
-  if (metadata.isDirectory()) return gitHeadExists(marker) ? directory : undefined;
+  if (metadata.isDirectory()) return hasValidGitHead(marker) ? directory : undefined;
   if (!metadata.isFile()) return undefined;
 
   const pointer = readGitMetadata(marker);
   if (!pointer?.startsWith(gitDirectoryPrefix)) return undefined;
   const gitDir = resolveGitPointer(directory, pointer.slice(gitDirectoryPrefix.length));
-  if (!gitDir || realpathSync(gitDir) !== gitDir || !gitHeadExists(gitDir)) return undefined;
+  if (!(gitDir && hasValidGitHead(gitDir))) return undefined;
 
   const commonFile = join(gitDir, "commondir");
-  if (!lstatSync(commonFile, { throwIfNoEntry: false })) return directory;
+  if (
+    !(
+      lstatSync(commonFile, { throwIfNoEntry: false }) ||
+      lstatSync(join(gitDir, "gitdir"), { throwIfNoEntry: false })
+    )
+  )
+    return directory;
   return mainCheckout(gitDir, commonFile, marker, pointer);
 }
 
@@ -118,7 +129,7 @@ function mainCheckout(
     !commonDir ||
     basename(commonDir) !== ".git" ||
     dirname(gitDir) !== join(commonDir, "worktrees") ||
-    !gitHeadExists(commonDir)
+    !hasValidGitHead(commonDir)
   )
     return undefined;
 
@@ -126,13 +137,17 @@ function mainCheckout(
   return resolveGitPointer(gitDir, backlink) === marker ? dirname(commonDir) : undefined;
 }
 
-function gitHeadExists(gitDir: string): boolean {
-  return lstatSync(join(gitDir, "HEAD"), { throwIfNoEntry: false })?.isFile() === true;
+function hasValidGitHead(gitDir: string): boolean {
+  const head = readGitMetadata(join(gitDir, "HEAD"));
+  return head !== undefined && /^(?:ref: refs\/\S+|[a-f0-9]{40}(?:[a-f0-9]{24})?)$/i.test(head);
 }
 
 function resolveGitPointer(base: string, path: string | undefined): string | undefined {
   if (!path || path.trim() !== path) return undefined;
-  return resolve(base, path);
+  // Keep every component until native lookup has checked it.
+  const absolute = isAbsolute(path) ? path : `${base}${sep}${path}`;
+  const canonical = realpathSync.native(absolute);
+  return canonical === resolve(base, path) ? canonical : undefined;
 }
 
 function readGitMetadata(path: string): string | undefined {

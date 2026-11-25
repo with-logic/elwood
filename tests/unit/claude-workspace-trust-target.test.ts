@@ -7,7 +7,15 @@ import { resolveClaudeWorkspaceTrustTarget } from "../../src/claude/workspace-tr
 import { tempDir } from "../helpers/tmp.ts";
 
 function git(cwd: string, ...args: readonly string[]): void {
-  execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, stdio: "ignore" });
+  execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], {
+    cwd,
+    stdio: "ignore",
+    env: {
+      PATH: process.env["PATH"],
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+    },
+  });
 }
 
 function repository(cwd = realpathSync(tempDir())): string {
@@ -31,7 +39,7 @@ test.each([
   });
 });
 
-test("a Claude workspace in a Git subfolder trusts the repository root", () => {
+test("a Claude workspace in a Git subfolder resolves the repository root", () => {
   const root = repository();
   const child = join(root, "src");
   mkdirSync(child);
@@ -52,7 +60,7 @@ test("Claude uses the nearest repository and excludes its enclosing repository",
   expect(resolveClaudeWorkspaceTrustTarget(child)?.targetPath).toBe(root);
 });
 
-test("a Claude linked worktree trusts the verified main checkout", () => {
+test("a Claude linked worktree resolves the registered main checkout", () => {
   const parent = realpathSync(tempDir());
   const root = join(parent, "main repository");
   mkdirSync(root);
@@ -90,10 +98,16 @@ test("a Claude linked worktree trusts the verified main checkout", () => {
   writeFileSync(backlink, `${worktree}/ambiguous\\component/../.git\n`);
   expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
 
-  writeFileSync(backlink, "/elsewhere/.git\n");
+  writeFileSync(backlink, `${join(root, ".git")}\n`);
   expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
 
+  writeFileSync(backlink, `${worktree}/missing/../.git\n`);
+  expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
+  writeFileSync(backlink, `${relative(administrativeDir, marker)}\n`);
+
   const commonFile = join(administrativeDir, "commondir");
+  unlinkSync(commonFile);
+  expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
   writeFileSync(commonFile, "\n");
   expect(resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
   unlinkSync(commonFile);
@@ -111,6 +125,10 @@ test("an ordinary Git directory pointer keeps trust at its own checkout", () => 
     targetPath: checkout,
     targetScope: "repository",
   });
+  const alias = join(parent, "metadata-alias");
+  symlinkSync(join(parent, "metadata"), alias);
+  writeFileSync(join(checkout, ".git"), `gitdir: ${alias}\n`);
+  expect(resolveClaudeWorkspaceTrustTarget(checkout)).toBeUndefined();
 });
 
 test("ambiguous nearest Git metadata withholds Claude's target", () => {
@@ -132,9 +150,15 @@ test("Claude workspace evidence requires an existing absolute directory", () => 
   expect(resolveClaudeWorkspaceTrustTarget(file)).toBeUndefined();
 });
 
-test("a Git marker without a verifiable HEAD withholds Claude's target", () => {
+test.each([
+  ["missing", undefined],
+  ["empty", ""],
+  ["malformed", "not Git metadata"],
+  ["oversized", `ref: refs/heads/${"a".repeat(4096)}`],
+])("a %s Git HEAD withholds Claude's target", (_, contents) => {
   const directory = tempDir();
   mkdirSync(join(directory, ".git"));
+  if (contents !== undefined) writeFileSync(join(directory, ".git", "HEAD"), contents);
   expect(resolveClaudeWorkspaceTrustTarget(directory)).toBeUndefined();
 });
 
@@ -146,11 +170,15 @@ test("Claude scope resolution declines a symbolic Git marker", () => {
 });
 
 test.each([
-  ["ambiguous whitespace", "gitdir: ../metadata \n"],
-  ["multiple lines", "gitdir: ../metadata\nunexpected\n"],
-  ["oversized input", `gitdir: ${"x".repeat(4096)}\n`],
-])("Claude scope resolution declines a Git pointer with %s", (_, value) => {
-  const checkout = tempDir();
-  writeFileSync(join(checkout, ".git"), value);
+  "metadata ",
+  "metadata\nother",
+])("a Git pointer with ambiguous directory spelling %s withholds scope", (name) => {
+  const parent = realpathSync(tempDir());
+  const checkout = join(parent, "checkout");
+  const gitDirectory = join(parent, name);
+  mkdirSync(checkout);
+  mkdirSync(gitDirectory);
+  writeFileSync(join(gitDirectory, "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(join(checkout, ".git"), `gitdir: ${gitDirectory}\n`);
   expect(resolveClaudeWorkspaceTrustTarget(checkout)).toBeUndefined();
 });
