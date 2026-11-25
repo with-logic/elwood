@@ -20,6 +20,7 @@ import { registerPrivateHome } from "./home-guard.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
 import { pinResponseLaunchCommand } from "./response/launch.ts";
 import { stopProcessesUnder } from "./scratch-processes.ts";
+import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
 
 export const responseModel = "gpt-6-luna";
 export const responseBinary = join(
@@ -82,7 +83,7 @@ export async function nativeResponseSandbox() {
         ...pty,
         write(data) {
           const input = typeof data === "string" ? data : Buffer.from(data).toString();
-          if (!(input.startsWith("\x1b") && /^(?:\[\d+;\d+R|\[\?1;2c)$/.test(input.slice(1)))) {
+          if (!isTerminalProtocolReply(input)) {
             if (prompt === undefined)
               throw new Error("Unexpected startup/application input intercepted");
             if (input === "\r") {

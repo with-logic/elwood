@@ -47,6 +47,7 @@ for (const agent of ["claude", "codex"] as const) {
     let successor: Promise<void> | undefined;
     try {
       vi.useFakeTimers();
+      helper.showComposer(pty);
       const first = session.sendPrompt("prior turn");
       await vi.advanceTimersByTimeAsync(200);
       await first;

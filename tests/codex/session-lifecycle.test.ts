@@ -11,7 +11,7 @@ import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { safeSessionDir } from "../../src/state/files.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
-import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { FakePty, installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -58,6 +58,7 @@ describe("CodexSessionApi lifecycle", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
+    showComposer();
     await session.sendPrompt("SECRET_PROMPT");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "UserPromptSubmit",

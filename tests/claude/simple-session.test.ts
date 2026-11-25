@@ -4,9 +4,9 @@
  * machinery, exposes it, and closes it — driving the concrete `launch()` wiring.
  */
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { ClaudeSession } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -82,7 +82,11 @@ describe("ClaudeSession (C-API-47/50/51)", () => {
     const session = new ClaudeSession({ cwd: tempDir(), autotrust: true });
     // Prove login() lazy-starts AND actually drives the live re-auth flow, not just startup: the
     // real flow submits `/login` to the PTY. A no-op wrapper `login` would leave `writes` empty.
-    await session.login({ provideCode: () => "x", timeoutMs: 200 }).catch(() => undefined);
+    const login = session.login({ provideCode: () => "x", timeoutMs: 200 }).catch(() => undefined);
+    // The lazy start's PTY needs the idle composer before a pre-readiness write (C-API-28).
+    await vi.waitFor(() => expect(ptys.at(-1)).toBeDefined(), { interval: 1 });
+    showComposer(ptys.at(-1)!);
+    await login;
     expect(session.session).toBeDefined();
     const pty = ptys.at(-1);
     expect(pty?.writes.some((w) => w.includes("/login"))).toBe(true); // the live flow ran, not a no-op

@@ -81,7 +81,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
             ? {}
             : { strictVersionCheck: options.strictVersionCheck }),
         },
-        true, // resumed: mark ready on the first composer marker, not the 10s deadline
+        true, // resumed: mark ready on the first configured composer, not the 10s deadline
         warning,
         ownership,
       ),

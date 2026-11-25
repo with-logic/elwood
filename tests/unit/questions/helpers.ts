@@ -74,6 +74,9 @@ export function nativeSnapshot(name: string, version = "2.1.305"): QuestionFrame
   );
 }
 
+/** A Claude 2.1.332 capture, the version of the notice-residue and named-session layouts. */
+export const nativeSnapshot332 = (name: string) => nativeSnapshot(name, "2.1.332");
+
 export function parseNativeSnapshot(value: unknown): QuestionFrame {
   if (!isSnapshotRecord(value)) throw invalidSnapshot();
   const lines = snapshotLines(value["lines"]);

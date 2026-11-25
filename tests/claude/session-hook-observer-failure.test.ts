@@ -1,7 +1,7 @@
 /** Observer failures cannot erase validated Claude decisions or lifecycle (PRD §6.4). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -41,6 +41,7 @@ test("C-HOOK-22 a throwing hook-result observer cannot skip Stop lifecycle", asy
   installFakes();
   const cwd = tempDir();
   const session = await startClaude({ cwd });
+  showComposer();
   await session.sendPrompt("busy");
   session.on("activity", (event) => {
     if (event.kind === "hook_result") throw new Error("private observer failure");
@@ -61,6 +62,7 @@ test.each([
   installFakes();
   const cwd = tempDir();
   const session = await startClaude({ cwd });
+  showComposer();
   await session.sendPrompt("busy");
   const warnings: unknown[] = [];
   const warningActivity: string[] = [];
@@ -125,6 +127,7 @@ test("C-HOOK-22 blocked Stop remains blocked despite result-observer failure", a
     cwd,
     hooks: { Stop: () => ({ decision: "block", reason: "still working" }) },
   });
+  showComposer();
   await session.sendPrompt("busy");
   session.on("activity", (event) => {
     if (event.kind === "hook_result") throw new Error("private observer failure");
@@ -149,6 +152,7 @@ test("C-HOOK-22 a throwing hookError observer preserves fail-open lifecycle", as
       },
     },
   });
+  showComposer();
   await session.sendPrompt("busy");
   const warnings: unknown[] = [];
   session.on("warning", (event) => warnings.push(event));

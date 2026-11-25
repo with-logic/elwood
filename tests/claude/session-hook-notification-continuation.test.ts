@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -11,6 +11,7 @@ test("C-HOOK-22 throwing status observer preserves derived ready activity", asyn
   installFakes();
   const cwd = tempDir();
   const session = await startClaude({ cwd });
+  showComposer();
   await session.sendPrompt("busy");
   const states: unknown[] = [];
   session.on("status", () => {

@@ -1,6 +1,11 @@
 /** Pinned version, synthetic markers and operation budgets for C-E2E-18 (PRD §12). */
 export const claudeQuestionVersion = "2.1.332";
 export const claudeQuestionLabel = `Claude Code ${claudeQuestionVersion}`;
+/**
+ * Embedders name every agent. A named session insets this label in the composer's top rule, and in a
+ * border under the footer while a questionnaire is open.
+ */
+export const claudeQuestionSessionName = "Question Asker";
 export const groupedFinal = "ELWOOD_GROUP_DONE";
 export const textFinal = "ELWOOD_TEXT_DONE";
 export const checkboxFinal = "ELWOOD_FRUIT_DONE";
@@ -14,9 +19,9 @@ export const claudeTurnTimeoutMs = 90_000;
 // Sandbox setup, the notice posts (3 s each at most) and session teardown have no budgets of their
 // own. Whole proofs took 26 to 30 s under load averages near 300, so this leaves them ample room.
 export const claudeProofReserveMs = 45_000;
-// Whole-proof ceiling covers readiness and all three turns, plus setup, notices and teardown.
-export const claudeProofTimeoutMs =
-  claudeReadyTimeoutMs + 3 * claudeTurnTimeoutMs + claudeProofReserveMs;
+/** Each session's ceiling covers readiness and its turns, plus setup, notices and teardown. */
+export const claudeProofTimeoutMs = (turns: number) =>
+  claudeReadyTimeoutMs + turns * claudeTurnTimeoutMs + claudeProofReserveMs;
 // Native navigation and acknowledgment use the shorter budget inside the turn deadline.
 export const claudeAnswerTimeoutMs = 30_000;
 
