@@ -1,27 +1,27 @@
 /** Verify that a Codex trust request names its exact native launch target (PRD §5.5). */
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "vitest";
-import { createCodexTrustTargetResolver } from "../../src/codex/workspace-trust/target.ts";
+import { expect, test, vi } from "vitest";
+import {
+  type CodexTrustTargetResolver,
+  createCodexTrustTargetResolver,
+} from "../../src/codex/workspace-trust/target.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 
-const folderFixture = fixture("../fixtures/codex-0.164.0/trust/folder-access.txt");
-const backFixture = fixture("../fixtures/codex-0.164.0/trust/folder-access-no-hook-bypass.txt");
-const legacyFixture = fixture("../fixtures/codex-0.154.0/directory.txt");
+const folderFixture = capturedFrame("codex-0.164.0/trust/folder-access");
+const backFixture = capturedFrame("codex-0.164.0/trust/folder-access-no-hook-bypass");
+const legacyFixture = capturedFrame("codex-0.154.0/directory");
 const workspace = "/tmp/elwood-native-CAPTURE";
 const legacyWorkspace = "/private/tmp/elwood-native-codex-CAPTURE/project";
 const rootNote =
   "Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:";
 const root = "/tmp/workspace";
 const project = join(root, "project");
+type RowFits = Parameters<CodexTrustTargetResolver>[1];
 
-function fixture(path: string): string {
-  return readFileSync(new URL(path, import.meta.url), "utf8");
-}
-
-function folder(...aliases: string[]) {
+function folder(...launchDirectoryPaths: string[]) {
   return createCodexTrustTargetResolver({
-    aliases,
-    targets: aliases.map((targetPath) => ({
+    launchDirectoryPaths,
+    targets: launchDirectoryPaths.map((targetPath) => ({
       target: { targetPath, targetScope: "folder" },
       requiresRepositoryNote: false,
     })),
@@ -29,19 +29,19 @@ function folder(...aliases: string[]) {
   });
 }
 
-function repository(aliases: readonly string[], repo: string, requiresRepositoryNote = false) {
+function repository(
+  launchDirectoryPaths: readonly string[],
+  repo: string,
+  requiresRepositoryNote = false,
+) {
   return createCodexTrustTargetResolver({
-    aliases,
+    launchDirectoryPaths,
     targets: [{ target: { targetPath: repo, targetScope: "repository" }, requiresRepositoryNote }],
     isCurrent: () => true,
   });
 }
 
-function read(
-  resolve: ReturnType<typeof createCodexTrustTargetResolver>,
-  text: string,
-  rowFits: (row: number, inset: number) => boolean = () => true,
-) {
+function read(resolve: CodexTrustTargetResolver, text: string, rowFits: RowFits = () => true) {
   return resolve({ lines: text.split("\n") }, rowFits);
 }
 
@@ -73,29 +73,25 @@ test("withholds identical padded rows for two distinct path names", () => {
   expect(read(resolve, folderFixture.replace(workspace, cwd))).toBeUndefined();
 });
 
-test("requires the native decline and footer to come from the same layout", () => {
+test.each([
+  ["quit", folderFixture, "esc quit", "esc back"],
+  ["back", backFixture, "esc back", "esc quit"],
+])("requires the native decline to match the %s footer", (_layout, frame, footer, otherFooter) => {
   const resolve = folder(project);
-  for (const fixtureText of [folderFixture, backFixture]) {
-    const text = fixtureText.replace(workspace, project);
-    expect(read(resolve, text)).toEqual({ targetPath: project, targetScope: "folder" });
-    const mismatched = text.replace(/esc (quit|back)/, (_row, choice) =>
-      choice === "quit" ? "esc back" : "esc quit",
-    );
-    expect(read(resolve, mismatched)).toBeUndefined();
-  }
+  const text = frame.replace(workspace, project);
+  expect(read(resolve, text)).toEqual({ targetPath: project, targetScope: "folder" });
+  expect(read(resolve, text.replace(footer, otherFooter))).toBeUndefined();
 });
 
-test("C-CODEX-15 withholds a Codex workspace menu without a selected row", () => {
+test.each([
+  ["folder access", folderFixture, workspace],
+  ["folder access without hook bypass", backFixture, workspace],
+  ["legacy", legacyFixture, legacyWorkspace],
+])("C-CODEX-15 withholds a %s menu without a selected row", (_layout, frame, path) => {
   const resolve = folder(project);
-  for (const [fixtureText, originalPath] of [
-    [folderFixture, workspace],
-    [backFixture, workspace],
-    [legacyFixture, legacyWorkspace],
-  ] as const) {
-    const text = fixtureText.replace(originalPath, project);
-    expect(read(resolve, text)).toEqual({ targetPath: project, targetScope: "folder" });
-    expect(read(resolve, text.replace("› 1.", "  1."))).toBeUndefined();
-  }
+  const text = frame.replace(path, project);
+  expect(read(resolve, text)).toEqual({ targetPath: project, targetScope: "folder" });
+  expect(read(resolve, text.replace("› 1.", "  1."))).toBeUndefined();
 });
 
 test("reports the exact Git root on short and full modern displays", () => {
@@ -108,8 +104,11 @@ test("reports the exact Git root on short and full modern displays", () => {
   expect(read(resolve, folderFixture.replace(`  ${workspace}`, disclosure))).toEqual(expected);
   const full = folderFixture.replace(`  ${workspace}`, `  ${cwd}\n\n${disclosure}`);
   expect(read(resolve, full)).toEqual(expected);
-  expect(read(resolve, full, (row) => row !== 1)).toBeUndefined();
-  expect(read(resolve, full, (row) => row !== 5)).toBeUndefined();
+  const clippedCwd = vi.fn<RowFits>(({ rowIndex }) => rowIndex !== 1);
+  expect(read(resolve, full, clippedCwd)).toBeUndefined();
+  expect(clippedCwd).toHaveBeenCalledWith({ rowIndex: 5, rightInsetCols: 2 });
+  expect(clippedCwd).toHaveBeenCalledWith({ rowIndex: 1, rightInsetCols: 2 });
+  expect(read(resolve, full, ({ rowIndex }) => rowIndex !== 5)).toBeUndefined();
   expect(read(resolve, full.replace(cwd, join(root, "other")))).toBeUndefined();
   expect(read(resolve, folderFixture.replace(workspace, cwd))).toBeUndefined();
   const atRoot = repository([cwd, repo], repo);
@@ -124,12 +123,13 @@ test("corroborates the legacy location and wrapped Git note", () => {
   const note = rootNote.replace("Trusting", "\n  Trusting");
   const wrappedRepo = repo.replace(" with", "\n  with");
   const text = legacyFixture.replace(legacyWorkspace, `${cwd}\n\n  ${note}\n  ${wrappedRepo}`);
-  expect(read(resolve, text, (row) => row !== 2)).toEqual({
-    targetPath: repo,
-    targetScope: "repository",
-  });
-  expect(read(resolve, text, (row) => row !== 4)).toBeUndefined();
-  expect(read(resolve, text, (row) => row !== 5)).toBeUndefined();
+  const fits = vi.fn<RowFits>(({ rowIndex }) => rowIndex !== 2);
+  expect(read(resolve, text, fits)).toEqual({ targetPath: repo, targetScope: "repository" });
+  expect(fits).toHaveBeenCalledWith({ rowIndex: 0, rightInsetCols: 0 });
+  expect(fits).toHaveBeenCalledWith({ rowIndex: 4, rightInsetCols: 0 });
+  expect(fits).toHaveBeenCalledWith({ rowIndex: 5, rightInsetCols: 0 });
+  expect(read(resolve, text, ({ rowIndex }) => rowIndex !== 4)).toBeUndefined();
+  expect(read(resolve, text, ({ rowIndex }) => rowIndex !== 5)).toBeUndefined();
   expect(read(resolve, text.replace(cwd, cwd.slice(0, -1)))).toBeUndefined();
 });
 
@@ -143,7 +143,7 @@ test("withholds a frame whose path row did not fit", () => {
 test("withholds a matching permitted path when live target verification changes", () => {
   let current = true;
   const resolve = createCodexTrustTargetResolver({
-    aliases: [project],
+    launchDirectoryPaths: [project],
     targets: [
       { target: { targetPath: project, targetScope: "folder" }, requiresRepositoryNote: false },
     ],
@@ -192,7 +192,7 @@ test("withholds conflicting scopes for the same path", () => {
     requiresRepositoryNote: false,
   }));
   const resolve = createCodexTrustTargetResolver({
-    aliases: [project],
+    launchDirectoryPaths: [project],
     targets,
     isCurrent: () => true,
   });

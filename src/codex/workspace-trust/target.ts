@@ -8,15 +8,17 @@ const repositoryNote =
   "Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:";
 const legacyLocation = "> You are in ";
 const folderAccess = {
-  layout: "folder-access",
   acceptLabel: codexFolderAccessLabels.accept,
+  isPrelude: (text: string) => text.trimEnd() === "Folder access",
+  matches: modernMatches,
 } as const;
 const codexWorkspaceLayouts = [
   {
-    layout: "legacy",
     acceptLabel: "Yes, continue",
     declineLabel: "No, quit",
     footer: "Press enter to continue",
+    isPrelude: (text: string) => text.startsWith(legacyLocation),
+    matches: legacyMatches,
   },
   {
     ...folderAccess,
@@ -39,14 +41,18 @@ type CheckedTrustTarget = {
   readonly requiresRepositoryNote: boolean;
 };
 type LaunchEvidence = {
-  readonly aliases: readonly string[];
+  readonly launchDirectoryPaths: readonly string[];
   readonly targets: readonly CheckedTrustTarget[];
   readonly isCurrent: () => boolean;
 };
 
 type Row = { readonly index: number; readonly text: string };
-type RowFits = (row: number, inset: number) => boolean;
-type Layout = (typeof codexWorkspaceLayouts)[number]["layout"];
+/** Certifies that the path at a zero-based snapshot row fits before the right inset without clipping or wrapping. */
+type RowFits = (position: {
+  readonly rowIndex: number;
+  readonly rightInsetCols: number;
+}) => boolean;
+type Layout = (typeof codexWorkspaceLayouts)[number];
 
 export type CodexTrustTargetResolver = (
   frame: Pick<TerminalSnapshot, "lines">,
@@ -55,7 +61,7 @@ export type CodexTrustTargetResolver = (
 
 /** Match a native frame against independent and revalidated launch evidence. */
 export function createCodexTrustTargetResolver({
-  aliases,
+  launchDirectoryPaths,
   targets,
   isCurrent,
 }: LaunchEvidence): CodexTrustTargetResolver {
@@ -68,11 +74,7 @@ export function createCodexTrustTargetResolver({
 
     let result: TrustTarget | undefined;
     for (const checked of targets) {
-      const matches =
-        layout === "folder-access"
-          ? modernMatches(prefix, checked, aliases, rowFits)
-          : legacyMatches(prefix, checked, aliases, rowFits);
-      if (!matches) continue;
+      if (!layout.matches(prefix, checked, launchDirectoryPaths, rowFits)) continue;
       if (
         result &&
         (result.targetPath !== checked.target.targetPath ||
@@ -92,15 +94,15 @@ function matchWorkspaceMenu(
   if (candidate.kind !== "candidate" || !candidate.valid || candidate.spec.id !== "workspace_trust")
     return undefined;
   const [accept, decline, extra] = candidate.dialog.options;
-  if (
-    extra ||
-    accept?.style !== "numbered" ||
-    decline?.style !== "numbered" ||
-    accept.number !== "1" ||
-    decline.number !== "2" ||
-    accept.selected === decline.selected
-  )
-    return undefined;
+  const expectedChoicePair =
+    !extra &&
+    accept?.style === "numbered" &&
+    decline?.style === "numbered" &&
+    accept.number === "1" &&
+    decline.number === "2";
+  if (!expectedChoicePair) return undefined;
+  const exactlyOneSelected = accept.selected !== decline.selected;
+  if (!exactlyOneSelected) return undefined;
   const footer = lines.findLast((line) => line.trim() !== "")?.trim();
   const layout = codexWorkspaceLayouts.find(
     (layout) =>
@@ -116,16 +118,11 @@ function matchWorkspaceMenu(
     )
   )
     return undefined;
-  return { headerRow: candidate.headerRow, layout: layout.layout };
+  return { headerRow: candidate.headerRow, layout };
 }
 
 function disclosureRows(lines: readonly string[], end: number, layout: Layout): Row[] | undefined {
-  const start = lines.slice(0, end).findLastIndex((line) => {
-    const text = line.trimStart();
-    return layout === "folder-access"
-      ? text.trimEnd() === "Folder access"
-      : text.startsWith(legacyLocation);
-  });
+  const start = lines.slice(0, end).findLastIndex((line) => layout.isPrelude(line.trimStart()));
   if (start < 0) return undefined;
 
   return lines.slice(start, end).flatMap((line, offset) => {
@@ -137,50 +134,55 @@ function disclosureRows(lines: readonly string[], end: number, layout: Layout): 
 function modernMatches(
   rows: readonly Row[],
   { target: { targetPath, targetScope }, requiresRepositoryNote }: CheckedTrustTarget,
-  aliases: readonly string[],
+  launchDirectoryPaths: readonly string[],
   fits: RowFits,
 ): boolean {
   const targetRow = rows.at(-1);
-  if (!(targetRow && fits(targetRow.index, 2)) || targetRow.text !== stripRowPadding(targetPath))
-    return false;
+  const targetRowFits = targetRow && fits({ rowIndex: targetRow.index, rightInsetCols: 2 });
+  if (!targetRowFits || targetRow.text !== stripRowPadding(targetPath)) return false;
   const details = rows.slice(1, -1);
   const [cwd] = details;
-  if (!cwd) return !requiresRepositoryNote && aliases.includes(targetPath);
+  if (!cwd) return !requiresRepositoryNote && launchDirectoryPaths.includes(targetPath);
   if (targetScope !== "repository") return false;
   if (cwd.text.startsWith("/")) {
-    const matchesAlias = aliases.some(
+    const matchesAlias = launchDirectoryPaths.some(
       (alias) => alias !== targetPath && cwd.text === stripRowPadding(alias),
     );
-    return fits(cwd.index, 2) && matchesAlias && noteText(details.slice(1)) === repositoryNote;
+    const cwdRowFits = fits({ rowIndex: cwd.index, rightInsetCols: 2 });
+    const repositoryDisclosed = noteText(details.slice(1)) === repositoryNote;
+    return cwdRowFits && matchesAlias && repositoryDisclosed;
   }
-  return aliases.some((alias) => alias !== targetPath) && noteText(details) === repositoryNote;
+  return (
+    launchDirectoryPaths.some((alias) => alias !== targetPath) &&
+    noteText(details) === repositoryNote
+  );
 }
 
 function legacyMatches(
   rows: readonly Row[],
   { target: { targetPath, targetScope }, requiresRepositoryNote }: CheckedTrustTarget,
-  aliases: readonly string[],
+  launchDirectoryPaths: readonly string[],
   fits: RowFits,
 ): boolean {
   const [cwd, ...note] = rows;
-  if (!(cwd && fits(cwd.index, 0))) return false;
-  const matchingAliases = aliases.filter(
+  const cwdRowFits = cwd && fits({ rowIndex: cwd.index, rightInsetCols: 0 });
+  if (!cwdRowFits) return false;
+  const matchingAliases = launchDirectoryPaths.filter(
     (alias) => cwd.text === legacyLocation + stripRowPadding(alias),
   );
   if (note.length === 0) return !requiresRepositoryNote && matchingAliases.includes(targetPath);
-  return (
+  const repositoryDisclosed =
     targetScope === "repository" &&
     matchingAliases.some((alias) => alias !== targetPath) &&
-    noteText(note) === `${repositoryNote} ${stripRowPadding(targetPath)}` &&
-    legacyPathRowsFit(note, fits)
-  );
+    noteText(note) === `${repositoryNote} ${stripRowPadding(targetPath)}`;
+  return repositoryDisclosed && legacyPathRowsFit(note, fits);
 }
 
 /** The legacy disclosure joins the note and the path, so a row may contain both. */
 function legacyPathRowsFit(note: readonly Row[], fits: RowFits): boolean {
   let pathOffset = repositoryNote.length + 1;
   for (const { index, text } of note) {
-    if (text.length > pathOffset && !fits(index, 0)) return false;
+    if (text.length > pathOffset && !fits({ rowIndex: index, rightInsetCols: 0 })) return false;
     pathOffset -= text.length + 1;
   }
   return true;

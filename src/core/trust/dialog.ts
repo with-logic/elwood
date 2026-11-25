@@ -112,7 +112,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
   };
 }
 
-/** A frame-ending native footer that need not belong to a particular gate. */
+/** Recognizes generic native footer copy on one row. Callers check its placement. */
 export function isGenericTrustDialogFooter(line: string): boolean {
   return footerRow.test(line);
 }
