@@ -18,7 +18,7 @@ import {
   noteFirstLine,
   noteLastLine,
 } from "./questions/claude-cases.ts";
-import { claudeProofLifecycle } from "./questions/claude-lifecycle.ts";
+import { type ClaudeProofLifecycle, claudeProofQueue } from "./questions/claude-lifecycle.ts";
 import { type ClaudeNoticeProof, claudeNoticeProof } from "./questions/claude-notice.ts";
 import { claudeQuestionRounds } from "./questions/claude-round.ts";
 import { type ClaudeRoundKind, claudeRoundsByKind } from "./questions/claude-round-kinds.ts";
@@ -32,8 +32,7 @@ type ProofSession = {
   readonly name?: string;
 };
 
-// node:test starts the next test when one times out; its session waits for that body's cleanup.
-let previousSession: Promise<unknown> = Promise.resolve();
+const runProof = claudeProofQueue();
 
 /** One opt-in test per isolated session, skipped unless the pinned Claude is installed. */
 function proofTest(title: string, session: ProofSession): void {
@@ -43,12 +42,9 @@ function proofTest(title: string, session: ProofSession): void {
         ? false
         : "requires pinned Claude and auth"
       : `set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for valid-model turns (${session.rounds.join(", ")}) in an isolated session`;
-  const timeout = claudeProofTimeoutMs(session.rounds.length);
-  test(title, { skip, timeout }, async (t) => {
-    const run = previousSession.then(() => proveClaudeQuestions(t, session));
-    previousSession = run.catch(() => undefined);
-    await run;
-  });
+  test(title, { skip, timeout: claudeProofTimeoutMs(session.rounds.length) }, (t) =>
+    runProof(t.signal, (lifecycle) => proveClaudeQuestions(t, session, lifecycle)),
+  );
 }
 
 proofTest(
@@ -63,7 +59,11 @@ proofTest("C-E2E-18 a named native Claude session raises and accepts a standalon
 });
 
 /** Each question follows a notice posted at the idle composer and needs native acceptance. */
-async function proveClaudeQuestions(t: TestContext, session: ProofSession): Promise<void> {
+async function proveClaudeQuestions(
+  t: TestContext,
+  session: ProofSession,
+  lifecycle: ClaudeProofLifecycle,
+): Promise<void> {
   const { rounds: kinds, blankCells, name } = session;
   const events: ElwoodQuestionEvent[] = [];
   const normalized: Extract<ElwoodActivityEvent, { kind: "question" }>[] = [];
@@ -77,7 +77,6 @@ async function proveClaudeQuestions(t: TestContext, session: ProofSession): Prom
   let artifacts: ReturnType<typeof claudeQuestionArtifacts> | undefined;
   let unexpectedTools = 0;
   let primaryFailure = false;
-  const lifecycle = claudeProofLifecycle(t.signal);
   try {
     t.signal.throwIfAborted();
     sandbox = await nativeClaudeQuestionSandbox();
@@ -131,6 +130,7 @@ async function proveClaudeQuestions(t: TestContext, session: ProofSession): Prom
     const live = await lifecycle.start(active);
     await live.waitForStatus((status) => status === "ready", claudeReadyTimeoutMs);
     const rounds = claudeRoundsByKind(round, note);
+    // Rounds share the question waiter, the hook answer and the final-reply buffer: each settles first.
     for (const kind of kinds) {
       await proof.post();
       answeredIds.push(await rounds[kind]());

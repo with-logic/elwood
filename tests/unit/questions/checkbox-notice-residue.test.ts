@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { claudeNoticeResidue } from "../../e2e/questions/claude-notice.ts";
-import { definitions, fixture, frame, nativeSnapshot } from "./helpers.ts";
+import { definitions, fixture, frame, nativeSnapshot332 as native } from "./helpers.ts";
 
 const fruits: QuestionDefinition = {
   prompt: "Which test fruits?",
@@ -17,7 +17,6 @@ const fruits: QuestionDefinition = {
   textMode: "none",
   supportsSecretInput: false,
 };
-const native = (name: string) => nativeSnapshot(name, "2.1.332");
 const standalone = native("standalone-checkbox-notice-native");
 const submitRow = /^ {5}Submit {20,}$/;
 const withSubmitRow = (row: string) => {
