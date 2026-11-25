@@ -2877,8 +2877,8 @@ space cells. During a turn the row is already reserved, so a notice posted
 there writes no spaces. A notice that replaces another keeps the row and its
 spaces.
 
-A questionnaire's closing rule takes the composer top rule's place, so its last
-row lands on the notice row. Claude rewrites only the cells that change, and
+In an unnamed session, a questionnaire's closing rule takes the composer top
+rule's place, so its last row lands on the notice row. Claude rewrites only the cells that change, and
 erases the rest of a row from the first cell that must turn blank. A short label
 painted over the notice therefore keeps the spaces between the label and the
 erased notice text. xterm reads `  3. Type something.` followed by about
@@ -2902,6 +2902,13 @@ Elwood matched the action row exactly, so the question was never published and
 ordinary input stayed held until a person answered at the terminal. A grouped
 questionnaire that opens on a checkbox page keeps them after that page's action
 row the same way.
+
+A session launched with `--name` draws the notice above its labelled composer
+rule too. Its questionnaire adds a labelled border under the footer, so the
+panel is one row taller and sits one row higher. Its full-width closing rule,
+not its last option row, lands on the notice row and overwrites every cell, so
+no cells stay. In the captures, the named `     Submit` row is row 39 and the
+closing rule row 40, where the unnamed `Submit` row is row 40.
 
 Elwood now treats `Type something.` followed only by blank cells as an empty
 editor. A typed value ends at a cursor followed only by blank cells on the

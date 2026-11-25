@@ -1,6 +1,6 @@
 /** Offline cancellation, close retry and diagnostic cleanup contracts (PRD §12). */
 import { expect, test, vi } from "vitest";
-import { claudeProofLifecycle } from "../e2e/questions/claude-lifecycle.ts";
+import { claudeProofLifecycle, claudeProofQueue } from "../e2e/questions/claude-lifecycle.ts";
 
 test("cancellation during setup prevents lazy start but still disposes", async () => {
   const abort = new AbortController();
@@ -101,4 +101,40 @@ test.each([
   await finish;
   expect(close).toHaveBeenCalledTimes(2);
   expect(dispose).toHaveBeenCalledOnce();
+});
+
+test.each([
+  { closes: true, second: "runs" },
+  { closes: false, second: "refused" },
+])("a proof after a failed one with confirmed close=$closes is $second", async ({ closes }) => {
+  const runProof = claudeProofQueue();
+  const signal = new AbortController().signal;
+  const failure = new Error("synthetic proof failure");
+  const first = runProof(signal, async (lifecycle) => {
+    await lifecycle.start({
+      start: async () => undefined,
+      close: () => (closes ? Promise.resolve() : Promise.reject(new Error("close"))),
+    });
+    await lifecycle.finish([], true, vi.fn());
+    throw failure;
+  });
+  const second = vi.fn(async () => undefined);
+  const third = vi.fn(async () => undefined);
+  const queued = [runProof(signal, second), runProof(signal, third)];
+  await expect(first).rejects.toBe(failure);
+  const refused = { message: "An earlier Claude proof session did not confirm shutdown" };
+  for (const run of queued)
+    await (closes
+      ? expect(run).resolves.toBeUndefined()
+      : expect(run).rejects.toMatchObject(refused));
+  expect([second.mock.calls.length, third.mock.calls.length]).toEqual(closes ? [1, 1] : [0, 0]);
+});
+
+test("a proof that never started a Claude session counts as closed", async () => {
+  const runProof = claudeProofQueue();
+  const signal = new AbortController().signal;
+  await expect(runProof(signal, () => Promise.reject(new Error("setup")))).rejects.toThrow("setup");
+  const next = vi.fn(async () => undefined);
+  await runProof(signal, next);
+  expect(next).toHaveBeenCalledOnce();
 });

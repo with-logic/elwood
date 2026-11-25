@@ -26,8 +26,18 @@ cells after `Type something.` on the questionnaire's last row.
 `standalone-checkbox-notice-native.json` was captured on 2026-11-24 the same
 way. It is the first complete frame of one standalone checkbox question, which
 Claude draws with a Submit tab: `←  ☐ Fruits  ✔ Submit  →`. The notice's
-indent stays as blank cells after the `Submit` row. `PostToolUse` reported
+indent stays as blank cells after the `Submit` row. From the same session,
+`standalone-checkbox-submit-native.json` has Apple and Cherry checked and
+`Submit` highlighted, with the blank cells still there and the hidden cursor at
+column zero of the last row, and `standalone-checkbox-review-native.json` is the
+review with the cursor on `Submit answers`. `PostToolUse` reported
 `Which test fruits?` = `Apple, Cherry`.
+
+`named-standalone-checkbox-native.json` was captured on 2026-11-25 from a
+session launched with `--name "Question Asker"`, after Alt+T posted the notice
+at the idle composer. The questionnaire's closing rule replaced the notice row,
+so no blank cells stay, and the label stays under the footer. `PostToolUse`
+reported `Which test fruits?` = `Apple, Cherry`.
 
 See "Claude notice residue on the last questionnaire row" in
 `docs/cli-behavior.md`.
