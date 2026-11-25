@@ -9,6 +9,7 @@ import * as meta from "./meta.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
 import type { UnrecognizedStartupActivity } from "./startup.ts";
+import type { FinalAssistantActivity } from "./transcript.ts";
 export type ElwoodAgentKind = "claude" | "codex";
 export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
 export type ElwoodActivityKind =
@@ -65,44 +66,45 @@ type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEv
       }
     : never;
 
+type UnmarkedActivity =
+  | {
+      readonly kind: Exclude<
+        ElwoodActivityKind,
+        "question" | "assistant_progress" | "user_message" | "unrecognized_startup"
+      >;
+    }
+  | UnrecognizedStartupActivity
+  | {
+      readonly kind: "assistant_progress";
+      readonly agent: "codex";
+      readonly source: "transcript";
+      readonly label: "assistant";
+      readonly text: string;
+      readonly transcriptPath: string;
+      readonly raw: unknown;
+    }
+  | {
+      readonly kind: "user_message";
+      readonly agent: "claude";
+      readonly source: "transcript";
+      readonly transcriptPath: string;
+      readonly turnId: string;
+      readonly label: "user";
+      readonly text: string;
+    }
+  | {
+      readonly kind: "user_message";
+      readonly source: "hook";
+      readonly hookEventName: "UserPromptSubmit";
+      readonly label: "user";
+      readonly text: string;
+    }
+  | QuestionActivityFields;
+
 export type ElwoodActivityEvent = ActivityFields &
   DashboardActivityFields &
   SpeedActivityFields &
-  (
-    | {
-        readonly kind: Exclude<
-          ElwoodActivityKind,
-          "question" | "assistant_progress" | "user_message" | "unrecognized_startup"
-        >;
-      }
-    | UnrecognizedStartupActivity
-    | {
-        readonly kind: "assistant_progress";
-        readonly agent: "codex";
-        readonly source: "transcript";
-        readonly label: "assistant";
-        readonly text: string;
-        readonly transcriptPath: string;
-        readonly raw: unknown;
-      }
-    | {
-        readonly kind: "user_message";
-        readonly agent: "claude";
-        readonly source: "transcript";
-        readonly transcriptPath: string;
-        readonly turnId: string;
-        readonly label: "user";
-        readonly text: string;
-      }
-    | {
-        readonly kind: "user_message";
-        readonly source: "hook";
-        readonly hookEventName: "UserPromptSubmit";
-        readonly label: "user";
-        readonly text: string;
-      }
-    | QuestionActivityFields
-  );
+  (FinalAssistantActivity | (UnmarkedActivity & { readonly final?: never }));
 
 export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from "./lifecycle.ts";
 
@@ -110,7 +112,7 @@ export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from
 function sharedHookActivity(
   base: Omit<
     ElwoodActivityEvent,
-    "kind" | "label" | "text" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
+    "kind" | "label" | "text" | "final" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
   >,
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent | undefined {

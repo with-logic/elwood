@@ -85,3 +85,38 @@ test("Codex summaries exclude unsurfaced prose and require fixed message and rea
   const wrongReasoningLabel: CodexTranscriptSummary = { kind: "reasoning", label: "analysis" };
   void [otherText, wrongMessageLabel, wrongReasoningLabel];
 });
+
+test("C-API-64 only transcript assistant messages with text can be final", () => {
+  const base = {
+    elwoodSessionId: "s",
+    agent: "claude",
+    source: "transcript",
+    label: "assistant",
+  } as const;
+  const reply: ElwoodActivityEvent = activityFromClaudeTranscript({
+    elwoodSessionId: "s",
+    path: "/transcript.jsonl",
+    item: {},
+    final: true,
+    summary: { kind: "assistant_message", label: "assistant", text: "Done" },
+  });
+  // @ts-expect-error Final activities require assistant reply text.
+  const missingText: ElwoodActivityEvent = { ...base, kind: "assistant_message", final: true };
+  // @ts-expect-error Lifecycle status cannot carry a final reply marker.
+  const status: ElwoodActivityEvent = { ...base, kind: "status", label: "ready", final: true };
+  void [missingText, status];
+  if (reply.final === true) {
+    const {
+      source,
+      kind,
+      text,
+    }: { source: "transcript"; kind: "assistant_message"; text: string } = reply;
+    expect({ source, kind, text }).toEqual({
+      source: "transcript",
+      kind: "assistant_message",
+      text: "Done",
+    });
+  } else {
+    throw new Error("Expected the native final-reply marker");
+  }
+});

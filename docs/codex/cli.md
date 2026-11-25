@@ -50,8 +50,10 @@ Subscribe to `activity` to display Codex's committed user-facing progress:
 session.on("activity", (event) => {
   if (event.kind === "assistant_progress" && event.text) {
     appendProgress(event.text);
-  } else if (event.kind === "assistant_message" && event.text) {
+  } else if (event.final === true) {
     appendFinalReply(event.text);
+  } else if (event.kind === "assistant_message" && event.text) {
+    appendAssistantText(event.text);
   }
 });
 ```
@@ -66,7 +68,8 @@ is never normalized into text.
 Response items are the canonical progress source. Explicit non-final legacy
 `agent_message` mirrors remain raw transcript events with `other` summaries and
 no normalized text, avoiding duplicate publication and false final replies.
-Legacy unphased and final-answer behavior is preserved.
+Explicit final-answer messages carry `final: true`. An unphased message remains
+available for display with unknown finality.
 
 Keep progress separate from final-reply handlers: it must not clear working
 state, consume reply context, finalize a trace, or route mentions to other

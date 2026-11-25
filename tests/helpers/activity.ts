@@ -6,7 +6,7 @@ type FixtureActivity = Omit<
     ElwoodActivityEvent,
     { kind: "question" | "assistant_progress" | "unrecognized_startup" }
   >,
-  "speed" | "tokenUsage" | "rateLimits" | "subagent"
+  "speed" | "tokenUsage" | "rateLimits" | "subagent" | "final"
 > & { readonly speed?: never };
 
 export function activity(partial: Partial<FixtureActivity> = {}) {

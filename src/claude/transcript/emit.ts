@@ -9,7 +9,11 @@ import { optional } from "../../core/optional.ts";
 import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
 import type { TranscriptCursor } from "./cursor.ts";
 import type { DropReporter } from "./drops.ts";
-import { type ClaudeDirectRecordSummary, summarizeClaudeRecord } from "./summary.ts";
+import {
+  type ClaudeDirectRecordSummary,
+  claudeFinalReplyIndex,
+  summarizeClaudeRecord,
+} from "./summary.ts";
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 import { claudeTokenUsage } from "./usage.ts";
 import { ClaudeUserPrompts, type RecoveredUserPrompt } from "./user-prompts.ts";
@@ -19,6 +23,7 @@ type ClaudeTranscriptFields = {
   readonly path: string;
   readonly item: unknown;
   readonly turnId?: string;
+  readonly final?: true;
 };
 
 type ClaudeRecoveredPromptEvent = RecoveredUserPrompt & {
@@ -43,6 +48,7 @@ export type ClaudeTranscriptEvent = ClaudeDirectEvent | ClaudeRecoveredPromptEve
 /** Turns raw transcript text into parsed activity events for one watcher. */
 export class LineEmitter {
   readonly turns = new ClaudeTranscriptTurns();
+  readonly subagentPaths = new Set<string>();
   readonly userPrompts: ClaudeUserPrompts;
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
@@ -55,6 +61,12 @@ export class LineEmitter {
     this.userPrompts = new ClaudeUserPrompts((prompt) =>
       emit({ ...prompt, elwoodSessionId: id, recovered: true }),
     );
+  }
+
+  forget(path: string): void {
+    this.turns.forget(path);
+    this.userPrompts.forget(path);
+    this.subagentPaths.delete(path);
   }
 
   /** Emit complete lines from `text`; a cursor retains any trailing partial line. */
@@ -95,11 +107,15 @@ export class LineEmitter {
       });
       return;
     }
+    const finalReplyIndex = this.subagentPaths.has(path)
+      ? -1
+      : claudeFinalReplyIndex(item, summaries);
     const base = this.eventFields(path, item, turnId);
     for (const [index, summary] of summaries.entries()) {
       this.emit({
         ...base,
         summary,
+        ...(index === finalReplyIndex ? { final: true as const } : {}),
         ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage"),
       });
     }

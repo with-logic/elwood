@@ -4,7 +4,10 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { summarizeClaudeRecord } from "../../src/claude/transcript/summary.ts";
+import {
+  claudeFinalReplyIndex,
+  summarizeClaudeRecord,
+} from "../../src/claude/transcript/summary.ts";
 import { stringify } from "../../src/core/serialize.ts";
 
 describe("C-CLAUDE-15 Claude transcript summarizer", () => {
@@ -70,6 +73,32 @@ describe("C-CLAUDE-15 Claude transcript summarizer", () => {
     expect(summarizeClaudeRecord({ type: "assistant", message: { content: "done" } })).toEqual([
       { kind: "assistant_message", label: "assistant", text: "done" },
     ]);
+  });
+
+  test.each([
+    { isSidechain: true },
+    { model: "<synthetic>" },
+  ])("C-API-64 Claude does not mark synthetic or sidechain text as final: %j", (fields) => {
+    const { isSidechain, model } = fields;
+    const item = {
+      type: "assistant",
+      isSidechain,
+      message: { stop_reason: "end_turn", model, content: "done" },
+    };
+    const summaries = summarizeClaudeRecord(item);
+    expect(summaries).toEqual([{ kind: "assistant_message", label: "assistant", text: "done" }]);
+    expect(claudeFinalReplyIndex(item, summaries)).toBe(-1);
+  });
+
+  test("C-API-64 a native Claude final record can contain reasoning without final reply text", () => {
+    const item = {
+      type: "assistant",
+      isSidechain: false,
+      message: { stop_reason: "end_turn", content: [{ type: "thinking", thinking: "plan" }] },
+    };
+    const summaries = summarizeClaudeRecord(item);
+    expect(summaries).toEqual([{ kind: "reasoning", label: "thinking", text: "plan" }]);
+    expect(claudeFinalReplyIndex(item, summaries)).toBe(-1);
   });
 
   test("yields nothing for non-message records or empty/unknown blocks", () => {

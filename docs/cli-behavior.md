@@ -230,6 +230,14 @@ misattributed to a CLI regression.)
   write the record before signaling it. With the wait, a stop at `ready` took 70 to 126 ms
   instead of 13 to 29 ms, and the record was always written.
   `src/codex/session/turn-commit.ts`, C-TURN-03, C-LIFE-13.
+- **Native final reply text and readiness are independent.** A Claude assistant
+  record can carry `message.stop_reason: "end_turn"`; reasoning-only records can
+  carry the same reason and some short turns have no `system/turn_duration` row.
+  Codex final reply text can carry explicit `phase: "final_answer"`. Elwood
+  marks committed reply text when the corresponding native marker is present.
+  A `Stop` scan reads the bytes already available, while working-to-idle terminal
+  evidence can publish `ready` independently. Neither guarantees the watcher has
+  delivered the last text record. C-API-64.
 - **A caller submission can precede the resumed composer's repaint.** The old
   idle composer may remain visible briefly after `caller_submitted`; that frame
   is not a turn end. Resume settling now synchronizes to current rendered work

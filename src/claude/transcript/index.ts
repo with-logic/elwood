@@ -70,11 +70,12 @@ export class ClaudeTranscriptWatcher {
     });
   }
 
-  observe(path: string, recoverTail = false, turnId?: string): void {
+  observe(path: string, recoverTail = false, turnId?: string, agentTranscript = false): void {
     if (this.finished) return;
     const cursor =
       this.cursors.get(path) ?? this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
+    if (agentTranscript) this.lines.subagentPaths.add(path);
     observeTranscriptBaseline(cursor, turnId, this.lines, this.guard, this.drops);
     if (this.cursors.has(path)) return;
     this.cursors.set(path, cursor);
@@ -111,8 +112,7 @@ export class ClaudeTranscriptWatcher {
     if (!cursor || this.finished) return;
     drainToBudget(this.drain, [cursor], this.terminalBudget);
     this.cursors.delete(path);
-    this.lines.turns.forget(path);
-    this.lines.userPrompts.forget(path);
+    this.lines.forget(path);
   }
 
   pollOnceForTests(): Promise<void> {
@@ -151,6 +151,7 @@ export class ClaudeTranscriptWatcher {
       drainToBudget(this.drain, [...this.cursors.values()], this.terminalBudget);
     } finally {
       this.lines.userPrompts.clearUnpaired();
+      this.lines.subagentPaths.clear();
       this.stop();
     }
   }

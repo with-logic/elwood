@@ -103,7 +103,7 @@ export class FakeCliSession implements CliSessionFacade {
               | "unrecognized_startup";
           }
         >,
-        "speed" | "tokenUsage" | "rateLimits" | "subagent"
+        "speed" | "tokenUsage" | "rateLimits" | "subagent" | "final"
       >
     > & {
       readonly kind?: Exclude<ElwoodActivityEvent["kind"], "user_message" | "unrecognized_startup">;

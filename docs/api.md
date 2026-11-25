@@ -73,6 +73,11 @@ Both sessions satisfy the exported `ElwoodAgentSession` type. It covers shared
 events, I/O, commands, loops, lifecycle, and dashboard stats. The interface below
 shows common calls. [Dashboard stats](embedding.md#session-stats-snapshots)
 
+`ready` marks input availability. The final reply can arrive later through
+`activity`. When native transcript evidence identifies final reply text, the
+`assistant_message` event carries `final: true`. Use `turnId` when available to
+associate that message with its turn. If `final` is omitted, finality is unknown.
+
 ```ts
 interface ElwoodAgentSession {
   readonly elwoodSessionId: string;

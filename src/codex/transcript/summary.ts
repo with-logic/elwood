@@ -7,9 +7,18 @@
 
 import { isRecord } from "../../core/predicates.ts";
 import { hasAsyncQuestionMetadata } from "../questions/records.ts";
-import type { CodexTranscriptSummary } from "./types.ts";
+import { payloadOf } from "./payload.ts";
+import type { CodexTranscriptEvent, CodexTranscriptSummary } from "./types.ts";
 
 type Item = Readonly<Record<string, unknown>>;
+const finalAnswerPhase = "final_answer";
+
+/** Final text from a normalized reply with explicit native phase evidence (C-API-64). */
+export function codexFinalReplyText(event: CodexTranscriptEvent): string | undefined {
+  if (event.summary.kind !== "message" || payloadOf(event.item)?.["phase"] !== finalAnswerPhase)
+    return undefined;
+  return event.summary.text || undefined;
+}
 
 export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
   const payload = record(record(item)?.["payload"]);
@@ -131,7 +140,7 @@ function assistantMessageText(payload: Item, role: string): string | undefined {
   if (role !== "assistant") return undefined;
   const phase = payload["phase"] ?? undefined;
   const hasUnsupportedPhase =
-    phase !== undefined && phase !== "final_answer" && phase !== "commentary";
+    phase !== undefined && phase !== finalAnswerPhase && phase !== "commentary";
   if (hasUnsupportedPhase) return undefined;
   const content = payload["content"];
   if (typeof content === "string") return content;
@@ -146,7 +155,7 @@ function assistantMessageText(payload: Item, role: string): string | undefined {
 function agentMessage(payload: Item): CodexTranscriptSummary {
   const phase = payload["phase"] ?? undefined;
   // Non-final legacy mirrors stay raw: canonical response items own progress and final replies.
-  if (phase !== undefined && phase !== "final_answer")
+  if (phase !== undefined && phase !== finalAnswerPhase)
     return { kind: "other", label: "agent_message" };
   return { kind: "message", label: "assistant", ...(text(payload["message"]) ?? {}) };
 }
