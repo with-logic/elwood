@@ -25,7 +25,11 @@ test("C-API-69 publishes structured Codex quota warnings once per unchanged reje
     primary: { resets_at: 1800000000 },
     secondary: { resets_at: 1800600000 },
   };
-  writeFileSync(path, tokenCount(quota));
+  const creditDenial = tokenCount({
+    limit_id: "codex",
+    rate_limit_reached_type: "workspace_owner_credits_depleted",
+  });
+  writeFileSync(path, creditDenial);
   const session = await startCodex({ cwd });
   const warnings: ElwoodWarningEvent[] = [];
   const activities: ElwoodActivityEvent[] = [];
@@ -83,6 +87,12 @@ test("C-API-69 publishes structured Codex quota warnings once per unchanged reje
       raw: warnings[0],
     });
     expect((await session.getStats()).quota.windows[0]).toMatchObject({ usedPercent: 100 });
+    writeFileSync(path, creditDenial);
+    await expect.poll(() => order.filter((label) => label === "raw")).toHaveLength(4);
+    expect(warnings).toHaveLength(1);
+    appendFileSync(path, creditDenial);
+    await expect.poll(() => warnings).toHaveLength(2);
+    expect(warnings.at(-1)).toMatchObject({ nativeLimitType: "workspace_owner_credits_depleted" });
     expect(session.status).toBe("ready");
   } finally {
     await session.teardown();
