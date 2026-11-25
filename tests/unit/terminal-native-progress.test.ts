@@ -1,31 +1,18 @@
 /** Native arrival watermarks survive PTY batching and ordered rendering (C-API-31). */
 import { expect, test, vi } from "vitest";
 import { reportCallerInput } from "../../src/codex/session/caller-input.ts";
-import type { PtyProcess } from "../../src/pty/types.ts";
 import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
-import { captureRenderProgress, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
-import { attachPtyTerminal, type ElwoodTerminal } from "../../src/terminal/headless.ts";
+import {
+  captureRenderProgress,
+  onNativeRenderEvidenceInvalidated,
+  settledLiveSnapshot,
+} from "../../src/terminal/cursor.ts";
+import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
 import { renderBatchBytes } from "../../src/terminal/pty-output.ts";
-
-function setup(onRendered: (data: string, terminal: ElwoodTerminal) => void = () => {}) {
-  let emit = (_data: string) => {};
-  const pty: PtyProcess = {
-    pid: 1,
-    onData: (handler) => {
-      emit = handler;
-      return () => {};
-    },
-    onExit: () => () => {},
-    write: () => {},
-    resize: () => "resized",
-    kill: () => {},
-  };
-  const terminal = attachPtyTerminal({ cols: 40, rows: 5 }, pty, onRendered);
-  return { terminal, emit };
-}
+import { setupTerminalPty } from "../helpers/terminal-pty.ts";
 
 test("C-API-31 bytes already received before capture stay old when the PTY batch renders", async () => {
-  const { terminal, emit } = setup();
+  const { terminal, emit } = setupTerminalPty();
   try {
     emit("old ");
     emit("output");
@@ -43,7 +30,7 @@ test("C-API-31 bytes already received before capture stay old when the PTY batch
 });
 
 test("C-API-31 a split native chunk needs every render before proving fresh output", async () => {
-  const { terminal, emit } = setup();
+  const { terminal, emit } = setupTerminalPty();
   const callbacks: Array<() => void> = [];
   const write = vi.spyOn(terminal.xterm, "write").mockImplementation((_data, done) => {
     if (done) callbacks.push(done);
@@ -69,7 +56,7 @@ test("C-API-31 a split native chunk needs every render before proving fresh outp
 
 test("C-API-31 a direct write follows staged native output and owns fresh progress", async () => {
   const rendered: string[] = [];
-  const { terminal, emit } = setup((data) => rendered.push(data));
+  const { terminal, emit } = setupTerminalPty((data) => rendered.push(data));
   try {
     emit("native ");
     const captured = captureRenderProgress(terminal);
@@ -98,7 +85,7 @@ const terminalViews = [
 test.each(
   terminalViews,
 )("C-API-56 host writes through the $name cannot satisfy PTY-only progress", async ({ view }) => {
-  const { terminal: inner, emit } = setup();
+  const { terminal: inner, emit } = setupTerminalPty();
   const terminal = view(inner);
   try {
     const progressed = captureRenderProgress(terminal, "pty");
@@ -123,7 +110,7 @@ test.each(
 
 test("C-API-31 raw output received by a render observer stays unsettled until its render", async () => {
   const facts: boolean[] = [];
-  const { terminal, emit } = setup((data) => {
+  const { terminal, emit } = setupTerminalPty((data) => {
     if (data === "first") emit("second");
     facts.push(settledLiveSnapshot(terminal) !== undefined);
   });
@@ -139,8 +126,10 @@ test("C-API-31 raw output received by a render observer stays unsettled until it
   }
 });
 
-test("C-API-31 a failed native render cannot authorize freshness after later output", async () => {
-  const { terminal, emit } = setup();
+test("C-API-31 and C-TRUST-01 a failed native render cannot authorize freshness after later output", async () => {
+  const { terminal, emit } = setupTerminalPty();
+  const invalidated = vi.fn();
+  const unsubscribe = onNativeRenderEvidenceInvalidated(terminal, invalidated);
   const write = vi.spyOn(terminal.xterm, "write").mockImplementationOnce(() => {
     throw new Error("render failed");
   });
@@ -149,19 +138,22 @@ test("C-API-31 a failed native render cannot authorize freshness after later out
     emit("lost");
     await terminal.settled();
     expect(terminal.renderFailed).toBe(true);
+    expect(invalidated).toHaveBeenCalledOnce();
     expect(captured()).toBe(false);
     emit("later");
     await terminal.settled();
     expect(terminal.snapshot().text).toContain("later");
     expect(captured()).toBe(false);
+    expect(invalidated).toHaveBeenCalledOnce();
   } finally {
+    unsubscribe();
     write.mockRestore();
     terminal.dispose();
   }
 });
 
 test("C-API-31 an older render callback cannot complete newer native bytes", async () => {
-  const { terminal, emit } = setup();
+  const { terminal, emit } = setupTerminalPty();
   const callbacks: Array<() => void> = [];
   const write = vi.spyOn(terminal.xterm, "write").mockImplementation((_data, done) => {
     if (done) callbacks.push(done);

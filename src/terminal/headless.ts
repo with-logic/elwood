@@ -60,7 +60,7 @@ class HeadlessTerminal implements ElwoodTerminal {
   readonly #cursor: RenderCursor;
   private currentSize: TerminalSize;
   private readonly renders: RenderQueue;
-  #ptyOutput: PtyOutput | undefined;
+  #ptyOutput?: PtyOutput;
   private readonly onInput: (input: string | Uint8Array) => void;
   private readonly inputWaiters: Array<{
     readonly resolve: () => void;
@@ -105,6 +105,7 @@ class HeadlessTerminal implements ElwoodTerminal {
     this.renders = new RenderQueue(
       (data, done) => this.xterm.write(data, done),
       () => this.#ptyOutput?.flush(),
+      () => this.#cursor.nativeEvidence.invalidate(),
     );
     this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {
@@ -132,12 +133,13 @@ class HeadlessTerminal implements ElwoodTerminal {
     const fromPty = onPtyRendered !== undefined;
     const revision = fromPty ? this.#cursor.queued() : this.#cursor.received();
     const arrival = this.#cursor.arrival;
-    return this.renders.enqueue(data, () => {
-      this.#cursor.rendered(revision, arrival, fromPty);
-      onPtyRendered?.();
-    });
+    const dispatch = () =>
+      this.renders.enqueue(data, () => {
+        this.#cursor.rendered(revision, arrival, fromPty);
+        onPtyRendered?.();
+      });
+    return fromPty ? this.#cursor.nativeEvidence.withPtyOutputWrite(dispatch) : dispatch();
   }
-
   sendInput(input: string | Uint8Array): Promise<void> {
     if (this.disposed) return Promise.reject(new Error("Terminal is disposed."));
     if (typeof input !== "string") return this.forwardBytes(input);

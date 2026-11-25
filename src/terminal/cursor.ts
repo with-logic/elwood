@@ -1,6 +1,7 @@
 /** Cursor evidence belongs to one completed render, never queued bytes (C-TRUST-01). */
 import type { Terminal } from "@xterm/headless";
 import type { ElwoodTerminal, TerminalSnapshot } from "./headless.ts";
+import { NativeRenderEvidence, trackRenderMutations } from "./render-mutations.ts";
 import { terminalSnapshot } from "./snapshot.ts";
 
 const tracked = new WeakMap<Terminal, RenderCursor>();
@@ -14,6 +15,24 @@ export function settledCursorVisible(terminal: Terminal): boolean {
 /** Both trust reads and clearance require all received output to be rendered successfully. */
 export function settledLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
   return renderIsSettled(terminal) ? cachedLiveSnapshot(terminal) : undefined;
+}
+
+/** A native dialog needs an unmodified live viewport. */
+export function settledNativeSnapshot(terminal: ElwoodTerminal): TerminalSnapshot | undefined {
+  if (tracked.get(terminal.xterm)?.nativeEvidence.intact !== true) return undefined;
+  return settledLiveSnapshot(terminal);
+}
+
+/**
+ * Delivers at most once, in a microtask after the triggering operation.
+ * Callbacks are fire-and-forget. Thrown errors and rejected promises are contained.
+ * Unsubscribing cancels pending delivery.
+ */
+export function onNativeRenderEvidenceInvalidated(
+  terminal: ElwoodTerminal,
+  listener: () => void | Promise<void>,
+): () => void {
+  return tracked.get(terminal.xterm)?.nativeEvidence.subscribe(listener) ?? (() => undefined);
 }
 
 function renderIsSettled(terminal: ElwoodTerminal): boolean {
@@ -54,6 +73,7 @@ export function cachedLiveSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
 
 export class RenderCursor {
   private readonly listeners = new Set<() => void>();
+  readonly nativeEvidence = new NativeRenderEvidence();
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -92,8 +112,19 @@ export class RenderCursor {
       ),
       terminal.parser.registerEscHandler({ final: "c" }, reset),
       terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset),
-      terminal.onResize(invalidate),
-      { dispose: invalidateOnMutation(terminal, invalidate) },
+      terminal.onResize(() => {
+        invalidate();
+        // Reflow can add apparent padding to clipped rows. A later PTY batch may
+        // repaint only part of the viewport. After output arrives, a size change
+        // may require handling the current startup dialog through the terminal.
+        // A new session can establish native evidence again.
+        if (this.arrivals > 0) this.nativeEvidence.invalidate();
+      }),
+      {
+        dispose: trackRenderMutations(terminal, invalidate, () =>
+          this.nativeEvidence.observeMutation(),
+        ),
+      },
     ];
   }
 
@@ -141,38 +172,9 @@ export class RenderCursor {
     return frame;
   }
   dispose(): void {
+    this.nativeEvidence.invalidate();
     tracked.delete(this.terminal);
     this.listeners.clear();
     for (const handler of this.handlers) handler.dispose();
   }
-}
-
-/** Raw xterm mutations bypass owned revisions and must invalidate cached rows. */
-function invalidateOnMutation(terminal: Terminal, invalidate: () => void): () => void {
-  const restore: Array<() => void> = [];
-  const writes: readonly ("write" | "writeln")[] = ["write", "writeln"];
-  for (const method of writes) {
-    const original = terminal[method];
-    const write = original.bind(terminal);
-    terminal[method] = (data, callback) => {
-      // writeln can parse its first internal write synchronously after user input.
-      invalidate();
-      write(data, () => {
-        invalidate();
-        callback?.();
-      });
-    };
-    restore.push(() => {
-      terminal[method] = original;
-    });
-  }
-  const reset = terminal.reset;
-  terminal.reset = () => {
-    reset.call(terminal);
-    invalidate();
-  };
-  return () => {
-    for (const method of restore) method();
-    terminal.reset = reset;
-  };
 }

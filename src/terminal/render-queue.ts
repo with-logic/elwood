@@ -22,11 +22,17 @@ export class RenderQueue {
   private settlePassDone = false;
   private readonly write: XtermWrite;
   private readonly submitStaged: () => void;
+  private readonly onFailure: (() => void) | undefined;
 
   /** `submitStaged` hands over any output a batching layer still holds back. */
-  constructor(write: XtermWrite, submitStaged: () => void = () => undefined) {
+  constructor(
+    write: XtermWrite,
+    submitStaged: () => void = () => undefined,
+    onFailure?: () => void,
+  ) {
     this.write = write;
     this.submitStaged = submitStaged;
+    this.onFailure = onFailure;
   }
 
   enqueue(data: string | Uint8Array, onRendered?: () => void): Promise<void> {
@@ -48,6 +54,7 @@ export class RenderQueue {
         this.renderFailed = true;
         this.finish(pending);
         reject(error);
+        this.onFailure?.();
       }
     });
   }
