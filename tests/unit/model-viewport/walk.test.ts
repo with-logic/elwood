@@ -70,7 +70,7 @@ test("C-API-24 selects the second custom label across a scrolling disclosure", a
     input?.(key);
     terminal.text = labels(terminal.text);
   };
-  await setPickerModel({ terminal, submit }, claudeModelPicker, "PROJECT B", 500);
+  await setPickerModel({ terminal, submit }, claudeModelPicker, "PROJECT B", 2_000);
   expect(state.selected).toBe(7);
   expect(state.expansions).toBe(1);
   expect(terminal.inputs.at(-1)).toBe("s");
