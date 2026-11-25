@@ -24,7 +24,7 @@ test.each([
   await original.stop();
   const session = await resumeClaude({ cwd, elwoodSessionId: original.elwoodSessionId });
   try {
-    ptys[1]!.emitData(frame("❯ "));
+    ptys[1]!.emitData(frame(claudeTty(claudeComposer)));
     await session.terminal.settled();
     expect(session.status).toBe("ready");
     ptys[1]!.emitData(

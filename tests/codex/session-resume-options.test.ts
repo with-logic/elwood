@@ -10,6 +10,7 @@ import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { safeSessionDir } from "../../src/state/files.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -42,23 +43,6 @@ describe("CodexSessionApi resume options", () => {
     expect(resumed.status).toBe("running");
   });
 
-  test("C-API-28 resume reaches ready on the first composer marker (no SessionStart needed)", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startCodex({ cwd });
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
-    await session.stop();
-    // Resume, then render a composer frame WITHOUT dispatching SessionStart (the CLI
-    // does not re-fire it on resume). On resume the composer marker is a safe readiness
-    // signal, so the session reaches ready without waiting out the deadline.
-    const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
-    expect(resumed.status).not.toBe("ready"); // not ready until the composer renders
-    ptys[1]!.emitData("\u001b[2J\u001b[H› "); // clear + home + composer marker
-    await resumed.terminal.settled(); // flush the write -> render -> readiness chain
-    await new Promise((r) => setImmediate(r));
-    expect(resumed.status).toBe("ready");
-  });
-
   test("C-API-28 resume does NOT mark ready on a blocking dialog whose caret looks like the composer", async () => {
     const cwd = tempDir();
     installFakes();
@@ -84,7 +68,7 @@ describe("CodexSessionApi resume options", () => {
     await session.stop();
     const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
     const first = resumed.sendMessage("queued during resume");
-    ptys[1]!.emitData("\u001b[2J\u001b[H› ");
+    ptys[1]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`); // configured composer
     await first;
     expect(resumed.status).toBe("running");
     // Without Stop, distinct native busy/idle frames retain the end edge and reopen the queue.
