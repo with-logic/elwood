@@ -1,6 +1,6 @@
 /** Exercise current native evidence and write refusal through the real session (C-ATTN-07). */
 import { mkdirSync, renameSync, rmdirSync } from "node:fs";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { resetFakes } from "./helpers.ts";
 import { menu, setupWorkspaceAnswer } from "./workspace-trust-answer-helpers.ts";
@@ -67,20 +67,19 @@ test("C-ATTN-07 rejected PTY input leaves the request listable but prevents anot
   }
 });
 
-test("C-ATTN-07 a synchronized composer paint cannot prove acceptance before settlement", async () => {
-  const { session, pty, render, request } = await setupWorkspaceAnswer();
+test("C-ATTN-07 a temporary missing path on the same menu preserves the pending answer", async () => {
+  const { cwd, session, pty, render, request } = await setupWorkspaceAnswer();
   try {
     const answer = session.answerDialog(request.id, request.choices[0]!.id);
-    let accepted = false;
-    void answer.then(
-      () => {
-        accepted = true;
-      },
-      () => undefined,
-    );
+    const accepted = vi.fn();
+    void answer.then(accepted, () => undefined);
     await expect.poll(() => pty.writes).toEqual(["\r"]);
-    await render(`\x1b[?2026h${codexTty(codexComposer)}`);
-    expect(accepted).toBe(false);
+    const original = menu(cwd);
+    // The same synchronized menu may temporarily lack its disclosure while repainting.
+    await render(`\x1b[?2026h${original.replace(cwd, "")}`);
+    await render(original);
+    await render(codexTty(codexComposer));
+    expect(accepted).not.toHaveBeenCalled();
     await render(`\x1b[?2026l${codexTty(codexComposer)}`);
     await expect(answer).resolves.toBeUndefined();
   } finally {

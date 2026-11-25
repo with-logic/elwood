@@ -9,6 +9,8 @@ import { codexWorkspaceTrustStep, type NumberedTrustOption } from "./answer-layo
 import type { CodexWorkspaceTrustDiscovery } from "./discovery.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 
+const synchronizedOutputModeCode = 2026;
+
 type WriterInput = Pick<WorkspaceTrustDiscoveryInput, "terminal" | "clearance"> & {
   readonly manualTrust: boolean;
   readonly discovery: CodexWorkspaceTrustDiscovery;
@@ -82,7 +84,7 @@ export function codexTrustWriter({
     },
     step: codexWorkspaceTrustStep,
     write,
-    reconcileDialogEvidence: () => confirmation.recordConfirmation(),
+    reconcileDialogEvidence: () => confirmation.recordConfirmation("write-completion"),
     relinquish: () => {
       relinquished = true;
     },
@@ -91,7 +93,7 @@ export function codexTrustWriter({
   return {
     answerDialog: (requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) =>
       answers.answer(requestId, choiceId, options),
-    recordConfirmation: confirmation.recordConfirmation,
+    recordConfirmation: () => confirmation.recordConfirmation("native-pty-render"),
     retireNavigation: (id: string) => answers.retireNavigation(id),
     resumeAfterDialogDelivery: () => answers.resumeNavigation(),
     bind(current: ElwoodTerminal, closing: AbortSignal) {
@@ -100,12 +102,27 @@ export function codexTrustWriter({
         answers.revoke();
       });
       const offNative = onNativeRenderEvidenceInvalidated(current, () => answers.revoke());
+      const observeBeforeRepaint = () => {
+        confirmation.observeBeforeSynchronizedRepaint(current);
+        return false; // Let xterm perform the original operation.
+      };
+      const eraseDisplay = current.xterm.parser.registerCsiHandler(
+        { final: "J" },
+        observeBeforeRepaint,
+      );
+      const resetMode = current.xterm.parser.registerCsiHandler(
+        { prefix: "?", final: "l" },
+        (params) => (params.includes(synchronizedOutputModeCode) ? observeBeforeRepaint() : false),
+      );
       closing.addEventListener(
         "abort",
         () => {
           offInput();
           offNative();
-          confirmation.closing();
+          confirmation.closing(() => {
+            eraseDisplay.dispose();
+            resetMode.dispose();
+          });
         },
         { once: true },
       );

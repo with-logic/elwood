@@ -21,6 +21,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Mark Claude and Codex `assistant_message` activity with `final: true` when
   the transcript identifies final reply text, including replies delivered after `ready`.
 
+- Reject a pending Codex workspace trust answer when a different complete
+  workspace menu is observed during synchronized native output.
+
 ## [0.7.0] - 2026-11-24
 
 - Answer verified Codex workspace trust prompts through `answerDialog()` and

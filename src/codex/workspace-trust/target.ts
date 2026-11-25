@@ -4,10 +4,9 @@ import { codexFolderAccessFooter, codexFolderAccessLabels } from "../../core/tru
 import { trustView } from "../../core/trust/view.ts";
 import type { TerminalSnapshot } from "../../terminal/headless.ts";
 import {
-  disclosureRows,
   type LaunchEvidence,
-  matchFolderAccessDisclosure,
-  matchLegacyDisclosure,
+  matchesLaunchDisclosure,
+  parseWorkspaceDisclosure,
   type RowFits,
 } from "./disclosure.ts";
 import type { WorkspaceTrustTarget } from "./types.ts";
@@ -15,7 +14,6 @@ import type { WorkspaceTrustTarget } from "./types.ts";
 const folderAccess = {
   acceptLabel: codexFolderAccessLabels.accept,
   preludeLayout: "folder access",
-  matches: matchFolderAccessDisclosure,
 } as const;
 const codexWorkspaceLayouts = [
   {
@@ -24,7 +22,6 @@ const codexWorkspaceLayouts = [
     declineOutcome: "exit",
     footer: "Press enter to continue",
     preludeLayout: "legacy",
-    matches: matchLegacyDisclosure,
   },
   {
     ...folderAccess,
@@ -50,11 +47,11 @@ export function createCodexWorkspaceTrustMatcher({
     const menu = matchWorkspaceMenu(lines);
     if (!menu) return undefined;
     const { headerRow, layout } = menu;
-    const prefix = disclosureRows(lines, headerRow, layout.preludeLayout);
-    if (!prefix) return undefined;
+    const disclosure = parseWorkspaceDisclosure(lines, headerRow, layout.preludeLayout, rowFits);
+    if (!disclosure) return undefined;
     let result: WorkspaceTrustTarget | undefined;
     for (const checked of targets) {
-      if (!layout.matches(prefix, checked, launchDirectoryPaths, rowFits)) continue;
+      if (!matchesLaunchDisclosure(disclosure, checked, launchDirectoryPaths)) continue;
       if (
         result &&
         (result.targetPath !== checked.target.targetPath ||
