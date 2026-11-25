@@ -19,6 +19,11 @@ type StartupDiagnostics = {
   };
 };
 
+/**
+ * Retain the last settled startup screen until readiness, cancellation, or the backstop.
+ * The backstop emits a content-free warning. When no recognized dialog holds readiness
+ * it also emits a bounded copy of the captured screen as activity.
+ */
 export function createStartupReadinessGate(
   onReady: () => void,
   resumed: boolean,

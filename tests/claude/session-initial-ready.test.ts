@@ -21,62 +21,39 @@ afterEach(async () => {
   resetFakes();
 });
 
+function instructionsLoaded(session: ClaudeSessionApi) {
+  return ptys[0]!.dispatchHook(session.elwoodSessionId, {
+    hook_event_name: "InstructionsLoaded",
+    session_id: "claude-1",
+    cwd: session.cwd,
+    file_path: "/tmp/CLAUDE.md",
+    memory_type: "Project",
+    load_reason: "session_start",
+  });
+}
+
 describe("ClaudeSessionApi bounded initial readiness", () => {
   test("C-API-28 the deadline releases the queued message once when InstructionsLoaded never arrives", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd });
-    sessions.push(session);
-    // A message queued before readiness stays unwritten while no readiness fires.
+    const { session } = await startObservedSession();
     const queued = session.sendMessage("hello");
+    await paint(session, claudeTty(claudeComposer));
+    await vi.advanceTimersByTimeAsync(9_999);
     expect(ptys[0]!.writes).toEqual([]);
-
-    // Render a first frame — this arms the starvation deadline. WITHHOLD the
-    // `InstructionsLoaded` hook entirely: the hook bridge is treated as never
-    // firing, so only the deadline can release the queue.
-    vi.useFakeTimers();
-    ptys[0]!.emitData(claudeTty(claudeComposer));
-    expect(ptys[0]!.writes).toEqual([]); // nothing before the deadline elapses
-
-    // Advance past the 10s bounded deadline (readiness fires) and flush the
-    // paste's settle-delayed Enter, then let `queued` settle.
-    await vi.advanceTimersByTimeAsync(10_000);
-    await vi.advanceTimersByTimeAsync(500);
-    vi.useRealTimers();
+    await vi.advanceTimersByTimeAsync(501);
+    expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
     await queued;
-
-    // The queued message released EXACTLY once: one bracketed paste + its Enter.
-    expect(ptys[0]!.writes[0]).toBe(PASTE);
-    expect(ptys[0]!.writes.filter((w) => w === PASTE)).toHaveLength(1);
-    expect(ptys[0]!.writes).toContain("\r");
   });
 
   test("C-API-28 a later InstructionsLoaded after the deadline does not re-release the message", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd });
-    sessions.push(session);
+    const { session } = await startObservedSession();
     const queued = session.sendMessage("hello");
-
-    vi.useFakeTimers();
-    ptys[0]!.emitData(claudeTty(claudeComposer));
-    await vi.advanceTimersByTimeAsync(10_000);
-    await vi.advanceTimersByTimeAsync(500);
-    vi.useRealTimers();
+    await paint(session, claudeTty(claudeComposer));
+    await vi.advanceTimersByTimeAsync(10_500);
+    expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
     await queued;
-    expect(ptys[0]!.writes.filter((w) => w === PASTE)).toHaveLength(1);
-
-    // The InstructionsLoaded hook arriving late is idempotent: readiness already
-    // latched via the deadline, so it must not release the message a second time.
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "InstructionsLoaded",
-      session_id: "claude-1",
-      cwd,
-      file_path: "/tmp/CLAUDE.md",
-      memory_type: "Project",
-      load_reason: "session_start",
-    });
-    expect(ptys[0]!.writes.filter((w) => w === PASTE)).toHaveLength(1);
+    await instructionsLoaded(session);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
   });
 });
 
@@ -110,9 +87,11 @@ async function paint(session: ClaudeSessionApi, bytes: string): Promise<void> {
 }
 
 test.each([
-  "sendMessage",
-  "sendPrompt",
-] as const)("C-API-28 C-ATTN-06 a Claude onboarding screen holds %s until the verified composer", async (method) => {
+  ["sendMessage", "verified composer"],
+  ["sendPrompt", "verified composer"],
+  ["sendMessage", "InstructionsLoaded"],
+  ["sendPrompt", "InstructionsLoaded"],
+] as const)("C-API-28 C-ATTN-06 Claude holds %s at the backstop until %s", async (method, evidence) => {
   const { session, warnings, activities } = await startObservedSession();
   await paint(session, tty(themePicker));
   await vi.advanceTimersByTimeAsync(10_000);
@@ -120,15 +99,28 @@ test.each([
   expect(warnings).toEqual([]);
   await vi.advanceTimersByTimeAsync(50_000);
   expect(session.status).toBe("running");
-  expect(warnings).toEqual([
-    expect.objectContaining({
+  const warning = {
+    elwoodSessionId: session.elwoodSessionId,
+    agent: "claude",
+    source: "lifecycle",
+    code: "initial_ready_backstop",
+    severity: "warning",
+    message:
+      "No configured Claude composer was recognized within 60 seconds of the first frame; readiness and queued input remain held.",
+    raw: "initial_ready_backstop",
+  };
+  expect(warnings).toEqual([warning]);
+  expect(activities.filter(({ kind }) => kind === "warning")).toEqual([
+    {
+      elwoodSessionId: session.elwoodSessionId,
       agent: "claude",
       source: "lifecycle",
-      code: "initial_ready_backstop",
-      raw: "initial_ready_backstop",
-    }),
+      kind: "warning",
+      label: "initial_ready_backstop",
+      text: warning.message,
+      raw: warning,
+    },
   ]);
-  expect(JSON.stringify(warnings)).not.toContain(themePicker.split("\n")[0]);
   expect(activities.filter(({ kind }) => kind === "unrecognized_startup")).toEqual([
     {
       elwoodSessionId: session.elwoodSessionId,
@@ -144,16 +136,19 @@ test.each([
   await vi.advanceTimersByTimeAsync(1_000);
   expect(ptys[0]!.writes).toEqual([]);
 
-  await paint(session, claudeTty(claudeComposer, false));
+  if (evidence === "InstructionsLoaded") {
+    await instructionsLoaded(session);
+  } else {
+    await paint(session, claudeTty(claudeComposer, false));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(session.status).toBe("running");
+    expect(ptys[0]!.writes).toEqual([]);
+    await paint(session, claudeTty(claudeComposer));
+  }
   await vi.advanceTimersByTimeAsync(500);
-  expect(session.status).toBe("running");
-  expect(ptys[0]!.writes).toEqual([]);
-
-  await paint(session, claudeTty(claudeComposer));
-  await vi.advanceTimersByTimeAsync(500);
-  await sent;
   expect(activities).toContainEqual(expect.objectContaining({ kind: "status", status: "ready" }));
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
+  await sent;
 });
 
 test("C-ATTN-06 the Claude backstop keeps recognized workspace trust on its attention surface", async () => {
@@ -161,6 +156,9 @@ test("C-ATTN-06 the Claude backstop keeps recognized workspace trust on its atte
   await paint(session, tty(capturedFrame("claude-2.1.310/folder-trust-no").trimEnd()));
   await vi.advanceTimersByTimeAsync(60_000);
   expect(session.status).toBe("blocked");
+  expect(activities).toContainEqual(
+    expect.objectContaining({ kind: "attention", label: "claude-workspace_trust-prompt" }),
+  );
   expect(warnings).toEqual([expect.objectContaining({ code: "initial_ready_backstop" })]);
   expect(activities.some(({ kind }) => kind === "unrecognized_startup")).toBe(false);
   expect(ptys[0]!.writes).toEqual([]);
