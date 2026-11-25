@@ -1,4 +1,4 @@
-/** Codex quota hits require a native reached type in a committed token_count (PRD §5.12). */
+/** Codex quota hits require a native reached type in a committed token_count (PRD §5.4, C-API-69). */
 import { expect, test } from "vitest";
 import { CodexUsageLimitObserver } from "../../src/codex/transcript/usage-limit.ts";
 
@@ -100,25 +100,20 @@ test("suppresses copies despite unrelated token, timing or utilization changes",
     }),
   ).toBeUndefined();
   expect(observer.observe(tokenCount(hit))).toBeUndefined();
-  expect(
-    observer.observe(
-      tokenCount({
-        ...hit,
-        primary: { resets_at: 1_795_700_000 },
-      }),
-    ),
-  ).toMatchObject({ primaryResetsAtUnixSeconds: 1_795_700_000 });
-  expect(
-    observer.observe(
-      tokenCount({
-        ...hit,
-        rate_limit_reached_type: "workspace_member_usage_limit_reached",
-      }),
-    ),
-  ).toMatchObject({ reachedType: "workspace_member_usage_limit_reached" });
-  expect(observer.observe(tokenCount({ ...hit, limit_id: "codex_other" }))).toMatchObject({
-    limitId: "codex_other",
-  });
+});
+
+test.each([
+  ["primary reset", { primary: { ...hit.primary, resets_at: 1_795_700_000 } }],
+  ["secondary reset", { secondary: { ...hit.secondary, resets_at: 1_795_701_000 } }],
+  ["rejection reason", { rate_limit_reached_type: "workspace_member_usage_limit_reached" }],
+  ["limit ID", { limit_id: "codex_other" }],
+  ["limit name", { limit_name: "Other" }],
+])("reports a change to only the %s once", (_field, change) => {
+  const observer = new CodexUsageLimitObserver();
+  expect(observer.observe(tokenCount(hit))).toBeDefined();
+  const changed = tokenCount({ ...hit, ...change });
+  expect(observer.observe(changed)).toBeDefined();
+  expect(observer.observe(changed)).toBeUndefined();
 });
 
 test("clears only on an explicit subsequent nonrejected snapshot for the same limit ID", () => {
@@ -136,4 +131,25 @@ test("clears only on an explicit subsequent nonrejected snapshot for the same li
   expect(observer.observe(tokenCount(hit))).toBeUndefined();
   expect(observer.observe(tokenCount(clear))).toBeUndefined();
   expect(observer.observe(tokenCount(hit))).toBeDefined();
+});
+
+test("deduplicates distinct overlength IDs without publishing them", () => {
+  const observer = new CodexUsageLimitObserver();
+  const base = "x".repeat(256);
+  const first = tokenCount({ ...hit, limit_id: `${base}1` });
+  const second = tokenCount({ ...hit, limit_id: `${base}2` });
+  expect(observer.observe(first)).toMatchObject({ reachedType: "rate_limit_reached" });
+  const result = observer.observe(second);
+  expect(result).toMatchObject({ reachedType: "rate_limit_reached" });
+  expect(result).not.toHaveProperty("limitId");
+  expect(observer.observe(second)).toBeUndefined();
+  expect(
+    observer.observe(
+      tokenCount({
+        limit_id: `${base}2`,
+        rate_limit_reached_type: null,
+      }),
+    ),
+  ).toBeUndefined();
+  expect(observer.observe(second)).toBeDefined();
 });

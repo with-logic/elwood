@@ -1,5 +1,5 @@
 /** Transcript observer diagnostics and native quota warnings (PRD §5.4/§5.7). */
-import type { CodexUsageLimitObservation } from "../../codex/transcript/usage-limit.ts";
+import type { RateLimitReachedType } from "../../codex/transcript/payload.ts";
 
 export type TranscriptListenerErrorWarning = {
   readonly elwoodSessionId: string;
@@ -39,8 +39,15 @@ export type ClaudeUsageLimitWarning = {
   readonly raw: string;
 };
 
+export type CodexUsageLimitDetails = {
+  readonly limitId?: string;
+  readonly limitName?: string;
+  readonly primaryResetsAtUnixSeconds?: number;
+  readonly secondaryResetsAtUnixSeconds?: number;
+};
+
 /** Affirmative usage or credit rejection from a Codex rate-limit snapshot. */
-export type CodexUsageLimitWarning = {
+export type CodexUsageLimitWarning = CodexUsageLimitDetails & {
   readonly elwoodSessionId: string;
   readonly agent: "codex";
   readonly source: "transcript";
@@ -48,11 +55,9 @@ export type CodexUsageLimitWarning = {
   readonly severity: "warning";
   readonly message: string;
   readonly transcriptPath: string;
-  readonly nativeLimitType: CodexUsageLimitObservation["reachedType"];
-  readonly limitId?: string;
-  readonly limitName?: string;
-  readonly primaryResetsAtUnixSeconds?: number;
-  readonly secondaryResetsAtUnixSeconds?: number;
+  readonly nativeLimitType: RateLimitReachedType;
+  readonly turnId?: never;
+  readonly resetsAtUnixSeconds?: never;
   readonly raw: string;
 };
 

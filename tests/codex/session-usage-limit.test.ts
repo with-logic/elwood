@@ -39,7 +39,6 @@ test("C-API-69 publishes structured Codex quota warnings once per unchanged reje
     Object.assign(item as object, { payload: { type: "token_count" } });
   });
   session.on("activity", (event) => {
-    if (event.kind === "turn_failure") order.push("unexpected failure");
     if (event.source !== "transcript") return;
     order.push(event.label);
     activities.push(event);
@@ -93,6 +92,25 @@ test("C-API-69 publishes structured Codex quota warnings once per unchanged reje
     appendFileSync(path, creditDenial);
     await expect.poll(() => warnings).toHaveLength(2);
     expect(warnings.at(-1)).toMatchObject({ nativeLimitType: "workspace_owner_credits_depleted" });
+    const message = "Your workspace is out of credits. Add credits to continue.";
+    appendFileSync(
+      path,
+      `${JSON.stringify({
+        type: "event_msg",
+        payload: {
+          type: "task_complete",
+          turn_id: "credit-denial-turn",
+          error: { codex_error_info: "usage_limit_exceeded", message },
+        },
+      })}\n`,
+    );
+    await expect
+      .poll(() => activities.find(({ kind }) => kind === "turn_failure"))
+      .toMatchObject({
+        turnId: "credit-denial-turn",
+        turnFailure: { message, disposition: "final" },
+      });
+    expect(warnings).toHaveLength(2);
     expect(session.status).toBe("ready");
   } finally {
     await session.teardown();

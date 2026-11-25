@@ -11,6 +11,7 @@ import type {
 } from "../../core/stats/types.ts";
 
 import { isoInstant } from "../../core/usage/windows.ts";
+import { tokenCountOf } from "./payload.ts";
 
 type CodexStats = {
   readonly tokenUsage?: CodexTokenUsage;
@@ -18,12 +19,11 @@ type CodexStats = {
 };
 
 export function codexStats(item: unknown): CodexStats | undefined {
-  if (!isRecord(item) || item["type"] !== "event_msg") return undefined;
-  const payload = item["payload"];
-  if (!isRecord(payload) || payload["type"] !== "token_count") return undefined;
+  const snapshot = tokenCountOf(item);
+  if (!snapshot) return undefined;
   return {
-    ...optional(tokenUsage(payload["info"]), "tokenUsage"),
-    ...optional(rateLimits(payload["rate_limits"], item["timestamp"]), "rateLimits"),
+    ...optional(tokenUsage(snapshot.info), "tokenUsage"),
+    ...optional(rateLimits(snapshot.limits, snapshot.timestamp), "rateLimits"),
   };
 }
 
@@ -56,8 +56,11 @@ function tokenCounts(value: unknown): TokenCounts | undefined {
   };
 }
 
-function rateLimits(value: unknown, timestamp: unknown): CodexRateLimits | undefined {
-  if (!isRecord(value)) return undefined;
+function rateLimits(
+  value: Record<string, unknown> | undefined,
+  timestamp: unknown,
+): CodexRateLimits | undefined {
+  if (!value) return undefined;
   const primary = rateWindow(value["primary"]);
   const secondary = rateWindow(value["secondary"]);
   const id = value["limit_id"];

@@ -12,7 +12,7 @@ import { summarizeTranscriptItem } from "./summary.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
 
 /** The replay flag is internal; raw transcript observers still receive the same event. */
-export type CodexTranscriptDelivery = (event: CodexTranscriptEvent, rewound: boolean) => void;
+export type CodexTranscriptDelivery = (event: CodexTranscriptEvent, isReplay: boolean) => void;
 
 /** Turns raw transcript text into parsed events for one watcher. */
 export class CodexLineEmitter {
@@ -33,8 +33,8 @@ export class CodexLineEmitter {
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
     if (startedOversizedDrop) this.drops.drop(path, "oversized");
-    const rewound = cursor.lastReadWasReplay;
-    for (const line of lines) this.publishLine(path, line, rewound);
+    const isReplay = cursor.lastReadWasReplay;
+    for (const line of lines) this.publishLine(path, line, isReplay);
   }
 
   /** Emit a single already-complete line (the final drained partial at teardown). */
@@ -42,7 +42,7 @@ export class CodexLineEmitter {
     this.publishLine(path, line, cursor.lastReadWasReplay);
   }
 
-  private publishLine(path: string, line: string, rewound: boolean): void {
+  private publishLine(path: string, line: string, isReplay: boolean): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
@@ -56,7 +56,7 @@ export class CodexLineEmitter {
         item,
         summary: summarizeTranscriptItem(item),
       },
-      rewound,
+      isReplay,
     );
   }
 }

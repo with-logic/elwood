@@ -108,12 +108,12 @@ export function createCodexTranscriptWatcher(
   const usageLimits = new CodexUsageLimitObserver();
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
-    (event, rewound) =>
+    (event, isReplay) =>
       duringDelivery(() => {
         clipboardCopies.observe(event.item);
         const projected = activity.activityFromCodexTranscript(event);
         const failure = codexTurnFailureActivity(event);
-        const rejectedQuota = rewound ? undefined : usageLimits.observe(event.item);
+        const rejectedQuota = isReplay ? undefined : usageLimits.observe(event.item);
         const quotaWarning = rejectedQuota && codexUsageLimitWarning(event, rejectedQuota);
         deliver("codex:transcript", event);
         deliver("activity", projected);

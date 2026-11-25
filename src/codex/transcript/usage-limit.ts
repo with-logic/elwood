@@ -1,26 +1,18 @@
 /** Observe explicit quota rejections in Codex token_count records (PRD §5.4, C-API-69). */
 
+import { createHash } from "node:crypto";
 import { optional } from "../../core/optional.ts";
 import { isOneOf, isRecord } from "../../core/predicates.ts";
 import { count } from "../../core/stats/fields.ts";
-import type { CodexUsageLimitWarning } from "../../core/warnings/transcript.ts";
+import type {
+  CodexUsageLimitDetails,
+  CodexUsageLimitWarning,
+} from "../../core/warnings/transcript.ts";
+import { type RateLimitReachedType, rateLimitReachedTypes, tokenCountOf } from "./payload.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
 
-// Native RateLimitReachedType in Codex 0.171 and 0.172.
-const reachedTypes = [
-  "rate_limit_reached",
-  "workspace_owner_credits_depleted",
-  "workspace_member_credits_depleted",
-  "workspace_owner_usage_limit_reached",
-  "workspace_member_usage_limit_reached",
-] as const;
-
-export type CodexUsageLimitObservation = {
-  readonly reachedType: (typeof reachedTypes)[number];
-  readonly limitId?: string;
-  readonly limitName?: string;
-  readonly primaryResetsAtUnixSeconds?: number;
-  readonly secondaryResetsAtUnixSeconds?: number;
+export type CodexUsageLimitObservation = CodexUsageLimitDetails & {
+  readonly reachedType: RateLimitReachedType;
 };
 
 const maxLimitLabelLength = 256;
@@ -31,27 +23,32 @@ function limitLabel(value: unknown): string | undefined {
   return value;
 }
 
+/** Bound retained identity without conflating distinct overlength native IDs. */
+function limitIdentity(raw: unknown, label: string | undefined): string | undefined {
+  if (label !== undefined) return `id:${label}`;
+  if (typeof raw !== "string" || raw.trim() === "") return undefined;
+  return `sha256:${createHash("sha256").update(raw).digest("hex")}`;
+}
+
 function windowReset(value: unknown): number | undefined {
   return isRecord(value) ? count(value["resets_at"]) : undefined;
 }
 
 /** Keep one scoped rejection so repeated token counters do not repeat the notification. */
 export class CodexUsageLimitObserver {
-  private last: { readonly key: string; readonly limitId: string | undefined } | undefined;
+  private last: { readonly key: string; readonly identity: string | undefined } | undefined;
 
   observe(item: unknown): CodexUsageLimitObservation | undefined {
-    if (!isRecord(item) || item["type"] !== "event_msg") return undefined;
-    const payload = item["payload"];
-    if (!isRecord(payload) || payload["type"] !== "token_count") return undefined;
-    const snapshot = payload["rate_limits"];
-    if (!isRecord(snapshot)) return undefined;
-
+    const snapshot = tokenCountOf(item)?.limits;
+    if (!snapshot) return undefined;
     const reachedType = snapshot["rate_limit_reached_type"];
-    const limitId = limitLabel(snapshot["limit_id"]);
-    if (!isOneOf(reachedType, reachedTypes)) {
-      // Codex serializes None as null. Omitted or unknown fields cannot clear an observation.
-      if (reachedType === null && limitId !== undefined && this.last?.limitId === limitId)
-        this.last = undefined;
+    if (reachedType !== null && !isOneOf(reachedType, rateLimitReachedTypes)) return undefined;
+    const rawLimitId = snapshot["limit_id"];
+    const limitId = limitLabel(rawLimitId);
+    const identity = limitIdentity(rawLimitId, limitId);
+    if (reachedType === null) {
+      // Null resets duplicate suppression for this identity. It is not a recovery signal.
+      if (identity !== undefined && this.last?.identity === identity) this.last = undefined;
       return undefined;
     }
 
@@ -62,9 +59,9 @@ export class CodexUsageLimitObserver {
       ...optional(windowReset(snapshot["primary"]), "primaryResetsAtUnixSeconds"),
       ...optional(windowReset(snapshot["secondary"]), "secondaryResetsAtUnixSeconds"),
     };
-    const key = JSON.stringify(observation);
+    const key = JSON.stringify([identity, observation]);
     if (this.last?.key === key) return undefined;
-    this.last = { key, limitId };
+    this.last = { key, identity };
     return observation;
   }
 }
