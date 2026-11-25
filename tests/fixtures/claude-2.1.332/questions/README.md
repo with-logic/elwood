@@ -57,3 +57,16 @@ stopped at this frame until it read such a footer.
 
 See "Claude notice residue on the last questionnaire row" and "Claude question
 editor: wrapping, tabs and line endings" in `docs/cli-behavior.md`.
+
+The `narrow-*-native.json` frames were captured on 2026-11-25 the same way but
+in a 60x45 terminal, with no notice posted. Claude wraps each questionnaire's
+footer over two rows. A grouped questionnaire's footer breaks after
+`ctrl+g to`, leaving `edit in Nvim · Esc to cancel` on the last row; a
+single-question footer leaves only `Esc to cancel` there.
+
+- `narrow-grouped-next-native.json`: `Which test features?` with Logging and
+  Metrics checked and `Next` highlighted, cursor hidden.
+- `narrow-single-other-placeholder-native.json`: `Which test note?` with the
+  cursor on the empty Other editor.
+- `narrow-checkbox-submit-native.json`: `Which test fruits?` with Apple and
+  Cherry checked and `Submit` highlighted, cursor hidden.

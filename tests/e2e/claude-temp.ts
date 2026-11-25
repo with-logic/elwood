@@ -5,7 +5,9 @@
  * side effects, so the question sandbox shares it without setting up an e2e Claude home.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+// biome-ignore-all lint/suspicious/noMisplacedAssertion: Proof tests call these checks inside their test.
+import assert from "node:assert/strict";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 /** The variable naming Claude's temp root. */
@@ -32,4 +34,11 @@ export function claudeTempFolder(cwd: string): string {
 export function claudeTempFoldersNamed(root: string, folder: string): string[] {
   const dir = join(root, `claude-${process.getuid?.() ?? 0}`);
   return existsSync(dir) ? readdirSync(dir).filter((name) => name === folder) : [];
+}
+
+/** Claude kept the temp folder for `cwd` under the private temp root `root`, not in `/tmp`. */
+export function assertClaudeTempFolderUnder(root: string, cwd: string): void {
+  const folder = claudeTempFolder(realpathSync(cwd));
+  assert.deepStrictEqual(claudeTempFoldersNamed(root, folder), [folder]);
+  assert.deepStrictEqual(claudeTempFoldersNamed("/tmp", folder), []);
 }

@@ -42,8 +42,10 @@ after the same notice. Before Elwood answers Apple and Cherry, the proof checks
 Cherry at the native terminal, as a person might, and the completion must still
 report `Apple, Cherry`. A named session's questionnaire closing rule replaces the
 notice row, so this session requires the notice at the hook, no blank cells and
-the session label under the questionnaire footer. The two sessions run one after
-the other, even when the first times out.
+the session label under the questionnaire footer. A third session runs in a
+60-column pane with no notice posted, so Claude wraps every questionnaire's
+footer over two rows, and answers the grouped and standalone checkbox turns.
+The sessions run one after the other, even when one times out.
 
 Question events and normalized activities must correspond exactly and contain
 no submitted answer marker. The proof recursively checks Elwood-owned state

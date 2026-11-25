@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Answer Claude questions in a narrow pane. At 60 columns Claude wraps the
+  questionnaire footer over two rows once the cursor reaches the Other row,
+  `Next` or `Submit`. A checkbox, alternative-text or grouped answer then
+  stalled until it failed with `question_answer_failed` and closed the request
+  as `unavailable`.
+
 ## [0.8.0] - 2026-11-25
 
 - Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,

@@ -1,6 +1,6 @@
 /** Native Claude grouped, multiline and checkbox answers, unnamed and named (PRD §5.10). */
 import { randomUUID } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import test, { type TestContext } from "node:test";
 import {
   ClaudeSession,
@@ -8,7 +8,7 @@ import {
   type ElwoodQuestionEvent,
 } from "../../src/index.ts";
 import { defaultClaudeTempDir } from "./claude-home.ts";
-import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
+import { assertClaudeTempFolderUnder } from "./claude-temp.ts";
 import { claudeQuestionArtifacts } from "./questions/claude-artifacts.ts";
 import {
   claudeProofTexts,
@@ -24,11 +24,13 @@ import { type ClaudeRoundKind, claudeRoundsByKind } from "./questions/claude-rou
 import { claudeQuestionBinary, nativeClaudeQuestionSandbox } from "./questions/claude-sandbox.ts";
 import { assertQuestionAnswerPrivacy } from "./questions/proof-files.ts";
 
-/** One isolated session: its rounds in order, whether they keep blank cells, and its `--name`. */
+/** One isolated session: its rounds in order, whether they keep blank cells, its `--name`, and a
+ * narrow width. Claude's notice does not fit the notice proof at 60 columns, so none is posted. */
 type ProofSession = {
   readonly rounds: readonly ClaudeRoundKind[];
   readonly blankCells: boolean;
   readonly name?: string;
+  readonly cols?: 60;
 };
 
 const runProof = claudeProofQueue();
@@ -56,6 +58,11 @@ proofTest("C-E2E-18 a named native Claude session accepts a checkbox a person be
   blankCells: false,
   name: claudeQuestionSessionName,
 });
+proofTest("C-E2E-18 a native Claude session in a 60-column pane reads its wrapped footer", {
+  rounds: ["grouped", "checkbox"],
+  blankCells: false,
+  cols: 60,
+});
 
 /** Each question follows a notice posted at the idle composer and needs native acceptance. */
 async function proveClaudeQuestions(
@@ -63,7 +70,7 @@ async function proveClaudeQuestions(
   session: ProofSession,
   lifecycle: ClaudeProofLifecycle,
 ): Promise<void> {
-  const { rounds: kinds, blankCells, name } = session;
+  const { rounds: kinds, blankCells, name, cols } = session;
   const events: ElwoodQuestionEvent[] = [];
   const normalized: Extract<ElwoodActivityEvent, { kind: "question" }>[] = [];
   const answerMarker = randomUUID();
@@ -90,7 +97,7 @@ async function proveClaudeQuestions(
       permissionMode: "default",
       autotrust: true,
       autoupdate: false,
-      initialSize: { cols: 140, rows: 45 },
+      initialSize: { cols: cols ?? 140, rows: 45 },
       ...(name === undefined ? {} : { name }),
       hooks: {
         PreToolUse(event) {
@@ -129,17 +136,17 @@ async function proveClaudeQuestions(
     const rounds = claudeRoundsByKind(round, texts, { press: sandbox.press, screen });
     // Rounds share the question waiter, the hook answer and the final-reply buffer: each settles first.
     for (const kind of kinds) {
-      await proof.post();
+      if (cols === undefined) await proof.post();
       answeredIds.push(await rounds[kind]());
     }
     t.signal.throwIfAborted();
     t.assert.deepStrictEqual(
-      proof.drawnAtQuestion,
-      kinds.map(() => true),
-    );
-    t.assert.deepStrictEqual(
-      [proof.residueWhenRaised, proof.footerKeptCells],
-      [kinds.map(() => blankCells), kinds.includes("long-text")],
+      [proof.drawnAtQuestion, proof.residueWhenRaised, proof.footerKeptCells],
+      [
+        kinds.map(() => cols === undefined),
+        kinds.map(() => blankCells),
+        kinds.includes("long-text"),
+      ],
     );
     // A named questionnaire keeps the session's label in a border under its footer.
     const label = (screen: string) => /─ (.+) ─$/.exec(screen.split("\n").at(-1) ?? "")?.[1];
@@ -161,11 +168,7 @@ async function proveClaudeQuestions(
     t.assert.strictEqual(unexpectedTools, 0);
     t.assert.strictEqual(live.status, "ready");
     // The sandbox keeps the suite's private temp root (C-E2E-23), not the shared /tmp.
-    const tempFolder = claudeTempFolder(realpathSync(sandbox.cwd));
-    t.assert.deepStrictEqual(claudeTempFoldersNamed(defaultClaudeTempDir, tempFolder), [
-      tempFolder,
-    ]);
-    t.assert.deepStrictEqual(claudeTempFoldersNamed("/tmp", tempFolder), []);
+    assertClaudeTempFolderUnder(defaultClaudeTempDir, sandbox.cwd);
     t.diagnostic(
       `${claudeQuestionLabel}${name === undefined ? "" : ` (--name "${name}")`}: ${kinds.join(" + ")}; blank cells when raised: ${proof.residueWhenRaised.join(", ")}; native PostToolUse accepted each answer; original send returned final only.`,
     );
