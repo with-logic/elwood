@@ -35,6 +35,8 @@ export type LoginSessionDeps = {
   readonly terminal: ObservedTerminal;
   /** Whether a blocking dialog is on screen (login writes hold while true). */
   readonly blocked: () => boolean;
+  /** Retire any unresolved pasted submission before taking over the composer. */
+  readonly beforeCommand?: (() => void) | undefined;
   /**
    * Subscribe to `ready` transitions. Returns an unsubscribe. Fires on a fresh
    * transition, so `awaitUsable` observes the session become usable AFTER auth.
@@ -128,6 +130,7 @@ async function submitLoginCommand(
   signal: AbortSignal,
 ): Promise<void> {
   await holdWhileBlocked(deps.blocked, signal);
+  deps.beforeCommand?.();
   await raceSettle(Promise.resolve(deps.terminal.sendInput(command)), signal);
   await abortableDelay(commandEnterDelayMs, signal);
   await raceSettle(Promise.resolve(deps.terminal.sendInput("\r")), signal);

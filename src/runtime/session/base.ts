@@ -173,7 +173,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     void restoreHeldResize(this.pty, this.terminal, size);
   }
 
-  protected shouldCorrelateApiPrompt(_options?: SendOptions): boolean {
+  protected shouldCaptureApiPrompt(_options?: SendOptions): boolean {
     return true;
   }
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
@@ -184,7 +184,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     }
     const ledger = this.promptSubmissions;
     const attempt = submissionAttempt(this)?.beforeEnter;
-    const beforeEnter = this.shouldCorrelateApiPrompt(options)
+    const beforeEnter = this.shouldCaptureApiPrompt(options)
       ? (ledger?.captureCaller(input, options, attempt) ?? attempt)
       : attempt;
     const control = { ...submissionControlOptions(options), ...(beforeEnter && { beforeEnter }) };

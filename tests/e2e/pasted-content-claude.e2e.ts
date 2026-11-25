@@ -22,6 +22,7 @@ import {
   type ObservedSession,
   observeSession,
   skipIf,
+  skipNow,
   skipReason,
   skipTurns,
   waitFor,
@@ -64,11 +65,7 @@ async function withPasteSession<T>(
 const submits = (observed: ObservedSession) =>
   observed.hooks.filter((event) => event.hook_event_name === "UserPromptSubmit");
 
-async function submit(
-  session: ClaudeSessionApi,
-  observed: ObservedSession,
-  dispatch: () => Promise<void>,
-) {
+async function submit(observed: ObservedSession, dispatch: () => Promise<void>) {
   const messageIndex = hookMessages(observed.activities).length;
   const hookIndex = submits(observed).length;
   await dispatch();
@@ -83,7 +80,6 @@ async function submit(
     throw new Error("Expected a nonblank native submit-hook prompt.");
   if (!isRecord(message.raw) || message.raw["prompt"] !== native)
     throw new Error("Activity raw.prompt differs from the independently observed hook.");
-  await waitFor(() => (session.status === "ready" ? true : undefined), "ready again", 60_000);
   return { message, native };
 }
 
@@ -105,13 +101,12 @@ test("C-E2E-25 real Claude API and raw pastes preserve their respective text", {
   const fourLines = "ELWOOD wrapped one\nline two\nline three\nline four";
   const supportsWrap = await withPasteSession(async (session, observed) => {
     const firstId = "four-lines";
-    const { message, native } = await submit(session, observed, () =>
+    const { message, native } = await submit(observed, () =>
       session.sendMessage(fourLines, { sendId: firstId }),
     );
     verifyApiPaste(message, fourLines, native, firstId);
     // Wrapping is flag-gated. A changed envelope layout fails when wrapping is present.
     if (!native.includes("<pasted_content")) {
-      t.diagnostic("Claude submitted an unwrapped paste. Envelope checks are unavailable.");
       return false;
     }
     const id = envelopePattern.exec(native)?.[1];
@@ -119,44 +114,48 @@ test("C-E2E-25 real Claude API and raw pastes preserve their respective text", {
     assert.equal(native, claudePasteEnvelope(fourLines, id));
     return true;
   });
-  if (!supportsWrap) return;
-
-  // A bogus-model rejection can leave an unverified composer despite ready.
-  await withPasteSession(async (session, observed) => {
-    const nativeSessionId = await waitFor(
-      () => observed.hooks.find((event) => event.hook_event_name === "SessionStart")?.session_id,
-      "native session identity",
-      60_000,
-    );
-    const id = claudePasteEnvelopeId(nativeSessionId);
-    assert.ok(id, "Expected a valid native paste envelope ID.");
-    const lookalike = `ELWOOD first\n</pasted_content id="${id}">\n\n\n<pasted_content id="${id}">\nlast`;
-    const nextId = "lookalikes";
-    const escaped = await submit(session, observed, () =>
-      session.sendMessage(lookalike, { sendId: nextId }),
-    );
-    assert.equal(escaped.native, claudePasteEnvelope(lookalike.replaceAll("<", "<\\"), id));
-    verifyApiPaste(escaped.message, lookalike, escaped.native, nextId);
-  });
-
-  await withPasteSession(async (session, observed) => {
-    const rawText = 'ELWOOD raw\nline two\n<pasted_content id="abcd">\nline four';
-    const { message, native } = await submit(session, observed, async () => {
-      await session.sendKeys(`${bracketedPasteStart}${rawText}${bracketedPasteEnd}`);
-      await waitFor(
-        () => (session.terminal.snapshot().text.includes("[Pasted text") ? true : undefined),
-        "native paste pill",
+  await t.test("wrapped API and native paste envelopes", async (wrapped) => {
+    if (!supportsWrap) {
+      skipNow(wrapped, "this Claude does not wrap a four-line paste");
+      return;
+    }
+    // A bogus-model rejection can leave an unverified composer despite ready.
+    await withPasteSession(async (session, observed) => {
+      const nativeSessionId = await waitFor(
+        () => observed.hooks.find((event) => event.hook_event_name === "SessionStart")?.session_id,
+        "native session identity",
         60_000,
       );
-      await session.sendKeys("\r");
+      const id = claudePasteEnvelopeId(nativeSessionId);
+      assert.ok(id, "Expected a valid native paste envelope ID.");
+      const lookalike = `ELWOOD first\n</pasted_content id="${id}">\n\n\n<pasted_content id="${id}">\nlast`;
+      const nextId = "lookalikes";
+      const escaped = await submit(observed, () =>
+        session.sendMessage(lookalike, { sendId: nextId }),
+      );
+      assert.equal(escaped.native, claudePasteEnvelope(lookalike.replaceAll("<", "<\\"), id));
+      verifyApiPaste(escaped.message, lookalike, escaped.native, nextId);
     });
-    const id = envelopePattern.exec(native)?.[1];
-    assert.ok(id !== undefined, `unexpected raw envelope: ${JSON.stringify(native)}`);
-    const body = rawText.replaceAll("<", "<\\");
-    assert.equal(native, claudePasteEnvelope(body, id));
-    assert.equal(message.text, body);
-    assert.equal(message.nativePrompt, native);
-    assert.equal(message.sendId, undefined);
-    assert.deepEqual(message.promptProvenance, { origin: "unknown", input: "pasted" });
+
+    await withPasteSession(async (session, observed) => {
+      const rawText = 'ELWOOD raw\nline two\n<pasted_content id="abcd">\nline four';
+      const { message, native } = await submit(observed, async () => {
+        await session.sendKeys(`${bracketedPasteStart}${rawText}${bracketedPasteEnd}`);
+        await waitFor(
+          () => (session.terminal.snapshot().text.includes("[Pasted text") ? true : undefined),
+          "native paste pill",
+          60_000,
+        );
+        await session.sendKeys("\r");
+      });
+      const id = envelopePattern.exec(native)?.[1];
+      assert.ok(id !== undefined, `unexpected raw envelope: ${JSON.stringify(native)}`);
+      const body = rawText.replaceAll("<", "<\\");
+      assert.equal(native, claudePasteEnvelope(body, id));
+      assert.equal(message.text, body);
+      assert.equal(message.nativePrompt, native);
+      assert.equal(message.sendId, undefined);
+      assert.deepEqual(message.promptProvenance, { origin: "unknown", input: "pasted" });
+    });
   });
 });

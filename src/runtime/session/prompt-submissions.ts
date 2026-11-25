@@ -16,7 +16,10 @@ const maxCorrelatedPromptCodeUnits = 65_536;
 const maxNativeTurnIds = 1_024;
 const maxNativeTurnIdCodeUnits = 128;
 
-export type PromptNormalizer = (payload: string, limit: number) => string | undefined;
+export type PromptNormalizer = (
+  payload: string,
+  maxNormalizedCodeUnits: number,
+) => string | undefined;
 
 type Submission = {
   readonly expectedNormalizedPrompt: string | undefined;
@@ -113,11 +116,15 @@ export class PromptSubmissions {
 
   /** Associate before publishing the hook activity. Claude supplies displayed text to normalize.
    * Codex supplies its canonical hook prompt directly. */
-  observeNativeSubmit(
-    turnId: string,
-    nativePrompt: string | undefined,
-    displayedNativeText?: string,
-  ): ApiPromptPresentation | undefined {
+  observeNativeSubmit({
+    turnId,
+    nativePrompt,
+    displayedNativeText,
+  }: {
+    readonly turnId: string;
+    readonly nativePrompt: string | undefined;
+    readonly displayedNativeText?: string | undefined;
+  }): ApiPromptPresentation | undefined {
     if (!this.track || this.nativeTurnIds.has(turnId)) return undefined;
     const validId = turnId.length > 0 && turnId.length <= maxNativeTurnIdCodeUnits;
     const hasHistoryRoom = this.nativeTurnIds.size < maxNativeTurnIds;

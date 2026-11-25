@@ -8,20 +8,30 @@ const tabExpansion = "    ";
  * Expand remaining tabs after trimming. The bounded form checks UTF-16 size before expansion.
  */
 export function normalizeClaudePastedPayload(text: string): string;
-export function normalizeClaudePastedPayload(text: string, limit: number): string | undefined;
-export function normalizeClaudePastedPayload(text: string, limit?: number): string | undefined {
-  if (limit !== undefined && text.length > tabExpansion.length * limit) return undefined;
+export function normalizeClaudePastedPayload(
+  text: string,
+  maxNormalizedCodeUnits: number,
+): string | undefined;
+export function normalizeClaudePastedPayload(
+  text: string,
+  maxNormalizedCodeUnits?: number,
+): string | undefined {
+  if (
+    maxNormalizedCodeUnits !== undefined &&
+    text.length > tabExpansion.length * maxNormalizedCodeUnits
+  )
+    return undefined;
   const base = text
     .replace(/\r\n?/gu, "\n")
     .replaceAll(fullwidthLessThan, "<")
     .replaceAll("<\\", "<")
     .trimEnd();
-  if (limit !== undefined) {
+  if (maxNormalizedCodeUnits !== undefined) {
     let length = base.length;
-    if (length > limit) return undefined;
+    if (length > maxNormalizedCodeUnits) return undefined;
     for (let tab = base.indexOf("\t"); tab >= 0; tab = base.indexOf("\t", tab + 1)) {
       length += tabExpansion.length - 1;
-      if (length > limit) return undefined;
+      if (length > maxNormalizedCodeUnits) return undefined;
     }
   }
   return base.replaceAll("\t", tabExpansion);

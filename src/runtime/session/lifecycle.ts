@@ -44,7 +44,7 @@ export abstract class SessionLifecycle {
   private readonly shutdown: SessionShutdownBinding;
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
   protected readonly pasteGuard: PasteGuard;
-  /** Adapters can provide a static normalizer before their instance fields initialize. */
+  /** Called during base construction. Return a normalizer without using adapter instance fields. */
   protected abstract promptNormalizer(): PromptNormalizer;
   protected constructor(
     agent: ElwoodAgentKind,

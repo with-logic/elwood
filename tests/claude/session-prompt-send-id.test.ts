@@ -174,3 +174,24 @@ test("C-API-71 an escaped native body can fit the exact canonical limit", async 
   expect(messages()[0]).toHaveProperty("sendId", "at-limit");
   expect(messages()).toMatchObject([{ text, nativePrompt }]);
 });
+
+test("C-API-71 dispatching Claude login retires an unresolved API paste", async () => {
+  const { session, pty, submit, messages } = await setup();
+  await session.sendMessage("pending ", { sendId: "prior-send" });
+  expect(pty.writes).toEqual(["\x1b[200~pending \x1b[201~", "\r"]);
+  const login = session
+    .login({ provideCode: () => "unused", timeoutMs: 5_000 })
+    .catch((error: unknown) => error);
+  try {
+    await expect.poll(() => pty.writes.includes("/login")).toBe(true);
+    await submit("pending", "native-id");
+    expect(messages()).toMatchObject([
+      { text: "pending", turnId: "native-id", raw: { prompt: "pending" } },
+    ]);
+    for (const field of ["sendId", "nativePrompt", "promptProvenance"])
+      expect(messages()[0]).not.toHaveProperty(field);
+  } finally {
+    await session.kill();
+    await login;
+  }
+});

@@ -40,7 +40,7 @@ import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
 
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
-  protected override shouldCorrelateApiPrompt(options?: SendOptions): boolean {
+  protected override shouldCaptureApiPrompt(options?: SendOptions): boolean {
     return !isErgonomicSubmission(options);
   }
   protected override promptNormalizer() {
@@ -183,13 +183,14 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
   // Drive `/login` re-auth as an exclusive, abort-aware queue transaction (C-API-43).
   login(options: ClaudeLoginOptions): Promise<void> {
-    const onReady = (handler: () => void) =>
-      this.emitter.on("status", (e) => e.status === "ready" && handler());
-    // Login writes `/login` and an Enter outside any picker transaction, so it must also
-    // stand off a model dialog a human opened: Enter there applies the highlighted row.
-    const blocked = () => this.queuedInputBlocked();
-    const terminal = this.automatedTerminal;
-    const deps = { controlQueue: this.controlQueue, terminal, blocked, onReady };
+    const deps = {
+      controlQueue: this.controlQueue,
+      terminal: this.automatedTerminal,
+      blocked: () => this.queuedInputBlocked(),
+      onReady: (handler: () => void) =>
+        this.emitter.on("status", (e) => e.status === "ready" && handler()),
+      beforeCommand: this.pasteGuard.beforeCommand,
+    };
     return this.inSession(() => runSessionLogin(deps, options));
   }
   protected stopRuntime(): Promise<void> {

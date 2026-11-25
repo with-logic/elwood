@@ -11,10 +11,10 @@ export function associateClaudePrompt(
   visible: boolean,
 ): ElwoodActivityEvent {
   const body = visible && displayed.kind === "user_message" ? displayed.text : undefined;
-  const prompt = ledger?.observeNativeSubmit(
-    displayed.turnId ?? "",
-    body === undefined ? undefined : event.prompt,
-    body,
-  );
+  const prompt = ledger?.observeNativeSubmit({
+    turnId: displayed.turnId ?? "",
+    nativePrompt: body === undefined ? undefined : event.prompt,
+    displayedNativeText: body,
+  });
   return prompt ? claudeApiUserActivity(displayed.elwoodSessionId, event, prompt) : displayed;
 }
