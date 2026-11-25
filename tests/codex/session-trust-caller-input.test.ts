@@ -102,3 +102,14 @@ test("C-CODEX-12 caller keys after the update leaves the screen own its redraw u
   await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 20);
   expect(ptys[0]!.writes).toEqual(["2", "hello", "2"]);
 });
+
+test("C-CODEX-12 caller keys during the first-key wait leave the update prompt to the caller", async () => {
+  const session = await start();
+  ptys[0]!.emitData(update);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(ptys[0]!.writes).toEqual([]);
+  // A host that answers the prompt itself: Elwood's own key must not follow it.
+  await session.sendKeys("2");
+  await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 1_000);
+  expect(ptys[0]!.writes).toEqual(["2"]);
+});

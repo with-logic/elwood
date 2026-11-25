@@ -17,6 +17,7 @@ type FrameSession = Pick<
   "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
 >;
 
+/** The startup prompt responder: trust automation and Codex's update-skip repaint (C-CODEX-27). */
 type TrustState = {
   readonly inputBlocking: boolean;
   readonly blockedPrompt: string | undefined;

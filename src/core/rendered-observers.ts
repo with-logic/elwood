@@ -49,7 +49,10 @@ export function observeRenderedFrame(
   return reading;
 }
 
-/** Include a retained trust hold as an ordinary blocking fact (C-TRUST-01). */
+/**
+ * Include a retained trust hold as an ordinary blocking fact (C-TRUST-01). `trustInputBlocking`
+ * is any startup automation hold, including Codex's update-skip repaint (C-CODEX-27).
+ */
 export function readRenderedFrame(
   observers: RenderedObservers,
   frame: RenderedFrame,

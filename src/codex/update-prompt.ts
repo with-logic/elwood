@@ -30,9 +30,9 @@ const retryTimeoutMs = 5_000;
 export const firstKeyDelayMs = 500;
 
 /**
- * The Codex non-trust automation barrier, with update-option revalidation bound in. It is
- * made for the frame an attempt starts on, so no key goes out until that frame's prompt
- * has been on screen for `firstKeyDelayMs`.
+ * The Codex non-trust automation barrier, with update-option revalidation bound in. Its
+ * first key waits until `firstKeyDelayMs` after the writer was made, so the session makes
+ * one per rendered frame, and an update skip keeps the one from the frame it starts on.
  */
 export function guardedCodexAutomationWrite(
   terminal: InputTerminal,
@@ -40,7 +40,7 @@ export function guardedCodexAutomationWrite(
   readFrame: () => string,
   signal?: AbortSignal,
 ): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
-  const shownAt = Date.now();
+  const frameRenderedAt = Date.now();
   // The generation-aware predicate is supplied PER WRITE by `writeCodexUpdateSkip`, so an
   // older attempt can never validate against a newer appearance's state (#42 round 3).
   const guarded = guardedNonTrustAutomationWrite(
@@ -53,7 +53,8 @@ export function guardedCodexAutomationWrite(
     signal,
   );
   return async (input, perWrite) => {
-    const wait = shownAt + firstKeyDelayMs - Date.now();
+    const wait = frameRenderedAt + firstKeyDelayMs - Date.now();
+    // A close during the wait is reported by the guarded write below as withheld.
     if (wait > 0) await waitForInput(wait, signal).catch(() => undefined);
     return guarded(input, perWrite);
   };
@@ -99,12 +100,12 @@ async function writeChoice(
 ): Promise<string | undefined> {
   const identity = codexUpdateChoiceIdentity(frame, choice);
   // A guarded writer reads the settled frame the key meets; a direct one writes onto `frame`.
-  let keyMet = frame;
+  let keyFrame = frame;
   const stillThisChoice = (settledFrame: string): boolean => {
-    keyMet = settledFrame;
+    keyFrame = settledFrame;
     return settledFrameKeepsChoice(settledFrame, identity, choice.number, eligible);
   };
-  return (await write(choice.number, stillThisChoice)) === "withheld" ? undefined : keyMet;
+  return (await write(choice.number, stillThisChoice)) === "withheld" ? undefined : keyFrame;
 }
 
 /**
@@ -119,10 +120,11 @@ export type CodexUpdateSkipCompletion =
   | "left";
 
 /**
- * Writes the safe choice once the prompt has stayed on screen for `firstKeyDelayMs`, and
- * again only when a later frame still shows the prompt (docs/cli-behavior.md, "Codex
- * update skip keys"). Codex drops a key that arrives while it paints the prompt, and a
- * frame unchanged since a key cannot show that Codex ignored it: Codex can take the key
+ * Writes the safe choice, and again only when a later frame still shows the prompt
+ * (docs/cli-behavior.md, "Codex update skip keys"). The writer from
+ * `guardedCodexAutomationWrite` holds the first key until the prompt has been on screen
+ * for `firstKeyDelayMs`, since Codex drops a key that arrives while it paints the prompt.
+ * A frame unchanged since a key cannot show that Codex ignored it: Codex can take the key
  * and draw its next screen before Elwood renders, so a key retyped then reaches that screen.
  *
  * `answered` requires a fulfilled physical write and positive native composer
@@ -149,23 +151,26 @@ export async function writeCodexUpdateSkip(
     // A fulfilled write alone cannot prove the dialog cleared.
     return (await write(option, eligible)) === "withheld" ? "cancelled" : "unobserved";
   }
-  const left = (frame: string) => (clearance(frame) && !invalidated(frame) ? "answered" : "left");
+  const completionAfterPromptLeft = (frame: string) =>
+    clearance(frame) && !invalidated(frame) ? "answered" : "left";
   const deadline = Date.now() + retryTimeoutMs;
-  // The frame the last key went out on; undefined until one has.
-  let met: string | undefined;
+  // The settled frame the last key went out on; undefined until one has.
+  let lastKeyFrame: string | undefined;
   while (Date.now() < deadline) {
     const frame = readFrame();
-    if (!eligible(frame)) return met === undefined ? "cancelled" : left(frame);
-    if (frame !== met) {
+    if (!eligible(frame))
+      return lastKeyFrame === undefined ? "cancelled" : completionAfterPromptLeft(frame);
+    if (frame !== lastKeyFrame) {
       const safeOption = selectOption(frame);
-      const keyMet = safeOption && (await writeChoice(write, eligible, frame, safeOption));
-      // A key withheld before any went out ends the attempt. A withheld retype follows a
-      // key that may have landed, so the next frame decides.
-      if (safeOption === undefined || (keyMet === undefined && met === undefined))
-        return "cancelled";
-      if (keyMet !== undefined) {
-        met = keyMet;
+      if (safeOption === undefined) return "cancelled";
+      const keyFrame = await writeChoice(write, eligible, frame, safeOption);
+      if (keyFrame !== undefined) {
+        lastKeyFrame = keyFrame;
         onWritten?.();
+      } else if (lastKeyFrame === undefined) {
+        // A key withheld before any went out ends the attempt. A withheld retype follows
+        // a key that may have landed, so the next frame decides.
+        return "cancelled";
       }
     }
     await waitForInput(retryIntervalMs, signal);

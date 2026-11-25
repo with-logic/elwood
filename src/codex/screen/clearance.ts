@@ -12,10 +12,10 @@ import { isFolderAccessPrelude } from "./workspace-trust-copy.ts";
 type ComposerGeometry = { readonly cursorRow?: number; readonly cols?: number | undefined };
 
 const caretRow = /^\s*[›»]/;
-const composerRowStart = /^[›»](?:\s|$)/;
+export const composerRowStart = /^[›»](?:\s|$)/;
 const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
-export const codexPlaceholders = new Set([
+export const codexPlaceholders: ReadonlySet<string> = new Set([
   "Ask Codex to do anything",
   "Explain this codebase",
   "Summarize recent commits",

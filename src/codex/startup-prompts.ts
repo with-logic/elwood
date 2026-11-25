@@ -161,7 +161,7 @@ export class CodexStartupPromptResponder {
           releaseLatch: () => {
             this.skipGeneration = 0;
           },
-          repaintReleased: () => this.onStateChange?.(),
+          repaintExpired: () => this.onStateChange?.(),
         });
         outcomes.push({
           outcome: { kind: "attempted", prompt: "update", input: option },

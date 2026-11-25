@@ -5,28 +5,31 @@
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
-import { writeCodexUpdateSkip } from "../../src/codex/update-prompt.ts";
+import {
+  guardedCodexAutomationWrite,
+  writeCodexUpdateSkip,
+} from "../../src/codex/update-prompt.ts";
+import type { AutomationWriteResult } from "../../src/core/startup/barrier.ts";
 import { codexSmallComposer } from "../fixtures/trust-composer.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-test("C-CODEX-12 retypes a swallowed skip only on a prompt drawn after the key", async () => {
+test("C-CODEX-12 retypes a swallowed skip only on a prompt Codex drew after the key", async () => {
   const responder = new CodexStartupPromptResponder("s1");
   const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
-  // The first key met a prompt Codex was still painting; it then finished the paint.
-  const painted = `${prompt}\n\n  Press enter to continue`;
   let frame = prompt;
   const writes: string[] = [];
-  const handled = responder.handle(
-    prompt,
-    (input) => {
-      writes.push(input);
-      frame = writes.length === 1 ? painted : "› Ready";
-    },
-    () => frame,
-  );
-  const settled = handled.outcomes[0]?.settled;
+  const write = (input: string) => {
+    writes.push(input);
+    if (writes.length === 2) frame = "› Ready";
+  };
+  const settled = responder.handle(prompt, write, () => frame).outcomes[0]?.settled;
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(writes).toEqual(["2"]);
+  // The first key met a prompt Codex was still painting; Codex then finished the paint.
+  frame = `${prompt}\n\n  Press enter to continue`;
+  responder.handle(frame, write, () => frame);
   await vi.runAllTimersAsync();
   await settled;
   expect(writes).toEqual(["2", "2"]);
@@ -70,18 +73,47 @@ test("C-CODEX-12 a stale prompt frame never gets a second key", async () => {
 test("C-CODEX-12 a withheld retype after a key leaves the next frame to decide", async () => {
   const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
   let frame = prompt;
-  const results: ("written" | "withheld")[] = ["written", "withheld"];
+  const results: AutomationWriteResult[] = ["written", "withheld"];
+  const attempts: string[] = [];
   const writes: string[] = [];
   const result = writeCodexUpdateSkip(
     "2",
     (input) => {
-      writes.push(input);
-      frame = writes.length === 1 ? `${prompt}\n` : codexSmallComposer;
-      return Promise.resolve(results[writes.length - 1] ?? "written");
+      attempts.push(input);
+      frame = attempts.length === 1 ? `${prompt}\n` : codexSmallComposer;
+      const written = results[attempts.length - 1] ?? "written";
+      if (written === "written") writes.push(input);
+      return Promise.resolve(written);
     },
     () => frame,
   );
   await vi.runAllTimersAsync();
   await expect(result).resolves.toBe("answered");
-  expect(writes).toEqual(["2", "2"]);
+  expect(attempts).toEqual(["2", "2"]);
+  expect(writes).toEqual(["2"]);
+});
+
+test("C-CODEX-12 the frame a key met, not the one read before it, decides a retype", async () => {
+  // The prompt's footer finished painting while the first key waited to go out.
+  const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
+  const painted = `${prompt}\n\n  Press enter to continue`;
+  let frame = prompt;
+  const writes: string[] = [];
+  const write = guardedCodexAutomationWrite(
+    {
+      sendInput: () => undefined,
+      settled: () => {
+        frame = painted;
+        return Promise.resolve();
+      },
+      renderFailed: false,
+    },
+    (input) => void writes.push(input),
+    () => frame,
+  );
+  const result = writeCodexUpdateSkip("2", write, () => frame);
+  const exhaustion = expect(result).resolves.toBe("exhausted");
+  await vi.runAllTimersAsync();
+  await exhaustion;
+  expect(writes).toEqual(["2"]);
 });

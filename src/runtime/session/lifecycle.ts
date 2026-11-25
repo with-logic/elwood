@@ -35,6 +35,7 @@ export abstract class SessionLifecycle {
   protected everReady = false;
   private initialReadinessHold: import("./readiness.ts").InitialReadinessHold | undefined;
   inputBlocking = false;
+  /** Startup automation holds input: a trust answer, or Codex's update-skip repaint (C-CODEX-27). */
   trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
   protected readonly persist: (record: SessionRecord) => void;

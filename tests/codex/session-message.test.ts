@@ -6,6 +6,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
 import { startCodex } from "../../src/index.ts";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -21,7 +22,7 @@ describe("CodexSessionApi message submission", () => {
       "Update available! 0.151.0 -> 0.152.0\r\n  1. Update now\r\n  2. Skip\r\n  3. Skip until next version",
     );
     await session.terminal.settled();
-    await expect.poll(() => ptys[0]!.writes).toEqual(["2"]);
+    await expect.poll(() => ptys[0]!.writes, { timeout: firstKeyDelayMs + 4_500 }).toEqual(["2"]);
     // A constructed bannerless continuation retains the input hold, not selection authority.
     ptys[0]!.emitData("\u001b[2J\u001b[H  2. Skip\r\n  3. Skip until next version");
     await session.terminal.settled();

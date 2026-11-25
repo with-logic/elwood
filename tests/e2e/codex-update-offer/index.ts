@@ -22,6 +22,7 @@ import {
 import { probeShellCommand, shellQuote, userShell } from "../../../src/runtime/shell.ts";
 import { userCodexAuthPath } from "../codex-home.ts";
 import { writeCodexUpdateCheck } from "../codex-update-check.ts";
+import { heldOutputView } from "../output-hold.ts";
 import { prefixShellArgument } from "../prefix-shell-argument.ts";
 import { isTerminalProtocolReply } from "../terminal-protocol-reply.ts";
 import {
@@ -43,6 +44,8 @@ const minimumOfferProofCodexVersion = "0.171.0";
 export type CodexUpdateOffer = {
   /** Application writes refused since `arm`, in order. Terminal protocol replies are not input. */
   readonly refused: readonly RefusedInput[];
+  /** Errors from admitted writes to a CLI that had not exited. */
+  readonly writeErrors: readonly unknown[];
   /** Each `Skip` digit written while the offer was on screen, in order. */
   readonly skips: readonly string[];
   /**
@@ -89,7 +92,8 @@ function cloneManagedRelease(home: string): string | undefined {
 
 /**
  * Wraps every PTY and probe started from now on so that Codex can offer an update from
- * `home`. Input is forwarded until `arm`; after it, the input guard in `arm` applies.
+ * `home`. Input is forwarded until `arm`; after it, `admit` applies the guard that
+ * `CodexUpdateOffer.arm` describes.
  */
 export function codexUpdateOffer(
   home: string,
@@ -98,6 +102,7 @@ export function codexUpdateOffer(
   const pin = cloneManagedRelease(home);
   const pinned = (args: readonly string[]) => (pin ? prefixShellArgument(args, pin) : [...args]);
   const refused: RefusedInput[] = [];
+  const writeErrors: unknown[] = [];
   const skips: string[] = [];
   const mirrors: ReturnType<typeof screenMirror>[] = [];
   let armed = false;
@@ -106,43 +111,32 @@ export function codexUpdateOffer(
     const pty = nodePtyFactory({ ...options, args: pinned(options.args) });
     const mirror = screenMirror(options.size);
     mirrors.push(mirror);
-    const handlers = new Set<(data: string) => void>();
-    const deliver = (data: string) => {
-      for (const handler of handlers) handler(data);
-    };
-    // Output held from Elwood while it reads the CLI late, or undefined.
-    let held: string[] | undefined;
-    let composerShown = false;
-    let writes = Promise.resolve();
+    const view = heldOutputView(pty);
+    let exited = false;
+    pty.onExit(() => {
+      exited = true;
+    });
+    let configuredComposerSeen = false;
+    let writeQueue = Promise.resolve();
     /** The input guard: forward, or record and drop, one application write. */
     const admit = (input: string, screen: string): boolean => {
       const skip = offerSkipDigit(screen);
-      composerShown ||= skips.length > 0 && skip === undefined && configuredComposerShown(screen);
-      const admitted = skip === undefined ? composerShown && !/^\d$/.test(input) : input === skip;
+      configuredComposerSeen ||=
+        skips.length > 0 && skip === undefined && configuredComposerShown(screen);
+      const admitted =
+        skip === undefined ? configuredComposerSeen && !/^\d$/.test(input) : input === skip;
       if (admitted && skip !== undefined) skips.push(input);
       if (!admitted) refused.push({ data: input, screen });
       return admitted;
     };
-    const lagAfterFirstSkip = () => {
-      if (lagAfterSkipMs === 0 || skips.length !== 1 || held !== undefined) return;
-      held = [];
-      setTimeout(() => {
-        const chunks = held ?? [];
-        held = undefined;
-        for (const chunk of chunks) deliver(chunk);
-      }, lagAfterSkipMs);
-    };
+    // The mirror draws each chunk before Elwood can see it, so a write is never judged
+    // against a screen older than the one Elwood wrote it on.
     pty.onData((data) => {
       mirror.draw(data);
-      if (held === undefined) deliver(data);
-      else held.push(data);
+      view.receive(data);
     });
     return {
-      ...pty,
-      onData(handler) {
-        handlers.add(handler);
-        return () => handlers.delete(handler);
-      },
+      ...view.pty,
       resize(size) {
         mirror.resize(size);
         return pty.resize(size);
@@ -151,22 +145,26 @@ export function codexUpdateOffer(
         if (!armed) return pty.write(data);
         const input = typeof data === "string" ? data : Buffer.from(data).toString("utf8");
         // Judged once the CLI's screen shows all it drew before this write was made.
-        const screen = mirror.read();
-        writes = writes.then(async () => {
-          if (!(isTerminalProtocolReply(input) || admit(input, await screen))) return;
+        const pendingScreen = mirror.read();
+        writeQueue = writeQueue.then(async () => {
+          const firstSkip = skips.length === 0;
+          if (!(isTerminalProtocolReply(input) || admit(input, await pendingScreen))) return;
           try {
             pty.write(data);
-          } catch {
+          } catch (error) {
             // A CLI that has exited takes no input, and Elwood sees it exit.
+            if (!exited) writeErrors.push(error);
             return;
           }
-          lagAfterFirstSkip();
+          if (firstSkip && skips.length === 1 && lagAfterSkipMs > 0)
+            view.output.hold(lagAfterSkipMs);
         });
       },
     };
   });
   return {
     refused,
+    writeErrors,
     skips,
     async unsupported(cwd) {
       const probe = probeShellCommand("codex --version", "codex");

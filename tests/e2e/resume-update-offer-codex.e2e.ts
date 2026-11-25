@@ -13,9 +13,14 @@ import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.t
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
-import { readCodexDismissedVersion } from "./codex-update-check.ts";
+import {
+  inputProblems,
+  noInputProblems,
+  recordActivity,
+  skipEvidence,
+  skippedOnce,
+} from "./codex-update-offer/checks.ts";
 import { codexUpdateOffer } from "./codex-update-offer/index.ts";
-import { refusedWithMarkedRows } from "./codex-update-offer/screen.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -64,13 +69,6 @@ for (const lagAfterSkipMs of [0, 2_000]) {
     let resumed: CodexSessionApi | undefined;
     const launches = codexLaunches();
     const input = codexUpdateOffer(sandbox.home, { lagAfterSkipMs });
-    // Checked as the run goes, so a failure names the step that let input through.
-    const noRefusedInput = () =>
-      assert.deepEqual(
-        refusedWithMarkedRows(input.refused),
-        [],
-        "only Elwood's Skip may reach the offer, and no input may come before it or before Codex's configured composer",
-      );
     await runCodexTest({ sessions: () => [resumed, first], sandbox, launches }, async () => {
       const unsupported = await input.unsupported(project.cwd);
       if (unsupported !== undefined) return skipNow(t, unsupported);
@@ -106,10 +104,7 @@ for (const lagAfterSkipMs of [0, 2_000]) {
         }),
       );
       resumed = active;
-      const activity: { readonly kind: string; readonly label: string | undefined }[] = [];
-      active.on("activity", (event) => {
-        activity.push({ kind: event.kind, label: "label" in event ? event.label : undefined });
-      });
+      const activity = recordActivity(active);
       let settled = false;
       const queued = active.sendMessage(ONE).finally(() => {
         settled = true;
@@ -117,21 +112,15 @@ for (const lagAfterSkipMs of [0, 2_000]) {
       // A failed run tears the session down with this send still queued.
       queued.catch(() => {});
       await waitForCondition(active, () => input.skips.length > 0, "Elwood's skip", OFFER_MS);
-      noRefusedInput();
+      // Checked as the run goes, so a failure names the step that let input through.
+      assert.deepEqual(inputProblems(input), noInputProblems);
       await waitForCondition(active, () => settled, "queued ONE submitted", READY_MS + SEND_MS);
       await queued;
-      noRefusedInput();
+      assert.deepEqual(inputProblems(input), noInputProblems);
       await waitForCondition(active, () => stops >= 1, "queued ONE answered", TURN_MS);
-      noRefusedInput();
-      assert.equal(input.skips.length, 1, "Elwood writes the Skip digit once");
+      assert.deepEqual(inputProblems(input), noInputProblems);
       assert.deepEqual(prompts, [ONE]);
-      // Codex's repaint after the skip is the skip's, never a dialog nobody recognized.
-      const unidentified = activity.filter((event) => event.label === "codex-unidentified-dialog");
-      assert.deepEqual(unidentified, []);
-      const skipped = activity.filter((e) => e.kind === "startup_prompt" && e.label === "update");
-      assert.equal(skipped.length, 1, "the skip is reported once");
-      // `Skip`, unlike `Skip until next version`, leaves Codex's update state alone.
-      assert.equal(readCodexDismissedVersion(sandbox.home), null);
+      assert.deepEqual(skipEvidence(input, activity, sandbox.home), skippedOnce);
     }).finally(() => input.dispose());
   });
 }

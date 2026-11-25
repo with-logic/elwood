@@ -45,7 +45,7 @@ export type ScreenFactTable = {
   /** CLI versions used to establish native grammar through captured frames or e2e suites. */
   readonly verifiedAgainst: string;
   readonly rules: readonly ScreenFactRule[];
-  /** Adapter fallback hidden while trust owns a partial repaint. */
+  /** Adapter fallback hidden while startup automation (trust, or Codex's update skip) owns a partial repaint. */
   readonly trustOwnedFallback?: string;
 };
 

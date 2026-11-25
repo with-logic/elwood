@@ -6,6 +6,7 @@
 
 import xtermHeadless from "@xterm/headless";
 import type { TerminalSize } from "../../../src/core/types.ts";
+import { bufferRows } from "../../../src/terminal/snapshot.ts";
 
 const { Terminal } = xtermHeadless;
 
@@ -45,11 +46,8 @@ export function screenMirror(size: TerminalSize) {
     /** The screen once all output received so far is drawn. */
     async read(): Promise<string> {
       await drawn;
-      const { active } = terminal.buffer;
-      const rows: string[] = [];
-      for (let row = 0; row < terminal.rows; row += 1)
-        rows.push(active.getLine(active.viewportY + row)?.translateToString(true) ?? "");
-      return rows.join("\n");
+      const firstRow = terminal.buffer.active.viewportY;
+      return bufferRows(terminal, { firstRow, rowCount: terminal.rows }).join("\n");
     },
     resize: (next: TerminalSize) => terminal.resize(next.cols, next.rows),
     dispose: () => terminal.dispose(),
