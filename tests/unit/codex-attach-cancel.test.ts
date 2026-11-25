@@ -67,6 +67,7 @@ test("C-API-46 active cancellation waits for clipboard restoration before settli
   await vi.waitFor(() => expect(state.restores).toBe(1));
   try {
     expect(settled).toBe(false);
+    expect(terminal.sendInput).not.toHaveBeenCalled(); // no Ctrl+V reached the dialog
   } finally {
     restore.resolve();
     await attach;

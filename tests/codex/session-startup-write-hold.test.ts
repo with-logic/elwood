@@ -53,6 +53,24 @@ test.each([
   }
 });
 
+test("C-API-28 a readiness hook releases a held sendPrompt without a configured composer", async () => {
+  const cwd = tempDir();
+  installFakes();
+  const session = await startCodex({ cwd });
+  const pty = ptys[0]!;
+  try {
+    const sent = session.sendPrompt("held prompt");
+    sent.catch(() => {});
+    await render(session, tty(offer));
+    expect(pty.writes).toEqual([]);
+    await becomeReady(session.elwoodSessionId, cwd);
+    await sent;
+    expect(pty.writes).toEqual(["\u001b[200~held prompt\u001b[201~", "\r"]);
+  } finally {
+    await session.stop();
+  }
+});
+
 test.each([
   ["listModels", (session: CodexSessionApi) => session.listModels({ timeoutMs: 30_000 })],
   ["setModel", (session: CodexSessionApi) => session.setModel("gpt-5.4", { timeoutMs: 30_000 })],
@@ -79,7 +97,7 @@ test("C-API-28 a picker command held past its deadline reports it was never writ
     const listing = session.listModels({ timeoutMs: 300 });
     const rejected = expect(listing).rejects.toMatchObject({
       code: "model_automation_failed",
-      message: "Timed out before the command that opens the codex model picker could be written.",
+      message: "Timed out before the command that opens the codex model picker could be submitted.",
     });
     await render(session, tty(offer));
     await rejected;

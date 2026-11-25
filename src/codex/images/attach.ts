@@ -11,6 +11,7 @@
 import { elwoodError } from "../../core/errors.ts";
 import {
   type AttachTerminal,
+  attachUnsafe,
   type BlockedGuard,
   type ChipWaitOptions,
   sendObservedImage,
@@ -48,14 +49,22 @@ export async function attachCodexImages(
 ): Promise<void> {
   if (!clipboardImageSupported())
     throw elwoodError("unsupported_platform", "Codex image attachment requires macOS.");
-  // A held write can wait out a startup screen for minutes. It waits before the lock, so
+  // A held write can wait out a startup screen for minutes. It waits outside the lock, so
   // it neither stalls other sessions' attaches nor leaves its image on the user's
-  // clipboard meanwhile; the Ctrl+V still re-checks under the lock (C-API-28/46).
-  await waitUntilAttachSafe(terminal, blocked, signal);
-  await withClipboardLock(
-    () => attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed),
-    { signal, error: () => elwoodError("image_attach_failed", "Image attach aborted.") },
-  );
+  // clipboard meanwhile. A dialog that appears while it waits for the lock sends it back
+  // outside before the clipboard changes; the Ctrl+V still re-checks (C-API-28/46).
+  for (;;) {
+    await waitUntilAttachSafe(terminal, blocked, signal);
+    const attached = await withClipboardLock(
+      async () => {
+        if (await attachUnsafe(terminal, blocked, signal)) return false;
+        await attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed);
+        return true;
+      },
+      { signal, error: () => elwoodError("image_attach_failed", "Image attach aborted.") },
+    );
+    if (attached) return;
+  }
 }
 
 async function attachUnderLock(

@@ -88,3 +88,32 @@ test("C-API-46 an attach closed during the hold never touches the clipboard", as
   expect(calls).toEqual([]);
   expect(terminal.writes).toEqual([]);
 });
+
+test("C-API-46 a dialog that appears while an attach waits for the lock sends it back outside", async () => {
+  let dialog = false;
+  const terminal = chipTerminal();
+  const signal = new AbortController().signal;
+  const owner = Promise.withResolvers<void>();
+  void withClipboardLock(() => owner.promise);
+  const attached = attachCodexImages(terminal, ["/a.png"], signal, () => dialog);
+  // Past the check outside the lock, the attach now waits for the other holder.
+  await vi.advanceTimersByTimeAsync(unsafeWriteRetryMs);
+  dialog = true;
+  owner.resolve();
+  await vi.advanceTimersByTimeAsync(unsafeWriteRetryMs * 4);
+  let otherAttachRan = false;
+  void withClipboardLock(() => {
+    otherAttachRan = true;
+    return Promise.resolve();
+  });
+  await vi.advanceTimersByTimeAsync(unsafeWriteRetryMs);
+  expect(otherAttachRan).toBe(true);
+  expect(calls).toEqual([]);
+  expect(terminal.writes).toEqual([]);
+
+  dialog = false;
+  await vi.runAllTimersAsync();
+  await attached;
+  expect(calls).toEqual(["snapshot", "set /a.png", "restore"]);
+  expect(terminal.writes).toEqual([CTRL_V]);
+});

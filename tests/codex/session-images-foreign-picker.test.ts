@@ -59,15 +59,17 @@ test("C-API-44 image and text wait for a live model picker while history stays s
     await session.terminal.settled();
     const sent = session.sendMessage("caption", { images: [{ path: image }] });
     void sent.catch(() => undefined);
-    // The wrapper observes entry, then runs the real attachment implementation. The held
-    // attach waits before it takes the clipboard, so the user's clipboard is untouched.
-    await expect.poll(() => attachment.entered).toBe(true);
+    // A held attach waits before the adapter attach runs, so the user's clipboard is
+    // untouched and no image reaches the disk until the picker closes.
     await new Promise<void>((resolve) => setTimeout(resolve, unsafeWriteRetryMs * 2));
+    expect(attachment.entered).toBe(false);
     expect(clipboard.images).toEqual([]);
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty("› Ask Codex to do anything\n  gpt-5.5 high")}`);
     await session.terminal.settled();
     await expect.poll(() => ptys[0]!.writes).toEqual(["\u0016"]);
+    // The wrapper observed entry, then ran the real attachment implementation.
+    expect(attachment.entered).toBe(true);
     expect(clipboard.images).toEqual([image]);
     ptys[0]!.emitData("\u001b[999;1H\u001b[K› [Image #1]");
     await sent;

@@ -71,7 +71,7 @@ export async function openCommandScreen(input: {
   readonly signal?: AbortSignal;
 }): Promise<string> {
   const pending = new AbortController();
-  // A command still held, for example on a startup screen, was never written (C-API-28).
+  // A command still held, for example on a startup screen, was never submitted (C-API-28).
   let written = false;
   const submit = async (signal: AbortSignal) => {
     await input.submit(signal);
@@ -82,7 +82,7 @@ export async function openCommandScreen(input: {
     deadline = setTimeout(() => {
       const message = written
         ? `Timed out waiting for ${input.label}.`
-        : `Timed out before the command that opens the ${input.label} could be written.`;
+        : `Timed out before the command that opens the ${input.label} could be submitted.`;
       const error = elwoodError("model_automation_failed", message);
       pending.abort(error);
       reject(error);

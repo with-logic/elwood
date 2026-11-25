@@ -50,14 +50,23 @@ export async function waitUntilAttachSafe(
   blocked: BlockedGuard | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  const guard = blocked === undefined ? undefined : { blocked };
-  for (;;) {
-    assertAttachNotAbortedOrRenderFailed(terminal, signal);
-    const unsafe = await writeUnsafe(terminal, guard, signal);
-    assertAttachNotAbortedOrRenderFailed(terminal, signal);
-    if (!unsafe) return;
-    await delay(unsafeWriteRetryMs);
-  }
+  while (await attachUnsafe(terminal, blocked, signal)) await delay(unsafeWriteRetryMs);
+}
+
+/** One observation of everything received: true while an image key must wait. */
+export async function attachUnsafe(
+  terminal: AttachTerminal,
+  blocked: BlockedGuard | undefined,
+  signal: AbortSignal,
+): Promise<boolean> {
+  assertAttachNotAbortedOrRenderFailed(terminal, signal);
+  const unsafe = await writeUnsafe(
+    terminal,
+    blocked === undefined ? undefined : { blocked },
+    signal,
+  );
+  assertAttachNotAbortedOrRenderFailed(terminal, signal);
+  return unsafe;
 }
 
 function assertAttachNotAbortedOrRenderFailed(terminal: AttachTerminal, signal: AbortSignal): void {
