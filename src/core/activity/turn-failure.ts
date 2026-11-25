@@ -45,13 +45,22 @@ export type TurnFailureActivity = { readonly kind: "turn_failure" } & Normalized
       }
   );
 
+/**
+ * The recognized code an adapter passes as its native code when its record identifies one of
+ * these categories without naming any of the category's codes (PRD §5.4).
+ */
+export const substituteErrorCodes = {
+  quota_or_credit: "insufficient_quota",
+  rate_limited: "rate_limit_exceeded",
+} as const satisfies Partial<Record<ElwoodTurnFailureCategory, string>>;
+
 const categories = new Map<unknown, ElwoodTurnFailureCategory>([
   ["billing_error", "quota_or_credit"],
   ["credit_balance_too_low", "quota_or_credit"],
-  ["insufficient_quota", "quota_or_credit"],
+  [substituteErrorCodes.quota_or_credit, "quota_or_credit"],
   ["rate_limit", "rate_limited"],
   ["rate_limit_error", "rate_limited"],
-  ["rate_limit_exceeded", "rate_limited"],
+  [substituteErrorCodes.rate_limited, "rate_limited"],
   ["usage_limit_exceeded", "usage_limit"],
   ["usage_limit_reached", "usage_limit"],
   ["model_not_found", "model_unavailable"],

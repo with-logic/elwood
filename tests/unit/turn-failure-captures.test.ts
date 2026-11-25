@@ -76,10 +76,10 @@ const expectedCodexCategory: Readonly<
   "usage-limit": "usage_limit",
   "usage-limit-reset": "usage_limit",
   "usage-not-included": "usage_limit",
-  "insufficient-quota-429": "usage_limit",
-  "insufficient-quota-stream": "usage_limit",
-  "payment-required-402": "network_or_api",
-  "rate-limit-429-retried": "network_or_api",
+  "insufficient-quota-429": "quota_or_credit",
+  "insufficient-quota-stream": "quota_or_credit",
+  "payment-required-402": "quota_or_credit",
+  "rate-limit-429-retried": "rate_limited",
   "server-error-500": "network_or_api",
 };
 

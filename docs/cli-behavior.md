@@ -361,8 +361,10 @@ reported the credit-depleted workspace-owner diagnostic. The [0.171.0 error
 formatter](https://github.com/openai/codex/blob/rust-v0.171.0/codex-rs/protocol/src/error.rs)
 also defines the workspace-member variant. The finalized error record carries
 `message` and the shared code without a separate workspace-credit subtype or
-reset timestamp. Elwood uses the two exact native `error.message` values for
-`quota_or_credit` and keeps other messages under the usual classification.
+reset timestamp. Elwood uses these two exact native `error.message` values, and
+Codex's fixed `insufficient_quota` sentence (see
+[Billing, usage-limit and rate-limit failures](#billing-usage-limit-and-rate-limit-failures-2026-11-25)),
+for `quota_or_credit` and keeps other messages under the usual classification.
 Both messages start with `Your workspace is out of credits.` The workspace-owner
 message ends with `Add credits to continue.` The workspace-member message ends
 with `Ask your workspace owner to refill in order to continue.` A numeric reset
@@ -387,8 +389,9 @@ ran with `ANTHROPIC_BASE_URL` set to a loopback server. Codex ran with a private
 `CODEX_HOME` whose `model_provider` pointed at that loopback server
 (`wire_api = "responses"`, `requires_openai_auth = false`). The server gave every
 request the same answer. The versions are those of the binaries Elwood's login
-shell resolved: there `codex` was `~/.local/bin/codex` (0.172.0), while a
-non-login `codex --version` reported 0.171.0. The captures are
+shell resolved in each probe's project directory, where `codex` was
+`~/.local/bin/codex` (0.172.0). In this repository's directory, fnm's cd hook
+selects Node 24, whose npm `codex` is 0.171.0. The captures are
 `tests/fixtures/claude-2.1.332/turn-failures.jsonl` and
 `tests/fixtures/codex-0.172.0/turn-failures.jsonl`.
 
@@ -422,16 +425,24 @@ and `quotaLimits.resetsAt`. So that activity says `rate_limited` and has no rese
 | 429 `usage_limit_reached`, `plan_type: "team"` | `You’ve hit your usage limit. To get more access now, send a request to your admin or try again later.` | `usage_limit_exceeded` | `usage_limit` |
 | 429 `usage_limit_reached`, `plan_type: "plus"`, `resets_at` | `You’ve hit your usage limit. Upgrade to Pro (…), visit … to purchase more credits or try again at 3:29 AM.` | `usage_limit_exceeded` | `usage_limit` |
 | 429 `usage_not_included` | `To use Codex with your ChatGPT plan, upgrade to Plus: …` | `usage_limit_exceeded` | `usage_limit` |
-| 429 `insufficient_quota`, or 200 ending in `response.failed` with it | `Quota exceeded. Check your plan and billing details.` | `usage_limit_exceeded` | `usage_limit` |
-| 402 | `unexpected status 402 Payment Required: <message>, url: …` | `{"http_connection_failed":{"http_status_code":402}}` | `network_or_api` |
-| 429 `rate_limit_exceeded`, `retry-after: 1` | `exceeded retry limit, last status: 429 Too Many Requests` | `{"response_too_many_failed_attempts":{"http_status_code":429}}` | `network_or_api` |
+| 429 `insufficient_quota`, or 200 ending in `response.failed` with it | `Quota exceeded. Check your plan and billing details.` | `usage_limit_exceeded` | `quota_or_credit` |
+| 402 | `unexpected status 402 Payment Required: <message>, url: …` | `{"http_connection_failed":{"http_status_code":402}}` | `quota_or_credit` |
+| 429 `rate_limit_exceeded`, `retry-after: 1` | `exceeded retry limit, last status: 429 Too Many Requests` | `{"response_too_many_failed_attempts":{"http_status_code":429}}` | `rate_limited` |
 | 500 | `We’re currently experiencing high demand, which may cause temporary errors.` | `internal_server_error` | `network_or_api` |
 
 Codex wrote the workspace-credit sentences when the 429 carried the
-`x-codex-rate-limit-reached-type` response header. The record keeps only the
-sentence and the shared code. A `resets_at` in the body became the clock time in
-the sentence, not a field, so none of these Codex activities has
-`resetsAtUnixSeconds`. The usage-limit kinds fail on the first response. By the
+`x-codex-rate-limit-reached-type` response header. A `resets_at` in the body
+became the clock time in the `plan_type: "plus"` usage-limit sentence
+(`try again at 3:29 AM`), not a field, so none of these Codex activities has
+`resetsAtUnixSeconds`. The record keeps only the sentence and the shared code, as
+it does for `insufficient_quota`'s fixed quota sentence, so Elwood classifies all
+three exact sentences as `quota_or_credit`. The 402 and the exhausted 429 keep
+their status in `codex_error_info`, which Elwood reads as `quota_or_credit` and
+`rate_limited`. The bare `internal_server_error` stays `network_or_api`.
+C-API-65's loopback e2e sends the workspace-owner credit, `insufficient_quota`,
+team usage-limit, retried 429, 402 and 500 replies to one session. Codex 0.172.0
+and 0.171.0 each failed every turn with the record above, and Elwood reported the
+category in this table. The usage-limit kinds fail on the first response. By the
 records' `duration_ms`, the 402 retried for 7 s, the 429 for 6.5 s, and the 500
 for 25 s (60 requests), with the status `running` throughout. A long `retry-after`
 stays `running` for minutes, as described under
