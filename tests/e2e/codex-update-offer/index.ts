@@ -38,7 +38,7 @@ const offeredCodexVersion = "99.0.0";
  * The first release seen drawing the offer layout these proofs cover. Earlier ones draw
  * Codex 0.155's layout, which C-CODEX-12 covers with captures.
  */
-const offerLayoutCodexVersion = "0.171.0";
+const minimumOfferProofCodexVersion = "0.171.0";
 
 export type CodexUpdateOffer = {
   /** Application writes refused since `arm`, in order. Terminal protocol replies are not input. */
@@ -173,8 +173,8 @@ export function codexUpdateOffer(
       const result = await currentCommandRunner()(userShell(), probe, { cwd });
       const version = result.status === 0 ? parseVersion(result.stdout) : null;
       if (version === null) throw new Error("Codex did not report its version");
-      return compareVersions(version, offerLayoutCodexVersion) < 0
-        ? `The update offer proof needs Codex ${offerLayoutCodexVersion} or newer; ${version} runs`
+      return compareVersions(version, minimumOfferProofCodexVersion) < 0
+        ? `The update offer proof needs Codex ${minimumOfferProofCodexVersion} or newer; ${version} runs`
         : undefined;
     },
     arm() {

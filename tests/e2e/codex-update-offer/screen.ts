@@ -26,7 +26,7 @@ export function configuredComposerShown(screen: string): boolean {
 }
 
 /** Each refused write with the marked rows of the screen it met, to show on failure. */
-export function refusedAtMarkedRows(refused: readonly RefusedInput[]) {
+export function refusedWithMarkedRows(refused: readonly RefusedInput[]) {
   return refused.map(({ data, screen }) => ({
     data,
     marked: screen.split("\n").filter((row) => /^\s*›/.test(row)),

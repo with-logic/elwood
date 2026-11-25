@@ -15,7 +15,7 @@ import { sendWithin, waitForCondition } from "./bounded-steps.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import { readCodexDismissedVersion } from "./codex-update-check.ts";
 import { codexUpdateOffer } from "./codex-update-offer/index.ts";
-import { refusedAtMarkedRows } from "./codex-update-offer/screen.ts";
+import { refusedWithMarkedRows } from "./codex-update-offer/screen.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -47,7 +47,7 @@ const ONE = "Reply exactly: ONE. Do not use tools.";
 // screen while Elwood still shows the offer, where a second key would reach that screen.
 for (const lagAfterSkipMs of [0, 2_000]) {
   const late = lagAfterSkipMs > 0 ? `, read ${lagAfterSkipMs / 1_000} s late after the skip` : "";
-  test(`C-E2E-26 a resumed Codex that opens on its update offer is skipped before queued input${late}`, {
+  test(`C-E2E-26 Elwood skips the update offer a resumed Codex opens on, before queued input${late}`, {
     skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
     timeout: TEST_TIMEOUT_MS,
   }, async (t) => {
@@ -64,6 +64,13 @@ for (const lagAfterSkipMs of [0, 2_000]) {
     let resumed: CodexSessionApi | undefined;
     const launches = codexLaunches();
     const input = codexUpdateOffer(sandbox.home, { lagAfterSkipMs });
+    // Checked as the run goes, so a failure names the step that let input through.
+    const noRefusedInput = () =>
+      assert.deepEqual(
+        refusedWithMarkedRows(input.refused),
+        [],
+        "only Elwood's Skip may reach the offer, and no input may come before it or before Codex's configured composer",
+      );
     await runCodexTest({ sessions: () => [resumed, first], sandbox, launches }, async () => {
       const unsupported = await input.unsupported(project.cwd);
       if (unsupported !== undefined) return skipNow(t, unsupported);
@@ -110,14 +117,12 @@ for (const lagAfterSkipMs of [0, 2_000]) {
       // A failed run tears the session down with this send still queued.
       queued.catch(() => {});
       await waitForCondition(active, () => input.skips.length > 0, "Elwood's skip", OFFER_MS);
+      noRefusedInput();
       await waitForCondition(active, () => settled, "queued ONE submitted", READY_MS + SEND_MS);
       await queued;
+      noRefusedInput();
       await waitForCondition(active, () => stops >= 1, "queued ONE answered", TURN_MS);
-      assert.deepEqual(
-        refusedAtMarkedRows(input.refused),
-        [],
-        "only Elwood's Skip may reach the offer, and no input may come before it or before Codex's configured composer",
-      );
+      noRefusedInput();
       assert.equal(input.skips.length, 1, "Elwood writes the Skip digit once");
       assert.deepEqual(prompts, [ONE]);
       // Codex's repaint after the skip is the skip's, never a dialog nobody recognized.

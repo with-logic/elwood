@@ -19,10 +19,15 @@ export function writeCodexUpdateCheck(home: string, latestVersion: string): void
   );
 }
 
-/** The version a Codex dismissal named in `home`, or null. `Skip until next version` sets one. */
+/**
+ * The version a Codex dismissal named in `home`, or null. `Skip until next version` sets
+ * one. Codex writes the key either way, so a missing key or another value is an error.
+ */
 export function readCodexDismissedVersion(home: string): string | null {
-  const check = JSON.parse(readFileSync(join(home, "version.json"), "utf8")) as {
-    readonly dismissed_version?: string | null;
-  };
-  return check.dismissed_version ?? null;
+  const check: unknown = JSON.parse(readFileSync(join(home, "version.json"), "utf8"));
+  if (typeof check !== "object" || check === null || !("dismissed_version" in check))
+    throw new Error("Codex's version.json names no dismissed_version");
+  const dismissed = check.dismissed_version;
+  if (dismissed === null || typeof dismissed === "string") return dismissed;
+  throw new Error(`Codex's version.json names dismissed_version ${JSON.stringify(dismissed)}`);
 }
