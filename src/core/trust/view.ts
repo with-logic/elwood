@@ -12,7 +12,7 @@ import { activeTrustDialogVisible, type TrustPromptSpec, trustPromptAllowlist } 
 
 export type TrustCandidate = {
   readonly kind: "candidate";
-  readonly startRow: number;
+  readonly headerRow: number;
   readonly spec: TrustPromptSpec;
   readonly key: string;
   readonly dialog: TrustDialog;
@@ -57,7 +57,7 @@ export function trustView(
       const valid = region.validTail && activeTrustDialogVisible(region.dialog, spec);
       return {
         kind: "candidate",
-        startRow: region.startRow,
+        headerRow: region.headerRow,
         spec,
         // Trimmed: the separator after a header varies as its body paints, the gate does not.
         key: `${spec.id}:${header[0].trim()}`,

@@ -36,7 +36,7 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
 }
 
 type Candidate = {
-  readonly startRow: number;
+  readonly headerRow: number;
   readonly dialog: TrustDialog;
   readonly validTail: boolean;
   /**
@@ -100,7 +100,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     return afterHeader;
   });
   return {
-    startRow: start,
+    headerRow: start,
     dialog: {
       header: header.trim().replace(/\s+/g, " "),
       options,
@@ -108,19 +108,24 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     },
     validTail:
       !unknownTail && (optionStart < 0 || validOptionTail(body.slice(optionStart), options)),
-    hasGenericFooter: footerRow.test(text.slice(text.trimEnd().lastIndexOf("\n") + 1)),
+    hasGenericFooter: isGenericTrustDialogFooter(text.slice(text.trimEnd().lastIndexOf("\n") + 1)),
   };
 }
 
+/** A frame-ending native footer that need not belong to a particular gate. */
+export function isGenericTrustDialogFooter(line: string): boolean {
+  return footerRow.test(line);
+}
+
 function isSeparator(line: string): boolean {
-  return line.trim() === "" || footerRow.test(line) || /^[─━]{3}/.test(line.trim());
+  return line.trim() === "" || isGenericTrustDialogFooter(line) || /^[─━]{3}/.test(line.trim());
 }
 
 function validOptionTail(lines: readonly string[], options: readonly SelectableOption[]): boolean {
   let footer = false;
   for (const line of lines) {
     if (line.trim() === "") continue;
-    if (footerRow.test(line)) {
+    if (isGenericTrustDialogFooter(line)) {
       footer = true;
       continue;
     }
