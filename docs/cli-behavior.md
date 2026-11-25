@@ -385,6 +385,18 @@ message ends with `Add credits to continue.` The workspace-member message ends
 with `Ask your workspace owner to refill in order to continue.` A numeric reset
 is exposed when the structured diagnostic provides one. C-API-65.
 
+**Claude Code 2.1.331 and 2.1.332 persist structured usage denials.** In
+interactive PTY runs against a local synthetic 429 response, Claude rendered
+the Fable limit and local reset time. Its committed synthetic assistant record
+carried `isApiErrorMessage: true`, `apiError: "usage_limit_reached"`, and
+`apiErrorParams.rate_limit_info` with `status: "rejected"`, the native code
+`seven_day_overage_included`, and the supplied `resetsAt` in Unix seconds.
+The same-path `parentUuid` chain led to the original user prompt through
+attachment records. `StopFailure` reported the generic `rate_limit` error
+and visible message without the structured reset. The quota record could
+commit after the hook and rendered notice. A simple throttle response lacked
+the quota markers. C-API-68.
+
 ### Billing, usage-limit and rate-limit failures (2026-11-25)
 
 Measured on Claude Code 2.1.332 and codex-cli 0.172.0 without model quota. Claude
@@ -3241,6 +3253,20 @@ lost the quota reply. Keeping it open until the matching response produced the
 account buckets. Both probes ran before any model turn (C-STATS-03).
 Codex 0.171.0 returned an account window both with and without synthetic
 `OPENAI_API_KEY` and `CODEX_API_KEY` exports in a temporary `.zshrc`.
+
+**Codex 0.171.0 and 0.172.0 persist a native quota rejection type.** An isolated
+Codex 0.171.0 TUI with a local synthetic 429 committed the reached type in
+`token_count` before the failed `task_complete`. That also happened with no
+window headers. Without the reached-type header it wrote `null` despite the
+turn failure. The pinned 0.172.0 source implements the same shape. The
+rollout's `event_msg` / `token_count.payload.rate_limits` snapshot can contain
+`rate_limit_reached_type` with a rate-limit rejection or a distinct workspace
+credit or spend-limit rejection. Codex can send that field without a populated
+quota window. Window reset timestamps do not say which window blocked input,
+and the snapshot carries no turn identity or diagnostic text. Codex can repeat
+the latest snapshot as token usage changes, so Elwood suppresses unchanged
+rejections and preserves the independent `turn_failure` event when available.
+[Codex 0.172.0 snapshot construction](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/codex-api/src/api_bridge.rs#L229-L261)
 
 ## Codex 0.171.0 update offer (2026-11-24)
 

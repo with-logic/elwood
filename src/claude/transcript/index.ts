@@ -61,7 +61,7 @@ export class ClaudeTranscriptWatcher {
     this.guard = new TranscriptFsGuard(readErrors, () => this.finished);
     this.onPollError = notices.onPollError;
     this.pollIntervalMs = notices.pollIntervalMs ?? pollMs;
-    this.lines = new LineEmitter(elwoodSessionId, emit, this.drops);
+    this.lines = new LineEmitter(elwoodSessionId, emit, this.drops, notices.onUsageLimit);
     this.drain = buildDrainContext({
       guard: this.guard,
       lines: this.lines,
