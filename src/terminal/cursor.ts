@@ -23,7 +23,11 @@ export function settledNativeSnapshot(terminal: ElwoodTerminal): TerminalSnapsho
   return settledLiveSnapshot(terminal);
 }
 
-/** Notify once after the triggering mutation. Unsubscribing cancels pending delivery. */
+/**
+ * Delivers at most once, in a microtask after the triggering operation.
+ * Callbacks are fire-and-forget. Thrown errors and rejected promises are contained.
+ * Unsubscribing cancels pending delivery.
+ */
 export function onNativeRenderEvidenceInvalidated(
   terminal: ElwoodTerminal,
   listener: () => void | Promise<void>,

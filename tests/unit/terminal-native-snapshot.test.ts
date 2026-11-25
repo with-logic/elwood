@@ -7,7 +7,7 @@ import {
 import { hasUnwrappedRowEndPadding } from "../../src/terminal/snapshot.ts";
 import { setupTerminalPty } from "../helpers/terminal-pty.ts";
 
-test("proves native snapshots only after all output has rendered", async () => {
+test("C-TRUST-01 proves native snapshots only after all output has rendered", async () => {
   const { terminal, emit } = setupTerminalPty();
   try {
     expect(settledNativeSnapshot(terminal)).toBeUndefined();
@@ -30,7 +30,7 @@ test.each([
   "writeOutput",
   "clear",
   "reset",
-] as const)("revokes native proof only once after host %s", async (operation) => {
+] as const)("C-TRUST-01 revokes native proof only once after host %s", async (operation) => {
   const { terminal, emit } = setupTerminalPty();
   const lost = vi.fn();
   const off = onNativeRenderEvidenceInvalidated(terminal, lost);
@@ -138,11 +138,15 @@ test("C-TRUST-01 a resize cannot make a clipped native row usable as evidence", 
     await terminal.settled();
     terminal.resize({ cols: 8, rows: 5 });
     expect(settledNativeSnapshot(terminal)?.text).toContain("/tmp/abc");
-    expect(hasUnwrappedRowEndPadding(terminal.xterm, 0, 0)).toBe(false);
+    expect(
+      hasUnwrappedRowEndPadding(terminal.xterm, { viewportRow: 0, rightInsetColumns: 0 }),
+    ).toBe(false);
     expect(listener).not.toHaveBeenCalled();
 
     terminal.resize({ cols: 10, rows: 5 });
-    expect(hasUnwrappedRowEndPadding(terminal.xterm, 0, 0)).toBe(true);
+    expect(
+      hasUnwrappedRowEndPadding(terminal.xterm, { viewportRow: 0, rightInsetColumns: 0 }),
+    ).toBe(true);
     expect(terminal.snapshot().text).toContain("/tmp/abc");
     expect(settledNativeSnapshot(terminal)).toBeUndefined();
     emit("\x1b]0;new title\x07");

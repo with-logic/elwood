@@ -2,7 +2,11 @@
 import { expect, test, vi } from "vitest";
 import { reportCallerInput } from "../../src/codex/session/caller-input.ts";
 import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
-import { captureRenderProgress, settledLiveSnapshot } from "../../src/terminal/cursor.ts";
+import {
+  captureRenderProgress,
+  onNativeRenderEvidenceInvalidated,
+  settledLiveSnapshot,
+} from "../../src/terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
 import { renderBatchBytes } from "../../src/terminal/pty-output.ts";
 import { setupTerminalPty } from "../helpers/terminal-pty.ts";
@@ -122,8 +126,10 @@ test("C-API-31 raw output received by a render observer stays unsettled until it
   }
 });
 
-test("C-API-31 a failed native render cannot authorize freshness after later output", async () => {
+test("C-API-31 and C-TRUST-01 a failed native render cannot authorize freshness after later output", async () => {
   const { terminal, emit } = setupTerminalPty();
+  const invalidated = vi.fn();
+  const unsubscribe = onNativeRenderEvidenceInvalidated(terminal, invalidated);
   const write = vi.spyOn(terminal.xterm, "write").mockImplementationOnce(() => {
     throw new Error("render failed");
   });
@@ -132,12 +138,15 @@ test("C-API-31 a failed native render cannot authorize freshness after later out
     emit("lost");
     await terminal.settled();
     expect(terminal.renderFailed).toBe(true);
+    expect(invalidated).toHaveBeenCalledOnce();
     expect(captured()).toBe(false);
     emit("later");
     await terminal.settled();
     expect(terminal.snapshot().text).toContain("later");
     expect(captured()).toBe(false);
+    expect(invalidated).toHaveBeenCalledOnce();
   } finally {
+    unsubscribe();
     write.mockRestore();
     terminal.dispose();
   }
