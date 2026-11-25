@@ -1,6 +1,6 @@
 /** Bounded private reads assemble short reads without accepting size changes (C-STATE-15). */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
@@ -21,7 +21,7 @@ vi.mock("node:fs", async (importOriginal) => {
     boundary.beforeRead?.();
     return actual.readSync(fd, buffer, offset, Math.min(3, length), position);
   };
-  return { ...actual, readSync };
+  return { ...actual, readSync, readFileSync: vi.fn(actual.readFileSync) };
 });
 
 afterEach(() => {
@@ -39,6 +39,17 @@ const read = (path: string) =>
 
 test("C-STATE-15 a bounded private read collects all short reads", () => {
   expect(read(file())).toBe(content);
+});
+
+test("C-STATE-15 a file above the private byte limit is rejected before descriptor reads", () => {
+  const path = file();
+  writeFileSync(path, "x".repeat(65));
+  const beforeRead = vi.fn();
+  boundary.beforeRead = beforeRead;
+  vi.mocked(readFileSync).mockClear();
+  expect(() => read(path)).toThrowError("invalid bounded private file length");
+  expect(beforeRead).not.toHaveBeenCalled();
+  expect(readFileSync).not.toHaveBeenCalled();
 });
 
 test.each([

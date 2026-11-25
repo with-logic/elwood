@@ -7,15 +7,8 @@
  * check and the read.
  */
 
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  openSync,
-  readFileSync,
-  readSync,
-  type Stats,
-} from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, type Stats } from "node:fs";
+import { readExactDescriptorBytes } from "../core/descriptor-bytes.ts";
 import { errnoCode, toError } from "../core/errors.ts";
 
 export type FileOwner = { readonly uid: number };
@@ -56,15 +49,8 @@ function inspect(path: string, owner: FileOwner | undefined, maxBytes?: number):
     if (maxBytes === undefined) return { text: readFileSync(fd, "utf8") };
     const invalidLength = { fault: "invalid bounded private file length" };
     if (stat.size > maxBytes) return invalidLength;
-    // One extra byte detects growth after fstat. A short positive read is not EOF.
-    const buffer = Buffer.allocUnsafe(stat.size + 1);
-    let count = 0;
-    while (count < buffer.length) {
-      const read = readSync(fd, buffer, count, buffer.length - count, count);
-      if (read === 0) break;
-      count += read;
-    }
-    return count === stat.size ? { text: buffer.toString("utf8", 0, count) } : invalidLength;
+    const bytes = readExactDescriptorBytes(fd, stat.size);
+    return bytes ? { text: bytes.toString("utf8") } : invalidLength;
   } catch (error) {
     if (errnoCode(error) === "ENOENT") return undefined;
     return { fault: toError(error).message };
