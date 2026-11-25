@@ -20,16 +20,13 @@ test("C-SCREEN-03 a disposed terminal returns its final screen with cursor and s
     buffer: "normal",
     outputLost: false,
   });
-  expect((await readTerminalScreen(terminal, { scrollback: true })).scrollback).toEqual([
-    "row 0",
-    "row 1",
-    "row 2",
-    "row 3",
-    "row 4",
-    "row 5",
-  ]);
+  const retained = ["row 0", "row 1", "row 2", "row 3", "row 4", "row 5"];
+  const all = await readTerminalScreen(terminal, { scrollback: true });
+  expect(all.scrollback).toEqual(retained);
   expect((await readTerminalScreen(terminal)).scrollback).toEqual([]);
-  // Each read hands out its own copy of the final screen.
+  // Each read hands out its own copy of the final screen, so changing one changes no other.
+  (all.scrollback as string[]).splice(0);
+  expect((await readTerminalScreen(terminal, { scrollback: true })).scrollback).toEqual(retained);
   expect((await readTerminalScreen(terminal)).lines).not.toBe(final.lines);
   expect((await readTerminalScreen(terminal)).cursor).not.toBe(final.cursor);
 });
@@ -37,9 +34,11 @@ test("C-SCREEN-03 a disposed terminal returns its final screen with cursor and s
 test("C-SCREEN-03 a read that was waiting at disposal gets the final screen, marked lossy", async () => {
   const terminal = createHeadlessTerminal({ cols: 12, rows: 4 }, () => undefined);
   await terminal.writeOutput("drawn");
-  void terminal.writeOutput("\r\nqueued");
+  const queued = terminal.writeOutput("\r\nqueued");
   const waiting = readTerminalScreen(terminal);
   terminal.dispose();
+  // Disposal releases the write it never drew.
+  await expect(queued).resolves.toBeUndefined();
   expect(await waiting).toMatchObject({
     lines: ["drawn", "", "", ""],
     cursor: { visible: true },
@@ -92,4 +91,18 @@ test("C-SCREEN-03 a final screen keeps an earlier render failure as lost output"
     lines: ["kept", "", ""],
     outputLost: true,
   });
+});
+
+test("C-SCREEN-03 disposal inside a PTY batch's render reports the chunk being staged as lost", async () => {
+  const disposed = Promise.withResolvers<void>();
+  const { terminal, emit } = setupTerminalPty((_data, rendered) => {
+    rendered.dispose();
+    disposed.resolve();
+  });
+  // xterm renders the first write after host input synchronously, inside the PTY push.
+  await terminal.sendInput("x");
+  emit("a".repeat(40_000));
+  emit("b".repeat(40_000)); // past the batch size: push flushes the a's, then stages the b's
+  await disposed.promise;
+  expect(await readTerminalScreen(terminal)).toMatchObject({ outputLost: true });
 });

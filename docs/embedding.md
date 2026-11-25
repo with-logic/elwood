@@ -189,8 +189,9 @@ On `ClaudeSession` and `CodexSession`, call it on `session.session` after start.
 - The call waits for output to pause and has no timeout, so race it against
   your own timer if a session might print without a break.
 - After the session ends, including after `stop()` resolves, the call
-  returns the final screen from memory. That is the terminal once the CLI
-  quit, so it may show the CLI's exit rather than the last conversation:
+  returns the final screen from memory: the frame the terminal held when it
+  was disposed. After a normal stop that is the terminal once the CLI quit,
+  so it may show the CLI's exit rather than the last conversation:
   after `stop()`, Claude Code 2.1.332 leaves only its resume command on the
   normal screen under its fullscreen renderer, or that command below its last
   frame on the normal screen, and Codex 0.171.0 leaves its last frame. Read the screen

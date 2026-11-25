@@ -22,6 +22,8 @@ export class PtyOutput {
   private paused: PtyProcess["flowControl"];
   private chunks: string[] = [];
   private bufferedBytes = 0;
+  /** Code units of the chunk `push()` is splitting that no batch holds yet. */
+  private unstagedUnits = 0;
   private pendingBytes = 0;
   private scheduled: NodeJS.Timeout | undefined;
   private disposed = false;
@@ -35,19 +37,23 @@ export class PtyOutput {
 
   /** Received bytes that have not yet been handed to the ordered render queue. */
   get hasStagedOutput(): boolean {
-    return this.bufferedBytes > 0;
+    return this.bufferedBytes > 0 || this.unstagedUnits > 0;
   }
 
   push(data: string): void {
     if (this.disposed) return;
     for (let start = 0; start < data.length; ) {
+      this.unstagedUnits = data.length - start;
       let end = Math.min(start + pieceCodeUnits, data.length);
       const last = data.charCodeAt(end - 1);
       if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--;
       const chunk = data.slice(start, end);
       const bytes = Buffer.byteLength(chunk);
       if (this.bufferedBytes + bytes > renderBatchBytes) this.flush();
+      // xterm can render a flush synchronously, and its observers can dispose the terminal.
+      if (this.disposed) return;
       this.chunks.push(chunk);
+      this.unstagedUnits = data.length - end;
       this.bufferedBytes += bytes;
       this.pendingBytes += bytes;
       if (
@@ -98,6 +104,7 @@ export class PtyOutput {
     this.scheduled = undefined;
     this.chunks = [];
     this.bufferedBytes = 0;
+    this.unstagedUnits = 0;
     this.pendingBytes = 0;
     this.resume();
   }
