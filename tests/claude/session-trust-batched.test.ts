@@ -30,7 +30,7 @@ async function readySession(): Promise<ClaudeSessionApi> {
   const session = await startClaude({ cwd: tempDir() });
   sessions.push(session);
   vi.useFakeTimers();
-  ptys[0]!.emitData("Claude ready\r\n❯ ");
+  ptys[0]!.emitData(claudeTty(claudeComposer));
   await vi.advanceTimersByTimeAsync(10_010);
   return session;
 }

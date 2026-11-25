@@ -39,7 +39,7 @@ test("C-TRUST-01 a trust gate appearing after readiness holds the entire queued 
   installFakes();
   const session = await startClaude({ cwd: tempDir(), autotrust: true });
   vi.useFakeTimers();
-  ptys[0]!.emitData("Claude ready\r\n❯ ");
+  ptys[0]!.emitData(claudeTty(claudeComposer));
   await vi.advanceTimersByTimeAsync(10_010);
   expect(session.status).toBe("ready");
   const activity: string[] = [];

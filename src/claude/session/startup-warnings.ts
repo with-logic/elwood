@@ -6,8 +6,8 @@ export function createClaudeStartupWarningGate(
   session: () => FrameWarningSink | undefined,
   closing: () => boolean,
   duringDelivery: (deliver: () => void) => void,
-): ReturnType<typeof createSessionStartupWarningGate> {
-  return createSessionStartupWarningGate(
+) {
+  const warnings = createSessionStartupWarningGate(
     session,
     (warning) =>
       warning.code === "startup_prompt_write_failed" &&
@@ -15,4 +15,5 @@ export function createClaudeStartupWarningGate(
       closing(),
     duringDelivery,
   );
+  return { ...warnings, duringDelivery };
 }

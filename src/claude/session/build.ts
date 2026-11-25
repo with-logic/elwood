@@ -8,14 +8,14 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { createReadinessGate } from "../../runtime/session/readiness.ts";
 import { withAutomatedInput } from "../../runtime/session/session-input.ts";
+import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
 import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
-import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.ts";
+import { settledLiveSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
@@ -57,11 +57,15 @@ export async function buildClaudeSession(
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
-  const readiness = createReadinessGate(() => {
-    observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    void session?.completeInitialReady();
-  }, resumed);
-  const { ready } = readiness;
+  const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
+  const readiness = createStartupReadinessGate(
+    () => {
+      observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
+      void session?.completeInitialReady();
+    },
+    resumed,
+    { session: observers, warnings: warnGate, events: emitter, configured: idleComposerClearance },
+  );
   const bridge = currentClaudeHookBridgeFactory()(
     runtime.socketPath,
     runtime.bridgeToken,
@@ -71,7 +75,7 @@ export async function buildClaudeSession(
       options,
       emitter,
       transcriptWatcher,
-      ready,
+      ready: readiness.ready,
       getSession: () => session,
       getTurnWatcher: () => observers.turn,
       observeHookTranscript: (event) => observeTranscript(transcriptWatcher, event),
@@ -104,7 +108,6 @@ export async function buildClaudeSession(
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
   const frameObserver = createSessionFrameObserver(
     observers,
     () => session,
@@ -121,7 +124,7 @@ export async function buildClaudeSession(
   const loginExpiring = new LoginExpiringWatcher();
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     terminalReplay.push(data);
-    const snapshot = cachedLiveSnapshot(renderedTerminal);
+    const snapshot = readiness.observeStartupFrame(renderedTerminal);
     latestRenderedText = snapshot.text;
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
     const send = (input: string) =>
@@ -161,12 +164,12 @@ export async function buildClaudeSession(
   const active = bindTurnSubmission(session, observers);
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
-  const sessionCleanup = active.startupCleanupResources(ready.cancel);
+  const sessionCleanup = active.startupCleanupResources(readiness.ready.cancel);
   await guardStartupRegion(
     async () => {
       active.startLoops();
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
-      ready.replay();
+      readiness.ready.replay();
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;

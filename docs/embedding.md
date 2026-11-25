@@ -174,10 +174,10 @@ flush barrier. Older Claude records without native prompt identity can remain
 untagged. Claude's synthetic interrupted-resume placeholder is omitted from
 normalized assistant activity.
 
-Codex's `initial_ready_backstop` warning means startup evidence is still missing:
+On Claude and Codex, `initial_ready_backstop` warns that startup evidence is still missing:
 readiness and queued text remain held. If no recognized dialog hold is active, the
 matching `unrecognized_startup` activity carries bounded live screen text for
-display. The text can contain whatever Codex showed, including account or
+display. The text can include whatever the agent showed, including account or
 workspace details.
 Recognized update menus are safely skipped or reported as `blocked` with
 `codex-update-prompt` attention. Elwood never chooses `Update now` in the TUI.
