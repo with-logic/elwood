@@ -58,6 +58,7 @@ export async function executeModels(
         if (request.verbose || request.debug === true)
           warnings.push(writeWarning(io.stderr, event, clean));
       },
+      promptSubmitted: () => false,
     },
     undefined,
     updateAttention,

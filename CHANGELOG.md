@@ -18,6 +18,13 @@ back each entry are listed in `prd/14-conformance.md`.
   dropped trailing whitespace, or escaped a `<pasted_content` look-alike. Such a turn used to resolve with the
   rejection text as its reply.
 
+- Report Claude's auto-mode setup offer, which can appear right after a turn
+  ends, as `blocked` with attention label `claude-auto-mode-offer`. A
+  `sendMessage` sent while it is visible now waits for it to close. Before, its
+  Enter answered the offer and the message was lost. A paste the offer painted
+  over before its Enter now submits once the offer closes, and `elwood run` no
+  longer fails when the offer appears after its prompt's turn has ended.
+
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
 

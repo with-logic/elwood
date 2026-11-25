@@ -21,7 +21,15 @@ import type { CodexUpdateAttentionGuard } from "../update-attention.ts";
 export type RunEventObserver = {
   readonly status: (status: ElwoodSessionStatus) => void;
   readonly warning: (event: ElwoodWarningEvent) => void;
+  /** True once the run has submitted its own prompt. */
+  readonly promptSubmitted: () => boolean;
 };
+
+/**
+ * Claude can paint its auto-mode setup offer right after a turn ends (C-ATTN-09). After
+ * the prompt's own turn, the answer is complete, so the offer does not fail the run.
+ */
+const postTurnOffer = "claude-auto-mode-offer";
 
 export function subscribeRunEvents(
   request: EffectiveRunRequest,
@@ -31,12 +39,18 @@ export function subscribeRunEvents(
   head: HeadedDisplay | undefined,
   updateAttention: CodexUpdateAttentionGuard | undefined,
 ): readonly (() => void)[] {
+  let promptRunning = false;
+  let promptTurnEnded = false;
   const common = [
     session.on("activity", (event) => {
       if (event.kind === "attention" && event.label === "codex-update-prompt") {
         if (updateAttention === undefined) lifecycle.block(event.label);
         else updateAttention.attention(event.promptGeneration);
-      } else if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
+      } else if (
+        event.kind === "attention" &&
+        attentionNeedsHuman(request, event.label) &&
+        !(promptTurnEnded && event.label === postTurnOffer)
+      ) {
         lifecycle.block(event.label);
       }
       if (event.kind === "startup_prompt" && event.label === "update") {
@@ -44,6 +58,10 @@ export function subscribeRunEvents(
       }
     }),
     session.on("status", ({ status }) => {
+      if (observer.promptSubmitted()) {
+        if (status === "running") promptRunning = true;
+        else if (status === "ready" && promptRunning) promptTurnEnded = true;
+      }
       updateAttention?.status(status);
       observer.status(status);
     }),
