@@ -37,13 +37,25 @@ session-scoped settings passed via `--settings`. Elwood does not mutate
 `.claude/settings.local.json`. `startClaude` also accepts `model`, forwarded
 to Claude's `--model` flag, and `reasoningEffort`, forwarded to `--effort`.
 
-Claude `user_message` activity can display the body of a supported native paste
+On supported Claude `sendMessage`, `sendPrompt`, and `sendGuidance` calls,
+`{ sendId: "request-42" }` identifies the caller's submission when Elwood can
+match the authenticated hook. The activity includes the exact API text and
+the untouched `nativePrompt`. See [the event contract](../prd/05-api/5.4-events.md).
+
+Without a verified API match, Claude `user_message` activity can display the body of a supported native paste
 and include `nativePrompt` with the delivered envelope. `promptProvenance`
 reports `input: "pasted"` and `origin: "unknown"` for that case. The body retains
 Claude's transformations, so callers may need their own original text when
 exact bytes matter. See [native paste presentation](cli-behavior.md#claude-native-paste-presentation).
 
 ## Codex
+
+Pass `{ sendId: "request-42" }` to `sendMessage`, `sendPrompt`, or
+`sendGuidance` to correlate supported text sends with a matching Codex
+`UserPromptSubmit` hook. Its `user_message` carries the original API text,
+the exact `nativePrompt`, API paste provenance, and the caller ID. It
+can omit these fields when composer ownership or the hook match is uncertain.
+See [the event contract](../prd/05-api/5.4-events.md) for eligibility.
 
 ```ts
 import { startCodex } from "@with-logic/elwood"; // deprecated; prefer `new CodexSession(...)`

@@ -1,4 +1,4 @@
-/** Native Claude grouped and multiline answers through the public API (PRD §5.10). */
+/** Native Claude grouped, multiline and checkbox answers through the public API (PRD §5.10). */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
@@ -13,6 +13,8 @@ import { defaultClaudeTempDir } from "./claude-home.ts";
 import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
 import { claudeQuestionArtifacts } from "./questions/claude-artifacts.ts";
 import {
+  checkboxFinal,
+  checkboxPrompt,
   claudeProofTimeoutMs,
   claudeQuestionLabel,
   claudeReadyTimeoutMs,
@@ -24,29 +26,26 @@ import {
   textPrompt,
 } from "./questions/claude-cases.ts";
 import { claudeProofLifecycle } from "./questions/claude-lifecycle.ts";
+import { type ClaudeNoticeProof, claudeNoticeProof } from "./questions/claude-notice.ts";
 import { claudeQuestionRounds } from "./questions/claude-round.ts";
 import { claudeQuestionBinary, nativeClaudeQuestionSandbox } from "./questions/claude-sandbox.ts";
 import { assertQuestionAnswerPrivacy } from "./questions/proof-files.ts";
 
-test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomic turn", {
+test("C-E2E-18 native Claude grouped, free-text and checkbox answers preserve the ergonomic turn", {
   skip:
     process.env["ELWOOD_NATIVE_QUESTIONS_PROOF"] === "1"
       ? claudeQuestionBinary()
         ? false
         : "requires pinned Claude and auth"
-      : "set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for two isolated valid-model turns",
+      : "set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for three valid-model turns in an isolated session",
   timeout: claudeProofTimeoutMs,
 }, async (t) => {
-  function selected(
-    question: ElwoodQuestionRequest["questions"][number],
-    labels: readonly string[],
-  ) {
-    return labels.map((label) => {
+  const optionIds = (question: ElwoodQuestionRequest["questions"][number], labels: string[]) =>
+    labels.map((label) => {
       const option = question.options.find((item) => item.label === label);
       assert.ok(option, `Native option ${label} must be present`);
       return option.id;
     });
-  }
 
   const events: ElwoodQuestionEvent[] = [];
   const normalized: Extract<ElwoodActivityEvent, { kind: "question" }>[] = [];
@@ -54,6 +53,7 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
   const note = `${noteFirstLine}_${answerMarker}\n${noteLastLine}`;
   const privateAnswers = [answerMarker, note];
   const answeredIds: string[] = [];
+  let notices: ClaudeNoticeProof | undefined;
   let sandbox: Awaited<ReturnType<typeof nativeClaudeQuestionSandbox>> | undefined;
   let artifacts: ReturnType<typeof claudeQuestionArtifacts> | undefined;
   let unexpectedTools = 0;
@@ -63,6 +63,12 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
     t.signal.throwIfAborted();
     sandbox = await nativeClaudeQuestionSandbox();
     t.signal.throwIfAborted();
+    const proof = claudeNoticeProof(
+      sandbox.press,
+      () => active.session?.terminal.snapshot().text,
+      t.signal,
+    );
+    notices = proof;
     const active = new ClaudeSession({
       cwd: sandbox.cwd,
       stateDir: sandbox.stateDir,
@@ -73,7 +79,10 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
       initialSize: { cols: 140, rows: 45 },
       hooks: {
         PreToolUse(event) {
-          if (event.tool_name === "AskUserQuestion") return undefined;
+          if (event.tool_name === "AskUserQuestion") {
+            proof.atQuestion();
+            return undefined;
+          }
           unexpectedTools++;
           return {
             permissionDecision: "deny",
@@ -88,20 +97,25 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
       (message) => t.diagnostic(message),
     );
     active.on("terminal:data", artifacts.observe);
-    active.on("question", (event) => events.push(event));
+    active.on("question", (event) => {
+      events.push(event);
+      const screen = active.session?.terminal.snapshot().text;
+      if (event.phase === "raised" && screen !== undefined) proof.raised(screen);
+    });
     active.on("activity", (event) => {
       if (event.kind === "question") normalized.push(event);
     });
     const round = claudeQuestionRounds(active, events, t);
     const live = await lifecycle.start(active);
     await live.waitForStatus((status) => status === "ready", claudeReadyTimeoutMs);
+    await proof.post();
     answeredIds.push(
       await round(
         groupedPrompt,
         (request) =>
           request.questions.map((question) => ({
             questionId: question.id,
-            optionIds: selected(
+            optionIds: optionIds(
               question,
               question.header === "Color" ? ["Blue"] : ["Logging", "Metrics"],
             ),
@@ -110,6 +124,7 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
         groupedFinal,
       ),
     );
+    await proof.post();
     answeredIds.push(
       await round(
         textPrompt,
@@ -118,7 +133,23 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
         textFinal,
       ),
     );
+    await proof.post();
+    answeredIds.push(
+      await round(
+        checkboxPrompt,
+        (request) =>
+          request.questions.map((question) => ({
+            questionId: question.id,
+            optionIds: optionIds(question, ["Apple", "Cherry"]),
+          })),
+        { "Which test fruits?": "Apple, Cherry" },
+        checkboxFinal,
+      ),
+    );
     t.signal.throwIfAborted();
+    // Each questionnaire painted over a notice posted at the idle composer and kept its blank cells.
+    assert.deepEqual(proof.drawnAtQuestion, [true, true, true]);
+    assert.deepEqual(proof.residueWhenRaised, [true, true, true]);
     assert.deepEqual(
       events
         .filter((event) => event.phase === "closed")
@@ -137,13 +168,14 @@ test("C-E2E-18 native Claude grouped and free-text answers preserve the ergonomi
     assert.deepEqual(claudeTempFoldersNamed(defaultClaudeTempDir, tempFolder), [tempFolder]);
     assert.deepEqual(claudeTempFoldersNamed("/tmp", tempFolder), []);
     t.diagnostic(
-      `${claudeQuestionLabel}: grouped single/multiple choices + multiline alternative text; native PostToolUse accepted both; original send returned final only.`,
+      `${claudeQuestionLabel}: grouped single/multiple choices + multiline alternative text + standalone checkbox; native PostToolUse accepted all three; original send returned final only.`,
     );
   } catch (error) {
     primaryFailure = true;
     if (sandbox) artifacts?.failure(sandbox.writes, events);
     throw error;
   } finally {
+    notices?.stop();
     artifacts?.save();
     const disposed = sandbox;
     await lifecycle.finish(

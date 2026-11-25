@@ -2,6 +2,7 @@
 import type { NativeTurnReader } from "../core/simple/turn-identity.ts";
 import type { TurnBoundaryHook } from "../core/simple/turn-types.ts";
 import type { CodexHookEventFor } from "./hooks/index.ts";
+import { normalizeCodexPastedPayload } from "./input-text.ts";
 
 type SubmitIdentity = { readonly prompt: string; readonly turn_id: string };
 type SubmitFields = Pick<Required<CodexHookEventFor<"UserPromptSubmit">>, keyof SubmitIdentity>;
@@ -17,7 +18,7 @@ function turnId(event: TurnBoundaryHook): string | undefined {
 export const codexTurnIdentity: NativeTurnReader = {
   prepareAcceptance: (payload) => {
     // Payload is already sanitized by the physical paste writer: normalize once per owner.
-    const submitted = payload.replace(/\r\n?/g, "\n").trim();
+    const submitted = normalizeCodexPastedPayload(payload);
     return (event) =>
       event.hook_event_name === "UserPromptSubmit" && event.prompt === submitted
         ? turnId(event)

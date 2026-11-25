@@ -24,6 +24,7 @@ test.each([
   { ...raw, cursorVisible: "false" },
   { ...raw, baseY: null },
   { ...raw, viewportY: "0" },
+  { ...raw, cursorLineBefore: 5 },
 ])("rejects malformed captured snapshot %#", (value) => {
   expect(() => parseNativeSnapshot(value)).toThrow("Invalid native question snapshot");
 });
@@ -34,6 +35,7 @@ test("derives the viewport cursor row and preserves explicit captured cursor fie
     cursorRow: 2,
     cursorVisible: false,
   });
+  expect(parseNativeSnapshot({ ...raw, cursorLineBefore: "nativ" }).cursorLineBefore).toBe("nativ");
   expect(nativeSnapshot("review-native")).toMatchObject({ cols: 140, rows: 45, cursorRow: 24 });
 });
 

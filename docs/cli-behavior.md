@@ -355,6 +355,21 @@ message is `error.message` and `details.agentError` is the `codex_error_info`
 kind. A second turn on the same session is rejected the same way, so the first
 released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
 
+**Codex 0.171.0 and 0.172.0 name the refusal in `codex_error_info`, not in
+the message (2026-11-25).** For the same bogus model, the failed
+`task_complete` carries `error.message: "The '<model>' model is not supported
+when using Codex with a ChatGPT account."` and `error.codex_error_info:
+"model_not_found"`. The service's JSON body, which carried the code on
+0.164.0, is gone. `elwood run` still exits 1 with a `turn_failed` document,
+whose message is now that sentence; the CLI document carries no structured
+code. `CodexSession.send` still rejects with `turn_failed`, the same message,
+and `details.agentError: "model_not_found"`. Read the code from
+`details.agentError`, not the message. C-E2E-21 checks it there on `send`, and
+checks that both messages name the refused model. The 0.172.0 runs used
+`~/.local/bin/codex`, which the login shell resolves in a project without a
+`.node-version`. The 0.171.0 runs put the npm `codex` 0.171.0 first on the
+login shell's `PATH` through a temporary `ZDOTDIR`. C-E2E-21.
+
 **Codex 0.171.0 serializes workspace credits and ordinary usage-limit failures with
 `task_complete.error.codex_error_info: "usage_limit_exceeded"`.** Coal Harbor
 reported the credit-depleted workspace-owner diagnostic. The [0.171.0 error
@@ -1865,8 +1880,11 @@ a paste remained outside the envelope. Claude escaped look-alike tags, converted
 CRLF and CR to LF and tabs to four spaces, and reused a body's final LF as the
 closing tag separator. A literal backslash can match a native escape.
 
-Elwood displays the native body for a strictly matched standalone envelope.
-It preserves the exact delivered string as `nativePrompt` and reports
+When Elwood matches a low-level API submission to its authenticated submit hook,
+the activity displays the exact API text, preserves the native prompt in
+`nativePrompt`, and reports API paste provenance. Without that association,
+Elwood displays the native body for a strictly matched standalone envelope,
+preserves the exact envelope as `nativePrompt`, and reports
 `promptProvenance: { origin: "unknown", input: "pasted" }`. Native input
 transformations can make the original bytes unrecoverable. Offline PTY probes
 on 2.1.331 and 2.1.332 confirmed the same authenticated opener and repeated-ID
@@ -2172,6 +2190,11 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+Claude 2.1.332 reached `ready` after a bogus-model rejection while its native
+frame still failed the empty-composer check. A subsequent paste produced a
+native hook and envelope without API association. The live paste fixture
+starts each positive case with a fresh, verified empty composer.
 
 ### Claude under a private `CLAUDE_CONFIG_DIR` (2.1.310, 2026-10-26)
 
@@ -2822,6 +2845,60 @@ abort or failure can leave the native outcome uncertain. The input hold survives
 an empty composer and duplicate metadata until matching native completion, turn
 end, or shutdown.
 
+### Claude notice residue on the last questionnaire row (2026-11-25)
+
+Claude Code 2.1.332 draws transient notices right-aligned on the row directly
+above the composer's top rule. Three were seen at 140 columns: the effort
+indicator at startup; `Plugins changed. Run /reload-plugins to activate.`, which
+a fresh configuration home shows about a second after the composer is ready and
+keeps for several seconds; and `Thinking can't be turned off for Haiku 5.5`,
+shown for three seconds after Alt+T.
+
+A notice posted at the idle composer adds that row. The composer moves down one
+row, and Claude overwrites the old top rule's cells left of the notice with real
+space cells. During a turn the row is already reserved, so a notice posted
+there writes no spaces. A notice that replaces another keeps the row and its
+spaces.
+
+A questionnaire's closing rule takes the composer top rule's place, so its last
+row lands on the notice row. Claude rewrites only the cells that change, and
+erases the rest of a row from the first cell that must turn blank. A short label
+painted over the notice therefore keeps the spaces between the label and the
+erased notice text. xterm reads `  3. Type something.` followed by about
+seventy-five space cells, and the cells stay when the cursor moves to that row
+and text is typed there. Where the replaced row held text further left, the
+erase starts earlier and wipes them. The second page of a grouped questionnaire,
+painted over the first page's `Type something.` row, kept none.
+
+For a single-choice question, the notice row is the `Type something.` row.
+Elwood waited for that row to read exactly `Type something.` before pasting
+alternative text. The answer failed after the cursor had moved to the row, and
+the request closed as `unavailable` with the questionnaire still open. When the
+paste was allowed, the typed text was followed by the same cells, so its echo
+never matched either. Private-home runs without a staged notice reproduced it
+intermittently, each time with the plugin or effort notice drawn when the
+question painted.
+
+A standalone checkbox question ends in its `Submit` action instead, and that
+row kept about eighty-five space cells: `     Submit` and then the blanks.
+Elwood matched the action row exactly, so the question was never published and
+ordinary input stayed held until a person answered at the terminal. A grouped
+questionnaire that opens on a checkbox page keeps them after that page's action
+row the same way.
+
+Elwood now treats `Type something.` followed only by blank cells as an empty
+editor. A typed value ends at a cursor followed only by blank cells on the
+editor's last row, so the answer's own trailing spaces survive. A two-line
+answer grows the panel upward, which leaves its second line on the notice row
+with the cells after it. A checkbox `Next` or `Submit` row may end in blank
+cells, but not in remaining notice text.
+
+The proof posts the Alt+T notice at the idle composer and reposts it every
+second until the `AskUserQuestion` `PreToolUse` hook. It writes the key straight
+to the PTY, because a raw key sent through Elwood during an ergonomic turn
+rejects that turn's `send()`. Alt+T in the hook alone, mid-turn, left no cells.
+The captures are in `tests/fixtures/claude-2.1.332/questions/`.
+
 ### Codex question panels, work pulses, and Plan footer (2026-10-20)
 
 Codex 0.163.0's native queued-question UI can coexist with a working status
@@ -3301,3 +3378,11 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
 - Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
   none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
   both break long lines themselves.
+
+## Codex preserves U+FEFF at the edges of submitted text (0.171.0 and 0.172.0)
+
+An isolated native TUI run submitted padded multiline text with U+FEFF at
+both ends through `sendMessage`. Codex removed the outer spaces and kept
+both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
+Use Rust's Unicode `White_Space` when comparing forwarded text with the
+hook. JavaScript `trim()` would remove U+FEFF and miss the match.
