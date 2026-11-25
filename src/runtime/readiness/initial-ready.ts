@@ -7,10 +7,13 @@
  * authoritative "initialized and accepting input" signal, fired via `mark`. The
  * rendered composer is NOT a readiness signal on cold start: it paints as a boot
  * placeholder before input is accepted, so releasing the first queued message on it
- * would swallow the message. On RESUME the input loop is live when the composer paints,
- * so `markReadyOnResumeComposer` releases readiness on the first composer marker
- * (verified accepted, not swallowed), subject to `createReadinessGate`'s composite
- * hold: human/automation gates and their working or partial clearance frames. The hooks differ on resume:
+ * would swallow the message. On RESUME the conversation already exists, so
+ * `markReadyOnResumeComposer` releases readiness on the first CONFIGURED composer
+ * instead of the deadline, subject to `createReadinessGate`'s composite hold:
+ * human/automation gates and their working or partial clearance frames. A composer
+ * marker alone is not that evidence: a resumed CLI paints a loading placeholder with
+ * the marker, and a startup screen Elwood does not recognize can select a row with it
+ * (Codex 0.171.0's update offer draws `› 1. Update now`). The hooks differ on resume:
  * Codex does NOT re-fire `SessionStart` (so the composer is the fast signal), while
  * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
  * race, whichever arrives first (readiness is idempotent). A deadline provides
@@ -43,11 +46,13 @@ export type ComposerReadyFacts = {
 
 /**
  * On RESUME, mark readiness on the first genuine composer frame: the composer is
- * visible AND no blocking dialog is on screen. Ordinary Codex `›` and Claude `❯`
- * composers share their dialog's option caret; Codex `ultra` uses the distinct `»`.
- * A dialog frame must NOT latch readiness, or a queued message's Enter could approve it;
- * readiness waits for the composite hold owned by `createReadinessGate`
- * to release on verified idle.
+ * visible, no blocking dialog is on screen, AND the adapter verified it as a configured
+ * session's composer (`configured`, the deadline's evidence). Ordinary Codex `›` and
+ * Claude `❯` composers share their dialog's option caret; Codex `ultra` uses the
+ * distinct `»`. A dialog frame must NOT latch readiness, or a queued message's Enter
+ * could approve it; readiness waits for the composite hold owned by
+ * `createReadinessGate` to release on verified idle. An unrecognized screen is no
+ * dialog to the fact table, so only the configured composer keeps input off it.
  * Cold start (`resumed: false`) never fires here, so the
  * composer stays an unsafe signal there (C-API-28).
  */
@@ -56,8 +61,15 @@ export function markReadyOnResumeComposer(
   resumed: boolean,
   facts: ComposerReadyFacts,
   readinessHeld = false,
+  configured: () => boolean = () => true,
 ): void {
-  if (resumed && facts.composer_visible && !facts.blocking_prompt_visible && !readinessHeld)
+  if (
+    resumed &&
+    facts.composer_visible &&
+    !facts.blocking_prompt_visible &&
+    !readinessHeld &&
+    configured()
+  )
     ready.mark();
 }
 

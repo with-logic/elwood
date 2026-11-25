@@ -26,6 +26,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Reject a pending Codex workspace trust answer when a different complete
   workspace menu is observed during synchronized native output.
+- Hold a resumed session's queued input until its configured composer appears.
+  A resume no longer reports `ready` on a composer marker alone, so input queued
+  at resume cannot land on Codex's loading placeholder or on a startup screen
+  Elwood does not recognize, such as the update offer of Codex 0.171. A resumed
+  session now reaches `ready` when the configured composer paints, about a
+  second later than before.
 
 ## [0.7.0] - 2026-11-24
 

@@ -92,7 +92,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
             ? {}
             : { strictVersionCheck: options.strictVersionCheck }),
         },
-        true, // resumed: mark ready on the first composer marker, symmetric with Codex
+        true, // resumed: mark ready on the first configured composer, symmetric with Codex
         { preflightWarning: warning, workspaceTrustEvidence },
         ownership,
       ),
