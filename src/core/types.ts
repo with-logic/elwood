@@ -13,6 +13,7 @@ import type {
 } from "../claude/hooks/index.ts";
 import type { CodexHookEventName } from "../codex/hooks/names.ts";
 import type { ElwoodActivityEvent } from "./activity/index.ts";
+import type { ElwoodDialogEvent } from "./dialogs/types.ts";
 import type { ElwoodLoopEvent } from "./loops/types.ts";
 import type { ElwoodQuestionEvent } from "./questions/types.ts";
 import type { ClaudeReasoningEffort } from "./reasoning-effort.ts";
@@ -150,8 +151,9 @@ export type ElwoodCommonEventMap = {
 
 export type ElwoodCommonEventName = keyof ElwoodCommonEventMap;
 
-/** The Claude session's events: the common map plus its typed `hook` / `hook:<Name>` events. */
+/** Common session events, typed Claude hooks, and Claude workspace trust events. */
 export type ClaudeEventMap = ElwoodCommonEventMap & {
+  readonly dialog: ElwoodDialogEvent<"claude">;
   readonly hook: ClaudeHookEvent;
 } & {
   readonly [K in `hook:${ClaudeHookEventName}`]: K extends `hook:${infer N}`

@@ -24,12 +24,15 @@ export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclineLatched = false;
   private readonly lifetime = new AbortController();
+  private readonly onWorkspaceTrustTakeover: (() => void) | undefined;
 
   constructor(
     autotrust: boolean,
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
+    onWorkspaceTrustTakeover?: () => void,
   ) {
+    this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
     this.trust = new TrustPromptResponder("claude", clearance, autotrust, { onStateChange });
   }
 
@@ -55,7 +58,10 @@ export class ClaudeStartupPromptResponder {
 
   /** Raw caller input owns the trust gate on screen (C-TRUST-01). */
   callerInput(): void {
+    const previous = this.trust.humanOwnedPrompt;
     this.trust.callerInput();
+    const current = this.trust.humanOwnedPrompt;
+    if (current === "workspace_trust" && current !== previous) this.onWorkspaceTrustTakeover?.();
   }
 
   get inputBlocking(): boolean {

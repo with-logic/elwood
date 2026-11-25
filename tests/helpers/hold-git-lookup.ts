@@ -1,9 +1,17 @@
-/** Hold one native Git marker lookup at the real filesystem seam (C-ATTN-07). */
+/** Hold native Git marker lookups at the real filesystem seam (C-ATTN-07, C-ATTN-08). */
 import type * as fsp from "node:fs/promises";
 import { join } from "node:path";
 import { vi } from "vitest";
 
-export async function holdFirstGitLookup(lstatSpy: typeof fsp.lstat, cwd: string) {
+export function holdFirstGitLookup(lstatSpy: typeof fsp.lstat, cwd: string) {
+  return holdGitLookup(lstatSpy, cwd, "first");
+}
+
+export async function holdGitLookup(
+  lstatSpy: typeof fsp.lstat,
+  cwd: string,
+  matches: "first" | "all",
+) {
   const began = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const { lstat } = await vi.importActual<typeof fsp>("node:fs/promises");
@@ -11,7 +19,7 @@ export async function holdFirstGitLookup(lstatSpy: typeof fsp.lstat, cwd: string
   vi.mocked(lstatSpy)
     .mockClear()
     .mockImplementation(async (...options) => {
-      if (first && options[0] === join(cwd, ".git")) {
+      if ((first || matches === "all") && options[0] === join(cwd, ".git")) {
         first = false;
         began.resolve();
         await release.promise;

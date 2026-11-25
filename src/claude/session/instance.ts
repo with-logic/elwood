@@ -29,7 +29,7 @@ import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
-import type { ClaudeWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
+import type { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
@@ -47,7 +47,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
   private readonly runtimeParts: ClaudeRuntimeParts;
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
-  private readonly dialogs: ClaudeWorkspaceTrustDiscovery;
+  private readonly dialogs: ClaudeWorkspaceTrustEvents;
   private requestedSize: TerminalSize;
   // Only a session requested BELOW the 100-column startup floor bootstraps wide and
   // defers its restore to readiness (C-API-36); a 100+ session resizes immediately.
@@ -66,7 +66,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     terminalReplay: TerminalReplayBuffer,
     requestedSize: TerminalSize,
     loopDefinitions: readonly PersistedLoopDefinition[],
-    dialogs: ClaudeWorkspaceTrustDiscovery,
+    dialogs: ClaudeWorkspaceTrustEvents,
   ) {
     super(
       "claude",
@@ -88,17 +88,18 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
-    // REGISTER before replaying buffered `terminal:data`: a throwing replay handler must still be
-    // subscribed for FUTURE data (otherwise startup telemetry silently disappears). Replay is of
-    // already-buffered past data and runs synchronously, so no live event interleaves.
-    const unsubscribe = this.emitter.on(event, handler);
+    // Subscribe before buffered and retained replays.
+    const isRegistered = this.emitter.listen(event, handler);
+    if (event === "dialog" && isRegistered)
+      this.dialogs.onListenerAdded(handler as ElwoodEventHandler<"dialog">, isRegistered);
     this.replayFor(event, handler);
-    return unsubscribe;
+    return () => this.off(event, handler);
   }
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
     this.emitter.off(event, handler);
+    if (event === "dialog") this.dialogs.onListenerRemoved(handler as ElwoodEventHandler<"dialog">);
   }
-  readonly listDialogs = () => this.dialogs.list();
+  readonly listDialogs = () => this.dialogs.discovery.list();
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);
   }

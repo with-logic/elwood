@@ -1,4 +1,4 @@
-/** Coordinate native workspace trust list proof and its session lifetime (PRD §5.13, C-ATTN-07). */
+/** Coordinate workspace trust proof and its lifetime (PRD §5.13, C-ATTN-07, C-ATTN-08). */
 import { onNativeRenderEvidenceInvalidated, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import type { ElwoodAgentKind } from "../activity/index.ts";
@@ -41,9 +41,14 @@ export class WorkspaceTrustPolling<
 
   private readonly controller = new AbortController();
   private pending:
-    | { readonly frame: TerminalSnapshot; readonly result: Promise<Checked<Agent>> }
+    | {
+        readonly frame: TerminalSnapshot;
+        readonly generation: number;
+        readonly result: Promise<Checked<Agent>>;
+      }
     | undefined;
   private unfinishedLookups = 0;
+  private resumeWhenAvailable: (() => void) | undefined;
 
   get signal(): AbortSignal {
     return this.controller.signal;
@@ -92,6 +97,7 @@ export class WorkspaceTrustPolling<
   }
 
   end(): void {
+    this.resumeWhenAvailable = undefined;
     this.controller.abort();
     this.sampled = undefined;
     this.retire();
@@ -115,24 +121,42 @@ export class WorkspaceTrustPolling<
     frame: TerminalSnapshot,
     revalidate: (signal: AbortSignal) => Promise<boolean>,
     accept: (proved: boolean | undefined) => Checked<Agent>,
+    generation = 0,
   ): Promise<Checked<Agent>> | undefined {
     // Never queue the current frame behind an obsolete lookup and a second deadline.
-    if (this.pending) return this.pending.frame === frame ? this.pending.result : undefined;
-    if (this.unfinishedLookups >= maxUnfinishedLookups) return undefined;
+    if (this.pending?.generation === generation)
+      return this.pending.frame === frame ? this.pending.result : undefined;
+    const proof = this.collect(revalidate);
+    if (!proof) return undefined;
+    const result = proof.then(accept).finally(() => {
+      if (this.pending?.result === result) this.pending = undefined;
+    });
+    this.pending = { frame, generation, result };
+    return result;
+  }
 
-    const result = boundedTrustEvidence(async (signal) => {
+  /** Independently requested proofs share the allowance for unfinished native reads. */
+  collect(
+    revalidate: (signal: AbortSignal) => Promise<boolean>,
+    audience?: AbortSignal,
+    onAvailable?: () => void,
+  ): Promise<boolean | undefined> | undefined {
+    if (this.unfinishedLookups >= maxUnfinishedLookups) {
+      // The publisher retries the latest frame once a submitted native read finishes.
+      this.resumeWhenAvailable = onAvailable ?? this.resumeWhenAvailable;
+      return undefined;
+    }
+    const cancellation = audience ? AbortSignal.any([this.signal, audience]) : this.signal;
+    return boundedTrustEvidence(async (signal) => {
       this.unfinishedLookups++;
       try {
         return await revalidate(signal);
       } finally {
         this.unfinishedLookups--;
+        const resume = this.resumeWhenAvailable;
+        this.resumeWhenAvailable = undefined;
+        resume?.();
       }
-    }, this.signal)
-      .then(accept)
-      .finally(() => {
-        this.pending = undefined;
-      });
-    this.pending = { frame, result };
-    return result;
+    }, cancellation);
   }
 }

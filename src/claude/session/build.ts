@@ -21,7 +21,7 @@ import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
-import { ClaudeWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
+import { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
@@ -58,16 +58,17 @@ export async function buildClaudeSession(
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
-  const dialogs = new ClaudeWorkspaceTrustDiscovery({
+  const dialogs: ClaudeWorkspaceTrustEvents = new ClaudeWorkspaceTrustEvents(emitter, {
     elwoodSessionId: record.elwoodSessionId,
     evidence: input.workspaceTrustEvidence,
     terminal: () => terminal,
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance: idleComposerClearance,
+    isLive: () => session?.closing.signal.aborted === false,
   });
   const readiness = createStartupReadinessGate(
     () => {
-      dialogs.endDiscovery();
+      dialogs.discovery.endStartup();
       observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
       void session?.completeInitialReady();
     },
@@ -114,8 +115,9 @@ export async function buildClaudeSession(
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,
-    frameObserver.refresh,
+    () => dialogs.reconcileAfter(frameObserver.refresh),
     idleComposerClearance,
+    dialogs.onWorkspaceTrustTakeover,
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();
@@ -161,7 +163,7 @@ export async function buildClaudeSession(
     dialogs,
   );
   const active = bindTurnSubmission(session, observers);
-  dialogs.bind(terminal, active.closing.signal);
+  dialogs.discovery.bind(terminal, active.closing.signal);
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const sessionCleanup = active.startupCleanupResources(readiness.ready.cancel);
@@ -190,9 +192,8 @@ export async function buildClaudeSession(
     },
     { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  if (preflightWarning !== undefined) {
+  if (preflightWarning !== undefined)
     warnGate.emitWarnings([preflightEvent(record.elwoodSessionId, preflightWarning)]);
-  }
   warnGate.openAfterReturn();
   terminalReplay.releaseStartupAttentionAfterReturn();
   return session;

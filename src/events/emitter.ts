@@ -38,15 +38,16 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     };
   }
 
-  /** Register a listener and report whether this call added a new registration. */
+  /** Return a predicate for this exact registration. Duplicate registration returns undefined.
+   * Unsubscribing makes the predicate false even if the same handler is registered again. */
   listen<E extends EventKey<M>>(
     event: E,
     handler: HandlerFor<M, E>,
     provenance: HandlerProvenance = "event",
-  ): boolean {
+  ): (() => boolean) | undefined {
     const entry = this.handlers.get(event);
     const h = handler as Handler;
-    if (entry?.live.has(h)) return false;
+    if (entry?.live.has(h)) return;
     const registration = { handler: h, provenance };
     if (entry) {
       entry.live.set(h, registration);
@@ -55,7 +56,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     } else {
       this.handlers.set(event, { list: [registration], live: new Map([[h, registration]]) });
     }
-    return true;
+    return () => this.handlers.get(event)?.live.get(h) === registration;
   }
 
   off<E extends EventKey<M>>(event: E, handler: HandlerFor<M, E>): void {
@@ -67,16 +68,15 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     entry.list = entry.list.filter((existing) => existing.handler !== h);
   }
 
-  emit<E extends EventKey<M>>(event: E, payload: M[E], containRejections = false): void {
+  emit<E extends EventKey<M>>(
+    event: E,
+    payload: M[E],
+    containRejections = false,
+    beforeListener?: () => boolean,
+  ): void {
     const entry = this.handlers.get(event);
     if (!entry) return;
-    // Deliver to every subscriber before surfacing any failure: one throwing
-    // listener must not abort iteration and wedge an internal lifecycle
-    // subscriber (e.g. interrupt/compact settling on a status transition, or
-    // the transcript watcher's flush). The first error is rethrown after the
-    // full fan-out, or captured by the active notification scope. The
-    // `list` snapshot is immutable, so a listener added mid-emit does not fire
-    // this round; `live` is consulted so one a prior handler removed is skipped.
+    // Surface the first error after fan-out. The snapshot and `live` skip new and removed listeners.
     const snapshot = entry.list;
     const onError = this.observerError;
     const onRejection = this.rejectionSink(onError ?? this.rejectionError);
@@ -85,6 +85,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     for (const registration of snapshot) {
       const { handler } = registration;
       if (entry.live.get(handler) !== registration) continue;
+      if (beforeListener?.() === false) break;
       try {
         this.notify(handler, payload, containRejections, onRejection);
       } catch (error) {
@@ -100,7 +101,6 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     }
   }
 
-  /** Deliver a replay to the single registration already checked by its owner. */
   notifyReplay<T>(handler: (payload: T) => unknown, payload: T): void {
     runContained(() => {
       const onError = this.observerError;

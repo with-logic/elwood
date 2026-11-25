@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, assert, expect, test, vi } from "vitest";
-import { startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { holdFirstGitLookup } from "../helpers/hold-git-lookup.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -11,6 +11,7 @@ import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
 vi.mock("node:fs/promises", { spy: true });
 afterEach(() => {
+  vi.mocked(fs.lstat).mockReset();
   vi.restoreAllMocks();
   resetFakes();
 });
@@ -25,6 +26,19 @@ async function setup() {
     await session.terminal.settled();
   };
   return { cwd, session, menu, render };
+}
+
+async function waitForAnnouncement(session: ClaudeSessionApi, render: () => Promise<void>) {
+  const announced = Promise.withResolvers<void>();
+  const unsubscribe = session.on("dialog", (event) => {
+    if (event.phase === "raised") announced.resolve();
+  });
+  try {
+    await render();
+    await announced.promise;
+  } finally {
+    unsubscribe();
+  }
 }
 
 test("C-ATTN-07 a stalled Claude launch proof leaves the native gate intact", async () => {
@@ -51,9 +65,9 @@ test("C-ATTN-07 a stalled Claude launch proof leaves the native gate intact", as
 
 test("C-ATTN-07 a timed-out current Claude proof retires discovery", async () => {
   const { cwd, session, render } = await setup();
+  await waitForAnnouncement(session, render);
   const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
-    await render();
     const reading = session.listDialogs();
     await held.began;
     expect(await reading).toEqual([]);
@@ -68,9 +82,9 @@ test("C-ATTN-07 a timed-out current Claude proof retires discovery", async () =>
 
 test("C-ATTN-07 a superseded Claude proof leaves a newer frame eligible", async () => {
   const { cwd, session, menu, render } = await setup();
+  await waitForAnnouncement(session, render);
   const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
-    await render();
     const reading = session.listDialogs();
     await held.began;
     await render(menu.replace("❯ No", "  No").replace("   Yes", " ❯ Yes"));
@@ -86,9 +100,9 @@ test("C-ATTN-07 a superseded Claude proof leaves a newer frame eligible", async 
 
 test("C-ATTN-07 parallel Claude list calls share proof for the same native frame", async () => {
   const { cwd, session, render } = await setup();
+  await waitForAnnouncement(session, render);
   const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
-    await render();
     const first = session.listDialogs();
     await held.began;
     const second = session.listDialogs();
@@ -118,9 +132,9 @@ test.each<{
 ])("C-ATTN-07 a Claude list drops its in-flight proof on $name", async ({ revoke }) => {
   const context = await setup();
   const { cwd, session, render } = context;
+  await waitForAnnouncement(session, render);
   const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
-    await render();
     const reading = session.listDialogs();
     await held.began;
     await revoke(context);

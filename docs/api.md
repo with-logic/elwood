@@ -113,8 +113,11 @@ request with `answerQuestions()`. These controls work while an ergonomic turn is
 waiting and do not create another user turn. See [questions.md](questions.md) for
 the event, capability, validation and input-ownership contract.
 
-Claude and Codex sessions expose workspace trust prompts through `listDialogs()`. Codex also emits typed `dialog` events. Each request names the exact folder or repository root and lists the native choices
-in display order. See [native dialog discovery](../prd/05-api/5.13-dialogs.md).
+Claude and Codex sessions expose workspace trust prompts through `listDialogs()`
+and emit typed `dialog` events when verified requests appear or close. Each
+request names the exact folder or repository root and lists the native choices
+in display order. The `ElwoodDialogEvent` type defaults to Codex. Pass
+`ElwoodDialogEvent<"claude">` for Claude events. See [native dialog discovery](../prd/05-api/5.13-dialogs.md).
 
 `sendMessage` is the adapter-neutral chat-loop operation. If the session is
 ready it writes through the PTY immediately. If the session is alive but busy,
