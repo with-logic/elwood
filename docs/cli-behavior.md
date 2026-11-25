@@ -366,6 +366,63 @@ message ends with `Add credits to continue.` The workspace-member message ends
 with `Ask your workspace owner to refill in order to continue.` A numeric reset
 is exposed when the structured diagnostic provides one. C-API-65.
 
+### Billing, usage-limit and rate-limit failures (2026-11-25)
+
+Measured on Claude Code 2.1.332 and codex-cli 0.172.0 without model quota. Claude
+ran with `ANTHROPIC_BASE_URL` set to a loopback server. Codex ran with a private
+`CODEX_HOME` whose `model_provider` was one (`wire_api = "responses"`,
+`requires_openai_auth = false`). The server gave every request the same answer.
+Elwood's login shell resolved `~/.local/bin/codex` (0.172.0), while another `codex`
+on the tool `PATH` reported 0.171.0. The captures are
+`tests/fixtures/claude-2.1.332/turn-failures.jsonl` and
+`tests/fixtures/codex-0.172.0/turn-failures.jsonl`.
+
+**Every shape ended with native failure evidence and one `turn_failure`, which
+came after `ready` in every run.** Claude fired `StopFailure` and never `Stop`.
+In the four stubbed runs `ready` came 5 to 42 ms before the hook. Codex committed a
+failed `task_complete` and fired no `Stop`. In the ten stubbed runs `ready` came 42
+to 241 ms before the record. No shape went `running` → `ready` without a
+`turn_failure`.
+
+| Claude server reply | Hook `error` | Category |
+| --- | --- | --- |
+| 404 for an unknown `--model` (real service) | `model_not_found` | `model_unavailable` |
+| 400 `invalid_request_error`, credit balance too low | `billing_error` | `quota_or_credit` |
+| 402 `billing_error` | `unknown` | `unknown` |
+| 429 `rate_limit_error`, `x-should-retry: false` | `rate_limit` | `rate_limited` |
+| 429, `anthropic-ratelimit-unified-status: rejected` (`five_hour`) | `rate_limit` | `rate_limited` |
+
+Claude never sent `error_details`, so each message is `Claude rejected the turn:
+<error>`. `last_assistant_message` is the error Claude renders, such as `Credit
+balance is too low` or `You've hit your 5-hour limit · resets 3:34am (…)`. The
+five-hour limit still reaches the hook as `rate_limit`. Only the transcript's
+synthetic `isApiErrorMessage` record names it, with `apiError: "usage_limit_reached"`
+and `quotaLimits.resetsAt`. So that activity says `rate_limited` and has no reset.
+
+| Codex server reply | `error.message` | `codex_error_info` | Category |
+| --- | --- | --- | --- |
+| unknown `--model` (real service) | `The '<model>' model is not supported when using Codex with a ChatGPT account.` | `model_not_found` | `model_unavailable` |
+| 429 `usage_limit_reached` with `x-codex-rate-limit-reached-type: workspace_owner_credits_depleted` | `Your workspace is out of credits. Add credits to continue.` | `usage_limit_exceeded` | `quota_or_credit` |
+| the same with `workspace_member_credits_depleted` | `Your workspace is out of credits. Ask your workspace owner to refill in order to continue.` | `usage_limit_exceeded` | `quota_or_credit` |
+| 429 `usage_limit_reached`, `plan_type: "team"` | `You’ve hit your usage limit. To get more access now, send a request to your admin or try again later.` | `usage_limit_exceeded` | `usage_limit` |
+| 429 `usage_limit_reached`, `plan_type: "plus"`, `resets_at` | `You’ve hit your usage limit. Upgrade to Pro (…), visit … to purchase more credits or try again at 3:29 AM.` | `usage_limit_exceeded` | `usage_limit` |
+| 429 `usage_not_included` | `To use Codex with your ChatGPT plan, upgrade to Plus: …` | `usage_limit_exceeded` | `usage_limit` |
+| 429 `insufficient_quota`, or 200 ending in `response.failed` with it | `Quota exceeded. Check your plan and billing details.` | `usage_limit_exceeded` | `usage_limit` |
+| 402 | `unexpected status 402 Payment Required: <message>, url: …` | `{"http_connection_failed":{"http_status_code":402}}` | `network_or_api` |
+| 429 `rate_limit_exceeded`, `retry-after: 1` | `exceeded retry limit, last status: 429 Too Many Requests` | `{"response_too_many_failed_attempts":{"http_status_code":429}}` | `network_or_api` |
+| 500 | `We’re currently experiencing high demand, which may cause temporary errors.` | `internal_server_error` | `network_or_api` |
+
+Codex wrote the workspace-credit sentences when the 429 carried the
+`x-codex-rate-limit-reached-type` response header. The record keeps only the
+sentence and the shared code. A `resets_at` in the body became the clock time in
+the sentence, not a field, so none of these Codex activities has
+`resetsAtUnixSeconds`. The usage-limit kinds fail
+on the first response. The 402 retried for 6 s, the 429 for 5 s, and the 500 for
+24.5 s (60 requests), with the status `running` throughout. A long `retry-after`
+stays `running` for minutes, as described under
+[A rate-limited Codex turn stays running for minutes](#a-rate-limited-codex-turn-stays-running-for-minutes-2026-10-25).
+C-API-65.
+
 ## Codex transcript replies
 
 **Codex 0.149.1 writes committed replies as phased `message` response items, not
