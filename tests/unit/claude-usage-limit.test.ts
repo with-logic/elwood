@@ -63,16 +63,6 @@ test.each([
   expect(warning).not.toHaveProperty("turnId");
 });
 
-test("C-API-68 preserves an explicit zero reset time", () => {
-  const item = {
-    ...record,
-    apiErrorParams: { rate_limit_info: { status: "rejected", resetsAt: 0 } },
-  };
-  expect(claudeUsageLimitWarning({ ...source, item }, [summary(message)])).toMatchObject({
-    resetsAtUnixSeconds: 0,
-  });
-});
-
 test("C-API-68 preserves bounded native diagnostic and requires nonblank text", () => {
   const oversized = `${message} ${"x".repeat(2_500)}`;
   expect(claudeUsageLimitWarning(source, [summary(oversized)])).toMatchObject({
@@ -80,6 +70,36 @@ test("C-API-68 preserves bounded native diagnostic and requires nonblank text", 
     message: `${oversized.slice(0, 2_000)}…`,
   });
   expect(claudeUsageLimitWarning(source, [summary(" \t")])).toBeUndefined();
+});
+
+test.each([
+  [64, 0],
+  [64, Number.MAX_SAFE_INTEGER],
+  [65, Number.MAX_SAFE_INTEGER + 1],
+])("C-API-68 trims the diagnostic and bounds metadata (%s characters, reset %s)", (length, resetsAt) => {
+  const name = "A".repeat(length);
+  const nativeType = "a".repeat(length);
+  const text = `You've hit your ${name} limit · resets tonight`;
+  const item = {
+    ...record,
+    apiErrorParams: {
+      rate_limit_info: { status: "rejected", rateLimitType: nativeType, resetsAt },
+    },
+  };
+  const warning = claudeUsageLimitWarning({ ...source, item }, [summary(` \n${text} \t`)]);
+  expect(warning).toEqual({
+    elwoodSessionId: source.elwoodSessionId,
+    agent: "claude",
+    source: "transcript",
+    code: "usage_limit_reached",
+    severity: "warning",
+    message: text,
+    transcriptPath: source.path,
+    raw: "usage_limit_reached",
+    ...(length === 64
+      ? { limitName: name, nativeLimitType: nativeType, resetsAtUnixSeconds: resetsAt }
+      : {}),
+  });
 });
 
 test("C-API-68 backfill and identified subagent output retain ordinary assistant activity", () => {

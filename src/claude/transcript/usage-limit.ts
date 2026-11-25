@@ -42,12 +42,12 @@ export function claudeUsageLimitWarning(
   let message: string | undefined;
   for (const summary of summaries) {
     if (summary.kind !== "assistant_message") continue;
-    message = boundedDiagnostic(summary.text);
+    message = boundedDiagnostic(summary.text.trim());
     if (message !== undefined) break;
   }
   if (message === undefined) return undefined;
   const nativeType = info["rateLimitType"];
-  const reset = info["resetsAt"];
+  const resetsAtUnixSeconds = info["resetsAt"];
   return {
     elwoodSessionId,
     agent: "claude",
@@ -62,7 +62,10 @@ export function claudeUsageLimitWarning(
       typeof nativeType === "string" && nativeLimitCode.test(nativeType) ? nativeType : undefined,
       "nativeLimitType",
     ),
-    ...optional(isNonnegativeSafeInteger(reset) ? reset : undefined, "resetsAtUnixSeconds"),
+    ...optional(
+      isNonnegativeSafeInteger(resetsAtUnixSeconds) ? resetsAtUnixSeconds : undefined,
+      "resetsAtUnixSeconds",
+    ),
     raw: "usage_limit_reached",
   };
 }

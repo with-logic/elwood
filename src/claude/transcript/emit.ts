@@ -135,11 +135,11 @@ export class LineEmitter {
       });
       return;
     }
-    const finalReplyIndex = this.subagentPaths.has(path)
-      ? -1
-      : claudeFinalReplyIndex(item, summaries);
+    const subagent = this.subagentPaths.has(path);
+    const finalReplyIndex = subagent ? -1 : claudeFinalReplyIndex(item, summaries);
     const base = this.eventFields(path, item, turnId);
-    if (source === "forward" && this.onUsageLimit && !this.subagentPaths.has(path)) {
+    const liveMainConversation = source === "forward" && !subagent;
+    if (liveMainConversation && this.onUsageLimit) {
       const usageLimitWarning = claudeUsageLimitWarning(base, summaries);
       if (usageLimitWarning) this.onUsageLimit(usageLimitWarning);
     }

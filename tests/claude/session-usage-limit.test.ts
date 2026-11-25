@@ -8,7 +8,7 @@ import { startActivitySession, user } from "./session-user-activity-helpers.ts";
 afterEach(resetFakes);
 
 const message = "You've hit your Fable limit · resets 9pm (America/Los_Angeles)";
-const resetsAt = Date.parse("2026-11-25T21:00:00-08:00") / 1_000;
+const resetsAtUnixSeconds = Date.parse("2026-11-25T21:00:00-08:00") / 1_000;
 const turnId = "fable-turn";
 const ordinary = "You've hit your ordinary limit";
 const generic = "You've hit your generic limit";
@@ -24,7 +24,7 @@ function rejectedQuota(uuid: string, text: string, nativeModel = "<synthetic>") 
     apiErrorParams: {
       rate_limit_info: {
         status: "rejected",
-        resetsAt,
+        resetsAt: resetsAtUnixSeconds,
         rateLimitType: "seven_day_overage_included",
       },
     },
@@ -101,7 +101,7 @@ async function withFableTurn(
           message,
           limitName: "Fable",
           nativeLimitType: "seven_day_overage_included",
-          resetsAtUnixSeconds: resetsAt,
+          resetsAtUnixSeconds,
           transcriptPath: transcript,
           turnId,
           raw: "usage_limit_reached",
@@ -141,7 +141,9 @@ async function withFableTurn(
   }
 }
 
-const turnFailure = [{ turnId, turnFailure: { category: "rate_limited", disposition: "final" } }];
+const expectedTurnFailures = [
+  { turnId, turnFailure: { category: "rate_limited", disposition: "final" } },
+];
 
 test("C-API-68 reports a committed Fable limit before a later StopFailure", ({ expect }) =>
   withFableTurn(expect, async ({ session, warnings, failures, fail, appendQuota }) => {
@@ -150,7 +152,7 @@ test("C-API-68 reports a committed Fable limit before a later StopFailure", ({ e
     expect(session.status).toBe("running");
     await fail();
     expect(warnings).toHaveLength(1);
-    expect(failures()).toMatchObject(turnFailure);
+    expect(failures()).toMatchObject(expectedTurnFailures);
   }));
 
 test("C-API-68 reports a Fable limit committed after the failure hook and ready", ({ expect }) =>
@@ -160,9 +162,9 @@ test("C-API-68 reports a Fable limit committed after the failure hook and ready"
       await fail();
       await returnToReady();
       expect(warnings).toEqual([]);
-      expect(failures()).toMatchObject(turnFailure);
+      expect(failures()).toMatchObject(expectedTurnFailures);
       await appendQuota();
-      expect(failures()).toMatchObject(turnFailure);
+      expect(failures()).toMatchObject(expectedTurnFailures);
       expect(session.status).toBe("ready");
     },
   ));
