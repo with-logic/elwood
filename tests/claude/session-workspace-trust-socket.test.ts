@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, realpathSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import * as target from "../../src/claude/workspace-trust/target.ts";
-import { resumeClaude, startClaude } from "../../src/index.ts";
+import { type ElwoodDialogEvent, resumeClaude, startClaude } from "../../src/index.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
@@ -42,7 +43,7 @@ function proofBeforeLaunch(proof: Promise<void>, launch: Promise<unknown>) {
   return Promise.race([proof.then(() => "proof"), launch.then(() => "launched")]);
 }
 
-test("C-API-20 C-ATTN-07 a successor binds and lists trust after its predecessor stops during proof", async () => {
+test("C-API-20 C-ATTN-07 C-ATTN-08 a resumed Claude session binds and publishes trust after its predecessor stops", async () => {
   installFakes();
   const cwd = realpathSync(tempDir());
   const predecessor = await startResumable(cwd);
@@ -56,9 +57,13 @@ test("C-API-20 C-ATTN-07 a successor binds and lists trust after its predecessor
     held.release();
     const successor = await resumed;
     const pty = ptys[1]!;
+    const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+    successor.on("dialog", events);
     pty.emitData(trustFrame(cwd));
     await successor.terminal.settled();
-    expect(await successor.listDialogs()).toEqual([
+    await expect.poll(() => events.mock.calls.length).toBe(1);
+    const requests = await successor.listDialogs();
+    expect(requests).toEqual([
       expect.objectContaining({
         elwoodSessionId,
         targetPath: cwd,
@@ -69,6 +74,14 @@ test("C-API-20 C-ATTN-07 a successor binds and lists trust after its predecessor
         ],
       }),
     ]);
+    const [request] = requests;
+    await expect.poll(() => events.mock.calls).toEqual([[{ phase: "raised", request }]]);
+    pty.emitData(`\x1b[2J\x1b[H${claudeTty(claudeComposer)}`);
+    await successor.terminal.settled();
+    await expect
+      .poll(() => events.mock.calls.at(-1))
+      .toEqual([{ phase: "closed", reason: "cleared", request }]);
+    expect(events).toHaveBeenCalledTimes(2);
     expect(pty.writes).toEqual([]);
   } finally {
     held.release();

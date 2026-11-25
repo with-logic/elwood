@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Emit typed Claude workspace trust lifecycle events and replay an active
+  request to new listeners after verification. Listener failures emit a
+  content-free warning and warning activity once per session.
+
 - List verified Claude startup workspace trust prompts and their effective Git
   scope through `listDialogs()`, also available through `ElwoodAgentSession`.
 

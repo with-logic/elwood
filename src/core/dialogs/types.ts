@@ -21,3 +21,10 @@ export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> = Works
   readonly text: string;
   readonly choices: readonly ElwoodDialogChoice[];
 };
+
+export type ElwoodDialogEvent<Agent extends ElwoodAgentKind = "codex"> = {
+  readonly request: ElwoodDialogRequest<Agent>;
+} & (
+  | { readonly phase: "raised" }
+  | { readonly phase: "closed"; readonly reason: "cleared" | "replaced" | "unavailable" }
+);
