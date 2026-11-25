@@ -5,7 +5,6 @@ import type { AnswerFailureCategory } from "../../src/core/dialogs/trust-answer/
 import type { SelectableOption } from "../../src/core/terminal-options.ts";
 
 afterEach(() => vi.useRealTimers());
-
 function setup(confirm = true) {
   const row = { style: "numbered", number: "1", selected: true, label: "Trust" } as const;
   const frame = {};
@@ -34,14 +33,12 @@ function setup(confirm = true) {
   });
   return { answers, write, readChoice, relinquish, reconcile };
 }
-
 const answer = (answers: Pick<WorkspaceTrustAnswers, "answer">) =>
   answers.answer("request", "choice");
 const failed = (category: AnswerFailureCategory) => ({
   code: "dialog_answer_failed",
   details: { category },
 });
-
 test("C-ATTN-07 validates options and choice before acquiring the writer", async () => {
   const { answers, write } = setup();
   for (const options of [
@@ -64,7 +61,6 @@ test("C-ATTN-07 validates options and choice before acquiring the writer", async
   ).rejects.toMatchObject(failed("aborted"));
   expect(write).not.toHaveBeenCalled();
 });
-
 test("C-ATTN-07 a missing verified choice refuses the first key", async () => {
   const { answers, write, readChoice } = setup();
   readChoice.mockReturnValue(undefined);
@@ -72,13 +68,17 @@ test("C-ATTN-07 a missing verified choice refuses the first key", async () => {
   expect(write).not.toHaveBeenCalled();
 });
 
-test("C-ATTN-07 one answer stays reserved through unrelated native outcomes", async () => {
-  const { answers, write } = setup();
+test("C-ATTN-07 a busy answer ignores unrelated outcomes and errors after confirmation", async () => {
+  const { answers, write, reconcile } = setup();
+  const outcomes: boolean[] = [];
+  reconcile.mockImplementationOnce(() => {
+    outcomes.push(answers.recordConfirmation("back"), answers.recordConfirmation("affirmative"));
+    throw new Error("optional reconciliation failed after confirmation");
+  });
   const operation = answer(answers);
   await expect(answer(answers)).rejects.toMatchObject(failed("busy"));
-  expect(answers.recordConfirmation("back")).toBe(false);
-  expect(answers.recordConfirmation("affirmative")).toBe(true);
-  await operation;
+  await expect(operation).resolves.toBeUndefined();
+  expect(outcomes).toEqual([false, true]);
   expect(write.mock.calls).toEqual([["\r"]]);
 });
 

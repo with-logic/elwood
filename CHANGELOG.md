@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Answer verified Codex workspace trust prompts through `answerDialog()` and
+  wait for native acceptance, Back, or Quit.
+
 - Let Claude session callers answer a verified workspace trust request with
   `answerDialog()` and wait for native acceptance or exit.
 

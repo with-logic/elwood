@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { LoopControls } from "../../core/loops/loop-controls.ts";
 import type { CodexModelOption } from "../../core/models/rows.ts";
@@ -110,6 +111,12 @@ export interface CodexSessionApi extends LoopControls, QuestionControls, StatsCo
   waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent>;
   /** List the current verified workspace trust prompt, if one is available. */
   listDialogs(): Promise<readonly ElwoodDialogRequest[]>;
+  /** Match the native choice outcome with `autotrust: false`. Raw startup input revokes the answer. */
+  answerDialog(
+    requestId: string,
+    choiceId: string,
+    options?: ElwoodDialogAnswerOptions,
+  ): Promise<void>;
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe;
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void;

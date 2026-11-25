@@ -8,8 +8,15 @@ export const claudeMcpOptions =
   /^(?:Use this(?: MCP)? server|Use this and all future MCP servers in this project|Use all future servers|Continue without using this MCP server|No(?:, (?:exit|cancel))?)$/i;
 export const claudeBypassOptions = /^(?:Yes, I accept|No, exit)$/i;
 export const codexWorkspaceOptions = /^(?:Yes(?:, continue)?|No(?:, quit)?)$/i;
-export const codexHooksOptions =
-  /^(?:Review hooks|Trust all and continue|Continue without trusting \(hooks won't run\))$/i;
+export const codexHookReviewLabels = [
+  "Review hooks",
+  "Trust all and continue",
+  "Continue without trusting (hooks won't run)",
+] as const;
+export const codexHooksOptions = new RegExp(
+  `^(?:${codexHookReviewLabels.map(RegExp.escape).join("|")})$`,
+  "i",
+);
 
 // Codex 0.164 draws `Back to Agent Command Center` for `Quit` when hook trust is not bypassed.
 export const codexFolderAccessLabels = {

@@ -12,6 +12,10 @@ import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import { createTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu-frame.ts";
 import type { ElwoodDialogEvent, ElwoodDialogRequest } from "./types.ts";
 
+type WorkspaceTrustRequestMetadata = {
+  readonly request: ElwoodDialogRequest;
+  readonly declineOutcome: WorkspaceTrustFrame["menu"]["declineOutcome"];
+};
 type Retirement = Extract<ElwoodDialogEvent, { phase: "closed" }>["reason"];
 type DiscoveryObserver = {
   readonly onListDiscovery: () => void;
@@ -20,6 +24,7 @@ type DiscoveryObserver = {
 export class CodexWorkspaceTrustDiscovery {
   private readonly polling = new WorkspaceTrustPolling<"codex", WorkspaceTrustFrame>();
   private evidenceRevision = 0;
+  private requestMetadata: WorkspaceTrustRequestMetadata | undefined;
   private readonly input: WorkspaceTrustDiscoveryInput;
   private readonly observer: DiscoveryObserver;
   private readonly match: ReturnType<typeof createTrustFrameMatcher> | undefined;
@@ -49,6 +54,11 @@ export class CodexWorkspaceTrustDiscovery {
     }
     this.end(reason);
   }
+  get currentRequestWithDeclineOutcome(): WorkspaceTrustRequestMetadata | undefined {
+    const current = this.requestMetadata;
+    return current?.request === this.polling.currentRequest ? current : undefined;
+  }
+
   /** Retain the identity through repaint while reads and delivery verify independently. */
   get currentRequestId(): string | undefined {
     return this.polling.currentRequest?.id;
@@ -88,8 +98,36 @@ export class CodexWorkspaceTrustDiscovery {
     return this.accept(candidate, revision, proved);
   }
 
+  async verifyRequestForAnswer(
+    candidate: WorkspaceTrustFrame,
+    signal: AbortSignal,
+    stillCurrent: () => boolean,
+    onAvailable?: () => void,
+  ): Promise<"verified" | "expired" | undefined> {
+    const revision = this.evidenceRevision;
+    const proof = this.polling.collect(candidate.revalidateLaunchEvidence, signal, onAvailable);
+    if (!proof) return undefined;
+    const status = await proof.catch(() => "rejected" as const);
+    if (signal.aborted || revision !== this.evidenceRevision || !stillCurrent()) return undefined;
+    if (status === undefined) return "expired";
+    if (status !== true) {
+      this.retireUnverified();
+      return undefined;
+    }
+    return "verified";
+  }
+
   isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust<"codex">): boolean {
-    return this.currentRequestId === request.id && this.canUseTrustFrame(frame);
+    return this.isRequestIdAtFrame(request.id, frame);
+  }
+
+  isRequestIdAtFrame(id: string, frame: TerminalSnapshot): boolean {
+    return this.currentRequestId === id && this.canUseTrustFrame(frame);
+  }
+
+  /** Compare a shutdown render with the claimed native menu after polling closes. */
+  matchObservedFrame(frame: TerminalSnapshot): WorkspaceTrustFrame | undefined {
+    return this.match?.(this.input.terminal(), frame);
   }
 
   /** Reconcile the request lifetime and return a candidate from settled native output. */
@@ -130,7 +168,12 @@ export class CodexWorkspaceTrustDiscovery {
       return undefined;
     }
 
-    return this.polling.acceptVerified("codex", this.input.elwoodSessionId, candidate);
+    const verified = this.polling.acceptVerified("codex", this.input.elwoodSessionId, candidate);
+    this.requestMetadata = {
+      request: verified.request,
+      declineOutcome: candidate.menu.declineOutcome,
+    };
+    return verified;
   }
 
   private canUseTrustFrame(frame: TerminalSnapshot): boolean {

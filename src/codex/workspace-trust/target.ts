@@ -1,5 +1,5 @@
 /** Match Codex's native folder-access disclosure to a checked launch target (PRD §5.5). */
-import { isGenericTrustDialogFooter, type TrustDialog } from "../../core/trust/dialog.ts";
+import { isGenericTrustDialogFooter } from "../../core/trust/dialog.ts";
 import { codexFolderAccessFooter, codexFolderAccessLabels } from "../../core/trust/options.ts";
 import { trustView } from "../../core/trust/view.ts";
 import type { TerminalSnapshot } from "../../terminal/headless.ts";
@@ -20,6 +20,7 @@ const codexWorkspaceLayouts = [
   {
     acceptLabel: "Yes, continue",
     declineLabel: "No, quit",
+    declineOutcome: "exit",
     footer: "Press enter to continue",
     isPrelude: (text: string) => text.startsWith(legacyLocationPreludePrefix),
     matches: legacyMatches,
@@ -27,15 +28,16 @@ const codexWorkspaceLayouts = [
   {
     ...folderAccess,
     declineLabel: codexFolderAccessLabels.quit,
+    declineOutcome: "exit",
     footer: "enter continue · esc quit",
   },
   {
     ...folderAccess,
     declineLabel: codexFolderAccessLabels.back,
+    declineOutcome: "back",
     footer: codexFolderAccessFooter,
   },
 ] as const;
-
 type CheckedTrustTarget = {
   readonly target: WorkspaceTrustTarget;
   readonly requiresRepositoryNote: boolean;
@@ -52,24 +54,19 @@ type RowFits = (position: {
   readonly rightInsetCols: number;
 }) => boolean;
 type Layout = (typeof codexWorkspaceLayouts)[number];
-
-export type CodexWorkspaceTrustMatcher = (
-  frame: Pick<TerminalSnapshot, "lines">,
-  rowFits: RowFits,
-) => { readonly target: WorkspaceTrustTarget; readonly dialog: TrustDialog } | undefined;
+export type CodexWorkspaceTrustMatcher = ReturnType<typeof createCodexWorkspaceTrustMatcher>;
 
 /** Match a native frame against independent captured launch evidence. */
 export function createCodexWorkspaceTrustMatcher({
   launchDirectoryPaths,
   targets,
-}: LaunchEvidence): CodexWorkspaceTrustMatcher {
-  return ({ lines }, rowFits) => {
+}: LaunchEvidence) {
+  return ({ lines }: Pick<TerminalSnapshot, "lines">, rowFits: RowFits) => {
     const menu = matchWorkspaceMenu(lines);
     if (!menu) return undefined;
     const { headerRow, layout } = menu;
     const prefix = disclosureRows(lines, headerRow, layout);
     if (!prefix) return undefined;
-
     let result: WorkspaceTrustTarget | undefined;
     for (const checked of targets) {
       if (!layout.matches(prefix, checked, launchDirectoryPaths, rowFits)) continue;
@@ -81,11 +78,18 @@ export function createCodexWorkspaceTrustMatcher({
         return undefined;
       result = checked.target;
     }
-    return result && { target: result, dialog: menu.dialog };
+    return (
+      result &&
+      ({
+        target: result,
+        dialog: menu.dialog,
+        declineOutcome: layout.declineOutcome,
+      } as const)
+    );
   };
 }
 
-function matchWorkspaceMenu(lines: readonly string[]) {
+export function matchWorkspaceMenu(lines: readonly string[]) {
   const candidate = trustView(lines.join("\n"), "codex", () => false);
   if (candidate.kind !== "candidate" || !candidate.valid || candidate.spec.id !== "workspace_trust")
     return undefined;
@@ -96,9 +100,7 @@ function matchWorkspaceMenu(lines: readonly string[]) {
     decline?.style === "numbered" &&
     accept.number === "1" &&
     decline.number === "2";
-  if (!expectedChoicePair) return undefined;
-  const exactlyOneSelected = accept.selected !== decline.selected;
-  if (!exactlyOneSelected) return undefined;
+  if (!expectedChoicePair || accept.selected === decline.selected) return undefined;
   const footer = lines.findLast((line) => line.trim() !== "")?.trim();
   const layout = codexWorkspaceLayouts.find(
     (layout) =>
@@ -114,7 +116,11 @@ function matchWorkspaceMenu(lines: readonly string[]) {
     )
   )
     return undefined;
-  return { headerRow: candidate.headerRow, layout, dialog: candidate.dialog };
+  return {
+    headerRow: candidate.headerRow,
+    layout,
+    dialog: { ...candidate.dialog, options: [accept, decline] as const },
+  };
 }
 
 function disclosureRows(lines: readonly string[], end: number, layout: Layout): Row[] | undefined {

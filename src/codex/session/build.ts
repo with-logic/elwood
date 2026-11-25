@@ -1,13 +1,9 @@
 /** Builds a live CodexSessionApi from a record + runtime. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
-
 import { startHookBridge } from "../../bridge/start.ts";
-import type * as activity from "../../core/activity/index.ts";
 import { activityFromTerminalExit as terminalExitActivity } from "../../core/activity/index.ts";
-import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { emitSettledStartupOutcomes as emitSettledStartup } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
-import { TurnStateWatcher } from "../../core/turn-state.ts";
 import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
@@ -23,14 +19,14 @@ import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.t
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { spawnCodexPty } from "../pty.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
-import { codexScreenFactTableForTrustPolicy as screenFacts } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
-import { CodexWorkspaceTrustEvents } from "../workspace-trust/events.ts";
+import { CodexWorkspaceTrustDialogs } from "../workspace-trust/dialogs.ts";
 import { trackWorkspacePreludeInput } from "../workspace-trust/prelude-input.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import type { BuildCodexSessionInput } from "./build-input.ts";
 import { reportCallerInput } from "./caller-input.ts";
+import { codexFrameObservers } from "./frame-observers.ts";
 import { buildCodexHookErrorHandler, dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
 import { createCodexReadinessGate } from "./readiness.ts";
@@ -77,13 +73,17 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const startupOutput = createStartupBuffer({ source: pty, directory: options.launchDirectory });
   const clearance = liveCodexClearance(() => terminal);
   const prelude = trackWorkspacePreludeInput(() => terminal);
-  const dialogs: CodexWorkspaceTrustEvents = new CodexWorkspaceTrustEvents({
+  const send = (keys: string): Promise<void> =>
+    withAutomatedInput(terminal, () => callerInput.automation(keys));
+  const dialogs: CodexWorkspaceTrustDialogs = new CodexWorkspaceTrustDialogs({
     elwoodSessionId,
     evidence: launched.trustEvidence,
     terminal: () => terminal,
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance,
     emitter,
+    manualTrust: !(options.autotrust ?? false),
+    write: send,
     isLive: () => session?.closing.signal.aborted === false,
   });
   let observedExit: PtyExit | undefined;
@@ -96,14 +96,13 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
   const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate, emitter);
-  const observers = {
-    turn: new TurnStateWatcher(),
-    attention: new AttentionWatcher(),
-    table: screenFacts(options.autotrust ?? false, clearance, () => cachedLiveSnapshot(terminal)),
-    agent: "codex" as const,
-    elwoodSessionId: record.elwoodSessionId,
-    emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
-  };
+  const observers = codexFrameObservers(
+    emitter,
+    elwoodSessionId,
+    options.autotrust ?? false,
+    clearance,
+    () => cachedLiveSnapshot(terminal),
+  );
   const frameObserver = createSessionFrameObserver(
     observers,
     () => session,
@@ -122,17 +121,17 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
     pty,
-    (data, renderedTerminal) => {
+    (data, rendered) => {
+      // A ready listener can write raw keys, which would revoke an unrecorded answer.
+      dialogs.recordConfirmation();
       terminalReplay.push(data);
-      const { text, cols } = readiness.observeStartupFrame(renderedTerminal);
-      const frame = { text, cols, title: renderedTerminal.title };
-      const send = (input: string) =>
-        withAutomatedInput(renderedTerminal, () => callerInput.automation(input));
-      const read = () => cachedLiveSnapshot(renderedTerminal).text;
+      const { text, cols } = readiness.observeStartupFrame(rendered);
+      const frame = { text, cols, title: rendered.title };
+      const read = () => cachedLiveSnapshot(rendered).text;
       const { closingSignal } = promptResponder;
-      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read, closingSignal);
-      const trustRead = () => settledLiveSnapshot(renderedTerminal)?.text;
-      const result = promptResponder.handle(frame.text, send, read, guarded, trustRead);
+      const guard = guardedCodexAutomationWrite(rendered, send, read, closingSignal);
+      const trustRead = () => settledLiveSnapshot(rendered)?.text;
+      const result = promptResponder.handle(frame.text, send, read, guard, trustRead);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartup(emitter, "codex", record.elwoodSessionId, result.outcomes, warnGate);
       dialogs.reconcileAfter(() => frameObserver.observe(frame));
@@ -157,7 +156,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   bindCodexQuotaStats(session, emitter);
   const activeSession = bindTurnSubmission(session, observers);
-  dialogs.discovery.bind(terminal, activeSession.closing.signal);
+  dialogs.bind(terminal, activeSession.closing.signal);
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
   const sessionCleanup = activeSession.startupCleanupResources(readiness.ready.cancel);
@@ -170,6 +169,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;
+        dialogs.nativeExit(exit);
         activeSession.beginExitFinalization();
         activeSession.closing.abort();
         const emitExit = () => {
