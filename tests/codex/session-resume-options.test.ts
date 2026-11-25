@@ -10,6 +10,7 @@ import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { safeSessionDir } from "../../src/state/files.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -40,6 +41,44 @@ describe("CodexSessionApi resume options", () => {
     const blocked = await ptys[1]!.dispatchHook(resumed.elwoodSessionId, stopEvent(cwd));
     expect(JSON.parse(blocked.stdout).decision).toBe("block");
     expect(resumed.status).toBe("running");
+  });
+
+  test("C-API-28 resume does NOT mark ready on a blocking dialog whose caret looks like the composer", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
+    await session.stop();
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+    // The first resume frame is an approval DIALOG — its `›` caret is byte-identical to
+    // the composer marker. Readiness must NOT latch, or a draining Enter could approve it.
+    ptys[1]!.emitData(
+      "\u001b[2J\u001b[HWould you like to run the following command?\r\n› 1. Yes\r\nPress enter to confirm or esc to cancel",
+    );
+    await resumed.terminal.settled();
+    await new Promise((r) => setImmediate(r));
+    expect(resumed.status).not.toBe("ready"); // waits for the dialog to clear
+  });
+
+  test("C-TURN-03 a turn queued during resume ends without Stop and the next message drains", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
+    await session.stop();
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+    const first = resumed.sendMessage("queued during resume");
+    ptys[1]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`); // configured composer
+    await first;
+    expect(resumed.status).toBe("running");
+    // Without Stop, distinct native busy/idle frames retain the end edge and reopen the queue.
+    ptys[1]!.emitData("\u001b[2J\u001b[H• Working (3s • esc to interrupt)\r\n› ");
+    await resumed.terminal.settled(); // The busy and idle states are distinct observed frames.
+    expect(resumed.terminal.snapshot().lines[0]).toBe("• Working (3s • esc to interrupt)");
+    ptys[1]!.emitData("\u001b[2J\u001b[H› ");
+    await expect.poll(() => resumed.status).toBe("ready");
+    await resumed.sendMessage("second message drains");
+    expect(ptys[1]!.writes.join("")).toContain("second message drains");
   });
 
   test("C-API-29 resume forwards sandbox and approvalPolicy into the launched command", async () => {

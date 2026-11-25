@@ -3182,9 +3182,11 @@ frames carry the composer marker and neither shows the status footer.
 **What Elwood did with it.** A start held its queued input: the deadline already
 needed the configured composer, so the session stayed `running` and reported
 `initial_ready_backstop` after 60 s. A resume did not. `resume-update-offer-codex.e2e.ts`
-on `origin/main` recorded the queued message's bracketed paste and its `\r`,
-both released at the placeholder frame. The proof drops application input before
-the PTY, because that Enter chooses `Update now`.
+on `origin/main` recorded the queued message's bracketed paste and its `\r`, both
+released at the placeholder frame. In a third run, on a loaded host, the paste met
+the placeholder and the `\r` met the offer, with its ``› 1. Update now (runs `sh -c``
+row selected. The proof drops application input before the PTY, because
+that Enter chooses `Update now`.
 
 **Which Codex a session runs depends on the directory.** On the capture host an
 interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a
