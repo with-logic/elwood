@@ -3,14 +3,12 @@ import { realpathSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, assert, expect, expectTypeOf, test, vi } from "vitest";
 import { CodexWorkspaceTrustDiscovery } from "../../src/codex/workspace-trust/discovery.ts";
-import { TypedEmitter } from "../../src/events/emitter.ts";
 import { CodexSession, type ElwoodDialogEvent } from "../../src/index.ts";
-import { assertStartupUsable, setStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
+import { holdStartup } from "../helpers/startup-frame.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { clear, menu, menuWithQuitSelected } from "./workspace-trust-discovery-fixture.ts";
 
-vi.mock("../../src/runtime/startup/index.ts", { spy: true });
 afterEach(() => {
   vi.restoreAllMocks();
   resetFakes();
@@ -31,31 +29,17 @@ test.each([
   const removedBeforeReplay = vi.fn();
   session.on("dialog", () => session.off("dialog", removedBeforeReplay));
   session.on("dialog", removedBeforeReplay);
-  const startupEntered = Promise.withResolvers<void>();
-  const finishStartup = Promise.withResolvers<void>();
-  const { assertStartupUsable: checkStartup } = await vi.importActual<
-    typeof import("../../src/runtime/startup/index.ts")
-  >("../../src/runtime/startup/index.ts");
-  vi.mocked(assertStartupUsable).mockImplementation(async (options) => {
-    startupEntered.resolve();
-    await finishStartup.promise;
-    await checkStartup(options);
-  });
-  setStartupWaitMsForTests(0);
-  const emitted = vi.spyOn(TypedEmitter.prototype, "emit");
-  const renders = () => emitted.mock.calls.filter(([name]) => name === "terminal:data").length;
-  const starting = session.start();
+  const held = await holdStartup(() => session.start());
   try {
-    await startupEntered.promise;
     const pty = ptys[0];
     assert.isDefined(pty);
     pty.emitData(clear + menu(cwd));
-    await expect.poll(renders).toBe(1);
+    await expect.poll(held.renders).toBe(1);
     for (const frame of frames) pty.emitData(clear + frame);
-    await expect.poll(renders).toBe(1 + frames.length);
+    await expect.poll(held.renders).toBe(1 + frames.length);
     expect(session.session).toBeUndefined();
-    finishStartup.resolve();
-    await starting;
+    held.release();
+    await held.starting;
     await expect.poll(() => observed.mock.calls.length).toBe(count);
     const requests = await session.listDialogs();
     expect(observed.mock.calls).toEqual(
@@ -64,7 +48,7 @@ test.each([
     expect(requests).toHaveLength(count);
     expect(removedBeforeReplay).not.toHaveBeenCalled();
   } finally {
-    finishStartup.resolve();
+    await held.settle();
     await session.teardown();
   }
 });
