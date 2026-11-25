@@ -74,7 +74,7 @@ Use `event.type` to choose your UI treatment. Do not render tool output as trust
 
 ```ts
 const unsubscribe = session.on("warning", (warning) => {
-  console.error(warning.code, warning.message);
+  console.error(warning.code);
 });
 
 try {

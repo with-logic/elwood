@@ -2,6 +2,7 @@
 
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
+import { optional } from "../optional.ts";
 import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
@@ -172,6 +173,9 @@ export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEv
     kind: "warning",
     label: event.code,
     text: event.message,
+    ...(event.code === "usage_limit_reached"
+      ? { transcriptPath: event.transcriptPath, ...optional(event.turnId, "turnId") }
+      : {}),
     raw: event,
   };
 }

@@ -26,6 +26,9 @@ back each entry are listed in `prd/14-conformance.md`.
   dropped trailing whitespace, or escaped a `<pasted_content` look-alike. Such a turn used to resolve with the
   rejection text as its reply.
 
+- Report Claude usage-limit rejections from live native transcript evidence,
+  including the limit name and reset time when available.
+
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
 

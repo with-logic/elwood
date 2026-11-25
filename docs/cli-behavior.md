@@ -368,6 +368,18 @@ message ends with `Add credits to continue.` The workspace-member message ends
 with `Ask your workspace owner to refill in order to continue.` A numeric reset
 is exposed when the structured diagnostic provides one. C-API-65.
 
+**Claude Code 2.1.331 and 2.1.332 persist structured usage denials.** In
+interactive PTY runs against a local synthetic 429 response, Claude rendered
+the Fable limit and local reset time. Its committed synthetic assistant record
+carried `isApiErrorMessage: true`, `apiError: "usage_limit_reached"`, and
+`apiErrorParams.rate_limit_info` with `status: "rejected"`, the native code
+`seven_day_overage_included`, and the supplied `resetsAt` in Unix seconds.
+The same-path `parentUuid` chain led to the original user prompt through
+attachment records. `StopFailure` reported the generic `rate_limit` error
+and visible message without the structured reset. The quota record could
+commit after the hook and rendered notice. A simple throttle response lacked
+the quota markers. C-API-68.
+
 ### Billing, usage-limit and rate-limit failures (2026-11-25)
 
 Measured on Claude Code 2.1.332 and codex-cli 0.172.0 without model quota. Claude

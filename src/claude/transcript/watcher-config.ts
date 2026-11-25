@@ -1,14 +1,15 @@
 /**
  * Public construction options for the Claude transcript watcher.
- * Implements PRD §5.4 (C-CLAUDE-15): the diagnostic notice handlers (bounded,
- * content-free) the watcher forwards for observation problems.
+ * Implements PRD §5.4 (C-CLAUDE-15, C-API-68): diagnostic notices from the watcher.
  */
 
+import type { ClaudeUsageLimitWarning } from "../../core/warnings/transcript.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 
-/** Notices the watcher forwards for observation problems (each fired live, once). */
+/** Live quota notices and diagnostics from transcript observation. */
 export type TranscriptNoticeHandlers = {
   readonly onDrop?: (notice: TranscriptDropNotice) => void;
+  readonly onUsageLimit?: (warning: ClaudeUsageLimitWarning) => void;
   readonly onReadError?: (notice: TranscriptReadErrorNotice) => void;
   /** A programming error escaped the timer poll; the watcher has stopped. */
   readonly onPollError?: (error: unknown) => void;
