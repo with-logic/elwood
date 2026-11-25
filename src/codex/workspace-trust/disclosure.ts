@@ -54,6 +54,7 @@ export function disclosureRows(
   });
 }
 
+/** Verify the final target and any displayed launch location at the two-column inset. */
 export function matchFolderAccessDisclosure(
   rows: readonly Row[],
   { target: { targetPath, targetScope }, requiresRepositoryNote }: CheckedTrustTarget,
@@ -81,6 +82,7 @@ export function matchFolderAccessDisclosure(
   );
 }
 
+/** Verify the opening launch alias and any inline or wrapped repository path at zero inset. */
 export function matchLegacyDisclosure(
   rows: readonly Row[],
   { target: { targetPath, targetScope }, requiresRepositoryNote }: CheckedTrustTarget,

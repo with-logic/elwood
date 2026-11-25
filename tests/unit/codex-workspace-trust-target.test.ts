@@ -116,7 +116,6 @@ test("reports the exact Git root on short and full modern displays", () => {
 
 const legacyRepo = join(root, "project with spaces");
 const wrappedLegacyRepo = legacyRepo.replace(" with", "\n  with");
-
 test.each([
   {
     name: "wrapped note and path on separate rows",
@@ -129,18 +128,24 @@ test.each([
     disclosure: `\n  ${rootNote} ${wrappedLegacyRepo}`,
     pathRows: [1, 2],
   },
-])("C-ATTN-07 checks the legacy repository disclosure with $name", ({ disclosure, pathRows }) => {
+] as const)("C-ATTN-07 checks the legacy repository disclosure with $name", ({
+  disclosure,
+  pathRows,
+}) => {
   const cwd = join(legacyRepo, "child");
   const resolve = repository([cwd], legacyRepo);
   const text = legacyFixture.replace(legacyWorkspace, `${cwd}${disclosure}`);
   const fits = vi.fn<RowFits>(() => true);
-
   expect(read(resolve, text, fits)).toEqual({ targetPath: legacyRepo, targetScope: "repository" });
   expect(fits.mock.calls).toEqual(
     [0, ...pathRows].map((rowIndex) => [{ rowIndex, rightInsetCols: 0 }]),
   );
-  for (const pathRow of pathRows)
-    expect(read(resolve, text, ({ rowIndex }) => rowIndex !== pathRow)).toBeUndefined();
+  const [firstPathRow, continuationRow] = pathRows;
+  const readWithClippedRow = (clipped: number) =>
+    read(resolve, text, ({ rowIndex }) => rowIndex !== clipped);
+  expect(readWithClippedRow(firstPathRow), "first path row is clipped").toBeUndefined();
+  if (continuationRow !== undefined)
+    expect(readWithClippedRow(continuationRow), "continuation path row is clipped").toBeUndefined();
   expect(read(resolve, text.replace(cwd, cwd.slice(0, -1)))).toBeUndefined();
 });
 
