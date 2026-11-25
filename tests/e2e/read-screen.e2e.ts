@@ -1,6 +1,6 @@
 /**
  * Real agents answer with more rows than one screen holds. `readScreen()` returns the
- * live rows with the composer and the end of the reply under each CLI's default
+ * live rows with the composer and the end of the reply under each CLI's fullscreen
  * renderer, and under its inline renderer it also returns scrollback and stays live
  * while the host is scrolled back. Once a stopped session's terminal is disposed, the
  * read rejects. Implements C-SCREEN-01 to C-SCREEN-03, C-E2E-02, and C-E2E-03.
@@ -28,7 +28,11 @@ const prompt = `Reply with the integers from 1 to ${last}, each alone on its own
 const shows = (rows: readonly string[], value: number) =>
   rows.some((row) => new RegExp(`^\\W*${value}$`).test(row));
 
-/** Each CLI's composer glyph, and a launch that can select its inline renderer. */
+/**
+ * Each CLI's composer glyph, and a launch that selects its renderer. Codex's default is
+ * fullscreen. Claude's is too, but Claude falls back to its main-screen renderer after a
+ * fullscreen launch on the machine died early (docs/cli-behavior.md), so the test pins it.
+ */
 const agents = {
   claude: {
     composer: "❯",
@@ -39,7 +43,7 @@ const agents = {
         initialSize: size,
         permissionMode: "bypassPermissions",
         autotrust: true,
-        env: inline ? { CLAUDE_CODE_NO_FLICKER: "0" } : {},
+        env: { CLAUDE_CODE_NO_FLICKER: inline ? "0" : "1" },
       }),
   },
   codex: {
@@ -58,7 +62,7 @@ const agents = {
 } as const;
 
 type Agent = keyof typeof agents;
-type Renderer = "default" | "inline";
+type Renderer = "fullscreen" | "inline";
 type IdleRead = (session: E2eSession, screen: ElwoodScreen) => Promise<void> | void;
 
 /** Both CLIs park the terminal cursor in the composer, after its two-cell prompt glyph. */
@@ -113,10 +117,10 @@ async function afterLongReply(
 for (const agent of ["claude", "codex"] as const) {
   const run = { skip: skipIf(skipReason(agent), skipTurns), timeout: 240_000 };
 
-  test(`C-SCREEN-01/02/03 real ${agent} screen text under its default renderer`, run, (t) =>
-    afterLongReply(agent, "default", t, (_session, screen) => {
+  test(`C-SCREEN-01/02/03 real ${agent} screen text under its fullscreen renderer`, run, (t) =>
+    afterLongReply(agent, "fullscreen", t, (_session, screen) => {
       assert.equal(screen.buffer, "alternate");
-      // Records the CLI default: the alternate screen never has scrollback.
+      // The alternate screen never has scrollback.
       assert.deepEqual(screen.scrollback, []);
     }),
   );

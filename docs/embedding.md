@@ -177,7 +177,10 @@ On `ClaudeSession` and `CodexSession`, call it on `session.session` after start.
   screen. Claude Code 2.1.332 and Codex 0.171.0 and 0.172.0 draw on the
   alternate screen by default, so that list is empty and `lines` holds only
   the last screenful of a long reply. `outputLost` stays false then. Read
-  earlier output from `activity` events.
+  earlier output from `activity` events. Claude starts on the normal screen
+  instead after a fullscreen Claude launch on the same machine died within 10
+  seconds of its first frame. Set `CLAUDE_CODE_NO_FLICKER` to `1` or `0` in
+  `env` to pin its alternate or normal screen.
 - The cursor's `x` is a terminal column. It differs from a string index on a
   row with wide characters.
 - A read can land in the middle of a repaint. Poll after `status` changes

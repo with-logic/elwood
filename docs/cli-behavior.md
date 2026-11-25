@@ -3130,6 +3130,22 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
   above the composer. The CLI scrolls its own history inside the alternate screen,
   so no terminal reader can recover the earlier rows. They are in the transcript
   and the `activity` stream.
+- **Claude's default renderer depends on its earlier fullscreen launches.** Claude
+  2.1.332 records each fullscreen launch in its global config
+  (`fullscreenBootPending`, keyed by PID, with host and version) and removes the
+  entry once the launch has run 10 seconds past its first frame or exits through
+  its own shutdown. The bundle shows an entry staying behind only when the process
+  dies without its exit handlers. A launch that finds an entry for a dead PID of
+  the same version on the same host counts a strike and starts in the main-screen
+  renderer, on the normal buffer with scrollback. A second strike on that version
+  turns fullscreen off until `/tui fullscreen` or an update
+  (`fullscreenAutoDisabled`). One leftover entry in the user's own config, copied
+  into the e2e config dir, was enough: the unpinned test read the normal buffer
+  with 71 scrollback rows, and read the alternate screen again once the copy
+  dropped `fullscreenBootPending`, `fullscreenBootStrikes` and
+  `fullscreenAutoDisabled`. `CLAUDE_CODE_NO_FLICKER=1` skips the check and keeps
+  the alternate screen, and `0` selects the main-screen renderer, so
+  `tests/e2e/read-screen.e2e.ts` sets one or the other.
 - **The inline renderers keep scrollback.** `CLAUDE_CODE_NO_FLICKER=0` in the launch
   environment and `-c tui.alternate_screen="never"` select them. Both then paint
   the normal buffer, and `scrollback: true` returned the banner, the prompt and the
