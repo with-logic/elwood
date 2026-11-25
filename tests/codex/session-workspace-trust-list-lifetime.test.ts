@@ -3,6 +3,7 @@ import * as fsp from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
+import { holdFirstGitLookup } from "../helpers/hold-git-lookup.ts";
 import { resetFakes } from "./helpers.ts";
 import { menu, setup } from "./workspace-trust-discovery-fixture.ts";
 
@@ -12,27 +13,9 @@ afterEach(() => {
   resetFakes();
 });
 
-async function holdFirstGitLookup(cwd: string) {
-  const began = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const { lstat } = await vi.importActual<typeof fsp>("node:fs/promises");
-  let first = true;
-  vi.mocked(fsp.lstat)
-    .mockClear()
-    .mockImplementation(async (...options) => {
-      if (first && options[0] === join(cwd, ".git")) {
-        first = false;
-        began.resolve();
-        await release.promise;
-      }
-      return Reflect.apply(lstat, undefined, options);
-    });
-  return { began: began.promise, release: release.resolve };
-}
-
 test("C-ATTN-07 a superseded stalled proof does not cancel a newer frame", async () => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fsp.lstat, cwd);
   try {
     await render(menu(cwd));
     const old = session.listDialogs();
@@ -61,7 +44,7 @@ test("C-ATTN-07 a superseded stalled proof does not cancel a newer frame", async
 
 test("C-ATTN-07 overlapping reads share pending proof for one settled frame", async () => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fsp.lstat, cwd);
   try {
     await render(menu(cwd));
     const first = session.listDialogs();
@@ -82,7 +65,7 @@ test("C-ATTN-07 overlapping reads share pending proof for one settled frame", as
 
 test("C-ATTN-07 a timed-out current proof retires discovery", async () => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fsp.lstat, cwd);
   try {
     await render(menu(cwd));
     const listing = session.listDialogs();
@@ -104,7 +87,7 @@ test.each([
   "composer",
 ] as const)("C-ATTN-07 revokes an in-flight read on %s", async (revoke) => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fsp.lstat, cwd);
   try {
     await render(menu(cwd));
     const listing = session.listDialogs();

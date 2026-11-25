@@ -2,7 +2,7 @@
 import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { matchClaudeWorkspaceTrustMenu } from "../../src/claude/workspace-trust/menu.ts";
+import { createClaudeWorkspaceTrustMenuMatcher } from "../../src/claude/workspace-trust/menu.ts";
 import { settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { tty } from "../fixtures/trust-composer.ts";
@@ -15,7 +15,7 @@ const disclosedPath = "/tmp/ELWOOD_CAPTURE/project";
 
 function launchScope(cwd: string, targetPath = cwd) {
   const terminal = createHeadlessTerminal({ cols: width, rows: 32 }, () => undefined);
-  const match = matchClaudeWorkspaceTrustMenu({
+  const match = createClaudeWorkspaceTrustMenuMatcher({
     physicalLaunchPath: cwd,
     targetPath,
     targetScope: targetPath === cwd ? "folder" : "repository",

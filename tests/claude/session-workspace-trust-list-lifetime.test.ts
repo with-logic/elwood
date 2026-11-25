@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
+import { holdFirstGitLookup } from "../helpers/hold-git-lookup.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
@@ -13,25 +14,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   resetFakes();
 });
-
-async function holdFirstGitLookup(cwd: string) {
-  const began = Promise.withResolvers<void>();
-  const waiting = Promise.withResolvers<void>();
-  const { lstat } = await vi.importActual<typeof fs>("node:fs/promises");
-  const lookup = join(cwd, ".git");
-  let first = true;
-  vi.mocked(fs.lstat)
-    .mockClear()
-    .mockImplementation(async (...options) => {
-      if (first && options[0] === lookup) {
-        first = false;
-        began.resolve();
-        await waiting.promise;
-      }
-      return Reflect.apply(lstat, undefined, options);
-    });
-  return { began: began.promise, release: waiting.resolve };
-}
 
 async function setup() {
   installFakes();
@@ -48,7 +30,7 @@ async function setup() {
 test("C-ATTN-07 a stalled Claude launch proof leaves the native gate intact", async () => {
   installFakes();
   const cwd = realpathSync(tempDir());
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fs.lstat, cwd);
   const starting = startClaude({ cwd });
   try {
     expect(await Promise.race([held.began.then(() => "proof"), starting.then(() => "pty")])).toBe(
@@ -69,7 +51,7 @@ test("C-ATTN-07 a stalled Claude launch proof leaves the native gate intact", as
 
 test("C-ATTN-07 a timed-out current Claude proof retires discovery", async () => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
     await render();
     const reading = session.listDialogs();
@@ -86,7 +68,7 @@ test("C-ATTN-07 a timed-out current Claude proof retires discovery", async () =>
 
 test("C-ATTN-07 a superseded Claude proof leaves a newer frame eligible", async () => {
   const { cwd, session, menu, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
     await render();
     const reading = session.listDialogs();
@@ -104,7 +86,7 @@ test("C-ATTN-07 a superseded Claude proof leaves a newer frame eligible", async 
 
 test("C-ATTN-07 parallel Claude list calls share proof for the same native frame", async () => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
     await render();
     const first = session.listDialogs();
@@ -130,7 +112,7 @@ test.each([
   "composer",
 ] as const)("C-ATTN-07 a Claude list drops its in-flight proof on %s", async (revoke) => {
   const { cwd, session, render } = await setup();
-  const held = await holdFirstGitLookup(cwd);
+  const held = await holdFirstGitLookup(fs.lstat, cwd);
   try {
     await render();
     const reading = session.listDialogs();

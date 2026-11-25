@@ -1,4 +1,5 @@
 /** Match Claude's native workspace trust disclosure to a checked launch (C-ATTN-07). */
+import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
 import type { TrustPromptIdFor } from "../../core/trust/prompts.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
@@ -21,27 +22,21 @@ export type WorkspaceTrustFrame = {
   readonly verifyTarget: ClaudeLaunchTrustEvidence["isCurrent"];
 };
 
-export function matchClaudeWorkspaceTrustFrame(
+export function createClaudeWorkspaceTrustFrameMatcher(
   evidence: ClaudeLaunchTrustEvidence,
   humanOwnedPrompt: () => TrustPromptIdFor<"claude"> | undefined,
 ) {
-  const match = matchClaudeWorkspaceTrustMenu(evidence.scope);
+  const match = createClaudeWorkspaceTrustMenuMatcher(evidence.scope);
   return (terminal: ElwoodTerminal, frame: TerminalSnapshot): WorkspaceTrustFrame | undefined => {
     if (humanOwnedPrompt() !== "workspace_trust") return undefined;
     const menu = match(terminal, frame);
     if (!menu) return undefined;
-    const { target, dialog } = menu;
-    const identity = JSON.stringify([
-      target.targetPath,
-      target.targetScope,
-      dialog.header,
-      dialog.options.map(({ label }) => label),
-    ]);
+    const identity = workspaceTrustMenuIdentity(menu);
     return { frame, menu, identity, verifyTarget: evidence.isCurrent };
   };
 }
 
-export function matchClaudeWorkspaceTrustMenu(scope: ClaudeLaunchTrustEvidence["scope"]) {
+export function createClaudeWorkspaceTrustMenuMatcher(scope: ClaudeLaunchTrustEvidence["scope"]) {
   return (
     terminal: ElwoodTerminal,
     frame: TerminalSnapshot,

@@ -67,7 +67,7 @@ export async function buildClaudeSession(
   });
   const readiness = createStartupReadinessGate(
     () => {
-      dialogs.endStartup();
+      dialogs.endDiscovery();
       observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
       void session?.completeInitialReady();
     },

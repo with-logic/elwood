@@ -1,4 +1,5 @@
 /** Match a Codex trust layout to captured launch evidence at an exact native frame (C-ATTN-07). */
+import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import { hasUnwrappedRowEndPadding } from "../../terminal/snapshot.ts";
 import type { CodexLaunchTrustEvidence } from "./launch-evidence.ts";
@@ -29,13 +30,7 @@ export function createTrustFrameMatcher(evidence: CodexLaunchTrustEvidence) {
       }),
     );
     if (!menu) return undefined;
-    const { target, dialog } = menu;
-    const identity = JSON.stringify([
-      target.targetPath,
-      target.targetScope,
-      dialog.header,
-      dialog.options.map(({ label }) => label),
-    ]);
+    const identity = workspaceTrustMenuIdentity(menu);
     return { frame, menu, identity, revalidateLaunchEvidence: evidence.isCurrent };
   };
 }
