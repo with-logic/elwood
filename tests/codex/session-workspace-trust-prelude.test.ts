@@ -55,16 +55,26 @@ test("C-TRUST-01 a prelude claim is retired when a settled native frame replaces
   }
 });
 
-test.each([
-  ["quoted", (prelude: string) => `assistant: Earlier output\r\n${prelude}`],
-  ["relative location", () => "> You are in project\r\n"],
-] as const)("C-TRUST-01 unrelated %s output does not claim a native workspace question", async (_, fixture) => {
+test("C-TRUST-01 quoted output does not claim a native workspace question", async () => {
   const { cwd, session, pty, render } = await setup({ autotrust: true });
   try {
     const full = menu(cwd);
-    await render(fixture(full.split("  Trust this folder?")[0]!));
+    const prelude = full.split("  Trust this folder?")[0]!;
+    await render(`assistant: Earlier output\r\n${prelude}`);
     await session.sendKeys("x");
     await render(full);
+    expect(pty.writes).toEqual(["x", "1\r"]);
+  } finally {
+    await session.teardown();
+  }
+});
+
+test("C-TRUST-01 a relative location does not claim the matching legacy question", async () => {
+  const { cwd, session, pty, render } = await setup({ autotrust: true });
+  try {
+    await render("> You are in project\r\n");
+    await session.sendKeys("x");
+    await render(legacyWorkspaceMenu(cwd));
     expect(pty.writes).toEqual(["x", "1\r"]);
   } finally {
     await session.teardown();

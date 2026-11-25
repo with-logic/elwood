@@ -114,20 +114,38 @@ test("reports the exact Git root on short and full modern displays", () => {
   expect(read(atRoot, folderFixture.replace(`  ${workspace}`, disclosure))).toEqual(expected);
 });
 
-test("corroborates the legacy location and wrapped Git note", () => {
-  const repo = join(root, "project with spaces");
-  const cwd = join(repo, "child");
-  const resolve = repository([cwd], repo);
-  const note = rootNote.replace("Trusting", "\n  Trusting");
-  const wrappedRepo = repo.replace(" with", "\n  with");
-  const text = legacyFixture.replace(legacyWorkspace, `${cwd}\n\n  ${note}\n  ${wrappedRepo}`);
-  const fits = vi.fn<RowFits>(({ rowIndex }) => rowIndex !== 2);
-  expect(read(resolve, text, fits)).toEqual({ targetPath: repo, targetScope: "repository" });
-  expect(fits).toHaveBeenCalledWith({ rowIndex: 0, rightInsetCols: 0 });
-  expect(fits).toHaveBeenCalledWith({ rowIndex: 4, rightInsetCols: 0 });
-  expect(fits).toHaveBeenCalledWith({ rowIndex: 5, rightInsetCols: 0 });
-  expect(read(resolve, text, ({ rowIndex }) => rowIndex !== 4)).toBeUndefined();
-  expect(read(resolve, text, ({ rowIndex }) => rowIndex !== 5)).toBeUndefined();
+const legacyRepo = join(root, "project with spaces");
+const wrappedLegacyRepo = legacyRepo.replace(" with", "\n  with");
+test.each([
+  {
+    name: "wrapped note and path on separate rows",
+    disclosure: `\n\n  ${rootNote.replace("Trusting", "\n  Trusting")}\n  ${wrappedLegacyRepo}`,
+    pathRows: [4, 5],
+  },
+  { name: "inline path", disclosure: `\n  ${rootNote} ${legacyRepo}`, pathRows: [1] },
+  {
+    name: "wrapped inline path",
+    disclosure: `\n  ${rootNote} ${wrappedLegacyRepo}`,
+    pathRows: [1, 2],
+  },
+] as const)("C-ATTN-07 checks the legacy repository disclosure with $name", ({
+  disclosure,
+  pathRows,
+}) => {
+  const cwd = join(legacyRepo, "child");
+  const resolve = repository([cwd], legacyRepo);
+  const text = legacyFixture.replace(legacyWorkspace, `${cwd}${disclosure}`);
+  const fits = vi.fn<RowFits>(() => true);
+  expect(read(resolve, text, fits)).toEqual({ targetPath: legacyRepo, targetScope: "repository" });
+  expect(fits.mock.calls).toEqual(
+    [0, ...pathRows].map((rowIndex) => [{ rowIndex, rightInsetCols: 0 }]),
+  );
+  const [firstPathRow, continuationRow] = pathRows;
+  const readWithClippedRow = (clipped: number) =>
+    read(resolve, text, ({ rowIndex }) => rowIndex !== clipped);
+  expect(readWithClippedRow(firstPathRow), "first path row is clipped").toBeUndefined();
+  if (continuationRow !== undefined)
+    expect(readWithClippedRow(continuationRow), "continuation path row is clipped").toBeUndefined();
   expect(read(resolve, text.replace(cwd, cwd.slice(0, -1)))).toBeUndefined();
 });
 

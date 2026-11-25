@@ -7,7 +7,7 @@ import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { classifyCodexFooter, unknownCols } from "./footer.ts";
 import { codexWorkingScreen } from "./working.ts";
-import { folderAccessPrelude } from "./workspace-trust-copy.ts";
+import { isFolderAccessPrelude } from "./workspace-trust-copy.ts";
 
 type ComposerGeometry = { readonly cursorRow?: number; readonly cols?: number | undefined };
 
@@ -89,7 +89,7 @@ function hasNativeDialogEvidence(rows: readonly string[], liveCursor: boolean): 
   const unquoted = unquotedRows(rows, liveCursor);
   for (const row of unquoted) {
     if (
-      row.trim() === folderAccessPrelude ||
+      isFolderAccessPrelude(row) ||
       approvalHeader.test(row.trimStart()) ||
       isTrustDialogHeader(row) ||
       /^\s*[›»❯>]\s*\d+[.)]\s*\S/.test(row) ||
