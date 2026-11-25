@@ -50,11 +50,17 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
     live = await facade.start();
     await live.waitForStatus((status) => status === "ready", 45_000);
     const statuses: string[] = [];
-    const messages: Array<{ kind: string; text: string; status: string }> = [];
+    const messages: Array<{ kind: string; text: string; status: string; final: true | undefined }> =
+      [];
     facade.on("status", (event) => statuses.push(event.status));
     facade.on("activity", (event) => {
       if (event.kind === "assistant_progress" || event.kind === "assistant_message") {
-        messages.push({ kind: event.kind, text: event.text?.trim() ?? "", status: live!.status });
+        messages.push({
+          kind: event.kind,
+          text: event.text?.trim() ?? "",
+          status: live!.status,
+          final: event.final,
+        });
       }
     });
     sandbox.begin(prompt);
@@ -67,6 +73,8 @@ test("C-E2E-17 native Codex progress precedes final text without ending the turn
       ],
     );
     assert.equal(messages[0]!.status, "running");
+    assert.equal(messages[0]!.final, undefined);
+    assert.equal(messages[1]!.final, true);
     assert.ok(statuses.includes("running"));
     assert.equal(live.status, "ready");
     assert.equal(toolAttempts, 0);

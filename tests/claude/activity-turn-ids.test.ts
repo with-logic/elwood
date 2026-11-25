@@ -8,7 +8,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-test("C-CLAUDE-15 a late reply retains the user turn after ready and its successor", async () => {
+test("C-API-64 a late final reply retains the user turn after ready and its successor", async () => {
   installFakes();
   const cwd = tempDir();
   const transcript = join(cwd, "turns.jsonl");
@@ -54,7 +54,15 @@ test("C-CLAUDE-15 a late reply retains the user turn after ready and its success
         type: "assistant",
         uuid: "final-a",
         parentUuid: "partial-a",
-        message: { content: [{ type: "text", text: "late first reply" }] },
+        message: {
+          stop_reason: "end_turn",
+          content: [
+            { type: "text", text: "late first reply" },
+            { type: "text", text: "final first block" },
+            { type: "text", text: "" },
+            { type: "thinking", thinking: "extra reasoning" },
+          ],
+        },
       },
       {
         type: "assistant",
@@ -68,15 +76,51 @@ test("C-CLAUDE-15 a late reply retains the user turn after ready and its success
     expect(
       events.filter((event) => event.kind === "user_message").map((event) => event.turnId),
     ).toEqual(["turn-a", "turn-b"]);
-    expect(events.filter((event) => event.kind === "reasoning")).toMatchObject([
-      { turnId: "turn-a" },
+    expect(
+      events
+        .filter((event) => event.kind === "reasoning" || event.kind === "assistant_message")
+        .map(({ kind, text, turnId, final }) => ({ kind, text, turnId, final })),
+    ).toEqual([
+      { kind: "reasoning", text: "planning", turnId: "turn-a", final: undefined },
+      { kind: "assistant_message", text: "late first reply", turnId: "turn-a", final: undefined },
+      { kind: "assistant_message", text: "final first block", turnId: "turn-a", final: true },
+      { kind: "reasoning", text: "extra reasoning", turnId: "turn-a", final: undefined },
+      { kind: "assistant_message", text: "second reply", turnId: "turn-b", final: undefined },
+      { kind: "assistant_message", text: "unlinked reply", turnId: undefined, final: undefined },
     ]);
-    expect(events.filter((event) => event.kind === "assistant_message")).toMatchObject([
-      { text: "late first reply", turnId: "turn-a" },
-      { text: "second reply", turnId: "turn-b" },
-      { text: "unlinked reply" },
-    ]);
-    expect(events.find((event) => event.text === "unlinked reply")?.turnId).toBeUndefined();
+  } finally {
+    await session.teardown();
+  }
+});
+
+test("C-API-64 native Claude subagent path withholds finality without a sidechain flag", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const transcript = join(cwd, "main.jsonl");
+  const agentTranscript = join(cwd, "agent.jsonl");
+  writeFileSync(transcript, "");
+  const agentRows = [
+    { type: "user", message: { content: "Check the fixture" } },
+    { type: "assistant", message: { content: "Subagent reply", stop_reason: "end_turn" } },
+  ];
+  writeFileSync(agentTranscript, `${agentRows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  const session = await startClaude({ cwd });
+  const replies: ElwoodActivityEvent[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "assistant_message") replies.push(event);
+  });
+  try {
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "SubagentStop",
+      session_id: "claude-native",
+      cwd,
+      transcript_path: transcript,
+      agent_transcript_path: agentTranscript,
+      agent_type: "general-purpose",
+      agent_id: "test-agent",
+    });
+    expect(replies).toMatchObject([{ text: "Subagent reply", transcriptPath: agentTranscript }]);
+    expect(replies[0]).not.toHaveProperty("final");
   } finally {
     await session.teardown();
   }

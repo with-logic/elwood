@@ -1,5 +1,6 @@
 /** Required transcript payloads survive activity normalization (PRD §5.4, C-CODEX-22). */
 import { expect, test } from "vitest";
+import type { ClaudeTranscriptEvent } from "../../src/claude/transcript/index.ts";
 import type { CodexTranscriptSummary } from "../../src/codex/transcript/types.ts";
 import { activityFromClaudeTranscript } from "../../src/core/activity/index.ts";
 import type { ElwoodActivityEvent } from "../../src/index.ts";
@@ -84,4 +85,43 @@ test("Codex summaries exclude unsurfaced prose and require fixed message and rea
   // @ts-expect-error Reasoning summaries have their fixed reasoning label.
   const wrongReasoningLabel: CodexTranscriptSummary = { kind: "reasoning", label: "analysis" };
   void [otherText, wrongMessageLabel, wrongReasoningLabel];
+});
+
+test("C-API-64 only transcript assistant messages with text can be final", () => {
+  const base = {
+    elwoodSessionId: "s",
+    agent: "claude",
+    source: "transcript",
+    label: "assistant",
+  } as const;
+  const reply: ElwoodActivityEvent = activityFromClaudeTranscript({
+    elwoodSessionId: "s",
+    path: "/transcript.jsonl",
+    item: {},
+    final: true,
+    summary: { kind: "assistant_message", label: "assistant", text: "Done" },
+  });
+  // @ts-expect-error Final activities require assistant reply text.
+  const missingText: ElwoodActivityEvent = { ...base, kind: "assistant_message", final: true };
+  // @ts-expect-error Lifecycle status cannot carry a final reply marker.
+  const status: ElwoodActivityEvent = { ...base, kind: "status", label: "ready", final: true };
+  const direct = { elwoodSessionId: "s", path: "/transcript.jsonl", item: {} };
+  const reasoning = { kind: "reasoning", label: "thinking", text: "Planning" } as const;
+  // @ts-expect-error A direct Claude summary can mark only assistant reply text.
+  const invalidFinal: ClaudeTranscriptEvent = { ...direct, summary: reasoning, final: true };
+  void [missingText, status, invalidFinal];
+  if (reply.final === true) {
+    const {
+      source,
+      kind,
+      text,
+    }: { source: "transcript"; kind: "assistant_message"; text: string } = reply;
+    expect({ source, kind, text }).toEqual({
+      source: "transcript",
+      kind: "assistant_message",
+      text: "Done",
+    });
+  } else {
+    throw new Error("Expected the native final-reply marker");
+  }
 });

@@ -47,7 +47,7 @@ test("C-CODEX-22 preserves the reported completed commentary fixture as normaliz
   expect(toTurnEvent(event)).toBeUndefined();
 });
 
-test("C-CODEX-22 retains final parity and joins only output_text commentary blocks", () => {
+test("C-CODEX-22 C-API-64 joins text blocks and preserves the native final marker", () => {
   const content = [
     { type: "output_text", text: "First. " },
     { type: "reasoning_text", text: "private analysis" },
@@ -60,8 +60,9 @@ test("C-CODEX-22 retains final parity and joins only output_text commentary bloc
     text: "First. Second.",
   });
   const final = project(message("final_answer", content));
-  expect(final).toMatchObject({ kind: "assistant_message", text: "First. Second." });
+  expect(final).toMatchObject({ kind: "assistant_message", text: "First. Second.", final: true });
   expect(toTurnEvent(final)).toEqual({ type: "text", text: "First. Second." });
+  expect(final).not.toHaveProperty("turnId");
   expect(
     project({
       type: "response_item",
@@ -77,6 +78,7 @@ test("C-CODEX-22 retains final parity and joins only output_text commentary bloc
   expect(project(mirror("final_answer", "Final mirror"))).toMatchObject({
     kind: "assistant_message",
     text: "Final mirror",
+    final: true,
   });
   expect(project(message("commentary", "String progress"))).toMatchObject({
     kind: "assistant_progress",
@@ -99,6 +101,15 @@ test.each([
 ])("C-CODEX-22 excludes analysis, unknown phases and noncanonical mirrors: %j", (item) => {
   expect(project(item)).toMatchObject({ kind: "other" });
   expect(project(item).text).toBeUndefined();
+});
+
+test.each([
+  message("commentary", "progress"),
+  message("final_answer", ""),
+  mirror("final_answer", ""),
+  { type: "event_msg", payload: { type: "agent_message", message: "legacy" } },
+])("C-API-64 Codex without explicit final reply text leaves finality unknown: %j", (item) => {
+  expect(project(item)).not.toHaveProperty("final");
 });
 
 test("C-CODEX-22 suppressed legacy mirrors retain their raw item-type label", () => {

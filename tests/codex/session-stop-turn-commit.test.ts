@@ -3,9 +3,10 @@
  * turn (PRD §5.7, C-LIFE-13). Codex records `task_complete` only after the hook returns,
  * and a process signaled before then leaves the resumed conversation interrupted.
  */
+import { appendFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/index.ts";
-import type { CodexSessionApi, ElwoodWarningEvent } from "../../src/index.ts";
+import type { CodexSessionApi, ElwoodActivityEvent, ElwoodWarningEvent } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
   appendRecord,
@@ -41,6 +42,36 @@ function failScans(): void {
     throw new Error("scan failed");
   });
 }
+
+test("C-API-64 Codex identifies a final reply committed after ready", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const { session, path } = await runningTurn(cwd);
+  const events: ElwoodActivityEvent[] = [];
+  session.on("activity", (event) => events.push(event));
+  const progress = { type: "message", role: "assistant", phase: "commentary", content: "Working" };
+  appendFileSync(path, `${JSON.stringify({ type: "response_item", payload: progress })}\n`);
+  await stopHook(session, cwd, path);
+  expect(session.status).toBe("ready");
+  const progressEvents = events.filter((event) => event.kind === "assistant_progress");
+  expect(progressEvents).toMatchObject([{ text: "Working" }]);
+  expect(progressEvents[0]).not.toHaveProperty("final");
+  expect(events.some((event) => event.kind === "assistant_message")).toBe(false);
+  const payload = {
+    type: "message",
+    role: "assistant",
+    phase: "final_answer",
+    turn_id: "turn-1",
+    content: [
+      { type: "output_text", text: "Final " },
+      { type: "output_text", text: "reply" },
+    ],
+  };
+  const finalReply = session.waitForActivity((event) => event.kind === "assistant_message", 10_000);
+  appendFileSync(path, `${JSON.stringify({ type: "response_item", payload })}\n`);
+  appendRecord(path, "task_complete", "turn-1");
+  expect(await finalReply).toMatchObject({ text: "Final reply", turnId: "turn-1", final: true });
+});
 
 test.each([
   ["stop", "SIGTERM"],

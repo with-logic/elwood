@@ -17,7 +17,7 @@ export function hookActivityBase(
   event: ClaudeHookEvent | CodexHookEvent,
 ): Omit<
   ElwoodActivityEvent,
-  "kind" | "label" | "text" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
+  "kind" | "label" | "text" | "final" | "speed" | "tokenUsage" | "rateLimits" | "subagent"
 > {
   const source = record(event);
   return {

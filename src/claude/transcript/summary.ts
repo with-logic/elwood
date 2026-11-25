@@ -53,6 +53,20 @@ export function summarizeClaudeRecord(item: unknown): readonly ClaudeDirectRecor
   return content.flatMap((block) => summarizeBlock(role, block));
 }
 
+/** Index of the last emitted assistant text with native final-reply evidence. */
+export function claudeFinalReplyIndex(
+  item: unknown,
+  summaries: readonly ClaudeDirectRecordSummary[],
+): number {
+  const record = asRecord(item);
+  const message = asRecord(record["message"]);
+  const endsTurn = message["stop_reason"] === "end_turn";
+  const isSynthetic = message["model"] === "<synthetic>";
+  const isSidechain = record["isSidechain"] === true;
+  if (!endsTurn || isSynthetic || isSidechain) return -1;
+  return summaries.findLastIndex((summary) => summary.kind === "assistant_message");
+}
+
 /** Native resume bookkeeping is not an assistant reply, even when written after boot. */
 function isNoResponsePlaceholder(content: unknown): boolean {
   if (content === noResponsePlaceholder) return true;
