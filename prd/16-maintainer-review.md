@@ -87,6 +87,9 @@ Secret-scan results are advisory for merging into `main`. PR, merge-queue, and
 pushed-range scans fail their jobs on findings. Full-history audits on new tag
 pushes, first default-branch pushes, and manual runs warn on findings during
 historical triage; scanner, Git, and configuration errors fail the job.
+A confirmed force-push to a non-default branch with an unavailable previous
+commit scans from the merge base with the fetched default branch. Findings
+in that range fail the job, and an unavailable merge base fails the job.
 The release workflow separately scans its selected source before publication;
 findings and errors remain blocking there. Repository checkout hooks and native
 exceptions are documented in the
