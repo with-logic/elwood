@@ -45,8 +45,12 @@ test("C-ATTN-07 Claude lists exact text and ordered choices across a cursor redr
       ],
     });
     expect(new Set([request.id, ...request.choices.map(({ id }) => id)]).size).toBe(3);
+    const sameIds = expect.objectContaining({
+      id: request.id,
+      choices: request.choices.map(({ id }) => expect.objectContaining({ id })),
+    });
     await render(menu.replace("❯ No", "  No").replace("   Yes", " ❯ Yes"));
-    expect((await session.listDialogs())[0]).toBe(request);
+    expect(await session.listDialogs()).toEqual([sameIds]);
 
     pty.emitData("\x1b[?2026h");
     const settled = vi.spyOn(session.terminal, "settled");
@@ -54,7 +58,7 @@ test("C-ATTN-07 Claude lists exact text and ordered choices across a cursor redr
     expect(settled).not.toHaveBeenCalled();
     await session.terminal.settled();
     await render("\x1b[?2026l");
-    expect((await session.listDialogs())[0]).toBe(request);
+    expect(await session.listDialogs()).toEqual([sameIds]);
 
     const reorderedMenu = menu.replace(
       "No, exit\r\n   Yes, I trust this folder",

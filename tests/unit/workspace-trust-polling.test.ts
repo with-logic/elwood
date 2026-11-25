@@ -21,12 +21,15 @@ test("C-ATTN-07 repeated native redraws cannot accumulate stalled trust collecto
   collect.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
   const accept = vi.fn(() => undefined);
   try {
-    for (let index = 0; index < 2; index++) {
-      const expired = polling.read(frame(), collect, accept);
-      expect(expired).toBeDefined();
-      await vi.advanceTimersByTimeAsync(500);
-      await expect(expired).resolves.toBeUndefined();
-    }
+    const firstPoll = polling.read(frame(), collect, accept);
+    expect(firstPoll).toBeDefined();
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(firstPoll).resolves.toBeUndefined();
+
+    const secondPoll = polling.read(frame(), collect, accept);
+    expect(secondPoll).toBeDefined();
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(secondPoll).resolves.toBeUndefined();
 
     expect(polling.read(frame(), collect, accept)).toBeUndefined();
     expect(polling.read(frame(), collect, accept)).toBeUndefined();

@@ -70,20 +70,38 @@ test.each([
   }
 });
 
+test("C-ATTN-07 preserves native Claude numbered choice order", async () => {
+  const cwd = realpathSync(tempDir());
+  const { terminal, read, render, menu } = launchScope(cwd);
+  try {
+    await render(
+      menu.replace(
+        "❯ No, exit\n   Yes, I trust this folder",
+        "❯ 1. Yes, I trust this folder\n   2. No, exit",
+      ),
+    );
+    expect(read()?.choices.map(({ label }) => label)).toEqual([
+      "Yes, I trust this folder",
+      "No, exit",
+    ]);
+  } finally {
+    terminal.dispose();
+  }
+});
+
 test.each([
-  ["❯ 1. Yes, I trust this folder\n   2. No, exit", true],
-  ["❯ 9. No, exit\n   9. Yes, I trust this folder", false],
-  ["❯ 1. No, exit\n   1. Yes, I trust this folder", false],
-  ["   1. No, exit\n   2. Yes, I trust this folder", false],
-  ["❯ 1. No, exit\n ❯ 2. Yes, I trust this folder", false],
-  ["❯ No, exit\n 2. Yes, I trust this folder", false],
-  ["❯ 1. No, exit\n ❯ Yes, I trust this folder", false],
-])("C-ATTN-07 verifies the native Claude numbered choice layout %s", async (options, listed) => {
+  "❯ 9. No, exit\n   9. Yes, I trust this folder",
+  "❯ 1. No, exit\n   1. Yes, I trust this folder",
+  "   1. No, exit\n   2. Yes, I trust this folder",
+  "❯ 1. No, exit\n ❯ 2. Yes, I trust this folder",
+  "❯ No, exit\n 2. Yes, I trust this folder",
+  "❯ 1. No, exit\n ❯ Yes, I trust this folder",
+])("C-ATTN-07 rejects a malformed Claude numbered choice layout %s", async (options) => {
   const cwd = realpathSync(tempDir());
   const { terminal, read, render, menu } = launchScope(cwd);
   try {
     await render(menu.replace("❯ No, exit\n   Yes, I trust this folder", options));
-    expect(read() !== undefined).toBe(listed);
+    expect(read()).toBeUndefined();
   } finally {
     terminal.dispose();
   }

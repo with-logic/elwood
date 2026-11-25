@@ -3,8 +3,9 @@
  * Implements PRD §5.8.
  */
 
-import type { ElwoodActivityEvent } from "../activity/index.ts";
+import type { ElwoodActivityEvent, ElwoodAgentKind } from "../activity/index.ts";
 import type { ElwoodAgentSession } from "../agent-session.ts";
+import type { ElwoodDialogRequest } from "../dialogs/types.ts";
 import { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../loops/types.ts";
@@ -32,7 +33,10 @@ import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
 export type { TurnOptions } from "./turn-types.ts";
 /** Lazy public session over one Elwood agent; only ergonomic turns serialize. */
-export abstract class SessionBase<S extends ElwoodAgentSession> {
+export abstract class SessionBase<
+  S extends ElwoodAgentSession<Agent>,
+  Agent extends ElwoodAgentKind = ElwoodAgentKind,
+> {
   private live: S | undefined;
   private starting: Promise<S> | undefined;
   private readonly turns = new TurnQueue();
@@ -60,11 +64,8 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     if (this.live) return Promise.resolve(this.live);
     this.starting ??= this.launch().then(
       (session) => {
-        // COMMIT the launched session BEFORE attaching buffered subscriptions: `attach` runs
-        // consumer code (and `terminal:data` synchronously replays startup output), which may
-        // throw. If it did so before `live` were set, the start would reject with a live PTY
-        // that `close()` could never see — an orphaned CLI process. `attachAll` contains each
-        // attach so a throwing consumer handler cannot abort the start or orphan the session.
+        // Store the session before attaching subscriptions. Startup replay can call host
+        // code synchronously, so even a throwing subscriber must leave the PTY reachable.
         this.images.shareWith(session); // before `session` is reachable: ONE clone ceiling (C-API-44)
         this.live = session;
         this.starting = undefined;
@@ -115,9 +116,8 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     this.subscriptions.removeByKey(event, handler);
   }
 
-  // Control surface: each awaits lazy start, then delegates; only `send`/`stream` serialize. NOTE:
-  // the turn-PRODUCING raw methods (`sendMessage`/`sendPrompt`/`sendGuidance`) are NOT in the
-  // ergonomic queue — don't call them concurrently with an in-flight `send`/`stream` (§5.8).
+  // Raw turn-producing methods bypass the send/stream queue (§5.8).
+  // Call them only when no ergonomic turn is in flight.
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
     return capturedSend(this.images, this, "sendPrompt", prompt, options);
   }
@@ -151,6 +151,11 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   async waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
     return (await this.start()).waitForActivity(match, timeoutMs);
   }
+  /** Start the session if needed, then list any verified workspace trust prompt. */
+  async listDialogs(): Promise<readonly ElwoodDialogRequest<Agent>[]> {
+    return (await this.start()).listDialogs();
+  }
+
   async listQuestions(): Promise<readonly ElwoodQuestionRequest[]> {
     return (await this.start()).listQuestions();
   }

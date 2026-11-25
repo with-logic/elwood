@@ -13,7 +13,7 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - List verified Claude startup workspace trust prompts and their effective Git
-  scope through `listDialogs()`.
+  scope through `listDialogs()`, also available through `ElwoodAgentSession`.
 
 - Require a verified composer before Claude's startup deadline releases queued
   prompts. Report unfamiliar screens in `unrecognized_startup` activity when

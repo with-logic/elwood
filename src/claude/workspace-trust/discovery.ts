@@ -40,7 +40,7 @@ export class ClaudeWorkspaceTrustDiscovery {
 
   async list(): Promise<readonly DialogRequest[]> {
     const verified = await this.read();
-    return verified && this.isCurrent(verified) ? [verified.request] : [];
+    return verified && this.isRequestFrameCurrent(verified) ? [verified.request] : [];
   }
 
   /** Track settled menu changes between polls without consulting the filesystem. */
@@ -86,7 +86,7 @@ export class ClaudeWorkspaceTrustDiscovery {
     return this.polling.acceptVerified("claude", this.input.elwoodSessionId, candidate);
   }
 
-  private isCurrent({ frame, request }: VerifiedWorkspaceTrust<"claude">): boolean {
+  private isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust<"claude">): boolean {
     return this.polling.currentRequest === request && this.canUseTrustFrame(frame);
   }
 

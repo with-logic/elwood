@@ -36,7 +36,7 @@ void _stopBoundaryCheck;
 /** Options for `ClaudeSession`: the low-level `startClaude` options with an optional `cwd`. */
 export type ClaudeSessionOptions = Omit<StartClaudeOptions, "cwd"> & { readonly cwd?: string };
 
-export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
+export class ClaudeSession extends SessionBase<ClaudeSessionApi, "claude"> {
   private readonly options: StartClaudeOptions;
 
   constructor(options: ClaudeSessionOptions = {}) {
@@ -68,10 +68,6 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
     // Remove the registration matching this exact (event, handler) — detaching a live sub if
     // attached — so a handler reused across events is unsubscribed from the right one only.
     this.unsubscribe(event, handler);
-  }
-
-  async listDialogs() {
-    return (await this.start()).listDialogs();
   }
 
   /** Drive the interactive `/login` re-authentication flow (Claude-only, C-API-43). */
