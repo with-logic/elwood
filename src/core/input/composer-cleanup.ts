@@ -22,6 +22,10 @@ export function stageComposer(terminal: InputTerminal): AbortSignal | undefined 
 export function submittedComposer(terminal: InputTerminal): void {
   owners.get(terminal)?.submitted();
 }
+/** Mark awaited input's physical Enter; its draft stays owned until consumption is verified. */
+export function enteredComposer(terminal: InputTerminal): void {
+  owners.get(terminal)?.entered();
+}
 
 /**
  * Registered session cleanup is deferred beyond attachment finalizers, including
@@ -76,8 +80,8 @@ export class ComposerCleanup {
   }
 
   /**
-   * Input this owner staged is not yet submitted or abandoned, whoever owns the draft now.
-   * A dialog painted over it can hold its Enter (C-ATTN-09).
+   * Input this owner staged still awaits its Enter and is not abandoned, whoever owns the
+   * draft now. A dialog painted over it can hold that Enter (C-ATTN-09).
    */
   get holdsUnsubmittedInput(): boolean {
     return this.staged;
@@ -96,6 +100,9 @@ export class ComposerCleanup {
     if (this.stagedGeneration === this.rawInputSignal()) this.baseline = this.stagedGeneration;
     this.stagedGeneration = undefined;
     this.draft = undefined;
+  }
+  entered(): void {
+    this.staged = false;
   }
   defer(): void {
     this.staged = false;

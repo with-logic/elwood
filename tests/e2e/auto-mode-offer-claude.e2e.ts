@@ -2,19 +2,21 @@
  * Claude's auto-mode setup offer, which Claude paints right after a turn's Stop above a
  * composer that stays visible, blocks a named session. A caller's `sendMessage` made while
  * it is visible is held instead of answering it, then submits once the offer is dismissed.
- * Implements C-ATTN-09 (PRD §5.3).
+ * A headless `elwood run` whose turn the offer follows still succeeds.
+ * Implements C-ATTN-09 (PRD §5.3) and C-CLI-05 (PRD §12A.2).
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { isRecord } from "../../src/core/predicates.ts";
+import type { CliJsonlRecord } from "../../src/cli/output/types.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { defaultClaudeConfigDir } from "./claude-home.ts";
+import { offerTitle, seedOffer } from "./auto-mode-offer.ts";
+import { invoke } from "./cli-commands-helpers.ts";
 import {
   cleanup,
+  e2eTimeoutMs,
   hookNamed,
   makeProject,
   observeSession,
@@ -25,26 +27,10 @@ import {
   waitFor,
 } from "./helpers.ts";
 
-const offerTitle = "Teach auto mode about your environment?";
+/** A headless run can finish before the offer paints, which leaves nothing to check. */
+const runAttempts = 3;
 /** Long enough that a held message would have resolved (paste, 150 ms, Enter) had it gone out. */
 const heldWindowMs = 3_000;
-
-/**
- * Claude 2.1.332 offers setup after a turn in auto mode once it has started five times and
- * auto mode has denied five actions. It does not offer it once setup has saved an
- * environment, after "Don't show again" (`dismissed`), or within 7 days of an Esc
- * (`dismissedAt`); see `docs/cli-behavior.md`. Seed this process's private config, and
- * replace `autoModeEnvSetup` outright so that an earlier test's dismissal is cleared too.
- */
-function seedOffer(): void {
-  const path = join(defaultClaudeConfigDir, ".claude.json");
-  const config: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(config)) throw new Error(`${path} does not hold a JSON object`);
-  const prior = config["numStartups"];
-  const numStartups = Math.max(typeof prior === "number" ? prior : 0, 5);
-  const seeded = { ...config, numStartups, autoModeEnvSetup: { denials: 5 } };
-  writeFileSync(path, JSON.stringify(seeded), { mode: 0o600 });
-}
 
 /** A multi-line prompt of a few hundred characters, which Claude shows as a pasted pill. */
 function reportShapedPrompt(marker: string): string {
@@ -131,4 +117,43 @@ test("C-ATTN-09 a sendMessage made while Claude's auto-mode offer shows is held,
   } finally {
     await cleanup(session);
   }
+});
+
+test("C-CLI-05 elwood run succeeds when Claude's auto-mode offer follows its prompt's turn", {
+  skip: skipIf(skipReason("claude"), skipTurns),
+  timeout: runAttempts * (e2eTimeoutMs + 30_000),
+}, async (t) => {
+  for (let attempt = 1; attempt <= runAttempts; attempt += 1) {
+    seedOffer();
+    const project = makeProject("claude");
+    try {
+      const result = await invoke(
+        [
+          "--agent=claude",
+          `--state-dir=${project.stateDir}`,
+          "--claude-permission-mode=auto",
+          "--model=haiku",
+          "--output=jsonl",
+          "--timeout=3m",
+          "Reply with exactly OK.",
+        ],
+        project.cwd,
+      );
+      const records = result.stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as CliJsonlRecord);
+      const last = records.at(-1);
+      assert.equal(last?.type, "result", `the run failed:\n${result.stdout}\n${result.stderr}`);
+      assert.equal(result.status, 0);
+      const statuses = records.flatMap((record) =>
+        record.type === "status" ? [record.status] : [],
+      );
+      const turnEnded = statuses.indexOf("ready", statuses.indexOf("running"));
+      if (turnEnded >= 0 && statuses.includes("blocked", turnEnded)) return;
+    } finally {
+      rmSync(project.cwd, { recursive: true, force: true });
+    }
+  }
+  skipNow(t, `Claude did not paint the offer before any of ${runAttempts} runs finished`);
 });

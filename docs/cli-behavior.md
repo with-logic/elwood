@@ -1952,8 +1952,17 @@ paints. Six such probes had three outcomes:
 - Claude had mounted the offer but not painted it when the Enter arrived (3 of 6,
   all pills, at load averages of 100–360). The Enter answered it (`❯ 1. Yes ✔`),
   and the offer painted 70–136 ms later. The paste stayed staged and was never
-  submitted, so after Esc the session is `ready` with the draft in the composer.
-  Elwood cannot see the offer before it paints, so C-ATTN-09 does not cover this.
+  submitted. Elwood's Enter has already gone out, so the draft Esc leaves is not
+  clearance and the session stays `blocked` until the composer is empty. Elwood
+  cannot see the offer before it paints, so C-ATTN-09 does not cover this.
+
+A paste typed during the turn shows the same shape on demand
+(`tests/e2e/auto-mode-offer-draft-claude.e2e.ts`). Claude paints the offer
+above the composer that holds the pill, with the hardware cursor on the menu.
+Twice, an Esc sent as soon as the offer's title appeared was ignored: the offer
+was still there 15 s later. An Esc sent 1.5 s after the title closed it, leaving
+the pill in the composer that Elwood's staged-input check accepts, and Enter
+then submitted it. Load averages were 33–85.
 
 A `Plugins changed. Run /reload-plugins to activate.` notice can sit under the
 composer's footer for about 4 s after a startup `ConfigChange`. The composer
@@ -1961,7 +1970,9 @@ check does not accept that row, so clearance waited until the notice went away.
 
 A headless `elwood run --claude-permission-mode auto` sees the offer too: it
 painted after the prompt's turn reached `ready` in 4 of 6 runs, before the stream
-ended. One run before the §12A.2 exception failed as `blocked_prompt`.
+ended. One run before the §12A.2 exception failed as `blocked_prompt`. In the
+committed C-CLI-05 run without the exception, the `blocked` status came 20 ms
+after the prompt's `ready`, and the run failed the same way.
 
 ### Claude queues a send made while user Stop hooks run (2.1.332, 2026-11-25)
 

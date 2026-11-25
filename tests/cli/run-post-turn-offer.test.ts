@@ -15,6 +15,7 @@ const offer = "claude-auto-mode-offer";
 async function runWithOffer(
   setup: readonly ElwoodSessionStatus[],
   turn: readonly ElwoodSessionStatus[],
+  label = offer,
 ) {
   const session = new FakeCliSession();
   const emit = (statuses: readonly ElwoodSessionStatus[]) => {
@@ -27,7 +28,7 @@ async function runWithOffer(
   };
   session.streamWork = (current) => {
     emit(turn);
-    current.emitActivity({ label: offer });
+    current.emitActivity({ label });
     return Promise.resolve();
   };
   const stdout = new MemoryWriter();
@@ -35,9 +36,14 @@ async function runWithOffer(
     stdout: new AsyncOutputSink(stdout),
     stderr: new AsyncOutputSink(new MemoryWriter()),
   };
-  const code = await executeRun(effectiveRequest({ output: "json" }), session, io, {
-    signals: new FakeSignals(),
-  });
+  const code = await executeRun(
+    effectiveRequest({ agent: "claude", output: "json" }),
+    session,
+    io,
+    {
+      signals: new FakeSignals(),
+    },
+  );
   const record = JSON.parse(stdout.value) as { readonly type: string; readonly error?: unknown };
   return { code, record, kills: session.kills };
 }
@@ -50,10 +56,24 @@ test("C-CLI-05 the offer after the prompt's turn returns to ready does not fail 
 });
 
 test.each([
-  { case: "after a setup turn, before the prompt's turn", setup: ["running", "ready"], turn: [] },
-  { case: "while the prompt's turn is still running", setup: [], turn: ["ready", "running"] },
-] as const)("C-CLI-05 the offer $case fails the run as blocked_prompt", async (example) => {
-  const { code, record } = await runWithOffer(example.setup, example.turn);
-  expect(record.error).toEqual({ code: "blocked_prompt", message: `Blocked prompt: ${offer}.` });
+  { case: "the offer after a setup turn", setup: ["running", "ready"], turn: [], label: offer },
+  {
+    case: "the offer during the prompt's turn",
+    setup: [],
+    turn: ["ready", "running"],
+    label: offer,
+  },
+  {
+    case: "another dialog after the prompt's turn",
+    setup: [],
+    turn: ["running", "ready", "blocked"],
+    label: "claude-permission-dialog",
+  },
+] as const)("C-CLI-05 $case fails the run as blocked_prompt", async (example) => {
+  const { code, record } = await runWithOffer(example.setup, example.turn, example.label);
+  expect(record.error).toEqual({
+    code: "blocked_prompt",
+    message: `Blocked prompt: ${example.label}.`,
+  });
   expect(code).toBe(1);
 });
