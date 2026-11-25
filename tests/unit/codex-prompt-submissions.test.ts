@@ -1,5 +1,6 @@
 /** Exercise scoped Codex submission evidence and its bounds (PRD §5.4, C-API-70). */
 import { expect, onTestFinished, test, vi } from "vitest";
+import { normalizeCodexPastedPayload } from "../../src/codex/input-text.ts";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
 import { PromptSubmissions } from "../../src/runtime/session/prompt-submissions.ts";
 import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
@@ -10,7 +11,7 @@ function fixture() {
   const { terminal, emit } = setupTerminalPty(undefined, (data) => writes.push(data));
   const input = new SessionInputOwnership(terminal);
   const closing = new AbortController();
-  const prompts = new PromptSubmissions(input.caller, closing.signal);
+  const prompts = new PromptSubmissions(input.caller, closing.signal, normalizeCodexPastedPayload);
   const empty = {};
   const guard = prompts.guard({
     prepareStaged: () => () => true,
@@ -33,7 +34,9 @@ function fixture() {
 
 test("C-API-70 a forwarded recovery Enter can match when the first Enter was suppressed", async () => {
   vi.useFakeTimers();
-  onTestFinished(() => vi.useRealTimers());
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   const { input, prompts, terminal, writes, guard, emit } = fixture();
   const sent = writeQueuedInput(
     input.automated,
@@ -56,6 +59,7 @@ test("C-API-70 a forwarded recovery Enter can match when the first Enter was sup
   await response;
   await sent;
   expect(writes).toEqual(["\x1b[200~ text \x1b[201~", "\x1b[0n"]);
+  expect(prompts.observeNativeSubmit("early", "text")).toBeUndefined();
   await vi.advanceTimersByTimeAsync(1_000);
   expect(writes).toEqual(["\x1b[200~ text \x1b[201~", "\x1b[0n", "\r"]);
   expect(prompts.observeNativeSubmit("native", "text")).toMatchObject({
@@ -122,4 +126,17 @@ test("C-API-70 a mismatched forwarding inside the scope cannot stand in for Ente
   prompts.captureCaller("text", { sendId: "candidate" }, undefined)("text");
   await scope?.("\r", () => input.automated.sendInput("unrelated input"));
   expect(prompts.observeNativeSubmit("native", "text")).toBeUndefined();
+});
+
+test("C-API-70 a command only revokes when an earlier paste is unresolved", async () => {
+  const { guard, empty, paste, prompts } = fixture();
+  guard.beforeCommand?.();
+  await paste("first", { sendId: "after-command" });
+  expect(prompts.observeNativeSubmit("first-turn", "first")).toHaveProperty(
+    "sendId",
+    "after-command",
+  );
+  await paste("unresolved");
+  guard.beforeCommand?.();
+  expect(guard.observePaste?.("later", empty)).toBeUndefined();
 });

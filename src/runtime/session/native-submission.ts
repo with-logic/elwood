@@ -1,4 +1,5 @@
 /** Bind physical submissions and native idle evidence to a live session (PRD §5.8/§5.9). */
+import { normalizeCodexPastedPayload } from "../../codex/input-text.ts";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import type { AdmitOperation, ControlSubmitter } from "../../core/control-queue/types.ts";
@@ -94,7 +95,7 @@ export function bindSessionControl(
   const closing = session.closing.signal;
   const prompts =
     options.agent === "codex" && !options.resumed
-      ? new PromptSubmissions(input.caller, closing)
+      ? new PromptSubmissions(input.caller, closing, normalizeCodexPastedPayload)
       : undefined;
   const guard = new PasteRecoveryRevocation(events, closing).createGuard(
     input.caller,

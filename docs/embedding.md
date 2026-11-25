@@ -201,9 +201,11 @@ stream.
 `ready` describes terminal availability. Startup and dialog repaints can produce
 status changes without a user turn, and committed assistant text can arrive after
 `ready`. Use `UserPromptSubmit` hooks to observe submissions, including textless prompts.
-`user_message` activity carries native prompt text, except that Claude's standalone
-`<pasted_content>` envelope is reported as its body with the envelope in `nativePrompt`
-(see [native paste presentation](cli-behavior.md#claude-native-paste-presentation)).
+`user_message` ordinarily carries the native prompt. For an associated Codex API
+send, `text` is the original API string, `nativePrompt` is the exact submit-hook
+text, and `sendId` carries the valid caller ID when supplied. Claude standalone
+`<pasted_content>` reports the body as `text` and the envelope as `nativePrompt`.
+[Native paste presentation](cli-behavior.md#claude-native-paste-presentation)
 Claude activity can be correlated using its native `turnId` when present. Keep accepting matching
 assistant messages after a status transition; a status edge is not a transcript
 flush barrier. Older Claude records without native prompt identity can remain

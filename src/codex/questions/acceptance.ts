@@ -2,18 +2,10 @@
 import { isRecord } from "../../core/predicates.ts";
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
+import { normalizeCodexPastedPayload, trimCodexWhitespace } from "../input-text.ts";
 import type { Candidate } from "./candidate-store.ts";
 import type { QuestionReply } from "./records.ts";
 
-// Rust str::trim uses Unicode White_Space, which excludes JavaScript's FEFF.
-function nativeTrim(value: string): string {
-  const whitespace = /\p{White_Space}/u;
-  let start = 0;
-  let end = value.length;
-  while (start < end && whitespace.test(value[start]!)) start++;
-  while (end > start && whitespace.test(value[end - 1]!)) end--;
-  return value.slice(start, end);
-}
 export class AnswerExpectations {
   private readonly pending = new Map<
     Candidate,
@@ -39,9 +31,8 @@ export class AnswerExpectations {
         question.definition.options[
           answer.optionIndexes[0] ?? question.definition.options.length - 1
         ]?.label;
-      const text =
-        answer.text === undefined ? undefined : nativeTrim(answer.text.replace(/\r\n?/g, "\n"));
-      if (candidate.queued) return [text ?? nativeTrim(label!)];
+      const text = answer.text === undefined ? undefined : normalizeCodexPastedPayload(answer.text);
+      if (candidate.queued) return [text ?? trimCodexWhitespace(label!)];
       return [label!, ...(text ? [`user_note: ${text}`] : [])];
     });
     const release = () => {

@@ -1,4 +1,6 @@
 /** User message presentation and optional native paste evidence (PRD §5.4, C-API-67). */
+import type { hookActivityBase } from "./meta.ts";
+
 type NativePasteProvenance = {
   readonly origin: "unknown";
   readonly input: "pasted";
@@ -28,13 +30,16 @@ export type ApiPromptPresentation = {
 };
 
 /** Native paste evidence requires Claude. API correlation has a separate hook projection. */
-export type UserMessageActivity = {
+export type NativeUserMessageActivity = {
   readonly kind: "user_message";
   readonly label: "user";
 } & UserPromptPresentation &
   (NoPromptEvidence | { readonly agent: "claude" }) &
   (
-    | { readonly source: "hook"; readonly hookEventName: "UserPromptSubmit" }
+    | ({ readonly source: "hook"; readonly hookEventName: "UserPromptSubmit" } & (
+        | { readonly agent: "claude" }
+        | { readonly agent: "codex" }
+      ))
     | {
         readonly agent: "claude";
         readonly source: "transcript";
@@ -43,7 +48,7 @@ export type UserMessageActivity = {
       }
   );
 
-export type CodexApiPrompt = ApiPromptPresentation & {
+export type CodexApiUserMessageActivity = ApiPromptPresentation & {
   readonly agent: "codex";
   readonly kind: "user_message";
   readonly label: "user";
@@ -51,3 +56,18 @@ export type CodexApiPrompt = ApiPromptPresentation & {
   readonly hookEventName: "UserPromptSubmit";
   readonly final?: never;
 };
+
+export function codexApiUserActivity(
+  base: ReturnType<typeof hookActivityBase>,
+  prompt: ApiPromptPresentation,
+): ReturnType<typeof hookActivityBase> & CodexApiUserMessageActivity {
+  return {
+    ...base,
+    ...prompt,
+    agent: "codex",
+    kind: "user_message",
+    source: "hook",
+    hookEventName: "UserPromptSubmit",
+    label: "user",
+  };
+}

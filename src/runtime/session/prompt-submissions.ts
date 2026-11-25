@@ -1,9 +1,9 @@
 /** Track one unambiguous live Codex API prompt at a time (PRD §5.4, C-API-70). */
 import type { ApiPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { hasPromptText } from "../../core/activity/prompt-text.ts";
-import { runContained } from "../../core/contained.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { PasteDispatch, PasteGuard } from "../../core/input/paste-guard.ts";
+import { readSendId } from "../../core/input/send-id.ts";
 import {
   nativeRenderEvidenceIntact,
   onNativeRenderEvidenceInvalidated,
@@ -26,10 +26,16 @@ export class PromptSubmissions {
   private draft: Submission | undefined;
   private readonly nativeIds = new Set<string>();
   private readonly terminal: ElwoodTerminal;
+  private readonly normalizePayload: (payload: string) => string;
   private track = true;
 
-  constructor(terminal: ElwoodTerminal, closing: AbortSignal) {
+  constructor(
+    terminal: ElwoodTerminal,
+    closing: AbortSignal,
+    normalizePayload: (payload: string) => string,
+  ) {
     this.terminal = terminal;
+    this.normalizePayload = normalizePayload;
     const stopInput = onCallerInput(terminal, this.revoke);
     const stopRender = onNativeRenderEvidenceInvalidated(terminal, this.revoke);
     closing.addEventListener(
@@ -48,7 +54,9 @@ export class PromptSubmissions {
       ...guard,
       observePaste: (payload, empty) =>
         this.prepare(payload, nativeRenderEvidenceIntact(this.terminal) ? empty : undefined),
-      beforeCommand: this.revoke,
+      beforeCommand: () => {
+        if (this.draft?.pasted) this.revoke();
+      },
     };
   }
 
@@ -59,9 +67,7 @@ export class PromptSubmissions {
       return undefined;
     }
     const comparable =
-      empty && payload.length <= maxPromptLength
-        ? payload.replace(/\r\n?/g, "\n").trim()
-        : undefined;
+      empty && payload.length <= maxPromptLength ? this.normalizePayload(payload) : undefined;
     const draft = { comparable, pasted: false, entered: false };
     this.draft = draft;
     return (data, dispatch) =>
@@ -86,11 +92,7 @@ export class PromptSubmissions {
     options: SendOptions | undefined,
     beforeEnter: ((payload: string) => void) | undefined,
   ): (payload: string) => void {
-    let id: unknown;
-    runContained(() => {
-      id = options?.sendId;
-    });
-    const sendId = typeof id === "string" && id.length <= 1_024 ? id : undefined;
+    const sendId = readSendId(options);
     return (payload) => {
       const draft = this.draft;
       if (draft?.comparable !== undefined && text.length <= maxPromptLength)

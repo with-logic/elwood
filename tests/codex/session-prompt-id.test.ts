@@ -1,5 +1,5 @@
 /** Exercise caller IDs across the Codex queue, terminal and native hook (C-API-70). */
-import { afterEach, expect, onTestFinished, test, vi } from "vitest";
+import { afterEach, expect, expectTypeOf, onTestFinished, test, vi } from "vitest";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { composerClearKeys } from "../../src/core/input/constants.ts";
 import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
@@ -8,6 +8,19 @@ import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
+
+test("C-API-70 Codex activity types include native fallback without API metadata", () => {
+  type CodexUserMessage = Extract<ElwoodActivityEvent, { kind: "user_message"; agent: "codex" }>;
+  expectTypeOf<{
+    readonly kind: "user_message";
+    readonly agent: "codex";
+    readonly source: "hook";
+    readonly hookEventName: "UserPromptSubmit";
+    readonly label: "user";
+    readonly elwoodSessionId: string;
+    readonly text: string;
+  }>().toExtend<CodexUserMessage>();
+});
 
 async function setup() {
   installFakes();
@@ -61,14 +74,14 @@ test.each([
 
 test("C-API-70 a reused caller ID and duplicated native hook have separate identities", async () => {
   const { session, messages, trySubmit, paint } = await setup();
-  await session.sendMessage(" first ", { sendId: "reused" });
-  await trySubmit("first", "first-turn");
+  await session.sendMessage(" \uFEFFfirst\uFEFF ", { sendId: "reused" });
+  await trySubmit("\uFEFFfirst\uFEFF", "first-turn");
   await paint();
   await session.sendGuidance(" second ", { sendId: "reused" });
   await trySubmit("second", "first-turn");
   await trySubmit("second", "second-turn");
   expect(messages).toMatchObject([
-    { text: " first ", sendId: "reused" },
+    { text: " \uFEFFfirst\uFEFF ", sendId: "reused" },
     { text: "second" },
     { text: " second ", sendId: "reused" },
   ]);
