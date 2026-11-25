@@ -54,6 +54,8 @@ export const substituteErrorCodes = {
   rate_limited: "rate_limit_exceeded",
 } as const satisfies Partial<Record<ElwoodTurnFailureCategory, string>>;
 
+export type SubstituteErrorCode = (typeof substituteErrorCodes)[keyof typeof substituteErrorCodes];
+
 const categories = new Map<unknown, ElwoodTurnFailureCategory>([
   ["billing_error", "quota_or_credit"],
   ["credit_balance_too_low", "quota_or_credit"],

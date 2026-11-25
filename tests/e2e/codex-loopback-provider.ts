@@ -11,7 +11,7 @@ import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { type CodexSandbox, type E2eProject, makeProject, sandboxedCodexHome } from "./helpers.ts";
 
-export type LoopbackCodexProvider = {
+type LoopbackCodexProvider = {
   readonly project: E2eProject;
   readonly sandbox: CodexSandbox;
   /** The `config.toml` the private Codex home was seeded with. */

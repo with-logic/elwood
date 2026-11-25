@@ -45,7 +45,8 @@ const shapes: Readonly<Record<string, Shape>> = {
     error: { ...usageLimit, plan_type: "team" },
     category: "usage_limit",
   },
-  // Codex retries these before failing the turn: about 6.5 s, 7 s and 25 s.
+  // Codex retries the 429, 402 and 500 below before failing the turn, for about 6.5 s, 7 s and
+  // 25 s respectively.
   "rate-limit": {
     status: 429,
     headers: { "retry-after": "1" },
@@ -64,14 +65,14 @@ const shapes: Readonly<Record<string, Shape>> = {
   },
 };
 
-/** The shape whose marker comes last in the request: the newest prompt in its history. */
-function requestedShape(body: string): Shape | undefined {
-  let found: { readonly at: number; readonly shape: Shape } | undefined;
-  for (const [name, shape] of Object.entries(shapes)) {
+/** The name of the shape whose marker comes last in the request: the newest prompt in it. */
+function requestedShapeName(body: string): string | undefined {
+  let found: { readonly at: number; readonly name: string } | undefined;
+  for (const name of Object.keys(shapes)) {
     const at = body.lastIndexOf(`shape:${name}`);
-    if (at >= 0 && (found === undefined || at > found.at)) found = { at, shape };
+    if (at >= 0 && (found === undefined || at > found.at)) found = { at, name };
   }
-  return found?.shape;
+  return found?.name;
 }
 
 test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures carry their category", {
@@ -79,12 +80,15 @@ test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures c
   timeout: 240_000,
 }, async (t) => {
   const unmatched: string[] = [];
+  const served: string[] = [];
   const { project, sandbox } = await loopbackCodexProvider(t, (request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      const shape = requestedShape(Buffer.concat(chunks).toString());
-      if (shape === undefined) unmatched.push(`${request.method} ${request.url}`);
+      const name = requestedShapeName(Buffer.concat(chunks).toString());
+      if (name === undefined) unmatched.push(`${request.method} ${request.url}`);
+      else served.push(name);
+      const shape = name === undefined ? undefined : shapes[name];
       response.writeHead(shape?.status ?? 400, {
         "content-type": "application/json",
         ...shape?.headers,
@@ -107,6 +111,7 @@ test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures c
   const categories: Record<string, ElwoodTurnFailureCategory> = {};
   for (const name of Object.keys(shapes)) {
     const turnStartIndex = activities.length;
+    const servedStart = served.length;
     await live.sendMessage(`Reply OK. shape:${name}`);
     const turn = () => activities.slice(turnStartIndex);
     const failure = await waitWithEvidence(
@@ -117,6 +122,12 @@ test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures c
       observed,
     );
     await live.waitForStatus((status) => status === "ready", 60_000);
+    // Two shapes share a category, so the category alone cannot show which reply was served.
+    assert.deepEqual(
+      new Set(served.slice(servedStart)),
+      new Set([name]),
+      `${name}: replies served`,
+    );
     const submit = turn().find((event) => event.hookEventName === "UserPromptSubmit");
     assert.ok(submit?.turnId, `${name}: the submit hook names the turn`);
     assert.equal(failure.turnId, submit.turnId, name);

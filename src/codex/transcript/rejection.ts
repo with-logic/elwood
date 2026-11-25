@@ -7,6 +7,7 @@
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import {
   normalizeFinalTurnFailure,
+  type SubstituteErrorCode,
   substituteErrorCodes,
 } from "../../core/activity/turn-failure.ts";
 import { isRecord } from "../../core/predicates.ts";
@@ -25,7 +26,7 @@ const quotaOrCreditMessages: ReadonlySet<unknown> = new Set([
 
 // The HTTP statuses that identify a failure more narrowly than the kind recording them:
 // 402 Payment Required and 429 Too Many Requests.
-const statusCodes: ReadonlyMap<unknown, string> = new Map([
+const statusCodes: ReadonlyMap<unknown, SubstituteErrorCode> = new Map([
   [402, substituteErrorCodes.quota_or_credit],
   [429, substituteErrorCodes.rate_limited],
 ]);
