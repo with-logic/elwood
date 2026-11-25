@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Confirm Claude alternative-text answers when a native notice left blank cells
+  on the `Type something.` row. On Claude Code 2.1.332 such an answer closed the
+  request as `unavailable` and left the questionnaire open.
+
+- Raise Claude checkbox questions when a native notice left blank cells on the
+  `Submit` or `Next` row. On Claude Code 2.1.332 such a question was never
+  published and ordinary input stayed held.
+
 - A matched Claude low-level text submission can include the original API text,
   the exact native hook prompt, API paste provenance, and a caller `sendId`.
 
