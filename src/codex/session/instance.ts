@@ -40,7 +40,7 @@ import { clipboardRestoreFailedWarning } from "./warnings.ts";
 
 const cliExitWaitMs = 5_000;
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  protected override get promptNormalizer() {
+  protected override promptNormalizer() {
     return normalizeCodexPastedPayload;
   }
   override async listModels(options?: { readonly timeoutMs?: number }) {

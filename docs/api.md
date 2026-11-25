@@ -37,7 +37,12 @@ session-scoped settings passed via `--settings`. Elwood does not mutate
 `.claude/settings.local.json`. `startClaude` also accepts `model`, forwarded
 to Claude's `--model` flag, and `reasoningEffort`, forwarded to `--effort`.
 
-Claude `user_message` activity can display the body of a supported native paste
+On supported Claude `sendMessage`, `sendPrompt`, and `sendGuidance` calls,
+`{ sendId: "request-42" }` identifies the caller's submission when Elwood can
+match the authenticated hook. The activity includes the exact API text and
+the untouched `nativePrompt`. See [the event contract](../prd/05-api/5.4-events.md).
+
+Without a verified API match, Claude `user_message` activity can display the body of a supported native paste
 and include `nativePrompt` with the delivered envelope. `promptProvenance`
 reports `input: "pasted"` and `origin: "unknown"` for that case. The body retains
 Claude's transformations, so callers may need their own original text when

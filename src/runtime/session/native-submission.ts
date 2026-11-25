@@ -85,7 +85,7 @@ export function bindSessionControl(
   options: {
     readonly agent: ElwoodAgentKind;
     readonly resumed: boolean;
-    readonly promptNormalizer: PromptNormalizer | undefined;
+    readonly promptNormalizer: PromptNormalizer;
     readonly blocked: () => boolean;
     readonly composer: () => RecoveryComposer;
     readonly readEmpty: () => object | undefined;
@@ -93,10 +93,9 @@ export function bindSessionControl(
   },
 ) {
   const closing = session.closing.signal;
-  const prompts =
-    options.promptNormalizer && !options.resumed
-      ? new PromptSubmissions(input.caller, closing, options.promptNormalizer)
-      : undefined;
+  const prompts = options.resumed
+    ? undefined
+    : new PromptSubmissions(input.caller, closing, options.promptNormalizer);
   const guard = new PasteRecoveryRevocation(events, closing).createGuard(
     input.caller,
     options.composer,

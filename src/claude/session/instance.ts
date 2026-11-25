@@ -1,5 +1,7 @@
 /** In-memory Claude session object exposed to callers. Implements PRD §4.1, §5, §6, §7, §8. */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import type { SendOptions } from "../../core/images/types.ts";
+import { isErgonomicSubmission } from "../../core/input/submission-cancel.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import { registerAcceptanceSignal } from "../../core/simple/acceptance-signal.ts";
 import { terminalStatuses } from "../../core/status-categories.ts";
@@ -24,6 +26,7 @@ import { attachClaudeImages } from "../attach-images.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { claudeLastComposerClearance } from "../composer/last.ts";
 import { createClaudeRecoveryComposer } from "../composer/staged-input.ts";
+import { normalizeClaudePastedPayload } from "../input-text.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
@@ -37,6 +40,12 @@ import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
 
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
+  protected override shouldCaptureApiPrompt(options?: SendOptions): boolean {
+    return !isErgonomicSubmission(options);
+  }
+  protected override promptNormalizer() {
+    return normalizeClaudePastedPayload;
+  }
   protected override get interruptRetryMs(): number {
     return 250;
   }
@@ -88,7 +97,6 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     this.requestedSize = requestedSize;
     this.awaitingInitialReady = requestedSize.cols < CLAUDE_STARTUP_MIN_COLS;
   }
-
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
     // Register first so a synchronous buffered replay failure leaves the listener subscribed.
     const isRegistered = this.emitter.listen(event, handler);
@@ -111,13 +119,10 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     return sessionWaitForActivity(this, match, timeoutMs);
   }
   protected readonly recoveryComposer = createClaudeRecoveryComposer(this.terminal);
-
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachClaudeImages(this.automatedTerminal, paths, signal, () => this.queuedInputBlocked());
-  // A narrow session holds the PHYSICAL resize until readiness; it just records the
-  // requested geometry now and restores it at the initial-ready transition. A wide
-  // session (100+ cols) never deferred; it resizes now.
+  // Narrow sessions defer the physical resize until readiness. Wide sessions resize immediately.
   override resize(size: TerminalSize): Promise<void> {
     if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
       this.requestedSize = size;
@@ -142,8 +147,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     }
     return Promise.resolve();
   }
-  // Apply the deferred physical geometry, so only a genuine native resize failure
-  // reports as staying at bootstrap width (C-API-39).
+  // Only a failed physical resize reports that the session stays at bootstrap width (C-API-39).
   private restoreRequestedSize(): void {
     try {
       this.restoreHeldSize(this.requestedSize);
@@ -165,14 +169,8 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     emitSessionWarningsWithRejectionHandling(warnings, this.emitter);
   }
-  // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
-  // readiness (startup handles it fatally), edge-detected. FULLY non-throwing — runs
-  // in the frame callback's detached continuation, so a listener failure can't become
-  // an unhandled rejection or skip `terminal:data`. COMMIT the edge BEFORE the live
-  // fan-out: warnings are live-only (fire exactly once), and emitWarnings delivers to
-  // every listener before rethrowing a listener error — committing after would treat
-  // a throwing listener as non-delivery and re-fire the SAME incident to the listeners
-  // that already received it (a duplicate). A throwing listener is contained here.
+  // Warn once after readiness (C-CLAUDE-18). Commit before notifying listeners
+  // so a throwing listener cannot duplicate delivery or interrupt terminal output.
   noteLoginExpiry(screenText: string): void {
     if (!(this.everReady && this.loginExpiredWatcher.peek(screenText))) return;
     this.loginExpiredWatcher.commit();
@@ -185,13 +183,14 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
   // Drive `/login` re-auth as an exclusive, abort-aware queue transaction (C-API-43).
   login(options: ClaudeLoginOptions): Promise<void> {
-    const onReady = (handler: () => void) =>
-      this.emitter.on("status", (e) => e.status === "ready" && handler());
-    // Login writes `/login` and an Enter outside any picker transaction, so it must also
-    // stand off a model dialog a human opened: Enter there applies the highlighted row.
-    const blocked = () => this.queuedInputBlocked();
-    const terminal = this.automatedTerminal;
-    const deps = { controlQueue: this.controlQueue, terminal, blocked, onReady };
+    const deps = {
+      controlQueue: this.controlQueue,
+      terminal: this.automatedTerminal,
+      blocked: () => this.queuedInputBlocked(),
+      onReady: (handler: () => void) =>
+        this.emitter.on("status", (e) => e.status === "ready" && handler()),
+      beforeCommand: this.pasteGuard.beforeCommand,
+    };
     return this.inSession(() => runSessionLogin(deps, options));
   }
   protected stopRuntime(): Promise<void> {

@@ -173,6 +173,9 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     void restoreHeldResize(this.pty, this.terminal, size);
   }
 
+  protected shouldCaptureApiPrompt(_options?: SendOptions): boolean {
+    return true;
+  }
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
     try {
       assertStopInput(this);
@@ -181,11 +184,10 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     }
     const ledger = this.promptSubmissions;
     const attempt = submissionAttempt(this)?.beforeEnter;
-    const beforeEnter = ledger?.captureCaller(input, options, attempt) ?? attempt;
-    const control = {
-      ...submissionControlOptions(options),
-      ...(beforeEnter ? { beforeEnter } : {}),
-    };
+    const beforeEnter = this.shouldCaptureApiPrompt(options)
+      ? (ledger?.captureCaller(input, options, attempt) ?? attempt)
+      : attempt;
+    const control = { ...submissionControlOptions(options), ...(beforeEnter && { beforeEnter }) };
     const driver: AttachDriver = (paths, signal) => {
       ledger?.revoke();
       return this.attachImages(paths, signal);

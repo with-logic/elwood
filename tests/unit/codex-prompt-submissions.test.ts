@@ -59,10 +59,10 @@ test("C-API-70 a forwarded recovery Enter can match when the first Enter was sup
   await response;
   await sent;
   expect(writes).toEqual(["\x1b[200~ text \x1b[201~", "\x1b[0n"]);
-  expect(prompts.observeNativeSubmit("early", "text")).toBeUndefined();
+  expect(prompts.observeNativeSubmit({ turnId: "early", nativePrompt: "text" })).toBeUndefined();
   await vi.advanceTimersByTimeAsync(1_000);
   expect(writes).toEqual(["\x1b[200~ text \x1b[201~", "\x1b[0n", "\r"]);
-  expect(prompts.observeNativeSubmit("native", "text")).toMatchObject({
+  expect(prompts.observeNativeSubmit({ turnId: "native", nativePrompt: "text" })).toMatchObject({
     text: " text ",
     sendId: "recovery",
   });
@@ -71,14 +71,16 @@ test("C-API-70 a forwarded recovery Enter can match when the first Enter was sup
 test("C-API-70 native history keeps the exact bound and omits invalid caller IDs", async () => {
   const { empty, guard, paste, prompts } = fixture();
   for (let i = 0; i < 1_023; i += 1) {
-    expect(prompts.observeNativeSubmit(`native-${i}`, undefined)).toBeUndefined();
+    expect(
+      prompts.observeNativeSubmit({ turnId: `native-${i}`, nativePrompt: undefined }),
+    ).toBeUndefined();
   }
   await paste("one", { sendId: "x".repeat(1_025) });
-  const last = prompts.observeNativeSubmit("last", "one");
+  const last = prompts.observeNativeSubmit({ turnId: "last", nativePrompt: "one" });
   expect(last).toMatchObject({ text: "one", nativePrompt: "one" });
   expect(last).not.toHaveProperty("sendId");
   await paste("two");
-  expect(prompts.observeNativeSubmit("overflow", "two")).toBeUndefined();
+  expect(prompts.observeNativeSubmit({ turnId: "overflow", nativePrompt: "two" })).toBeUndefined();
   expect(guard.observePaste?.("three", empty)).toBeUndefined();
 });
 
@@ -91,7 +93,7 @@ test.each([
 ])("C-API-70 %s does not establish association", async (_label, text, prompt, id) => {
   const { guard, empty, paste, prompts } = fixture();
   await paste(text, { sendId: "candidate" });
-  expect(prompts.observeNativeSubmit(id, prompt)).toBeUndefined();
+  expect(prompts.observeNativeSubmit({ turnId: id, nativePrompt: prompt })).toBeUndefined();
   expect(guard.observePaste?.("other", empty)).toBeUndefined();
 });
 
@@ -99,7 +101,9 @@ test("C-API-70 native consumption can retire a loop prompt without attributing A
   const { guard, empty, paste, prompts } = fixture();
   await paste("loop");
   prompts.cleared();
-  expect(prompts.observeNativeSubmit("native-loop", "loop")).toBeUndefined();
+  expect(
+    prompts.observeNativeSubmit({ turnId: "native-loop", nativePrompt: "loop" }),
+  ).toBeUndefined();
   expect(guard.observePaste?.("other", empty)).toBeDefined();
 });
 
@@ -114,7 +118,7 @@ test("C-API-70 a large prompt forwards without attribution", async () => {
   const text = `long\n${"x".repeat(65_536)}`;
   await paste(text, { sendId: "large" });
   expect(writes).toEqual([`\x1b[200~${text}\x1b[201~`, "\r"]);
-  expect(prompts.observeNativeSubmit("native", text)).toBeUndefined();
+  expect(prompts.observeNativeSubmit({ turnId: "native", nativePrompt: text })).toBeUndefined();
 });
 
 test("C-API-70 a mismatched forwarding inside the scope cannot stand in for Enter", async () => {
@@ -125,17 +129,16 @@ test("C-API-70 a mismatched forwarding inside the scope cannot stand in for Ente
   );
   prompts.captureCaller("text", { sendId: "candidate" }, undefined)("text");
   await scope?.("\r", () => input.automated.sendInput("unrelated input"));
-  expect(prompts.observeNativeSubmit("native", "text")).toBeUndefined();
+  expect(prompts.observeNativeSubmit({ turnId: "native", nativePrompt: "text" })).toBeUndefined();
 });
 
 test("C-API-70 a command only revokes when an earlier paste is unresolved", async () => {
   const { guard, empty, paste, prompts } = fixture();
   guard.beforeCommand?.();
   await paste("first", { sendId: "after-command" });
-  expect(prompts.observeNativeSubmit("first-turn", "first")).toHaveProperty(
-    "sendId",
-    "after-command",
-  );
+  expect(
+    prompts.observeNativeSubmit({ turnId: "first-turn", nativePrompt: "first" }),
+  ).toHaveProperty("sendId", "after-command");
   await paste("unresolved");
   guard.beforeCommand?.();
   expect(guard.observePaste?.("later", empty)).toBeUndefined();
