@@ -442,7 +442,12 @@ their status in `codex_error_info`, which Elwood reads as `quota_or_credit` and
 C-API-65's loopback e2e sends the workspace-owner credit, `insufficient_quota`,
 team usage-limit, retried 429, 402 and 500 replies to one session. Codex 0.172.0
 and 0.171.0 each failed every turn with the record above, and Elwood reported the
-category in this table. The usage-limit kinds fail on the first response. By the
+category in this table. As the second turn was submitted, Codex 0.172.0 also sent a
+title-generation `/v1/responses` request with the first prompt in its context, so
+a server that picks its reply from the newest prompt marker answered it with the
+first turn's reply. Neither turn's record changed, so the e2e checks each turn's
+committed message, not the replies the server sent. The usage-limit kinds fail on
+the first response. By the
 records' `duration_ms`, the 402 retried for 7 s, the 429 for 6.5 s, and the 500
 for 25 s (60 requests), with the status `running` throughout. A long `retry-after`
 stays `running` for minutes, as described under
