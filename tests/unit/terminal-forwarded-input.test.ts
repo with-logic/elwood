@@ -33,18 +33,52 @@ test.each([
   ]);
 });
 
-test("a parser reply can settle the existing waiter without confirming suppressed input", async () => {
+test("a parser reply does not confirm suppressed input that never forwarded", async () => {
   const writes: unknown[] = [];
   const prepare = vi.fn();
   const { terminal, emit } = setup((input) => writes.push(input));
   terminal.xterm.options.disableStdin = true;
-  const send = observeInputWrite(terminal.xterm, prepare, () => terminal.sendInput("\r"));
+  void observeInputWrite(terminal.xterm, prepare, () => terminal.sendInput("\r")).catch(
+    () => undefined,
+  );
   terminal.xterm.options.disableStdin = false;
   emit("\x1b[5n");
   await terminal.settled();
-  await expect(send).resolves.toBeUndefined();
   expect(writes).toEqual(["\x1b[0n"]);
   expect(prepare).not.toHaveBeenCalled();
+});
+
+test("even a failing byte observer cannot change forwarded data or the caller's buffer", async () => {
+  const write = vi.fn();
+  const input = Buffer.from([7]);
+  const { terminal } = setup(write);
+  await observeInputWrite(
+    terminal.xterm,
+    (observed) => {
+      if (typeof observed !== "string") observed[0] = 9;
+      throw new Error("observer failed");
+    },
+    () => terminal.sendInput(input),
+  );
+  expect(input[0]).toBe(7);
+  expect(write).toHaveBeenCalledWith(Buffer.from([7]));
+});
+
+test("another terminal's reentrant write cannot consume the current scope", () => {
+  const writeFirst = vi.fn();
+  const writeSecond = vi.fn();
+  const first = setup(writeFirst).terminal;
+  const second = setup(writeSecond).terminal;
+  const confirm = vi.fn();
+  const prepare = vi.fn(() => confirm);
+  observeInputWrite(first.xterm, prepare, () => {
+    second.xterm.input("second");
+    first.xterm.input("first");
+  });
+  expect(writeFirst).toHaveBeenCalledWith("first");
+  expect(writeSecond).toHaveBeenCalledWith("second");
+  expect(prepare.mock.calls).toEqual([["first"]]);
+  expect(confirm).toHaveBeenCalledOnce();
 });
 
 test("write failure suppresses confirmation without swallowing the send error", async () => {

@@ -1,36 +1,38 @@
 /** Passively observe scoped terminal forwarding (PRD §5.3). */
 import { runContained } from "../core/contained.ts";
+import type { XtermTerminal } from "./headless.ts";
 
 type Input = string | Uint8Array;
 type Confirm = () => void | Promise<void>;
 type Prepare = (input: Input) => Confirm | undefined;
 
-const scopes = new WeakMap<object, Prepare>();
+const scopes = new WeakMap<XtermTerminal, Prepare>();
 
-/** Observe at most one write during synchronous dispatch, keyed by the terminal’s xterm. */
-export function observeInputWrite<T>(terminal: object, prepare: Prepare, dispatch: () => T): T {
-  const prior = scopes.get(terminal);
-  scopes.set(terminal, prepare);
+/** Prepare on the first synchronous forwarding. Confirm when the PTY writer returns. */
+export function observeInputWrite<T>(xterm: XtermTerminal, prepare: Prepare, dispatch: () => T): T {
+  const prior = scopes.get(xterm);
+  scopes.set(xterm, prepare);
   try {
     return dispatch();
   } finally {
-    if (prior) scopes.set(terminal, prior);
-    else scopes.delete(terminal);
+    if (prior) scopes.set(xterm, prior);
+    else scopes.delete(xterm);
   }
 }
 
 export function observedInputWriter(
-  terminal: object,
+  xterm: XtermTerminal,
   write: (input: Input) => void,
 ): (input: Input) => void {
   return (input) => {
-    const prepare = scopes.get(terminal);
+    const prepare = scopes.get(xterm);
     let confirm: Confirm | undefined;
     if (prepare) {
       // Consume ownership before invoking any callback that can write reentrantly.
-      scopes.delete(terminal);
+      scopes.delete(xterm);
       runContained(() => {
-        confirm = prepare(input);
+        // Pass a copy even for Buffer inputs, where slice would retain the same bytes.
+        confirm = prepare(typeof input === "string" ? input : Uint8Array.from(input));
       });
     }
     write(input);
