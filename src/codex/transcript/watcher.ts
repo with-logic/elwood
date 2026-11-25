@@ -17,9 +17,8 @@ import {
   newTerminalBudget,
 } from "../../core/transcript/drain.ts";
 import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
-import { CodexLineEmitter } from "./emit.ts";
+import { CodexLineEmitter, type CodexTranscriptDelivery } from "./emit.ts";
 import { CodexTranscriptFsGuard } from "./fs-guard.ts";
-import type { CodexTranscriptEvent } from "./types.ts";
 import type { CodexTranscriptNotices } from "./watcher-config.ts";
 
 export type {
@@ -50,7 +49,7 @@ export class CodexTranscriptWatcher {
 
   constructor(
     elwoodSessionId: string,
-    emit: (event: CodexTranscriptEvent) => void,
+    emit: CodexTranscriptDelivery,
     notices: CodexTranscriptNotices = {},
   ) {
     this.drops = new DropReporter(elwoodSessionId, notices.onDrop);

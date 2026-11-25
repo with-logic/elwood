@@ -1,4 +1,6 @@
 /** Transcript observer diagnostics and native quota warnings (PRD §5.4/§5.7). */
+import type { RateLimitReachedType } from "../../codex/transcript/payload.ts";
+
 export type TranscriptListenerErrorWarning = {
   readonly elwoodSessionId: string;
   readonly agent: "codex";
@@ -36,3 +38,27 @@ export type ClaudeUsageLimitWarning = {
   readonly resetsAtUnixSeconds?: number;
   readonly raw: string;
 };
+
+export type CodexUsageLimitDetails = {
+  readonly limitId?: string;
+  readonly limitName?: string;
+  readonly primaryResetsAtUnixSeconds?: number;
+  readonly secondaryResetsAtUnixSeconds?: number;
+};
+
+/** Affirmative usage or credit rejection from a Codex rate-limit snapshot. */
+export type CodexUsageLimitWarning = CodexUsageLimitDetails & {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "transcript";
+  readonly code: "usage_limit_reached";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly transcriptPath: string;
+  readonly nativeLimitType: RateLimitReachedType;
+  readonly turnId?: never;
+  readonly resetsAtUnixSeconds?: never;
+  readonly raw: RateLimitReachedType;
+};
+
+export type UsageLimitWarning = ClaudeUsageLimitWarning | CodexUsageLimitWarning;
