@@ -3,9 +3,8 @@ import { lstat, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { type DirectoryIdentity, sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
-import { canonicalGitPath } from "../../core/trust/git-paths.ts";
+import { canonicalTrustPath } from "../../core/trust/git-paths.ts";
 import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
-import { trustedGitDirectoryPath } from "./path-trust.ts";
 import { claudeRepositoryTarget, nearestGitMarker } from "./repository.ts";
 
 type ClaudeWorkspaceTrustScope = {
@@ -14,12 +13,17 @@ type ClaudeWorkspaceTrustScope = {
   readonly targetScope: "folder" | "repository";
 };
 export type ClaudeLaunchTrustEvidence = {
+  /** Launch-time scope. Revalidate with isCurrent before exposing or using it. */
   readonly scope: ClaudeWorkspaceTrustScope;
+  /**
+   * A completed check that cannot verify the captured scope revokes it for this launch.
+   * A canceled check returns false and preserves the capture for a later check.
+   */
   readonly isCurrent: (signal?: AbortSignal) => Promise<boolean>;
 };
 
 /** Capture launch and target identities before starting Claude. */
-export async function captureClaudeWorkspaceTrustTarget(
+export async function captureClaudeLaunchTrustEvidence(
   directory: CheckedLaunchDirectory,
   signal?: AbortSignal,
 ): Promise<ClaudeLaunchTrustEvidence | undefined> {
@@ -41,7 +45,7 @@ export async function captureClaudeWorkspaceTrustTarget(
 }
 
 export function captureClaudeStartupTrustEvidence(directory: CheckedLaunchDirectory) {
-  return boundedTrustEvidence((signal) => captureClaudeWorkspaceTrustTarget(directory, signal));
+  return boundedTrustEvidence((signal) => captureClaudeLaunchTrustEvidence(directory, signal));
 }
 
 async function verifyWorkspaceTarget(
@@ -85,7 +89,7 @@ export async function resolveClaudeWorkspaceTrustTarget(
 ): Promise<ClaudeWorkspaceTrustScope | undefined> {
   if (!isAbsolute(launchCwd)) return undefined;
   try {
-    const physicalLaunchPath = await canonicalGitPath(launchCwd, signal);
+    const physicalLaunchPath = await canonicalTrustPath(launchCwd, signal);
     signal?.throwIfAborted();
     if (!(await lstat(physicalLaunchPath)).isDirectory()) return undefined;
     const marker = await nearestGitMarker(physicalLaunchPath, signal);
@@ -95,7 +99,6 @@ export async function resolveClaudeWorkspaceTrustTarget(
     const gid = process.getgid?.();
     if (uid === undefined || gid === undefined) return undefined;
     const user = { uid, gid };
-    if (!(await trustedGitDirectoryPath(marker.directory, user, signal))) return undefined;
     const targetPath = await claudeRepositoryTarget(marker, user, signal);
     return targetPath === undefined
       ? undefined

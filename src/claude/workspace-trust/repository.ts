@@ -6,7 +6,7 @@ import {
   readBoundedGitMetadataAsync,
 } from "../../core/git-metadata.ts";
 import type { PathUser } from "../../core/path-trust.ts";
-import { canonicalGitPath, lstatGitPath } from "../../core/trust/git-paths.ts";
+import { canonicalTrustPath, lstatGitPath } from "../../core/trust/git-paths.ts";
 import { trustedGitDirectoryPath, trustedGitFile } from "./path-trust.ts";
 
 // HEAD and worktree pointers are short single lines.
@@ -39,7 +39,8 @@ export async function claudeRepositoryTarget(
       ? directory
       : undefined;
   }
-  if (!metadata.isFile()) return undefined;
+  if (!(metadata.isFile() && (await trustedGitDirectoryPath(directory, user, signal))))
+    return undefined;
 
   const pointer = await readGitMetadata(marker, user, signal);
   if (!pointer?.startsWith(gitDirectoryPrefix)) return undefined;
@@ -106,7 +107,7 @@ async function resolveGitPointer(
   if (!path || path.trim() !== path) return undefined;
   // Native lookup must check components before lexical normalization can erase them.
   const absolute = isAbsolute(path) ? path : `${base}${sep}${path}`;
-  const canonical = await canonicalGitPath(absolute, signal);
+  const canonical = await canonicalTrustPath(absolute, signal);
   const lookupPath = kind === "directory" ? absolute : absolute.slice(0, absolute.lastIndexOf(sep));
   return canonical === resolve(base, path) &&
     (await trustedGitDirectoryPath(lookupPath, user, signal))

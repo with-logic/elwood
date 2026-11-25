@@ -12,13 +12,13 @@ import {
 import { lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
-import { captureClaudeWorkspaceTrustTarget } from "../../src/claude/workspace-trust/target.ts";
+import { captureClaudeLaunchTrustEvidence } from "../../src/claude/workspace-trust/target.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 vi.mock("node:fs/promises", { spy: true });
 
 async function capture(cwd: string) {
-  const captured = await captureClaudeWorkspaceTrustTarget({
+  const captured = await captureClaudeLaunchTrustEvidence({
     agent: "claude",
     cwd,
     identity: statSync(cwd, { bigint: true }),
@@ -28,7 +28,7 @@ async function capture(cwd: string) {
 }
 
 test("Claude workspace evidence requires a checked launch identity", async () => {
-  const captured = await captureClaudeWorkspaceTrustTarget({
+  const captured = await captureClaudeLaunchTrustEvidence({
     agent: "claude",
     cwd: tempDir(),
     identity: undefined,
@@ -41,7 +41,7 @@ test("Claude workspace evidence requires resolvable Git metadata", async () => {
   writeFileSync(join(cwd, ".git"), "unrecognized metadata\n");
   const identity = statSync(cwd, { bigint: true });
   expect(
-    await captureClaudeWorkspaceTrustTarget({ agent: "claude", cwd, identity }),
+    await captureClaudeLaunchTrustEvidence({ agent: "claude", cwd, identity }),
   ).toBeUndefined();
 });
 
@@ -144,7 +144,7 @@ test("a launch alias retargeted after the identity read cannot establish proof",
   });
   try {
     expect(
-      await captureClaudeWorkspaceTrustTarget({ agent: "claude", cwd: alias, identity }),
+      await captureClaudeLaunchTrustEvidence({ agent: "claude", cwd: alias, identity }),
     ).toBeUndefined();
   } finally {
     mock.mockRestore();

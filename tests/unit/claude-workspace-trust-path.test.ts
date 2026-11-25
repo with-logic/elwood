@@ -13,7 +13,7 @@ import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import { assert, expect, test, vi } from "vitest";
 import {
-  captureClaudeWorkspaceTrustTarget,
+  captureClaudeLaunchTrustEvidence,
   resolveClaudeWorkspaceTrustTarget,
 } from "../../src/claude/workspace-trust/target.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -70,13 +70,18 @@ test("a foreign-owned HEAD cannot set Claude's scope", async () => {
   }
 });
 
-test("a replaceable ancestor cannot provide Claude's repository target", async () => {
+test.each([
+  "directory",
+  "file",
+])("a replaceable ancestor cannot provide Claude's repository target from a Git %s", async (kind) => {
   const root = realpathSync(tempDir());
   const checkout = join(root, "child");
   const git = join(root, ".git");
   mkdirSync(checkout);
-  mkdirSync(git);
-  writeFileSync(join(git, "HEAD"), "ref: refs/heads/main\n");
+  const metadata = kind === "directory" ? git : realpathSync(tempDir());
+  if (kind === "directory") mkdirSync(metadata);
+  else writeFileSync(git, `gitdir: ${metadata}\n`);
+  writeFileSync(join(metadata, "HEAD"), "ref: refs/heads/main\n");
   chmodSync(root, 0o777);
   expect(await resolveClaudeWorkspaceTrustTarget(checkout)).toBeUndefined();
 });
@@ -159,7 +164,7 @@ test("replacing a linked worktree's main checkout permanently revokes its captur
   writeFileSync(join(administrative, "gitdir"), join(worktree, ".git"));
   writeFileSync(join(worktree, ".git"), `gitdir: ${administrative}\n`);
   const target = { physicalLaunchPath: worktree, targetPath: root, targetScope: "repository" };
-  const captured = await captureClaudeWorkspaceTrustTarget({
+  const captured = await captureClaudeLaunchTrustEvidence({
     agent: "claude",
     cwd: worktree,
     identity: statSync(worktree, { bigint: true }),

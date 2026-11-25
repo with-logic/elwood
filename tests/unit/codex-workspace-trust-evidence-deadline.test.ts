@@ -101,10 +101,10 @@ function checkedLaunch(cwd: string) {
 
 async function holdCanonicalPathAfter(earlierCalls: number) {
   const native = (await vi.importActual<typeof gitPaths>("../../src/core/trust/git-paths.ts"))
-    .canonicalGitPath;
+    .canonicalTrustPath;
   const reached = Promise.withResolvers<void>();
   const held = Promise.withResolvers<void>();
-  const realpath = vi.mocked(gitPaths.canonicalGitPath);
+  const realpath = vi.mocked(gitPaths.canonicalTrustPath);
   for (let index = 0; index < earlierCalls; index++) realpath.mockImplementationOnce(native);
   realpath.mockImplementationOnce(async (path, signal) => {
     const result = await native(path, signal);

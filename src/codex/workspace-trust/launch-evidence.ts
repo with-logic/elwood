@@ -2,7 +2,7 @@
 import { stat } from "node:fs/promises";
 import { type DirectoryIdentity, sameDirectoryIdentity } from "../../core/directory-identity.ts";
 import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
-import { canonicalGitPath } from "../../core/trust/git-paths.ts";
+import { canonicalTrustPath } from "../../core/trust/git-paths.ts";
 import type { CheckedLaunchDirectory } from "../../runtime/session/launch-directory.ts";
 import { type CodexRepositoryTrustRoot, codexRepositoryTrustRoot } from "./repository.ts";
 import type { WorkspaceTrustTarget } from "./types.ts";
@@ -63,7 +63,7 @@ async function captureLaunchTrustPaths(
   signal: AbortSignal | undefined,
 ): Promise<readonly LaunchPath[]> {
   try {
-    const physical = await canonicalGitPath(directory.cwd, signal);
+    const physical = await canonicalTrustPath(directory.cwd, signal);
     if (!(await isSameDirectory(physical, directory.identity, physical, signal))) return [];
     const scopes: LaunchPath[] = [];
     for (const cwd of new Set([directory.cwd, physical])) {
@@ -97,7 +97,7 @@ async function checkTarget(
   return {
     target,
     identity: await stat(target.targetPath, { bigint: true }),
-    physicalPath: await canonicalGitPath(target.targetPath, signal),
+    physicalPath: await canonicalTrustPath(target.targetPath, signal),
     requiresRepositoryNote,
   };
 }
@@ -136,7 +136,7 @@ async function isSameDirectory(
     return (
       current.isDirectory() &&
       sameDirectoryIdentity(current, expected) &&
-      (await canonicalGitPath(path, signal)) === physicalPath
+      (await canonicalTrustPath(path, signal)) === physicalPath
     );
   } catch {
     return false;

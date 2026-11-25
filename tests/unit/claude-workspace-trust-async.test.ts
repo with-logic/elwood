@@ -4,8 +4,8 @@ import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { assert, expect, test, vi } from "vitest";
 import {
+  captureClaudeLaunchTrustEvidence,
   captureClaudeStartupTrustEvidence,
-  captureClaudeWorkspaceTrustTarget,
 } from "../../src/claude/workspace-trust/target.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
@@ -30,7 +30,7 @@ test("the startup deadline accepts timely Claude scope evidence", async () => {
 
 test("a canceled Claude recheck cannot return proof or revoke the next check", async () => {
   const directory = checkedFolder();
-  const evidence = await captureClaudeWorkspaceTrustTarget(directory);
+  const evidence = await captureClaudeLaunchTrustEvidence(directory);
   assert.isDefined(evidence);
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
   const started = Promise.withResolvers<void>();
@@ -55,4 +55,42 @@ test("a canceled Claude recheck cannot return proof or revoke the next check", a
     mock.mockRestore();
   }
   expect(await evidence.isCurrent()).toBe(true);
+});
+
+test("Claude startup stops waiting for stalled scope evidence before the lookup settles", async () => {
+  const directory = checkedFolder();
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const finished = Promise.withResolvers<void>();
+  const lookup = join(directory.cwd, ".git");
+  const mock = vi.mocked(lstat).mockImplementation(async (...options) => {
+    if (options[0] !== lookup) return Reflect.apply(actual.lstat, undefined, options);
+    started.resolve();
+    await release.promise;
+    try {
+      return await Reflect.apply(actual.lstat, undefined, options);
+    } finally {
+      finished.resolve();
+    }
+  });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const observed = vi.fn();
+  const checking = captureClaudeStartupTrustEvidence(directory).then(observed);
+  try {
+    await started.promise;
+    const pendingLookupCount = mock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(observed).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(vi.getTimerCount()).toBe(0);
+    release.resolve();
+    await finished.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(mock).toHaveBeenCalledTimes(pendingLookupCount);
+  } finally {
+    release.resolve();
+    await checking;
+    mock.mockRestore();
+    vi.useRealTimers();
+  }
 });
