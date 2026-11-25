@@ -87,7 +87,7 @@ export function parseClaudeQuestionScreen(
     frame.cursorRow >= otherTop &&
     frame.cursorRow <= otherBottom;
   if (!(questionCursor(frame) || otherCursor)) return undefined;
-  const blankCells = otherCursor ? blankCellsAfterCursor(frame, otherBottom) : 0;
+  const blankCells = otherCursor ? blankCellsFromCursor(frame, otherBottom) : 0;
   return {
     kind: "question",
     questionIndex,
@@ -98,11 +98,11 @@ export function parseClaudeQuestionScreen(
 }
 
 /**
- * Blank cells after a cursor that ends the Other editor's last row: Claude's cursor cell, and the
+ * Blank cells from a cursor that ends the Other editor's last row: Claude's cursor cell, and the
  * indent of a notice Claude replaced on that row. xterm's exact prefix keeps wide glyphs and the
  * answer's own trailing spaces. Zero when the cursor is elsewhere or text follows it.
  */
-function blankCellsAfterCursor(frame: QuestionFrame, lastOtherRow: number): number {
+function blankCellsFromCursor(frame: QuestionFrame, lastOtherRow: number): number {
   const row = frame.lines[lastOtherRow];
   const before = frame.cursorLineBefore;
   if (frame.cursorRow !== lastOtherRow || before === undefined || !row?.startsWith(before))

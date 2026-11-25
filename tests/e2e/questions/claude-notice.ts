@@ -55,19 +55,27 @@ export type ClaudeNoticeProof = {
   stop(): void;
 };
 
-/** Posts the notice before each question and records the evidence for each one. */
+/**
+ * Posts the notice before each question and records the evidence for each one. Cancellation closes
+ * the session, so `signal` stops reposting before any Alt+T can reach a PTY that is shutting down.
+ */
 export function claudeNoticeProof(
   press: (input: string) => void,
   screen: () => string | undefined,
+  signal: AbortSignal,
 ): ClaudeNoticeProof {
   let notice: PostedClaudeNotice | undefined;
   const drawnAtQuestion: boolean[] = [];
   const residueWhenRaised: boolean[] = [];
+  const stop = () => notice?.stop();
+  signal.addEventListener("abort", stop, { once: true });
   return {
     drawnAtQuestion,
     residueWhenRaised,
     async post() {
+      signal.throwIfAborted();
       notice = await postClaudeNotice(press, screen);
+      if (signal.aborted) stop();
     },
     atQuestion() {
       notice?.stop();
@@ -77,7 +85,8 @@ export function claudeNoticeProof(
       residueWhenRaised.push(claudeNoticeResidue.test(text));
     },
     stop() {
-      notice?.stop();
+      stop();
+      signal.removeEventListener("abort", stop);
     },
   };
 }

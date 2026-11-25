@@ -11,8 +11,12 @@ export const noteLastLine = "ELWOOD_NOTE_LINE2";
 export const claudeReadyTimeoutMs = 45_000;
 // Each original send remains bounded while its native answer is collected and submitted.
 export const claudeTurnTimeoutMs = 90_000;
+// Sandbox setup, the notice posts (3 s each at most) and session teardown have no budgets of their
+// own. Whole proofs took 26 to 30 s under load averages near 300, so this leaves them ample room.
+export const claudeProofReserveMs = 45_000;
 // Whole-proof ceiling covers readiness and all three turns, plus setup, notices and teardown.
-export const claudeProofTimeoutMs = claudeReadyTimeoutMs + 3 * claudeTurnTimeoutMs + 45_000;
+export const claudeProofTimeoutMs =
+  claudeReadyTimeoutMs + 3 * claudeTurnTimeoutMs + claudeProofReserveMs;
 // Native navigation and acknowledgment use the shorter budget inside the turn deadline.
 export const claudeAnswerTimeoutMs = 30_000;
 

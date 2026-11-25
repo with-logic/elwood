@@ -63,7 +63,11 @@ test("C-E2E-18 native Claude grouped, free-text and checkbox answers preserve th
     t.signal.throwIfAborted();
     sandbox = await nativeClaudeQuestionSandbox();
     t.signal.throwIfAborted();
-    const proof = claudeNoticeProof(sandbox.press, () => active.session?.terminal.snapshot().text);
+    const proof = claudeNoticeProof(
+      sandbox.press,
+      () => active.session?.terminal.snapshot().text,
+      t.signal,
+    );
     notices = proof;
     const active = new ClaudeSession({
       cwd: sandbox.cwd,

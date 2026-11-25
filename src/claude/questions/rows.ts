@@ -1,4 +1,4 @@
-/** Parse exact Claude question rows and their native checkbox state (PRD §4). */
+/** Parse exact Claude question rows and their native checkbox state (PRD §5.10, C-QUESTION-03). */
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 
 export const claudeQuestionRow =
