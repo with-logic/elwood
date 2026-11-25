@@ -23,3 +23,5 @@ concepts in this section, including the stable `ElwoodErrorName` union.
 - [5.11 Native speed controls](5.11-speed.md)
 
 - [5.12 Dashboard statistics](5.12-dashboard-stats.md)
+
+- [5.13 Native dialog discovery](5.13-dialogs.md)

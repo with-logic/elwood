@@ -6,17 +6,22 @@ const trustEvidenceWaitMs = 500;
 /** Signal the collector on expiry so it stops issuing reads. Native calls in flight may finish later. */
 export async function boundedTrustEvidence<T>(
   collect: (signal: AbortSignal) => Promise<T>,
+  cancellation?: AbortSignal,
 ): Promise<T | undefined> {
+  if (cancellation?.aborted) return undefined;
   const stop = new AbortController();
   const expired = Promise.withResolvers<undefined>();
-  const timer = setTimeout(() => {
+  const expire = () => {
     // Publish expiry first so an abort listener's rejection cannot win the race.
     expired.resolve(undefined);
     stop.abort();
-  }, trustEvidenceWaitMs);
+  };
+  const timer = setTimeout(expire, trustEvidenceWaitMs);
+  cancellation?.addEventListener("abort", expire, { once: true });
   try {
     return await Promise.race([collect(stop.signal), expired.promise]);
   } finally {
     clearTimeout(timer);
+    cancellation?.removeEventListener("abort", expire);
   }
 }

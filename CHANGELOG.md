@@ -17,6 +17,8 @@ back each entry are listed in `prd/14-conformance.md`.
   the backstop expires. The activity and the `initial_ready_backstop` warning
   can now carry `agent: "claude"`. Codex-only handlers can check the `agent` field.
 
+- Expose verified Codex workspace trust prompts through `listDialogs()`.
+
 - Recognize Claude Code 2.1.331's drawn input cursor after workspace trust and
   when waiting for Claude to consume a submitted prompt. Report login-renewal
   notices below the composer when it uses that cursor.

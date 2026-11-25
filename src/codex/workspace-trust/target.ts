@@ -1,8 +1,9 @@
 /** Match Codex's native folder-access disclosure to a checked launch target (PRD §5.5). */
-import { isGenericTrustDialogFooter } from "../../core/trust/dialog.ts";
+import { isGenericTrustDialogFooter, type TrustDialog } from "../../core/trust/dialog.ts";
 import { codexFolderAccessFooter, codexFolderAccessLabels } from "../../core/trust/options.ts";
 import { trustView } from "../../core/trust/view.ts";
 import type { TerminalSnapshot } from "../../terminal/headless.ts";
+import type { WorkspaceTrustTarget } from "./types.ts";
 
 const repositoryNote =
   "Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:";
@@ -32,18 +33,13 @@ const codexWorkspaceLayouts = [
   },
 ] as const;
 
-type TrustTarget = {
-  readonly targetPath: string;
-  readonly targetScope: "folder" | "repository";
-};
 type CheckedTrustTarget = {
-  readonly target: TrustTarget;
+  readonly target: WorkspaceTrustTarget;
   readonly requiresRepositoryNote: boolean;
 };
 type LaunchEvidence = {
   readonly launchDirectoryPaths: readonly string[];
   readonly targets: readonly CheckedTrustTarget[];
-  readonly isCurrent: () => boolean;
 };
 
 type Row = { readonly index: number; readonly text: string };
@@ -54,17 +50,16 @@ type RowFits = (position: {
 }) => boolean;
 type Layout = (typeof codexWorkspaceLayouts)[number];
 
-export type CodexTrustTargetResolver = (
+export type CodexWorkspaceTrustMatcher = (
   frame: Pick<TerminalSnapshot, "lines">,
   rowFits: RowFits,
-) => TrustTarget | undefined;
+) => { readonly target: WorkspaceTrustTarget; readonly dialog: TrustDialog } | undefined;
 
-/** Match a native frame against independent and revalidated launch evidence. */
-export function createCodexTrustTargetResolver({
+/** Match a native frame against independent captured launch evidence. */
+export function createCodexWorkspaceTrustMatcher({
   launchDirectoryPaths,
   targets,
-  isCurrent,
-}: LaunchEvidence): CodexTrustTargetResolver {
+}: LaunchEvidence): CodexWorkspaceTrustMatcher {
   return ({ lines }, rowFits) => {
     const menu = matchWorkspaceMenu(lines);
     if (!menu) return undefined;
@@ -72,7 +67,7 @@ export function createCodexTrustTargetResolver({
     const prefix = disclosureRows(lines, headerRow, layout);
     if (!prefix) return undefined;
 
-    let result: TrustTarget | undefined;
+    let result: WorkspaceTrustTarget | undefined;
     for (const checked of targets) {
       if (!layout.matches(prefix, checked, launchDirectoryPaths, rowFits)) continue;
       if (
@@ -83,13 +78,11 @@ export function createCodexTrustTargetResolver({
         return undefined;
       result = checked.target;
     }
-    return result && isCurrent() ? result : undefined;
+    return result && { target: result, dialog: menu.dialog };
   };
 }
 
-function matchWorkspaceMenu(
-  lines: readonly string[],
-): { readonly headerRow: number; readonly layout: Layout } | undefined {
+function matchWorkspaceMenu(lines: readonly string[]) {
   const candidate = trustView(lines.join("\n"), "codex", () => false);
   if (candidate.kind !== "candidate" || !candidate.valid || candidate.spec.id !== "workspace_trust")
     return undefined;
@@ -118,7 +111,7 @@ function matchWorkspaceMenu(
     )
   )
     return undefined;
-  return { headerRow: candidate.headerRow, layout };
+  return { headerRow: candidate.headerRow, layout, dialog: candidate.dialog };
 }
 
 function disclosureRows(lines: readonly string[], end: number, layout: Layout): Row[] | undefined {

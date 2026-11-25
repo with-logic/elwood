@@ -1,0 +1,155 @@
+/** List the current workspace trust menu using native output and verified launch evidence (C-ATTN-07). */
+import { randomUUID } from "node:crypto";
+import { boundedTrustEvidence } from "../../core/trust/evidence-deadline.ts";
+import { onNativeRenderEvidenceInvalidated, settledNativeSnapshot } from "../../terminal/cursor.ts";
+import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
+import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
+import { matchTrustFrame, type WorkspaceTrustFrame } from "./menu-frame.ts";
+import type { ElwoodDialogRequest } from "./types.ts";
+
+export type VerifiedWorkspaceTrust = {
+  readonly frame: TerminalSnapshot;
+  readonly request: ElwoodDialogRequest;
+};
+type Open = { readonly identity: string; readonly request: ElwoodDialogRequest };
+type Verification = {
+  readonly frame: TerminalSnapshot;
+  readonly result: Promise<VerifiedWorkspaceTrust | undefined>;
+};
+
+export class CodexWorkspaceTrustDiscovery {
+  private open: Open | undefined;
+  private candidate: WorkspaceTrustFrame | undefined;
+  private checking: Verification | undefined;
+  private readonly lifetime = new AbortController();
+  private readonly input: WorkspaceTrustDiscoveryInput;
+  private readonly match: ReturnType<typeof matchTrustFrame> | undefined;
+
+  constructor(input: WorkspaceTrustDiscoveryInput) {
+    this.input = input;
+    this.match = input.evidence && matchTrustFrame(input.evidence);
+  }
+
+  bind(terminal: ElwoodTerminal, closing: AbortSignal): void {
+    const offNative = onNativeRenderEvidenceInvalidated(terminal, () => this.end());
+    closing.addEventListener(
+      "abort",
+      () => {
+        offNative();
+        this.end();
+      },
+      { once: true },
+    );
+  }
+
+  /** Track native layout changes without reading the filesystem. */
+  reconcileAfter(update: () => void): void {
+    try {
+      update();
+    } finally {
+      this.reconcile();
+    }
+  }
+
+  endStartup(): void {
+    this.end();
+  }
+
+  /** The retained identity through an unsettled repaint. Delivery requires fresh proof. */
+  get currentRequest(): ElwoodDialogRequest | undefined {
+    return this.open?.request;
+  }
+
+  async list(): Promise<readonly ElwoodDialogRequest[]> {
+    const verified = await this.read();
+    return verified && this.isCurrent(verified) ? [verified.request] : [];
+  }
+
+  async read(): Promise<VerifiedWorkspaceTrust | undefined> {
+    const candidate = this.reconcile();
+    if (!candidate) return undefined;
+
+    const previous = this.checking;
+    if (previous && previous.frame !== candidate.frame) await previous.result;
+    if (!this.isFrameCurrent(candidate.frame)) return undefined;
+
+    if (this.checking) return await this.checking.result;
+    const result = this.verify(candidate).finally(() => {
+      this.checking = undefined;
+    });
+    this.checking = { frame: candidate.frame, result };
+    return await result;
+  }
+
+  isCurrent({ frame, request }: VerifiedWorkspaceTrust): boolean {
+    return this.currentRequest === request && this.isFrameCurrent(frame);
+  }
+
+  private reconcile(): WorkspaceTrustFrame | undefined {
+    if (this.lifetime.signal.aborted || !this.match) return undefined;
+    const terminal = this.input.terminal();
+    const frame = settledNativeSnapshot(terminal);
+    if (!frame) return undefined;
+    if (this.input.clearance(frame.text)) {
+      this.end();
+      return undefined;
+    }
+    if (this.input.humanOwnedPrompt() !== "workspace_trust") {
+      this.retire();
+      return undefined;
+    }
+    const candidate =
+      this.candidate?.frame === frame ? this.candidate : this.match(terminal, frame);
+    this.candidate = candidate;
+    if (!candidate || (this.open && this.open.identity !== candidate.identity)) this.retire();
+    return candidate;
+  }
+
+  private async verify(
+    candidate: WorkspaceTrustFrame,
+  ): Promise<VerifiedWorkspaceTrust | undefined> {
+    const { frame, menu, identity, revalidateLaunchEvidence } = candidate;
+    const proved = await boundedTrustEvidence(revalidateLaunchEvidence, this.lifetime.signal);
+    if (!this.isFrameCurrent(frame)) return undefined;
+    if (!proved) {
+      if (proved === undefined) this.end();
+      else this.retire();
+      return undefined;
+    }
+
+    if (this.open?.identity !== identity) {
+      const request: ElwoodDialogRequest = Object.freeze({
+        id: randomUUID(),
+        elwoodSessionId: this.input.elwoodSessionId,
+        agent: "codex",
+        kind: "trust",
+        label: "workspace_trust",
+        ...menu.target,
+        text: menu.dialog.header,
+        choices: Object.freeze(
+          menu.dialog.options.map(({ label }) => Object.freeze({ id: randomUUID(), label })),
+        ),
+      });
+      this.open = { identity, request };
+    }
+    return { frame, request: this.open.request };
+  }
+
+  private isFrameCurrent(frame: TerminalSnapshot): boolean {
+    return (
+      !this.lifetime.signal.aborted &&
+      this.input.humanOwnedPrompt() === "workspace_trust" &&
+      settledNativeSnapshot(this.input.terminal()) === frame
+    );
+  }
+
+  private end(): void {
+    this.lifetime.abort();
+    this.candidate = undefined;
+    this.retire();
+  }
+
+  private retire(): void {
+    this.open = undefined;
+  }
+}

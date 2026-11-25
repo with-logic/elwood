@@ -24,6 +24,10 @@ import {
 } from "./config/home.ts";
 import * as preflight from "./preflight.ts";
 import type { StartCodexOptions } from "./session/types.ts";
+import {
+  type CodexLaunchTrustEvidence,
+  captureStartupTrustEvidence,
+} from "./workspace-trust/launch-evidence.ts";
 
 /** The environment snapshot and directory identity captured before this launch's preflight. */
 export type CodexLaunchOptions = StartCodexOptions & {
@@ -33,6 +37,7 @@ export type CodexLaunchOptions = StartCodexOptions & {
 
 export type CodexLaunch = {
   readonly pty: PtyProcess;
+  readonly trustEvidence: CodexLaunchTrustEvidence | undefined;
   /**
    * The config.toml of the `CODEX_HOME` the launched Codex runs with, from the launch shell's
    * report: waited for until `signal` aborts, then kept (C-CODEX-24).
@@ -57,10 +62,10 @@ export async function spawnCodexPty(
   options: CodexLaunchOptions,
   beforeSpawn: () => void,
 ): Promise<CodexLaunch> {
-  const capabilities = await preflight.detectCodexCliCapabilities({
-    ...options.launchDirectory,
-    env: options.env,
-  });
+  const [capabilities, trustEvidence] = await Promise.all([
+    preflight.detectCodexCliCapabilities({ ...options.launchDirectory, env: options.env }),
+    captureStartupTrustEvidence(options.launchDirectory),
+  ]);
   const reportPath = codexHomeReportPath(runtime);
   const launch = buildCodexShellCommand(
     { ...record, cwd: options.launchDirectory.cwd },
@@ -94,6 +99,7 @@ export async function spawnCodexPty(
   let resolvedConfigPath: string | undefined;
   return {
     pty,
+    trustEvidence,
     resolveConfigPath: async (signal) =>
       (resolvedConfigPath ??= await reportedCodexConfigPath(reportPath, signal)),
   };

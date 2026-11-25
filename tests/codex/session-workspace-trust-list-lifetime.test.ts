@@ -1,0 +1,138 @@
+/** Bound Codex trust scope proof and remove it as soon as native authority ends (C-ATTN-07). */
+import * as fsp from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, expect, test, vi } from "vitest";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
+import { resetFakes } from "./helpers.ts";
+import { menu, setup } from "./workspace-trust-discovery-fixture.ts";
+
+vi.mock("node:fs/promises", { spy: true });
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetFakes();
+});
+
+async function holdFirstGitLookup(cwd: string) {
+  const began = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const { lstat } = await vi.importActual<typeof fsp>("node:fs/promises");
+  let first = true;
+  vi.mocked(fsp.lstat)
+    .mockClear()
+    .mockImplementation(async (...options) => {
+      if (first && options[0] === join(cwd, ".git")) {
+        first = false;
+        began.resolve();
+        await release.promise;
+      }
+      return Reflect.apply(lstat, undefined, options);
+    });
+  return { began: began.promise, release: release.resolve };
+}
+
+test("C-ATTN-07 a superseded stalled proof does not cancel a newer frame", async () => {
+  const { cwd, session, render } = await setup();
+  const held = await holdFirstGitLookup(cwd);
+  try {
+    await render(menu(cwd));
+    const old = session.listDialogs();
+    await held.began;
+    await render(menu(cwd, "folder-access-no-hook-bypass"));
+    const latest = session.listDialogs();
+    expect(await old).toEqual([]);
+    expect(await latest).toEqual([
+      expect.objectContaining({
+        choices: [
+          expect.objectContaining({ label: "Trust and continue" }),
+          expect.objectContaining({ label: "Back to Agent Command Center" }),
+        ],
+      }),
+    ]);
+  } finally {
+    held.release();
+    await session.teardown();
+  }
+});
+
+test("C-ATTN-07 a queued read does not switch to a third native frame", async () => {
+  const { cwd, session, render } = await setup();
+  const held = await holdFirstGitLookup(cwd);
+  try {
+    await render(menu(cwd));
+    const first = session.listDialogs();
+    await held.began;
+    await render(menu(cwd, "folder-access-no-hook-bypass"));
+    const second = session.listDialogs();
+    await render(menu(cwd));
+    held.release();
+    expect(await Promise.all([first, second])).toEqual([[], []]);
+    expect(await session.listDialogs()).toHaveLength(1);
+  } finally {
+    held.release();
+    await session.teardown();
+  }
+});
+
+test("C-ATTN-07 overlapping reads share pending proof for one settled frame", async () => {
+  const { cwd, session, render } = await setup();
+  const held = await holdFirstGitLookup(cwd);
+  try {
+    await render(menu(cwd));
+    const first = session.listDialogs();
+    await held.began;
+    const second = session.listDialogs();
+    held.release();
+    const [[a], [b]] = await Promise.all([first, second]);
+    expect(a).toBeDefined();
+    expect(b).toBe(a);
+    expect(
+      vi.mocked(fsp.lstat).mock.calls.filter(([path]) => path === join(cwd, ".git")),
+    ).toHaveLength(1);
+  } finally {
+    held.release();
+    await session.teardown();
+  }
+});
+
+test("C-ATTN-07 a timed-out current proof retires discovery", async () => {
+  const { cwd, session, render } = await setup();
+  const held = await holdFirstGitLookup(cwd);
+  try {
+    await render(menu(cwd));
+    const listing = session.listDialogs();
+    await held.began;
+    expect(await listing).toEqual([]);
+    held.release();
+    await render(menu(cwd));
+    expect(await session.listDialogs()).toEqual([]);
+  } finally {
+    held.release();
+    await session.teardown();
+  }
+});
+
+test.each([
+  "stop",
+  "host write",
+  "resize",
+  "composer",
+] as const)("C-ATTN-07 revokes an in-flight read on %s", async (revoke) => {
+  const { cwd, session, render } = await setup();
+  const held = await holdFirstGitLookup(cwd);
+  try {
+    await render(menu(cwd));
+    const listing = session.listDialogs();
+    await held.began;
+    if (revoke === "stop") await session.stop();
+    if (revoke === "host write") await session.terminal.writeOutput("host output");
+    if (revoke === "resize") await session.resize({ rows: 20, cols: 84 });
+    if (revoke === "composer") await render(codexTty(codexComposer));
+    expect(await listing).toEqual([]);
+    held.release();
+    await render(menu(cwd));
+    expect(await session.listDialogs()).toEqual([]);
+  } finally {
+    held.release();
+    await session.teardown();
+  }
+});

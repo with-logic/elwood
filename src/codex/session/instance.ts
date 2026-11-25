@@ -30,6 +30,7 @@ import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import { confirmCodexRejection } from "../transcript/rejection.ts";
+import type { CodexWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
@@ -39,7 +40,6 @@ import { CodexTurnCommit } from "./turn-commit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import { clipboardRestoreFailedWarning } from "./warnings.ts";
 
-/** How long a setModel interrupted by close waits for the CLI to exit before restoring. */
 const cliExitWaitMs = 5_000;
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   override async listModels(options?: { readonly timeoutMs?: number }) {
@@ -58,6 +58,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
+  private readonly dialogs: CodexWorkspaceTrustDiscovery;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
   readonly turnCommit: CodexTurnCommit;
   constructor(
@@ -72,6 +73,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     transcriptWatcher: CodexTranscriptWatcher | undefined,
     loopDefinitions: readonly PersistedLoopDefinition[],
     resolveConfigPath: (signal: AbortSignal) => Promise<string>,
+    dialogs: CodexWorkspaceTrustDiscovery,
   ) {
     super(
       "codex",
@@ -97,21 +99,18 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     );
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.resolveConfigPath = resolveConfigPath;
+    this.dialogs = dialogs;
     // A rejected Codex turn has a failed `task_complete` in place of `Stop` (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
-    // Register before replay so a throwing subscriber still receives future output.
-    const unsubscribe = this.emitter.on(event, handler);
+    this.emitter.listen(event, handler);
     this.replayFor(event as string, handler);
-    return unsubscribe;
+    return () => this.off(event, handler);
   }
+  readonly listDialogs = () => this.dialogs.list();
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    // The queue slot is claimed FIRST (by `super.setModel`), and the config transaction
-    // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch
-    // while this call was still waiting for another session's lock, sending under the old
-    // model — a FIFO violation the slot exists to prevent.
     const session = {
       elwoodSessionId: this.elwoodSessionId,
       resolveConfigPath: this.resolveConfigPath,
@@ -127,7 +126,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
-  // C-API-42 releases the queue and warns if initial-ready recording throws.
   completeInitialReady(): void {
     observeCodexInitialReady(
       this.emitter,

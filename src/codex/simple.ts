@@ -52,6 +52,11 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
 
   declare readonly listModels: CodexSessionApi["listModels"];
 
+  /** Start the session if needed, then list any verified workspace trust prompt. */
+  async listDialogs() {
+    return (await this.start()).listDialogs();
+  }
+
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;
   protected override readonly readNativeTurn = codexTurnIdentity;

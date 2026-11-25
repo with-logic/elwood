@@ -1,5 +1,6 @@
 /** Owns trust episodes, on-screen budgets, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
+import { runContained } from "../contained.ts";
 import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
@@ -34,6 +35,11 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   get blockedPrompt(): TrustPromptIdFor<A> | undefined {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
     return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
+  }
+  /** Includes immediate takeover without changing the status or attention deadline. */
+  get humanOwnedPrompt(): TrustPromptIdFor<A> | undefined {
+    const id = this.episode?.callerOwned ? this.episode.candidate.spec.id : this.blockedPrompt;
+    return id as TrustPromptIdFor<A> | undefined;
   }
   /** Read the latest settled frame; undefined during pending/synchronized/failed rendering
    * holds input until the deadline. Omit the reader only for static/legacy numbered writes. */
@@ -106,7 +112,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         }
         if (attempt.cleared) this.release(true);
         this.observe(latest);
-        this.notify();
+        runContained(() => this.hooks.onStateChange?.());
         if (attempt.cleared && latest.kind === "candidate" && latest.spec.id === view.spec.id)
           return "cancelled" as const;
         return completion;
@@ -181,7 +187,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.blocked = true;
       episode.attempt?.cancel();
       episode.attempt = undefined;
-      this.notify();
+      runContained(() => this.hooks.onStateChange?.());
     });
   }
   private release(cleared: boolean): void {
@@ -189,12 +195,5 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     this.episode?.attempt?.cancel(cleared);
     this.episode = undefined;
     this.humanPrompt = undefined;
-  }
-  private notify(): void {
-    try {
-      this.hooks.onStateChange?.();
-    } catch {
-      /* An observer cannot retain owned timers or writes. */
-    }
   }
 }

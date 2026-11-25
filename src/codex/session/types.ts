@@ -30,6 +30,7 @@ import type {
   CodexHookHandlers,
 } from "../hooks/index.ts";
 import type { CodexTranscriptEvent } from "../transcript/index.ts";
+import type { ElwoodDialogRequest } from "../workspace-trust/types.ts";
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
@@ -106,6 +107,8 @@ export interface CodexSessionApi extends LoopControls, QuestionControls, StatsCo
   statusDecisions(): readonly ElwoodStatusDecision[];
   waitForStatus(match: StatusMatch, timeoutMs?: number): Promise<ElwoodSessionStatus>;
   waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent>;
+  /** List the current verified workspace trust prompt, if one is available. */
+  listDialogs(): Promise<readonly ElwoodDialogRequest[]>;
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe;
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void;

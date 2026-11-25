@@ -140,3 +140,19 @@ test("a cancelled final revalidation lookup withholds existing trust evidence", 
   lookup.release();
   await expect(pending).resolves.toBe(false);
 });
+
+test("C-ATTN-07 closing discovery cancels pending proof and clears its deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const lifetime = new AbortController();
+  const settled = Promise.withResolvers<true>();
+  const capture = vi.fn((_signal: AbortSignal) => settled.promise);
+  const checking = boundedTrustEvidence(capture, lifetime.signal);
+  expect(vi.getTimerCount()).toBe(1);
+  lifetime.abort();
+  await expect(checking).resolves.toBeUndefined();
+  expect(capture.mock.calls[0]?.[0].aborted).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+  await expect(boundedTrustEvidence(capture, lifetime.signal)).resolves.toBeUndefined();
+  expect(capture).toHaveBeenCalledOnce();
+  settled.resolve(true);
+});
