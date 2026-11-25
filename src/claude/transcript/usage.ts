@@ -4,11 +4,12 @@ import { optional } from "../../core/optional.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { count } from "../../core/stats/fields.ts";
 import type { ClaudeTokenUsage } from "../../core/stats/types.ts";
+import { claudeSyntheticModel } from "./summary.ts";
 
 export function claudeTokenUsage(item: unknown): ClaudeTokenUsage | undefined {
   if (!isRecord(item) || item["type"] !== "assistant") return undefined;
   const message = item["message"];
-  if (!isRecord(message) || message["model"] === "<synthetic>") return undefined;
+  if (!isRecord(message) || message["model"] === claudeSyntheticModel) return undefined;
   const responseId = message["id"];
   const usage = message["usage"];
   if (typeof responseId !== "string" || responseId.trim() === "" || !isRecord(usage))

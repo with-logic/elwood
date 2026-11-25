@@ -11,13 +11,16 @@ import type { DropReporter } from "../../core/transcript/drops.ts";
 import { summarizeTranscriptItem } from "./summary.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
 
+/** The replay flag is internal; raw transcript observers still receive the same event. */
+export type CodexTranscriptDelivery = (event: CodexTranscriptEvent, isReplay: boolean) => void;
+
 /** Turns raw transcript text into parsed events for one watcher. */
 export class CodexLineEmitter {
   private readonly elwoodSessionId: string;
-  private readonly emit: (event: CodexTranscriptEvent) => void;
+  private readonly emit: CodexTranscriptDelivery;
   private readonly drops: DropReporter;
 
-  constructor(id: string, emit: (event: CodexTranscriptEvent) => void, drops: DropReporter) {
+  constructor(id: string, emit: CodexTranscriptDelivery, drops: DropReporter) {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;
@@ -30,23 +33,31 @@ export class CodexLineEmitter {
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
     if (startedOversizedDrop) this.drops.drop(path, "oversized");
-    for (const line of lines) this.emitLine(path, line);
+    const isReplay = cursor.lastReadWasReplay;
+    for (const line of lines) this.publishLine(path, line, isReplay);
   }
 
   /** Emit a single already-complete line (the final drained partial at teardown). */
-  emitLine(path: string, line: string): void {
+  emitLine(path: string, line: string, cursor: BoundedTranscriptCursor): void {
+    this.publishLine(path, line, cursor.lastReadWasReplay);
+  }
+
+  private publishLine(path: string, line: string, isReplay: boolean): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
       this.drops.record(path);
       return;
     }
-    this.emit({
-      elwoodSessionId: this.elwoodSessionId,
-      path,
-      item,
-      summary: summarizeTranscriptItem(item),
-    });
+    this.emit(
+      {
+        elwoodSessionId: this.elwoodSessionId,
+        path,
+        item,
+        summary: summarizeTranscriptItem(item),
+      },
+      isReplay,
+    );
   }
 }
 

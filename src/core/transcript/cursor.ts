@@ -49,6 +49,13 @@ export class BoundedTranscriptCursor {
   readonly path: string;
   protected offset: number;
   private pending = "";
+  private rewindEnd = 0;
+  private lastReadRewound = false;
+
+  /** Whether the last decoded bytes came from the prefix present at a detected rewind. */
+  get lastReadWasReplay(): boolean {
+    return this.lastReadRewound;
+  }
   // When the current un-terminated line overflowed, discard incoming bytes up to
   // (and including) the next newline instead of buffering them.
   private discarding = false;
@@ -115,13 +122,18 @@ export class BoundedTranscriptCursor {
     if (size < this.offset) {
       this.pending = "";
       this.discarding = false;
+      this.rewindEnd = size;
     }
     const from = size < this.offset ? 0 : this.offset;
     if (size <= from) {
       this.offset = from;
       return { text: "", canContinueNow: false };
     }
-    const want = Math.min(maxChunkBytes, size - from);
+    // Keep the rewind snapshot and later appends in separate chunks so a live
+    // consumer can ignore replayed records without changing ordinary activity.
+    const replaying = from < this.rewindEnd;
+    const end = replaying ? Math.min(size, this.rewindEnd) : size;
+    const want = Math.min(maxChunkBytes, end - from);
     const { text, bytes } = this.readRange(from, want);
     // Advance by bytes actually consumed (a split code point waits), no drift.
     this.offset = from + bytes;
@@ -130,6 +142,10 @@ export class BoundedTranscriptCursor {
     // so the scan/drain loop stops this pass instead of spinning on the same bytes.
     // The next tick re-reads once the rest of the code point is committed.
     const advanced = bytes > 0;
+    if (advanced) this.lastReadRewound = replaying;
+    // A rewind can end inside a UTF-8 character. Start the later live read
+    // at the last complete boundary so an append can finish that character.
+    if (replaying && from + want === end && bytes < want) this.rewindEnd = this.offset;
     return { text, canContinueNow: advanced && this.offset < size };
   }
 

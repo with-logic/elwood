@@ -7,6 +7,8 @@
 import { optional } from "../../core/optional.ts";
 import { stringify } from "../../core/serialize.ts";
 
+export const claudeSyntheticModel = "<synthetic>";
+
 const noResponsePlaceholder = "No response requested.";
 
 /**
@@ -47,7 +49,7 @@ export function summarizeClaudeRecord(item: unknown): readonly ClaudeDirectRecor
   const role: ClaudeTranscriptRole = type;
   const message = asRecord(record["message"]);
   const content = message["content"];
-  if (message["model"] === "<synthetic>" && isNoResponsePlaceholder(content)) return [];
+  if (message["model"] === claudeSyntheticModel && isNoResponsePlaceholder(content)) return [];
   if (typeof content === "string") return assistantText(role, content);
   if (!Array.isArray(content)) return [];
   return content.flatMap((block) => summarizeBlock(role, block));
@@ -61,7 +63,7 @@ export function claudeFinalReplyIndex(
   const record = asRecord(item);
   const message = asRecord(record["message"]);
   const endsTurn = message["stop_reason"] === "end_turn";
-  const isSynthetic = message["model"] === "<synthetic>";
+  const isSynthetic = message["model"] === claudeSyntheticModel;
   const isSidechain = record["isSidechain"] === true;
   if (!endsTurn || isSynthetic || isSidechain) return -1;
   return summaries.findLastIndex((summary) => summary.kind === "assistant_message");
