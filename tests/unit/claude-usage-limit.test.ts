@@ -6,7 +6,9 @@ import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
 } from "../../src/claude/transcript/index.ts";
+import type { ClaudeDirectRecordSummary } from "../../src/claude/transcript/summary.ts";
 import { claudeUsageLimitWarning } from "../../src/claude/transcript/usage-limit.ts";
+import type { ClaudeUsageLimitWarning } from "../../src/core/warnings/transcript.ts";
 import { resetFakes, tempDir } from "../claude/helpers.ts";
 
 afterEach(resetFakes);
@@ -21,6 +23,10 @@ const record = {
   message: { model: "<synthetic>", content: [{ type: "text", text: message }] },
 };
 
+function summary(text: string): ClaudeDirectRecordSummary {
+  return { kind: "assistant_message", label: "assistant", text };
+}
+
 const source = { elwoodSessionId: "s1", path: "/fixture.jsonl", item: record };
 
 test.each([
@@ -32,7 +38,7 @@ test.each([
   { ...record, apiErrorParams: {} },
   { ...record, apiErrorParams: { rate_limit_info: { status: "allowed_warning" } } },
 ])("C-API-68 rejects a record without affirmative main-conversation quota evidence", (item) => {
-  expect(claudeUsageLimitWarning({ ...source, item }, message)).toBeUndefined();
+  expect(claudeUsageLimitWarning({ ...source, item }, [summary(message)])).toBeUndefined();
 });
 
 test.each([
@@ -43,7 +49,9 @@ test.each([
     ...record,
     apiErrorParams: { rate_limit_info: { status: "rejected", rateLimitType, resetsAt } },
   };
-  const warning = claudeUsageLimitWarning({ ...source, item }, "Native quota rejection.");
+  const warning = claudeUsageLimitWarning({ ...source, item }, [
+    summary("Native quota rejection."),
+  ]);
   expect(warning).toMatchObject({
     message: "Native quota rejection.",
     code: "usage_limit_reached",
@@ -56,11 +64,11 @@ test.each([
 
 test("C-API-68 preserves bounded native diagnostic and requires nonblank text", () => {
   const oversized = `${message} ${"x".repeat(2_500)}`;
-  expect(claudeUsageLimitWarning(source, oversized)).toMatchObject({
+  expect(claudeUsageLimitWarning(source, [summary(oversized)])).toMatchObject({
     limitName: "weekly",
     message: `${oversized.slice(0, 2_000)}…`,
   });
-  expect(claudeUsageLimitWarning(source, " \t")).toBeUndefined();
+  expect(claudeUsageLimitWarning(source, [summary(" \t")])).toBeUndefined();
 });
 
 test("C-API-68 backfill and identified subagent output retain ordinary assistant activity", () => {
@@ -72,18 +80,58 @@ test("C-API-68 backfill and identified subagent output retain ordinary assistant
   writeFileSync(history, `${priorPrompt}\n${line}`);
   writeFileSync(subagent, "");
   const events: ClaudeTranscriptEvent[] = [];
-  const watcher = new ClaudeTranscriptWatcher("s1", (event) => events.push(event));
+  const warnings: ClaudeUsageLimitWarning[] = [];
+  const watcher = new ClaudeTranscriptWatcher("s1", (event) => events.push(event), {
+    onUsageLimit: (warning) => warnings.push(warning),
+  });
   try {
     watcher.observe(history, true);
     watcher.observe(subagent, false, undefined, true);
     appendFileSync(subagent, line);
     watcher.scan();
-    expect(
-      events.map(({ path, summary, usageLimit }) => ({ path, kind: summary.kind, usageLimit })),
-    ).toEqual([
-      { path: history, kind: "assistant_message", usageLimit: undefined },
-      { path: subagent, kind: "assistant_message", usageLimit: undefined },
+    expect(events.map(({ path, summary }) => ({ path, kind: summary.kind }))).toEqual([
+      { path: history, kind: "assistant_message" },
+      { path: subagent, kind: "assistant_message" },
     ]);
+    expect(warnings).toEqual([]);
+  } finally {
+    watcher.finish();
+  }
+});
+
+test("C-API-68 a rewind rereads old activity and a later append still reports quota", () => {
+  const path = join(tempDir(), "transcript.jsonl");
+  const history = `${JSON.stringify(record)}\n`;
+  writeFileSync(path, `${history}${" ".repeat(2_000)}\n`);
+  const currentMessage = "You've hit your Fable limit · resets tonight";
+  const current = Buffer.from(
+    `${JSON.stringify({
+      ...record,
+      uuid: "fresh-limit",
+      message: { model: "<synthetic>", content: [{ type: "text", text: currentMessage }] },
+    })}\n`,
+  );
+  // The observed rewind ends after the first byte of the UTF-8 middle dot.
+  const split = current.indexOf("·") + 1;
+  const messages: string[] = [];
+  const warnings: ClaudeUsageLimitWarning[] = [];
+  const watcher = new ClaudeTranscriptWatcher(
+    "s1",
+    ({ summary }) => {
+      if (summary.kind === "assistant_message") messages.push(summary.text);
+    },
+    { onUsageLimit: (warning) => warnings.push(warning) },
+  );
+  try {
+    watcher.observe(path);
+    writeFileSync(path, Buffer.concat([Buffer.from(history), current.subarray(0, split)]));
+    watcher.scan();
+    expect(messages).toEqual([message]);
+    expect(warnings).toEqual([]);
+    appendFileSync(path, current.subarray(split));
+    watcher.scan();
+    expect(messages).toEqual([message, currentMessage]);
+    expect(warnings).toMatchObject([{ message: currentMessage, limitName: "Fable" }]);
   } finally {
     watcher.finish();
   }

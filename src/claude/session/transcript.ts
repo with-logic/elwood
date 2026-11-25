@@ -100,7 +100,6 @@ export function createTranscriptWatcher(
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
     (event) => {
-      if (event.usageLimit !== undefined) route(event.usageLimit);
       const projected = activity.activityFromClaudeTranscript(event);
       const deliver = () => duringDelivery(() => emitter.emit("activity", projected));
       if (event.summary.kind !== "user_message") {
@@ -115,6 +114,7 @@ export function createTranscriptWatcher(
       }
     },
     {
+      onUsageLimit: route,
       onDrop: (notice) => route(dropWarning(notice)),
       onReadError: (notice) => route(readErrorWarning(notice)),
       onPollError: (error) => route(transcriptFailureWarning(elwoodSessionId, error)),

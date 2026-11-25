@@ -3,6 +3,7 @@ import { optional } from "../../core/optional.ts";
 import { isNonnegativeSafeInteger, isRecord } from "../../core/predicates.ts";
 import { boundedDiagnostic } from "../../core/simple/boundary-signal.ts";
 import type { ClaudeUsageLimitWarning } from "../../core/warnings/transcript.ts";
+import { type ClaudeDirectRecordSummary, claudeSyntheticModel } from "./summary.ts";
 
 const limitHeading =
   /^You['’]ve (?:hit|reached) your ([A-Za-z0-9][A-Za-z0-9 .'-]{0,63}) limit(?=[ .·]|$)/u;
@@ -24,20 +25,25 @@ function rejectedQuota(item: unknown): Readonly<Record<string, unknown>> | undef
   )
     return undefined;
   const message = item["message"];
-  if (!isRecord(message) || message["model"] !== "<synthetic>") return undefined;
+  if (!isRecord(message) || message["model"] !== claudeSyntheticModel) return undefined;
   const params = item["apiErrorParams"];
   const info = isRecord(params) ? params["rate_limit_info"] : undefined;
   return isRecord(info) && info["status"] === "rejected" ? info : undefined;
 }
 
-/** `text` is the single assistant summary from this already-parsed native record. */
+/** Use the first nonblank assistant diagnostic, once per qualifying record. */
 export function claudeUsageLimitWarning(
   { elwoodSessionId, path, item, turnId }: ClaudeUsageLimitSource,
-  text: string,
+  summaries: readonly ClaudeDirectRecordSummary[],
 ): ClaudeUsageLimitWarning | undefined {
   const info = rejectedQuota(item);
   if (info === undefined) return undefined;
-  const message = boundedDiagnostic(text);
+  let message: string | undefined;
+  for (const summary of summaries) {
+    if (summary.kind !== "assistant_message") continue;
+    message = boundedDiagnostic(summary.text);
+    if (message !== undefined) break;
+  }
   if (message === undefined) return undefined;
   const nativeType = info["rateLimitType"];
   const reset = info["resetsAt"];

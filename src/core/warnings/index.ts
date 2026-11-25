@@ -20,15 +20,16 @@ import type {
   ReapErrorCode,
   ResizeErrorCode,
 } from "./reasons.ts";
-import type { ClaudeTranscriptWarning, TranscriptListenerErrorWarning } from "./transcript.ts";
+import type * as transcript from "./transcript.ts";
 
 export type ElwoodWarningEvent =
   | QuestionAutomationDisabledWarning
   | QuestionObserverFailedWarning
   | DialogObserverFailedWarning
   | LoginExpiringWarning
-  | TranscriptListenerErrorWarning
-  | ClaudeTranscriptWarning
+  | transcript.TranscriptListenerErrorWarning
+  | transcript.ClaudePromptListenerErrorWarning
+  | transcript.ClaudeUsageLimitWarning
   | ImageCopyRemovalFailedWarning
   | {
       readonly elwoodSessionId: string;

@@ -20,6 +20,8 @@ import { claudeTokenUsage } from "./usage.ts";
 import { claudeUsageLimitWarning } from "./usage-limit.ts";
 import { ClaudeUserPrompts, type RecoveredUserPrompt } from "./user-prompts.ts";
 
+type LineSource = "history" | "rewind" | "forward";
+
 type ClaudeTranscriptFields = {
   readonly elwoodSessionId: string;
   readonly path: string;
@@ -32,12 +34,10 @@ type ClaudeRecoveredPromptEvent = RecoveredUserPrompt & {
   readonly recovered: true;
   readonly item?: never;
   readonly tokenUsage?: never;
-  readonly usageLimit?: never;
 };
 
 type ClaudeDirectEvent = ClaudeTranscriptFields & {
   readonly recovered?: never;
-  readonly usageLimit?: ClaudeUsageLimitWarning;
 } & (
     | {
         readonly summary: Extract<
@@ -69,11 +69,18 @@ export class LineEmitter {
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
   private readonly drops: DropReporter;
+  private readonly onUsageLimit: ((warning: ClaudeUsageLimitWarning) => void) | undefined;
 
-  constructor(id: string, emit: (event: ClaudeTranscriptEvent) => void, drops: DropReporter) {
+  constructor(
+    id: string,
+    emit: (event: ClaudeTranscriptEvent) => void,
+    drops: DropReporter,
+    onUsageLimit?: (warning: ClaudeUsageLimitWarning) => void,
+  ) {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;
+    this.onUsageLimit = onUsageLimit;
     this.userPrompts = new ClaudeUserPrompts((prompt) =>
       emit({ ...prompt, elwoodSessionId: id, recovered: true }),
     );
@@ -90,18 +97,23 @@ export class LineEmitter {
     if (text.length === 0) return;
     if (!cursor) {
       // A backward baseline tail cannot supply live prompt or usage-limit evidence.
-      for (const line of text.split(/\r?\n/)) this.emitLine(path, line, false);
+      for (const line of text.split(/\r?\n/)) this.publishLine(path, line, "history");
       return;
     }
     const { lines, startedOversizedDrop } = cursor.takeLines(text);
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
     if (startedOversizedDrop) this.drops.drop(path, "oversized");
-    for (const line of lines) this.emitLine(path, line);
+    const source = cursor.lastReadWasReplay ? "rewind" : "forward";
+    for (const line of lines) this.publishLine(path, line, source);
   }
 
   /** Emit one line taken as complete (a transcript's last, un-terminated record at its end). */
-  emitLine(path: string, line: string, forwardObservation = true): void {
+  emitLine(path: string, line: string, cursor?: TranscriptCursor): void {
+    this.publishLine(path, line, cursor?.lastReadWasReplay ? "rewind" : "forward");
+  }
+
+  private publishLine(path: string, line: string, source: LineSource): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
@@ -110,7 +122,7 @@ export class LineEmitter {
     }
     const turnId = this.turns.observe(path, item);
     if (this.turns.correlationDisabled) this.userPrompts.clearUnpaired();
-    if (forwardObservation && turnId !== undefined)
+    if (source !== "history" && turnId !== undefined)
       this.userPrompts.observeForwardRecord(path, turnId, item);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
@@ -127,19 +139,12 @@ export class LineEmitter {
       ? -1
       : claudeFinalReplyIndex(item, summaries);
     const base = this.eventFields(path, item, turnId);
-    const onlySummary = summaries.length === 1 ? summaries[0] : undefined;
-    const usageLimit =
-      forwardObservation &&
-      !this.subagentPaths.has(path) &&
-      onlySummary?.kind === "assistant_message"
-        ? claudeUsageLimitWarning(base, onlySummary.text)
-        : undefined;
+    if (source === "forward" && this.onUsageLimit && !this.subagentPaths.has(path)) {
+      const usageLimitWarning = claudeUsageLimitWarning(base, summaries);
+      if (usageLimitWarning) this.onUsageLimit(usageLimitWarning);
+    }
     for (const [index, summary] of summaries.entries()) {
-      const fields = {
-        ...base,
-        ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage"),
-        ...optional(usageLimit, "usageLimit"),
-      };
+      const fields = { ...base, ...optional(index === 0 ? tokenUsage : undefined, "tokenUsage") };
       this.emit(
         summary.kind === "assistant_message" && index === finalReplyIndex
           ? { ...fields, summary, final: true }

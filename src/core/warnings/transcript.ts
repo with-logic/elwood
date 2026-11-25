@@ -36,5 +36,3 @@ export type ClaudeUsageLimitWarning = {
   readonly resetsAtUnixSeconds?: number;
   readonly raw: string;
 };
-
-export type ClaudeTranscriptWarning = ClaudePromptListenerErrorWarning | ClaudeUsageLimitWarning;
