@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Confirm Claude alternative-text answers that Claude's editor or review wraps
+  across rows, including a URL or other run with no spaces, and answers that
+  contain tabs or CRLF or CR line endings. Such an answer used to fail with
+  `question_answer_failed` and close the request as `unavailable`. Elwood now
+  pastes every line ending as LF, since Claude would store a CRLF pair as CR.
+- Read a grouped Claude question whose footer keeps a notice's blank cells. A
+  shorter question after a taller one could draw its footer on the notice row,
+  and answering then failed with `question_answer_failed`.
+
 - Confirm Claude alternative-text answers when a native notice left blank cells
   on the `Type something.` row. On Claude Code 2.1.332 such an answer closed the
   request as `unavailable` and left the questionnaire open.

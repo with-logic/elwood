@@ -15,6 +15,8 @@ const noticeRow = /^ {20,}Thinking can't be turned off/m;
  * captures show 66 to 85.
  */
 export const claudeNoticeResidue = /^(?: {2}3\. Type something\.| {5}(?:Next|Submit)) {20,}$/m;
+/** A shorter grouped question's footer drawn on the notice row keeps the blank cells too. */
+const footerOnNoticeRow = /^Enter to select · .+ · Esc to cancel {20,}$/m;
 
 type PostedClaudeNotice = {
   /** Stops reposting the notice. */
@@ -47,6 +49,10 @@ export type ClaudeNoticeProof = {
   readonly drawnAtQuestion: readonly boolean[];
   /** Whether each question was raised on a screen that kept the blank cells. */
   readonly residueWhenRaised: readonly boolean[];
+  /** Whether any painted questionnaire footer sat on the notice row, keeping its blank cells. */
+  readonly footerKeptCells: boolean;
+  /** On each terminal paint. */
+  painted(): void;
   /** At the idle composer, before each prompt. */
   post(): Promise<void>;
   /** From the `AskUserQuestion` `PreToolUse` hook; the questionnaire paints once it returns. */
@@ -67,11 +73,18 @@ export function claudeNoticeProof(
   let notice: PostedClaudeNotice | undefined;
   const drawnAtQuestion: boolean[] = [];
   const residueWhenRaised: boolean[] = [];
+  let footerKeptCells = false;
   const stop = () => notice?.stop();
   signal.addEventListener("abort", stop, { once: true });
   return {
     drawnAtQuestion,
     residueWhenRaised,
+    get footerKeptCells() {
+      return footerKeptCells;
+    },
+    painted() {
+      footerKeptCells ||= footerOnNoticeRow.test(screen() ?? "");
+    },
     async post() {
       signal.throwIfAborted();
       notice = await postClaudeNotice(press, screen);

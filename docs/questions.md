@@ -137,7 +137,10 @@ precedence and does not create a phantom terminal question. The automation start
 recognized first question; unsupported partial navigation fails safely. Completion
 hooks must match the native Claude tool-use ID (`tool_use_id`), or the ordered
 question definitions when the hook omits that ID. Unrelated Claude hooks cannot
-acknowledge the request.
+acknowledge the request. Elwood pastes alternative text with LF line endings,
+because Claude would keep a pasted CRLF pair as CR. Claude wraps long text, even
+a URL with no spaces, across rows of its editor and review; Elwood reads those
+rows as one answer.
 
 Codex's modal `request_user_input` groups questions into one acceptance unit.
 Its current editor requires choices for every question; native Other/notes

@@ -28,13 +28,15 @@ export type ClaudeQuestionScreen =
       readonly kind: "review";
       /** Zero-based review selection: Submit answers (0) or Cancel (1). */
       readonly cursor: number;
+      /** Non-blank rows after the title and before the actions, less any ready label; folded, LF-joined. */
       readonly summary: string;
     };
 const CLAUDE_REVIEW_TITLE = "Review your answers";
 const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
-const questionFooter = /^Enter to select · .+ · Esc to cancel$/;
+/** A shorter question can draw its footer on a replaced notice's row, which keeps blank cells. */
+const questionFooter = /^Enter to select · .+ · Esc to cancel *$/;
 const reviewCancelRow = /^(?:❯| )\s+2\. Cancel$/;
 
 /** Native chrome may be partial; a candidate alone grants no complete parse or answer authority. */
@@ -129,7 +131,7 @@ function parseReview(
   const summaryRows = body.slice(0, first).filter((line) => line.trim());
   if (summaryRows[0] !== CLAUDE_REVIEW_TITLE) return undefined;
   if (summaryRows.at(-1) === CLAUDE_REVIEW_READY_LABEL) summaryRows.pop();
-  const summary = normalizeClaudeQuestionText(summaryRows.slice(1).join(" "));
+  const summary = summaryRows.slice(1).map(normalizeClaudeQuestionText).join("\n");
   return { kind: "review", cursor: submitSelected ? 0 : 1, summary };
 }
 

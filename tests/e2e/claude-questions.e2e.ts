@@ -11,12 +11,11 @@ import { defaultClaudeTempDir } from "./claude-home.ts";
 import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
 import { claudeQuestionArtifacts } from "./questions/claude-artifacts.ts";
 import {
+  claudeProofTexts,
   claudeProofTimeoutMs,
   claudeQuestionLabel,
   claudeQuestionSessionName,
   claudeReadyTimeoutMs,
-  noteFirstLine,
-  noteLastLine,
 } from "./questions/claude-cases.ts";
 import { type ClaudeProofLifecycle, claudeProofQueue } from "./questions/claude-lifecycle.ts";
 import { type ClaudeNoticeProof, claudeNoticeProof } from "./questions/claude-notice.ts";
@@ -49,7 +48,7 @@ function proofTest(title: string, session: ProofSession): void {
 
 proofTest(
   "C-E2E-18 native Claude grouped, free-text and checkbox answers preserve the ergonomic turn",
-  { rounds: ["grouped", "text", "checkbox"], blankCells: true },
+  { rounds: ["grouped", "text", "long-text", "checkbox"], blankCells: true },
 );
 // A named session's questionnaire closing rule replaces the notice row, so no blank cells stay.
 proofTest("C-E2E-18 a named native Claude session raises and accepts a standalone checkbox", {
@@ -68,8 +67,8 @@ async function proveClaudeQuestions(
   const events: ElwoodQuestionEvent[] = [];
   const normalized: Extract<ElwoodActivityEvent, { kind: "question" }>[] = [];
   const answerMarker = randomUUID();
-  const note = `${noteFirstLine}_${answerMarker}\n${noteLastLine}`;
-  const privateAnswers = [answerMarker, note];
+  const texts = claudeProofTexts(answerMarker);
+  const privateAnswers = [answerMarker, texts.note, texts.summary, texts.link];
   const answeredIds: string[] = [];
   const raisedScreens: string[] = [];
   let notices: ClaudeNoticeProof | undefined;
@@ -116,6 +115,7 @@ async function proveClaudeQuestions(
       (message) => t.diagnostic(message),
     );
     active.on("terminal:data", artifacts.observe);
+    active.on("terminal:data", proof.painted);
     active.on("question", (event) => {
       events.push(event);
       const screen = active.session?.terminal.snapshot().text;
@@ -129,7 +129,7 @@ async function proveClaudeQuestions(
     const round = claudeQuestionRounds(active, events, t);
     const live = await lifecycle.start(active);
     await live.waitForStatus((status) => status === "ready", claudeReadyTimeoutMs);
-    const rounds = claudeRoundsByKind(round, note);
+    const rounds = claudeRoundsByKind(round, texts);
     // Rounds share the question waiter, the hook answer and the final-reply buffer: each settles first.
     for (const kind of kinds) {
       await proof.post();
@@ -141,8 +141,8 @@ async function proveClaudeQuestions(
       kinds.map(() => true),
     );
     t.assert.deepStrictEqual(
-      proof.residueWhenRaised,
-      kinds.map(() => blankCells),
+      [proof.residueWhenRaised, proof.footerKeptCells],
+      [kinds.map(() => blankCells), kinds.includes("long-text")],
     );
     // A named questionnaire keeps the session's label in a border under its footer.
     const label = (screen: string) => /─ (.+) ─$/.exec(screen.split("\n").at(-1) ?? "")?.[1];

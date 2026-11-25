@@ -2923,6 +2923,47 @@ to the PTY, because a raw key sent through Elwood during an ergonomic turn
 rejects that turn's `send()`. Alt+T in the hook alone, mid-turn, left no cells.
 The captures are in `tests/fixtures/claude-2.1.332/questions/`.
 
+### Claude question editor: wrapping, tabs and line endings (2026-11-25)
+
+Claude Code 2.1.332 was probed at 140 columns by pasting alternative text into
+the `Type something.` editor and pressing Enter at the raw terminal. The
+`AskUserQuestion` `PostToolUse` answer then showed what Claude kept.
+
+- Claude kept every shape exactly except one: a 350-character line, an
+  899-character line, a 300-character word, wide glyphs, three spaces at a wrap
+  point, tabs and trailing spaces all came back unchanged. Unlike the composer,
+  the editor did not collapse a long or multiline paste into a pill.
+- A pasted CRLF pair came back as a lone CR (`first line\rsecond line`), and a
+  lone CR stayed a CR.
+- The editor wraps a long line at word boundaries onto continuation rows. Each
+  continuation row has the same five-cell indent as a line after a typed
+  newline, so the rows alone cannot tell a wrap from a newline. A run with no
+  spaces that is too long for its row (a URL, a hash) is broken inside it, so a
+  row break can also stand for nothing at all.
+- A tab is drawn as spaces up to the next eight-cell stop, counted from the
+  editor's first column (`a       bc      def     g`). Claude's cursor counts a
+  tab as no cells, so it stops short of the end of the drawn row.
+- Leading and trailing newlines and spaces, and a 90-glyph CJK run with no
+  spaces, also came back unchanged.
+- The review of a grouped questionnaire draws each answer after `→`, with
+  continuation rows indented three cells. It wraps at spaces, breaks a run too
+  long for its row inside it, draws a tab as spaces and puts each line break on
+  a new row.
+
+Elwood compared the editor's rows, joined with newlines, with the submitted text
+exactly, so a wrapped line, a tab or a CRLF never matched and the answer failed
+before Enter with the request closed as `unavailable`. Elwood now pastes LF line
+endings and compares the editor's and the review's rows with whitespace runs
+folded, reading each row break as a space or as nothing.
+
+A grouped questionnaire keeps its top row when a shorter question follows a
+taller one, so its lower rows move up. A notice Claude replaced keeps its blank
+cells on its own screen row, whatever row is drawn there. In the proof's
+long-text turn, five rows of summary text shrank the next question's panel by
+four, and its footer landed on the notice row:
+`Enter to select · Tab/Arrow keys to navigate · Esc to cancel` followed by blank
+cells. Elwood now reads a footer that ends in blank cells.
+
 ### Codex question panels, work pulses, and Plan footer (2026-10-20)
 
 Codex 0.163.0's native queued-question UI can coexist with a working status

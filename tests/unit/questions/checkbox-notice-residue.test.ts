@@ -70,7 +70,7 @@ test("C-QUESTION-03 reads the standalone checkbox review at its captured cursor"
   expect(parseClaudeQuestionScreen(review, [fruits])).toEqual({
     kind: "review",
     cursor: 0,
-    summary: "● Which test fruits? → Apple, Cherry",
+    summary: "● Which test fruits?\n→ Apple, Cherry",
   });
 });
 

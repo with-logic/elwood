@@ -39,5 +39,21 @@ at the idle composer. The questionnaire's closing rule replaced the notice row,
 so no blank cells stay, and the label stays under the footer. `PostToolUse`
 reported `Which test fruits?` = `Apple, Cherry`.
 
-See "Claude notice residue on the last questionnaire row" in
-`docs/cli-behavior.md`.
+`single-other-wrapped-native.json`, `single-other-tabs-native.json` and
+`single-other-unbroken-native.json` were captured on 2026-11-25 in separate
+sessions without a notice, each after a paste into the Other editor: 70 words
+that Claude wrapped at spaces onto three rows; `col1`, `col2` and `col3`
+separated by tabs, which Claude drew as spaces; and `https://example.com/`
+followed by 280 `a`s, which Claude broke inside the run.
+`grouped-review-unbroken-native.json` is the review of a grouped
+`Which test color?` and `Which test note?` questionnaire answered `Amber` and
+that URL, which the review broke inside the run too. `PostToolUse` reported
+each pasted value exactly.
+
+`grouped-shrunk-footer-native.json` comes from a session with the notice: five
+rows of Color text shrank the `Which test note?` panel by four rows, so its
+footer landed on the notice row and kept the blank cells. Elwood's answer
+stopped at this frame until it read such a footer.
+
+See "Claude notice residue on the last questionnaire row" and "Claude question
+editor: wrapping, tabs and line endings" in `docs/cli-behavior.md`.

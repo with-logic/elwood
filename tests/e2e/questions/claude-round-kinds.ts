@@ -3,14 +3,17 @@ import type { ElwoodQuestionRequest } from "../../../src/index.ts";
 import {
   checkboxFinal,
   checkboxPrompt,
+  type claudeProofTexts,
   groupedFinal,
   groupedPrompt,
+  longTextFinal,
+  longTextPrompt,
   textFinal,
   textPrompt,
 } from "./claude-cases.ts";
 import type { claudeQuestionRounds } from "./claude-round.ts";
 
-export type ClaudeRoundKind = "grouped" | "text" | "checkbox";
+export type ClaudeRoundKind = "grouped" | "text" | "long-text" | "checkbox";
 
 /** The native option IDs for these labels, in the given order. */
 function optionIds(
@@ -30,7 +33,7 @@ function optionIds(
  */
 export function claudeRoundsByKind(
   round: ReturnType<typeof claudeQuestionRounds>,
-  note: string,
+  texts: ReturnType<typeof claudeProofTexts>,
 ): Readonly<Record<ClaudeRoundKind, () => Promise<string>>> {
   return {
     grouped: () =>
@@ -50,9 +53,25 @@ export function claudeRoundsByKind(
     text: () =>
       round(
         textPrompt,
-        (request) => request.questions.map((question) => ({ questionId: question.id, text: note })),
-        { "Which test note?": note },
+        (request) =>
+          request.questions.map((question) => ({ questionId: question.id, text: texts.note })),
+        { "Which test note?": texts.note },
         textFinal,
+      ),
+    "long-text": () =>
+      round(
+        longTextPrompt,
+        (request) =>
+          request.questions.map((question) => ({
+            questionId: question.id,
+            text: question.header === "Link" ? texts.link : texts.summary,
+          })),
+        // Elwood pastes LF line endings; Claude reports the exact pasted text, not its wrapped rows.
+        {
+          "Which test summary?": texts.summary.replace("\r\n", "\n"),
+          "Which test link?": texts.link,
+        },
+        longTextFinal,
       ),
     checkbox: () =>
       round(
