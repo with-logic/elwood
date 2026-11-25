@@ -23,7 +23,8 @@ export type BoundarySignal = string | { readonly text: string; readonly failure:
 export type TurnFailure = {
   /**
    * The agent's own diagnostic, bounded by the adapter: Claude's `error_details`, or Codex's
-   * `error.message` (often the service's raw JSON error body). Diagnostic, not display prose.
+   * `error.message` (a sentence on current Codex; 0.164.0 wrote the service's raw JSON error
+   * body). Diagnostic, not display prose.
    */
   readonly message: string;
   /**

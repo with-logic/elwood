@@ -41,19 +41,11 @@ export function ignoreInputFailure(input: void | Promise<void>): void {
  * follows after a settle delay; bounded re-Enters require staged content.
  * An authenticated UserPromptSubmit hook permanently revokes recovery, including when textless.
  *
- * While a human or automation-owned dialog is on screen, the WHOLE submission is
- * held: neither the paste nor any Enter reaches the terminal until the dialog
- * clears, so caller/model text can never be interpreted as the dialog's
- * shortcuts or confirm its highlighted option (C-API-37 dialog safety). Paste
- * text is sanitized first so an embedded end sentinel or control byte cannot
- * escape paste mode into live keystrokes (§5.3).
- *
- * Ordinary sends resolve and release composer ownership after the first physical
- * Enter; recovery continues in the background. Awaited ergonomic input keeps the queue and
- * composer owned until fresh rendered input is positively empty. Its physical
- * submission callback still runs after the first Enter, before native acceptance.
- * The submit hook stops retry Enters without confirming input consumption. Raw input
- * revokes recovery and cleanup authority over the caller's replacement draft.
+ * Blocking dialogs hold the paste and all Enter attempts until they clear (C-API-37).
+ * Sanitize the input to keep embedded control bytes from escaping the paste (§5.3).
+ * Ordinary sends release composer ownership on Enter while recovery runs in the
+ * background. Awaited input retains ownership until a fresh empty frame. Raw input
+ * revokes recovery and cleanup over the replacement draft.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -73,6 +65,12 @@ async function writePastedPrompt(
   const payload = sanitizePasteText(prompt);
   const recovery = guard?.captureRecovery?.();
   const priorEmptyFrame = guard?.emptyFrame?.();
+  const observe = guard?.observePaste?.(payload, priorEmptyFrame);
+  const write = (data: string) => {
+    const dispatch = () => terminal.sendInput(data);
+    return observe ? observe(data, dispatch) : dispatch();
+  };
+  const writeEnter = () => write("\r");
   const rawInputSignal = stageComposer(terminal);
   const nudgeSignal =
     rawInputSignal && signal
@@ -86,8 +84,9 @@ async function writePastedPrompt(
     nudgeDelayMs,
     priorEmptyFrame,
     recovery?.revoked,
+    writeEnter,
   );
-  await terminal.sendInput(`${bracketedPasteStart}${payload}${bracketedPasteEnd}`);
+  await write(`${bracketedPasteStart}${payload}${bracketedPasteEnd}`);
   try {
     await waitForInput(settleDelayMs, signal);
     // Hold the submitting Enter while a blocking dialog is on screen: firing it
@@ -99,7 +98,7 @@ async function writePastedPrompt(
     nudges?.beforeEnter();
     guard?.beforeEnter?.();
     beforeEnter?.(payload);
-    await terminal.sendInput("\r");
+    await writeEnter();
     // Physical submission is observable in both modes; only ordinary sends release here.
     if (!awaitInputConsumption) submittedComposer(terminal);
     onSubmitted?.();
@@ -166,6 +165,7 @@ export async function writeQueuedInput(
     command: async () => {
       if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
       throwIfInputAborted(signal);
+      guard?.beforeCommand?.();
       stageComposer(terminal);
       await terminal.sendInput(input);
       try {
