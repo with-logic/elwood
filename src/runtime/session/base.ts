@@ -69,8 +69,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
       terminalReplay,
       loopDefinitions,
     );
-    // `picker` is a subclass field initializer that runs AFTER this constructor, so the
-    // surface resolves it per call rather than capturing it here.
+    // Resolve the picker lazily because subclass fields initialize after super().
     this.commands = new CommandSurface({
       terminal: ownership.automated,
       inputSignal: () => ownership.signal(),
@@ -161,7 +160,6 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     return this.inSession(() => this.loops.cancel(loopId), true);
   }
 
-  /** A stable completed frame only when the native composer is positively empty (C-API-56). */
   protected emptyComposerFrame(): object | undefined {
     const frame = settledLiveSnapshot(this.terminal);
     return frame && this.composerIsEmpty(frame.text) ? frame : undefined;
@@ -193,7 +191,6 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
       return this.attachImages(paths, signal);
     };
     const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach, control);
-    // Looked up per call: a facade that launched this session shares ITS budget (C-API-44).
     const budget = sessionImageBudget(this);
     return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget));
   }

@@ -3,7 +3,7 @@ import { afterEach, expect, expectTypeOf, onTestFinished, test, vi } from "vites
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { composerClearKeys } from "../../src/core/input/constants.ts";
 import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
-import { startCodex } from "../../src/index.ts";
+import { resumeCodex, startCodex } from "../../src/index.ts";
 import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -22,13 +22,18 @@ test("C-API-70 Codex activity types include native fallback without API metadata
   }>().toExtend<CodexUserMessage>();
 });
 
-async function setup() {
+async function setup({ resumed = false } = {}) {
   installFakes();
   const cwd = tempDir();
-  const session = await startCodex({ cwd });
-  onTestFinished(() => session.teardown());
-  const pty = ptys[0]!;
-  await becomeReady(session.elwoodSessionId, cwd);
+  const initial = await startCodex({ cwd });
+  onTestFinished(() => initial.teardown());
+  await becomeReady(initial.elwoodSessionId, cwd, { session_id: "codex-id" });
+  if (resumed) await initial.stop();
+  const session = resumed
+    ? await resumeCodex({ cwd, elwoodSessionId: initial.elwoodSessionId })
+    : initial;
+  if (resumed) onTestFinished(() => session.teardown());
+  const pty = ptys.at(-1)!;
   const paint = async () => {
     pty.emitData(`\x1b[2J\x1b[H${codexTty(codexSmallComposer)}`);
     await session.terminal.settled();
@@ -72,6 +77,69 @@ test.each([
   ]);
 });
 
+test("C-API-70 a matched API send preserves prompt presentation without a sendId", async () => {
+  const { session, messages, trySubmit } = await setup();
+  const text = " original\u0000\r\nprompt ";
+  await session.sendMessage(text);
+  await trySubmit("original\nprompt");
+  expect(messages).toMatchObject([
+    {
+      text,
+      turnId: "native-turn",
+      nativePrompt: "original\nprompt",
+      promptProvenance: { origin: "api", input: "pasted" },
+      raw: { prompt: "original\nprompt" },
+    },
+  ]);
+  expect(messages[0]).not.toHaveProperty("sendId");
+});
+
+test("C-API-70 raw caller input retires a pending API association", async () => {
+  const { session, messages, pty, trySubmit } = await setup();
+  await session.sendMessage(" pending ", { sendId: "abandoned" });
+  const rawInput = "\x1b[D";
+  await session.terminal.sendInput(rawInput);
+  expect(pty.writes).toEqual(["\x1b[200~ pending \x1b[201~", "\r", rawInput]);
+  await trySubmit("pending");
+  expectNativePrompt(expect, messages, "pending");
+});
+
+test("C-API-70 correlates prompts and caller IDs at the inclusive UTF-16 limits", async () => {
+  const { session, messages, trySubmit } = await setup();
+  const text = "🧪".repeat(32_768);
+  const sendId = "🚦".repeat(512);
+  const turnId = "n".repeat(128);
+  await session.sendMessage(text, { sendId });
+  await trySubmit(text, turnId);
+  expect(messages).toMatchObject([
+    {
+      text,
+      sendId,
+      turnId,
+      nativePrompt: text,
+      promptProvenance: { origin: "api", input: "pasted" },
+    },
+  ]);
+});
+
+test("C-API-70 a resumed session reports a matching text send as native-only", async () => {
+  const { session, messages, pty, trySubmit } = await setup({ resumed: true });
+  await session.sendMessage(" resumed ", { sendId: "resume-caller-id" });
+  expect(pty.writes).toEqual(["\x1b[200~ resumed \x1b[201~", "\r"]);
+  await trySubmit("resumed");
+  expectNativePrompt(expect, messages, "resumed");
+});
+
+function expectNativePrompt(
+  assert: typeof expect,
+  messages: readonly ElwoodActivityEvent[],
+  text: string,
+): void {
+  assert(messages).toMatchObject([{ text, turnId: "native-turn", raw: { prompt: text } }]);
+  for (const field of ["sendId", "nativePrompt", "promptProvenance"])
+    assert(messages[0]).not.toHaveProperty(field);
+}
+
 test("C-API-70 a reused caller ID and duplicated native hook have separate identities", async () => {
   const { session, messages, trySubmit, paint } = await setup();
   await session.sendMessage(" \uFEFFfirst\uFEFF ", { sendId: "reused" });
@@ -94,9 +162,7 @@ test("C-API-70 two unresolved sends with the same text stay native", async () =>
   await paint();
   await session.sendGuidance("one", { sendId: "second" });
   await trySubmit("one");
-  expect(messages).toMatchObject([{ text: "one" }]);
-  for (const field of ["sendId", "nativePrompt", "promptProvenance"])
-    expect(messages[0]).not.toHaveProperty(field);
+  expectNativePrompt(expect, messages, "one");
 });
 
 test("C-API-70 a cancelled paste allows a matching successor after verified cleanup", async () => {

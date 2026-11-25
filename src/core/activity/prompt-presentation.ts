@@ -1,5 +1,6 @@
 /** User message presentation and optional native paste evidence (PRD §5.4, C-API-67). */
-import type { hookActivityBase } from "./meta.ts";
+import type { CodexHookEventFor } from "../../codex/hooks/index.ts";
+import { hookActivityBase } from "./meta.ts";
 
 type NativePasteProvenance = {
   readonly origin: "unknown";
@@ -58,11 +59,12 @@ export type CodexApiUserMessageActivity = ApiPromptPresentation & {
 };
 
 export function codexApiUserActivity(
-  base: ReturnType<typeof hookActivityBase>,
+  elwoodSessionId: string,
+  event: CodexHookEventFor<"UserPromptSubmit">,
   prompt: ApiPromptPresentation,
 ): ReturnType<typeof hookActivityBase> & CodexApiUserMessageActivity {
   return {
-    ...base,
+    ...hookActivityBase("codex", elwoodSessionId, event),
     ...prompt,
     agent: "codex",
     kind: "user_message",

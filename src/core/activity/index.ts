@@ -7,12 +7,10 @@ import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { DashboardActivityFields } from "../stats/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
-import {
-  type ApiPromptPresentation,
-  type CodexApiUserMessageActivity,
-  codexApiUserActivity,
-  type NativeUserMessageActivity,
-  type NoPromptEvidence,
+import type {
+  CodexApiUserMessageActivity,
+  NativeUserMessageActivity,
+  NoPromptEvidence,
 } from "./prompt-presentation.ts";
 import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
@@ -151,10 +149,8 @@ export function activityFromClaudeHook(
 export function activityFromCodexHook(
   elwoodSessionId: string,
   event: CodexHookEvent,
-  prompt?: ApiPromptPresentation,
 ): ElwoodActivityEvent {
   const base = meta.hookActivityBase("codex", elwoodSessionId, event);
-  if (prompt) return codexApiUserActivity(base, prompt);
   const shared = sharedHookActivity(base, event);
   return shared ?? { ...base, kind: "hook", label: event.hook_event_name };
 }

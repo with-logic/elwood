@@ -6,6 +6,7 @@
  */
 
 import * as activity from "../../core/activity/index.ts";
+import { codexApiUserActivity } from "../../core/activity/prompt-presentation.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import { isRecord } from "../../core/predicates.ts";
@@ -109,9 +110,13 @@ async function observeAndRequest(
       ? session?.promptSubmissions?.observeNativeSubmit(event.turn_id, event.prompt)
       : undefined;
   observation.run("hook", () => emitter.emit("hook", event));
-  observation.run("activity", () =>
-    emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event, prompt)),
-  );
+  observation.run("activity", () => {
+    const projected =
+      event.hook_event_name === "UserPromptSubmit" && prompt
+        ? codexApiUserActivity(record.elwoodSessionId, event, prompt)
+        : activity.activityFromCodexHook(record.elwoodSessionId, event);
+    emitter.emit("activity", projected);
+  });
   const outcome = await requestCodexHook(
     {
       hasListeners: (name) => emitter.hasListeners(name),

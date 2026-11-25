@@ -1,5 +1,4 @@
 /** Bind physical submissions and native idle evidence to a live session (PRD §5.8/§5.9). */
-import { normalizeCodexPastedPayload } from "../../codex/input-text.ts";
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import type { AdmitOperation, ControlSubmitter } from "../../core/control-queue/types.ts";
@@ -12,7 +11,7 @@ import { captureRenderProgress } from "../../terminal/cursor.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import { notRunningError } from "./not-running.ts";
 import { PasteRecoveryRevocation } from "./paste-recovery.ts";
-import { PromptSubmissions } from "./prompt-submissions.ts";
+import { type PromptNormalizer, PromptSubmissions } from "./prompt-submissions.ts";
 import type { SessionInputOwnership } from "./session-input.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
@@ -86,6 +85,7 @@ export function bindSessionControl(
   options: {
     readonly agent: ElwoodAgentKind;
     readonly resumed: boolean;
+    readonly promptNormalizer: PromptNormalizer | undefined;
     readonly blocked: () => boolean;
     readonly composer: () => RecoveryComposer;
     readonly readEmpty: () => object | undefined;
@@ -94,8 +94,8 @@ export function bindSessionControl(
 ) {
   const closing = session.closing.signal;
   const prompts =
-    options.agent === "codex" && !options.resumed
-      ? new PromptSubmissions(input.caller, closing, normalizeCodexPastedPayload)
+    options.promptNormalizer && !options.resumed
+      ? new PromptSubmissions(input.caller, closing, options.promptNormalizer)
       : undefined;
   const guard = new PasteRecoveryRevocation(events, closing).createGuard(
     input.caller,

@@ -12,11 +12,14 @@ import { observeInputWrite } from "../../terminal/forwarded-input.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { onCallerInput } from "./session-input.ts";
 
-const maxPromptLength = 65_536;
-const maxNativeIds = 1_024;
+const maxCorrelatedPromptCodeUnits = 65_536;
+const maxNativeTurnIds = 1_024;
+const maxNativeTurnIdCodeUnits = 128;
+
+export type PromptNormalizer = (payload: string, limit: number) => string | undefined;
 
 type Submission = {
-  readonly comparable: string | undefined;
+  readonly expectedHookPrompt: string | undefined;
   pasted: boolean;
   entered: boolean;
   api?: { readonly text: string; readonly sendId?: string };
@@ -24,16 +27,12 @@ type Submission = {
 
 export class PromptSubmissions {
   private draft: Submission | undefined;
-  private readonly nativeIds = new Set<string>();
+  private readonly nativeTurnIds = new Set<string>();
   private readonly terminal: ElwoodTerminal;
-  private readonly normalizePayload: (payload: string) => string;
+  private readonly normalizePayload: PromptNormalizer;
   private track = true;
 
-  constructor(
-    terminal: ElwoodTerminal,
-    closing: AbortSignal,
-    normalizePayload: (payload: string) => string,
-  ) {
+  constructor(terminal: ElwoodTerminal, closing: AbortSignal, normalizePayload: PromptNormalizer) {
     this.terminal = terminal;
     this.normalizePayload = normalizePayload;
     const stopInput = onCallerInput(terminal, this.revoke);
@@ -66,9 +65,11 @@ export class PromptSubmissions {
       this.revoke();
       return undefined;
     }
-    const comparable =
-      empty && payload.length <= maxPromptLength ? this.normalizePayload(payload) : undefined;
-    const draft = { comparable, pasted: false, entered: false };
+    const expectedHookPrompt =
+      empty && payload.length <= maxCorrelatedPromptCodeUnits
+        ? this.normalizePayload(payload, maxCorrelatedPromptCodeUnits)
+        : undefined;
+    const draft = { expectedHookPrompt, pasted: false, entered: false };
     this.draft = draft;
     return (data, dispatch) =>
       observeInputWrite(
@@ -87,6 +88,7 @@ export class PromptSubmissions {
       );
   }
 
+  /** Capture options at admission. Record the original text just before the first Enter. */
   captureCaller(
     text: string,
     options: SendOptions | undefined,
@@ -95,7 +97,7 @@ export class PromptSubmissions {
     const sendId = readSendId(options);
     return (payload) => {
       const draft = this.draft;
-      if (draft?.comparable !== undefined && text.length <= maxPromptLength)
+      if (draft?.expectedHookPrompt !== undefined && text.length <= maxCorrelatedPromptCodeUnits)
         draft.api = { text, ...(sendId === undefined ? {} : { sendId }) };
       beforeEnter?.(payload);
     };
@@ -106,19 +108,23 @@ export class PromptSubmissions {
     if (!this.draft?.entered) this.draft = undefined;
   };
 
+  /** Attribute only after forwarding and before publishing the authenticated hook activity. */
   observeNativeSubmit(
     turnId: string,
     prompt: string | undefined,
   ): ApiPromptPresentation | undefined {
-    if (!this.track || this.nativeIds.has(turnId)) return undefined;
-    if (!turnId || turnId.length > 128 || this.nativeIds.size === maxNativeIds) {
+    if (!this.track || this.nativeTurnIds.has(turnId)) return undefined;
+    const validId = turnId.length > 0 && turnId.length <= maxNativeTurnIdCodeUnits;
+    const hasHistoryRoom = this.nativeTurnIds.size < maxNativeTurnIds;
+    // Losing the bounded identity history makes later matches ambiguous for this session.
+    if (!(validId && hasHistoryRoom)) {
       this.revoke();
       return undefined;
     }
-    this.nativeIds.add(turnId);
+    this.nativeTurnIds.add(turnId);
     const draft = this.draft;
     if (!draft?.entered) return undefined;
-    if (prompt === undefined || prompt !== draft.comparable || !hasPromptText(prompt)) {
+    if (prompt === undefined || prompt !== draft.expectedHookPrompt || !hasPromptText(prompt)) {
       this.revoke();
       return undefined;
     }
@@ -135,6 +141,6 @@ export class PromptSubmissions {
   revoke = (): void => {
     this.track = false;
     this.draft = undefined;
-    this.nativeIds.clear();
+    this.nativeTurnIds.clear();
   };
 }

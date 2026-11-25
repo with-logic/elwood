@@ -17,7 +17,7 @@ import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
 import { bindSessionControl } from "./native-submission.ts";
 import { closingController, runSessionOperation } from "./not-running.ts";
-import type { PromptSubmissions } from "./prompt-submissions.ts";
+import type { PromptNormalizer, PromptSubmissions } from "./prompt-submissions.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import type { SessionInputOwnership } from "./session-input.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
@@ -44,6 +44,10 @@ export abstract class SessionLifecycle {
   private readonly shutdown: SessionShutdownBinding;
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
   protected readonly pasteGuard: PasteGuard;
+  /** Adapters can provide a static normalizer before their instance fields initialize. */
+  protected get promptNormalizer(): PromptNormalizer | undefined {
+    return undefined;
+  }
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
@@ -69,6 +73,7 @@ export abstract class SessionLifecycle {
     const controls = bindSessionControl(this, input, statusEvents, {
       agent,
       resumed: record[agent].resumeId !== undefined,
+      promptNormalizer: this.promptNormalizer,
       composer: () => this.recoveryComposer,
       blocked: () => this.queuedInputBlocked(),
       readEmpty: () => this.emptyComposerFrame(),
