@@ -37,6 +37,10 @@ export class ClaudeStartupPromptResponder {
     return this.trust.blockedPrompt;
   }
 
+  get humanOwnedPrompt() {
+    return this.trust.humanOwnedPrompt;
+  }
+
   /**
    * Session closing owns cancellation for NON-TRUST automation too, not just for trust
    * attempts. After `dispose()` no new decline is attempted, and a decline already in

@@ -89,10 +89,6 @@ export type {
   CodexTranscriptSummary,
 } from "./codex/transcript/index.ts";
 export type {
-  ElwoodDialogChoice,
-  ElwoodDialogRequest,
-} from "./codex/workspace-trust/types.ts";
-export type {
   ElwoodActivityEvent,
   ElwoodActivityKind,
   ElwoodActivitySource,
@@ -103,6 +99,10 @@ export type {
   ElwoodCommonEventMap,
   ElwoodCommonEventName,
 } from "./core/agent-session.ts";
+export type {
+  ElwoodDialogChoice,
+  ElwoodDialogRequest,
+} from "./core/dialogs/types.ts";
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./core/images/types.ts";

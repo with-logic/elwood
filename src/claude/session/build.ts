@@ -1,6 +1,5 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../../core/defaults.ts";
-import { causeDetails, elwoodError } from "../../core/errors.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ClaudeEventMap } from "../../core/types.ts";
@@ -22,7 +21,9 @@ import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
-import { currentClaudeHookBridgeFactory } from "./bridge.ts";
+import { ClaudeWorkspaceTrustDiscovery } from "../workspace-trust/discovery.ts";
+import { captureClaudeStartupTrustEvidence } from "../workspace-trust/target.ts";
+import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
 import {
@@ -58,15 +59,23 @@ export async function buildClaudeSession(
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
+  const dialogs = new ClaudeWorkspaceTrustDiscovery({
+    elwoodSessionId: record.elwoodSessionId,
+    evidence: await captureClaudeStartupTrustEvidence(options.launchDirectory),
+    terminal: () => terminal,
+    humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
+    clearance: idleComposerClearance,
+  });
   const readiness = createStartupReadinessGate(
     () => {
+      dialogs.endStartup();
       observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
       void session?.completeInitialReady();
     },
     resumed,
     { session: observers, warnings: warnGate, events: emitter, configured: idleComposerClearance },
   );
-  const bridge = currentClaudeHookBridgeFactory()(
+  const bridge = await startClaudeHookBridge(
     runtime.socketPath,
     runtime.bridgeToken,
     record.elwoodSessionId,
@@ -83,20 +92,9 @@ export async function buildClaudeSession(
     }),
     buildClaudeHookErrorHandler(record, emitter, () => session),
   );
-  try {
-    await bridge.start();
-  } catch (error) {
-    await bridge.stop().catch(() => undefined);
-    throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
-      ...causeDetails(error),
-      socketPath: runtime.socketPath,
-    });
-  }
   const requestedSize = options.initialSize ?? defaultTerminalSize;
-  const startupSize = {
-    ...requestedSize,
-    cols: Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS),
-  };
+  const cols = Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS);
+  const startupSize = { ...requestedSize, cols };
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
     pty = spawnClaudePty(record, runtime.settingsPath, { ...options, initialSize: startupSize });
@@ -139,6 +137,7 @@ export async function buildClaudeSession(
     );
     const trustRead = () => settledLiveSnapshot(renderedTerminal)?.text;
     const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
+    dialogs.reconcile();
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
     });
@@ -160,8 +159,10 @@ export async function buildClaudeSession(
     terminalReplay,
     requestedSize,
     loopDefinitions,
+    dialogs,
   );
   const active = bindTurnSubmission(session, observers);
+  dialogs.bind(terminal, active.closing.signal);
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const sessionCleanup = active.startupCleanupResources(readiness.ready.cancel);

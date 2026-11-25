@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- List verified Claude startup workspace trust prompts and their effective Git
+  scope through `listDialogs()`.
+
 - Require a verified composer before Claude's startup deadline releases queued
   prompts. Report unfamiliar screens in `unrecognized_startup` activity when
   the backstop expires. The activity and the `initial_ready_backstop` warning

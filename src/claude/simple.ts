@@ -70,6 +70,10 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
     this.unsubscribe(event, handler);
   }
 
+  async listDialogs() {
+    return (await this.start()).listDialogs();
+  }
+
   /** Drive the interactive `/login` re-authentication flow (Claude-only, C-API-43). */
   async login(options: ClaudeLoginOptions): Promise<void> {
     return (await this.start()).login(options);
