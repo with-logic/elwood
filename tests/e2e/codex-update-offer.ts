@@ -6,7 +6,7 @@
  * Enter through. docs/cli-behavior.md, "Codex 0.171.0 update offer".
  */
 
-import { constants, cpSync, existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { constants, cpSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { nodePtyFactory } from "../../src/pty/node.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
@@ -17,10 +17,12 @@ import {
 } from "../../src/runtime/seams.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { userCodexAuthPath } from "./codex-home.ts";
+import { writeCodexUpdateCheck } from "./codex-update-check.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
+import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
 
 /** A release no installed Codex has reached, so the offer does not depend on what is current. */
-export const offeredCodexVersion = "99.0.0";
+const offeredCodexVersion = "99.0.0";
 
 /** One application write that was kept from the CLI, with the screen it was aimed at. */
 export type RefusedInput = { readonly data: string; readonly screen: string };
@@ -41,19 +43,14 @@ export type CodexUpdateOffer = {
   dispose(): void;
 };
 
-/** Cursor-position, device-attribute and mode-report replies to Codex's terminal queries. */
-const protocolReply = /^\[(?:\d+;\d+R|\?[\d;]+c|\?[\d;]+\$y|[\d;]*n)$/;
-const isProtocolReply = (input: string) =>
-  input.startsWith("\u001b") && protocolReply.test(input.slice(1));
-
 /**
  * A standalone Codex offers an update only from its home's own managed release, and the
  * login shell may resolve a different install per directory. When the user has a
- * standalone install, `home` gets a copy-on-write clone of its current release and the
- * returned shell prefix runs that clone. Otherwise the shell's own Codex runs, and an npm
- * or Homebrew install offers its update unaided.
+ * standalone install, `home` gets a copy-on-write clone of its current release. Returns
+ * the shell prefix that runs that clone, or undefined without a standalone install; the
+ * shell's own Codex then runs, and an npm install offers its update unaided.
  */
-function managedReleasePath(home: string): string | undefined {
+function cloneManagedRelease(home: string): string | undefined {
   const current = join(dirname(userCodexAuthPath), "packages", "standalone", "current");
   if (!existsSync(join(current, "bin", "codex"))) return undefined;
   const release = realpathSync(current);
@@ -73,7 +70,7 @@ function managedReleasePath(home: string): string | undefined {
  * `release` names the one key the test sends itself.
  */
 export function codexUpdateOffer(home: string): CodexUpdateOffer {
-  const pin = managedReleasePath(home);
+  const pin = cloneManagedRelease(home);
   const pinned = (args: readonly string[]) => (pin ? prefixShellArgument(args, pin) : [...args]);
   const refused: RefusedInput[] = [];
   let screen = () => "";
@@ -86,7 +83,7 @@ export function codexUpdateOffer(home: string): CodexUpdateOffer {
       ...pty,
       write(data) {
         const input = typeof data === "string" ? data : Buffer.from(data).toString("utf8");
-        if (open || isProtocolReply(input)) return pty.write(data);
+        if (open || isTerminalProtocolReply(input)) return pty.write(data);
         if (input !== releaseKey) {
           refused.push({ data: input, screen: screen() });
           return;
@@ -99,16 +96,7 @@ export function codexUpdateOffer(home: string): CodexUpdateOffer {
   return {
     refused,
     arm() {
-      // Codex offers the `latest_version` its cached check names when that is newer than
-      // itself and was read within the last 20 hours.
-      writeFileSync(
-        join(home, "version.json"),
-        JSON.stringify({
-          latest_version: offeredCodexVersion,
-          last_checked_at: new Date().toISOString(),
-          dismissed_version: null,
-        }),
-      );
+      writeCodexUpdateCheck(home, offeredCodexVersion);
       open = false;
     },
     watch(read) {

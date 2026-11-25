@@ -52,7 +52,8 @@ export type ComposerReadyFacts = {
  * distinct `»`. A dialog frame must NOT latch readiness, or a queued message's Enter
  * could approve it; readiness waits for the composite hold owned by
  * `createReadinessGate` to release on verified idle. An unrecognized screen is no
- * dialog to the fact table, so only the configured composer keeps input off it.
+ * dialog to the fact table, so only the configured composer keeps input off it, and a
+ * caller without that evidence passes a predicate that never confirms.
  * Cold start (`resumed: false`) never fires here, so the
  * composer stays an unsafe signal there (C-API-28).
  */
@@ -60,8 +61,8 @@ export function markReadyOnResumeComposer(
   ready: Pick<InitialReady, "mark">,
   resumed: boolean,
   facts: ComposerReadyFacts,
+  configured: () => boolean,
   readinessHeld = false,
-  configured: () => boolean = () => true,
 ): void {
   if (
     resumed &&

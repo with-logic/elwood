@@ -28,7 +28,10 @@ import { QUIET_DEADLINE_MS, waitForQuietScreen } from "./quiet-screen.ts";
 // shared with every Codex session on the account: on 2026-10-25 that model answered 429
 // Too Many Requests and Codex backed off for 110-509 s, so the first turn never settled.
 // The test needs only a resumable conversation, so it pins a small model at low effort.
-const CODEX_CONFIG = 'model = "gpt-6-luna"\nmodel_reasoning_effort = "low"\n';
+// The resume is the home's second launch, which an out-of-date Codex opens on its update
+// offer, so the check is off.
+const CODEX_CONFIG =
+  'model = "gpt-6-luna"\nmodel_reasoning_effort = "low"\ncheck_for_update_on_startup = false\n';
 
 // Each readiness, turn and submission wait is bounded, and the test timeout covers every
 // bound, so a stuck step fails under its own label with the session's screen instead of

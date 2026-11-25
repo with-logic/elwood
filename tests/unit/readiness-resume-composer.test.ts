@@ -2,7 +2,9 @@
  * Resume readiness needs the configured composer, not a composer marker (PRD §5.3,
  * C-API-28). A resumed Codex 0.171.0 paints a `Resuming session…` placeholder composer,
  * then its update offer, whose selected row is `› 1. Update now`. Neither is a dialog to
- * the fact table, and Enter on the offer runs a global installer.
+ * the fact table, because the update recognizer matches only Codex 0.155's layout, and
+ * Enter on the offer runs a global installer. They stand for any startup screen Elwood
+ * does not recognize.
  */
 
 import { expect, test, vi } from "vitest";
@@ -18,11 +20,15 @@ const skipped = capturedFrame("codex-0.171.0/update/resume-skipped-composer");
 const facts = (text: string) => readScreenFacts(codexScreenFactTable, { text, title: "" }).facts;
 const codex = (configured = codexComposerConfigured) => ({ configured, onBackstop: () => {} });
 
-test("C-API-28 the captured placeholder and offer carry the composer marker, unconfigured", () => {
-  for (const frame of [placeholder, offer]) {
-    expect(facts(frame)).toMatchObject({ composer_visible: true, blocking_prompt_visible: false });
-    expect(codexComposerConfigured(frame, 100)).toBe(false);
-  }
+test.each([
+  ["placeholder", placeholder],
+  ["offer", offer],
+])("C-API-28 the captured %s carries the composer marker, unconfigured", (_name, frame) => {
+  expect(facts(frame)).toMatchObject({ composer_visible: true, blocking_prompt_visible: false });
+  expect(codexComposerConfigured(frame, 100)).toBe(false);
+});
+
+test("C-API-28 the captured composer after the skip is configured", () => {
   expect(codexComposerConfigured(skipped, 100)).toBe(true);
 });
 
@@ -69,9 +75,14 @@ test("C-API-28 a resume checks the configured composer only on unblocked compose
   expect(configured).toHaveBeenCalledOnce();
 });
 
-test("C-API-28 without an adapter predicate a resume marks on the first composer marker", () => {
-  let ready = 0;
-  const gate = createReadinessGate(() => ready++, true);
-  gate.observeReadinessFrame(facts(placeholder), false, placeholder, 100);
-  expect(ready).toBe(1);
+test("C-API-28 a resume whose ready listener throws retries on the next configured frame", () => {
+  const onReady = vi.fn().mockImplementationOnce(() => {
+    throw new Error("listener failed");
+  });
+  const gate = createReadinessGate(onReady, true, codex());
+  expect(() => gate.observeReadinessFrame(facts(skipped), false, skipped, 100)).toThrow(
+    "listener failed",
+  );
+  gate.observeReadinessFrame(facts(skipped), false, skipped, 100);
+  expect(onReady).toHaveBeenCalledTimes(2);
 });

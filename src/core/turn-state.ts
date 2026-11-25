@@ -40,6 +40,9 @@ export class TurnStateWatcher {
   // readiness waits for the configured composer, which paints after the placeholder
   // and may follow the load, so this progress is tracked before arming too.
   private resumeLoad: "none" | "pending" | "working" = "none";
+  // The last frame before arming was a quiet composer after that load: the frame that
+  // released readiness can be it, and an idle CLI may never repaint.
+  private loadedBeforeArm = false;
 
   /**
    * Watching starts only after initial readiness so startup spinners that borrow the
@@ -58,7 +61,7 @@ export class TurnStateWatcher {
    */
   arm(resumed = false): void {
     this.armed = true;
-    this.replaySettling = resumed;
+    this.replaySettling = resumed && !this.loadedBeforeArm;
     this.quietStreak = 0;
   }
 
@@ -98,7 +101,10 @@ export class TurnStateWatcher {
    * (a message drained at resume-readiness can start its spinner before any
    * quiet composer frame ever paints). */
   observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
-    if (!this.armed) this.trackResumeLoad(facts);
+    if (!this.armed) {
+      this.trackResumeLoad(facts);
+      this.loadedBeforeArm = quietComposer(facts) && this.resumeLoad === "working";
+    }
     if (!this.canObserve(facts)) return undefined;
     if (this.replaySettling) {
       if (!evidenceRunning) {
@@ -156,11 +162,7 @@ export class TurnStateWatcher {
    */
   private observeSettlingFrame(facts: ScreenFacts): void {
     this.trackResumeLoad(facts);
-    const quiet =
-      facts.composer_visible &&
-      !facts.working_visible &&
-      !facts.blocking_prompt_visible &&
-      !facts.resume_loading_visible;
+    const quiet = quietComposer(facts);
     this.quietStreak = quiet ? this.quietStreak + 1 : 0;
     const loaded = quiet && this.resumeLoad === "working";
     if (loaded || this.quietStreak >= quietFramesToSettle) this.replaySettling = false;
@@ -170,4 +172,14 @@ export class TurnStateWatcher {
     if (facts.resume_loading_visible && this.resumeLoad === "none") this.resumeLoad = "pending";
     if (facts.working_visible && this.resumeLoad === "pending") this.resumeLoad = "working";
   }
+}
+
+/** An idle, non-blocking composer that is not the CLI's resume-loading placeholder. */
+function quietComposer(facts: ScreenFacts): boolean {
+  return (
+    facts.composer_visible &&
+    !facts.working_visible &&
+    !facts.blocking_prompt_visible &&
+    !facts.resume_loading_visible
+  );
 }

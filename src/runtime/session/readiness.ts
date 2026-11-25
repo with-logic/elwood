@@ -37,8 +37,9 @@ export type ReadinessGate = {
 
 /**
  * An adapter's `composer.configured`, when supplied, proves a rendered composer belongs
- * to a configured session. The initial deadline and the resume composer then mark only
- * onto such a frame (C-API-28). The latest frame is checked only when readiness asks.
+ * to a configured session. The initial deadline then marks only onto such a frame, and
+ * the resume composer marks on nothing else: without it, a resume waits for a hook or
+ * the deadline (C-API-28). The latest frame is checked only when readiness asks.
  */
 export function createReadinessGate(
   onReady: () => void,
@@ -81,12 +82,15 @@ export function createReadinessGate(
       },
     };
   }
-  let released = false;
+  // `mark()` is idempotent; this only stops the configured-composer check on every frame
+  // after readiness. It latches after `onReady`, so a throwing listener retries (C-API-28).
+  let readyFired = false;
+  const configured = evidence?.shown ?? (() => false);
   const ready = initialReady(
     () => {
       backstopHold = undefined;
       onReady();
-      released = true;
+      readyFired = true;
     },
     undefined,
     () => readinessHeld,
@@ -98,8 +102,7 @@ export function createReadinessGate(
     observeFrameHold,
     observeReadinessFrame: (facts, trustInputBlocking, frame, cols) => {
       observeFrameHold(facts, trustInputBlocking, frame, cols);
-      if (!released)
-        markReadyOnResumeComposer(ready, resumed, facts, readinessHeld, evidence?.shown);
+      if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
     },
   };

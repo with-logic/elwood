@@ -151,7 +151,7 @@ not.** So a resumed Claude session reaches ready fast via its hook, while a
 resumed Codex session would otherwise wait out the full 10 s deadline (the
 conversation already exists, so no `SessionStart` re-fires). To avoid that, on
 **resume only**, Elwood also accepts the rendered configured composer as a
-readiness signal (`createReadinessGate(onReady, resumed)`,
+readiness signal (`createReadinessGate(onReady, resumed, composer)`,
 `src/runtime/session/readiness.ts`).
 
 **On resume the composer marker alone is not that signal (2026-11-24).** Until
@@ -161,15 +161,16 @@ placeholder composer first and, when an update is on offer, replace it about
 0.1 s later with a menu whose selected row is `› 1. Update now`. Elwood did not
 recognize that menu, so a message queued at resume had its paste and its Enter
 released at the placeholder, a tenth of a second before the menu replaced it.
-The menu's default row runs a global installer. Resume readiness now needs the adapter's configured composer, the
-same evidence as the deadline (Codex's status footer, Claude's verified idle
-composer). See "Codex 0.171.0 update offer" below. C-API-28, C-E2E-25.
+The menu's default row runs a global installer. Resume readiness now needs the
+adapter's configured composer, the same evidence as the deadline (Codex's status
+footer, Claude's verified idle composer). See "Codex 0.171.0 update offer" below.
+C-API-28, C-E2E-25.
 
-**The composer is a readiness signal on resume, but NOT on cold
-start.** On a cold start the composer (`›` for ordinary Codex effort, `»` for
-Codex `ultra`, `❯` for Claude) is a **boot-time placeholder** that paints ~1 s
-before the input loop is live and is byte-identical to the ready composer —
-sending a prompt then gets silently swallowed. On resume the conversation already exists, so a prompt
+**The composer is a readiness signal on resume, but NOT on cold start.** On a
+cold start the composer (`›` for ordinary Codex effort, `»` for Codex `ultra`,
+`❯` for Claude) is a **boot-time placeholder** that paints ~1 s before the input
+loop is live and is byte-identical to the ready composer — sending a prompt then
+gets silently swallowed. On resume the conversation already exists, so a prompt
 sent once the configured composer paints is accepted. This is why the
 resume-composer path is gated on `resumed`. C-API-28, PRD §5.3.
 
@@ -214,20 +215,22 @@ misattributed to a CLI regression.)
   conversation (2026-10-25).** Five captured resumes in private Codex homes, at load
   averages of 20 to 60, all had the same shape. First comes the header, then
   `Resuming session…`, then the live composer and `? for shortcuts`. That frame
-  repaints 8 to 11 times with no visible change. Elwood then latched resume readiness
-  on its first composer frame; since 2026-11-24 it waits for the configured composer,
-  which paints with the replayed transcript, and the turn watcher tracks the
-  placeholder and the load from before readiness. 0.5 to 1.6 s later, Codex sets a braille title spinner
-  and `OSC 7501;state=working:app=codex`. It replaces the placeholder with the
-  replayed transcript, either in the spinner's first frame or one frame later. The
-  spinner runs 0.7 to 1.5 s. Then the title goes idle with `state=idle`, at most one
-  cursor repaint follows, and Codex sends nothing more until input arrives. The quiet streak counted the
-  placeholder's repaints and released settling before the load. The spinner then
-  became a phantom `running → ready` on every capture. The real-CLI e2e reported it
-  as `saw: running,ready`. Placeholder frames are no longer quiet. Once the
-  placeholder has painted and the load's spinner has been seen, the first quiet
-  composer ends settling. A five-frame streak never arrives from an idle Codex.
-  Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
+  repaints 8 to 11 times with no visible change. 0.5 to 1.6 s after the first
+  composer frame, Codex sets a braille title spinner and
+  `OSC 7501;state=working:app=codex`. It replaces the placeholder with the replayed
+  transcript, either in the spinner's first frame or one frame later. The spinner
+  runs 0.7 to 1.5 s. Then the title goes idle with `state=idle`, at most one cursor
+  repaint follows, and Codex sends nothing more until input arrives. The quiet
+  streak counted the placeholder's repaints and released settling before the load.
+  The spinner then became a phantom `running → ready` on every capture. The real-CLI
+  e2e reported it as `saw: running,ready`. Placeholder frames are no longer quiet.
+  Once the placeholder has painted and the load's spinner has been seen, the first
+  quiet composer ends settling. A five-frame streak never arrives from an idle Codex.
+  Elwood then latched resume readiness on the first composer frame. Since
+  2026-11-24 it waits for the configured composer, which paints with the replayed
+  transcript, so the turn watcher records the placeholder and its load from before
+  readiness, including when the frame that releases readiness is that first quiet
+  composer. Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
 - **Codex records a turn's completion only after its `Stop` hook returns
   (2026-10-25).** Elwood reports `ready` from that hook, so a host that stops the
   session at that `ready` signals Codex 0.164.0 before it writes the turn's
@@ -3181,12 +3184,12 @@ frames carry the composer marker and neither shows the status footer.
 
 **What Elwood did with it.** A start held its queued input: the deadline already
 needed the configured composer, so the session stayed `running` and reported
-`initial_ready_backstop` after 60 s. A resume did not. `resume-update-offer-codex.e2e.ts`
-on `origin/main` recorded the queued message's bracketed paste and its `\r`, both
-released at the placeholder frame. In a third run, on a loaded host, the paste met
-the placeholder and the `\r` met the offer, with its ``› 1. Update now (runs `sh -c``
-row selected. The proof drops application input before the PTY, because
-that Enter chooses `Update now`.
+`initial_ready_backstop` after 60 s. A resume did not.
+`resume-update-offer-codex.e2e.ts` on `origin/main` recorded the queued
+message's bracketed paste and its `\r`, both released at the placeholder frame.
+In a third run, on a loaded host, the paste met the placeholder and the `\r` met
+the offer, with its ``› 1. Update now (runs `sh -c`` row selected. The proof
+drops application input before the PTY, because that Enter chooses `Update now`.
 
 **Which Codex a session runs depends on the directory.** On the capture host an
 interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a

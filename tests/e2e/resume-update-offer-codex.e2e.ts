@@ -2,9 +2,10 @@
  * Real-CLI proof that a RESUMED Codex which opens on a screen Elwood does not recognize
  * receives no queued input (PRD §5.3, C-API-28, C-E2E-25). Codex 0.171.0 paints a
  * `› Ask Codex to do anything` placeholder and then its update offer, whose selected row
- * is `› 1. Update now`. Both carry the composer marker, and Enter on the offer runs a
- * global installer. The queued message must stay held until the host answers the offer
- * with a raw key and Codex shows its configured composer.
+ * is `› 1. Update now`; Elwood's update recognizer matches only Codex 0.155's layout.
+ * Both carry the composer marker, and Enter on the offer runs a global installer. The
+ * queued message must stay held until the host answers the offer with a raw key and
+ * Codex shows its configured composer.
  */
 
 import assert from "node:assert/strict";
@@ -25,6 +26,7 @@ import {
 } from "./helpers.ts";
 
 // A small model at low effort: the test needs a resumable conversation and one drained turn.
+// The update check stays on (Codex's default) so the armed home opens on the offer.
 const CODEX_CONFIG =
   'model = "gpt-6-luna"\nmodel_reasoning_effort = "low"\ncheck_for_update_on_startup = true\n';
 
@@ -43,7 +45,7 @@ const TEST_TIMEOUT_MS =
 
 const ONE = "Reply exactly: ONE. Do not use tools.";
 
-/** The offer's numbered rows; the digit beside the plain `Skip` row. */
+/** The digit of the offer's plain `Skip` row, or undefined while no `N. Update now` row shows. */
 function skipDigit(screen: string): string | undefined {
   if (!/^\s*›?\s*\d+\. Update now\b/m.test(screen)) return undefined;
   return /^\s*›?\s*(\d+)\. Skip\s*$/m.exec(screen)?.[1];
@@ -114,6 +116,7 @@ test("C-E2E-25 a resumed Codex that opens on its update offer receives no queued
       OFFER_MS,
     );
     await delay(HOLD_MS);
+    // On failure, show the marked rows each refused write was aimed at.
     assert.deepEqual(
       input.refused.map(({ data, screen: met }) => ({
         data,
