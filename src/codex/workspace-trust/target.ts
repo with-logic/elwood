@@ -3,7 +3,10 @@ import { isGenericTrustDialogFooter, type TrustDialog } from "../../core/trust/d
 import { codexFolderAccessFooter, codexFolderAccessLabels } from "../../core/trust/options.ts";
 import { trustView } from "../../core/trust/view.ts";
 import type { TerminalSnapshot } from "../../terminal/headless.ts";
-import { folderAccessPrelude, legacyLocationPrelude } from "../screen/workspace-trust-copy.ts";
+import {
+  folderAccessPrelude,
+  legacyLocationPreludePrefix,
+} from "../screen/workspace-trust-copy.ts";
 import type { WorkspaceTrustTarget } from "./types.ts";
 
 const repositoryNote =
@@ -18,7 +21,7 @@ const codexWorkspaceLayouts = [
     acceptLabel: "Yes, continue",
     declineLabel: "No, quit",
     footer: "Press enter to continue",
-    isPrelude: (text: string) => text.startsWith(legacyLocationPrelude),
+    isPrelude: (text: string) => text.startsWith(legacyLocationPreludePrefix),
     matches: legacyMatches,
   },
   {
@@ -161,7 +164,7 @@ function legacyMatches(
   const cwdRowFits = cwd && fits({ rowIndex: cwd.index, rightInsetCols: 0 });
   if (!cwdRowFits) return false;
   const matchingAliases = launchDirectoryPaths.filter(
-    (alias) => cwd.text === legacyLocationPrelude + stripRowPadding(alias),
+    (alias) => cwd.text === legacyLocationPreludePrefix + stripRowPadding(alias),
   );
   if (note.length === 0) return !requiresRepositoryNote && matchingAliases.includes(targetPath);
   const repositoryDisclosed =

@@ -6,7 +6,10 @@ import type { TrustView } from "../../core/trust/view.ts";
 import { nativeRenderEvidenceIntact, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
-import { folderAccessPrelude, legacyLocationPrelude } from "../screen/workspace-trust-copy.ts";
+import {
+  folderAccessPrelude,
+  legacyLocationPreludePrefix,
+} from "../screen/workspace-trust-copy.ts";
 
 type Layout = "folder access" | "legacy";
 
@@ -15,8 +18,8 @@ function preludeLayout(lines: readonly string[]): Layout | undefined {
     const text = line.trim();
     return (
       text === folderAccessPrelude ||
-      (text.startsWith(legacyLocationPrelude) &&
-        isAbsolute(text.slice(legacyLocationPrelude.length)))
+      (text.startsWith(legacyLocationPreludePrefix) &&
+        isAbsolute(text.slice(legacyLocationPreludePrefix.length)))
     );
   });
   if (row < 0 || hasTrustConversationBefore(lines, row)) return undefined;

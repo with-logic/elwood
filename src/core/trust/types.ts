@@ -17,9 +17,9 @@ export type TrustHooks = {
   readonly onStateChange?: (() => void) | undefined;
   /** What a numbered retry writes; the default retypes only after a rendered frame. */
   readonly numberedRetry?: NumberedRetry;
-  /** Observe every rendered trust view. True transfers the pending prelude claim to
-   * the question before automatic input. False can retire an abandoned claim. */
-  readonly consumeWorkspacePreludeClaim?: ((view: TrustView) => boolean) | undefined;
+  /** Observe each rendered view and tell the responder when the caller owns the
+   * current gate. Checked before automatic input can be scheduled. */
+  readonly claimCallerOwnership?: ((view: TrustView) => boolean) | undefined;
 };
 /** Raw PTY result; the coordinator separately owns cancellation and clearance. */
 export type TrustWriteResult = void | Promise<void>;

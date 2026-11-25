@@ -58,7 +58,7 @@ export class CodexStartupPromptResponder {
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
       onStateChange,
       numberedRetry: codexNumberedRetry,
-      consumeWorkspacePreludeClaim: workspaceTrust?.prelude.consumePendingClaim,
+      claimCallerOwnership: workspaceTrust?.prelude.consumePendingClaim,
     });
   }
 
