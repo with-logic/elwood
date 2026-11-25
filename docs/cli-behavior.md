@@ -3237,6 +3237,20 @@ account buckets. Both probes ran before any model turn (C-STATS-03).
 Codex 0.171.0 returned an account window both with and without synthetic
 `OPENAI_API_KEY` and `CODEX_API_KEY` exports in a temporary `.zshrc`.
 
+**Codex 0.171.0 and 0.172.0 persist a native quota rejection type.** An isolated
+Codex 0.171.0 TUI with a local synthetic 429 committed the reached type in
+`token_count` before the failed `task_complete`. That also happened with no
+window headers. Without the reached-type header it wrote `null` despite the
+turn failure. The pinned 0.172.0 source implements the same shape. The
+rollout's `event_msg` / `token_count.payload.rate_limits` snapshot can contain
+`rate_limit_reached_type` with a rate-limit rejection or a distinct workspace
+credit or spend-limit rejection. Codex can send that field without a populated
+quota window. Window reset timestamps do not say which window blocked input,
+and the snapshot carries no turn identity or diagnostic text. Codex can repeat
+the latest snapshot as token usage changes, so Elwood suppresses unchanged
+rejections and preserves the independent `turn_failure` event when available.
+[Codex 0.172.0 snapshot construction](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/codex-api/src/api_bridge.rs#L229-L261)
+
 ## Screen buffers and scrollback (Claude 2.1.332, Codex 0.171.0 and 0.172.0, 2026-11-25)
 
 `readScreen()` (C-SCREEN-01/02) reads the headless emulator, so what it can return

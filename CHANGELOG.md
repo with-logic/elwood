@@ -20,6 +20,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Report Claude usage-limit rejections from live native transcript evidence,
   including the limit name and reset time when available.
+- Report Codex quota and credit rejections from native usage snapshots,
+  including the native reason and both window resets when supplied.
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
