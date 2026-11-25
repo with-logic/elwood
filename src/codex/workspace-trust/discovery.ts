@@ -83,7 +83,7 @@ export class CodexWorkspaceTrustDiscovery {
   }
 
   isRequestFrameCurrent({ frame, request }: VerifiedWorkspaceTrust): boolean {
-    return this.currentRequestId === request.id && this.isFrameCurrent(frame);
+    return this.currentRequestId === request.id && this.canUseTrustFrame(frame);
   }
 
   private reconcile(): WorkspaceTrustFrame | undefined {
@@ -111,10 +111,14 @@ export class CodexWorkspaceTrustDiscovery {
   ): Promise<VerifiedWorkspaceTrust | undefined> {
     const { frame, menu, identity, revalidateLaunchEvidence } = candidate;
     const proved = await boundedTrustEvidence(revalidateLaunchEvidence, this.lifetime.signal);
-    if (!this.isFrameCurrent(frame)) return undefined;
-    if (!proved) {
-      if (proved === undefined) this.end();
-      else this.retire();
+    if (!this.canUseTrustFrame(frame)) return undefined;
+    // Expiry ends discovery. A completed mismatch only retires this request.
+    if (proved === undefined) {
+      this.end();
+      return undefined;
+    }
+    if (proved === false) {
+      this.retire();
       return undefined;
     }
 
@@ -136,7 +140,7 @@ export class CodexWorkspaceTrustDiscovery {
     return { frame, request: this.open.request };
   }
 
-  private isFrameCurrent(frame: TerminalSnapshot): boolean {
+  private canUseTrustFrame(frame: TerminalSnapshot): boolean {
     return (
       !this.lifetime.signal.aborted &&
       this.input.humanOwnedPrompt() === "workspace_trust" &&

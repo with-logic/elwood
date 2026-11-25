@@ -105,6 +105,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
+    // Register first so a throwing replay handler still receives future live events.
     const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event as string, handler);
     return unsubscribe;

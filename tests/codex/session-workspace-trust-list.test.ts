@@ -153,7 +153,7 @@ test("C-ATTN-07 rearmed automatic trust keeps ownership until the current attemp
 
     pty.emitData(clear + complete);
     await vi.advanceTimersByTimeAsync(20);
-    expect(pty.writes).toContain("1\r");
+    expect(pty.writes).toEqual(["1\r"]);
     expect(session.status).toBe("blocked");
     expect(await session.listDialogs()).toEqual([]);
 
@@ -161,6 +161,14 @@ test("C-ATTN-07 rearmed automatic trust keeps ownership until the current attemp
     expect(await session.listDialogs()).toEqual([
       expect.objectContaining({ targetPath: cwd, targetScope: "folder" }),
     ]);
+    const [, ...retries] = pty.writes;
+    expect(retries.length).toBeGreaterThan(0);
+    expect(retries).toEqual(retries.map(() => "\r"));
+
+    pty.emitData(clear + codexTty(codexComposer));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(pty.writes).toEqual(["1\r", ...retries]);
+    expect(await session.listDialogs()).toEqual([]);
   } finally {
     vi.useRealTimers();
     await session.teardown();
