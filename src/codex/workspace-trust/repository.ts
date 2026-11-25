@@ -1,6 +1,6 @@
 /** Corroborate local Codex repository trust scope from Git's on-disk layout (PRD §5.5). */
 import { lstatSync, realpathSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { readBoundedGitMetadata } from "../../core/git-metadata.ts";
 
 const maxGitMarkerBytes = 64 * 1024;
@@ -9,75 +9,90 @@ export type CodexRepositoryTrustRoot = {
   readonly allowsFolderFallback: boolean;
 };
 
-/** Walk past empty .git directories as Codex does. Unproved metadata withholds trust. */
+/** Walk past ancestor .git directories missing HEAD. Require valid Git evidence for trust. */
 export function codexRepositoryTrustRoot(cwd: string): CodexRepositoryTrustRoot | undefined {
   for (let root = cwd; ; root = dirname(root)) {
     const git = join(root, ".git");
     const marker = lstatSync(git, { throwIfNoEntry: false });
-    if (marker?.isFile()) return linkedRepositoryRoot(root, git);
+    if (marker?.isFile()) return gitFileRepositoryRoot(root, git);
     if (marker && !marker.isDirectory()) throw unprovedRepository();
-    if (marker && lstatSync(join(git, "HEAD"), { throwIfNoEntry: false }))
+    const head = join(git, "HEAD");
+    if (marker && lstatSync(head, { throwIfNoEntry: false })) {
+      verifyHead(head);
       return { path: root, allowsFolderFallback: false };
+    }
     if (dirname(root) === root) return undefined;
   }
 }
 
-function linkedRepositoryRoot(checkout: string, marker: string): CodexRepositoryTrustRoot {
+function gitFileRepositoryRoot(
+  checkout: string,
+  marker: string,
+): CodexRepositoryTrustRoot | undefined {
   const directory = gitFileTarget(marker);
   if (!lstatSync(directory).isDirectory()) throw unprovedRepository();
   const canonical = realpathSync.native(directory);
-  const worktrees = dirname(canonical);
-  if (basename(worktrees) !== "worktrees") {
-    // Native versions can use the checkout root or launch folder for an ordinary gitfile.
-    const head = readMarker(join(canonical, "HEAD"));
-    if (!/^(?:ref: refs\/\S+|[a-f0-9]{40}(?:[a-f0-9]{24})?)$/i.test(head))
-      throw unprovedRepository();
+  const backlink = join(canonical, "gitdir");
+  const commondir = join(canonical, "commondir");
+  const hasBacklink = lstatSync(backlink, { throwIfNoEntry: false }) !== undefined;
+  const hasCommonDir = lstatSync(commondir, { throwIfNoEntry: false }) !== undefined;
+  if (!(hasBacklink || hasCommonDir)) {
+    // An ordinary gitfile can disclose the checkout root or the exact launch folder.
+    verifyHead(join(canonical, "HEAD"));
     return { path: checkout, allowsFolderFallback: true };
   }
+  const worktrees = dirname(canonical);
+  if (!(hasBacklink && hasCommonDir && basename(worktrees) === "worktrees"))
+    throw unprovedRepository();
   const common = dirname(worktrees);
-  const backlink = resolve(canonical, readMarker(join(canonical, "gitdir")));
-  const registered = realpathSync.native(dirname(backlink));
+  const registeredGitFile = absoluteGitPointer(canonical, readMarker(backlink));
+  const registered = realpathSync.native(dirname(registeredGitFile));
   const commonFromCheckout = realpathSync.native(
-    resolve(canonical, readMarker(join(canonical, "commondir"))),
+    absoluteGitPointer(canonical, readMarker(commondir)),
   );
   if (
-    basename(backlink) !== ".git" ||
+    basename(registeredGitFile) !== ".git" ||
     registered !== realpathSync.native(checkout) ||
     commonFromCheckout !== common
   )
     throw unprovedRepository();
 
-  const root = dirname(dirname(dirname(directory)));
+  const root = dirname(common);
   const mainMarker = join(root, ".git");
-  const mainGit = lstatSync(mainMarker).isDirectory() ? mainMarker : gitFileTarget(mainMarker);
+  const main = lstatSync(mainMarker, { throwIfNoEntry: false });
+  // An external common directory cannot identify its main checkout from the worktree.
+  if (!main) return undefined;
+  const mainGit = main.isDirectory() ? mainMarker : gitFileTarget(mainMarker);
   if (realpathSync.native(mainGit) !== common) throw unprovedRepository();
   return { path: root, allowsFolderFallback: false };
 }
 
 function gitFileTarget(file: string): string {
   const contents = readMarker(file);
-  const prefix = "gitdir:";
+  const prefix = "gitdir: ";
   if (!contents.startsWith(prefix)) throw unprovedRepository();
-  const path = trimGitWhitespace(contents.slice(prefix.length));
+  const path = contents.slice(prefix.length);
   if (path.length === 0) throw unprovedRepository();
-  return resolve(dirname(file), path);
+  return absoluteGitPointer(dirname(file), path);
+}
+
+function absoluteGitPointer(base: string, pointer: string): string {
+  // Let the filesystem traverse symlinks before interpreting subsequent dot-dot components.
+  return isAbsolute(pointer) ? pointer : `${base}${sep}${pointer}`;
+}
+
+function verifyHead(file: string): void {
+  if (!/^(?:ref: refs\/\S+|[a-f0-9]{40}(?:[a-f0-9]{24})?)$/i.test(readMarker(file)))
+    throw unprovedRepository();
 }
 
 function readMarker(file: string): string {
   const contents = readBoundedGitMetadata(file, maxGitMarkerBytes);
   if (contents === undefined) throw unprovedRepository();
-  const path = trimGitWhitespace(contents);
-  if (path.length === 0) throw unprovedRepository();
-  return path;
-}
-
-function trimGitWhitespace(text: string): string {
-  const whitespace = " \t\r\n\f";
-  let start = 0;
-  let end = text.length;
-  while (start < end && whitespace.includes(text.charAt(start))) start += 1;
-  while (end > start && whitespace.includes(text.charAt(end - 1))) end -= 1;
-  return text.slice(start, end);
+  // Git paths can end in ASCII spaces. Strip only their line terminator.
+  const value = contents.replace(/\r?\n$/, "");
+  if (value.length === 0 || /[\r\n\0]/.test(value)) throw unprovedRepository();
+  return value;
 }
 
 function unprovedRepository(): Error {

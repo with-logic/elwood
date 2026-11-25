@@ -78,6 +78,43 @@ test("withholds when folder scope changes after an unchanged cwd becomes a repos
   expect(evidence.isCurrent()).toBe(false);
 });
 
+test("withholds after the launch directory moves even when a symlink preserves its inode", () => {
+  const repo = join(root, "repository");
+  const cwd = join(repo, "child");
+  const moved = join(repo, "moved");
+  const alias = join(repo, "alias");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+  mkdirSync(cwd);
+  symlinkSync(cwd, alias);
+  const checked = launch(alias);
+  const evidence = captureLaunchTrustEvidence(checked);
+  expect(evidence.isCurrent()).toBe(true);
+
+  renameSync(cwd, moved);
+  symlinkSync(moved, cwd);
+
+  expect(statSync(cwd, { bigint: true }).ino).toBe(checked.identity.ino);
+  expect(statSync(alias, { bigint: true }).ino).toBe(checked.identity.ino);
+  expect(evidence.isCurrent()).toBe(false);
+});
+
+test("retains independently verified lexical and physical repository roots", () => {
+  const lexical = join(root, "left");
+  const physical = join(root, "right");
+  const actual = join(physical, "child");
+  const alias = join(lexical, "alias");
+  for (const repo of [lexical, physical]) {
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+  }
+  mkdirSync(actual);
+  symlinkSync(actual, alias);
+  const evidence = captureLaunchTrustEvidence(launch(alias));
+  expect(evidence.targets.map(({ target }) => target.targetPath)).toEqual([lexical, physical]);
+  expect(evidence.isCurrent()).toBe(true);
+});
+
 test("withholds when Git root registration changes without replacing the candidate directories", () => {
   const { checkout, repo } = testWorktree();
   const alternate = join(root, "project");

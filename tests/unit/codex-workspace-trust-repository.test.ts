@@ -1,7 +1,9 @@
 /** Verify the filesystem evidence for a Codex trust target (PRD §5.5). */
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { captureLaunchTrustEvidence } from "../../src/codex/workspace-trust/launch-evidence.ts";
 import { codexRepositoryTrustRoot } from "../../src/codex/workspace-trust/repository.ts";
 import { registerWorktree } from "../helpers/codex-trust-worktree.ts";
 import { tempDir } from "../helpers/tmp.ts";
@@ -32,6 +34,67 @@ test("finds a valid ancestor beyond a nested empty Git directory", () => {
   expect(codexRepositoryTrustRoot(child)?.path).toBe(root);
 });
 
+test("requires a valid HEAD marker when validating a direct Git directory", () => {
+  const git = join(root, ".git");
+  const head = join(git, "HEAD");
+  fs.mkdirSync(head, { recursive: true });
+  expect(() => codexRepositoryTrustRoot(root)).toThrow();
+  fs.rmdirSync(head);
+  const borrowed = join(root, "borrowed");
+  fs.writeFileSync(borrowed, "ref: refs/heads/main\n");
+  fs.symlinkSync(borrowed, head);
+  expect(() => codexRepositoryTrustRoot(root)).toThrow();
+  expect(fs.openSync).toHaveBeenCalledWith(head, expect.any(Number));
+  const flags = vi.mocked(fs.openSync).mock.lastCall?.[1];
+  expect(Number(flags) & fs.constants.O_NOFOLLOW).toBe(fs.constants.O_NOFOLLOW);
+  expect(Number(flags) & fs.constants.O_NONBLOCK).toBe(fs.constants.O_NONBLOCK);
+});
+
+test("preserves significant trailing bytes in an external Git directory path", () => {
+  const git = join(root, "external ");
+  const checkout = join(root, "checkout");
+  fs.mkdirSync(git);
+  fs.mkdirSync(checkout);
+  fs.writeFileSync(join(git, "HEAD"), "ref: refs/heads/main\n");
+  fs.writeFileSync(join(checkout, ".git"), `gitdir: ${git}\r\n`);
+  expect(codexRepositoryTrustRoot(checkout)).toEqual({
+    path: checkout,
+    allowsFolderFallback: true,
+  });
+});
+
+test("recognizes an ordinary external Git directory whose parent is named worktrees", () => {
+  const git = join(root, "worktrees", "metadata");
+  const checkout = join(root, "checkout");
+  fs.mkdirSync(git, { recursive: true });
+  fs.mkdirSync(checkout);
+  fs.writeFileSync(join(git, "HEAD"), "ref: refs/heads/main\n");
+  fs.writeFileSync(join(checkout, ".git"), `gitdir: ${git}\n`);
+  expect(codexRepositoryTrustRoot(checkout)).toEqual({
+    path: checkout,
+    allowsFolderFallback: true,
+  });
+  for (const file of ["gitdir", "commondir"]) {
+    fs.writeFileSync(join(git, file), "../other\n");
+    expect(() => codexRepositoryTrustRoot(checkout)).toThrow();
+    fs.rmSync(join(git, file));
+  }
+});
+
+test("follows dot-dot after a parent symlink using native filesystem resolution", () => {
+  const checkout = join(root, "checkout");
+  const parent = join(root, "physical");
+  const jump = join(parent, "jump");
+  const repo = join(parent, "repo");
+  fs.mkdirSync(checkout);
+  fs.mkdirSync(jump, { recursive: true });
+  const { marker } = registerWorktree(checkout, repo);
+  fs.symlinkSync(jump, join(checkout, "shortcut"));
+  fs.writeFileSync(marker, "gitdir: shortcut/../repo/.git/worktrees/test\n");
+
+  expect(codexRepositoryTrustRoot(checkout)?.path).toBe(repo);
+});
+
 test("requires the native worktree registration to point to this checkout", () => {
   const { repo, checkout, slot } = linked();
   expect(codexRepositoryTrustRoot(checkout)?.path).toBe(repo);
@@ -51,10 +114,36 @@ test("can resolve a registered linked checkout to its separately kept Git direct
   expect(() => codexRepositoryTrustRoot(checkout)).toThrow();
 });
 
+test("keeps only the launch folder for a registered worktree with an external common directory", () => {
+  const main = join(root, "main");
+  const checkout = join(root, "checkout");
+  const git = (...args: string[]) =>
+    execFileSync("git", args, {
+      env: { PATH: process.env["PATH"], GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" },
+      stdio: "ignore",
+    });
+  git("init", "--separate-git-dir", join(root, "external.git"), main);
+  const identity = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"];
+  git("-C", main, ...identity, "commit", "--allow-empty", "--no-gpg-sign", "-m", "Fixture");
+  git("-C", main, "worktree", "add", "--detach", checkout);
+
+  const evidence = captureLaunchTrustEvidence({
+    agent: "codex",
+    cwd: checkout,
+    identity: fs.statSync(checkout, { bigint: true }),
+  });
+  expect(evidence.isCurrent()).toBe(true);
+  expect(evidence.targets.map(({ target }) => target)).toEqual([
+    { targetPath: checkout, targetScope: "folder" },
+  ]);
+});
+
 test.each([
   ["unrecognized syntax", "not-a-pointer"],
   ["empty pointer", "gitdir:\n"],
+  ["empty path with valid prefix", "gitdir: \n"],
   ["empty marker", ""],
+  ["multiline marker", "gitdir: nested\ntrailing\n"],
   ["oversize marker", "a".repeat(64 * 1024 + 1)],
 ])("withholds repository evidence for %s", (_scenario, contents) => {
   const { checkout, marker } = linked();

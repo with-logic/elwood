@@ -41,6 +41,15 @@ test("C-STATE-15 a bounded private read collects all short reads", () => {
   expect(read(file())).toBe(content);
 });
 
+test("C-STATE-15 a file above the private byte limit is rejected before descriptor reads", () => {
+  const path = file();
+  writeFileSync(path, "x".repeat(65));
+  const beforeRead = vi.fn();
+  boundary.beforeRead = beforeRead;
+  expect(() => read(path)).toThrowError("invalid bounded private file length");
+  expect(beforeRead).not.toHaveBeenCalled();
+});
+
 test.each([
   { change: "shrink", updated: "small" },
   { change: "grow", updated: `${content} suffix` },
