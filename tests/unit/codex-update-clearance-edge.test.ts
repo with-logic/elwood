@@ -1,6 +1,9 @@
 /** Update settlement captures the native edge before queued input repaints (C-CODEX-12/17). */
 import { afterEach, expect, test, vi } from "vitest";
-import { codexComposerClearance } from "../../src/codex/screen/clearance.ts";
+import {
+  codexComposerClearance,
+  codexComposerConfigured,
+} from "../../src/codex/screen/clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
@@ -47,7 +50,10 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
   const queuedInput = vi.fn(() => {
     frame = "› queued persona input";
   });
-  const readiness = createReadinessGate(queuedInput, true);
+  const readiness = createReadinessGate(queuedInput, true, {
+    configured: codexComposerConfigured,
+    onBackstop: () => {},
+  });
   const observer = createSessionFrameObserver(
     {
       turn: new TurnStateWatcher(),

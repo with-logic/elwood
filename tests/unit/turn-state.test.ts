@@ -80,7 +80,7 @@ describe("turn state watching", () => {
     );
 
   test("a resume arm swallows the replay's working flash — no phantom turn", () => {
-    // A resumed CLI marks ready on its first composer frame, then repaints
+    // A resumed Codex marks ready on its first configured composer frame, then repaints
     // the prior transcript; footer lines in that replay read as working.
     // Those flashes are history, not work (one phantom per resume otherwise).
     const watcher = new TurnStateWatcher();

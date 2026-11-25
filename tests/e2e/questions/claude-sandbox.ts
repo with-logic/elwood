@@ -78,6 +78,7 @@ export async function nativeClaudeQuestionSandbox() {
   const stateDir = join(root, "state");
   const bin = join(root, "bin");
   const writes: string[] = [];
+  let native: { write(data: string): void } | undefined;
   let unregisterHome = () => {};
   try {
     for (const dir of [home, cwd, stateDir, bin]) mkdirSync(dir, { mode: 0o700 });
@@ -133,6 +134,7 @@ export async function nativeClaudeQuestionSandbox() {
         if (isNestedClaudeVariable(key) || anthropicVariables.includes(key)) delete env[key];
       }
       const pty = nodePtyFactory({ ...options, args: pin(options.args), env });
+      native = pty;
       return {
         ...pty,
         write(data) {
@@ -147,6 +149,12 @@ export async function nativeClaudeQuestionSandbox() {
       cwd,
       stateDir,
       writes,
+      /** A key pressed at the native terminal: it bypasses Elwood, and `writes` records it as `press:`. */
+      press(input: string) {
+        if (!native) throw new Error("The native Claude terminal has not started");
+        writes.push(`press:${input}`);
+        native.write(input);
+      },
       dispose() {
         unregisterHome();
         resetRuntimeSeamsForTests();

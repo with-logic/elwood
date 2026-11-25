@@ -14,9 +14,14 @@ test.each([
   1, 2, 3,
 ])("C-API-28 resume never releases readiness over selected row %s", (selected) => {
   let ready = false;
-  const gate = createReadinessGate(() => {
-    ready = true;
-  }, true);
+  // An adapter check that accepts every composer: only the dialog may hold readiness here.
+  const gate = createReadinessGate(
+    () => {
+      ready = true;
+    },
+    true,
+    { configured: () => true, onBackstop: () => {} },
+  );
   gate.observeReadinessFrame(
     readScreenFacts(claudeScreenFactTable, { text: menu(selected), title: "" }).facts,
     false,

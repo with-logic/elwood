@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Confirm Claude alternative-text answers when a native notice left blank cells
+  on the `Type something.` row. On Claude Code 2.1.332 such an answer closed the
+  request as `unavailable` and left the questionnaire open.
+
+- Raise Claude checkbox questions when a native notice left blank cells on the
+  `Submit` or `Next` row. On Claude Code 2.1.332 such a question was never
+  published and ordinary input stayed held.
+
 - A matched Claude low-level text submission can include the original API text,
   the exact native hook prompt, API paste provenance, and a caller `sendId`.
 
@@ -43,6 +51,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Reject a pending Codex workspace trust answer when a different complete
   workspace menu is observed during synchronized native output.
+
+- Hold a resumed session's queued messages until its configured composer
+  appears. A resume no longer reports `ready` on a composer marker alone, so a
+  `sendMessage` queued at resume cannot land on Codex's loading placeholder or on
+  a startup screen Elwood does not recognize, such as the update offer of Codex
+  0.171. A resumed session now reaches `ready` when the configured composer
+  paints, in about two seconds rather than one.
 
 - Read a session's live screen as text with `readScreen()` on the low-level
   Claude and Codex sessions, with optional scrollback, a cell cursor and the

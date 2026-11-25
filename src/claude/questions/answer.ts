@@ -9,6 +9,8 @@ import { questionLayoutFailed, questionNavigation } from "./navigation.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import { parseClaudeQuestionScreen } from "./screen.ts";
 
+/** The empty Other editor; a notice Claude replaced on its row leaves blank cells after it. */
+const EMPTY_OTHER_EDITOR = "Type something.";
 const usesCheckboxes = {
   single: false,
   multiple: true,
@@ -60,7 +62,7 @@ async function answerOne(
     await navigation.move(otherCursorIndex);
     await io.write(
       `${bracketedPasteStart}${answer.text}${bracketedPasteEnd}`,
-      (frame) => navigation.at(frame)?.other === "Type something.",
+      (frame) => navigation.at(frame)?.other.replace(/ +$/, "") === EMPTY_OTHER_EDITOR,
     );
     await io.wait((frame) => navigation.at(frame)?.other === answer.text);
   }

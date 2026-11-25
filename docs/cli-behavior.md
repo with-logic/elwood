@@ -150,15 +150,28 @@ compiled CLI smoke against Codex 0.153.3. C-API-48.
 not.** So a resumed Claude session reaches ready fast via its hook, while a
 resumed Codex session would otherwise wait out the full 10 s deadline (the
 conversation already exists, so no `SessionStart` re-fires). To avoid that, on
-**resume only**, Elwood also accepts the rendered composer as a readiness signal
-(`createReadinessGate(onReady, resumed)`, `src/runtime/session/readiness.ts`).
+**resume only**, Elwood also accepts the rendered configured composer as a
+readiness signal (`createReadinessGate(onReady, resumed, composer)`,
+`src/runtime/session/readiness.ts`).
 
-**The composer marker is safe as a readiness signal on resume, but NOT on cold
-start.** On a cold start the composer (`›` for ordinary Codex effort, `»` for
-Codex `ultra`, `❯` for Claude) is a **boot-time placeholder** that paints ~1 s
-before the input loop is live and is byte-identical to the ready composer —
-sending a prompt then gets silently swallowed. On resume the conversation already exists, so the composer is live
-when it paints and a prompt sent at that moment is accepted. This is why the
+**On resume the composer marker alone is not that signal (2026-11-24).** Until
+then a resume marked ready on its first frame with a line-leading marker and no
+recognized dialog. Codex 0.171.0 and 0.172.0 paint the `Resuming session…`
+placeholder composer first and, when an update is on offer, replace it about
+0.1 s later with a menu whose selected row is `› 1. Update now`. Elwood did not
+recognize that menu, so a message queued at resume had its paste and its Enter
+released at the placeholder, a tenth of a second before the menu replaced it.
+The menu's default row runs a global installer. Resume readiness now needs the
+adapter's configured composer, the same evidence as the deadline (Codex's status
+footer, Claude's verified idle composer). See "Codex 0.171.0 update offer" below.
+C-API-28, C-E2E-26.
+
+**The composer is a readiness signal on resume, but NOT on cold start.** On a
+cold start the composer (`›` for ordinary Codex effort, `»` for Codex `ultra`,
+`❯` for Claude) is a **boot-time placeholder** that paints ~1 s before the input
+loop is live and is byte-identical to the ready composer — sending a prompt then
+gets silently swallowed. On resume the conversation already exists, so a prompt
+sent once the configured composer paints is accepted. This is why the
 resume-composer path is gated on `resumed`. C-API-28, PRD §5.3.
 
 **Ordinary Codex `›` and Claude `❯` composer carets are byte-identical to their
@@ -202,18 +215,22 @@ misattributed to a CLI regression.)
   conversation (2026-10-25).** Five captured resumes in private Codex homes, at load
   averages of 20 to 60, all had the same shape. First comes the header, then
   `Resuming session…`, then the live composer and `? for shortcuts`. That frame
-  repaints 8 to 11 times with no visible change. Elwood latches resume readiness on
-  its first composer frame. 0.5 to 1.6 s later, Codex sets a braille title spinner
-  and `OSC 7501;state=working:app=codex`. It replaces the placeholder with the
-  replayed transcript, either in the spinner's first frame or one frame later. The
-  spinner runs 0.7 to 1.5 s. Then the title goes idle with `state=idle`, at most one
-  cursor repaint follows, and Codex sends nothing more until input arrives. The quiet streak counted the
-  placeholder's repaints and released settling before the load. The spinner then
-  became a phantom `running → ready` on every capture. The real-CLI e2e reported it
-  as `saw: running,ready`. Placeholder frames are no longer quiet. Once the
-  placeholder has painted and the load's spinner has been seen, the first quiet
-  composer ends settling. A five-frame streak never arrives from an idle Codex.
-  Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
+  repaints 8 to 11 times with no visible change. 0.5 to 1.6 s after the first
+  composer frame, Codex sets a braille title spinner and
+  `OSC 7501;state=working:app=codex`. It replaces the placeholder with the replayed
+  transcript, either in the spinner's first frame or one frame later. The spinner
+  runs 0.7 to 1.5 s. Then the title goes idle with `state=idle`, at most one cursor
+  repaint follows, and Codex sends nothing more until input arrives. The quiet
+  streak counted the placeholder's repaints and released settling before the load.
+  The spinner then became a phantom `running → ready` on every capture. The real-CLI
+  e2e reported it as `saw: running,ready`. Placeholder frames are no longer quiet.
+  Once the placeholder has painted and the load's spinner has been seen, the first
+  quiet composer ends settling. A five-frame streak never arrives from an idle Codex.
+  Elwood then latched resume readiness on the first composer frame. Since
+  2026-11-24 it waits for the configured composer, which paints with the replayed
+  transcript, so the turn watcher records the placeholder and its load from before
+  readiness, including when the frame that releases readiness is that first quiet
+  composer. Captures: `tests/fixtures/codex-0.164.0/resume/`. C-TURN-03.
 - **Codex records a turn's completion only after its `Stop` hook returns
   (2026-10-25).** Elwood reports `ready` from that hook, so a host that stops the
   session at that `ready` signals Codex 0.164.0 before it writes the turn's
@@ -354,6 +371,21 @@ native boundary (`confirmCodexRejection`) and fails it with `turn_failed`. The
 message is `error.message` and `details.agentError` is the `codex_error_info`
 kind. A second turn on the same session is rejected the same way, so the first
 released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
+
+**Codex 0.171.0 and 0.172.0 name the refusal in `codex_error_info`, not in
+the message (2026-11-25).** For the same bogus model, the failed
+`task_complete` carries `error.message: "The '<model>' model is not supported
+when using Codex with a ChatGPT account."` and `error.codex_error_info:
+"model_not_found"`. The service's JSON body, which carried the code on
+0.164.0, is gone. `elwood run` still exits 1 with a `turn_failed` document,
+whose message is now that sentence; the CLI document carries no structured
+code. `CodexSession.send` still rejects with `turn_failed`, the same message,
+and `details.agentError: "model_not_found"`. Read the code from
+`details.agentError`, not the message. C-E2E-21 checks it there on `send`, and
+checks that both messages name the refused model. The 0.172.0 runs used
+`~/.local/bin/codex`, which the login shell resolves in a project without a
+`.node-version`. The 0.171.0 runs put the npm `codex` 0.171.0 first on the
+login shell's `PATH` through a temporary `ZDOTDIR`. C-E2E-21.
 
 **Codex 0.171.0 serializes workspace credits and ordinary usage-limit failures with
 `task_complete.error.codex_error_info: "usage_limit_exceeded"`.** Coal Harbor
@@ -2830,6 +2862,67 @@ abort or failure can leave the native outcome uncertain. The input hold survives
 an empty composer and duplicate metadata until matching native completion, turn
 end, or shutdown.
 
+### Claude notice residue on the last questionnaire row (2026-11-25)
+
+Claude Code 2.1.332 draws transient notices right-aligned on the row directly
+above the composer's top rule. Three were seen at 140 columns: the effort
+indicator at startup; `Plugins changed. Run /reload-plugins to activate.`, which
+a fresh configuration home shows about a second after the composer is ready and
+keeps for several seconds; and `Thinking can't be turned off for Haiku 5.5`,
+shown for three seconds after Alt+T.
+
+A notice posted at the idle composer adds that row. The composer moves down one
+row, and Claude overwrites the old top rule's cells left of the notice with real
+space cells. During a turn the row is already reserved, so a notice posted
+there writes no spaces. A notice that replaces another keeps the row and its
+spaces.
+
+In an unnamed session, a questionnaire's closing rule takes the composer top
+rule's place, so its last row lands on the notice row. Claude rewrites only the cells that change, and
+erases the rest of a row from the first cell that must turn blank. A short label
+painted over the notice therefore keeps the spaces between the label and the
+erased notice text. xterm reads `  3. Type something.` followed by about
+seventy-five space cells, and the cells stay when the cursor moves to that row
+and text is typed there. Where the replaced row held text further left, the
+erase starts earlier and wipes them. The second page of a grouped questionnaire,
+painted over the first page's `Type something.` row, kept none.
+
+For a single-choice question, the notice row is the `Type something.` row.
+Elwood waited for that row to read exactly `Type something.` before pasting
+alternative text. The answer failed after the cursor had moved to the row, and
+the request closed as `unavailable` with the questionnaire still open. When the
+paste was allowed, the typed text was followed by the same cells, so its echo
+never matched either. Private-home runs without a staged notice reproduced it
+intermittently, each time with the plugin or effort notice drawn when the
+question painted.
+
+A standalone checkbox question ends in its `Submit` action instead, and that
+row kept about eighty-five space cells: `     Submit` and then the blanks.
+Elwood matched the action row exactly, so the question was never published and
+ordinary input stayed held until a person answered at the terminal. A grouped
+questionnaire that opens on a checkbox page keeps them after that page's action
+row the same way.
+
+A session launched with `--name` draws the notice above its labelled composer
+rule too. Its questionnaire adds a labelled border under the footer, so the
+panel is one row taller and sits one row higher. Its full-width closing rule,
+not its last option row, lands on the notice row and overwrites every cell, so
+no cells stay. In the captures, the named `     Submit` row is row 39 and the
+closing rule row 40, where the unnamed `Submit` row is row 40.
+
+Elwood now treats `Type something.` followed only by blank cells as an empty
+editor. A typed value ends at a cursor followed only by blank cells on the
+editor's last row, so the answer's own trailing spaces survive. A two-line
+answer grows the panel upward, which leaves its second line on the notice row
+with the cells after it. A checkbox `Next` or `Submit` row may end in blank
+cells, but not in remaining notice text.
+
+The proof posts the Alt+T notice at the idle composer and reposts it every
+second until the `AskUserQuestion` `PreToolUse` hook. It writes the key straight
+to the PTY, because a raw key sent through Elwood during an ergonomic turn
+rejects that turn's `send()`. Alt+T in the hook alone, mid-turn, left no cells.
+The captures are in `tests/fixtures/claude-2.1.332/questions/`.
+
 ### Codex question panels, work pulses, and Plan footer (2026-10-20)
 
 Codex 0.163.0's native queued-question UI can coexist with a working status
@@ -3258,6 +3351,82 @@ and the snapshot carries no turn identity or diagnostic text. Codex can repeat
 the latest snapshot as token usage changes, so Elwood suppresses unchanged
 rejections and preserves the independent `turn_failure` event when available.
 [Codex 0.172.0 snapshot construction](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/codex-api/src/api_bridge.rs#L229-L261)
+
+## Codex 0.171.0 update offer (2026-11-24)
+
+Probes ran the installed npm Codex 0.171.0 and a copy of the standalone 0.172.0
+release in private `CODEX_HOME`s, through a PTY that forwarded only terminal
+protocol replies. No probe pressed Enter or `1` on the offer.
+
+**What makes the offer appear.** Codex offers the `latest_version` named in
+`$CODEX_HOME/version.json` when it is newer than the running binary and
+`dismissed_version` does not name it. Nothing has to be forced: a fresh home has no
+`version.json`, its first launch writes one in the background, and the second
+launch of an out-of-date Codex opens on the offer. `check_for_update_on_startup =
+false`, in `config.toml` or as a `-c` override, suppresses it. A standalone binary
+offers an action only when it runs from its own home's
+`packages/standalone/releases/<release>/`, and it needs the whole release folder
+(`bin/codex` alone exits with "no complete local package"). Run from anywhere
+else it prints only a passive notice. An npm install offers its action unaided.
+
+**The offer's layout changed.** At 100 columns, npm 0.171.0 draws, from row 1:
+
+```
+  Update available · 0.171.0 → 0.172.0
+  Release notes: https://github.com/openai/codex/releases/latest
+
+› 1. Update now (runs `npm install -g @openai/codex`)
+  2. Skip
+  3. Skip until next version
+
+  enter continue · esc skip
+```
+
+The managed standalone 0.172.0 wraps a new install command:
+``1. Update now (runs `sh -c 's=$(curl -fsSL https://chatgpt.com/codex/install.sh) &&``
+then, indented five columns, ``CODEX_NON_INTERACTIVE=1 eval "$s"'`)``. At 60
+columns `Release notes:` and its URL take two rows. The cursor is hidden. The
+banner has no `!`, uses `·` and `→`, and the footer is `enter continue · esc
+skip`, so the recognizer written for 0.155.1 (`Update available! X -> Y`, `Press
+enter to continue`) matches none of it: `classifyCodexUpdateFrame` reports
+`visible: false`, and nothing blocks or skips. `2` and Esc both dismiss the offer
+without writing `dismissed_version`. Codex then prints a boxed passive notice
+above the header (`│ ✨_ Update available! 0.171.0 -> 0.172.0 │`, `│ Run npm
+install -g @openai/codex to update. │`) and shows its configured composer.
+Captures: `tests/fixtures/codex-0.171.0/update/`.
+
+**Order of screens.** On a start, Codex paints its boot composer (`› Ask Codex to
+do anything` over `? for shortcuts`) first and the offer 0.1 to 5 s later (the
+longest was the first launch in a home). On `codex resume` the placeholder adds
+`Resuming session…` and the offer replaced it 0.1 s later in every run. Both
+frames carry the composer marker and neither shows the status footer.
+
+**What Elwood did with it.** A start held its queued input: the deadline already
+needed the configured composer, so the session stayed `running` and reported
+`initial_ready_backstop` after 60 s. A resume did not.
+`resume-update-offer-codex.e2e.ts` on `origin/main` recorded the queued
+message's bracketed paste and its `\r`, both released at the placeholder frame.
+In a third run, on a loaded host, the paste met the placeholder and the `\r` met
+the offer, with its ``› 1. Update now (runs `sh -c`` row selected. The proof
+drops application input before the PTY, because that Enter chooses `Update now`.
+
+**Which Codex a session runs depends on the directory.** On the capture host an
+interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a
+`.node-version` file and to the standalone 0.172.0 elsewhere, because the Node
+version manager switches per directory. A session's `cwd` therefore picks the
+install, and a probe run from the repository can describe a different binary
+than the session in a scratch project gets. The e2e pins a clone of the user's
+standalone release inside its private home for that reason.
+
+**Claude Code 2.1.332 has no update screen to answer.** Its updater is a footer
+line (`Auto-updating…`, `✓ Update installed · restart to apply`, `Auto-update
+failed · Run claude doctor`); the binary holds no update dialog. With
+`lastReleaseNotesSeen` set to an older version in a private config dir, a start
+showed two passive header rows (`Updated: 60 features, 476 fixes, 187 other
+changes`, `code.claude.com/docs/en/changelog for details`) above a live idle
+composer and rewrote the field. A `--continue` resume with the same setting
+showed the replayed transcript and no summary. `/release-notes` opens a dialog
+only when the user asks for it.
 
 ## Screen buffers and scrollback (Claude 2.1.332, Codex 0.171.0 and 0.172.0, 2026-11-25)
 

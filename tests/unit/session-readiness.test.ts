@@ -50,14 +50,24 @@ const facts = (composer_visible: boolean, blocking_prompt_visible = false) => ({
   blocking_prompt_visible,
 });
 
+/** An adapter whose configured-composer check accepts every frame. */
+const configured = { configured: () => true, onBackstop: () => {} };
+
 describe("C-API-28 createReadinessGate per-frame", () => {
-  test("on RESUME the composer marks ready — but NOT while a dialog is up", () => {
+  test("on RESUME the configured composer marks ready — but NOT while a dialog is up", () => {
     let ready = 0;
-    const gate = createReadinessGate(() => ready++, true); // resumed
+    const gate = createReadinessGate(() => ready++, true, configured); // resumed
     gate.observeReadinessFrame(facts(true, true), false, ""); // composer caret IS a dialog: no mark
     expect(ready).toBe(0);
     gate.observeReadinessFrame(facts(true, false), false, ""); // genuine quiet composer: ready
     expect(ready).toBe(1);
+  });
+
+  test("on RESUME without configured-composer evidence the marker never marks ready", () => {
+    let ready = 0;
+    const gate = createReadinessGate(() => ready++, true);
+    gate.observeReadinessFrame(facts(true, false), false, "");
+    expect(ready).toBe(0);
   });
 
   test("a cold-start frame never marks ready off the composer alone", () => {
@@ -69,7 +79,7 @@ describe("C-API-28 createReadinessGate per-frame", () => {
 
   test("automation-owned trust defers both a hook and resume composer without human blocking", () => {
     let ready = 0;
-    const gate = createReadinessGate(() => ready++, true);
+    const gate = createReadinessGate(() => ready++, true, configured);
     gate.observeReadinessFrame(facts(true), true, "");
     gate.ready.mark();
     expect(ready).toBe(0);
