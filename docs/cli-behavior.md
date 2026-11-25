@@ -1876,8 +1876,11 @@ a paste remained outside the envelope. Claude escaped look-alike tags, converted
 CRLF and CR to LF and tabs to four spaces, and reused a body's final LF as the
 closing tag separator. A literal backslash can match a native escape.
 
-Elwood displays the native body for a strictly matched standalone envelope.
-It preserves the exact delivered string as `nativePrompt` and reports
+When Elwood matches a low-level API submission to its authenticated submit hook,
+the activity displays the exact API text, preserves the native prompt in
+`nativePrompt`, and reports API paste provenance. Without that association,
+Elwood displays the native body for a strictly matched standalone envelope,
+preserves the exact envelope as `nativePrompt`, and reports
 `promptProvenance: { origin: "unknown", input: "pasted" }`. Native input
 transformations can make the original bytes unrecoverable. Offline PTY probes
 on 2.1.331 and 2.1.332 confirmed the same authenticated opener and repeated-ID
@@ -2183,6 +2186,11 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+Claude 2.1.332 reached `ready` after a bogus-model rejection while its native
+frame still failed the empty-composer check. A subsequent paste produced a
+native hook and envelope without API association. The live paste fixture
+starts each positive case with a fresh, verified empty composer.
 
 ### Claude under a private `CLAUDE_CONFIG_DIR` (2.1.310, 2026-10-26)
 
@@ -3248,6 +3256,20 @@ account buckets. Both probes ran before any model turn (C-STATS-03).
 Codex 0.171.0 returned an account window both with and without synthetic
 `OPENAI_API_KEY` and `CODEX_API_KEY` exports in a temporary `.zshrc`.
 
+**Codex 0.171.0 and 0.172.0 persist a native quota rejection type.** An isolated
+Codex 0.171.0 TUI with a local synthetic 429 committed the reached type in
+`token_count` before the failed `task_complete`. That also happened with no
+window headers. Without the reached-type header it wrote `null` despite the
+turn failure. The pinned 0.172.0 source implements the same shape. The
+rollout's `event_msg` / `token_count.payload.rate_limits` snapshot can contain
+`rate_limit_reached_type` with a rate-limit rejection or a distinct workspace
+credit or spend-limit rejection. Codex can send that field without a populated
+quota window. Window reset timestamps do not say which window blocked input,
+and the snapshot carries no turn identity or diagnostic text. Codex can repeat
+the latest snapshot as token usage changes, so Elwood suppresses unchanged
+rejections and preserves the independent `turn_failure` event when available.
+[Codex 0.172.0 snapshot construction](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/codex-api/src/api_bridge.rs#L229-L261)
+
 ## Screen buffers and scrollback (Claude 2.1.332, Codex 0.171.0 and 0.172.0, 2026-11-25)
 
 `readScreen()` (C-SCREEN-01/02) reads the headless emulator, so what it can return
@@ -3295,3 +3317,11 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
 - Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
   none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
   both break long lines themselves.
+
+## Codex preserves U+FEFF at the edges of submitted text (0.171.0 and 0.172.0)
+
+An isolated native TUI run submitted padded multiline text with U+FEFF at
+both ends through `sendMessage`. Codex removed the outer spaces and kept
+both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
+Use Rust's Unicode `White_Space` when comparing forwarded text with the
+hook. JavaScript `trim()` would remove U+FEFF and miss the match.

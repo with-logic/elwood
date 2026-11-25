@@ -4,6 +4,7 @@ import { attachPtyTerminal, type ElwoodTerminal } from "../../src/terminal/headl
 
 export function setupTerminalPty(
   onRendered: (data: string, terminal: ElwoodTerminal) => void = () => {},
+  write: PtyProcess["write"] = () => {},
 ) {
   let emit = (_data: string) => {};
   const pty: PtyProcess = {
@@ -13,7 +14,7 @@ export function setupTerminalPty(
       return () => {};
     },
     onExit: () => () => {},
-    write: () => {},
+    write,
     resize: () => "resized",
     kill: () => {},
   };

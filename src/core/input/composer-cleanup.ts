@@ -1,4 +1,6 @@
 /** Deferred draft cleanup owns a safe queue boundary, never caller-owned edits (PRD §5.3, C-API-56). */
+
+import { runContained } from "../contained.ts";
 import { elwoodError } from "../errors.ts";
 import {
   clearStagedComposer,
@@ -48,6 +50,7 @@ export class ComposerCleanup {
   private readonly rawInputSignal: () => AbortSignal;
   private readonly observeEmpty: EmptyComposerObserver;
   private readonly captureRenderProgress: () => () => boolean;
+  private readonly onCleared: (() => void) | undefined;
   /** Register this owner before any stage/submit hooks or queued operation. */
   constructor(
     terminal: InputTerminal,
@@ -56,6 +59,7 @@ export class ComposerCleanup {
     rawInputSignal: () => AbortSignal,
     observeEmpty: EmptyComposerObserver,
     captureRenderProgress: () => () => boolean,
+    onCleared?: () => void,
   ) {
     this.terminal = terminal;
     this.blocked = blocked;
@@ -63,6 +67,7 @@ export class ComposerCleanup {
     this.rawInputSignal = rawInputSignal;
     this.observeEmpty = observeEmpty;
     this.captureRenderProgress = captureRenderProgress;
+    this.onCleared = onCleared;
     this.baseline = rawInputSignal();
     owners.set(terminal, this);
     closing.addEventListener(
@@ -151,6 +156,9 @@ export class ComposerCleanup {
       throwIfInputAborted(signal);
       throw elwoodError("wait_timeout", "Could not clear the staged composer draft.");
     }
-    if (this.draft === draft) this.draft = undefined;
+    if (this.draft === draft) {
+      this.draft = undefined;
+      if (this.onCleared) runContained(this.onCleared);
+    }
   }
 }

@@ -1,6 +1,12 @@
 /** Native staged-input, empty-frame and retry-authority contracts (PRD §5.3, C-API-56). */
 import type { EmptyComposerObserver } from "./clear-ack.ts";
 
+/** Observe a paste and all its Enter attempts within their normal dispatch scopes. */
+export type PasteDispatch = (
+  data: string,
+  dispatch: () => void | Promise<void>,
+) => void | Promise<void>;
+
 /** Native adapters prepare one staged-input predicate for each recovery sequence. */
 export type RecoveryComposer = {
   readonly prepareStaged: (payload: string) => () => boolean;
@@ -19,6 +25,8 @@ export type PasteGuard = {
   readonly captureRecovery?: () => { readonly revoked: () => boolean };
   /** Reuse a token per completed empty frame; only a later frame gets a new identity. */
   readonly emptyFrame?: EmptyComposerObserver;
+  readonly observePaste?: (payload: string, empty: object | undefined) => PasteDispatch | undefined;
+  readonly beforeCommand?: () => void;
   /**
    * True when a human or automation-owned dialog is on screen. A dialog can
    * appear during the paste-settle window; sending the submitting Enter then

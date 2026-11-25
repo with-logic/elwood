@@ -19,6 +19,12 @@ back each entry are listed in `prd/14-conformance.md`.
   402, and `rate_limited`, not `network_or_api`, when Codex gives up retrying an
   HTTP 429.
 
+- A matched Claude low-level text submission can include the original API text,
+  the exact native hook prompt, API paste provenance, and a caller `sendId`.
+
+- A matched Codex `user_message` can include the original API prompt, the
+  exact hook prompt, API paste provenance, and an optional caller `sendId`.
+
 - A Claude `send` or `stream` turn that the agent rejects now fails with
   `turn_failed` even when Claude changed the prompt on submit: it wrapped it in
   `<pasted_content>` tags, turned CRLF or CR into LF, turned a tab into four spaces,
@@ -27,6 +33,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Report Claude usage-limit rejections from live native transcript evidence,
   including the limit name and reset time when available.
+- Report Codex quota and credit rejections from native usage snapshots,
+  including the native reason and both window resets when supplied.
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
