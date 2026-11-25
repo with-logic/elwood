@@ -26,7 +26,7 @@ export type ReadinessGate = {
     cols?: number,
   ) => void;
   /** Per rendered frame: update the blocking gate, reconcile a deferred or waiting mark,
-   * and (on resume) mark readiness on the first quiet, non-blocking composer. */
+   * and (on resume) mark readiness on the first non-blocking configured composer. */
   readonly observeReadinessFrame: (
     facts: ComposerReadyFacts,
     trustInputBlocking: boolean,
@@ -37,8 +37,9 @@ export type ReadinessGate = {
 
 /**
  * An adapter's `composer.configured`, when supplied, proves a rendered composer belongs
- * to a configured session. The initial deadline then marks only onto such a frame
- * (C-API-28). The latest frame is checked only when readiness asks.
+ * to a configured session. The initial deadline then marks only onto such a frame, and
+ * the resume composer marks on nothing else: without it, a resume waits for a hook or
+ * the deadline (C-API-28). The latest frame is checked only when readiness asks.
  */
 export function createReadinessGate(
   onReady: () => void,
@@ -81,10 +82,15 @@ export function createReadinessGate(
       },
     };
   }
+  // `mark()` is idempotent; this only stops the configured-composer check on every frame
+  // after readiness. It latches after `onReady`, so a throwing listener retries (C-API-28).
+  let readyFired = false;
+  const configured = evidence?.shown ?? (() => false);
   const ready = initialReady(
     () => {
       backstopHold = undefined;
       onReady();
+      readyFired = true;
     },
     undefined,
     () => readinessHeld,
@@ -96,7 +102,7 @@ export function createReadinessGate(
     observeFrameHold,
     observeReadinessFrame: (facts, trustInputBlocking, frame, cols) => {
       observeFrameHold(facts, trustInputBlocking, frame, cols);
-      if (!backstopHold?.()) markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
+      if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
     },
   };
