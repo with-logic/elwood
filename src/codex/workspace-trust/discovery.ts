@@ -140,15 +140,16 @@ export class CodexWorkspaceTrustDiscovery {
       this.end("cleared");
       return undefined;
     }
-    if (this.input.humanOwnedPrompt() !== "workspace_trust") {
-      this.retire("unavailable");
-      return undefined;
-    }
+    const humanOwned = this.input.humanOwnedPrompt() === "workspace_trust";
     const prior = this.polling.currentRequest;
+    if (!(humanOwned || prior)) return undefined;
+    // An open request needs a close reason even when automation owns the next menu.
     const candidate = this.polling.sample(terminal, frame, this.match);
     if (prior && !this.polling.currentRequest)
       this.observer.onRetire(prior, candidate ? "replaced" : "unavailable");
-    return candidate;
+    if (humanOwned) return candidate;
+    this.retire("unavailable");
+    return undefined;
   }
 
   private accept(
