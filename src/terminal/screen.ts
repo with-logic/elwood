@@ -21,8 +21,15 @@ export type ElwoodScreen = {
   readonly lines: readonly string[];
   /** Rows above the live screen, oldest first. Empty unless requested. */
   readonly scrollback: readonly string[];
-  /** Zero-based cell coordinates on the live screen; `x` is a column, not a string index. */
-  readonly cursor: { readonly x: number; readonly y: number; readonly visible: boolean };
+  /** The terminal cursor's cell on the live screen. */
+  readonly cursor: {
+    /** Zero-based column, not a string index. Equals `cols` while it waits past the last column. */
+    readonly x: number;
+    /** Zero-based row, an index into `lines`. */
+    readonly y: number;
+    /** The terminal cursor mode (DECTCEM). A CLI that hides it may draw a cursor of its own. */
+    readonly visible: boolean;
+  };
   readonly buffer: "normal" | "alternate";
   /**
    * True once Elwood failed to draw output it received, so the text may be missing some.
@@ -57,8 +64,11 @@ export async function readTerminalScreen(
   return {
     cols: xterm.cols,
     rows: xterm.rows,
-    lines: bufferRows(xterm, firstLiveRow, xterm.rows),
-    scrollback: bufferRows(xterm, firstLiveRow - scrollbackCount, scrollbackCount),
+    lines: bufferRows(xterm, { firstRow: firstLiveRow, rowCount: xterm.rows }),
+    scrollback: bufferRows(xterm, {
+      firstRow: firstLiveRow - scrollbackCount,
+      rowCount: scrollbackCount,
+    }),
     cursor: { x: buffer.cursorX, y: buffer.cursorY, visible: parsedCursorVisible(xterm) },
     buffer: buffer.type,
     outputLost: terminal.renderFailed,

@@ -8,7 +8,7 @@ export function terminalSnapshot(
   firstBufferRow = xterm.buffer.active.viewportY,
 ): TerminalSnapshot {
   const buffer = xterm.buffer.active;
-  const lines = bufferRows(xterm, firstBufferRow, size.rows);
+  const lines = bufferRows(xterm, { firstRow: firstBufferRow, rowCount: size.rows });
   return {
     cols: size.cols,
     rows: size.rows,
@@ -19,12 +19,15 @@ export function terminalSnapshot(
   };
 }
 
-/** Right-trimmed text of `count` active-buffer rows from `first`; a missing row reads as "". */
-export function bufferRows(xterm: XtermTerminal, first: number, count: number): string[] {
+/** Which active-buffer rows to read: `rowCount` rows starting at buffer row `firstRow`. */
+type BufferRowRange = { readonly firstRow: number; readonly rowCount: number };
+
+/** Right-trimmed text of the requested active-buffer rows; a missing row reads as "". */
+export function bufferRows(xterm: XtermTerminal, { firstRow, rowCount }: BufferRowRange): string[] {
   const buffer = xterm.buffer.active;
   return Array.from(
-    { length: count },
-    (_, index) => buffer.getLine(first + index)?.translateToString(true) ?? "",
+    { length: rowCount },
+    (_, index) => buffer.getLine(firstRow + index)?.translateToString(true) ?? "",
   );
 }
 
