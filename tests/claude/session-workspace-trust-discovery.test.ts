@@ -37,6 +37,9 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
     expect(raised).not.toHaveBeenCalled();
 
     const eager = await started;
+    // Listing does not flush pending output (§5.13): it needs the trust frame rendered,
+    // which the startup wait above does not guarantee.
+    await eager.terminal.settled();
     const [request] = await eager.listDialogs();
     assert.isDefined(request);
     expect(request.targetPath).toBe(cwd);
