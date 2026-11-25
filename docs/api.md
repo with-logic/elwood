@@ -113,8 +113,7 @@ request with `answerQuestions()`. These controls work while an ergonomic turn is
 waiting and do not create another user turn. See [questions.md](questions.md) for
 the event, capability, validation and input-ownership contract.
 
-Claude and Codex sessions expose workspace trust prompts through `listDialogs()`. Each
-request names the exact folder or repository root and lists the native choices
+Claude and Codex sessions expose workspace trust prompts through `listDialogs()`. Codex also emits typed `dialog` events. Each request names the exact folder or repository root and lists the native choices
 in display order. See [native dialog discovery](../prd/05-api/5.13-dialogs.md).
 
 `sendMessage` is the adapter-neutral chat-loop operation. If the session is

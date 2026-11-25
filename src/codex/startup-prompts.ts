@@ -1,6 +1,4 @@
-/** Handles known Codex startup prompts that block interactive sessions.
- * Implements PRD §4.4, §5.5, and §5.7. */
-
+/** Handle blocking Codex startup prompts (PRD §4.4, §5.5, and §5.7). */
 import type { AutomationWriteResult } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
@@ -31,6 +29,7 @@ export class CodexStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly clearance: TrustClearance;
   private readonly sessionInputHeld: () => boolean;
+  private readonly onWorkspaceTrustTakeover: (() => void) | undefined;
   private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
@@ -49,10 +48,12 @@ export class CodexStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = codexTrustClearance,
     sessionInputHeld?: () => boolean,
+    onWorkspaceTrustTakeover?: () => void,
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.clearance = clearance;
     this.sessionInputHeld = sessionInputHeld ?? (() => false);
+    this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
     this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
       onStateChange,
@@ -83,9 +84,12 @@ export class CodexStartupPromptResponder {
 
   /** Raw caller input owns the startup prompt on screen (C-TRUST-01, C-CODEX-12). */
   callerInput(): void {
+    const priorPrompt = this.humanOwnedPrompt;
     this.trust.callerInput();
     this.updateAttempt?.cancel();
     this.updateCallerOwned ||= this.updatePrompt.unresolved;
+    const prompt = this.humanOwnedPrompt;
+    if (prompt === "workspace_trust" && priorPrompt !== prompt) this.onWorkspaceTrustTakeover?.();
   }
 
   get inputBlocking(): boolean {
@@ -168,13 +172,9 @@ export class CodexStartupPromptResponder {
     };
   }
 
-  // Emit warnings only for banners NEWLY appearing on THIS frame, matched against the
-  // CURRENT frame (not the accumulated buffer) so a scrolled-off banner does not replay
-  // every later frame (C-API-14, §5.7). Banners are keyed by a STABLE semantic identity
-  // (code + the server(s) it names), not the raw rendered line — the emulator may render
-  // the same banner with different padding/wrapping across frames, which raw-line keying
-  // would treat as new. `warnedBanners` is reset to this frame's identities, so a banner
-  // that clears (leaves the frame) then reappears fires again as a genuinely new occurrence.
+  // Key newly visible warnings by semantic identity, independent of terminal
+  // padding and wrapping. Removing a banner from the current frame re-arms it
+  // for a later appearance (C-API-14, §5.7).
   /** The session is about to write caller input; nothing after this is a startup banner. */
   endStartup(): void {
     this.conversationStarted = true;

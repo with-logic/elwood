@@ -3,3 +3,8 @@ import type { ElwoodDialogRequest as DialogRequest } from "../../core/dialogs/ty
 
 export type { WorkspaceTrustTarget } from "../../core/dialogs/types.ts";
 export type ElwoodDialogRequest = DialogRequest<"codex">;
+
+export type ElwoodDialogEvent = { readonly request: ElwoodDialogRequest } & (
+  | { readonly phase: "raised" }
+  | { readonly phase: "closed"; readonly reason: "cleared" | "replaced" | "unavailable" }
+);

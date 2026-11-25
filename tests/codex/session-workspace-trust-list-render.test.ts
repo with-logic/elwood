@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { viewTerminalHistory } from "../helpers/live-buffer-fixture.ts";
 import { resetFakes } from "./helpers.ts";
-import { menu, setup } from "./workspace-trust-discovery-fixture.ts";
+import { menu, menuWithQuitSelected, setup } from "./workspace-trust-discovery-fixture.ts";
 
 afterEach(resetFakes);
 
@@ -55,7 +55,7 @@ test("C-ATTN-07 reads the same live request while the viewport selects scrollbac
     expect(request).toBeDefined();
 
     session.terminal.xterm.scrollToTop();
-    await paint(menu(cwd).replace("› 1.", "  1.").replace("  2.", "› 2."));
+    await paint(menuWithQuitSelected(cwd));
     expect(isScrolled()).toBe(true);
     expect(session.terminal.xterm.buffer.active.getLine(0)?.translateToString(true)).toBe(
       "Historical output",
