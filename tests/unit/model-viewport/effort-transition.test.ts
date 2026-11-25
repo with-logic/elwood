@@ -4,6 +4,11 @@ import { claudeModelPicker } from "../../../src/claude/model-picker.ts";
 import { listPickerModels, setPickerModel } from "../../../src/core/models/picker.ts";
 import { scripted } from "../scripted-terminal.ts";
 
+// A success-path budget. Each call ends with a close wait of five clear readings 40 ms
+// apart, so a budget near that minimum fails whenever a loaded machine delays timers;
+// success returns as soon as the picker closes, so a generous budget costs nothing.
+const budgetMs = 5_000;
+
 test.each([
   "inline",
   "split",
@@ -42,13 +47,13 @@ test.each([
     cursor += input === "\u001b[B" ? 1 : -1;
     terminal.text = render();
   };
-  await setPickerModel(io, claudeModelPicker, "CLAUDE-HAIKU-4-5", 300);
-  const models = await listPickerModels(io, claudeModelPicker, 300);
+  await setPickerModel(io, claudeModelPicker, "CLAUDE-HAIKU-4-5", budgetMs);
+  const models = await listPickerModels(io, claudeModelPicker, budgetMs);
   expect(models).toHaveLength(3);
   expect(models.find((model) => model.isCurrent)?.id).toBe("claude-haiku-4-5");
   expect(models.find((model) => model.isDefault)?.id).toBe("default");
-  await setPickerModel(io, claudeModelPicker, "opus 5.5", 300);
+  await setPickerModel(io, claudeModelPicker, "opus 5.5", budgetMs);
   expect(
-    (await listPickerModels(io, claudeModelPicker, 300)).find((model) => model.isCurrent)?.id,
+    (await listPickerModels(io, claudeModelPicker, budgetMs)).find((model) => model.isCurrent)?.id,
   ).toBe("claude-opus-5-5");
 });
