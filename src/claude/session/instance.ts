@@ -24,10 +24,10 @@ import { attachClaudeImages } from "../attach-images.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { claudeLastComposerClearance } from "../composer/last.ts";
 import { createClaudeRecoveryComposer } from "../composer/staged-input.ts";
+import { normalizeClaudePastedPayload } from "../input-text.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
-import { normalizeClaudePastedPayload } from "../input-text.ts";
 import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
@@ -36,6 +36,7 @@ import type { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
+
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
   protected override get promptNormalizer() {
     return normalizeClaudePastedPayload;
@@ -116,9 +117,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachClaudeImages(this.automatedTerminal, paths, signal, () => this.queuedInputBlocked());
-  // A narrow session holds the PHYSICAL resize until readiness; it just records the
-  // requested geometry now and restores it at the initial-ready transition. A wide
-  // session (100+ cols) never deferred; it resizes now.
+  // Narrow sessions defer the physical resize until readiness. Wide sessions resize immediately.
   override resize(size: TerminalSize): Promise<void> {
     if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
       this.requestedSize = size;
@@ -143,8 +142,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
     }
     return Promise.resolve();
   }
-  // Apply the deferred physical geometry, so only a genuine native resize failure
-  // reports as staying at bootstrap width (C-API-39).
+  // Only a failed physical resize reports that the session stays at bootstrap width (C-API-39).
   private restoreRequestedSize(): void {
     try {
       this.restoreHeldSize(this.requestedSize);

@@ -111,8 +111,8 @@ export class PromptSubmissions {
   /** Attribute only after forwarding and before publishing the authenticated hook activity. */
   observeNativeSubmit(
     turnId: string,
-    prompt: string | undefined,
-    comparisonText?: string,
+    nativePrompt: string | undefined,
+    displayedNativeText?: string,
   ): ApiPromptPresentation | undefined {
     if (!this.track || this.nativeTurnIds.has(turnId)) return undefined;
     const validId = turnId.length > 0 && turnId.length <= maxNativeTurnIdCodeUnits;
@@ -125,14 +125,18 @@ export class PromptSubmissions {
     this.nativeTurnIds.add(turnId);
     const draft = this.draft;
     if (!draft?.entered) return undefined;
-    if (prompt === undefined || draft.expectedHookPrompt === undefined || !hasPromptText(prompt)) {
+    if (
+      nativePrompt === undefined ||
+      draft.expectedHookPrompt === undefined ||
+      !hasPromptText(nativePrompt)
+    ) {
       this.revoke();
       return undefined;
     }
     const comparable =
-      comparisonText === undefined
-        ? prompt
-        : this.normalizePayload(comparisonText, maxCorrelatedPromptCodeUnits);
+      displayedNativeText === undefined
+        ? nativePrompt
+        : this.normalizePayload(displayedNativeText, maxCorrelatedPromptCodeUnits);
     if (comparable !== draft.expectedHookPrompt) {
       this.revoke();
       return undefined;
@@ -141,7 +145,7 @@ export class PromptSubmissions {
     if (!draft.api) return undefined;
     return {
       ...draft.api,
-      nativePrompt: prompt,
+      nativePrompt,
       promptProvenance: { origin: "api", input: "pasted" },
       turnId,
     };

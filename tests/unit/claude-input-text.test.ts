@@ -9,5 +9,6 @@ test("C-API-71 Claude checks the exact canonical budget and avoids oversized exp
   expect(normalizeClaudePastedPayload(input, canonical.length)).toBe(canonical);
   expect(normalizeClaudePastedPayload(input, canonical.length - 1)).toBeUndefined();
   expect(normalizeClaudePastedPayload("large", 4)).toBeUndefined();
+  expect(normalizeClaudePastedPayload("x".repeat(262_145), 65_536)).toBeUndefined();
   expect(normalizeClaudePastedPayload(`${"\t".repeat(16_384)}x`, 65_536)).toBeUndefined();
 });

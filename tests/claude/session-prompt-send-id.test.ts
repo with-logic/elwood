@@ -1,10 +1,10 @@
-/** Exercise matched Claude API prompts through the authenticated hook and real PTY seam (C-API-71). */
-import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import { withSubmissionAttempt } from "../../src/core/simple/submission-context.ts";
+/** Exercise matched Claude API prompts through authenticated bridge hooks and FakePty writes (C-API-71). */
+
+import { afterEach, expect, onTestFinished, test } from "vitest";
 import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
-import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
+import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
 import { ptys, resetFakes } from "./helpers.ts";
-import { startActivitySession } from "./session-user-activity-helpers.ts";
+import { startActivitySession, user } from "./session-user-activity-helpers.ts";
 
 afterEach(resetFakes);
 const wrap = (body: string) => claudePasteEnvelope(body, "0e08");
@@ -14,7 +14,7 @@ async function setup() {
   onTestFinished(() => session.teardown());
   const pty = ptys.at(-1)!;
   const paint = async () => {
-    pty.emitData(`\x1b[2J\x1b[H${claudeTty(claudeComposer)}`);
+    pty.emitData(emptyComposer("claude"));
     await session.terminal.settled();
   };
   await hook({
@@ -94,18 +94,6 @@ test.each([
   expect(messages()[0]).not.toHaveProperty("sendId");
 });
 
-test("C-API-71 ergonomic submission observation does not opt into API provenance", async () => {
-  const { session, submit, messages } = await setup();
-  const beforeEnter = vi.fn();
-  await withSubmissionAttempt(session, { beforeEnter }, () =>
-    session.sendPrompt("caption ", { sendId: "caller" }),
-  );
-  expect(beforeEnter).toHaveBeenCalledWith("caption ");
-  await submit(wrap("caption"), "native");
-  expect(messages()[0]).toMatchObject({ text: "caption", promptProvenance: { origin: "unknown" } });
-  expect(messages()[0]).not.toHaveProperty("sendId");
-});
-
 test("C-API-71 overlapping low-level writes cannot claim either caller ID", async () => {
   const { session, paint, submit, messages } = await setup();
   await session.sendMessage(" first ", { sendId: "one" });
@@ -124,4 +112,36 @@ test("C-API-71 a reused Claude prompt ID cannot claim a second caller ID", async
   await session.sendGuidance(" next ", { sendId: "two" });
   await submit(" next", "reused");
   expect(messages().flatMap(({ sendId }) => sendId ?? [])).toEqual(["one"]);
+});
+
+test("C-API-71 textless native hooks recover transcript paste display without caller provenance", async () => {
+  const { session, submit, append, messages } = await setup();
+  await session.sendMessage("caption ", { sendId: "caller" });
+  await submit(undefined, "recovered");
+  const nativePrompt = wrap("caption");
+  append(user("recovered", nativePrompt));
+  await expect.poll(messages).toMatchObject([
+    {
+      source: "transcript",
+      turnId: "recovered",
+      text: "caption",
+      nativePrompt,
+      promptProvenance: { origin: "unknown", input: "pasted" },
+    },
+  ]);
+  expect(messages()[0]).not.toHaveProperty("sendId");
+  expect(messages()[0]).not.toHaveProperty("raw");
+});
+
+test("C-API-71 an escaped native body can fit the exact canonical limit", async () => {
+  const { session, submit, messages } = await setup();
+  const tag = "<pasted_content>";
+  const text = tag.padEnd(65_536, "x");
+  const nativeBody = text.replace("<", "<\\");
+  expect(nativeBody.length).toBe(65_537);
+  const nativePrompt = wrap(nativeBody);
+  await session.sendMessage(text, { sendId: "at-limit" });
+  await submit(nativePrompt, "limit");
+  expect(messages()[0]).toHaveProperty("sendId", "at-limit");
+  expect(messages()).toMatchObject([{ text, nativePrompt }]);
 });

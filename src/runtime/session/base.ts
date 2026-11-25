@@ -181,11 +181,14 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     }
     const ledger = this.promptSubmissions;
     const attempt = submissionAttempt(this)?.beforeEnter;
-    const beforeEnter = ledger?.captureCaller(input, options, attempt) ?? attempt;
-    const control = {
-      ...submissionControlOptions(options),
-      ...(beforeEnter ? { beforeEnter } : {}),
-    };
+    const submission = submissionControlOptions(options);
+    const origin = submission.origin;
+    const ergonomic = origin?.kind === "caller" && origin.awaitInputConsumption;
+    const beforeEnter =
+      this.record.adapter === "claude" && ergonomic
+        ? attempt
+        : (ledger?.captureCaller(input, options, attempt) ?? attempt);
+    const control = { ...submission, ...(beforeEnter ? { beforeEnter } : {}) };
     const driver: AttachDriver = (paths, signal) => {
       ledger?.revoke();
       return this.attachImages(paths, signal);

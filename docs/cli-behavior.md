@@ -1865,8 +1865,11 @@ a paste remained outside the envelope. Claude escaped look-alike tags, converted
 CRLF and CR to LF and tabs to four spaces, and reused a body's final LF as the
 closing tag separator. A literal backslash can match a native escape.
 
-Elwood displays the native body for a strictly matched standalone envelope.
-It preserves the exact delivered string as `nativePrompt` and reports
+When Elwood matches a low-level API submission to its authenticated submit hook,
+the activity displays the exact API text, preserves the native prompt in
+`nativePrompt`, and reports API paste provenance. Without that association,
+Elwood displays the native body for a strictly matched standalone envelope,
+preserves the exact envelope as `nativePrompt`, and reports
 `promptProvenance: { origin: "unknown", input: "pasted" }`. Native input
 transformations can make the original bytes unrecoverable. Offline PTY probes
 on 2.1.331 and 2.1.332 confirmed the same authenticated opener and repeated-ID

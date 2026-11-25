@@ -29,7 +29,7 @@ export type ImageInput =
 /** Optional per-submission options shared by sendPrompt/sendMessage/sendGuidance. */
 export type SendOptions = {
   readonly images?: readonly ImageInput[];
-  /** Opaque caller ID of up to 1,024 UTF-16 code units for a matched Codex prompt. */
+  /** Opaque caller ID of up to 1,024 UTF-16 code units for a matched API prompt. */
   readonly sendId?: string;
 };
 
