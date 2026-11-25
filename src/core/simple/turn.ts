@@ -12,6 +12,7 @@
 import { toError } from "../errors.ts";
 import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
+import { acceptanceSignal } from "./acceptance-signal.ts";
 import { settleHookBoundary, settleNativeBoundary } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { withSubmissionAttempt } from "./submission-context.ts";
@@ -20,7 +21,6 @@ import { TurnAcceptance } from "./turn-acceptance.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
 import { TurnIdentity } from "./turn-identity.ts";
 import {
-  defaultAcceptanceSignal,
   defaultBoundarySignal,
   type RunningTurn,
   type StreamTurnOptions,
@@ -39,7 +39,7 @@ export type {
   TurnBoundaryHook,
   TurnSession,
 } from "./turn-types.ts";
-export { defaultAcceptanceSignal, defaultBoundarySignal } from "./turn-types.ts";
+export { defaultBoundarySignal } from "./turn-types.ts";
 
 /** Attach before owned submission; retain the native boundary after consumer failure. */
 export function runTurn(
@@ -136,7 +136,7 @@ export function runTurn(
       if (identity.observe(event)) acceptance.accept();
       return; // Public Stop precedes its callback outcome; only private confirmation owns the oracle.
     }
-    if (defaultAcceptanceSignal(event, prompt)) {
+    if (acceptanceSignal(session)(event, prompt)) {
       acceptance.accept();
       if (event.hook_event_name === "UserPromptSubmit") acceptedBy = submitIdentity(event);
     }

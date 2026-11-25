@@ -18,6 +18,7 @@ import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import { registerClaudeAcceptanceSignal } from "../accepted-turn.ts";
 import { attachClaudeImages } from "../attach-images.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { claudeLastComposerClearance } from "../composer/last.ts";
@@ -79,6 +80,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
       terminalReplay,
       loopDefinitions,
     );
+    registerClaudeAcceptanceSignal(this);
     this.configureClaudeQuestions();
     this.runtimeParts = runtimeParts;
     this.emitter = emitter;
