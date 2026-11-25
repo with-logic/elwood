@@ -22,6 +22,7 @@ export function preparePasteNudges(
   delayMs: number,
   priorEmptyFrame: ReturnType<EmptyComposerObserver>,
   revoked?: () => boolean,
+  writeEnter = () => terminal.sendInput("\r"),
 ) {
   if (!guard) return undefined;
   const staged =
@@ -42,7 +43,7 @@ export function preparePasteNudges(
     if (attempts === pasteNudgeAttempts) return "exhausted";
     attempts += 1;
     beforeEnter();
-    await tryRecoveryEnter(terminal);
+    await tryRecoveryEnter(writeEnter);
     return "pending";
   };
   const observe = async (awaitInputConsumption: boolean): Promise<Observation> => {
@@ -92,9 +93,9 @@ export function preparePasteNudges(
   return { beforeEnter, start: schedule, awaitEmptyInput };
 }
 
-async function tryRecoveryEnter(terminal: InputTerminal): Promise<void> {
+async function tryRecoveryEnter(writeEnter: () => void | Promise<void>): Promise<void> {
   try {
-    await terminal.sendInput("\r");
+    await writeEnter();
   } catch {
     // Recovery is best-effort after the initial Enter has dispatched.
   }

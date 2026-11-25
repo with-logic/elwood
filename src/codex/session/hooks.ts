@@ -104,9 +104,13 @@ async function observeAndRequest(
   }
   if (session && event.hook_event_name === "UserPromptSubmit")
     recordNativeTurn(session, event.turn_id);
+  const prompt =
+    event.hook_event_name === "UserPromptSubmit"
+      ? session?.promptSubmissions?.observeNativeSubmit(event.turn_id, event.prompt)
+      : undefined;
   observation.run("hook", () => emitter.emit("hook", event));
   observation.run("activity", () =>
-    emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event)),
+    emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event, prompt)),
   );
   const outcome = await requestCodexHook(
     {

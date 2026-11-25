@@ -6,7 +6,14 @@ type FixtureActivity = Omit<
     ElwoodActivityEvent,
     { kind: "question" | "assistant_progress" | "unrecognized_startup" | "turn_failure" }
   >,
-  "speed" | "tokenUsage" | "rateLimits" | "subagent" | "final"
+  | "speed"
+  | "tokenUsage"
+  | "rateLimits"
+  | "subagent"
+  | "final"
+  | "sendId"
+  | "nativePrompt"
+  | "promptProvenance"
 > & { readonly speed?: never };
 
 export type FixtureActivityKind = FixtureActivity["kind"];
