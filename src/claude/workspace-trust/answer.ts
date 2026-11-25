@@ -9,6 +9,7 @@ import type { PtyExit } from "../../pty/types.ts";
 import { onCallerInput, withAutomatedInput } from "../../runtime/session/session-input.ts";
 import { nativeRenderEvidenceIntact, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
+import { claudeDialogInputGraceMs } from "../dialog-input-grace.ts";
 import { claudeAnswerOwnership } from "./answer-ownership.ts";
 import {
   claudeTrustExitLabel,
@@ -17,8 +18,6 @@ import {
   type WorkspaceTrustFrame,
 } from "./menu.ts";
 import type { ClaudeLaunchTrustEvidence } from "./target.ts";
-
-const workspaceInputGraceMs = 1_500;
 
 export type ClaudeTrustAppearance = WorkspaceTrustFrame & { readonly gateIdentity: string };
 
@@ -33,16 +32,20 @@ type Evidence = {
 };
 
 function readClaudeTrustChoice(evidence: Evidence): ReadChoice<SelectableOption, 0 | 1> {
-  return (gate, index, requestId, previousFrame, finish, signal) => {
-    if (!evidence.canWrite(gate)) return finish();
+  return (gateIdentity, index, requestId, previousFrame, finish, signal) => {
+    if (!evidence.canWrite(gateIdentity)) return finish();
     const current = evidence.read();
-    if (!current || current.frame === previousFrame || current.gateIdentity !== gate)
+    if (!current || current.frame === previousFrame || current.gateIdentity !== gateIdentity)
       return finish();
     const { frame, menu } = current;
     const option = menu.dialog.options[index];
     void evidence.verify(current, signal).then((verified) => {
       if (!verified) return finish();
-      finish({ frame, option, claim: () => verified() && evidence.claim(frame, requestId, gate) });
+      finish({
+        frame,
+        option,
+        claim: () => verified() && evidence.claim(frame, requestId, gateIdentity),
+      });
     });
   };
 }
@@ -170,6 +173,6 @@ export function openClaudeTrustAnswer(
           outcome: label === claudeTrustExitLabel ? "exit" : "affirmative",
         }) as const,
     ),
-    earliestInputAtMs: performance.now() + workspaceInputGraceMs,
+    earliestInputAtMs: performance.now() + claudeDialogInputGraceMs,
   };
 }

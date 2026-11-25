@@ -1,6 +1,7 @@
 /** Verify guarded writes, bounded cancellation, and outcome categories (C-ATTN-07). */
 import { afterEach, expect, test, vi } from "vitest";
 import { WorkspaceTrustAnswers } from "../../src/core/dialogs/trust-answer/index.ts";
+import type { AnswerFailureCategory } from "../../src/core/dialogs/trust-answer/io.ts";
 import type { SelectableOption } from "../../src/core/terminal-options.ts";
 
 afterEach(() => vi.useRealTimers());
@@ -36,7 +37,10 @@ function setup(confirm = true) {
 
 const answer = (answers: Pick<WorkspaceTrustAnswers, "answer">) =>
   answers.answer("request", "choice");
-const failed = (category: string) => ({ code: "dialog_answer_failed", details: { category } });
+const failed = (category: AnswerFailureCategory) => ({
+  code: "dialog_answer_failed",
+  details: { category },
+});
 
 test("C-ATTN-07 validates options and choice before acquiring the writer", async () => {
   const { answers, write } = setup();
@@ -61,7 +65,7 @@ test("C-ATTN-07 validates options and choice before acquiring the writer", async
   expect(write).not.toHaveBeenCalled();
 });
 
-test("C-ATTN-07 a changed scope refuses the first key", async () => {
+test("C-ATTN-07 a missing verified choice refuses the first key", async () => {
   const { answers, write, readChoice } = setup();
   readChoice.mockReturnValue(undefined);
   await expect(answer(answers)).rejects.toMatchObject(failed("frame"));
@@ -101,13 +105,21 @@ test("C-ATTN-07 a rejected native write does not report success", async () => {
   expect(relinquish).toHaveBeenCalledWith("folder");
 });
 
-test("C-ATTN-07 bounds a live answer with no native acceptance", async () => {
+test("C-ATTN-07 the answer deadline includes an in-flight confirmation write", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-  const { answers } = setup();
-  const operation = answers.answer("request", "choice", { timeoutMs: 50 });
-  const rejection = expect(operation).rejects.toMatchObject(failed("native_acceptance"));
+  const { answers, write, readChoice, reconcile } = setup();
+  const writeResult = Promise.withResolvers<void>();
+  write.mockReturnValue(writeResult.promise);
+  const reject = vi.fn();
+  const operation = answers.answer("request", "choice", { timeoutMs: 50 }).catch(reject);
+  expect(write).toHaveBeenCalledExactlyOnceWith("\r");
   await vi.advanceTimersByTimeAsync(50);
-  await rejection;
+  expect(reject.mock.lastCall?.[0]).toMatchObject(failed("native_acceptance"));
+  writeResult.resolve();
+  await operation;
+  expect(reconcile).not.toHaveBeenCalled();
+  expect(readChoice).toHaveBeenCalledOnce();
+  expect(write).toHaveBeenCalledOnce();
 });
 
 test("C-ATTN-07 a workspace answer defaults to a 12-second confirmation deadline", async () => {
@@ -126,9 +138,11 @@ test("C-ATTN-07 a workspace answer defaults to a 12-second confirmation deadline
 });
 
 test("C-ATTN-07 native exit cannot confirm an affirmative answer", async () => {
-  const { answers, write } = setup();
+  const { answers, write, reconcile } = setup();
   const operation = answer(answers);
-  await write.mock.results[0]?.value;
+  expect(write).toHaveBeenCalledExactlyOnceWith("\r");
+  await write.mock.results[0]!.value;
+  expect(reconcile).toHaveBeenCalledOnce();
   answers.nativeExit(true);
   await expect(operation).rejects.toMatchObject(failed("terminal_exit"));
 });

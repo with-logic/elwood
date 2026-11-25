@@ -1,19 +1,19 @@
-/** Reserve and translate one human workspace trust answer (PRD §5.13, C-ATTN-07). */
+/** Reserve and translate one human workspace trust answer (PRD §5.3, C-ATTN-07). */
 import { elwoodError } from "../../errors.ts";
 import type { SelectableOption } from "../../terminal-options.ts";
 import { deadlineClock, scheduleDeadline } from "../../timers.ts";
 import type { ElwoodDialogAnswerOptions } from "../types.ts";
-import type { AnswerFailure, AnswerIo, WorkspaceTrustOutcome } from "./io.ts";
+import type { AnswerFailureCategory, AnswerIo, WorkspaceTrustOutcome } from "./io.ts";
 import { answerOptions, scheduleInputGrace } from "./options.ts";
 
 export type { ReadChoice } from "./io.ts";
 
 type Active<ChoiceIndex> = {
-  readonly gate: string;
+  readonly gateIdentity: string;
   readonly requestId: string;
   readonly choiceIndex: ChoiceIndex;
   readonly outcome: WorkspaceTrustOutcome;
-  readonly deadline: number;
+  readonly deadlineAtMs: number;
   readonly result: PromiseWithResolvers<void>;
   readonly cleanup: () => void;
   readonly proofLifetime: AbortController;
@@ -23,7 +23,7 @@ type Active<ChoiceIndex> = {
   phase: "selecting" | "writing" | "writingConfirmation" | "awaitingNativeOutcome";
 };
 
-const failure = (category: AnswerFailure) =>
+const failure = (category: AnswerFailureCategory) =>
   elwoodError("dialog_answer_failed", "Elwood could not verify the native dialog answer.", {
     category,
   });
@@ -48,23 +48,23 @@ export class WorkspaceTrustAnswers<
     if (this.active) throw failure("busy");
     if (signal.aborted) throw failure("aborted");
     const now = deadlineClock.now();
-    const deadline = now + timeoutMs;
+    const deadlineAtMs = now + timeoutMs;
     const result = Promise.withResolvers<void>();
     const abort = () => this.revoke();
     const expire = () => this.expire();
     const clearDeadline = scheduleDeadline(
-      { deadlineAtMs: deadline, initialDelayMs: timeoutMs },
+      { deadlineAtMs, initialDelayMs: timeoutMs },
       expire,
       deadlineClock,
     );
     const clearGrace = scheduleInputGrace(current.earliestInputAtMs, now, () => this.advance());
     signal.addEventListener("abort", abort, { once: true });
     this.active = {
-      gate: current.gateIdentity,
+      gateIdentity: current.gateIdentity,
       requestId,
       choiceIndex: choice.choiceIndex,
       outcome: choice.outcome,
-      deadline,
+      deadlineAtMs,
       result,
       proofLifetime: new AbortController(),
       cleanup() {
@@ -94,7 +94,7 @@ export class WorkspaceTrustAnswers<
     active.reading = true;
     active.recheck = false;
     this.io.readChoice(
-      active.gate,
+      active.gateIdentity,
       active.choiceIndex,
       active.requestId,
       active.lastFrame,
@@ -139,7 +139,7 @@ export class WorkspaceTrustAnswers<
 
   private isCurrent(active: Active<ChoiceIndex>): boolean {
     if (this.active !== active) return false;
-    if (deadlineClock.now() >= active.deadline) this.expire();
+    if (deadlineClock.now() >= active.deadlineAtMs) this.expire();
     return this.active === active;
   }
 
@@ -162,7 +162,7 @@ export class WorkspaceTrustAnswers<
   }
 
   revokeIfGateChanged(gateIdentity: string): void {
-    if (this.active && this.active.gate !== gateIdentity) this.finish("frame");
+    if (this.active && this.active.gateIdentity !== gateIdentity) this.finish("frame");
   }
 
   revoke(category: "aborted" | "frame" = "aborted"): void {
@@ -181,14 +181,14 @@ export class WorkspaceTrustAnswers<
     else this.finish("terminal_exit");
   }
 
-  private finish(category?: AnswerFailure): void {
+  private finish(category?: AnswerFailureCategory): void {
     const active = this.active;
     if (!active) return;
     this.active = undefined;
     active.proofLifetime.abort();
     active.cleanup();
     if (category) {
-      if (active.lastFrame) this.io.relinquish(active.gate);
+      if (active.lastFrame) this.io.relinquish(active.gateIdentity);
       active.result.reject(failure(category));
     } else active.result.resolve();
   }

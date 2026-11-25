@@ -101,7 +101,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
   readonly listDialogs = () => this.dialogs.discovery.list();
   readonly answerDialog: ClaudeSessionApi["answerDialog"] = (requestId, choiceId, options) =>
-    this.dialogs.discovery.writer.answers.answer(requestId, choiceId, options);
+    this.dialogs.discovery.answerDialog(requestId, choiceId, options);
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);
   }

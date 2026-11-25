@@ -1,4 +1,4 @@
-/** Validate bounded workspace answer options (PRD §5.13). */
+/** Validate bounded workspace answer options (PRD §5.3). */
 import { elwoodError } from "../../errors.ts";
 import { isRecord } from "../../predicates.ts";
 import { deadlineClock, scheduleDeadline } from "../../timers.ts";

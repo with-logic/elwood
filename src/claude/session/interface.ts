@@ -40,6 +40,8 @@ export interface ClaudeSessionApi extends LoopControls, QuestionControls, StatsC
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
 
   listDialogs(): Promise<readonly ElwoodDialogRequest<"claude">[]>;
+  /** Resolve on native trust acceptance or the expected exit after declining.
+   * Reject if the dialog is unavailable or the answer is invalid or unverified. */
   answerDialog(
     requestId: string,
     choiceId: string,

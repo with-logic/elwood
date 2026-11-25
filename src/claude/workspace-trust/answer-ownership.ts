@@ -17,13 +17,12 @@ export function claudeAnswerOwnership() {
     },
     observeGate(gate: Appearance, promptHeaderKey: string) {
       observed = gate;
-      if (
-        rawPrelude === disclosedWorkspacePath ||
-        rawPrelude === promptHeaderKey ||
-        relinquished === gate.gateIdentity
-      )
-        relinquished = gate.gateIdentity;
-      else relinquished = undefined;
+      // Carry a partial takeover into its completed menu. A full takeover follows
+      // the appearance identity so a later incarnation of the same menu is answerable.
+      const matchesPrelude =
+        rawPrelude === disclosedWorkspacePath || rawPrelude === promptHeaderKey;
+      const alreadyRelinquished = relinquished === gate.gateIdentity;
+      relinquished = matchesPrelude || alreadyRelinquished ? gate.gateIdentity : undefined;
       rawPrelude = undefined;
     },
     observePrelude(prelude: WorkspacePreludeEvidence | undefined) {

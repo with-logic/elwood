@@ -2,7 +2,7 @@
 import type { SelectableOption } from "../../terminal-options.ts";
 import type { TrustStep } from "../../trust/step.ts";
 
-export type AnswerFailure =
+export type AnswerFailureCategory =
   | "busy"
   | "aborted"
   | "frame"
@@ -32,7 +32,7 @@ type VerifiedChoice<Option> = {
  * An empty completion means no new verified choice. The previous frame token
  * identifies the last attempted key's render, which cannot authorize another. */
 export type ReadChoice<Option, ChoiceIndex extends number = number> = (
-  gate: string,
+  gateIdentity: string,
   choiceIndex: ChoiceIndex,
   requestId: string,
   previousFrame: object | undefined,

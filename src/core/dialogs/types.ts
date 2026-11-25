@@ -1,4 +1,4 @@
-/** Public native workspace trust discovery types (PRD §5.13, C-ATTN-07). */
+/** Public workspace trust dialog requests, events, and answer options (PRD §5.3, §5.13). */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 

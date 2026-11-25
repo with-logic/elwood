@@ -55,7 +55,6 @@ export async function buildClaudeSession(
     (deliver) => wired.duringDelivery(deliver),
   );
   const wired = createTranscriptWatcher(elwoodSessionId, emitter, () => warnGate);
-  const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(elwoodSessionId, autotrust, emitter);
   const idleComposerClearance = liveClaudeIdleComposer(() => terminal);
@@ -85,17 +84,18 @@ export async function buildClaudeSession(
       record,
       options,
       emitter,
-      transcriptWatcher,
+      transcriptWatcher: wired.watcher,
       ready: readiness.ready,
       getSession: () => session,
       getTurnWatcher: () => observers.turn,
-      observeHookTranscript: (event) => observeTranscript(transcriptWatcher, event),
+      observeHookTranscript: (event) => observeTranscript(wired.watcher, event),
       onHookOutcome: (event, result) => session?.resolveQuestionHook(event, result),
     }),
     buildClaudeHookErrorHandler(record, emitter, () => session),
   );
-  const requested = options.initialSize ?? defaultTerminalSize;
-  const startupSize = { ...requested, cols: Math.max(requested.cols, CLAUDE_STARTUP_MIN_COLS) };
+  const requestedSize = options.initialSize ?? defaultTerminalSize;
+  const cols = Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS);
+  const startupSize = { ...requestedSize, cols };
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
     pty = spawnClaudePty(record, runtime.settingsPath, { ...options, initialSize: startupSize });
@@ -123,7 +123,7 @@ export async function buildClaudeSession(
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
-    dialogs.discovery.writer.recordConfirmation();
+    dialogs.discovery.recordConfirmation(); // A ready listener can clear the native frame.
     terminalReplay.push(data);
     const snapshot = readiness.observeStartupFrame(renderedTerminal);
     latestRenderedText = snapshot.text;
@@ -154,10 +154,10 @@ export async function buildClaudeSession(
     runtime,
     pty,
     terminal,
-    { bridge, finishTranscriptWatcher: finishSafely },
+    { bridge, finishTranscriptWatcher: wired.finishSafely },
     emitter,
     terminalReplay,
-    requested,
+    requestedSize,
     loopDefinitions,
     dialogs,
   );
@@ -169,19 +169,19 @@ export async function buildClaudeSession(
   await guardStartupRegion(
     async () => {
       active.startLoops();
-      flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
+      wired.flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
       readiness.ready.replay();
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;
-        dialogs.discovery.writer.nativeExit(exit);
+        dialogs.discovery.nativeExit(exit);
         active.beginExitFinalization();
         active.closing.abort();
         handleClaudeExit(
           emitter,
           elwoodSessionId,
           exit,
-          (afterFlush) => finishSafely(() => warnGate.afterDelivery(afterFlush)),
+          (afterFlush) => wired.finishSafely(() => warnGate.afterDelivery(afterFlush)),
           () => active.submitExit(),
         );
       });
@@ -190,7 +190,7 @@ export async function buildClaudeSession(
       frameObserver.blockOnceLive(active);
       input.activate();
     },
-    { ...sessionCleanup, bridge, terminal, after: () => transcriptWatcher.stop() },
+    { ...sessionCleanup, bridge, terminal, after: () => wired.watcher.stop() },
   );
   if (preflightWarning !== undefined)
     warnGate.emitWarnings([preflightEvent(elwoodSessionId, preflightWarning)]);

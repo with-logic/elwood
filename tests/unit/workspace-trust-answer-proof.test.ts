@@ -13,7 +13,7 @@ test.each([
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   try {
     const readChoice = vi.fn<ReadChoice<SelectableOption>>();
-    const write = vi.fn().mockResolvedValue(undefined);
+    const write = vi.fn<(keys: string) => Promise<void>>().mockResolvedValue(undefined);
     const answers = new WorkspaceTrustAnswers({
       currentRequest: () => ({
         gateIdentity: "gate",

@@ -9,13 +9,14 @@ import type { ElwoodQuestionRequest, QuestionDefinition } from "../../core/quest
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { claudeComposerInputColumn } from "../composer/cursor.ts";
 import { claudeEmptyInputRows } from "../composer/empty-input.ts";
+import { claudeDialogInputGraceMs } from "../dialog-input-grace.ts";
 import { isBlock } from "../hooks/dispatch.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { isQuestions } from "../validate/tool-values.ts";
 import { answerClaudeQuestions } from "./answer.ts";
 import { type Candidate, candidatePanel, createCandidate, hasPendingHook } from "./candidate.ts";
 import { matchesCandidateHook, matchesNativeQuestions } from "./correlation.ts";
-import { claudeQuestionInputGraceMs, waitForClaudeQuestionInput } from "./input-grace.ts";
+import { waitForClaudeQuestionInput } from "./input-grace.ts";
 import { claudeQuestionCandidate } from "./screen.ts";
 
 export class ClaudeQuestionAdapter implements QuestionAdapter {
@@ -143,7 +144,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       if (matchesNativePanel) candidate.seenChrome = true;
       if (screen?.kind === "question") {
         this.lastNativeQuestions = candidate.questions;
-        candidate.inputReadyAtMs ??= performance.now() + claudeQuestionInputGraceMs;
+        candidate.inputReadyAtMs ??= performance.now() + claudeDialogInputGraceMs;
       }
       if (!candidate.awaitingNativeHookClosure && candidate.seenChrome && hasLiveEmptyComposer) {
         this.close(candidate, "unavailable");

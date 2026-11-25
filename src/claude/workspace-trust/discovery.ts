@@ -1,9 +1,11 @@
-/** List Claude's human-owned workspace trust menu with settled native and Git evidence (C-ATTN-07). */
+/** Discover and answer Claude workspace trust with settled native and Git evidence (C-ATTN-07). */
 import { runContained } from "../../core/contained.ts";
+import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
 import {
   type VerifiedWorkspaceTrust,
   WorkspaceTrustPolling,
 } from "../../core/dialogs/workspace-trust-polling.ts";
+import type { PtyExit } from "../../pty/types.ts";
 import { nativeRenderEvidenceIntact, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import { type ClaudeTrustAppearance, claudeTrustWriter, openClaudeTrustAnswer } from "./answer.ts";
@@ -21,7 +23,7 @@ export type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 
 export class ClaudeWorkspaceTrustDiscovery {
   private answerRequest: ReturnType<typeof openClaudeTrustAnswer> | undefined;
-  readonly writer;
+  private readonly writer;
   private readonly nativeAppearance = new ClaudeTrustNativeAppearance();
   private readonly polling = new WorkspaceTrustPolling<"claude", WorkspaceTrustFrame>();
   private readonly input: WorkspaceTrustDiscoveryInput;
@@ -35,13 +37,11 @@ export class ClaudeWorkspaceTrustDiscovery {
     this.writer = claudeTrustWriter(input, {
       current: () => {
         const answer = this.answerRequest;
-        if (
-          answer &&
+        return answer &&
           answer.request === this.polling.currentRequest &&
           nativeRenderEvidenceIntact(input.terminal())
-        )
-          return answer;
-        return undefined;
+          ? answer
+          : undefined;
       },
       read: () => this.reconcile(),
       verify: (candidate, signal) =>
@@ -50,17 +50,23 @@ export class ClaudeWorkspaceTrustDiscovery {
           signal,
           polling: this.polling,
           revision: observer.revision,
-          canUseFrame: (frame) => this.canUseTrustFrame(frame),
+          canUseFrame: this.canUseTrustFrame,
           scopeLost: (frame, proved) => this.retireIfScopeProofLost(frame, proved),
           revoke: () => this.writer.answers.revoke("frame"),
         }),
-      isFrameCurrent: (frame) => this.canUseTrustFrame(frame),
+      isFrameCurrent: this.canUseTrustFrame,
       reconcile: () => this.observeNativeFrame(),
-      clear: () => {
-        this.retire("cleared");
-      },
+      clear: () => this.retire("cleared"),
     });
   }
+
+  answerDialog(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
+    return this.writer.answers.answer(requestId, choiceId, options);
+  }
+
+  readonly recordConfirmation = () => this.writer.recordConfirmation();
+  readonly nativeExit = (exit: PtyExit) => this.writer.nativeExit(exit);
+  readonly invalidateEvidence = (): void => this.end("unavailable");
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal): void {
     this.polling.bind(terminal, closing, () =>
@@ -78,8 +84,6 @@ export class ClaudeWorkspaceTrustDiscovery {
       });
     this.end(reason);
   }
-
-  readonly invalidateEvidence = (): void => this.end("unavailable");
 
   async list(): Promise<readonly DialogRequest[]> {
     const prior = this.polling.currentRequest;
@@ -159,7 +163,6 @@ export class ClaudeWorkspaceTrustDiscovery {
   ): VerifiedWorkspaceTrust<"claude"> | undefined {
     this.retireIfScopeProofLost(candidate.frame, proved);
     if (proved !== true || !this.canUseTrustFrame(candidate.frame)) return undefined;
-
     const verified = this.polling.acceptVerified("claude", this.input.elwoodSessionId, candidate);
     if (this.answerRequest?.request !== verified.request)
       this.answerRequest = openClaudeTrustAnswer(candidate.gateIdentity, verified.request);
@@ -176,9 +179,8 @@ export class ClaudeWorkspaceTrustDiscovery {
     return this.polling.currentRequest === request && this.canUseTrustFrame(frame);
   }
 
-  private canUseTrustFrame(frame: TerminalSnapshot): boolean {
-    return this.polling.canUseTrustFrame(frame, this.input);
-  }
+  private readonly canUseTrustFrame = (frame: TerminalSnapshot): boolean =>
+    this.polling.canUseTrustFrame(frame, this.input);
 
   private end(reason: Retirement, category: "frame" | "aborted" = "frame"): void {
     this.writer.answers.revoke(category);

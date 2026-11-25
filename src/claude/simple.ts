@@ -71,6 +71,8 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi, "claude"> {
     this.unsubscribe(event, handler);
   }
 
+  /** Resolve on native trust acceptance or the expected exit after declining.
+   * Reject if the dialog is unavailable or the answer is invalid or unverified. */
   async answerDialog(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
     return (await this.start()).answerDialog(requestId, choiceId, options);
   }
