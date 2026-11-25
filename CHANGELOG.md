@@ -15,6 +15,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
 
+- Report `replaced` when a settled Codex workspace trust menu replaces an open
+  dialog request and automation owns the replacement.
+
 - Emit typed Claude and Codex turn-failure activity with the harness diagnostic,
   normalized category, final disposition, and a supplied usage-limit reset.
 
