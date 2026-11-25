@@ -3,14 +3,12 @@ import { execFileSync } from "node:child_process";
 import { realpathSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, assert, expect, test, vi } from "vitest";
-import { TypedEmitter } from "../../src/events/emitter.ts";
 import { ClaudeSession, type ElwoodDialogEvent, startClaude } from "../../src/index.ts";
-import { assertStartupUsable, setStartupWaitMsForTests } from "../../src/runtime/startup/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
+import { holdStartup } from "../helpers/startup-frame.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
-vi.mock("../../src/runtime/startup/index.ts", { spy: true });
 afterEach(() => {
   vi.restoreAllMocks();
   resetFakes();
@@ -24,29 +22,15 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
   session.on("dialog", raised);
   // Startup is held open until the trust frame has rendered, so the request is on screen
   // before `start()` returns however long rendering takes.
-  const startupEntered = Promise.withResolvers<void>();
-  const finishStartup = Promise.withResolvers<void>();
-  const { assertStartupUsable: checkStartup } = await vi.importActual<
-    typeof import("../../src/runtime/startup/index.ts")
-  >("../../src/runtime/startup/index.ts");
-  vi.mocked(assertStartupUsable).mockImplementation(async (options) => {
-    startupEntered.resolve();
-    await finishStartup.promise;
-    await checkStartup(options);
-  });
-  setStartupWaitMsForTests(0);
-  const emitted = vi.spyOn(TypedEmitter.prototype, "emit");
-  const renders = () => emitted.mock.calls.filter(([name]) => name === "terminal:data").length;
-  const started = session.start();
+  const held = await holdStartup(() => session.start());
   try {
-    await startupEntered.promise;
     ptys[0]!.emitData(trustFrame(cwd));
-    await expect.poll(renders).toBe(1);
+    await expect.poll(held.renders).toBe(1);
     expect(session.session).toBeUndefined();
     expect(raised).not.toHaveBeenCalled();
 
-    finishStartup.resolve();
-    const eager = await started;
+    held.release();
+    const eager = await held.starting;
     // The replay to the listener attached before `start()`, not a list call, raises it.
     await expect.poll(() => raised.mock.calls.length).toBe(1);
     const [request] = await eager.listDialogs();
@@ -63,7 +47,7 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
     expect(await eager.listDialogs()).toEqual([request]);
     expect(ptys[0]!.writes).toEqual([]);
   } finally {
-    finishStartup.resolve();
+    await held.settle();
     await session.teardown();
   }
 });
