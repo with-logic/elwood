@@ -1969,7 +1969,35 @@ paints. Six such probes had three outcomes:
   and the offer painted 70–136 ms later. The paste stayed staged and was never
   submitted. Elwood's Enter has already gone out, so the draft Esc leaves is not
   clearance and the session stays `blocked` until the composer is empty. Elwood
-  cannot see the offer before it paints, so C-ATTN-09 does not cover this.
+  cannot see the offer before it paints, so C-ATTN-09 does not cover this;
+  C-ATTN-10, below, does.
+
+The binary explains the third case. At the end of a query Claude runs
+`if (shouldOffer) this.offerEnvOnboarding(); ... this.resetLoadingState()`.
+`offerEnvOnboarding` sets `envOnboardingOffered` synchronously, so the offer
+mounts in the same tick that clears the loading state and takes keys from then
+on. Ink paints both changes in one later frame. Elwood's `Stop` hook has already
+reported `ready` before that frame, so a queued message's paste and Enter went
+out to a mounted offer that Elwood could not see yet. A frame probe
+(load averages 35–62) showed the order every time: the title switches to `✳`
+27–30 ms after `Stop` while the footer still reads `esc to interrupt`, and the
+first frame without that footer, 35–48 ms after `Stop`, already holds the offer.
+So after a turn's `Stop` Elwood now holds every queued write until a frame no
+longer shows the turn working, capped at 5 s (C-ATTN-10). The footer is the
+exact signal; the title clears one frame early, which is why the guarantee
+needs widths that show the footer.
+`tests/e2e/auto-mode-offer-prepaint-claude.e2e.ts` reproduces the case on
+demand by holding Elwood's view of the PTY for 1.5 s from `Stop`. With the
+hold it passed: exactly one submission, no `Yes ✔`, and Esc's `dismissedAt`
+recorded (21 s, load average 35). With the hold removed it failed: the queued
+message was never submitted (load average 31).
+
+The offer ignores a choice, Enter on its menu or Esc, made less than 500 ms
+after its first render or after the previous attempt, and every attempt,
+ignored or not, restarts that window (`z5e = 500` in `J3`). That is why an Esc
+sent as soon as the title appeared, below, did nothing. Its options: `Yes` clears `autoModeEnvSetup` and opens setup; `Not now`, which
+Esc also selects, stamps `autoModeEnvSetup.dismissedAt` and suppresses the offer
+for 7 days; `Don't show again` sets `dismissed: true`.
 
 A paste typed during the turn shows the same shape on demand
 (`tests/e2e/auto-mode-offer-draft-claude.e2e.ts`). Claude paints the offer

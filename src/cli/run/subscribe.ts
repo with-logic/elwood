@@ -5,6 +5,7 @@
  * Implements PRD §12A.2/§12A.10 and C-CLI-05/C-CLI-09/C-CLI-26.
  */
 
+import { claudeAutoModeOfferRuleId } from "../../claude/auto-mode-offer.ts";
 import {
   blockingTrustSpecs,
   type TrustPromptSpec,
@@ -21,15 +22,9 @@ import type { CodexUpdateAttentionGuard } from "../update-attention.ts";
 export type RunEventObserver = {
   readonly status: (status: ElwoodSessionStatus) => void;
   readonly warning: (event: ElwoodWarningEvent) => void;
-  /** True once the run has submitted its own prompt. */
-  readonly promptSubmitted: () => boolean;
+  /** True once setup is done and the run has moved on to its own prompt's turn. */
+  readonly promptPhaseStarted: () => boolean;
 };
-
-/**
- * Claude can paint its auto-mode setup offer right after a turn ends (C-ATTN-09). After
- * the prompt's own turn, the answer is complete, so the offer does not fail the run.
- */
-const postTurnOffer = "claude-auto-mode-offer";
 
 export function subscribeRunEvents(
   request: EffectiveRunRequest,
@@ -49,7 +44,9 @@ export function subscribeRunEvents(
       } else if (
         event.kind === "attention" &&
         attentionNeedsHuman(request, event.label) &&
-        !(promptTurnEnded && event.label === postTurnOffer)
+        // Claude can paint its auto-mode setup offer right after a turn ends (C-ATTN-09). After
+        // the prompt's own turn, the answer is complete, so the offer does not fail the run.
+        !(promptTurnEnded && event.label === claudeAutoModeOfferRuleId)
       ) {
         lifecycle.block(event.label);
       }
@@ -58,7 +55,7 @@ export function subscribeRunEvents(
       }
     }),
     session.on("status", ({ status }) => {
-      if (observer.promptSubmitted()) {
+      if (observer.promptPhaseStarted()) {
         if (status === "running") promptRunning = true;
         else if (status === "ready" && promptRunning) promptTurnEnded = true;
       }

@@ -47,7 +47,7 @@ export async function executeRun(
     request.agent === "codex"
       ? new CodexUpdateAttentionGuard(session, lifecycle, dependencies.clock)
       : undefined;
-  let promptSubmitted = false;
+  let promptPhaseStarted = false;
   const unsubscribers = subscribeRunEvents(
     request,
     session,
@@ -55,7 +55,7 @@ export async function executeRun(
     {
       status: (status) => output.status(statusRecord(status)),
       warning: (event) => output.warning(event),
-      promptSubmitted: () => promptSubmitted,
+      promptPhaseStarted: () => promptPhaseStarted,
     },
     head,
     updateAttention,
@@ -76,7 +76,7 @@ export async function executeRun(
       const live = session.session;
       if (live !== undefined) output.setSecrets(privateOutputSecrets(live));
       output.runningPrompt();
-      promptSubmitted = true;
+      promptPhaseStarted = true;
       const turn = consumeTurn(request, session, output);
       await lifecycle.race(turn);
     }

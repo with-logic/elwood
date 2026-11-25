@@ -98,10 +98,11 @@ async function writePastedPrompt(
     // Hold the submitting Enter while a blocking dialog is on screen: firing it
     // would confirm the dialog's highlighted option instead of submitting the
     // staged paste (C-API-37 dialog safety). The paste stays staged behind the
-    // dialog and submits once it clears.
-    await holdWhileUnsafe(terminal, guard, signal);
-    // Raw input during the hold took over awaited input: reject before its Enter (C-API-56).
-    throwIfInputAborted(awaitInputConsumption ? nudgeSignal : signal);
+    // dialog and submits once it clears. Raw input takes over awaited input, even with
+    // the dialog still open: it ends the hold and rejects before the Enter (C-API-56).
+    const entering = awaitInputConsumption ? nudgeSignal : signal;
+    await holdWhileUnsafe(terminal, guard, entering);
+    throwIfInputAborted(entering);
     nudges?.beforeEnter();
     guard?.beforeEnter?.();
     beforeEnter?.(payload);

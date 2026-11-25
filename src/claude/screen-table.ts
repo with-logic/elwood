@@ -8,7 +8,7 @@ import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../terminal/headless.ts";
-import { isClaudeAutoModeOffer } from "./auto-mode-offer.ts";
+import { claudeAutoModeOfferRuleId, isClaudeAutoModeOffer } from "./auto-mode-offer.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
 import { readClaudeInputCursor } from "./composer/cursor.ts";
 import {
@@ -111,7 +111,7 @@ export const claudeScreenFactTable: ScreenFactTable = {
       match: claudeQuestionCandidate,
     },
     {
-      id: "claude-auto-mode-offer",
+      id: claudeAutoModeOfferRuleId,
       fact: "blocking_prompt_visible",
       match: isClaudeAutoModeOffer,
     },

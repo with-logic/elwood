@@ -64,7 +64,13 @@ test("C-ATTN-09 an Enter held behind the offer submits the paste it closed over"
   }
 });
 
-test("C-ATTN-09 C-API-56 awaited input taken over during the hold rejects without its Enter", async () => {
+test.each([
+  { key: esc, after: "the offer closes", frame: closed },
+  { key: "\u001b[B", after: "the offer stays open", frame: undefined },
+])("C-ATTN-09 C-API-56 awaited input taken over during the hold rejects without its Enter when $after", async ({
+  key,
+  frame,
+}) => {
   const { facade, live, pty } = await withOfferOn(paste);
   try {
     await expect.poll(() => live.status).toBe("ready");
@@ -73,14 +79,14 @@ test("C-ATTN-09 C-API-56 awaited input taken over during the hold rejects withou
     await wait(heldMs);
     expect(pty.writes).toEqual([paste]);
 
-    await facade.sendKeys(esc);
-    pty.emitData(closed);
+    await facade.sendKeys(key);
+    if (frame !== undefined) pty.emitData(frame);
     expect(await sending).toMatchObject({
       code: "wait_timeout",
       message: "Raw input replaced the staged turn input.",
     });
     await live.terminal.settled();
-    expect(pty.writes).toEqual([paste, esc]);
+    expect(pty.writes).toEqual([paste, key]);
   } finally {
     await facade.teardown();
   }

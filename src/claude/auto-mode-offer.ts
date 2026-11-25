@@ -3,6 +3,9 @@
  * opens, as a blocking dialog. Implements PRD §5.3 and C-ATTN-09.
  */
 
+/** The offer's screen rule and attention label; `elwood run` matches it too (C-CLI-05). */
+export const claudeAutoModeOfferRuleId = "claude-auto-mode-offer";
+
 /**
  * The offer's title row (Claude 2.1.332). Its first menu and the setup step it opens both
  * repeat it. Later steps, such as the scan and its review, use other titles.

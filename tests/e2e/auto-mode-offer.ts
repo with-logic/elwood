@@ -2,7 +2,6 @@
  * Seeds, starts and waits for Claude's auto-mode setup offer for the real-CLI tests of
  * C-ATTN-09, C-ATTN-10 and C-CLI-05 (PRD §5.3, §12A.2).
  */
-import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "../../src/core/predicates.ts";
@@ -71,8 +70,8 @@ export async function offerShown(session: ClaudeSessionApi, timeoutMs = 15_000):
   } catch (error) {
     if (!(error instanceof Error && error.message === `Timed out waiting for ${offerLabel}`))
       throw error;
-    assert.notEqual(session.status, "exited", `Claude exited instead:\n${screen()}`);
-    assert.equal(session.terminal.renderFailed, false, "the terminal stopped rendering");
+    if (session.status === "exited") throw new Error(`Claude exited instead:\n${screen()}`);
+    if (session.terminal.renderFailed) throw new Error("The terminal stopped rendering.");
     return false;
   }
 }

@@ -35,8 +35,11 @@ back each entry are listed in `prd/14-conformance.md`.
   Enter answered the offer and the message was lost. When any Claude dialog
   closes over a paste whose Enter it held, the paste now submits instead of
   leaving the session `blocked`; awaited `send`/`stream` input that raw input
-  took over during that hold rejects without its Enter. `elwood run` no longer
-  fails when the offer appears after its prompt's turn has ended.
+  took over during that hold rejects without its Enter, even if the dialog stays
+  open. A message queued during a Claude turn now waits, at most 5 s, for the
+  frame that ends the turn, so an offer Claude has mounted but not yet painted
+  cannot take its Enter. `elwood run` no longer fails when the offer appears
+  after its prompt's turn has ended.
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.

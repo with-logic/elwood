@@ -9,8 +9,11 @@ const closed = readNativeInputFrame(
   new URL("../fixtures/claude-2.1.332/offer-closed-staged.json", import.meta.url),
 );
 const pill = "❯ [Pasted text #1 +3 lines]";
+const offerFrame = capturedFrame("claude-2.1.332/auto-mode-offer").split("\n");
+const offerTitle = offerFrame.findIndex((line) => line.includes("Teach auto mode about"));
+const offerHint = offerFrame.findIndex((line) => line.endsWith("Esc to cancel"));
 /** The captured offer's rule, title, copy, menu and hint rows. */
-const offerRows = capturedFrame("claude-2.1.332/auto-mode-offer").split("\n").slice(26, 36);
+const offerRows = offerFrame.slice(offerTitle - 1, offerHint + 1);
 
 test("C-ATTN-09 only the live composer holding a staged draft clears", async () => {
   const terminal = createHeadlessTerminal({ cols: closed.cols, rows: closed.rows }, () => {});
@@ -24,9 +27,11 @@ test("C-ATTN-09 only the live composer holding a staged draft clears", async () 
     expect(clearance(live)).toBe(true);
     // A decision is about the live frame only, never an older or newer one.
     expect(clearance(`${live}\n`)).toBe(false);
-    // The offer painted above the composer holding the draft is still a dialog.
+    // The offer painted right above the composer holding the draft, where Claude puts it,
+    // is still a dialog.
     const rows = closed.text.split("\n");
-    rows.splice(25, offerRows.length, ...offerRows);
+    const composerRule = rows.findIndex((line) => line.startsWith(pill)) - 1;
+    rows.splice(composerRule - offerRows.length, offerRows.length, ...offerRows);
     await terminal.writeOutput(nativeFrameOutput({ ...closed, text: rows.join("\n") }));
     expect(terminal.snapshot().text).toContain(pill);
     expect(clearance(terminal.snapshot().text)).toBe(false);
