@@ -11,6 +11,7 @@ type NativePaste = {
 };
 export type UserPromptPresentation = { readonly text: string } & (PlainPrompt | NativePaste);
 
+/** Plain hook messages are shared across adapters. Native paste evidence requires Claude. */
 export type UserMessageActivity = {
   readonly kind: "user_message";
   readonly label: "user";

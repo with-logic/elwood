@@ -3,14 +3,20 @@ import { createHash } from "node:crypto";
 import type { UserPromptPresentation } from "../core/activity/prompt-presentation.ts";
 import { hasPromptText } from "../core/activity/prompt-text.ts";
 
+const envelopeIdWidth = 4;
+const pasteOpening = new RegExp(
+  String.raw`^\n{0,2}<pasted_content id="([0-9a-f]{${envelopeIdWidth}})">\n`,
+  "u",
+);
+
 /** Claude derives the expected envelope ID from its native session ID (2.1.331–2.1.332). */
 export function claudePasteEnvelopeId(nativeSessionId: string): string | undefined {
   if (!hasPromptText(nativeSessionId)) return undefined;
-  return createHash("sha256").update(nativeSessionId).digest("hex").slice(0, 4);
+  return createHash("sha256").update(nativeSessionId).digest("hex").slice(0, envelopeIdWidth);
 }
 
 function claudePastedBody(prompt: string, envelopeId: string): string | undefined {
-  const outer = /^\n{0,2}<pasted_content id="([0-9a-f]{4})">\n/u.exec(prompt);
+  const outer = pasteOpening.exec(prompt);
   if (!outer || outer[1] !== envelopeId) return undefined;
   const opening = outer[0];
   const closing = `\n</pasted_content id="${envelopeId}">`;
@@ -23,6 +29,10 @@ function claudePastedBody(prompt: string, envelopeId: string): string | undefine
   return hasPromptText(body) && !unescapedTag.test(body) ? body : undefined;
 }
 
+/**
+ * Unwrap a standalone paste matching the expected session-derived envelope ID.
+ * Keep the delivered envelope in `nativePrompt` on a match. Otherwise keep the delivered text.
+ */
 export function claudePromptPresentation(
   prompt: string,
   envelopeId: string | undefined,
