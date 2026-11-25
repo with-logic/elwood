@@ -38,7 +38,7 @@ export function readWorkspacePrelude(line: string): WorkspacePrelude | undefined
 }
 
 /** Read from the last matching prelude up to the header, retaining original viewport indices. */
-export function disclosureRows(
+function disclosureRows(
   lines: readonly string[],
   headerRow: number,
   layout: WorkspacePrelude["layout"],
@@ -54,53 +54,101 @@ export function disclosureRows(
   });
 }
 
-/** Verify the final target and any displayed launch location at the two-column inset. */
-export function matchFolderAccessDisclosure(
-  rows: readonly Row[],
-  { target: { targetPath, targetScope }, requiresRepositoryNote }: CheckedTrustTarget,
-  launchDirectoryPaths: readonly string[],
+type WorkspaceDisclosure =
+  | { readonly kind: "folder"; readonly targetPath: string }
+  | {
+      readonly kind: "repository";
+      readonly targetPath: string;
+      readonly launchPath?: string;
+    };
+
+/** Parse native disclosure shape and row geometry independently of launch scope. */
+export function parseWorkspaceDisclosure(
+  lines: readonly string[],
+  headerRow: number,
+  layout: WorkspacePrelude["layout"],
+  fits: RowFits,
+): WorkspaceDisclosure | undefined {
+  const [prelude, ...details] = disclosureRows(lines, headerRow, layout) ?? [];
+  if (!prelude) return undefined;
+  switch (layout) {
+    case "folder access":
+      return parseFolderAccess(details, fits);
+    case "legacy":
+      return parseLegacy(prelude, details, fits);
+  }
+}
+
+/** Recognize visible path text that can veto a pending answer without verifying its target. */
+export function hasCompleteWorkspaceDisclosure(
+  lines: readonly string[],
+  headerRow: number,
+  layout: WorkspacePrelude["layout"],
   fits: RowFits,
 ): boolean {
-  const targetRow = rows.at(-1);
-  const targetRowFits = targetRow && fits({ rowIndex: targetRow.index, rightInsetCols: 2 });
-  if (!targetRowFits || targetRow.text !== stripRowPadding(targetPath)) return false;
-  const details = rows.slice(1, -1);
-  const [cwd] = details;
-  if (!cwd) return !requiresRepositoryNote && launchDirectoryPaths.includes(targetPath);
-  if (targetScope !== "repository") return false;
-  if (cwd.text.startsWith("/")) {
-    const matchesAlias = launchDirectoryPaths.some(
-      (alias) => alias !== targetPath && cwd.text === stripRowPadding(alias),
-    );
-    const cwdRowFits = fits({ rowIndex: cwd.index, rightInsetCols: 2 });
-    const repositoryDisclosed = noteText(details.slice(1)) === repositoryNote;
-    return cwdRowFits && matchesAlias && repositoryDisclosed;
-  }
+  const disclosure = parseWorkspaceDisclosure(lines, headerRow, layout, fits);
   return (
-    launchDirectoryPaths.some((alias) => alias !== targetPath) &&
-    noteText(details) === repositoryNote
+    disclosure !== undefined &&
+    !disclosure.targetPath.includes("…") &&
+    (disclosure.kind === "folder" || !disclosure.launchPath?.includes("…"))
   );
 }
 
-/** Verify the opening launch alias and any inline or wrapped repository path at zero inset. */
-export function matchLegacyDisclosure(
-  rows: readonly Row[],
+export function matchesLaunchDisclosure(
+  disclosure: WorkspaceDisclosure,
   { target: { targetPath, targetScope }, requiresRepositoryNote }: CheckedTrustTarget,
   launchDirectoryPaths: readonly string[],
-  fits: RowFits,
 ): boolean {
-  const [cwd, ...note] = rows;
-  const cwdRowFits = cwd && fits({ rowIndex: cwd.index, rightInsetCols: 0 });
-  if (!cwdRowFits) return false;
-  const matchingAliases = launchDirectoryPaths.filter(
-    (alias) => cwd.text === legacyLocationPreludePrefix + stripRowPadding(alias),
-  );
-  if (note.length === 0) return !requiresRepositoryNote && matchingAliases.includes(targetPath);
-  const repositoryDisclosed =
+  if (disclosure.targetPath !== stripRowPadding(targetPath)) return false;
+  if (disclosure.kind === "folder")
+    return !requiresRepositoryNote && launchDirectoryPaths.includes(targetPath);
+  const { launchPath } = disclosure;
+  return (
     targetScope === "repository" &&
-    matchingAliases.some((alias) => alias !== targetPath) &&
-    noteText(note) === `${repositoryNote} ${stripRowPadding(targetPath)}`;
-  return repositoryDisclosed && legacyPathRowsFit(note, fits);
+    launchDirectoryPaths.some(
+      (alias) =>
+        alias !== targetPath && (launchPath === undefined || stripRowPadding(alias) === launchPath),
+    )
+  );
+}
+
+function parseFolderAccess(
+  details: readonly Row[],
+  fits: RowFits,
+): WorkspaceDisclosure | undefined {
+  const target = details.at(-1);
+  if (!(target?.text.startsWith("/") && fits({ rowIndex: target.index, rightInsetCols: 2 })))
+    return undefined;
+  const beforeTarget = details.slice(0, -1);
+  const [first, ...note] = beforeTarget;
+  const targetPath = target.text;
+  if (!first) return { kind: "folder", targetPath };
+  if (noteText(beforeTarget) === repositoryNote) return { kind: "repository", targetPath };
+  if (
+    first.text.startsWith("/") &&
+    noteText(note) === repositoryNote &&
+    fits({ rowIndex: first.index, rightInsetCols: 2 })
+  )
+    return { kind: "repository", targetPath, launchPath: first.text };
+  return undefined;
+}
+
+function parseLegacy(
+  prelude: Row,
+  note: readonly Row[],
+  fits: RowFits,
+): WorkspaceDisclosure | undefined {
+  const launchPath = prelude.text.slice(legacyLocationPreludePrefix.length);
+  if (!(launchPath.startsWith("/") && fits({ rowIndex: prelude.index, rightInsetCols: 0 })))
+    return undefined;
+  if (note.length === 0) return { kind: "folder", targetPath: launchPath };
+  const disclosure = noteText(note);
+  const rootPrefix = `${repositoryNote} `;
+  if (!disclosure.startsWith(rootPrefix)) return undefined;
+  const targetPath = disclosure.slice(rootPrefix.length);
+  if (targetPath.startsWith("/") && legacyPathRowsFit(note, fits))
+    return { kind: "repository", targetPath, launchPath };
+  return undefined;
 }
 
 /** The legacy disclosure joins the note and the path, so a row may contain both. */

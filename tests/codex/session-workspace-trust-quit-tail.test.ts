@@ -137,3 +137,31 @@ test("C-ATTN-07 the original answer deadline still bounds an unsettled Quit", as
     await session.teardown();
   }
 });
+
+test("C-ATTN-07 a coalesced synchronized replacement in the clean Quit tail vetoes restoration", async () => {
+  const { cwd, session, pty, render, request } = await setupWorkspaceAnswer();
+  try {
+    await render(`\x1b[?1049h${menuWithQuitSelected(cwd)}`);
+    const result = session
+      .answerDialog(request.id, request.choices[1]!.id)
+      .catch((error: unknown) => error);
+    await expect.poll(() => pty.writes).toEqual(["\r"]);
+
+    // Settle the first render after input, which xterm may process immediately.
+    pty.emitData("\x1b[0m");
+    await session.terminal.settled();
+    const tail = `\x1b[?2026h${clear}${menu(cwd, "folder-access-no-hook-bypass")}\x1b[?2026l\x1b[?1049l`;
+    const statusAtRender = Promise.withResolvers<typeof session.status>();
+    session.on("terminal:data", ({ data }) => {
+      if (data === tail) statusAtRender.resolve(session.status);
+    });
+    pty.emitData(tail);
+    pty.emitExit({ exitCode: 0 });
+
+    expect(await statusAtRender.promise).toBe("exited");
+    expect(await result).toMatchObject({ details: { category: "terminal_exit" } });
+    expect(pty.writes).toEqual(["\r"]);
+  } finally {
+    await session.teardown();
+  }
+});

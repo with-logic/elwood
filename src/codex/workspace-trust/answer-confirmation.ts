@@ -1,11 +1,17 @@
 /** Observe Codex workspace trust confirmation and exit after a verified key (C-ATTN-07). */
 import type { WorkspaceTrustAnswers } from "../../core/dialogs/trust-answer/index.ts";
 import type { PtyExit } from "../../pty/types.ts";
-import { nativeRenderEvidenceIntact, settledNativeSnapshot } from "../../terminal/cursor.ts";
-import type { ElwoodTerminal, XtermTerminal } from "../../terminal/headless.ts";
+import {
+  cachedLiveSnapshot,
+  nativeRenderEvidenceIntact,
+  settledNativeSnapshot,
+} from "../../terminal/cursor.ts";
+import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";
+import { terminalSnapshot } from "../../terminal/snapshot.ts";
 import { workspaceTrustCompletion } from "./answer-layout.ts";
 import type { CodexWorkspaceTrustDiscovery } from "./discovery.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
+import { hasCompleteWorkspaceTrustDisclosure } from "./menu-frame.ts";
 import { restoredQuitBuffer, settleQuitRender } from "./quit-render.ts";
 import { matchWorkspaceMenu } from "./target.ts";
 
@@ -33,6 +39,7 @@ export function codexTrustConfirmation({
   let claimedBuffer: XtermTerminal["buffer"]["active"]["type"] | undefined;
   let settlingQuitRender = false;
   let replacedQuit = false;
+  let stopObservingQuitTail: (() => void) | undefined;
   const revokeAnswerIfRequestChanged = () =>
     answers.revokeIfGateChanged(discovery.currentRequestId);
   const inspectNativeOutcome = <T>(inspect: () => T): T | undefined => {
@@ -43,11 +50,32 @@ export function codexTrustConfirmation({
       return undefined;
     }
   };
-  const recordConfirmation = () => {
+  const observeSynchronizedReplacement = (
+    current: ElwoodTerminal,
+    read: (terminal: ElwoodTerminal) => TerminalSnapshot,
+  ) => {
+    if (!nativeRenderEvidenceIntact(current)) return;
+    const frame = read(current);
+    const menu = discovery.matchObservedFrame(frame);
+    const replaced = menu
+      ? menu.identity !== claimedMenu
+      : hasCompleteWorkspaceTrustDisclosure(current, frame);
+    if (!replaced) return;
+    if (settlingQuitRender) replacedQuit = true;
+    else answers.revoke("frame");
+  };
+  const recordConfirmation = (source: "native-pty-render" | "write-completion") => {
     if (!answers.confirmationDispatched) return;
     revokeAnswerIfRequestChanged();
     const outcome = inspectNativeOutcome(() => {
-      const frame = settledNativeSnapshot(terminal());
+      const current = terminal();
+      if (source === "native-pty-render" && current.xterm.modes.synchronizedOutputMode) {
+        // A complete replacement can vanish before synchronized output ends.
+        // This native frame can only veto the answer. Acceptance still needs settlement.
+        observeSynchronizedReplacement(current, cachedLiveSnapshot);
+        return undefined;
+      }
+      const frame = settledNativeSnapshot(current);
       return frame && workspaceTrustCompletion(frame, clearance);
     });
     if (outcome) answers.recordConfirmation(outcome);
@@ -67,12 +95,27 @@ export function codexTrustConfirmation({
   };
   return {
     recordConfirmation,
+    observeBeforeSynchronizedRepaint(current: ElwoodTerminal) {
+      if (!answers.confirmationDispatched) return;
+      inspectNativeOutcome(() => {
+        if (!current.xterm.modes.synchronizedOutputMode) return;
+        // The viewport can change inside a single write without updating the cached frame.
+        observeSynchronizedReplacement(current, ({ xterm, size }) =>
+          terminalSnapshot(xterm, size, xterm.buffer.active.baseY),
+        );
+      });
+    },
     claim(menuIdentity: string) {
       claimedMenu = menuIdentity;
       claimedBuffer = terminal().xterm.buffer.active.type;
     },
-    closing() {
-      if (!settlingQuitRender) answers.revoke("frame");
+    closing(stopObserving: () => void) {
+      if (settlingQuitRender) {
+        stopObservingQuitTail = stopObserving;
+        return;
+      }
+      stopObserving();
+      answers.revoke("frame");
     },
     observeFrame(menuIdentity: string | undefined) {
       if (settlingQuitRender) {
@@ -108,7 +151,11 @@ export function codexTrustConfirmation({
       if (settlingQuitRender) {
         settleQuitRender(current, (settled) => {
           settlingQuitRender = false;
-          answers.nativeExit(settled && !replacedQuit && readQuitOutcome(current) === true);
+          try {
+            answers.nativeExit(settled && !replacedQuit && readQuitOutcome(current) === true);
+          } finally {
+            stopObservingQuitTail?.();
+          }
         });
       }
     },

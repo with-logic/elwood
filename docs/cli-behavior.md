@@ -802,6 +802,15 @@ can let the process exit while that restoration is still unsettled. The Quit
 answer can wait for those bytes within the existing terminal drain and answer
 limits. A settled replacement trust menu prevents confirmation.
 
+One PTY write can contain multiple paints during synchronized output. For
+a pending Codex trust answer, Elwood checks for a different complete workspace
+menu at native render callbacks and before Erase in Display or the end of
+synchronization. Acceptance still requires a settled native frame. The checked-in
+raw Codex 0.142.5 and 0.155.1 workspace paints start with cursor positioning and
+Erase in Display. The 0.155.1 command-approval capture ends by resetting
+synchronization. The replacement-to-composer and deferred Quit transitions
+are exercised with simulated PTY output.
+
 ### Where the clearance grammar lives
 
 "This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout
