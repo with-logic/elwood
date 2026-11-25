@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-24
+
 - Answer verified Codex workspace trust prompts through `answerDialog()` and
   wait for native acceptance, Back, or Quit.
 

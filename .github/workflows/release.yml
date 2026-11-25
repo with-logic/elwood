@@ -245,6 +245,14 @@ jobs:
       - name: Publish to npm
         run: npm publish --access public
 
+  github-release:
+    # Re-run the failed job without attempting to publish the npm version again.
+    needs: [resolve, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
