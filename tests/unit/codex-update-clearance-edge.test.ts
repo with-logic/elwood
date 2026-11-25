@@ -155,6 +155,9 @@ test("C-CODEX-12 a completed clearance edge owns settlement despite a late withh
   const f = fixture(write);
   try {
     const first = f.observe();
+    // Codex redraws its prompt after the first key, so the next poll retypes it.
+    await vi.advanceTimersByTimeAsync(0);
+    f.observe(update.replace("1. Update now", "› 1. Update now"));
     await vi.advanceTimersByTimeAsync(250);
     expect(write).toHaveBeenCalledTimes(2);
     f.observe(codexSmallComposer);

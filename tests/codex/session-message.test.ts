@@ -21,11 +21,11 @@ describe("CodexSessionApi message submission", () => {
       "Update available! 0.151.0 -> 0.152.0\r\n  1. Update now\r\n  2. Skip\r\n  3. Skip until next version",
     );
     await session.terminal.settled();
+    await expect.poll(() => ptys[0]!.writes).toEqual(["2"]);
     // A constructed bannerless continuation retains the input hold, not selection authority.
     ptys[0]!.emitData("\u001b[2J\u001b[H  2. Skip\r\n  3. Skip until next version");
     await session.terminal.settled();
     await becomeReady(session.elwoodSessionId, cwd);
-    await expect.poll(() => ptys[0]!.writes).toEqual(["2"]);
     expect(session.status).toBe("blocked");
     // No bannerless retry, persona paste, or Enter may reach the rendered dialog.
     expect(new Set(ptys[0]!.writes)).toEqual(new Set(["2"]));

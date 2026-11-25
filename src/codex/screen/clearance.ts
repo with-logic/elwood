@@ -15,7 +15,7 @@ const caretRow = /^\s*[›»]/;
 const composerRowStart = /^[›»](?:\s|$)/;
 const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
-const placeholders = new Set([
+export const codexPlaceholders = new Set([
   "Ask Codex to do anything",
   "Explain this codebase",
   "Summarize recent commits",
@@ -85,7 +85,7 @@ function completeUserHistoryEnd(rows: readonly string[], start: number): number 
 }
 
 /** Native dialog evidence survives even when its choices/footer have not painted. */
-function hasNativeDialogEvidence(rows: readonly string[], liveCursor: boolean): boolean {
+export function hasNativeDialogEvidence(rows: readonly string[], liveCursor: boolean): boolean {
   const unquoted = unquotedRows(rows, liveCursor);
   for (const row of unquoted) {
     if (
@@ -128,7 +128,7 @@ export function codexComposerRow(
   cols = unknownCols,
 ): number {
   const at = frameRows.findLastIndex(
-    (row) => composerRowStart.test(row) && placeholders.has(row.slice(1).trim()),
+    (row) => composerRowStart.test(row) && codexPlaceholders.has(row.slice(1).trim()),
   );
   // Submitted transcript prompts can exactly match a placeholder; native chrome
   // must remain too. Welcome chrome also survives in transcripts, so it requires
@@ -191,7 +191,7 @@ export function codexComposerRowsEmpty(
   const composer = rows[at];
   // Native composer starts at column zero; transcript continuations are indented.
   if (composer === undefined || !composerRowStart.test(composer)) return false;
-  if (!placeholders.has(composer.slice(1).trim())) return false;
+  if (!codexPlaceholders.has(composer.slice(1).trim())) return false;
   const above = rows.slice(0, at);
   // A partially painted native approval overrides a cursor left on the old composer.
   // Indentation and a retained cursor do not turn native approval rows into history.

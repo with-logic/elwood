@@ -7,7 +7,6 @@ import { describe, expect, test } from "vitest";
 import {
   CodexStartupPromptResponder,
   codexWarningsFromText,
-  findNumberedOption,
   type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
@@ -168,12 +167,6 @@ describe("Codex startup prompt responder", () => {
       writer(writes),
     );
     expect(writes).toEqual([]);
-  });
-
-  test("numbered option matching ignores unknown prompts", () => {
-    expect(findNumberedOption("1. Review hooks", /Trust all/)).toBeNull();
-    expect(findNumberedOption("> 3) Skip for now", /skip/i)).toBe("3");
-    expect(findNumberedOption("› 1. Update now  2. Skip  3. Later", /skip/i)).toBe("2");
   });
 
   test("C-CODEX-09 parses typed MCP startup warnings", () => {

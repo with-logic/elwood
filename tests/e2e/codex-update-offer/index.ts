@@ -3,26 +3,33 @@
  * offer's `Skip` digit reach it (PRD §5.3, §5.5, §12, C-API-28, C-CODEX-27, C-E2E-26,
  * C-E2E-27). The offer's default choice is "Update now", which runs a global installer on
  * the host, so a test that opens a session on the offer must be able to prove what reached
- * the CLI, and must never let an Enter through. docs/cli-behavior.md, "Codex 0.171.0
- * update offer".
+ * the CLI, and must never let an Enter through. Each write is judged against the CLI's own
+ * screen, drawn from its output by a terminal of the harness, never against Elwood's
+ * rendering of it. docs/cli-behavior.md, "Codex 0.171.0 update offer".
  */
 
 import { constants, cpSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { compareVersions, parseVersion } from "../../src/core/versions.ts";
-import { nodePtyFactory } from "../../src/pty/node.ts";
-import { runProbe } from "../../src/runtime/probe/index.ts";
+import { compareVersions, parseVersion } from "../../../src/core/versions.ts";
+import { nodePtyFactory } from "../../../src/pty/node.ts";
+import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
   currentCommandRunner,
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
   setPtyFactoryForTests,
-} from "../../src/runtime/seams.ts";
-import { probeShellCommand, shellQuote, userShell } from "../../src/runtime/shell.ts";
-import { userCodexAuthPath } from "./codex-home.ts";
-import { writeCodexUpdateCheck } from "./codex-update-check.ts";
-import { prefixShellArgument } from "./prefix-shell-argument.ts";
-import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
+} from "../../../src/runtime/seams.ts";
+import { probeShellCommand, shellQuote, userShell } from "../../../src/runtime/shell.ts";
+import { userCodexAuthPath } from "../codex-home.ts";
+import { writeCodexUpdateCheck } from "../codex-update-check.ts";
+import { prefixShellArgument } from "../prefix-shell-argument.ts";
+import { isTerminalProtocolReply } from "../terminal-protocol-reply.ts";
+import {
+  configuredComposerShown,
+  offerSkipDigit,
+  type RefusedInput,
+  screenMirror,
+} from "./screen.ts";
 
 /** A release no installed Codex has reached, so the offer does not depend on what is current. */
 const offeredCodexVersion = "99.0.0";
@@ -32,9 +39,6 @@ const offeredCodexVersion = "99.0.0";
  * Codex 0.155's layout, which C-CODEX-12 covers with captures.
  */
 const offerLayoutCodexVersion = "0.171.0";
-
-/** One application write that was kept from the CLI, with the screen it was aimed at. */
-export type RefusedInput = { readonly data: string; readonly screen: string };
 
 export type CodexUpdateOffer = {
   /** Application writes refused since `arm`, in order. Terminal protocol replies are not input. */
@@ -48,29 +52,19 @@ export type CodexUpdateOffer = {
   unsupported(cwd: string): Promise<string | undefined>;
   /**
    * Makes the next Codex started from the home open on its update offer. From now on,
-   * while the offer is on screen only its `Skip` digit is written, and before that digit
-   * no application input is. Anything else is recorded and dropped.
+   * while the offer is on screen only its `Skip` digit is written. Before that digit no
+   * application input is, and after it none is until Codex shows its configured composer;
+   * a lone digit off the offer never is. Anything else is recorded and dropped.
    */
   arm(): void;
-  /** Names the screen each write meets. Until it is set, that screen is "". */
-  watch(screen: () => string): void;
   /** Restores the real PTY factory and command runner. */
   dispose(): void;
 };
 
-/** The digit of the offer's plain `Skip` row, or undefined while no `N. Update now` row shows. */
-export function offerSkipDigit(screen: string): string | undefined {
-  if (!/^\s*›?\s*\d+\. Update now\b/m.test(screen)) return undefined;
-  return /^\s*›?\s*(\d+)\. Skip\s*$/m.exec(screen)?.[1];
-}
-
-/** Each refused write with the marked rows of the screen it met, to show on failure. */
-export function refusedAtMarkedRows(refused: readonly RefusedInput[]) {
-  return refused.map(({ data, screen }) => ({
-    data,
-    marked: screen.split("\n").filter((row) => /^\s*›/.test(row)),
-  }));
-}
+export type CodexUpdateOfferOptions = {
+  /** Once a `Skip` digit is written, Elwood reads the CLI's output this much later. */
+  readonly lagAfterSkipMs?: number;
+};
 
 /**
  * A standalone Codex offers an update only from its home's own managed release, and the
@@ -97,32 +91,77 @@ function cloneManagedRelease(home: string): string | undefined {
  * Wraps every PTY and probe started from now on so that Codex can offer an update from
  * `home`. Input is forwarded until `arm`; after it, the input guard in `arm` applies.
  */
-export function codexUpdateOffer(home: string): CodexUpdateOffer {
+export function codexUpdateOffer(
+  home: string,
+  { lagAfterSkipMs = 0 }: CodexUpdateOfferOptions = {},
+): CodexUpdateOffer {
   const pin = cloneManagedRelease(home);
   const pinned = (args: readonly string[]) => (pin ? prefixShellArgument(args, pin) : [...args]);
   const refused: RefusedInput[] = [];
   const skips: string[] = [];
-  let screen = () => "";
+  const mirrors: ReturnType<typeof screenMirror>[] = [];
   let armed = false;
-  /** The input guard: forward, or record and drop, one application write. */
-  const admit = (input: string): boolean => {
-    const current = screen();
-    const skip = offerSkipDigit(current);
-    if (skip === undefined ? skips.length > 0 : input === skip) {
-      if (skip !== undefined) skips.push(input);
-      return true;
-    }
-    refused.push({ data: input, screen: current });
-    return false;
-  };
   setCommandRunnerForTests((command, args, options) => runProbe(command, pinned(args), options));
   setPtyFactoryForTests((options) => {
     const pty = nodePtyFactory({ ...options, args: pinned(options.args) });
+    const mirror = screenMirror(options.size);
+    mirrors.push(mirror);
+    const handlers = new Set<(data: string) => void>();
+    const deliver = (data: string) => {
+      for (const handler of handlers) handler(data);
+    };
+    // Output held from Elwood while it reads the CLI late, or undefined.
+    let held: string[] | undefined;
+    let composerShown = false;
+    let writes = Promise.resolve();
+    /** The input guard: forward, or record and drop, one application write. */
+    const admit = (input: string, screen: string): boolean => {
+      const skip = offerSkipDigit(screen);
+      composerShown ||= skips.length > 0 && skip === undefined && configuredComposerShown(screen);
+      const admitted = skip === undefined ? composerShown && !/^\d$/.test(input) : input === skip;
+      if (admitted && skip !== undefined) skips.push(input);
+      if (!admitted) refused.push({ data: input, screen });
+      return admitted;
+    };
+    const lagAfterFirstSkip = () => {
+      if (lagAfterSkipMs === 0 || skips.length !== 1 || held !== undefined) return;
+      held = [];
+      setTimeout(() => {
+        const chunks = held ?? [];
+        held = undefined;
+        for (const chunk of chunks) deliver(chunk);
+      }, lagAfterSkipMs);
+    };
+    pty.onData((data) => {
+      mirror.draw(data);
+      if (held === undefined) deliver(data);
+      else held.push(data);
+    });
     return {
       ...pty,
+      onData(handler) {
+        handlers.add(handler);
+        return () => handlers.delete(handler);
+      },
+      resize(size) {
+        mirror.resize(size);
+        return pty.resize(size);
+      },
       write(data) {
+        if (!armed) return pty.write(data);
         const input = typeof data === "string" ? data : Buffer.from(data).toString("utf8");
-        if (!armed || isTerminalProtocolReply(input) || admit(input)) pty.write(data);
+        // Judged once the CLI's screen shows all it drew before this write was made.
+        const screen = mirror.read();
+        writes = writes.then(async () => {
+          if (!(isTerminalProtocolReply(input) || admit(input, await screen))) return;
+          try {
+            pty.write(data);
+          } catch {
+            // A CLI that has exited takes no input, and Elwood sees it exit.
+            return;
+          }
+          lagAfterFirstSkip();
+        });
       },
     };
   });
@@ -142,9 +181,9 @@ export function codexUpdateOffer(home: string): CodexUpdateOffer {
       writeCodexUpdateCheck(home, offeredCodexVersion);
       armed = true;
     },
-    watch(read) {
-      screen = read;
+    dispose() {
+      for (const mirror of mirrors) mirror.dispose();
+      resetRuntimeSeamsForTests();
     },
-    dispose: resetRuntimeSeamsForTests,
   };
 }

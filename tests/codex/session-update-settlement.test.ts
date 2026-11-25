@@ -1,6 +1,7 @@
 /** Ambiguous update overlays preserve the frame owner's retained hold (PRD §5.5, C-CODEX-12). */
 import { afterEach, expect, test, vi } from "vitest";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
+import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
 import { startCodex } from "../../src/index.ts";
 import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -70,6 +71,9 @@ test("C-CODEX-12 a clean native update answers once after its composer returns",
     ptys[0]!.emitData(
       "\u001b[2J\u001b[HUpdate available! 0.155.1 -> 0.156.1\r\n1. Update now\r\n2. Skip",
     );
+    // Codex drops a key that meets its prompt mid-paint, so the skip waits for it to settle.
+    await vi.advanceTimersByTimeAsync(firstKeyDelayMs - 1);
+    expect(ptys[0]!.writes).toEqual([]);
     await vi.advanceTimersByTimeAsync(50);
     expect(ptys[0]!.writes).toEqual(["2"]);
     ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexSmallComposer)}`);

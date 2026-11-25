@@ -14,7 +14,8 @@ import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/p
 import { waitForCondition } from "./bounded-steps.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import { readCodexDismissedVersion } from "./codex-update-check.ts";
-import { codexUpdateOffer, refusedAtMarkedRows } from "./codex-update-offer.ts";
+import { codexUpdateOffer } from "./codex-update-offer/index.ts";
+import { refusedAtMarkedRows } from "./codex-update-offer/screen.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -39,57 +40,71 @@ const TEST_TIMEOUT_MS = OFFER_MS + READY_MS + TURN_MS + LAUNCHES_MS + 30_000;
 
 const ONE = "Reply exactly: ONE. Do not use tools.";
 
-test("C-E2E-27 a Codex that starts on its update offer is skipped before sendPrompt input", {
-  skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
-  timeout: TEST_TIMEOUT_MS,
-}, async (t) => {
-  const project = makeProject("codex");
-  const sandbox = sandboxedCodexHome(project, CODEX_CONFIG);
-  let session: CodexSessionApi | undefined;
-  const launches = codexLaunches();
-  const input = codexUpdateOffer(sandbox.home);
-  await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
-    const unsupported = await input.unsupported(project.cwd);
-    if (unsupported !== undefined) return skipNow(t, unsupported);
-    input.arm();
-    const prompts: string[] = [];
-    let stops = 0;
-    const active = await launches.track(
-      startCodex({
-        cwd: project.cwd,
-        stateDir: project.stateDir,
-        sandbox: "read-only",
-        approvalPolicy: "never",
-        autotrust: true,
-        hooks: {
-          UserPromptSubmit: (event) => {
-            prompts.push(event.prompt);
+// Elwood can also read Codex's output late: Codex then takes the key and draws its next
+// screen while Elwood still shows the offer, where a second key would reach that screen.
+for (const lagAfterSkipMs of [0, 2_000]) {
+  const late = lagAfterSkipMs > 0 ? `, read ${lagAfterSkipMs / 1_000} s late after the skip` : "";
+  test(`C-E2E-27 a Codex that starts on its update offer is skipped before sendPrompt input${late}`, {
+    skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
+    timeout: TEST_TIMEOUT_MS,
+  }, async (t) => {
+    const project = makeProject("codex");
+    const sandbox = sandboxedCodexHome(project, CODEX_CONFIG);
+    let session: CodexSessionApi | undefined;
+    const launches = codexLaunches();
+    const input = codexUpdateOffer(sandbox.home, { lagAfterSkipMs });
+    await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
+      const unsupported = await input.unsupported(project.cwd);
+      if (unsupported !== undefined) return skipNow(t, unsupported);
+      input.arm();
+      const prompts: string[] = [];
+      let stops = 0;
+      const active = await launches.track(
+        startCodex({
+          cwd: project.cwd,
+          stateDir: project.stateDir,
+          sandbox: "read-only",
+          approvalPolicy: "never",
+          autotrust: true,
+          hooks: {
+            UserPromptSubmit: (event) => {
+              prompts.push(event.prompt);
+            },
+            Stop: () => {
+              stops += 1;
+            },
           },
-          Stop: () => {
-            stops += 1;
-          },
-        },
-      }),
-    );
-    session = active;
-    input.watch(() => active.terminal.snapshot().text);
-    let settled = false;
-    const prompt = active.sendPrompt(ONE).finally(() => {
-      settled = true;
-    });
-    // A failed run tears the session down with this prompt still waiting.
-    prompt.catch(() => {});
-    await waitForCondition(active, () => input.skips.length > 0, "Elwood's skip", OFFER_MS);
-    await waitForCondition(active, () => settled, "ONE submitted", READY_MS);
-    await prompt;
-    await waitForCondition(active, () => stops >= 1, "ONE answered", TURN_MS);
-    assert.deepEqual(
-      refusedAtMarkedRows(input.refused),
-      [],
-      "only Elwood's Skip may reach the offer, and nothing may come before it",
-    );
-    assert.deepEqual(prompts, [ONE]);
-    // `Skip`, unlike `Skip until next version`, leaves Codex's update state alone.
-    assert.equal(readCodexDismissedVersion(sandbox.home), null);
-  }).finally(() => input.dispose());
-});
+        }),
+      );
+      session = active;
+      const activity: { readonly kind: string; readonly label: string | undefined }[] = [];
+      active.on("activity", (event) => {
+        activity.push({ kind: event.kind, label: "label" in event ? event.label : undefined });
+      });
+      let settled = false;
+      const prompt = active.sendPrompt(ONE).finally(() => {
+        settled = true;
+      });
+      // A failed run tears the session down with this prompt still waiting.
+      prompt.catch(() => {});
+      await waitForCondition(active, () => input.skips.length > 0, "Elwood's skip", OFFER_MS);
+      await waitForCondition(active, () => settled, "ONE submitted", READY_MS);
+      await prompt;
+      await waitForCondition(active, () => stops >= 1, "ONE answered", TURN_MS);
+      assert.deepEqual(
+        refusedAtMarkedRows(input.refused),
+        [],
+        "only Elwood's Skip may reach the offer, and no input may come before it or before Codex's configured composer",
+      );
+      assert.equal(input.skips.length, 1, "Elwood writes the Skip digit once");
+      assert.deepEqual(prompts, [ONE]);
+      // Codex's repaint after the skip is the skip's, never a dialog nobody recognized.
+      const unidentified = activity.filter((event) => event.label === "codex-unidentified-dialog");
+      assert.deepEqual(unidentified, []);
+      const skipped = activity.filter((e) => e.kind === "startup_prompt" && e.label === "update");
+      assert.equal(skipped.length, 1, "the skip is reported once");
+      // `Skip`, unlike `Skip until next version`, leaves Codex's update state alone.
+      assert.equal(readCodexDismissedVersion(sandbox.home), null);
+    }).finally(() => input.dispose());
+  });
+}

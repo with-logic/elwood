@@ -132,6 +132,7 @@ test("C-CODEX-12 a permissive generation predicate cannot authorize a bannerless
     () => true,
   );
   await vi.runAllTimersAsync();
-  await expect(pending).resolves.toBe("cancelled");
+  // The prompt left after the key, so the attempt reads the frames that follow it.
+  await expect(pending).resolves.toBe("left");
   expect(writes).toEqual(["2"]);
 });
