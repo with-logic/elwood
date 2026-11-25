@@ -4,61 +4,46 @@ import { symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, onTestFinished, test } from "vitest";
 import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
-import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
-import { ptys, resetFakes } from "./helpers.ts";
-import { startActivitySession, user } from "./session-user-activity-helpers.ts";
+import { resetFakes } from "./helpers.ts";
+import { startPromptActivitySession, user } from "./session-user-activity-helpers.ts";
 
 afterEach(resetFakes);
 const wrap = (body: string) => claudePasteEnvelope(body, "0e08");
 
 async function setup() {
-  const { session, hook, events, append } = await startActivitySession();
-  onTestFinished(() => session.teardown());
-  const pty = ptys.at(-1)!;
-  const paint = async () => {
-    pty.emitData(emptyComposer("claude"));
-    await session.terminal.settled();
-  };
-  await hook({
-    hook_event_name: "InstructionsLoaded",
-    file_path: "/tmp/CLAUDE.md",
-    memory_type: "Project",
-    load_reason: "session_start",
-  });
-  await paint();
-  return {
-    session,
-    hook,
-    pty,
-    paint,
-    append,
-    messages: () => events.filter((event) => event.kind === "user_message"),
-    submit: (prompt: string | undefined, prompt_id?: string) =>
-      hook({ hook_event_name: "UserPromptSubmit", prompt, prompt_id }),
-  };
+  const activity = await startPromptActivitySession();
+  onTestFinished(() => activity.session.teardown());
+  return activity;
 }
 
 test.each([
-  ["ordinary  ", "ordinary"],
-  ["one\u0000\r\n\ttwo\n＜pasted_content>\nfour\n", wrap("one\n    two\n<\\pasted_content>\nfour")],
-])("C-API-71 preserves the exact original and native prompt", async (text, nativePrompt) => {
+  ["sendPrompt", "ordinary  ", "ordinary", { sendId: "caller-42" }],
+  ["sendPrompt", "ordinary  ", "ordinary", undefined],
+  [
+    "sendMessage",
+    "one\u0000\r\n\ttwo\n＜pasted_content>\nfour\n",
+    wrap("one\n    two\n<\\pasted_content>\nfour"),
+    { sendId: "caller-42" },
+  ],
+] as const)("C-API-71 %s preserves the exact original and native prompt", async (method, text, nativePrompt, options) => {
   const { session, pty, submit, messages } = await setup();
   const raw: string[] = [];
   session.on("hook", (hook) => {
     if (hook.hook_event_name === "UserPromptSubmit") raw.push(hook.prompt);
   });
-  await session.sendMessage(text, { sendId: "caller-42" });
+  await session[method](text, options);
   await submit(nativePrompt, "native-42");
   expect(messages()).toMatchObject([
     {
       turnId: "native-42",
       text,
       nativePrompt,
-      sendId: "caller-42",
       promptProvenance: { origin: "api", input: "pasted" },
       raw: { prompt: nativePrompt },
     },
   ]);
+  expect(messages()[0]?.sendId).toBe(options?.sendId);
+  expect(Object.hasOwn(messages()[0]!, "sendId")).toBe(options !== undefined);
   expect(raw).toEqual([nativePrompt]);
   expect(pty.writes.join("")).not.toContain("caller-42");
 });
@@ -188,8 +173,9 @@ test("C-API-71 dispatching Claude login retires an unresolved API paste", async 
     expect(messages()).toMatchObject([
       { text: "pending", turnId: "native-id", raw: { prompt: "pending" } },
     ]);
-    for (const field of ["sendId", "nativePrompt", "promptProvenance"])
-      expect(messages()[0]).not.toHaveProperty(field);
+    expect(messages()[0]).not.toHaveProperty("sendId");
+    expect(messages()[0]).not.toHaveProperty("nativePrompt");
+    expect(messages()[0]).not.toHaveProperty("promptProvenance");
   } finally {
     await session.kill();
     await login;

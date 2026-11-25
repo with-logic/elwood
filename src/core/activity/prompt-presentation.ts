@@ -75,10 +75,15 @@ export function claudeApiUserActivity(
   return apiUserActivity("claude", elwoodSessionId, event, prompt);
 }
 
-function apiUserActivity<Agent extends "claude" | "codex">(
+type SubmitHookByAgent = {
+  readonly claude: ClaudeHookEventFor<"UserPromptSubmit">;
+  readonly codex: CodexHookEventFor<"UserPromptSubmit">;
+};
+
+function apiUserActivity<Agent extends keyof SubmitHookByAgent>(
   agent: Agent,
   elwoodSessionId: string,
-  event: ClaudeHookEventFor<"UserPromptSubmit"> | CodexHookEventFor<"UserPromptSubmit">,
+  event: SubmitHookByAgent[NoInfer<Agent>],
   prompt: ApiPromptPresentation,
 ): ReturnType<typeof hookActivityBase> & ApiUserMessageActivity<Agent> {
   return {

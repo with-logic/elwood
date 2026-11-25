@@ -129,6 +129,7 @@ async function submitLoginCommand(
   command: string,
   signal: AbortSignal,
 ): Promise<void> {
+  // Enter would apply the highlighted model if the picker still owned the terminal.
   await holdWhileBlocked(deps.blocked, signal);
   deps.beforeCommand?.();
   await raceSettle(Promise.resolve(deps.terminal.sendInput(command)), signal);

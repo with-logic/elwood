@@ -11,9 +11,14 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 
 test.each([
-  "send",
-  "stream",
-] as const)("C-API-71 ClaudeSession.%s retains the native prompt presentation", async (method) => {
+  ["send", (session: ClaudeSession, text: string) => session.send(text)],
+  [
+    "stream",
+    async (session: ClaudeSession, text: string) => {
+      for await (const event of session.stream(text)) void event;
+    },
+  ],
+] as const)("C-API-71 ClaudeSession.%s retains the native prompt presentation", async (_method, submit) => {
   installFakes();
   const cwd = tempDir();
   const transcript = join(cwd, "transcript.jsonl");
@@ -41,11 +46,7 @@ test.each([
   pty.emitData(emptyComposer("claude"));
   await vi.advanceTimersByTimeAsync(20);
   const text = "one\r\n\ttwo\nthree\nfour\n";
-  const collect = async () => {
-    for await (const event of session.stream(text)) void event;
-  };
-  const turn = method === "send" ? session.send(text) : collect();
-  const outcome = turn.catch((error: unknown) => error);
+  const outcome = submit(session, text).catch((error: unknown) => error);
   await vi.advanceTimersByTimeAsync(500);
   expect(pty.writes).toContain("\r");
   const nativePrompt = claudePasteEnvelope("one\n    two\nthree\nfour", "c26a");

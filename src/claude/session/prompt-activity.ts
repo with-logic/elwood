@@ -4,6 +4,7 @@ import { claudeApiUserActivity } from "../../core/activity/prompt-presentation.t
 import type { PromptSubmissions } from "../../runtime/session/prompt-submissions.ts";
 import type { ClaudeHookEventFor } from "../hooks/index.ts";
 
+/** Observe native submits and enrich a visible message only when the API send matches. */
 export function associateClaudePrompt(
   ledger: PromptSubmissions | undefined,
   event: ClaudeHookEventFor<"UserPromptSubmit">,

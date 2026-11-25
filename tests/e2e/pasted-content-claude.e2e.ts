@@ -37,16 +37,25 @@ function hookMessages(events: readonly ElwoodActivityEvent[]): readonly HookMess
 }
 
 async function withPasteSession<T>(
-  work: (session: ClaudeSessionApi, observed: ObservedSession) => Promise<T>,
+  work: (
+    session: ClaudeSessionApi,
+    observed: ObservedSession,
+    nativeSessionId: string,
+  ) => Promise<T>,
 ): Promise<T> {
   const project = makeProject("claude");
+  let sessionId: string | undefined;
   const session = await startClaude({
     cwd: project.cwd,
     stateDir: project.stateDir,
     model: bogusClaudeModel,
     permissionMode: "bypassPermissions",
     autotrust: true,
-    hooks: {},
+    hooks: {
+      SessionStart: (event) => {
+        sessionId = event.session_id;
+      },
+    },
   });
   const observed = observeSession(session);
   try {
@@ -55,7 +64,8 @@ async function withPasteSession<T>(
       "verified empty composer for paste",
       60_000,
     );
-    return await work(session, observed);
+    const nativeSessionId = await waitFor(() => sessionId, "native session identity", 60_000);
+    return await work(session, observed, nativeSessionId);
   } finally {
     observed.dispose();
     await cleanup(session);
@@ -120,12 +130,7 @@ test("C-E2E-25 real Claude API and raw pastes preserve their respective text", {
       return;
     }
     // A bogus-model rejection can leave an unverified composer despite ready.
-    await withPasteSession(async (session, observed) => {
-      const nativeSessionId = await waitFor(
-        () => observed.hooks.find((event) => event.hook_event_name === "SessionStart")?.session_id,
-        "native session identity",
-        60_000,
-      );
+    await withPasteSession(async (session, observed, nativeSessionId) => {
       const id = claudePasteEnvelopeId(nativeSessionId);
       assert.ok(id, "Expected a valid native paste envelope ID.");
       const lookalike = `ELWOOD first\n</pasted_content id="${id}">\n\n\n<pasted_content id="${id}">\nlast`;
