@@ -3,8 +3,9 @@
  * Implements PRD §5.8/§12A.2 and C-E2E-21 for C-API-60/C-CLI-28. Codex fires no `Stop` for
  * a rejected turn, so its failed transcript `task_complete` is the only evidence. A bogus
  * `--model` is refused before any model quota is consumed, so this needs no model quota.
- * From Codex 0.171.0 the refusal code is `codex_error_info` (`model_not_found`) and `message`
- * is prose naming the model; 0.164.0 reported `other` with the code in a JSON `message`.
+ * From Codex 0.171.0 the `codex_error_info` field carries the `model_not_found` kind and
+ * `message` is prose naming the model; 0.164.0 put the `other` kind in that field and the code
+ * in a JSON `message`.
  */
 
 import assert from "node:assert/strict";
