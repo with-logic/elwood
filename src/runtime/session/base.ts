@@ -1,6 +1,6 @@
 /**
- * Shared caller controls: text/images, keys, resize, interrupt/compact, models,
- * and loops, layered over lifecycle.ts. Implements PRD §5.3, §5.7, §5.9.
+ * Shared caller controls: text/images, keys, resize, interrupt/compact, models, loops,
+ * and the screen read, layered over lifecycle.ts. Implements PRD §5.3, §5.7, §5.9, §5.14.
  */
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
@@ -23,6 +23,8 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { cachedLiveSnapshot, settledLiveSnapshot, subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import type { ElwoodScreen, ReadScreenOptions } from "../../terminal/screen.ts";
+import { readTerminalScreen } from "../../terminal/screen.ts";
 import { CommandSurface } from "./commands.ts";
 import {
   type AttachDriver,
@@ -30,6 +32,7 @@ import {
   enqueueSubmission,
   type SubmitKind,
 } from "./image-attach.ts";
+import { notRunningError } from "./not-running.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import { SessionInputOwnership } from "./session-input.ts";
@@ -143,6 +146,12 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     around?: (flow: () => Promise<void>, signal: AbortSignal) => Promise<void>,
   ): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options, around));
+  }
+  /** No status guard: the screen a CLI left stays readable until disposal (C-SCREEN-03). */
+  async readScreen(options?: ReadScreenOptions): Promise<ElwoodScreen> {
+    const screen = await readTerminalScreen(this.terminal, options);
+    if (screen === undefined) throw notRunningError(this.record.adapter);
+    return screen;
   }
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     return this.inSession(() => this.loops.create(request));

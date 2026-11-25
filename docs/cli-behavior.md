@@ -383,6 +383,64 @@ message ends with `Add credits to continue.` The workspace-member message ends
 with `Ask your workspace owner to refill in order to continue.` A numeric reset
 is exposed when the structured diagnostic provides one. C-API-65.
 
+### Billing, usage-limit and rate-limit failures (2026-11-25)
+
+Measured on Claude Code 2.1.332 and codex-cli 0.172.0 without model quota. Claude
+ran with `ANTHROPIC_BASE_URL` set to a loopback server. Codex ran with a private
+`CODEX_HOME` whose `model_provider` pointed at that loopback server
+(`wire_api = "responses"`, `requires_openai_auth = false`). The server gave every
+request the same answer. The versions are those of the binaries Elwood's login
+shell resolved: there `codex` was `~/.local/bin/codex` (0.172.0), while a
+non-login `codex --version` reported 0.171.0. The captures are
+`tests/fixtures/claude-2.1.332/turn-failures.jsonl` and
+`tests/fixtures/codex-0.172.0/turn-failures.jsonl`.
+
+**Every shape ended with native failure evidence and one `turn_failure`, which
+came after `ready` in every run.** Claude fired `StopFailure` and never `Stop`.
+In the four stubbed runs `ready` came 5 to 42 ms before the hook. Codex committed a
+failed `task_complete` and fired no `Stop`. In the ten stubbed runs `ready` came 42
+to 241 ms before the record. Every shape's `running` → `ready` was followed by
+exactly one `turn_failure` for that turn.
+
+| Claude server reply | Hook `error` | Category |
+| --- | --- | --- |
+| 404 for an unknown `--model` (real service) | `model_not_found` | `model_unavailable` |
+| 400 `invalid_request_error`, credit balance too low | `billing_error` | `quota_or_credit` |
+| 402 `billing_error` | `unknown` | `unknown` |
+| 429 `rate_limit_error`, `x-should-retry: false` | `rate_limit` | `rate_limited` |
+| 429, `anthropic-ratelimit-unified-status: rejected` (`five_hour`) | `rate_limit` | `rate_limited` |
+
+Claude never sent `error_details`, so each message is `Claude rejected the turn:
+<error>`. `last_assistant_message` is the error Claude renders, such as `Credit
+balance is too low` or `You've hit your 5-hour limit · resets 3:34am (…)`. The
+five-hour limit still reaches the hook as `rate_limit`. Only the transcript's
+synthetic `isApiErrorMessage` record names it, with `apiError: "usage_limit_reached"`
+and `quotaLimits.resetsAt`. So that activity says `rate_limited` and has no reset.
+
+| Codex server reply | `error.message` | `codex_error_info` | Category |
+| --- | --- | --- | --- |
+| unknown `--model` (real service) | `The '<model>' model is not supported when using Codex with a ChatGPT account.` | `model_not_found` | `model_unavailable` |
+| 429 `usage_limit_reached` with `x-codex-rate-limit-reached-type: workspace_owner_credits_depleted` | `Your workspace is out of credits. Add credits to continue.` | `usage_limit_exceeded` | `quota_or_credit` |
+| the same with `workspace_member_credits_depleted` | `Your workspace is out of credits. Ask your workspace owner to refill in order to continue.` | `usage_limit_exceeded` | `quota_or_credit` |
+| 429 `usage_limit_reached`, `plan_type: "team"` | `You’ve hit your usage limit. To get more access now, send a request to your admin or try again later.` | `usage_limit_exceeded` | `usage_limit` |
+| 429 `usage_limit_reached`, `plan_type: "plus"`, `resets_at` | `You’ve hit your usage limit. Upgrade to Pro (…), visit … to purchase more credits or try again at 3:29 AM.` | `usage_limit_exceeded` | `usage_limit` |
+| 429 `usage_not_included` | `To use Codex with your ChatGPT plan, upgrade to Plus: …` | `usage_limit_exceeded` | `usage_limit` |
+| 429 `insufficient_quota`, or 200 ending in `response.failed` with it | `Quota exceeded. Check your plan and billing details.` | `usage_limit_exceeded` | `usage_limit` |
+| 402 | `unexpected status 402 Payment Required: <message>, url: …` | `{"http_connection_failed":{"http_status_code":402}}` | `network_or_api` |
+| 429 `rate_limit_exceeded`, `retry-after: 1` | `exceeded retry limit, last status: 429 Too Many Requests` | `{"response_too_many_failed_attempts":{"http_status_code":429}}` | `network_or_api` |
+| 500 | `We’re currently experiencing high demand, which may cause temporary errors.` | `internal_server_error` | `network_or_api` |
+
+Codex wrote the workspace-credit sentences when the 429 carried the
+`x-codex-rate-limit-reached-type` response header. The record keeps only the
+sentence and the shared code. A `resets_at` in the body became the clock time in
+the sentence, not a field, so none of these Codex activities has
+`resetsAtUnixSeconds`. The usage-limit kinds fail on the first response. By the
+records' `duration_ms`, the 402 retried for 7 s, the 429 for 6.5 s, and the 500
+for 25 s (60 requests), with the status `running` throughout. A long `retry-after`
+stays `running` for minutes, as described under
+[A rate-limited Codex turn stays running for minutes](#a-rate-limited-codex-turn-stays-running-for-minutes-2026-10-25).
+C-API-65.
+
 ## Codex transcript replies
 
 **Codex 0.149.1 writes committed replies as phased `message` response items, not
@@ -3181,3 +3239,51 @@ lost the quota reply. Keeping it open until the matching response produced the
 account buckets. Both probes ran before any model turn (C-STATS-03).
 Codex 0.171.0 returned an account window both with and without synthetic
 `OPENAI_API_KEY` and `CODEX_API_KEY` exports in a temporary `.zshrc`.
+
+## Screen buffers and scrollback (Claude 2.1.332, Codex 0.171.0 and 0.172.0, 2026-11-25)
+
+`readScreen()` (C-SCREEN-01/02) reads the headless emulator, so what it can return
+depends on the buffer each CLI draws on. `tests/e2e/read-screen.e2e.ts` asks each
+real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwards.
+
+- **Both CLIs use the alternate screen by default.** Claude ran in a private config
+  dir with no `settings.json` and no `tui` key, and Codex with stock TUI config.
+  Each had switched buffers (`CSI ? 1049 h`) by its first `ready`. After the turn
+  the emulator's normal buffer was still empty and scrollback was 0 rows. The live
+  rows held only the tail of the reply (numbers 58 to 80 on Claude, 61 to 80 on Codex)
+  above the composer. The CLI scrolls its own history inside the alternate screen,
+  so no terminal reader can recover the earlier rows. They are in the transcript
+  and the `activity` stream.
+- **Claude's default renderer depends on its earlier fullscreen launches.** Claude
+  2.1.332 records each fullscreen launch in its global config
+  (`fullscreenBootPending`, keyed by PID, with host and version) and removes the
+  entry once the launch has run 10 seconds past its first frame or exits through
+  its own shutdown. The bundle shows an entry staying behind only when the process
+  dies without its exit handlers. A launch that finds an entry for a dead PID of
+  the same version on the same host counts a strike and starts in the main-screen
+  renderer, on the normal buffer with scrollback. A second strike on that version
+  turns fullscreen off until `/tui fullscreen` or an update
+  (`fullscreenAutoDisabled`). One leftover entry in the user's own config, copied
+  into the e2e config dir, was enough: the unpinned test read the normal buffer
+  with 71 scrollback rows, and read the alternate screen again once the copy
+  dropped `fullscreenBootPending`, `fullscreenBootStrikes` and
+  `fullscreenAutoDisabled`. `CLAUDE_CODE_NO_FLICKER=1` skips the check and keeps
+  the alternate screen, and `0` selects the main-screen renderer, so
+  `tests/e2e/read-screen.e2e.ts` sets one or the other.
+- **The inline renderers keep scrollback.** `CLAUDE_CODE_NO_FLICKER=0` in the launch
+  environment and `-c tui.alternate_screen="never"` select them. Both then paint
+  the normal buffer, and `scrollback: true` returned the banner, the prompt and the
+  whole reply in order, with no repeated frames: 66 scrollback rows on Claude and
+  76 on Codex. A host that scrolled the handle to the top saw the banner in
+  `terminal.snapshot()` while `readScreen()` still returned the composer and the
+  end of the reply.
+- **Both park the terminal cursor in the composer and leave it visible.** On an idle
+  screen `cursor` was `{ x: 2, visible: true }` on the row that starts with the
+  composer glyph (`❯` on Claude, `›` on Codex), in both renderers.
+- **A leading glyph does not identify the composer.** Codex's fullscreen renderer
+  kept the submitted prompt on row 0 with the same `›`, and both inline renderers
+  leave the echoed prompt in scrollback with the composer glyph. The cursor row is
+  the reliable anchor.
+- Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
+  none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
+  both break long lines themselves.

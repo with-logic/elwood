@@ -5,7 +5,7 @@ callers who need more than `send` and `stream`.
 
 `ClaudeSession` and `CodexSession` are the primary API. Each delegates the
 operational and lifecycle methods of the low-level session and exposes the raw
-session object (for `elwoodSessionId`, `cwd`, `terminal`, and
+session object (for `elwoodSessionId`, `cwd`, `terminal`, `readScreen()`, and
 `statusDecisions()`) as `session.session` after startup. The eager
 `startClaude` / `startCodex` factories below are deprecated but remain
 available; the examples use them to show every option in one place.
@@ -95,6 +95,7 @@ interface ElwoodAgentSession {
 
   statusDecisions(): readonly ElwoodStatusDecision[];
   getStats(): Promise<SessionStats>;
+  readScreen(options?: { readonly scrollback?: boolean | number }): Promise<ElwoodScreen>;
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number): Promise<ElwoodSessionStatus>;
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number): Promise<ElwoodActivityEvent>;
 
@@ -117,6 +118,25 @@ interface ElwoodAgentSession {
   teardown(): Promise<void>;
 }
 ```
+
+## Reading the screen
+
+`await session.readScreen()` returns what the terminal shows now as text. It
+waits for received output to render first.
+
+```ts
+const screen = await session.readScreen({ scrollback: 200 });
+screen.lines;      // the live rows, top to bottom, right-trimmed
+screen.scrollback; // up to 200 rows above them, oldest first
+screen.cursor;     // { x, y, visible } in cells; y indexes `lines`
+screen.buffer;     // "normal" | "alternate"
+screen.outputLost; // true once Elwood failed to draw received output
+```
+
+`lines` is always the live screen, even when your code scrolled
+`session.terminal.xterm` back. `terminal.snapshot()` follows that scroll
+position instead. For scrollback, the end of a session and privacy, see
+[embedding.md](embedding.md#reading-the-screen-as-text).
 
 ## Sending input
 

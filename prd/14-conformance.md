@@ -436,3 +436,11 @@ Each criterion has:
 | C-STATS-04 | §5.12 | Live and lazy session APIs expose memory-only statistics with token observation, observed subagent count, and passive Codex quota. Cold reads leave the facade unstarted. Retain final samples after closure and clear the subagent count on terminal exit. |
 | C-STATS-05 | §5.12 | Claude account quota prefers the native usage control response and falls back to isolated headless usage only when the native request is unsupported and the credential environment permits it. Opt-in fallback diagnostics use fixed messages without native output. |
 | C-STATS-06 | §5.12 | A reusable account usage reader shares pending reads and reuses account windows for up to five minutes or until an earlier reset. Immediate account reads remain uncached. |
+
+### Screen text
+
+| ID | Section | Requirement |
+|---|---|---|
+| C-SCREEN-01 | §5.14 | The raw Claude and Codex session APIs expose `readScreen()`, which waits for received PTY output to render and returns the live rows as right-trimmed text, whatever viewport the host selected, with the terminal size, cell cursor and its visibility, the active buffer, and whether Elwood lost output. The read moves no viewport and writes nothing. |
+| C-SCREEN-02 | §5.14 | `readScreen()` returns no scrollback unless asked. `true` returns every row the emulator retains above the live screen, oldest first, and a number returns at most that many of the nearest rows. The alternate screen has none. A number that is not a non-negative integer rejects with a `TypeError`. |
+| C-SCREEN-03 | §5.14 | `readScreen()` ignores the session status and keeps reading the emulator after exit and during shutdown. Once the terminal is disposed, by runtime cleanup or by the host, it rejects with `session_not_running`, including a read that was waiting at disposal. |
