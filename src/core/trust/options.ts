@@ -12,8 +12,17 @@ export const codexHooksOptions =
   /^(?:Review hooks|Trust all and continue|Continue without trusting \(hooks won't run\))$/i;
 
 // Codex 0.164 draws `Back to Agent Command Center` for `Quit` when hook trust is not bypassed.
-export const codexFolderAccessOptions =
-  /^(?:Trust and continue|Quit|Back to Agent Command Center)$/;
+export const codexFolderAccessLabels = {
+  accept: "Trust and continue",
+  quit: "Quit",
+  back: "Back to Agent Command Center",
+} as const;
+export const codexFolderAccessAccept = new RegExp(
+  `^${RegExp.escape(codexFolderAccessLabels.accept)}$`,
+);
+export const codexFolderAccessOptions = new RegExp(
+  `^(?:${Object.values(codexFolderAccessLabels).map(RegExp.escape).join("|")})$`,
+);
 
 // Codex 0.164's footers when hook trust is not bypassed. Unlike the generic native footers,
 // each belongs to one gate and ends a dialog only under that gate (`TrustPromptSpec.footer`).
