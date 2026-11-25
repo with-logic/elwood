@@ -85,7 +85,7 @@ test("C-API-69 publishes structured Codex quota warnings once per unchanged reje
       transcriptPath: path,
       raw: warnings[0],
     });
-    expect((await session.getStats()).quota.windows[0]).toMatchObject({ usedPercent: 100 });
+    expect((await session.getStats()).quota).toMatchObject({ windows: [{ usedPercent: 100 }] });
     writeFileSync(path, creditDenial);
     await expect.poll(() => order.filter((label) => label === "raw")).toHaveLength(4);
     expect(warnings).toHaveLength(1);
