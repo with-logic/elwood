@@ -32,6 +32,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Reject a pending Codex workspace trust answer when a different complete
   workspace menu is observed during synchronized native output.
+
 - Hold a resumed session's queued messages until its configured composer
   appears. A resume no longer reports `ready` on a composer marker alone, so a
   `sendMessage` queued at resume cannot land on Codex's loading placeholder or on
