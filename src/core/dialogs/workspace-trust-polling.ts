@@ -5,6 +5,7 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import { boundedTrustEvidence } from "../trust/evidence-deadline.ts";
 import type { TrustPromptId } from "../trust/prompts.ts";
 import type { ElwoodDialogRequest } from "./types.ts";
+import { createWorkspaceTrustRequest, type WorkspaceTrustMenu } from "./workspace-trust-request.ts";
 
 export type VerifiedWorkspaceTrust<Agent extends ElwoodAgentKind> = {
   readonly frame: TerminalSnapshot;
@@ -17,11 +18,27 @@ type NativeTrustView = {
   readonly humanOwnedPrompt: () => TrustPromptId | undefined;
 };
 
+type TrustFrame = {
+  readonly frame: TerminalSnapshot;
+  readonly identity: string;
+  readonly menu: WorkspaceTrustMenu;
+};
+
 // One already-issued filesystem operation may outlive its deadline. Allow a newer
 // frame to be checked while that operation finishes, with a bound on stranded work.
 const maxUnfinishedLookups = 2;
 
-export class WorkspaceTrustPolling<Agent extends ElwoodAgentKind> {
+export class WorkspaceTrustPolling<
+  Agent extends ElwoodAgentKind,
+  Candidate extends TrustFrame = TrustFrame,
+> {
+  private sampled:
+    | { readonly frame: TerminalSnapshot; readonly candidate: Candidate | undefined }
+    | undefined;
+  private open:
+    | { readonly identity: string; readonly request: ElwoodDialogRequest<Agent> }
+    | undefined;
+
   private readonly controller = new AbortController();
   private pending:
     | { readonly frame: TerminalSnapshot; readonly result: Promise<Checked<Agent>> }
@@ -30,6 +47,36 @@ export class WorkspaceTrustPolling<Agent extends ElwoodAgentKind> {
 
   get signal(): AbortSignal {
     return this.controller.signal;
+  }
+
+  get currentRequest(): ElwoodDialogRequest<Agent> | undefined {
+    return this.open?.request;
+  }
+
+  sample(
+    terminal: ElwoodTerminal,
+    frame: TerminalSnapshot,
+    match: (terminal: ElwoodTerminal, frame: TerminalSnapshot) => Candidate | undefined,
+  ): Candidate | undefined {
+    if (this.sampled?.frame !== frame) this.sampled = { frame, candidate: match(terminal, frame) };
+    const { candidate } = this.sampled;
+    if (this.open?.identity !== candidate?.identity) this.retire();
+    return candidate;
+  }
+
+  acceptVerified(
+    agent: Agent,
+    elwoodSessionId: string,
+    { frame, identity, menu }: Candidate,
+  ): VerifiedWorkspaceTrust<Agent> {
+    if (this.open?.identity !== identity) {
+      this.open = { identity, request: createWorkspaceTrustRequest(agent, elwoodSessionId, menu) };
+    }
+    return { frame, request: this.open.request };
+  }
+
+  retire(): void {
+    this.open = undefined;
   }
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal, end: () => void): void {
@@ -46,9 +93,11 @@ export class WorkspaceTrustPolling<Agent extends ElwoodAgentKind> {
 
   end(): void {
     this.controller.abort();
+    this.sampled = undefined;
+    this.retire();
   }
 
-  isFrameCurrent(
+  canUseTrustFrame(
     frame: TerminalSnapshot,
     { terminal, humanOwnedPrompt }: NativeTrustView,
   ): boolean {
@@ -59,6 +108,9 @@ export class WorkspaceTrustPolling<Agent extends ElwoodAgentKind> {
     );
   }
 
+  /** Skip if another frame or the work bound prevents a check. A completed
+   * mismatch is false, while expiry or cancellation is undefined. The caller
+   * reconciles that result even if the checked frame has been superseded. */
   read(
     frame: TerminalSnapshot,
     revalidate: (signal: AbortSignal) => Promise<boolean>,

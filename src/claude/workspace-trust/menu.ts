@@ -1,6 +1,7 @@
 /** Match Claude's native workspace trust disclosure to a checked launch (C-ATTN-07). */
 import type { IBufferCell } from "@xterm/headless";
 import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
+import type { SelectableOption } from "../../core/terminal-options.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
 import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";
 import { hasUnwrappedRowEndPadding } from "../../terminal/snapshot.ts";
@@ -82,6 +83,7 @@ function matchesWorkspacePath(
     const line = buffer.getLine(buffer.baseY + firstRow + offset);
     if (line?.isWrapped !== false || !isUnusedCell(line.getCell(0))) return false;
     if (offset === rows.length - 1) return true;
+    // A width-zero cell is the trailing column of an occupied wide glyph.
     const payloadEnd = line.getCell(rightMargin - 1);
     return (
       isUnusedCell(line.getCell(rightMargin)) &&
@@ -96,12 +98,25 @@ function isUnusedCell(cell: IBufferCell | undefined): boolean {
 }
 
 function hasWorkspaceMenu(frame: TerminalSnapshot, candidate: TrustCandidate): boolean {
-  const choices = candidate.dialog.options.map((option) => option.label);
+  const choices = candidate.dialog.options;
+  if (choices.length !== 2) return false;
+  const [first, second] = [choices[0]!, choices[1]!];
+  const labels = [first.label, second.label];
   return (
-    choices.length === 2 &&
-    choices.includes("No, exit") &&
-    choices.includes("Yes, I trust this folder") &&
+    labels.includes("No, exit") &&
+    labels.includes("Yes, I trust this folder") &&
+    hasWorkspaceOptionLayout(first, second) &&
     frame.lines.findLast((line) => line.trim().length > 0)?.trim() ===
       "Enter to confirm · Esc to cancel"
+  );
+}
+
+function hasWorkspaceOptionLayout(first: SelectableOption, second: SelectableOption): boolean {
+  if (first.style === "cursor") return second.style === "cursor";
+  return (
+    second.style === "numbered" &&
+    first.number === "1" &&
+    second.number === "2" &&
+    first.selected !== second.selected
   );
 }

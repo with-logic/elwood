@@ -70,6 +70,25 @@ test.each([
   }
 });
 
+test.each([
+  ["❯ 1. Yes, I trust this folder\n   2. No, exit", true],
+  ["❯ 9. No, exit\n   9. Yes, I trust this folder", false],
+  ["❯ 1. No, exit\n   1. Yes, I trust this folder", false],
+  ["   1. No, exit\n   2. Yes, I trust this folder", false],
+  ["❯ 1. No, exit\n ❯ 2. Yes, I trust this folder", false],
+  ["❯ No, exit\n 2. Yes, I trust this folder", false],
+  ["❯ 1. No, exit\n ❯ Yes, I trust this folder", false],
+])("C-ATTN-07 verifies the native Claude numbered choice layout %s", async (options, listed) => {
+  const cwd = realpathSync(tempDir());
+  const { terminal, read, render, menu } = launchScope(cwd);
+  try {
+    await render(menu.replace("❯ No, exit\n   Yes, I trust this folder", options));
+    expect(read() !== undefined).toBe(listed);
+  } finally {
+    terminal.dispose();
+  }
+});
+
 const narrowedWidth = 100;
 const pathRowWithNativeInset = (fragment: string) => `\x1b[2G${fragment}`;
 const wrappedPath = `/${"a".repeat(97)}z`;
@@ -110,10 +129,8 @@ test.each([
   ],
   [
     "a wide character occupying the right margin",
-    (path: string) => [
-      pathRowWithNativeInset(`${path.slice(0, 97)}界`),
-      pathRowWithNativeInset("z"),
-    ],
+    (path: string) => [pathRowWithNativeInset(path.slice(0, -1)), pathRowWithNativeInset("z")],
+    `/${"a".repeat(96)}界z`,
   ],
   [
     "a literal indent",
@@ -127,10 +144,10 @@ test.each([
       pathRowWithNativeInset(path.slice(98)),
     ],
   ],
-])("C-ATTN-07 rejects a wrapped Claude disclosure with %s", async (_reason, pathRows) => {
-  const { terminal, read, render, menu } = launchScope(wrappedPath, wrappedPath, narrowedWidth);
+])("C-ATTN-07 rejects a wrapped Claude disclosure with %s", async (_reason, pathRows, cwd = wrappedPath) => {
+  const { terminal, read, render, menu } = launchScope(cwd, cwd, narrowedWidth);
   try {
-    await render(menu.replace(` ${wrappedPath}`, pathRows(wrappedPath).join("\n")));
+    await render(menu.replace(` ${cwd}`, pathRows(cwd).join("\n")));
     expect(read()).toBeUndefined();
   } finally {
     terminal.dispose();

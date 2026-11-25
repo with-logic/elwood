@@ -28,7 +28,10 @@ import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { preflightClaude } from "../preflight.ts";
-import { captureClaudeStartupTrustEvidence } from "../workspace-trust/target.ts";
+import {
+  type ClaudeLaunchTrustEvidence,
+  captureClaudeStartupTrustEvidence,
+} from "../workspace-trust/target.ts";
 import { resetClaudeHookBridgeFactoryForTests, setHookBridgeFactoryForTests } from "./bridge.ts";
 import { buildClaudeSession } from "./build.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
@@ -99,9 +102,9 @@ export async function startClaudeWithId(
     return startClaudeFromRecord(
       record,
       stateDir,
-      { ...options, launchDirectory: directory, workspaceTrustEvidence },
+      { ...options, launchDirectory: directory },
       false,
-      warning,
+      { preflightWarning: warning, workspaceTrustEvidence },
     );
   });
   return queuePersonaMessage(session, options.persona, session.closing.signal);
@@ -112,7 +115,10 @@ export function startClaudeFromRecord(
   stateDir: string,
   options: ClaudeLaunchOptions,
   resumed: boolean,
-  preflightWarning: ClaudePreflightWarning | undefined,
+  evidence: {
+    readonly preflightWarning: ClaudePreflightWarning | undefined;
+    readonly workspaceTrustEvidence: ClaudeLaunchTrustEvidence | undefined;
+  },
   ownership?: LaunchReservation,
 ) {
   // Validate the effort enum before any spawn (C-CLAUDE-20): both start and resume
@@ -152,9 +158,8 @@ export function startClaudeFromRecord(
             runtime,
             options,
             resumed,
-            preflightWarning,
+            ...evidence,
             activate,
-            workspaceTrustEvidence: options.workspaceTrustEvidence,
           }),
       );
     },

@@ -73,7 +73,6 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
           cwd,
           stateDir,
           launchDirectory: directory,
-          workspaceTrustEvidence,
           env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
@@ -94,7 +93,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
             : { strictVersionCheck: options.strictVersionCheck }),
         },
         true, // resumed: mark ready on the first composer marker, symmetric with Codex
-        warning,
+        { preflightWarning: warning, workspaceTrustEvidence },
         ownership,
       ),
     );

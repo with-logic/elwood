@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { ElwoodDialogRequest, WorkspaceTrustTarget } from "./types.ts";
 
-type WorkspaceTrustMenu = {
+export type WorkspaceTrustMenu = {
   readonly target: WorkspaceTrustTarget;
   readonly dialog: {
     readonly header: string;
@@ -31,7 +31,8 @@ export function createWorkspaceTrustRequest<Agent extends ElwoodAgentKind>(
     agent,
     kind: "trust",
     label: "workspace_trust",
-    ...target,
+    targetPath: target.targetPath,
+    targetScope: target.targetScope,
     text: dialog.header,
     choices: Object.freeze(
       dialog.options.map(({ label }) => Object.freeze({ id: randomUUID(), label })),

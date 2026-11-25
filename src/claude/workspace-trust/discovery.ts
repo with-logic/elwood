@@ -4,7 +4,6 @@ import {
   type VerifiedWorkspaceTrust,
   WorkspaceTrustPolling,
 } from "../../core/dialogs/workspace-trust-polling.ts";
-import { createWorkspaceTrustRequest } from "../../core/dialogs/workspace-trust-request.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { TrustPromptIdFor } from "../../core/trust/prompts.ts";
 import { settledNativeSnapshot } from "../../terminal/cursor.ts";
@@ -13,7 +12,6 @@ import { createClaudeWorkspaceTrustFrameMatcher, type WorkspaceTrustFrame } from
 import type { ClaudeLaunchTrustEvidence } from "./target.ts";
 
 type DialogRequest = ElwoodDialogRequest<"claude">;
-type Open = { readonly identity: string; readonly request: DialogRequest };
 type DiscoveryInput = {
   readonly elwoodSessionId: string;
   readonly evidence: ClaudeLaunchTrustEvidence | undefined;
@@ -23,11 +21,7 @@ type DiscoveryInput = {
 };
 
 export class ClaudeWorkspaceTrustDiscovery {
-  private open: Open | undefined;
-  private sampled:
-    | { readonly frame: TerminalSnapshot; readonly candidate: WorkspaceTrustFrame | undefined }
-    | undefined;
-  private readonly polling = new WorkspaceTrustPolling<"claude">();
+  private readonly polling = new WorkspaceTrustPolling<"claude", WorkspaceTrustFrame>();
   private readonly input: DiscoveryInput;
   private readonly match: ReturnType<typeof createClaudeWorkspaceTrustFrameMatcher> | undefined;
 
@@ -42,8 +36,6 @@ export class ClaudeWorkspaceTrustDiscovery {
 
   endDiscovery(): void {
     this.polling.end();
-    this.sampled = undefined;
-    this.open = undefined;
   }
 
   async list(): Promise<readonly DialogRequest[]> {
@@ -62,15 +54,10 @@ export class ClaudeWorkspaceTrustDiscovery {
       return undefined;
     }
     if (this.input.humanOwnedPrompt() !== "workspace_trust") {
-      this.open = undefined;
+      this.polling.retire();
       return undefined;
     }
-    if (this.sampled?.frame !== frame)
-      this.sampled = { frame, candidate: this.match(terminal, frame) };
-    const { candidate } = this.sampled;
-    if (!candidate || (this.open && this.open.identity !== candidate.identity))
-      this.open = undefined;
-    return candidate;
+    return this.polling.sample(terminal, frame, this.match);
   }
 
   private async read(): Promise<VerifiedWorkspaceTrust<"claude"> | undefined> {
@@ -82,7 +69,7 @@ export class ClaudeWorkspaceTrustDiscovery {
   }
 
   private acceptProof(
-    { frame, menu, identity }: WorkspaceTrustFrame,
+    candidate: WorkspaceTrustFrame,
     proved: boolean | undefined,
   ): VerifiedWorkspaceTrust<"claude"> | undefined {
     // A completed Claude mismatch revokes the captured launch even after a repaint.
@@ -90,26 +77,20 @@ export class ClaudeWorkspaceTrustDiscovery {
       this.endDiscovery();
       return undefined;
     }
-    if (!this.isFrameCurrent(frame)) return undefined;
+    if (!this.canUseTrustFrame(candidate.frame)) return undefined;
     if (proved === undefined) {
       this.endDiscovery();
       return undefined;
     }
 
-    if (this.open?.identity !== identity) {
-      this.open = {
-        identity,
-        request: createWorkspaceTrustRequest("claude", this.input.elwoodSessionId, menu),
-      };
-    }
-    return { frame, request: this.open.request };
+    return this.polling.acceptVerified("claude", this.input.elwoodSessionId, candidate);
   }
 
   private isCurrent({ frame, request }: VerifiedWorkspaceTrust<"claude">): boolean {
-    return this.open?.request === request && this.isFrameCurrent(frame);
+    return this.polling.currentRequest === request && this.canUseTrustFrame(frame);
   }
 
-  private isFrameCurrent(frame: TerminalSnapshot): boolean {
-    return this.polling.isFrameCurrent(frame, this.input);
+  private canUseTrustFrame(frame: TerminalSnapshot): boolean {
+    return this.polling.canUseTrustFrame(frame, this.input);
   }
 }

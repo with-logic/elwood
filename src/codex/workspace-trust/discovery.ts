@@ -3,21 +3,14 @@ import {
   type VerifiedWorkspaceTrust,
   WorkspaceTrustPolling,
 } from "../../core/dialogs/workspace-trust-polling.ts";
-import { createWorkspaceTrustRequest } from "../../core/dialogs/workspace-trust-request.ts";
 import { settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import { createTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu-frame.ts";
 import type { ElwoodDialogRequest } from "./types.ts";
 
-type Open = { readonly identity: string; readonly request: ElwoodDialogRequest };
-
 export class CodexWorkspaceTrustDiscovery {
-  private open: Open | undefined;
-  private sampled:
-    | { readonly frame: TerminalSnapshot; readonly candidate: WorkspaceTrustFrame | undefined }
-    | undefined;
-  private readonly polling = new WorkspaceTrustPolling<"codex">();
+  private readonly polling = new WorkspaceTrustPolling<"codex", WorkspaceTrustFrame>();
   private readonly input: WorkspaceTrustDiscoveryInput;
   private readonly match: ReturnType<typeof createTrustFrameMatcher> | undefined;
 
@@ -45,7 +38,7 @@ export class CodexWorkspaceTrustDiscovery {
 
   /** Identity persists through an unsettled repaint. Only read() verifies a request. */
   get currentRequestId(): string | undefined {
-    return this.open?.request.id;
+    return this.polling.currentRequest?.id;
   }
 
   async list(): Promise<readonly ElwoodDialogRequest[]> {
@@ -78,18 +71,14 @@ export class CodexWorkspaceTrustDiscovery {
       this.retire();
       return undefined;
     }
-    if (this.sampled?.frame !== frame)
-      this.sampled = { frame, candidate: this.match(terminal, frame) };
-    const { candidate } = this.sampled;
-    if (!candidate || (this.open && this.open.identity !== candidate.identity)) this.retire();
-    return candidate;
+    return this.polling.sample(terminal, frame, this.match);
   }
 
   private acceptProof(
-    { frame, menu, identity }: WorkspaceTrustFrame,
+    candidate: WorkspaceTrustFrame,
     proved: boolean | undefined,
   ): VerifiedWorkspaceTrust<"codex"> | undefined {
-    if (!this.canUseTrustFrame(frame)) return undefined;
+    if (!this.canUseTrustFrame(candidate.frame)) return undefined;
     // Expiry ends discovery. A completed mismatch only retires this request.
     if (proved === undefined) {
       this.end();
@@ -100,26 +89,18 @@ export class CodexWorkspaceTrustDiscovery {
       return undefined;
     }
 
-    if (this.open?.identity !== identity) {
-      this.open = {
-        identity,
-        request: createWorkspaceTrustRequest("codex", this.input.elwoodSessionId, menu),
-      };
-    }
-    return { frame, request: this.open.request };
+    return this.polling.acceptVerified("codex", this.input.elwoodSessionId, candidate);
   }
 
   private canUseTrustFrame(frame: TerminalSnapshot): boolean {
-    return this.polling.isFrameCurrent(frame, this.input);
+    return this.polling.canUseTrustFrame(frame, this.input);
   }
 
   private end(): void {
     this.polling.end();
-    this.sampled = undefined;
-    this.retire();
   }
 
   private retire(): void {
-    this.open = undefined;
+    this.polling.retire();
   }
 }
