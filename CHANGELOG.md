@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Emit typed Claude and Codex turn-failure activity with the harness diagnostic,
+  normalized category, final disposition, and a supplied usage-limit reset.
+
 - Mark Claude and Codex `assistant_message` activity with `final: true` when
   the transcript identifies final reply text, including replies delivered after `ready`.
 

@@ -10,21 +10,11 @@ import { observeRenderedFrame } from "../../src/core/rendered-observers.ts";
 import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
+import { activity } from "../helpers/activity.ts";
 
 type Map = { activity: ElwoodActivityEvent };
-const event = (
-  kind: Exclude<
-    ElwoodActivityEvent["kind"],
-    "assistant_progress" | "question" | "user_message" | "unrecognized_startup"
-  >,
-  label: string,
-): ElwoodActivityEvent => ({
-  elwoodSessionId: "s1",
-  agent: "claude",
-  source: "terminal",
-  kind,
-  label,
-});
+const event = (kind: "status" | "attention", label: string): ElwoodActivityEvent =>
+  activity({ source: "terminal", kind, label });
 
 afterEach(() => vi.useRealTimers());
 

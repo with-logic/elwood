@@ -3,12 +3,15 @@
  * Claude's turn-boundary reader, which turns `StopFailure` into a rejection (PRD §5.8, C-API-59).
  */
 
+import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import { normalizeFinalTurnFailure } from "../../core/activity/turn-failure.ts";
 import { boundedDiagnostic } from "../../core/simple/boundary-signal.ts";
 import {
   type BoundarySignalReader,
   defaultBoundarySignal,
   type TurnBoundaryHook,
 } from "../../core/simple/turn-types.ts";
+import type { StopFailureEvent } from "./events-extra.ts";
 import { claudePromptId } from "./prompt-id.ts";
 
 /** Accepts the structural diagnostic fields so internal adapters share one selector. */
@@ -23,6 +26,31 @@ export function stopFailureDiagnostic(event: {
       details ??
       (error === undefined ? "Claude rejected the turn." : `Claude rejected the turn: ${error}`),
     ...(error === undefined ? {} : { agentError: error }),
+  };
+}
+
+/** Project only the authoritative hook diagnostic, never assistant text. */
+export function claudeTurnFailureActivity(
+  elwoodSessionId: string,
+  event: StopFailureEvent,
+): ElwoodActivityEvent {
+  const { message: displayMessage, agentError: boundedNativeErrorCode } =
+    stopFailureDiagnostic(event);
+  const failure = normalizeFinalTurnFailure({
+    displayMessage,
+    boundedNativeErrorCode,
+    nativeDiagnostic: event.error_details,
+  });
+  const turnId = claudePromptId(event["prompt_id"]);
+  return {
+    elwoodSessionId,
+    agent: "claude",
+    source: "hook",
+    kind: "turn_failure",
+    ...failure,
+    hookEventName: event.hook_event_name,
+    ...(turnId === undefined ? {} : { turnId }),
+    ...(event.transcript_path === undefined ? {} : { transcriptPath: event.transcript_path }),
   };
 }
 

@@ -2,7 +2,7 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import { AgentSessionBase } from "../../src/runtime/session/base.ts";
-import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
+import { claudeWorking, emptyComposer } from "../fixtures/owned-turn/composer.ts";
 import { createFacadeFixture, nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
 
 afterEach(() => {
@@ -58,9 +58,9 @@ for (const agent of ["claude", "codex"] as const) {
       if (lateReady) {
         const screen =
           agent === "codex"
-            ? "• Working (3s • esc to interrupt)\r\n› "
-            : "❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents";
-        pty.emitData(`\u001b[2J\u001b[H${screen}`);
+            ? "\u001b[2J\u001b[H• Working (3s • esc to interrupt)\r\n› "
+            : claudeWorking;
+        pty.emitData(screen);
         await vi.advanceTimersByTimeAsync(100);
         expect(raw.status).toBe("running");
       }

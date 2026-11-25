@@ -17,6 +17,7 @@ import type {
   ElwoodActivityEvent,
   ElwoodWarningEvent,
 } from "../../src/index.ts";
+import { activity as activityFixture, type FixtureActivityKind } from "../helpers/activity.ts";
 
 describe("browser dev app event helpers", () => {
   test("C-APP-05 summarizes hook events for live logs", () => {
@@ -148,23 +149,15 @@ const hooks = {
     }) satisfies ClaudeHookEventFor<"PostCompact">,
 } as const;
 
-function activity(
-  kind: Exclude<
-    ElwoodActivityEvent["kind"],
-    "assistant_progress" | "question" | "unrecognized_startup"
-  >,
-): ElwoodActivityEvent {
-  const body = {
-    elwoodSessionId: "s1",
+function activity(kind: FixtureActivityKind): ElwoodActivityEvent {
+  return activityFixture({
     agent: "codex",
-    source: "transcript",
+    kind,
+    source: kind === "user_message" ? "hook" : "transcript",
     label: "label",
     text: "body",
     raw: { kind },
-  } as const;
-  return kind === "user_message"
-    ? { ...body, kind, source: "hook", hookEventName: "UserPromptSubmit", label: "user" }
-    : { ...body, kind };
+  });
 }
 
 function warning(): ElwoodWarningEvent {

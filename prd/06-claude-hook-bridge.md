@@ -53,7 +53,7 @@ non-string prompt values remain invalid.
 
 Human-readable rejection diagnostics prefer a nonblank string `error_details`, then
 `Claude rejected the turn: <error>` for a nonblank string `error`, and otherwise
-`Claude rejected the turn.`. Each diagnostic field is bounded to 2,000 characters
+`Claude rejected the turn.`. Each diagnostic field is bounded to 2,000 UTF-16 code units
 plus an ellipsis before interpolation. Assistant text is not a rejection reason.
 
 ### 6.2 Routing

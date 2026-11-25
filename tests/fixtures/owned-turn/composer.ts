@@ -5,6 +5,10 @@ import type { Agent } from "./session.ts";
 export const codexIdle =
   "\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H";
 
+export const claudeWorking =
+  "\x1b[2J\x1b[H❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents";
+export const claudeIdle = "\x1b[2J\x1b[H❯ \r\n  ⏵⏵ bypass permissions · ← for agents";
+
 export function emptyComposer(agent: Agent): string {
   return `\u001b[2J\u001b[H${agent === "claude" ? claudeTty(claudeComposer) : codexTty(codexSmallComposer)}`;
 }

@@ -12,6 +12,7 @@ import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { ClaudeSession } from "../../src/index.ts";
 import { effectiveRequest } from "../cli/main-fakes.ts";
+import { claudeIdle as idle, claudeWorking as working } from "../fixtures/owned-turn/composer.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -20,9 +21,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   resetFakes();
 });
-
-const working = "\u001b[2J\u001b[H❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents";
-const idle = "\u001b[2J\u001b[H❯ \r\n  ⏵⏵ bypass permissions · ← for agents";
 
 /** The facade under test and the rejected turn it runs: a user `send` or the CLI persona. */
 function facade(kind: "public" | "cli" | "cli persona", cwd: string, prompt: string) {

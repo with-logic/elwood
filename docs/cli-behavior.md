@@ -353,6 +353,19 @@ message is `error.message` and `details.agentError` is the `codex_error_info`
 kind. A second turn on the same session is rejected the same way, so the first
 released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
 
+**Codex 0.171.0 serializes workspace credits and ordinary usage-limit failures with
+`task_complete.error.codex_error_info: "usage_limit_exceeded"`.** Coal Harbor
+reported the credit-depleted workspace-owner diagnostic. The [0.171.0 error
+formatter](https://github.com/openai/codex/blob/rust-v0.171.0/codex-rs/protocol/src/error.rs)
+also defines the workspace-member variant. The finalized error record carries
+`message` and the shared code without a separate workspace-credit subtype or
+reset timestamp. Elwood uses the two exact native `error.message` values for
+`quota_or_credit` and keeps other messages under the usual classification.
+Both messages start with `Your workspace is out of credits.` The workspace-owner
+message ends with `Add credits to continue.` The workspace-member message ends
+with `Ask your workspace owner to refill in order to continue.` A numeric reset
+is exposed when the structured diagnostic provides one. C-API-65.
+
 ## Codex transcript replies
 
 **Codex 0.149.1 writes committed replies as phased `message` response items, not

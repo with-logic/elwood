@@ -23,6 +23,7 @@ import {
   codexPollStoppedWarning,
   codexReadErrorWarning,
 } from "../transcript/index.ts";
+import { codexTurnFailureActivity } from "../transcript/rejection.ts";
 import { seedCodexResumeCursor } from "../transcript/resume-cursor.ts";
 import type { CodexEventMap } from "./types.ts";
 import {
@@ -74,28 +75,32 @@ export function createCodexTranscriptWatcher(
     duringDelivery(() => warnings.route(warning));
   const flushPendingWarnings = () => duringDelivery(warnings.flushPendingWarnings);
   const reported = new Set<"codex:transcript" | "activity">();
+  const reportListenerError = (channel: "codex:transcript" | "activity") => {
+    if (reported.has(channel)) return;
+    reported.add(channel);
+    // Run warning callbacks after the current scan/flush. A callback may stop
+    // the session synchronously, so it must not interrupt paired record delivery.
+    queueMicrotask(() =>
+      route({
+        elwoodSessionId,
+        agent: "codex",
+        source: "terminal",
+        code: "transcript_listener_error",
+        severity: "warning",
+        message: "Codex transcript listener failed; remaining transcript delivery continues.",
+        channel,
+        raw: `transcript_listener_error channel=${channel}`,
+      }),
+    );
+  };
+  const reportFailureRejection = () => reportListenerError("activity");
   // TypedEmitter fans out to all listeners before rethrowing. Contain each channel
   // separately so one consumer cannot suppress the projection or stop later polls.
   function deliver<K extends "codex:transcript" | "activity">(channel: K, event: CodexEventMap[K]) {
     try {
       emitter.emit(channel, event);
     } catch {
-      if (reported.has(channel)) return;
-      reported.add(channel);
-      // Run warning callbacks after the current scan/flush. A callback may stop
-      // the session synchronously, so it must not interrupt paired record delivery.
-      queueMicrotask(() =>
-        route({
-          elwoodSessionId,
-          agent: "codex",
-          source: "terminal",
-          code: "transcript_listener_error",
-          severity: "warning",
-          message: "Codex transcript listener failed; remaining transcript delivery continues.",
-          channel,
-          raw: `transcript_listener_error channel=${channel}`,
-        }),
-      );
+      reportListenerError(channel);
     }
   }
   const clipboardCopies = new CodexClipboardCopies();
@@ -105,8 +110,12 @@ export function createCodexTranscriptWatcher(
       duringDelivery(() => {
         clipboardCopies.observe(event.item);
         const projected = activity.activityFromCodexTranscript(event);
+        const failure = codexTurnFailureActivity(event);
         deliver("codex:transcript", event);
         deliver("activity", projected);
+        if (failure) {
+          emitter.observeRejections(reportFailureRejection, () => deliver("activity", failure));
+        }
       }),
     {
       onDrop: (notice) => route(codexDropWarning(notice)),

@@ -4,10 +4,12 @@ import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 type FixtureActivity = Omit<
   Exclude<
     ElwoodActivityEvent,
-    { kind: "question" | "assistant_progress" | "unrecognized_startup" }
+    { kind: "question" | "assistant_progress" | "unrecognized_startup" | "turn_failure" }
   >,
   "speed" | "tokenUsage" | "rateLimits" | "subagent" | "final"
 > & { readonly speed?: never };
+
+export type FixtureActivityKind = FixtureActivity["kind"];
 
 export function activity(partial: Partial<FixtureActivity> = {}) {
   const { kind = "assistant_message", ...fields } = partial;
