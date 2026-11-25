@@ -26,8 +26,8 @@ type PostedClaudeNotice = {
 /**
  * Posts the notice at the idle composer and reposts it until stopped. A notice posted at idle adds
  * a row above the composer, so Claude writes the notice's indent as real spaces where the composer's
- * top rule was. A questionnaire painted over that row keeps them. `press` writes straight to the
- * native PTY, as a person at that terminal would.
+ * top rule was. An unnamed session's questionnaire painted over that row keeps them. `press` writes
+ * straight to the native PTY, as a person at that terminal would.
  */
 async function postClaudeNotice(
   press: (input: string) => void,

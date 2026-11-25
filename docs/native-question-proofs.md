@@ -1,8 +1,8 @@
 # Native question proofs
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
-real authenticated CLI processes. The Claude entrypoint uses three valid-model
-turns and the Codex entrypoint uses two.
+real authenticated CLI processes. The Claude entrypoint uses four valid-model
+turns in two isolated sessions and the Codex entrypoint uses two.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -29,6 +29,13 @@ the notice is gone at that hook or the blank cells are absent. All turns compare
 the native `AskUserQuestion` PostToolUse answers, require an answered closure
 and an empty pending list, and keep the original `send()` waiting for the final
 assistant reply.
+
+A second isolated session is launched with `--name "Question Asker"`, as
+embedders that name every agent do, and submits the standalone multiple choice
+after the same notice. A named session's questionnaire closing rule replaces the
+notice row, so this session requires the notice at the hook, no blank cells and
+the session label under the questionnaire footer. The two sessions run one after
+the other, even when the first times out.
 
 Question events and normalized activities must correspond exactly and contain
 no submitted answer marker. The proof recursively checks Elwood-owned state

@@ -5,7 +5,7 @@ import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
 import { claudeNoticeResidue } from "../../e2e/questions/claude-notice.ts";
-import { nativeSnapshot, registry } from "./helpers.ts";
+import { nativeSnapshot332 as native, registry } from "./helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 const note: QuestionDefinition = {
@@ -20,7 +20,6 @@ const note: QuestionDefinition = {
   supportsSecretInput: false,
 };
 const typedAnswer = "ELWOOD single line answer";
-const native = (name: string) => nativeSnapshot(name, "2.1.332");
 /** The single-choice Other row, which is the questionnaire's last row before its closing rule. */
 const otherRow = (name: string) => native(name).lines.find((line) => /^(?:❯| ) 3\. /.test(line));
 
