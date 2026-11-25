@@ -3450,6 +3450,10 @@ message's bracketed paste and its `\r`, both released at the placeholder frame.
 In a third run, on a loaded host, the paste met the placeholder and the `\r` met
 the offer, with its ``› 1. Update now (runs `sh -c`` row selected. The proof
 drops application input before the PTY, because that Enter chooses `Update now`.
+A `sendPrompt` called at a start bypassed the readiness queue: on 2026-11-25
+`start-update-offer-codex.e2e.ts` recorded its paste and its `\r` before Codex had
+painted any row with the marker, and the offer appeared after them. Before the
+first readiness, those writes now also wait for the configured composer (C-E2E-27).
 
 **Which Codex a session runs depends on the directory.** On the capture host an
 interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a
@@ -3494,9 +3498,12 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
   turns fullscreen off until `/tui fullscreen` or an update
   (`fullscreenAutoDisabled`). One leftover entry in the user's own config, copied
   into the e2e config dir, was enough: the unpinned test read the normal buffer
-  with 71 scrollback rows, and read the alternate screen again once the copy
-  dropped `fullscreenBootPending`, `fullscreenBootStrikes` and
-  `fullscreenAutoDisabled`. `CLAUDE_CODE_NO_FLICKER=1` skips the check and keeps
+  with 71 scrollback rows. The e2e copy now drops `fullscreenBootPending`,
+  `fullscreenBootStrikes` and `fullscreenAutoDisabled`
+  (`tests/e2e/claude-global-config.ts`). `tests/e2e/claude-fullscreen-canary.e2e.ts`
+  leaves a genuine entry by SIGKILLing a Claude it spawned, and checks that the copy
+  starts on the alternate screen while the raw config costs a strike and starts on
+  the normal buffer. `CLAUDE_CODE_NO_FLICKER=1` skips the check and keeps
   the alternate screen, and `0` selects the main-screen renderer, so
   `tests/e2e/read-screen.e2e.ts` sets one or the other.
 - **The inline renderers keep scrollback.** `CLAUDE_CODE_NO_FLICKER=0` in the launch

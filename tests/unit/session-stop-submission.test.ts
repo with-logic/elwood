@@ -60,6 +60,7 @@ for (const agent of ["claude", "codex"] as const) {
     };
     try {
       vi.useFakeTimers();
+      helper.showComposer(pty);
       const first = session.sendPrompt("first");
       await vi.advanceTimersByTimeAsync(200);
       await first;
@@ -75,9 +76,10 @@ for (const agent of ["claude", "codex"] as const) {
         const write = pty.write.bind(pty);
         vi.spyOn(pty, "write").mockImplementation((value) => {
           write(value);
+          // A full repaint: the configured composer painted before "first" is on screen.
           if (value === composerClearKeys)
             pty.emitData(
-              agent === "claude" ? claudeTty(claudeComposer) : codexTty(codexSmallComposer),
+              `\u001b[2J\u001b[H${agent === "claude" ? claudeTty(claudeComposer) : codexTty(codexSmallComposer)}`,
             );
         });
       }

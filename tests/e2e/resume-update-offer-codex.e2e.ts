@@ -15,7 +15,7 @@ import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.t
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
-import { codexUpdateOffer } from "./codex-update-offer.ts";
+import { codexUpdateOffer, offerSkipDigit, refusedAtMarkedRows } from "./codex-update-offer.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -45,12 +45,6 @@ const TEST_TIMEOUT_MS =
   2 * (READY_MS + SEND_MS + TURN_MS) + SESSION_START_MS + OFFER_MS + HOLD_MS + LAUNCHES_MS + 30_000;
 
 const ONE = "Reply exactly: ONE. Do not use tools.";
-
-/** The digit of the offer's plain `Skip` row, or undefined while no `N. Update now` row shows. */
-function skipDigit(screen: string): string | undefined {
-  if (!/^\s*›?\s*\d+\. Update now\b/m.test(screen)) return undefined;
-  return /^\s*›?\s*(\d+)\. Skip\s*$/m.exec(screen)?.[1];
-}
 
 test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued input", {
   skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
@@ -114,23 +108,19 @@ test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued
     queued.catch(() => {});
     await waitForCondition(
       active,
-      () => skipDigit(screen()) !== undefined,
+      () => offerSkipDigit(screen()) !== undefined,
       "the update offer",
       OFFER_MS,
     );
     await delay(HOLD_MS);
-    // On failure, show the marked rows each refused write was aimed at.
     assert.deepEqual(
-      input.refused.map(({ data, screen: met }) => ({
-        data,
-        marked: met.split("\n").filter((row) => /^\s*›/.test(row)),
-      })),
+      refusedAtMarkedRows(input.refused),
       [],
       "no application input may be written while the update offer is on screen",
     );
     assert.equal(settled, false, "the queued message stays queued");
     assert.notEqual(active.status, "ready");
-    const skip = skipDigit(screen());
+    const skip = offerSkipDigit(screen());
     assert.ok(skip !== undefined, "the offer is still on screen");
 
     // The host answers the offer itself; the held message then drains to a real turn.
