@@ -7,14 +7,13 @@ import { settledLiveSnapshot } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { tty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { claudeWorkspaceTrustScreen } from "../helpers/claude-workspace-trust-screen.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
-const capture = capturedFrame("claude-2.1.310/folder-trust-no").trimEnd();
 const width = 189;
-const disclosedPath = "/tmp/ELWOOD_CAPTURE/project";
 
-function launchScope(cwd: string, targetPath = cwd) {
-  const terminal = createHeadlessTerminal({ cols: width, rows: 32 }, () => undefined);
+function launchScope(cwd: string, targetPath = cwd, cols = width) {
+  const terminal = createHeadlessTerminal({ cols, rows: 32 }, () => undefined);
   const match = createClaudeWorkspaceTrustMenuMatcher({
     physicalLaunchPath: cwd,
     targetPath,
@@ -27,7 +26,7 @@ function launchScope(cwd: string, targetPath = cwd) {
     return menu && { ...menu.target, choices: menu.dialog.options };
   };
   const render = (screen: string) => terminal.writeOutput(`\x1b[2J\x1b[H${tty(screen)}`);
-  return { terminal, read, render, menu: capture.replace(disclosedPath, cwd) };
+  return { terminal, read, render, menu: claudeWorkspaceTrustScreen(cwd) };
 }
 
 test("C-ATTN-07 Claude disclosure shows the verified scope and native choices", async () => {
@@ -65,6 +64,73 @@ test.each([
   const { terminal, read, render, menu } = launchScope(cwd);
   try {
     await render(change(menu, cwd));
+    expect(read()).toBeUndefined();
+  } finally {
+    terminal.dispose();
+  }
+});
+
+const narrowedWidth = 100;
+const pathRowWithNativeInset = (fragment: string) => `\x1b[2G${fragment}`;
+const wrappedPath = `/${"a".repeat(97)}z`;
+
+test.each([
+  ["ASCII", wrappedPath.slice(0, 98)],
+  ["wide boundary cell", `/${"a".repeat(95)}界`],
+])("C-ATTN-07 Claude lists a cell-verified renderer-wrapped path with %s", async (_kind, prefix) => {
+  const cwd = `${prefix}z`;
+  const { terminal, read, render, menu } = launchScope(cwd, cwd, narrowedWidth);
+  try {
+    const rows = [pathRowWithNativeInset(prefix), pathRowWithNativeInset("z")];
+    await render(menu.replace(` ${cwd}`, rows.join("\n")));
+    expect(read()).toMatchObject({ targetPath: cwd, targetScope: "folder" });
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test.each([
+  [
+    "an early line break",
+    (path: string) => [
+      pathRowWithNativeInset(path.slice(0, 97)),
+      pathRowWithNativeInset(path.slice(97)),
+    ],
+  ],
+  [
+    "a substituted continuation",
+    (path: string) => [pathRowWithNativeInset(path.slice(0, 98)), pathRowWithNativeInset("y")],
+  ],
+  [
+    "a full right margin",
+    (path: string) => [
+      pathRowWithNativeInset(`${path.slice(0, 98)} `),
+      pathRowWithNativeInset(path.slice(98)),
+    ],
+  ],
+  [
+    "a wide character occupying the right margin",
+    (path: string) => [
+      pathRowWithNativeInset(`${path.slice(0, 97)}界`),
+      pathRowWithNativeInset("z"),
+    ],
+  ],
+  [
+    "a literal indent",
+    (path: string) => [` ${path.slice(0, 98)}`, pathRowWithNativeInset(path.slice(98))],
+  ],
+  [
+    "a blank intervening row",
+    (path: string) => [
+      pathRowWithNativeInset(path.slice(0, 98)),
+      "",
+      pathRowWithNativeInset(path.slice(98)),
+    ],
+  ],
+])("C-ATTN-07 rejects a wrapped Claude disclosure with %s", async (_reason, pathRows) => {
+  const { terminal, read, render, menu } = launchScope(wrappedPath, wrappedPath, narrowedWidth);
+  try {
+    await render(menu.replace(` ${wrappedPath}`, pathRows(wrappedPath).join("\n")));
     expect(read()).toBeUndefined();
   } finally {
     terminal.dispose();

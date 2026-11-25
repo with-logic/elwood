@@ -1,8 +1,8 @@
 /** Match Claude's native workspace trust disclosure to a checked launch (C-ATTN-07). */
+import type { IBufferCell } from "@xterm/headless";
 import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
-import type { TrustPromptIdFor } from "../../core/trust/prompts.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
-import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
+import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";
 import { hasUnwrappedRowEndPadding } from "../../terminal/snapshot.ts";
 import type { ClaudeLaunchTrustEvidence } from "./target.ts";
 
@@ -19,20 +19,16 @@ export type WorkspaceTrustFrame = {
   readonly frame: TerminalSnapshot;
   readonly menu: MatchedWorkspaceTrustMenu;
   readonly identity: string;
-  readonly verifyTarget: ClaudeLaunchTrustEvidence["isCurrent"];
+  readonly revalidateLaunchEvidence: ClaudeLaunchTrustEvidence["isCurrent"];
 };
 
-export function createClaudeWorkspaceTrustFrameMatcher(
-  evidence: ClaudeLaunchTrustEvidence,
-  humanOwnedPrompt: () => TrustPromptIdFor<"claude"> | undefined,
-) {
+export function createClaudeWorkspaceTrustFrameMatcher(evidence: ClaudeLaunchTrustEvidence) {
   const match = createClaudeWorkspaceTrustMenuMatcher(evidence.scope);
   return (terminal: ElwoodTerminal, frame: TerminalSnapshot): WorkspaceTrustFrame | undefined => {
-    if (humanOwnedPrompt() !== "workspace_trust") return undefined;
     const menu = match(terminal, frame);
     if (!menu) return undefined;
     const identity = workspaceTrustMenuIdentity(menu);
-    return { frame, menu, identity, verifyTarget: evidence.isCurrent };
+    return { frame, menu, identity, revalidateLaunchEvidence: evidence.isCurrent };
   };
 }
 
@@ -50,26 +46,53 @@ export function createClaudeWorkspaceTrustMenuMatcher(scope: ClaudeLaunchTrustEv
     )
       return undefined;
 
-    // The parser and xterm use live-viewport rows. Retain the prelude's start
-    // to verify cells on the same row as the full displayed path.
     const firstRow = Math.max(0, candidate.headerRow - workspacePreludeRows);
     const prelude = frame.lines.slice(firstRow, candidate.headerRow);
     const heading = prelude.findIndex((row) => row.trim() === "Accessing workspace:");
     if (heading < 0) return undefined;
     const details = prelude.slice(heading + 1);
-    const pathRow = details.findIndex((row) => row.trim().length > 0);
-    if (
-      pathRow < 0 ||
-      details[pathRow]!.trimStart() !== scope.physicalLaunchPath ||
-      details.slice(pathRow + 1).some((row) => row.trim().length > 0)
-    )
-      return undefined;
-    const viewportRow = firstRow + heading + 1 + pathRow;
-    if (!hasUnwrappedRowEndPadding(terminal.xterm, { viewportRow, rightInsetColumns: 0 }))
+    const firstPathRow = details.findIndex((row) => row.trim().length > 0);
+    if (firstPathRow < 0) return undefined;
+    const lastPathRow = details.findLastIndex((row) => row.trim().length > 0);
+    const pathRows = details.slice(firstPathRow, lastPathRow + 1);
+    const viewportRow = firstRow + heading + 1 + firstPathRow;
+    if (!matchesWorkspacePath(terminal.xterm, viewportRow, pathRows, scope.physicalLaunchPath))
       return undefined;
     const { targetPath, targetScope } = scope;
     return { target: { targetPath, targetScope }, dialog: candidate.dialog };
   };
+}
+
+function matchesWorkspacePath(
+  xterm: XtermTerminal,
+  firstRow: number,
+  rows: readonly string[],
+  expectedPath: string,
+): boolean {
+  const lastRow = firstRow + rows.length - 1;
+  if (!hasUnwrappedRowEndPadding(xterm, { viewportRow: lastRow, rightInsetColumns: 0 }))
+    return false;
+  if (rows.length === 1) return rows[0]?.trimStart() === expectedPath;
+
+  // Claude's renderer wraps at the two margins, rather than using xterm's
+  // soft wrap. Each nonfinal row must fill the whole payload width.
+  const buffer = xterm.buffer.active;
+  const rightMargin = xterm.cols - 1;
+  const exactMargins = rows.every((_, offset) => {
+    const line = buffer.getLine(buffer.baseY + firstRow + offset);
+    if (line?.isWrapped !== false || !isUnusedCell(line.getCell(0))) return false;
+    if (offset === rows.length - 1) return true;
+    const payloadEnd = line.getCell(rightMargin - 1);
+    return (
+      isUnusedCell(line.getCell(rightMargin)) &&
+      (payloadEnd?.getWidth() === 0 || Boolean(payloadEnd?.getChars()))
+    );
+  });
+  return exactMargins && rows.map((row) => row.slice(1)).join("") === expectedPath;
+}
+
+function isUnusedCell(cell: IBufferCell | undefined): boolean {
+  return cell?.getChars() === "" && cell.getWidth() === 1;
 }
 
 function hasWorkspaceMenu(frame: TerminalSnapshot, candidate: TrustCandidate): boolean {

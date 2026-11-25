@@ -35,6 +35,7 @@ import type { ClaudeLaunchTrustEvidence } from "../workspace-trust/target.ts";
 export type ClaudeLaunchOptions = StartClaudeOptions & {
   readonly env: ChildEnvironment;
   readonly launchDirectory: CheckedLaunchDirectory;
+  readonly workspaceTrustEvidence: ClaudeLaunchTrustEvidence | undefined;
 };
 
 export type BuildClaudeSessionInput = {

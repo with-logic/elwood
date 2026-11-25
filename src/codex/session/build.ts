@@ -1,9 +1,10 @@
 /** Builds a live CodexSessionApi from a record + runtime. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
+
+import { startHookBridge } from "../../bridge/start.ts";
 import type * as activity from "../../core/activity/index.ts";
 import { activityFromTerminalExit as terminalExitActivity } from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
-import { causeDetails, elwoodError } from "../../core/errors.ts";
 import { emitSettledStartupOutcomes as emitSettledStartup } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../../core/turn-state.ts";
@@ -64,15 +65,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     async (hook) => dispatchHook(hook, emitter, options, record, session),
     buildCodexHookErrorHandler(record, emitter, () => session),
   );
-  try {
-    await bridge.start();
-  } catch (error) {
-    await bridge.stop().catch(() => undefined);
-    throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
-      ...causeDetails(error),
-      socketPath: runtime.socketPath,
-    });
-  }
+  await startHookBridge(bridge, runtime.socketPath);
   const launched = await spawnCodexPty(record, runtime, options, () =>
     wired.seedResume(runtime.sessionDir, record.codex.resumeId, runtime.stateOwnership.readFile),
   ).catch(async (error: unknown) => {

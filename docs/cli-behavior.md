@@ -663,6 +663,16 @@ In a linked worktree, Claude uses the main checkout and treats backslashes as
 separators when checking registration. Ambiguous registration stays outside
 structured discovery. C-ATTN-07.
 
+**Claude 2.1.331 and 2.1.332 wrap long launch disclosures at 100 columns.**
+The first physical row of the captured 2.1.331 menu filled columns 2 through
+99, with untouched padding at columns 1 and 100. Claude painted the remainder
+on the next row with the same left indent. Both rows were independent xterm
+buffer lines. At 140 columns the same path fit on one row. Discovery accepts
+the wrapped layout when each continuation starts at the native indent,
+nonfinal rows fill their payload columns, and the final row has two untouched
+cells on the right. The visible fragments must reconstruct the exact checked
+path. C-ATTN-07.
+
 The workspace gate is independent of tool permission policy: it still appears
 under both `--permission-mode bypassPermissions` and the exact
 `--dangerously-skip-permissions` flag (verified against 2.1.252). A matcher MUST:

@@ -22,6 +22,7 @@ import {
 } from "../../state/launch-posture.ts";
 import { defaultStateDir, readSessionRecord, sessionDir } from "../../state/store.ts";
 import { preflightClaude } from "../preflight.ts";
+import { captureClaudeStartupTrustEvidence } from "../workspace-trust/target.ts";
 import { startClaudeFromRecord } from "./index.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 
@@ -63,6 +64,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
     // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
     const launch = effectivePosture(record.claude.launch, claudeLaunchPosture(options));
     const resumedRecord = withClaudeLaunch(record, launch);
+    const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(directory);
     const session = await recheckLaunchDirectoryOnFailure(directory, () =>
       startClaudeFromRecord(
         resumedRecord,
@@ -71,6 +73,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
           cwd,
           stateDir,
           launchDirectory: directory,
+          workspaceTrustEvidence,
           env: options.env,
           ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
           ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),

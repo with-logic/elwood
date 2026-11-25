@@ -24,16 +24,16 @@ type DiscoveryInput = {
 
 export class ClaudeWorkspaceTrustDiscovery {
   private open: Open | undefined;
-  private candidate: WorkspaceTrustFrame | undefined;
+  private sampled:
+    | { readonly frame: TerminalSnapshot; readonly candidate: WorkspaceTrustFrame | undefined }
+    | undefined;
   private readonly polling = new WorkspaceTrustPolling<"claude">();
   private readonly input: DiscoveryInput;
   private readonly match: ReturnType<typeof createClaudeWorkspaceTrustFrameMatcher> | undefined;
 
   constructor(input: DiscoveryInput) {
     this.input = input;
-    this.match =
-      input.evidence &&
-      createClaudeWorkspaceTrustFrameMatcher(input.evidence, input.humanOwnedPrompt);
+    this.match = input.evidence && createClaudeWorkspaceTrustFrameMatcher(input.evidence);
   }
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal): void {
@@ -42,7 +42,7 @@ export class ClaudeWorkspaceTrustDiscovery {
 
   endDiscovery(): void {
     this.polling.end();
-    this.candidate = undefined;
+    this.sampled = undefined;
     this.open = undefined;
   }
 
@@ -61,11 +61,13 @@ export class ClaudeWorkspaceTrustDiscovery {
       this.endDiscovery();
       return undefined;
     }
-    const candidate =
-      this.candidate?.frame === frame && this.input.humanOwnedPrompt() === "workspace_trust"
-        ? this.candidate
-        : this.match(terminal, frame);
-    this.candidate = candidate;
+    if (this.input.humanOwnedPrompt() !== "workspace_trust") {
+      this.open = undefined;
+      return undefined;
+    }
+    if (this.sampled?.frame !== frame)
+      this.sampled = { frame, candidate: this.match(terminal, frame) };
+    const { candidate } = this.sampled;
     if (!candidate || (this.open && this.open.identity !== candidate.identity))
       this.open = undefined;
     return candidate;
@@ -74,7 +76,7 @@ export class ClaudeWorkspaceTrustDiscovery {
   private async read(): Promise<VerifiedWorkspaceTrust<"claude"> | undefined> {
     const candidate = this.reconcile();
     if (!candidate) return undefined;
-    return await this.polling.read(candidate.frame, candidate.verifyTarget, (proved) =>
+    return await this.polling.read(candidate.frame, candidate.revalidateLaunchEvidence, (proved) =>
       this.acceptProof(candidate, proved),
     );
   }
@@ -83,7 +85,11 @@ export class ClaudeWorkspaceTrustDiscovery {
     { frame, menu, identity }: WorkspaceTrustFrame,
     proved: boolean | undefined,
   ): VerifiedWorkspaceTrust<"claude"> | undefined {
-    if (proved === false) this.endDiscovery();
+    // A completed Claude mismatch revokes the captured launch even after a repaint.
+    if (proved === false) {
+      this.endDiscovery();
+      return undefined;
+    }
     if (!this.isFrameCurrent(frame)) return undefined;
     if (proved === undefined) {
       this.endDiscovery();

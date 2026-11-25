@@ -86,6 +86,7 @@ export async function startClaudeWithId(
       env: options.env,
     }),
   );
+  const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(directory);
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {
       cwd: options.cwd,
@@ -98,7 +99,7 @@ export async function startClaudeWithId(
     return startClaudeFromRecord(
       record,
       stateDir,
-      { ...options, launchDirectory: directory },
+      { ...options, launchDirectory: directory, workspaceTrustEvidence },
       false,
       warning,
     );
@@ -124,18 +125,16 @@ export function startClaudeFromRecord(
   );
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
-  // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure
+  // in this same synchronous turn. This keeps a stopping predecessor from deleting an
+  // empty home before we bind. Wrap the WHOLE build so ANY failure
   // before the session takes ownership releases THIS launch's own socket file, and the
   // shared home only if no concurrent launch's socket is in it (§8.1, §9.1). On success
   // ownership transfers to the returned session; teardown removes the whole home.
   return withLaunchOwnership(
     safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
-    async (owner, activate) => {
-      // Keep socket-home creation and the start of bridge binding in one synchronous turn.
-      const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(
-        options.launchDirectory,
-      );
+    (owner, activate) => {
+      owner.assertCurrent();
       const runtime = sessionRuntime(
         {
           stateDir,
@@ -155,7 +154,7 @@ export function startClaudeFromRecord(
             resumed,
             preflightWarning,
             activate,
-            workspaceTrustEvidence,
+            workspaceTrustEvidence: options.workspaceTrustEvidence,
           }),
       );
     },
