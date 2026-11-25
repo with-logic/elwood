@@ -37,9 +37,8 @@ export type ReadinessGate = {
 
 /**
  * An adapter's `composer.configured`, when supplied, proves a rendered composer belongs
- * to a configured session rather than to the boot screen (Codex's native status footer). The
- * initial deadline then marks only onto such a frame (C-API-28). The latest frame is
- * checked only when readiness asks, never on every render.
+ * to a configured session. The initial deadline then marks only onto such a frame
+ * (C-API-28). The latest frame is checked only when readiness asks.
  */
 export function createReadinessGate(
   onReady: () => void,
@@ -66,8 +65,8 @@ export function createReadinessGate(
       (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
     latest = { facts, frame, cols };
   };
-  // Work may animate forever (a failing MCP server's retry spinner), so only the
-  // configured composer itself, not idleness, is required before the deadline marks.
+  // Claude verifies an idle composer. Codex can verify its configured composer
+  // during background work such as an MCP server retry.
   let evidence: ConfiguredComposerEvidence | undefined;
   if (composer) {
     const shown = () =>

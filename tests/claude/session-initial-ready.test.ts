@@ -144,6 +144,11 @@ test.each([
   await vi.advanceTimersByTimeAsync(1_000);
   expect(ptys[0]!.writes).toEqual([]);
 
+  await paint(session, claudeTty(claudeComposer, false));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(session.status).toBe("running");
+  expect(ptys[0]!.writes).toEqual([]);
+
   await paint(session, claudeTty(claudeComposer));
   await vi.advanceTimersByTimeAsync(500);
   await sent;
@@ -159,4 +164,27 @@ test("C-ATTN-06 the Claude backstop keeps recognized workspace trust on its atte
   expect(warnings).toEqual([expect.objectContaining({ code: "initial_ready_backstop" })]);
   expect(activities.some(({ kind }) => kind === "unrecognized_startup")).toBe(false);
   expect(ptys[0]!.writes).toEqual([]);
+});
+
+test("C-ATTN-06 Claude delivers startup diagnostics before listener-initiated exit", async () => {
+  const { session } = await startObservedSession();
+  const order: string[] = [];
+  let stopped: Promise<void> | undefined;
+  session.on("activity", (event) => {
+    if (event.kind === "unrecognized_startup") {
+      order.push("first screen listener");
+      stopped = session.stop();
+    }
+  });
+  session.on("activity", (event) => {
+    if (event.kind === "unrecognized_startup") order.push("second screen listener");
+  });
+  session.on("warning", (event) => {
+    if (event.code === "initial_ready_backstop") order.push("warning");
+  });
+  session.on("terminal:exit", () => order.push("exit"));
+  await paint(session, tty(themePicker));
+  await vi.advanceTimersByTimeAsync(60_000);
+  await stopped;
+  expect(order).toEqual(["first screen listener", "second screen listener", "warning", "exit"]);
 });

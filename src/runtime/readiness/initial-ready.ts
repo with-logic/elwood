@@ -128,9 +128,8 @@ export function initialReady(
     mark,
     retryWhenReleased: (readinessHeld) => {
       if (ready || readinessHeld) return;
-      // A hold-deferred mark retries once the hold releases; a deadline that expired
-      // before the configured composer retries on the first frame showing it, even
-      // while work is on screen.
+      // A hold-deferred mark retries when the hold releases. A deadline waiting on
+      // composer evidence retries when the adapter verifies that composer.
       if (deferredByHold || (awaitingComposer && isComposerConfigured())) mark();
     },
     replay: () => void (!cancelled && ready && callback()),

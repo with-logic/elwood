@@ -128,8 +128,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
-      readiness.captureStartupScreen(renderedTerminal);
-      const { text, cols } = cachedLiveSnapshot(renderedTerminal);
+      const { text, cols } = readiness.observeStartupFrame(renderedTerminal);
       const frame = { text, cols, title: renderedTerminal.title };
       const send = (input: string) =>
         withAutomatedInput(renderedTerminal, () => callerInput.automation(input));

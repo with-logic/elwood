@@ -121,9 +121,8 @@ Elwood queues it and submits it on the next `ready` transition.
 prompt. It does not wait for `ready`: it dispatches as soon as no other
 submission is in flight, like a human typing into the TUI. It may overtake
 readiness-waiting messages but never interleaves with an in-flight paste/Enter
-sequence. After Codex's `initial_ready_backstop` warning, it also waits for a
-configured composer or readiness hook, so its bypass cannot type into an unknown
-startup screen.
+sequence. After either adapter emits `initial_ready_backstop`, the write waits
+for a configured composer or readiness hook.
 
 `sendGuidance` is for a coordinator intervening in an active turn. It queues
 before the session's first readiness and while a blocking dialog is visible.

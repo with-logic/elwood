@@ -17,8 +17,7 @@ export function createCodexReadinessGate(
   events: Pick<TypedEmitter<CodexEventMap>, "emit">,
 ) {
   return createStartupReadinessGate(onReady, resumed, {
-    agent: "codex",
-    elwoodSessionId,
+    session: { agent: "codex", elwoodSessionId },
     configured: codexComposerConfigured,
     warnings,
     events,
