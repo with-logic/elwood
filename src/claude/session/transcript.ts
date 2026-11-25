@@ -100,6 +100,7 @@ export function createTranscriptWatcher(
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
     (event) => {
+      if (event.usageLimit !== undefined) route(event.usageLimit);
       const projected = activity.activityFromClaudeTranscript(event);
       const deliver = () => duringDelivery(() => emitter.emit("activity", projected));
       if (event.summary.kind !== "user_message") {
