@@ -1,18 +1,19 @@
-/** Exercises the committed-history range selected by the secret scan workflow. */
+/** Exercises committed-history range selection and finding handling for PRD §16. */
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
-const workflow = readFileSync(
-  new URL("../../.github/workflows/secret-scan.yml", import.meta.url),
-  "utf8",
-);
-const rangeScript =
-  / +id: scan\n[\s\S]*? +run: \|\n([\s\S]+?)\n +# End scan range selection\./u.exec(workflow)?.[1];
-if (!rangeScript) throw new Error("The scan step must select its range before creating reports.");
+import {
+  commit,
+  dockerWithFinding,
+  git,
+  rangeScript,
+  scanScript,
+  workflow,
+} from "./secret-scan-fixture.mjs";
 
 const scratch = mkdtempSync(join(tmpdir(), "elwood-secret-scan-"));
 const seed = join(scratch, "seed");
@@ -23,29 +24,6 @@ let defaultTip;
 let previousTip;
 let mergeBaseSha;
 let head;
-
-function git(cwd, ...args) {
-  return execFileSync(
-    "git",
-    [
-      "-c",
-      "user.name=Fixture",
-      "-c",
-      "user.email=fixture@example.test",
-      "-c",
-      "commit.gpgsign=false",
-      "-c",
-      "core.hooksPath=/dev/null",
-      ...args,
-    ],
-    { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  ).trim();
-}
-
-function commit(cwd, message) {
-  git(cwd, "commit", "--allow-empty", "-m", message);
-  return git(cwd, "rev-parse", "HEAD");
-}
 
 before(() => {
   git(scratch, "init", "--initial-branch=main", seed);
@@ -62,24 +40,25 @@ before(() => {
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
-function resolveRange({ base, event = "push", forced = "false", ref = "refs/heads/feature" }) {
-  const result = spawnSync(
-    "bash",
-    ["-c", `${rangeScript}\nprintf "%s\\n" "$range" "$is_full_history_scan"`],
-    {
-      cwd: checkout,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        GITHUB_EVENT_NAME: event,
-        GITHUB_REF: ref,
-        SCAN_BASE: base,
-        SCAN_DEFAULT_BRANCH: "main",
-        SCAN_HEAD: head,
-        SCAN_PUSH_FORCED: forced,
-      },
+function runScan(
+  { base, event = "push", forced = "false", ref = "refs/heads/feature" },
+  script = `${rangeScript}\nprintf "%s\\n" "$range" "$is_full_history_scan"`,
+  extraEnv = {},
+) {
+  const result = spawnSync("bash", ["-c", script], {
+    cwd: checkout,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_EVENT_NAME: event,
+      GITHUB_REF: ref,
+      SCAN_BASE: base,
+      SCAN_DEFAULT_BRANCH: "main",
+      SCAN_HEAD: head,
+      SCAN_PUSH_FORCED: forced,
+      ...extraEnv,
     },
-  );
+  });
   if (result.error) throw result.error;
   return result;
 }
@@ -93,39 +72,54 @@ test("the workflow binds the GitHub push force flag to the range selector", () =
 
 test("force-pushed branch scans from its actual merge base when the old tip is absent", () => {
   assert.throws(() => git(checkout, "cat-file", "-e", previousTip));
-  const result = resolveRange({ base: previousTip, forced: "true" });
+  const result = runScan({ base: previousTip, forced: "true" });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, `${mergeBaseSha}..${head}\nfalse\n`);
   assert.ok(result.stderr.includes(`default-branch merge base ${mergeBaseSha}`));
 });
 
-test("an available base still defines the exact pushed or review range", () => {
-  for (const event of ["push", "pull_request", "pull_request_target", "merge_group"]) {
-    const result = resolveRange({ base: forkPoint, event, forced: "true" });
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, `${forkPoint}..${head}\nfalse\n`);
-  }
+test("a finding in the force-push fallback range fails the scan step", () => {
+  const outputFile = join(scratch, "fallback-scan-output");
+  const result = runScan(
+    { base: previousTip, forced: "true" },
+    `${dockerWithFinding}\n${scanScript}`,
+    {
+      EXPECTED_SCAN_RANGE: `${mergeBaseSha}..${head}`,
+      GITHUB_OUTPUT: outputFile,
+      GITHUB_WORKSPACE: checkout,
+      GITLEAKS_IMAGE: "fixture",
+    },
+  );
+  assert.equal(result.status, 20, result.stderr);
+  assert.equal(readFileSync(outputFile, "utf8"), "finding-count=1\n");
 });
 
-test("missing base fails outside a confirmed force-push to a non-default branch", () => {
-  const cases = [
-    {},
-    { forced: "true", ref: "refs/heads/main" },
-    { forced: "true", ref: "refs/tags/v0.7.0" },
-    { forced: "true", event: "pull_request" },
-    { forced: "true", event: "pull_request_target" },
-    { forced: "true", event: "merge_group" },
-  ];
-  for (const event of cases) {
-    const result = resolveRange({ base: previousTip, ...event });
-    assert.equal(result.status, 1, JSON.stringify(event));
+for (const event of ["push", "pull_request", "pull_request_target", "merge_group"]) {
+  test(`${event} uses the exact range when the base is available`, () => {
+    const result = runScan({ base: forkPoint, event, forced: "true" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, `${forkPoint}..${head}\nfalse\n`);
+  });
+}
+
+for (const [label, event] of [
+  ["ordinary feature push", {}],
+  ["forced default-branch push", { forced: "true", ref: "refs/heads/main" }],
+  ["forced tag push", { forced: "true", ref: "refs/tags/v0.7.0" }],
+  ["pull_request", { forced: "true", event: "pull_request" }],
+  ["pull_request_target", { forced: "true", event: "pull_request_target" }],
+  ["merge_group", { forced: "true", event: "merge_group" }],
+]) {
+  test(`${label} fails when the required base commit is unavailable`, () => {
+    const result = runScan({ base: previousTip, ...event });
+    assert.equal(result.status, 1);
     assert.match(result.stderr, /could not resolve the base commit/u);
-  }
-});
+  });
+}
 
 test("a non-commit object is never treated as a missing previous tip", () => {
   const tree = git(checkout, "rev-parse", "HEAD^{tree}");
-  const result = resolveRange({ base: tree, forced: "true" });
+  const result = runScan({ base: tree, forced: "true" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /could not resolve the base commit/u);
 });
@@ -136,7 +130,7 @@ test("a Git lookup error is never treated as a missing previous tip", () => {
   mkdirSync(directory, { recursive: true });
   writeFileSync(objectPath, "invalid fixture object");
   try {
-    const result = resolveRange({ base: previousTip, forced: "true" });
+    const result = runScan({ base: previousTip, forced: "true" });
     assert.equal(result.status, 1);
     assert.equal(result.stderr, "Secret scan could not resolve the base commit.\n");
   } finally {
@@ -144,43 +138,47 @@ test("a Git lookup error is never treated as a missing previous tip", () => {
   }
 });
 
-test("malformed or absent event bases fail before selecting a scan range", () => {
-  const events = [
-    { event: "push", ref: "refs/heads/main" },
-    { event: "push", forced: "true" },
-    { event: "pull_request" },
-    { event: "pull_request_target" },
-    { event: "merge_group" },
-  ];
-  for (const event of events) {
-    for (const base of ["", "HEAD"]) {
-      const result = resolveRange({ base, ...event });
-      assert.equal(result.status, 1, JSON.stringify({ base, event }));
-      assert.equal(result.stdout, "");
-    }
-  }
-});
-
-test("first pushes and manual audits retain their scan ranges", () => {
-  const branch = resolveRange({ base: zeroSha });
-  assert.equal(branch.status, 0, branch.stderr);
-  assert.equal(branch.stdout, `${mergeBaseSha}..${head}\nfalse\n`);
-
-  for (const event of [
-    { base: zeroSha, ref: "refs/heads/main" },
-    { base: zeroSha, ref: "refs/tags/v0.7.0" },
-    { base: "", event: "workflow_dispatch" },
+for (const [label, event] of [
+  ["default-branch push", { event: "push", ref: "refs/heads/main" }],
+  ["forced feature push", { event: "push", forced: "true" }],
+  ["pull_request", { event: "pull_request" }],
+  ["pull_request_target", { event: "pull_request_target" }],
+  ["merge_group", { event: "merge_group" }],
+]) {
+  for (const [kind, base] of [
+    ["an empty", ""],
+    ["a malformed", "HEAD"],
   ]) {
-    const full = resolveRange(event);
-    assert.equal(full.status, 0, full.stderr);
-    assert.equal(full.stdout, `${head}\ntrue\n`);
+    test(`${label} fails with ${kind} base`, () => {
+      const result = runScan({ base, ...event });
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, "");
+    });
   }
+}
+
+test("a first feature push scans the branch range", () => {
+  const result = runScan({ base: zeroSha });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, `${mergeBaseSha}..${head}\nfalse\n`);
 });
+
+for (const [label, event] of [
+  ["first default-branch push", { base: zeroSha, ref: "refs/heads/main" }],
+  ["new tag push", { base: zeroSha, ref: "refs/tags/v0.7.0" }],
+  ["manual audit", { base: "", event: "workflow_dispatch" }],
+]) {
+  test(`${label} scans the full history`, () => {
+    const result = runScan(event);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, `${head}\ntrue\n`);
+  });
+}
 
 test("a force-push fails if the fetched default branch cannot supply a merge base", () => {
   git(checkout, "update-ref", "-d", "refs/remotes/origin/main");
   try {
-    const result = resolveRange({ base: previousTip, forced: "true" });
+    const result = runScan({ base: previousTip, forced: "true" });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /could not resolve the default-branch merge base/u);
   } finally {
