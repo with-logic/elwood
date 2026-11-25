@@ -15,6 +15,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Let Claude session callers answer a verified workspace trust request with
   `answerDialog()` and wait for native acceptance or exit.
 
+- Preserve caller control when raw input reaches Codex’s settled native workspace
+  trust prelude before the choices appear.
+
 - Emit typed Claude workspace trust lifecycle events and replay an active
   request to new listeners after verification. Listener failures emit a
   content-free warning and warning activity once per session.

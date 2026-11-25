@@ -11,7 +11,6 @@ import { TrustAttempt } from "./write.ts";
 
 export type { TrustPromptAutomation, TrustPromptResult, TrustWriteResult } from "./types.ts";
 export { trustPromptVisible } from "./view.ts";
-
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private episode: Episode | undefined;
   private humanPrompt: TrustPromptId | undefined;
@@ -54,6 +53,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const priorIdentity = this.episode?.lastIdentity;
     const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
+    if (this.hooks.claimCallerOwnership?.(view)) this.callerInput();
     // A rendered frame is evidence for the gate's next attempt as well as its current one.
     if (this.episode !== undefined) this.episode.phase.renderedSinceWrite = true;
     this.episode?.attempt?.wake();

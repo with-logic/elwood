@@ -20,10 +20,10 @@ export function menuWithQuitSelected(cwd: string): string {
   return menu(cwd).replace("› 1.", "  1.").replace("  2.", "› 2.");
 }
 
-export async function setup() {
+export async function setup(options?: { readonly autotrust?: boolean }) {
   installFakes();
   const cwd = realpathSync.native(tempDir());
-  const session = await startCodex({ cwd });
+  const session = await startCodex({ cwd, ...options });
   const pty = ptys[0]!;
   const render = async (text: string) => {
     pty.emitData(clear + text);
