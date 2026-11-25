@@ -38,7 +38,7 @@ test("C-API-28 a resume marks ready on the configured composer, not the marker",
   gate.observeReadinessFrame(facts(placeholder), false, placeholder, 100);
   gate.observeReadinessFrame(facts(offer), false, offer, 100);
   expect(ready).toBe(0);
-  expect(gate.isHeld()).toBe(false);
+  expect(gate.holdsReadiness()).toBe(false);
   gate.observeReadinessFrame(facts(skipped), false, skipped, 100);
   expect(ready).toBe(1);
 });
@@ -54,10 +54,10 @@ test("C-API-28 a resume's deadline also waits out the offer for the configured c
     gate.observeReadinessFrame(facts(offer), false, offer, 100);
     expect(ready).toBe(0);
     vi.advanceTimersByTime(1);
-    expect(gate.isHeld()).toBe(true);
+    expect(gate.holdsReadiness()).toBe(true);
     gate.observeReadinessFrame(facts(skipped), false, skipped, 100);
     expect(ready).toBe(1);
-    expect(gate.isHeld()).toBe(false);
+    expect(gate.holdsReadiness()).toBe(false);
   } finally {
     vi.useRealTimers();
   }

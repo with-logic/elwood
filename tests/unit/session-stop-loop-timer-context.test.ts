@@ -52,6 +52,7 @@ for (const agent of ["claude", "codex"] as const) {
       );
     });
     try {
+      helper.showComposer(pty);
       await session.sendPrompt("prior turn");
       await pty.dispatchHook(session.elwoodSessionId, {
         hook_event_name: "Stop",

@@ -21,14 +21,14 @@ test("C-API-28 a resume caret cannot release the backstop hold without configure
   gate.ready.armDeadline();
   vi.advanceTimersByTime(60_000);
   expect(warning).toHaveBeenCalledOnce();
-  expect(gate.isHeld()).toBe(true);
+  expect(gate.holdsReadiness()).toBe(true);
   const idle = { composer_visible: true, blocking_prompt_visible: false };
   gate.observeReadinessFrame(idle, false, "unidentified caret");
   expect(callback).not.toHaveBeenCalled();
-  expect(gate.isHeld()).toBe(true);
+  expect(gate.holdsReadiness()).toBe(true);
   gate.observeReadinessFrame(idle, false, "configured composer");
   expect(callback).toHaveBeenCalledOnce();
-  expect(gate.isHeld()).toBe(false);
+  expect(gate.holdsReadiness()).toBe(false);
 });
 
 test("C-API-28 a throwing Claude readiness observer remains retryable after the backstop", () => {
@@ -44,4 +44,22 @@ test("C-API-28 a throwing Claude readiness observer remains retryable after the 
   fail = false;
   ready.mark();
   expect(callback).toHaveBeenCalledTimes(3);
+});
+
+test("C-API-28 the backstop does not re-hold writes once a configured composer was seen", () => {
+  vi.useFakeTimers();
+  const gate = createReadinessGate(() => {}, false, {
+    configured: (frame) => frame === "configured composer",
+    onBackstop: () => {},
+  });
+  const idle = { composer_visible: true, blocking_prompt_visible: false };
+  gate.observeReadinessFrame(idle, false, "configured composer");
+  expect(gate.holdsWrites()).toBe(false);
+  // The write's own draft is no configured composer, so the deadline cannot mark onto it.
+  gate.observeReadinessFrame(idle, false, "draft");
+  gate.ready.armDeadline();
+  vi.advanceTimersByTime(60_000);
+  expect(gate.holdsReadiness()).toBe(true);
+  expect(gate.holdsWrites()).toBe(false);
+  gate.ready.cancel();
 });

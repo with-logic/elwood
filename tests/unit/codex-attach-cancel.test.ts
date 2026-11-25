@@ -37,6 +37,8 @@ test("C-API-46 cancelled clipboard waiter settles before another session release
       expect(error).toMatchObject({ code: "image_attach_failed" });
     },
   );
+  // Past the write hold, the attach now waits for the lease.
+  await tick();
   abort.abort();
   await tick();
   try {
@@ -55,7 +57,9 @@ test("C-API-46 active cancellation waits for clipboard restoration before settli
   state.restores = 0;
   const abort = new AbortController();
   let settled = false;
-  const attach = attachCodexImages(terminal, ["/image.png"], abort.signal, () => true).catch(() => {
+  // A dialog appears once the attach owns the clipboard; a hold before that waits outside it.
+  const dialog = () => state.snapshots > 0;
+  const attach = attachCodexImages(terminal, ["/image.png"], abort.signal, dialog).catch(() => {
     settled = true;
   });
   await tick();

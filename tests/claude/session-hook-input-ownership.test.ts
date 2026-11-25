@@ -2,7 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import { isRecord } from "../../src/core/predicates.ts";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -13,6 +13,7 @@ test.each(["hook", "activity"] as const)("C-HOOK-22 %s cannot reroute Stop", asy
     cwd,
     hooks: { Stop: () => ({ decision: "block", reason: "wait" }) },
   });
+  showComposer();
   await session.sendPrompt("busy");
   let observed = 0;
   session.on(channel, (payload) => {

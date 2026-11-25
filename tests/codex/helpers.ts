@@ -24,6 +24,7 @@ import {
   setStartupWaitMsForTests,
 } from "../../src/runtime/startup/index.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { createScratchRegistry, FakePty } from "../helpers/fake-pty.ts";
 import { isolateFakeSocketHomes, removeFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
@@ -104,4 +105,13 @@ export function becomeReady(
     source: "startup",
     ...overrides,
   } satisfies CodexHookEventFor<"SessionStart">);
+}
+
+/**
+ * Paints Codex's configured composer. Before its first readiness a session writes a
+ * prompt or picker command only onto it (C-API-28), so tests that write before readiness
+ * show it first.
+ */
+export function showComposer(pty = ptys[0]!): void {
+  pty.emitData(codexTty(codexComposer));
 }

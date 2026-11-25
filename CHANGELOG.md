@@ -45,6 +45,12 @@ back each entry are listed in `prd/14-conformance.md`.
   0.171. A resumed session now reaches `ready` when the configured composer
   paints, in about two seconds rather than one.
 
+- Hold `sendPrompt`, `listModels`, `setModel` and Claude's `login` before a
+  session's first readiness until its configured composer appears. They bypass
+  the readiness queue, and until now only the 60-second backstop held them, so a
+  prompt sent at start could land on a startup screen Elwood does not recognize,
+  such as the update offer of Codex 0.171, and its Enter could choose `Update now`.
+
 - Read a session's live screen as text with `readScreen()` on the low-level
   Claude and Codex sessions, with optional scrollback, a cell cursor and the
   active buffer. It returns the live rows even when the host scrolled the

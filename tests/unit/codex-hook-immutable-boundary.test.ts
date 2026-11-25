@@ -5,7 +5,7 @@ import type { CodexEventMap } from "../../src/codex/session/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { startCodex } from "../../src/index.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "../codex/helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "../codex/helpers.ts";
 
 afterEach(resetFakes);
 
@@ -92,6 +92,7 @@ test("C-HOOK-23 blocked Stop stays running through the real Codex bridge", async
       const raw = event.raw as { result: object };
       Reflect.set(raw.result, "decision", "allow");
     });
+    showComposer();
     await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, { ...stop, cwd });
     expect(result.stdout).toBe('{"decision":"block","reason":"stay"}\n');

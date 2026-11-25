@@ -10,7 +10,7 @@ import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { claudeBody, tty } from "../fixtures/trust-composer.ts";
 import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -137,6 +137,7 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
+    showComposer();
     await session.sendPrompt("hello\nworld");
     const queued = session.sendMessage("again");
     expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~", "\r"]);

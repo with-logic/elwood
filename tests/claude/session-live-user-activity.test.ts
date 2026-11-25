@@ -1,6 +1,6 @@
 /** Claude only repairs a blank prompt from a directly matched committed user record (PRD §5.4). */
 import { afterEach, expect, test } from "vitest";
-import { ptys, resetFakes } from "./helpers.ts";
+import { ptys, resetFakes, showComposer } from "./helpers.ts";
 import { startActivitySession, user } from "./session-user-activity-helpers.ts";
 
 afterEach(resetFakes);
@@ -16,6 +16,7 @@ test("C-API-63 repairs an earlier blank hook once the matched text commits", asy
   try {
     append(user("historical", "old conversation"), user("baseline", "unmatched prior turn"));
     await hook({ hook_event_name: "SessionStart", source: "startup" });
+    showComposer();
     await session.sendPrompt("submitted from API");
     expect(await submit("first")).toMatchObject({ exitCode: 0 });
     expect(events).toContainEqual(

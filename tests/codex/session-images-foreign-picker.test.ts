@@ -28,6 +28,7 @@ vi.mock("../../src/codex/images/attach.ts", async (original) => {
 });
 
 const { startCodex } = await import("../../src/index.ts");
+const { unsafeWriteRetryMs } = await import("../../src/core/input/constants.ts");
 const { becomeReady, installFakes, ptys, resetFakes, tempDir } = await import("./helpers.ts");
 
 import { codexTty } from "../fixtures/trust-composer.ts";
@@ -58,14 +59,16 @@ test("C-API-44 image and text wait for a live model picker while history stays s
     await session.terminal.settled();
     const sent = session.sendMessage("caption", { images: [{ path: image }] });
     void sent.catch(() => undefined);
-    // The wrapper observes entry, then runs the real attachment implementation.
+    // The wrapper observes entry, then runs the real attachment implementation. The held
+    // attach waits before it takes the clipboard, so the user's clipboard is untouched.
     await expect.poll(() => attachment.entered).toBe(true);
-    await expect.poll(() => clipboard.images).toEqual([image]);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, unsafeWriteRetryMs * 2));
+    expect(clipboard.images).toEqual([]);
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty("› Ask Codex to do anything\n  gpt-5.5 high")}`);
     await session.terminal.settled();
     await expect.poll(() => ptys[0]!.writes).toEqual(["\u0016"]);
+    expect(clipboard.images).toEqual([image]);
     ptys[0]!.emitData("\u001b[999;1H\u001b[K› [Image #1]");
     await sent;
     expect(session.terminal.snapshot().text).toContain("Historical output");

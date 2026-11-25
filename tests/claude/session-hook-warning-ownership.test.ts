@@ -1,7 +1,7 @@
 /** Diagnostic observers cannot corrupt captured hook decisions (C-HOOK-22). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -12,6 +12,7 @@ test("C-HOOK-22 warning mutation cannot replace a validated Stop decision", asyn
     cwd,
     hooks: { Stop: () => ({ decision: "block", reason: "wait" }) },
   });
+  showComposer();
   await session.sendPrompt("busy");
   const warnings: unknown[] = [];
   const activities: unknown[] = [];

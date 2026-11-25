@@ -63,6 +63,32 @@ describe("C-API-28 createReadinessGate per-frame", () => {
     expect(ready).toBe(1);
   });
 
+  test("before readiness writes wait until a configured composer is seen; readiness does not", () => {
+    let shown = false;
+    const gate = createReadinessGate(() => {}, false, {
+      configured: () => shown,
+      onBackstop: () => {},
+    });
+    expect(gate.holdsWrites()).toBe(true); // no frame yet
+    gate.observeReadinessFrame(facts(true, false), false, "");
+    expect(gate.holdsWrites()).toBe(true); // a composer marker the adapter did not confirm
+    expect(gate.holdsReadiness()).toBe(false); // a readiness hook may still mark ready
+    shown = true;
+    expect(gate.holdsWrites()).toBe(false);
+    shown = false; // the operation's own draft or picker is no configured composer
+    expect(gate.holdsWrites()).toBe(false);
+    gate.observeReadinessFrame(facts(true, true), false, "");
+    expect(gate.holdsWrites()).toBe(true); // a dialog still holds every write
+    gate.ready.cancel();
+  });
+
+  test("before readiness a gate without adapter evidence holds every write", () => {
+    const gate = createReadinessGate(() => {}, false);
+    gate.observeReadinessFrame(facts(true, false), false, "");
+    expect(gate.holdsWrites()).toBe(true);
+    gate.ready.cancel();
+  });
+
   test("on RESUME without configured-composer evidence the marker never marks ready", () => {
     let ready = 0;
     const gate = createReadinessGate(() => ready++, true);
@@ -116,10 +142,10 @@ test("C-API-28 the current frame hold updates before deferred readiness is recon
   const gate = createReadinessGate(() => ready++, false);
   gate.observeFrameHold(facts(true, true), false, "");
   gate.ready.mark();
-  expect(gate.isHeld()).toBe(true);
+  expect(gate.holdsReadiness()).toBe(true);
   expect(ready).toBe(0);
   gate.observeFrameHold(facts(true), false, "");
-  expect(gate.isHeld()).toBe(false);
+  expect(gate.holdsReadiness()).toBe(false);
   expect(ready).toBe(0);
   gate.observeReadinessFrame(facts(true), false, "");
   expect(ready).toBe(1);

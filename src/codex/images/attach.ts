@@ -15,6 +15,7 @@ import {
   type ChipWaitOptions,
   sendObservedImage,
   waitForImageChip,
+  waitUntilAttachSafe,
 } from "../../core/images/chip-wait.ts";
 import { requestComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import {
@@ -47,6 +48,10 @@ export async function attachCodexImages(
 ): Promise<void> {
   if (!clipboardImageSupported())
     throw elwoodError("unsupported_platform", "Codex image attachment requires macOS.");
+  // A held write can wait out a startup screen for minutes. It waits before the lock, so
+  // it neither stalls other sessions' attaches nor leaves its image on the user's
+  // clipboard meanwhile; the Ctrl+V still re-checks under the lock (C-API-28/46).
+  await waitUntilAttachSafe(terminal, blocked, signal);
   await withClipboardLock(
     () => attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed),
     { signal, error: () => elwoodError("image_attach_failed", "Image attach aborted.") },

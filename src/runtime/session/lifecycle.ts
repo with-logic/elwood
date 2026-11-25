@@ -18,6 +18,7 @@ import { SessionLoops } from "./loops.ts";
 import { bindNativeInput } from "./native-submission.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import { PasteRecoveryRevocation } from "./paste-recovery.ts";
+import type { InitialReadinessHold } from "./readiness.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import type { SessionInputOwnership } from "./session-input.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
@@ -32,7 +33,7 @@ export abstract class SessionLifecycle {
   protected readonly controlQueue: ControlQueue;
   readonly stopCompletion = new StopCompletion(this);
   protected everReady = false;
-  private initialReadinessHeld: (() => boolean) | undefined;
+  private initialReadinessHold: InitialReadinessHold | undefined;
   inputBlocking = false;
   trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
@@ -138,26 +139,24 @@ export abstract class SessionLifecycle {
     this.closing.abort();
     return this.shutdown.teardown();
   }
-  startLoops(): void {
-    this.loops.start();
-  }
+  readonly startLoops = (): void => this.loops.start();
   readonly startupCleanupResources = (cancelReadiness: () => void) =>
     this.shutdown.startupCleanupResources(() => this.closing.abort(), cancelReadiness);
   protected isInputBlocked(): boolean {
     const held =
       this.inputBlocking ||
       this.trustInputBlocking ||
-      (!this.everReady && this.initialReadinessHeld?.() === true);
+      (!this.everReady && this.initialReadinessHold?.holdsWrites() === true);
     return this.closing.signal.aborted || held || this.status === "blocked";
   }
-  bindInitialReadinessHold(isHeld: () => boolean): void {
-    this.initialReadinessHeld = isHeld;
+  bindInitialReadinessHold(hold: InitialReadinessHold): void {
+    this.initialReadinessHold = hold;
   }
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
       this.trustInputBlocking ||
       this.closing.signal.aborted ||
-      (!this.everReady && this.initialReadinessHeld?.() === true);
+      (!this.everReady && this.initialReadinessHold?.holdsReadiness() === true);
     return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
   }
   submitExit(): StatusDecision {

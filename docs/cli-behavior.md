@@ -3325,6 +3325,10 @@ message's bracketed paste and its `\r`, both released at the placeholder frame.
 In a third run, on a loaded host, the paste met the placeholder and the `\r` met
 the offer, with its ``› 1. Update now (runs `sh -c`` row selected. The proof
 drops application input before the PTY, because that Enter chooses `Update now`.
+A `sendPrompt` called at a start bypassed the readiness queue: on 2026-11-25
+`start-update-offer-codex.e2e.ts` recorded its paste and its `\r` before Codex had
+painted any row with the marker, and the offer appeared after them. Before the
+first readiness, those writes now also wait for the configured composer (C-E2E-27).
 
 **Which Codex a session runs depends on the directory.** On the capture host an
 interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a
