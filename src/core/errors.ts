@@ -1,8 +1,4 @@
-/**
- * Stable public error names and error class.
- * Implements PRD §10.
- */
-
+/** Stable public error names and error class (PRD §10). */
 import type { ElwoodAgentKind } from "./activity/index.ts";
 
 export type ElwoodErrorName =
@@ -35,6 +31,9 @@ export type ElwoodErrorName =
   | "compact_failed"
   | "interrupt_failed"
   | "model_automation_failed"
+  | "dialog_not_found"
+  | "invalid_dialog_answer"
+  | "dialog_answer_failed"
   | "question_not_found"
   | "invalid_question_answer"
   | "question_answer_failed"

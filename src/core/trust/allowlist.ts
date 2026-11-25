@@ -48,14 +48,33 @@ const acceptOption = new RegExp(`^${notDecline}.*\\byes\\b.*\\baccept\\b`, "i");
 // phrase that lives only in an affirmative option — so recognition anchors on a
 // standalone header inside the active dialog; option and transcript wording
 // cannot supply authority to another dialog (PRD §5.4).
+const claudeFolderQuestion = "Do you trust this folder?";
+const claudeProjectQuestion = "Is this a project you created or one you trust?";
+const claudeSafetyPrefix = "Quick safety check:";
+const claudeWorkspaceQuestion = new RegExp(
+  `^(?:${RegExp.escape(claudeFolderQuestion)}|(?:${RegExp.escape(claudeSafetyPrefix)}\\s*)?${RegExp.escape(claudeProjectQuestion)})(?:\\s|$)`,
+  "i",
+);
+const claudeSafetyPrefixPattern = new RegExp(`^${RegExp.escape(claudeSafetyPrefix)}\\s*`, "i");
+const claudeQuestionHeadings = [
+  claudeFolderQuestion,
+  claudeProjectQuestion,
+  `${claudeSafetyPrefix} ${claudeProjectQuestion}`,
+].map((heading) => heading.toLowerCase());
+
+/** Recognize native question paint before its complete anchored header is present. */
+export function isClaudeWorkspaceQuestionPrefix(text: string): boolean {
+  const prefix = text.replace(claudeSafetyPrefixPattern, `${claudeSafetyPrefix} `).toLowerCase();
+  return prefix.length > 0 && claudeQuestionHeadings.some((heading) => heading.startsWith(prefix));
+}
+
 export const trustPromptAllowlist = [
   {
     // Header renders as "Do you trust this folder?" or "Quick safety check: Is
     // this a project you created or one you trust?" (claude 2.1.205/2.1.206).
     id: "workspace_trust",
     agent: "claude",
-    headerPattern:
-      /^(?:do you trust this folder|(?:Quick safety check:\s*)?Is this a project you created or one you trust)\?(?:\s|$)/i,
+    headerPattern: claudeWorkspaceQuestion,
     descriptionPattern: claudeWorkspaceDescription,
     optionPattern: claudeWorkspaceOptions,
     accept: yesOption,

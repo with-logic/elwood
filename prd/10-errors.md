@@ -64,6 +64,11 @@ failures without instrumenting Elwood internals.
 
 Native question controls add `question_not_found` (no current request with this live ID), `invalid_question_answer` (invalid complete answer batch or timeout option), and `question_answer_failed` (busy, revoked, unsupported or unacknowledged native input). Messages and details do not echo answer text.
 
+Structured Claude workspace answers use `dialog_not_found` for an unavailable
+request, `invalid_dialog_answer` for an invalid choice or options, and
+`dialog_answer_failed` for a reservation, proof, write, or native outcome failure.
+See [§5.3](05-api/5.3-claude-session-api.md) for the fixed failure categories.
+
 Native question answer failures may include only the fixed `details.category` values
 `frame_wait`, `adapter`, `terminal_write`, `native_acceptance`, or `aborted`
 (§5.10). Raw native exceptions and submitted answer values are never retained.

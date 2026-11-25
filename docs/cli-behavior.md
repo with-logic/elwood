@@ -673,6 +673,11 @@ nonfinal rows fill their payload columns, and the final row has two untouched
 cells on the right. The visible fragments must reconstruct the exact checked
 path. C-ATTN-07.
 
+Credential-free structured-answer probes on both versions used a 122-character
+workspace path rendered on two rows at 100 columns. Accept reached `ready` and
+persisted trust for that folder. The native `No, exit` choice exited with code
+1 and no signal and left the folder untrusted. C-ATTN-07.
+
 The workspace gate is independent of tool permission policy: it still appears
 under both `--permission-mode bypassPermissions` and the exact
 `--dangerously-skip-permissions` flag (verified against 2.1.252). A matcher MUST:
