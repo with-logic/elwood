@@ -58,7 +58,7 @@ export type CodexUsageLimitWarning = CodexUsageLimitDetails & {
   readonly nativeLimitType: RateLimitReachedType;
   readonly turnId?: never;
   readonly resetsAtUnixSeconds?: never;
-  readonly raw: string;
+  readonly raw: RateLimitReachedType;
 };
 
 export type UsageLimitWarning = ClaudeUsageLimitWarning | CodexUsageLimitWarning;

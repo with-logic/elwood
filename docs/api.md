@@ -94,8 +94,10 @@ read each adapter's fields.
 - `claude` carries Claude's message, `limitName`, `nativeLimitType`, and
   `resetsAtUnixSeconds` when available. Use `turnId` when present to associate
   the denial with a prompt.
-- `codex` carries the native `nativeLimitType`, optional `limitId` and
-  `limitName`, and separate `primaryResetsAtUnixSeconds` and
+- `codex` carries the native reason in both `nativeLimitType` and the warning's
+  `raw` field. The warning's `message` is Elwood's description of that reason.
+  `activity.raw` contains the full warning. The warning also carries optional
+  `limitId` and `limitName`, plus separate `primaryResetsAtUnixSeconds` and
   `secondaryResetsAtUnixSeconds` when supplied. Codex snapshots omit the turn
   identity and which window rejected it.
 

@@ -1,6 +1,9 @@
 /** Codex quota hits require a native reached type in a committed token_count (PRD §5.4, C-API-69). */
 import { expect, test } from "vitest";
-import { CodexUsageLimitObserver } from "../../src/codex/transcript/usage-limit.ts";
+import {
+  CodexUsageLimitObserver,
+  codexUsageLimitWarning,
+} from "../../src/codex/transcript/usage-limit.ts";
 
 function tokenCount(rateLimits: unknown) {
   return {
@@ -29,15 +32,25 @@ test("preserves the native limit and each window's reset independently", () => {
 });
 
 test.each([
-  "rate_limit_reached",
-  "workspace_owner_credits_depleted",
-  "workspace_member_credits_depleted",
-  "workspace_owner_usage_limit_reached",
-  "workspace_member_usage_limit_reached",
-])("reports exact subtype %s without any quota windows or scope metadata", (reachedType) => {
-  expect(
-    new CodexUsageLimitObserver().observe(tokenCount({ rate_limit_reached_type: reachedType })),
-  ).toEqual({ reachedType });
+  ["rate_limit_reached", "Codex reached its rate limit."],
+  ["workspace_owner_credits_depleted", "The Codex workspace owner is out of credits."],
+  ["workspace_member_credits_depleted", "The Codex workspace member is out of credits."],
+  ["workspace_owner_usage_limit_reached", "The Codex workspace owner reached a usage limit."],
+  ["workspace_member_usage_limit_reached", "The Codex workspace member reached a usage limit."],
+] as const)("reports subtype %s and its message without quota windows", (reachedType, message) => {
+  const item = tokenCount({ rate_limit_reached_type: reachedType });
+  const observation = new CodexUsageLimitObserver().observe(item);
+  expect(observation).toEqual({ reachedType });
+  const warning = codexUsageLimitWarning(
+    {
+      elwoodSessionId: "session",
+      path: "/rollout.jsonl",
+      item,
+      summary: { kind: "other", label: "token_count" },
+    },
+    { reachedType },
+  );
+  expect(warning).toMatchObject({ nativeLimitType: reachedType, raw: reachedType, message });
 });
 
 test("accepts a numeric reset without utilization and omits malformed optional metadata", () => {
@@ -103,16 +116,29 @@ test("suppresses copies despite unrelated token, timing or utilization changes",
 });
 
 test.each([
-  ["primary reset", { primary: { ...hit.primary, resets_at: 1_795_700_000 } }],
-  ["secondary reset", { secondary: { ...hit.secondary, resets_at: 1_795_701_000 } }],
-  ["rejection reason", { rate_limit_reached_type: "workspace_member_usage_limit_reached" }],
-  ["limit ID", { limit_id: "codex_other" }],
-  ["limit name", { limit_name: "Other" }],
-])("reports a change to only the %s once", (_field, change) => {
+  [
+    "primary reset",
+    { primary: { ...hit.primary, resets_at: 1_795_700_000 } },
+    { primaryResetsAtUnixSeconds: 1_795_700_000 },
+  ],
+  [
+    "secondary reset",
+    { secondary: { ...hit.secondary, resets_at: 1_795_701_000 } },
+    { secondaryResetsAtUnixSeconds: 1_795_701_000 },
+  ],
+  [
+    "rejection reason",
+    { rate_limit_reached_type: "workspace_member_usage_limit_reached" },
+    { reachedType: "workspace_member_usage_limit_reached" },
+  ],
+  ["limit ID", { limit_id: "codex_other" }, { limitId: "codex_other" }],
+  ["limit name", { limit_name: "Other" }, { limitName: "Other" }],
+])("reports a change to only the %s once", (_field, change, expected) => {
   const observer = new CodexUsageLimitObserver();
-  expect(observer.observe(tokenCount(hit))).toBeDefined();
+  const initial = observer.observe(tokenCount(hit));
+  expect(initial).toBeDefined();
   const changed = tokenCount({ ...hit, ...change });
-  expect(observer.observe(changed)).toBeDefined();
+  expect(observer.observe(changed)).toEqual({ ...initial, ...expected });
   expect(observer.observe(changed)).toBeUndefined();
 });
 
@@ -131,6 +157,22 @@ test("clears only on an explicit subsequent nonrejected snapshot for the same li
   expect(observer.observe(tokenCount(hit))).toBeUndefined();
   expect(observer.observe(tokenCount(clear))).toBeUndefined();
   expect(observer.observe(tokenCount(hit))).toBeDefined();
+});
+
+test("preserves IDs and names at the inclusive 256 UTF-16 code-unit limit", () => {
+  const observer = new CodexUsageLimitObserver();
+  const limitId = "x".repeat(256);
+  const limitName = "🧪".repeat(128);
+  expect(
+    observer.observe(tokenCount({ ...hit, limit_id: limitId, limit_name: limitName })),
+  ).toMatchObject({ limitId, limitName });
+  expect(
+    observer.observe(tokenCount({ ...hit, limit_id: `${limitId}x`, limit_name: `${limitName}x` })),
+  ).toEqual({
+    reachedType: "rate_limit_reached",
+    primaryResetsAtUnixSeconds: 1_795_619_478,
+    secondaryResetsAtUnixSeconds: 1_795_668_000,
+  });
 });
 
 test("deduplicates distinct overlength IDs without publishing them", () => {
