@@ -4,6 +4,7 @@
  */
 
 import { resolve } from "node:path";
+import { formatDiagnosticValue } from "../src/cli/output/sanitize.ts";
 import { startClaude, startCodex } from "../src/index.ts";
 import {
   type Agent,
@@ -52,7 +53,9 @@ function wireLogs(session: ExampleSession): void {
     process.stdout.write(activityLogLine(event));
   });
   session.on("warning", (event) => {
-    process.stdout.write(`[warning] ${event.agent}:${event.code} ${event.message}\n`);
+    process.stdout.write(
+      `[warning] ${event.agent}:${event.code} ${formatDiagnosticValue(event.message)}\n`,
+    );
   });
   session.on("hookError", (event) => {
     process.stdout.write(`[hookError] ${event.hookEventName}:${event.category} ${event.message}\n`);

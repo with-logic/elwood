@@ -40,7 +40,7 @@ export type DrainLines<C extends BoundedTranscriptCursor> = {
   /** Emits a chunk's complete lines; the cursor keeps the trailing partial. */
   emitLines(path: string, text: string, cursor: C): void;
   /** Emits one line taken as complete: a transcript's last, un-terminated record at its end. */
-  emitLine(path: string, line: string): void;
+  emitLine(path: string, line: string, cursor: C): void;
 };
 
 /** The watcher collaborators a drain needs: the fs guard, emitter, and drop sink. */
@@ -73,7 +73,7 @@ export function drainToBudget<C extends BoundedTranscriptCursor>(
     // misreported as an unparseable record.
     const partial = cursor.drainPending();
     if (hasBacklog) context.drops.drop(cursor.path, "unread_backlog");
-    else context.lines.emitLine(cursor.path, partial);
+    else context.lines.emitLine(cursor.path, partial, cursor);
   }
   context.drops.flushPass(); // deliver this drain's coalesced drops (bounded fan-out)
 }
