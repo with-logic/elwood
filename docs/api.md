@@ -86,6 +86,13 @@ text. Track hook results and the turn lifecycle separately. Use `turnId` when
 available to associate the message with its turn. If `final` is omitted,
 finality is unknown.
 
+Listen for `warning` with `code: "usage_limit_reached"` to detect a Claude
+quota denial. The event carries Claude's message and the affected `limitName`,
+`nativeLimitType`, and `resetsAtUnixSeconds` when available. Use `turnId` when
+present to associate it with a prompt. The same observation appears in
+`activity` with kind `warning`, label `usage_limit_reached`, and the full
+warning in `raw`.
+
 ```ts
 interface ElwoodAgentSession {
   readonly elwoodSessionId: string;

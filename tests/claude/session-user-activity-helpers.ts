@@ -21,6 +21,7 @@ export async function startActivitySession() {
   return {
     session,
     events,
+    transcript,
     hook: (fields: Record<string, unknown>) =>
       ptys.at(-1)!.dispatchHook(session.elwoodSessionId, {
         session_id: nativeClaudeSessionId,

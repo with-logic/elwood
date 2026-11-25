@@ -1,4 +1,4 @@
-/** Transcript observer diagnostics that preserve delivery (PRD §5.7). */
+/** Transcript observer diagnostics and native quota warnings (PRD §5.4/§5.7). */
 export type TranscriptListenerErrorWarning = {
   readonly elwoodSessionId: string;
   readonly agent: "codex";
@@ -18,5 +18,21 @@ export type ClaudePromptListenerErrorWarning = {
   readonly severity: "warning";
   readonly message: string;
   readonly channel: "activity";
+  readonly raw: string;
+};
+
+/** Affirmative usage-cap rejection from a committed Claude transcript record. */
+export type ClaudeUsageLimitWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "claude";
+  readonly source: "transcript";
+  readonly code: "usage_limit_reached";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly transcriptPath: string;
+  readonly turnId?: string;
+  readonly limitName?: string;
+  readonly nativeLimitType?: string;
+  readonly resetsAtUnixSeconds?: number;
   readonly raw: string;
 };
