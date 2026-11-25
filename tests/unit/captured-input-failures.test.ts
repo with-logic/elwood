@@ -45,6 +45,25 @@ test("C-API-44 raw submission failure releases captured bytes", async () => {
   captures.capture(options).release();
 });
 
+test("C-API-70 raw facade capture reads caller IDs without depending on enumerability", async () => {
+  const captures = new ImageCaptures();
+  const underlying = new FakeUnderlying();
+  const facade = { status: "ready" as const, start: () => Promise.resolve(underlying) };
+  const inherited = new (class {
+    get sendId() {
+      return "inherited-id";
+    }
+  })();
+  await capturedSend(captures, facade, "sendPrompt", "first", inherited);
+  expect(underlying.args["sendPrompt"]).toEqual(["first", { sendId: "inherited-id" }]);
+  await capturedSend(captures, facade, "sendPrompt", "second", {
+    get sendId(): string {
+      throw new Error("unreadable metadata");
+    },
+  });
+  expect(underlying.args["sendPrompt"]).toEqual(["second", {}]);
+});
+
 test("C-API-44 consumer timeout retains image budget until the agent boundary", async () => {
   const captures = new ImageCaptures(2);
   const underlying = new FakeUnderlying();

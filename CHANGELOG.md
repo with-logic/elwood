@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A matched Claude low-level text submission can include the original API text,
+  the exact native hook prompt, API paste provenance, and a caller `sendId`.
+
+- A matched Codex `user_message` can include the original API prompt, the
+  exact hook prompt, API paste provenance, and an optional caller `sendId`.
+
 - A Claude `send` or `stream` turn that the agent rejects now fails with
   `turn_failed` even when Claude changed the prompt on submit: it wrapped it in
   `<pasted_content>` tags, turned CRLF or CR into LF, turned a tab into four spaces,

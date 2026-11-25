@@ -7,16 +7,24 @@
  */
 
 import { join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
+import type { ElwoodActivityEvent } from "../../src/index.ts";
+import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 
-const clip = { set: [] as string[], restored: [] as string[], restoreOk: true };
+const clip = {
+  set: [] as string[],
+  restored: [] as string[],
+  restoreOk: true,
+  afterRestore: undefined as (() => Promise<void>) | undefined,
+};
 vi.mock("../../src/codex/images/clipboard.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/codex/images/clipboard.ts")>()), // the real message constant
   clipboardImageSupported: () => true,
   snapshotClipboardText: () => Promise.resolve("prior"),
-  restoreClipboardText: (t: string) => {
+  restoreClipboardText: async (t: string) => {
     clip.restored.push(t);
-    return Promise.resolve(clip.restoreOk);
+    await clip.afterRestore?.();
+    return clip.restoreOk;
   },
   setClipboardImage: (p: string) => {
     clip.set.push(p);
@@ -37,6 +45,7 @@ afterEach(() => {
   clip.set = [];
   clip.restored = [];
   clip.restoreOk = true;
+  clip.afterRestore = undefined;
 });
 
 /** Emit the `[Image #1]` chip once the Ctrl+V lands so the attach wait resolves. */
@@ -47,6 +56,43 @@ function driveChip(marker: "›" | "»" = "›"): void {
   };
   setTimeout(tick, 20);
 }
+
+test("C-API-70 image-bearing sends report a matching hook as native-only", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const session = await startCodex({ cwd });
+  onTestFinished(() => session.teardown());
+  const pty = ptys[0]!;
+  await becomeReady(session.elwoodSessionId, cwd, { session_id: "codex-1" });
+  const messages: ElwoodActivityEvent[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "user_message") messages.push(event);
+  });
+  // Even if the native image chip is no longer shown once attachment finishes,
+  // the subsequent empty-looking composer must not authorize API correlation.
+  clip.afterRestore = async () => {
+    pty.emitData(`\x1b[2J\x1b[H${codexTty(codexSmallComposer)}`);
+    await session.terminal.settled();
+  };
+  driveChip();
+  await session.sendMessage(" caption ", {
+    sendId: "image-caller-id",
+    images: [{ data: PNG, format: "png" }],
+  });
+  expect(pty.writes).toEqual([CTRL_V, paste(" caption "), "\r"]);
+  await pty.dispatchHook(session.elwoodSessionId, {
+    cwd,
+    session_id: "codex-1",
+    hook_event_name: "UserPromptSubmit",
+    prompt: "caption",
+    turn_id: "image-turn",
+  });
+  expect(messages).toMatchObject([
+    { text: "caption", turnId: "image-turn", raw: { prompt: "caption" } },
+  ]);
+  for (const field of ["sendId", "nativePrompt", "promptProvenance"])
+    expect(messages[0]).not.toHaveProperty(field);
+});
 
 describe("CodexSessionApi image attachment (C-API-44/46)", () => {
   for (const [method, marker] of [

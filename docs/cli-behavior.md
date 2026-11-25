@@ -1865,8 +1865,11 @@ a paste remained outside the envelope. Claude escaped look-alike tags, converted
 CRLF and CR to LF and tabs to four spaces, and reused a body's final LF as the
 closing tag separator. A literal backslash can match a native escape.
 
-Elwood displays the native body for a strictly matched standalone envelope.
-It preserves the exact delivered string as `nativePrompt` and reports
+When Elwood matches a low-level API submission to its authenticated submit hook,
+the activity displays the exact API text, preserves the native prompt in
+`nativePrompt`, and reports API paste provenance. Without that association,
+Elwood displays the native body for a strictly matched standalone envelope,
+preserves the exact envelope as `nativePrompt`, and reports
 `promptProvenance: { origin: "unknown", input: "pasted" }`. Native input
 transformations can make the original bytes unrecoverable. Offline PTY probes
 on 2.1.331 and 2.1.332 confirmed the same authenticated opener and repeated-ID
@@ -2172,6 +2175,11 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+Claude 2.1.332 reached `ready` after a bogus-model rejection while its native
+frame still failed the empty-composer check. A subsequent paste produced a
+native hook and envelope without API association. The live paste fixture
+starts each positive case with a fresh, verified empty composer.
 
 ### Claude under a private `CLAUDE_CONFIG_DIR` (2.1.310, 2026-10-26)
 
@@ -3298,3 +3306,11 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
 - Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
   none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
   both break long lines themselves.
+
+## Codex preserves U+FEFF at the edges of submitted text (0.171.0 and 0.172.0)
+
+An isolated native TUI run submitted padded multiline text with U+FEFF at
+both ends through `sendMessage`. Codex removed the outer spaces and kept
+both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
+Use Rust's Unicode `White_Space` when comparing forwarded text with the
+hook. JavaScript `trim()` would remove U+FEFF and miss the match.
