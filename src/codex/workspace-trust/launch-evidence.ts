@@ -26,7 +26,10 @@ export type CodexLaunchTrustEvidence = {
   readonly isCurrent: () => boolean;
 };
 
-/** Preserve exact path spellings and detect later filesystem changes. */
+/**
+ * Capture exact path spellings and recheck directory identity and repository scope.
+ * Failed verification yields no paths or targets. A verified non-Git launch has a folder target.
+ */
 export function captureLaunchTrustEvidence(
   directory: CheckedLaunchDirectory,
 ): CodexLaunchTrustEvidence {

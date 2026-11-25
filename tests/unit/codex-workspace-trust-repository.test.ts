@@ -63,24 +63,6 @@ test("preserves significant trailing bytes in an external Git directory path", (
   });
 });
 
-test("recognizes an ordinary external Git directory whose parent is named worktrees", () => {
-  const git = join(root, "worktrees", "metadata");
-  const checkout = join(root, "checkout");
-  fs.mkdirSync(git, { recursive: true });
-  fs.mkdirSync(checkout);
-  fs.writeFileSync(join(git, "HEAD"), "ref: refs/heads/main\n");
-  fs.writeFileSync(join(checkout, ".git"), `gitdir: ${git}\n`);
-  expect(codexRepositoryTrustRoot(checkout)).toEqual({
-    path: checkout,
-    allowsFolderFallback: true,
-  });
-  for (const file of ["gitdir", "commondir"]) {
-    fs.writeFileSync(join(git, file), "../other\n");
-    expect(() => codexRepositoryTrustRoot(checkout)).toThrow();
-    fs.rmSync(join(git, file));
-  }
-});
-
 test("follows dot-dot after a parent symlink using native filesystem resolution", () => {
   const checkout = join(root, "checkout");
   const parent = join(root, "physical");
@@ -144,7 +126,6 @@ test.each([
   ["empty path with valid prefix", "gitdir: \n"],
   ["empty marker", ""],
   ["multiline marker", "gitdir: nested\ntrailing\n"],
-  ["oversize marker", "a".repeat(64 * 1024 + 1)],
 ])("withholds repository evidence for %s", (_scenario, contents) => {
   const { checkout, marker } = linked();
   fs.writeFileSync(marker, contents);

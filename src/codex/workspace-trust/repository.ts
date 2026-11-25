@@ -3,6 +3,7 @@ import { lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { readBoundedGitMetadata } from "../../core/git-metadata.ts";
 
+// These metadata pointers are single lines. Bound the descriptor read before allocating.
 const maxGitMarkerBytes = 64 * 1024;
 export type CodexRepositoryTrustRoot = {
   readonly path: string;
@@ -42,20 +43,20 @@ function gitFileRepositoryRoot(
     return { path: checkout, allowsFolderFallback: true };
   }
   const worktrees = dirname(canonical);
-  if (!(hasBacklink && hasCommonDir && basename(worktrees) === "worktrees"))
-    throw unprovedRepository();
+  const registeredWorktreeLayout =
+    hasBacklink && hasCommonDir && basename(worktrees) === "worktrees";
+  if (!registeredWorktreeLayout) throw unprovedRepository();
   const common = dirname(worktrees);
   const registeredGitFile = absoluteGitPointer(canonical, readMarker(backlink));
   const registered = realpathSync.native(dirname(registeredGitFile));
   const commonFromCheckout = realpathSync.native(
     absoluteGitPointer(canonical, readMarker(commondir)),
   );
-  if (
-    basename(registeredGitFile) !== ".git" ||
-    registered !== realpathSync.native(checkout) ||
-    commonFromCheckout !== common
-  )
-    throw unprovedRepository();
+  const registrationMatchesCheckout =
+    basename(registeredGitFile) === ".git" &&
+    registered === realpathSync.native(checkout) &&
+    commonFromCheckout === common;
+  if (!registrationMatchesCheckout) throw unprovedRepository();
 
   const root = dirname(common);
   const mainMarker = join(root, ".git");
@@ -81,6 +82,7 @@ function absoluteGitPointer(base: string, pointer: string): string {
   return isAbsolute(pointer) ? pointer : `${base}${sep}${pointer}`;
 }
 
+/** Accept a symbolic ref or a detached SHA-1 or SHA-256 object ID. */
 function verifyHead(file: string): void {
   if (!/^(?:ref: refs\/\S+|[a-f0-9]{40}(?:[a-f0-9]{24})?)$/i.test(readMarker(file)))
     throw unprovedRepository();

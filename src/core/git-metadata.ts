@@ -2,6 +2,10 @@
 import { closeSync, constants, fstatSync, openSync } from "node:fs";
 import { readExactDescriptorBytes } from "./descriptor-bytes.ts";
 
+/**
+ * Read strict UTF-8 from a bounded regular file. Non-files, oversized files, and
+ * byte-count mismatches return undefined. Filesystem and decoding errors propagate.
+ */
 export function readBoundedGitMetadata(path: string, maxBytes: number): string | undefined {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {

@@ -161,7 +161,13 @@ test("allows a folder fallback and a separately verified checkout disclosure for
     { path: cwd, scope: "folder", requiresRepositoryNote: false },
     { path: repo, scope: "repository", requiresRepositoryNote: true },
   ]);
-  expect(captureLaunchTrustEvidence(launch(repo)).targets).toHaveLength(1);
+  const rootEvidence = captureLaunchTrustEvidence(launch(repo));
+  expect(
+    rootEvidence.targets.map(({ target, requiresRepositoryNote }) => ({
+      ...target,
+      requiresRepositoryNote,
+    })),
+  ).toEqual([{ targetPath: repo, targetScope: "folder", requiresRepositoryNote: false }]);
   expect(evidence.isCurrent()).toBe(true);
   writeFileSync(join(git, "HEAD"), "invalid");
   expect(evidence.isCurrent()).toBe(false);

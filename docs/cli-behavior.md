@@ -681,6 +681,18 @@ and log databases, a models cache, and plugin and skill caches. An e2e that leav
 `CODEX_HOME` unset therefore writes into the developer's own `~/.codex`, so the suite
 gives every process a private one (`tests/e2e/codex-home.ts`, C-E2E-22).
 
+**Codex 0.172.0 derives folder trust from several Git layouts.** Offline launches
+on 2026-11-24 used disposable Git repositories and a private `CODEX_HOME`. An
+ordinary checkout created with `git init --separate-git-dir` disclosed the
+checkout root even when its metadata path ended in an ASCII space or lived
+under a directory named `worktrees`. A registered linked worktree disclosed
+the main checkout when its common directory was inside that checkout, and
+the linked folder when the common directory was external. A launch symlink
+from one repository into another disclosed the lexical repository on this
+version, while `git rev-parse` resolved the physical one. Check both launch
+spellings against the exact native disclosure. These observations did not send
+consent.
+
 **Codex 0.164.0 draws its trust gates differently when hook trust is not bypassed
 (2026-10-25).** Native launches at 100 × 40 in a `git init` scratch directory with a
 fresh `CODEX_HOME`:
