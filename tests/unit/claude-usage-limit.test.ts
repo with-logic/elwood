@@ -136,3 +136,27 @@ test("C-API-68 a rewind rereads old activity and a later append still reports qu
     watcher.finish();
   }
 });
+
+test("C-API-68 final drain keeps the replay classification of a retained quota record", () => {
+  const path = join(tempDir(), "transcript.jsonl");
+  const prior = JSON.stringify(record);
+  writeFileSync(path, `${prior}\n${" ".repeat(2_000)}\n`);
+  const messages: string[] = [];
+  const warnings: ClaudeUsageLimitWarning[] = [];
+  const watcher = new ClaudeTranscriptWatcher(
+    "s1",
+    ({ summary }) => {
+      if (summary.kind === "assistant_message") messages.push(summary.text);
+    },
+    { onUsageLimit: (warning) => warnings.push(warning) },
+  );
+  try {
+    watcher.observe(path);
+    writeFileSync(path, prior);
+    watcher.finish();
+    expect(messages).toEqual([message]);
+    expect(warnings).toEqual([]);
+  } finally {
+    watcher.finish();
+  }
+});
