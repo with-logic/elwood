@@ -1,12 +1,12 @@
 /** Claude alternative text its editor and review draw across rows or with tabs as spaces (PRD §5.10, C-QUESTION-03). */
 import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
-import { claudeRowsDrawText } from "../../../src/claude/questions/rows.ts";
+import { claudeDrawnTextMatcher } from "../../../src/claude/questions/rows.ts";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
 import { groupedTextAnswerFrames } from "./grouped-frame-helpers.ts";
-import { definitions, fixture, registry } from "./helpers.ts";
-import { answerNoteWith, color, native, note } from "./native-note-helpers.ts";
+import { definitions, fixture, nativeSnapshot332 as native, registry } from "./helpers.ts";
+import { answerNoteWith, color, note } from "./native-note-helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 const words = (from: number, to: number) =>
@@ -34,7 +34,7 @@ test.each([
   ["a\nb", "a", false],
   ["a", "a b", false],
 ] as const)("C-QUESTION-03 rows %j show %j: %s", (rows, text, shown) => {
-  expect(claudeRowsDrawText(rows, text)).toBe(shown);
+  expect(claudeDrawnTextMatcher(text)(rows)).toBe(shown);
 });
 
 test("C-QUESTION-03 confirms a long line that Claude's editor wraps onto continuation rows", async () => {
@@ -72,7 +72,7 @@ test("C-QUESTION-03 reads a review that breaks an unbroken answer inside it", ()
     summary: summary.join("\n"),
   });
   const expected = `● Which test color? → Amber\n● Which test note? → ${link}`;
-  expect(claudeRowsDrawText(summary.join("\n"), expected)).toBe(true);
+  expect(claudeDrawnTextMatcher(expected)(summary.join("\n"))).toBe(true);
 });
 
 test("C-QUESTION-03 submits unbroken text that the editor and the review break inside", async () => {

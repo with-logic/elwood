@@ -28,7 +28,7 @@ export type ClaudeQuestionScreen =
       readonly kind: "review";
       /** Zero-based review selection: Submit answers (0) or Cancel (1). */
       readonly cursor: number;
-      /** The non-blank rows between the title and the ready label, whitespace folded, joined by LF. */
+      /** Non-blank rows after the title and before the actions, less any ready label; folded, LF-joined. */
       readonly summary: string;
     };
 const CLAUDE_REVIEW_TITLE = "Review your answers";
