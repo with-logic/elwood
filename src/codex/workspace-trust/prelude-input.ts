@@ -6,24 +6,17 @@ import type { TrustView } from "../../core/trust/view.ts";
 import { nativeRenderEvidenceIntact, settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
-import {
-  folderAccessPrelude,
-  legacyLocationPreludePrefix,
-} from "../screen/workspace-trust-copy.ts";
+import { readWorkspacePrelude, type WorkspacePrelude } from "./disclosure.ts";
 
-type Layout = "folder access" | "legacy";
+type Layout = WorkspacePrelude["layout"];
 
 function preludeLayout(lines: readonly string[]): Layout | undefined {
-  const row = lines.findIndex((line) => {
-    const text = line.trim();
-    return (
-      text === folderAccessPrelude ||
-      (text.startsWith(legacyLocationPreludePrefix) &&
-        isAbsolute(text.slice(legacyLocationPreludePrefix.length)))
-    );
-  });
-  if (row < 0 || hasTrustConversationBefore(lines, row)) return undefined;
-  return lines[row]!.trim() === folderAccessPrelude ? "folder access" : "legacy";
+  for (const [row, line] of lines.entries()) {
+    const prelude = readWorkspacePrelude(line);
+    if (!prelude || (prelude.layout === "legacy" && !isAbsolute(prelude.location))) continue;
+    return hasTrustConversationBefore(lines, row) ? undefined : prelude.layout;
+  }
+  return undefined;
 }
 
 function hasTrustCandidateOrUnknownGate(view: TrustView): boolean {
