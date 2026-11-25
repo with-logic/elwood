@@ -2905,6 +2905,9 @@ the `Type something.` editor and pressing Enter at the raw terminal. The
   tab as no cells, so it stops short of the end of the drawn row.
 - Leading and trailing newlines and spaces, and a 90-glyph CJK run with no
   spaces, also came back unchanged.
+- Checked labels come back in the order they were checked, not native order:
+  checking Cherry and then Apple produced `Cherry, Apple` on the review and in
+  the completion. Elwood checks boxes in native order.
 - The review of a grouped questionnaire draws each answer after `→`, with
   continuation rows indented three cells. It wraps at spaces, breaks a run too
   long for its row inside it, draws a tab as spaces and puts each line break on

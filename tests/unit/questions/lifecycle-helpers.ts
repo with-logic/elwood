@@ -37,6 +37,13 @@ export function nativeHook(name = "PreToolUse", extra: Readonly<Record<string, u
     },
   } as const satisfies ElwoodActivityEvent;
 }
+/** A completion reporting these answers in its `tool_input`, as Claude's PostToolUse does. */
+export function answeredHook(
+  answers: Readonly<Record<string, string>>,
+  toolInput: AskUserQuestionInput = { questions: nativeQuestions },
+) {
+  return nativeHook("PostToolUse", { tool_input: { ...toolInput, answers } });
+}
 export function composer() {
   return {
     ...frame("Claude Code v2.1.305\n────\n❯ \n────\n⏸ manual mode on · ? for shortcuts"),

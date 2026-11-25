@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Require Claude's completion of an Elwood answer to report exactly the
+  submitted values. A completion with other values closes the request as
+  `unavailable`, and the answer fails with `question_answer_failed`. A person's
+  native answer before Elwood writes anything still closes it as answered.
+
 - Confirm Claude alternative-text answers that Claude's editor or review wraps
   across rows, including a URL or other run with no spaces, and answers that
   contain tabs or CRLF or CR line endings. Such an answer used to fail with

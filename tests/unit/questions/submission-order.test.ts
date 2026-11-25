@@ -2,8 +2,12 @@
 import assert from "node:assert/strict";
 import { afterEach, expect, test } from "vitest";
 import { disposeTerminals } from "./controller-helpers.ts";
-import { nativeHook } from "./lifecycle-helpers.ts";
-import { type SubmissionScenario, submissionOrderDriver } from "./submission-order-driver.ts";
+import { answeredHook } from "./lifecycle-helpers.ts";
+import {
+  orderAnswers,
+  type SubmissionScenario,
+  submissionOrderDriver,
+} from "./submission-order-driver.ts";
 import { submissionOrderSnapshot } from "./submission-order-snapshot.ts";
 
 afterEach(disposeTerminals);
@@ -50,7 +54,7 @@ async function submit(scenario: SubmissionScenario) {
       ? undefined
       : submissionOrderSnapshot(h, request, observed);
     if (!scenario.failure && scenario.acknowledgementOrder === "composer-first")
-      h.events.emit("activity", nativeHook("PostToolUse"));
+      h.events.emit("activity", answeredHook(orderAnswers));
     return {
       outcome: failureOutcome ?? (await pending),
       inputWriteCount: driver.inputWriteCount(),

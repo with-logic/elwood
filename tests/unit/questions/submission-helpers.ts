@@ -9,7 +9,7 @@ import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { TypedEmitter } from "../../../src/events/emitter.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 import { paintQuestionFrame } from "./controller-helpers.ts";
-import { nativeHook } from "./lifecycle-helpers.ts";
+import { answeredHook, nativeHook } from "./lifecycle-helpers.ts";
 
 export function submissionHarness(
   initial: QuestionFrame,
@@ -51,6 +51,9 @@ export function submissionHarness(
     observed,
     final: final.promise,
     hook,
+    /** Claude's completion, reporting these answers in its `tool_input`. */
+    answered: (answers: Readonly<Record<string, string>>) =>
+      events.emit("activity", answeredHook(answers, toolInput)),
     start: async () => {
       hook();
       await paint(initial);

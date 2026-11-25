@@ -23,7 +23,15 @@ export async function answerClaudeQuestions(
   answers: readonly ValidatedQuestionAnswer[],
   io: QuestionIo,
 ): Promise<void> {
-  const bound = bindClaudeQuestionAnswers(request, answers);
+  await driveClaudeQuestions(request, bindClaudeQuestionAnswers(request, answers), io);
+}
+
+/** Drives an already bound batch, so a caller can derive what the completion must report. */
+export async function driveClaudeQuestions(
+  request: ElwoodQuestionRequest,
+  bound: readonly BoundClaudeQuestionAnswer[],
+  io: QuestionIo,
+): Promise<void> {
   const initial = io.frame();
   const first = initial && parseClaudeQuestionScreen(initial, request.questions);
   if (first?.kind !== "question" || first.questionIndex !== 0) throw questionLayoutFailed();
