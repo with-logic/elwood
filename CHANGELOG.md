@@ -33,6 +33,11 @@ back each entry are listed in `prd/14-conformance.md`.
 - Reject a pending Codex workspace trust answer when a different complete
   workspace menu is observed during synchronized native output.
 
+- Read a session's live screen as text with `readScreen()` on the low-level
+  Claude and Codex sessions, with optional scrollback, a cell cursor and the
+  active buffer. It returns the live rows even when the host scrolled the
+  terminal handle back.
+
 ## [0.7.0] - 2026-11-24
 
 - Answer verified Codex workspace trust prompts through `answerDialog()` and

@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import type { ScreenControls } from "../terminal/screen.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import type { ElwoodDialogRequest } from "./dialogs/types.ts";
 import type { SendOptions } from "./images/types.ts";
@@ -33,7 +34,8 @@ export type { ElwoodCommonEventMap, ElwoodCommonEventName } from "./types.ts";
 export interface ElwoodAgentSession<Agent extends ElwoodAgentKind = ElwoodAgentKind>
   extends LoopControls,
     QuestionControls,
-    StatsControls {
+    StatsControls,
+    ScreenControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
