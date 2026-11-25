@@ -125,25 +125,32 @@ test("nested scopes restore their parent after throws, and reentrant inputs stay
   expect(seen).toEqual(["inner", "outer"]);
 });
 
+test("prepare can reenter without giving the nested write the original scope", () => {
+  const write = vi.fn();
+  const { terminal } = setup(write);
+  const confirm = vi.fn();
+  const prepare = vi.fn((input: string | Uint8Array) => {
+    if (input === "original") terminal.xterm.input("from observer");
+    return confirm;
+  });
+  observeInputWrite(terminal.xterm, prepare, () => terminal.xterm.input("original"));
+  expect(write.mock.calls).toEqual([["from observer"], ["original"]]);
+  expect(prepare.mock.calls).toEqual([["original"]]);
+  expect(confirm).toHaveBeenCalledOnce();
+});
+
 test.each([
-  "prepare",
-  "confirm",
-  "async confirm",
-])("contains observer failures from %s", async (stage) => {
+  ["prepare", (fail: () => never) => fail],
+  ["confirm", (fail: () => never) => () => fail],
+  ["async confirm", (fail: () => never) => () => async () => fail()],
+] as const)("contains observer failures from %s", async (_stage, prepare) => {
   const writes: unknown[] = [];
   const { terminal } = setup((input) => writes.push(input));
   const fail = vi.fn(() => {
     throw new Error("observer");
   });
   await expect(
-    observeInputWrite(
-      terminal.xterm,
-      () => {
-        if (stage === "prepare") fail();
-        return stage === "confirm" ? fail : async () => fail();
-      },
-      () => terminal.sendInput("x"),
-    ),
+    observeInputWrite(terminal.xterm, prepare(fail), () => terminal.sendInput("x")),
   ).resolves.toBeUndefined();
   expect(writes).toEqual(["x"]);
   expect(fail).toHaveBeenCalledOnce();
