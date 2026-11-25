@@ -21,7 +21,13 @@ import {
   skipReason,
   skipTurns,
 } from "./helpers.ts";
-import { isTurnFailure, turnReadyIndex, waitWithEvidence } from "./turn-failure.ts";
+import {
+  isTurnFailure,
+  turnFailureWaitMs,
+  turnReadyIndex,
+  turnReadyWaitMs,
+  waitWithEvidence,
+} from "./turn-failure.ts";
 
 const config = "check_for_update_on_startup = false\n";
 
@@ -55,29 +61,31 @@ test("C-API-65 a rejected real Codex turn reaches a raw activity listener as tur
     const { activities } = observed;
     const turnStartIndex = activities.length;
     await session.sendMessage("Reply with exactly OK.");
-    // Wait as a consumer that ends the turn on `ready` would, then keep listening.
+    // Wait as a consumer that ends the turn on `ready` would, then keep listening. PRD §5.4
+    // does not order `turn_failure` against `ready`, so this proves delivery either way and
+    // records the order it observed.
     const readyIndex = await waitWithEvidence(
       () => turnReadyIndex(activities, turnStartIndex),
       "the turn's ready",
-      90_000,
+      turnReadyWaitMs,
       session,
       observed,
     );
     const failure = await waitWithEvidence(
       () => activities.find(isTurnFailure),
       "turn_failure",
-      60_000,
+      turnFailureWaitMs,
       session,
       observed,
     );
     const failureIndex = activities.indexOf(failure);
     t.diagnostic(`ready ${readyIndex < failureIndex ? "preceded" : "followed"} turn_failure`);
-    const native = observed.transcripts.find((event) => failedTask(event.item));
-    const task = failedTask(native?.item);
-    assert.ok(native && task, "Codex committed a failed task_complete");
+    const failedEvent = observed.transcripts.find((event) => failedTask(event.item));
+    const task = failedTask(failedEvent?.item);
+    assert.ok(failedEvent && task, "Codex committed a failed task_complete");
     assert.equal(failure.agent, "codex");
     assert.equal(failure.source, "transcript");
-    assert.equal(failure.transcriptPath, native.path);
+    assert.equal(failure.transcriptPath, failedEvent.path);
     assert.equal(failure.label, "model_unavailable");
     assert.equal(failure.turnFailure.category, "model_unavailable");
     assert.equal(failure.turnFailure.disposition, "final");
@@ -89,8 +97,8 @@ test("C-API-65 a rejected real Codex turn reaches a raw activity listener as tur
     assert.ok(submit?.turnId, "the submit hook names the turn");
     assert.equal(task.payload["turn_id"], submit.turnId);
     assert.equal(failure.turnId, submit.turnId);
-    // It follows the record's own activity, and a failure after `ready` leaves it `ready`.
-    assert.equal(activities[failureIndex - 1]?.raw, native.item);
+    // It follows the record's own activity, and the session is `ready` once it has landed.
+    assert.equal(activities[failureIndex - 1]?.raw, failedEvent.item);
     assert.equal(session.status, "ready");
     // Counted after teardown's final transcript flush, so a late duplicate would be seen.
     await session.teardown();

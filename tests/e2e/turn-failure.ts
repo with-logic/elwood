@@ -31,7 +31,19 @@ export function turnReadyIndex(
   return running < 0 || ready < 0 ? undefined : ready;
 }
 
-/** `waitFor`, whose timeout names what the session saw, so CLI drift is diagnosable. */
+/** How long a real turn may take to reach `ready`: a launch, a submit, and a model round trip. */
+export const turnReadyWaitMs = 90_000;
+
+/**
+ * How long the failure evidence may take after `ready`: the screen outruns the hook or the
+ * transcript flush, so this wait only has to cover that lag.
+ */
+export const turnFailureWaitMs = 60_000;
+
+/**
+ * Wraps `waitFor`, adding what the session had observed (status, hooks, activity, warnings)
+ * to a timeout's error, so CLI drift is diagnosable. The original error stays as `cause`.
+ */
 export async function waitWithEvidence<T>(
   read: () => T | undefined,
   label: string,
