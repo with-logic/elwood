@@ -10,6 +10,13 @@ import { isRecord } from "../../core/predicates.ts";
 import { boundedDiagnostic, type TurnFailure } from "../../core/simple/boundary-signal.ts";
 import { confirmNativeBoundary } from "../../core/simple/native-boundary.ts";
 
+// Codex 0.171.0 collapses workspace-credit depletion into usage_limit_exceeded.
+// Its committed ErrorEvent carries these fixed diagnostics without the original subtype.
+const workspaceCreditMessages: ReadonlySet<unknown> = new Set([
+  "Your workspace is out of credits. Add credits to continue.",
+  "Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
+]);
+
 function readFailedTask(item: unknown) {
   if (!isRecord(item) || item["type"] !== "event_msg") return undefined;
   const payload = item["payload"];
@@ -49,7 +56,11 @@ export function codexTurnFailureActivity(
     codexFailureDiagnostic(error);
   const failure = normalizeFinalTurnFailure({
     displayMessage,
-    boundedNativeErrorCode,
+    boundedNativeErrorCode:
+      boundedNativeErrorCode === "usage_limit_exceeded" &&
+      workspaceCreditMessages.has(error["message"])
+        ? "insufficient_quota"
+        : boundedNativeErrorCode,
     nativeDiagnostic: error["message"],
   });
   return {

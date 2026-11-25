@@ -34,6 +34,31 @@ test("Codex preserves the supplied reset even when the display diagnostic trunca
   });
 });
 
+const ownerCreditsMessage = "Your workspace is out of credits. Add credits to continue.";
+const memberCreditsMessage =
+  "Your workspace is out of credits. Ask your workspace owner to refill in order to continue.";
+
+test.each([
+  ["usage_limit_exceeded", ownerCreditsMessage, "quota_or_credit"],
+  ["usage_limit_exceeded", memberCreditsMessage, "quota_or_credit"],
+  ["usage_limit_exceeded", `${ownerCreditsMessage} Extra text.`, "usage_limit"],
+  ["usage_limit_exceeded", "You've hit your usage limit. Try again later.", "usage_limit"],
+  ["other", ownerCreditsMessage, "unknown"],
+])("C-API-65 Codex classifies %s with diagnostic %s", (nativeCode, message, category) => {
+  const failure = codexTurnFailureActivity("s1", "/tmp/rollout", {
+    type: "event_msg",
+    payload: {
+      type: "task_complete",
+      turn_id: "codex-prior",
+      error: { message, codex_error_info: nativeCode },
+    },
+  });
+  expect(failure).toMatchObject({
+    label: category,
+    turnFailure: { category, disposition: "final", message },
+  });
+});
+
 test("Claude preserves the supplied reset even when the display diagnostic truncates", () => {
   const failure = claudeTurnFailureActivity("s1", {
     hook_event_name: "StopFailure",
