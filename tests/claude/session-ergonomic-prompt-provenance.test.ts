@@ -5,6 +5,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { ClaudeSession } from "../../src/index.ts";
 import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
+import { nativeHooks } from "../fixtures/owned-turn/session.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -28,21 +29,15 @@ test.each([
     if (event.kind === "user_message") events.push(event);
   });
   const pty = ptys.at(-1)!;
-  const hook = (fields: Record<string, unknown>) =>
-    pty.dispatchHook(live.elwoodSessionId, {
-      session_id: "claude-1",
-      cwd,
-      transcript_path: transcript,
-      ...fields,
-    });
+  const { hook, ready } = nativeHooks("claude", live, cwd, pty);
   vi.useFakeTimers();
-  await hook({ hook_event_name: "SessionStart", source: "startup", model: "bogus" });
   await hook({
-    hook_event_name: "InstructionsLoaded",
-    file_path: "/tmp/CLAUDE.md",
-    memory_type: "Project",
-    load_reason: "session_start",
+    hook_event_name: "SessionStart",
+    source: "startup",
+    model: "bogus",
+    transcript_path: transcript,
   });
+  await ready();
   pty.emitData(emptyComposer("claude"));
   await vi.advanceTimersByTimeAsync(20);
   const text = "one\r\n\ttwo\nthree\nfour\n";

@@ -2176,6 +2176,11 @@ where `/bin/bash` is 3.x. The nine tests of its first version all fail on `main`
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
 
+Claude 2.1.332 reached `ready` after a bogus-model rejection while its native
+frame still failed the empty-composer check. A subsequent paste produced a
+native hook and envelope without API association. The live paste fixture
+starts each positive case with a fresh, verified empty composer.
+
 ### Claude under a private `CLAUDE_CONFIG_DIR` (2.1.310, 2026-10-26)
 
 With `CLAUDE_CONFIG_DIR` set, Claude keeps everything there: its global config is

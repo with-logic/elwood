@@ -100,7 +100,9 @@ type NativeActivity = CommonEvent &
         NoPromptEvidence)
     | (NativeUserMessageActivity & { readonly final?: never })
   );
-export type ElwoodActivityEvent = NativeActivity | (CommonEvent & ApiUserMessageActivity);
+export type ElwoodActivityEvent =
+  | NativeActivity
+  | (CommonEvent & (ApiUserMessageActivity<"claude"> | ApiUserMessageActivity<"codex">));
 
 export { activityFromStatus, activityFromTerminalExit, reapFailureWarning } from "./lifecycle.ts";
 

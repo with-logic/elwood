@@ -50,15 +50,14 @@ export type NativeUserMessageActivity = {
       }
   );
 
-export type ApiUserMessageActivity<Agent extends "claude" | "codex" = "claude" | "codex"> =
-  ApiPromptPresentation & {
-    readonly agent: Agent;
-    readonly kind: "user_message";
-    readonly label: "user";
-    readonly source: "hook";
-    readonly hookEventName: "UserPromptSubmit";
-    readonly final?: never;
-  };
+export type ApiUserMessageActivity<Agent extends "claude" | "codex"> = ApiPromptPresentation & {
+  readonly agent: Agent;
+  readonly kind: "user_message";
+  readonly label: "user";
+  readonly source: "hook";
+  readonly hookEventName: "UserPromptSubmit";
+  readonly final?: never;
+};
 
 export function codexApiUserActivity(
   elwoodSessionId: string,

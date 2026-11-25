@@ -45,9 +45,7 @@ export abstract class SessionLifecycle {
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
   protected readonly pasteGuard: PasteGuard;
   /** Adapters can provide a static normalizer before their instance fields initialize. */
-  protected get promptNormalizer(): PromptNormalizer | undefined {
-    return undefined;
-  }
+  protected abstract promptNormalizer(): PromptNormalizer;
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
@@ -73,7 +71,7 @@ export abstract class SessionLifecycle {
     const controls = bindSessionControl(this, input, statusEvents, {
       agent,
       resumed: record[agent].resumeId !== undefined,
-      promptNormalizer: this.promptNormalizer,
+      promptNormalizer: this.promptNormalizer(),
       composer: () => this.recoveryComposer,
       blocked: () => this.queuedInputBlocked(),
       readEmpty: () => this.emptyComposerFrame(),

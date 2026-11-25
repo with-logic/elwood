@@ -4,6 +4,7 @@ const tabExpansion = "    ";
 
 /**
  * Normalize newlines, trailing whitespace and the two forms of Claude's tag escapes.
+ * Literal and Claude-inserted `<\\` can produce the same echo, so this form is for comparison.
  * Expand remaining tabs after trimming. The bounded form checks UTF-16 size before expansion.
  */
 export function normalizeClaudePastedPayload(text: string): string;

@@ -1,5 +1,7 @@
 /** In-memory Claude session object exposed to callers. Implements PRD §4.1, §5, §6, §7, §8. */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import type { SendOptions } from "../../core/images/types.ts";
+import { isErgonomicSubmission } from "../../core/input/submission-cancel.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import { registerAcceptanceSignal } from "../../core/simple/acceptance-signal.ts";
 import { terminalStatuses } from "../../core/status-categories.ts";
@@ -38,7 +40,10 @@ import type { ClaudeSessionApi } from "./interface.ts";
 import { ClaudeQuestionsSession } from "./questions.ts";
 
 export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
-  protected override get promptNormalizer() {
+  protected override shouldCorrelateApiPrompt(options?: SendOptions): boolean {
+    return !isErgonomicSubmission(options);
+  }
+  protected override promptNormalizer() {
     return normalizeClaudePastedPayload;
   }
   protected override get interruptRetryMs(): number {
@@ -164,14 +169,8 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     emitSessionWarningsWithRejectionHandling(warnings, this.emitter);
   }
-  // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
-  // readiness (startup handles it fatally), edge-detected. FULLY non-throwing — runs
-  // in the frame callback's detached continuation, so a listener failure can't become
-  // an unhandled rejection or skip `terminal:data`. COMMIT the edge BEFORE the live
-  // fan-out: warnings are live-only (fire exactly once), and emitWarnings delivers to
-  // every listener before rethrowing a listener error — committing after would treat
-  // a throwing listener as non-delivery and re-fire the SAME incident to the listeners
-  // that already received it (a duplicate). A throwing listener is contained here.
+  // Warn once after readiness (C-CLAUDE-18). Commit before notifying listeners
+  // so a throwing listener cannot duplicate delivery or interrupt terminal output.
   noteLoginExpiry(screenText: string): void {
     if (!(this.everReady && this.loginExpiredWatcher.peek(screenText))) return;
     this.loginExpiredWatcher.commit();

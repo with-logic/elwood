@@ -84,13 +84,12 @@ export function buildClaudeHookHandler(
     // Register nonblank text before scanning so its transcript copy stays deduplicated.
     // Publish a blank native submit first because recording its ID can immediately recover text.
     const recoverAfterHook = submit && !hasText;
-    if (!recoverAfterHook) {
-      note();
-      observe();
-    }
+    if (!recoverAfterHook) note();
     const output = submit
       ? associateClaudePrompt(deps.getSession()?.promptSubmissions, event, projected, show)
       : projected;
+    // Transcript scans can notify the host synchronously. Associate before it can take input.
+    if (!recoverAfterHook) observe();
     observation.run("hook", () => emitter.emit("hook", event));
     if (show) observation.run("activity", () => emitter.emit("activity", output));
     if (event.hook_event_name === "StopFailure")

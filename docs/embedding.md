@@ -204,8 +204,9 @@ status changes without a user turn, and committed assistant text can arrive afte
 `user_message` ordinarily carries the native prompt. For a matched Claude or
 Codex low-level API send, `text` is the original API string, `nativePrompt` is
 the exact submit-hook text, and `sendId` carries the valid caller ID when
-supplied. Claude ergonomic sends and standalone pastes without an API match
-use the native body as `text` and the exact envelope as `nativePrompt`.
+supplied. A supported standalone Claude paste with unknown API origin reports
+the native body as `text` and the exact envelope as `nativePrompt`. That includes
+envelopes submitted through Claude’s ergonomic methods.
 See [native paste presentation](cli-behavior.md#claude-native-paste-presentation).
 
 Claude activity can be correlated using its native `turnId` when present. Keep accepting matching

@@ -19,7 +19,7 @@ const maxNativeTurnIdCodeUnits = 128;
 export type PromptNormalizer = (payload: string, limit: number) => string | undefined;
 
 type Submission = {
-  readonly expectedHookPrompt: string | undefined;
+  readonly expectedNormalizedPrompt: string | undefined;
   pasted: boolean;
   entered: boolean;
   api?: { readonly text: string; readonly sendId?: string };
@@ -65,11 +65,11 @@ export class PromptSubmissions {
       this.revoke();
       return undefined;
     }
-    const expectedHookPrompt =
+    const expectedNormalizedPrompt =
       empty && payload.length <= maxCorrelatedPromptCodeUnits
         ? this.normalizePayload(payload, maxCorrelatedPromptCodeUnits)
         : undefined;
-    const draft = { expectedHookPrompt, pasted: false, entered: false };
+    const draft = { expectedNormalizedPrompt, pasted: false, entered: false };
     this.draft = draft;
     return (data, dispatch) =>
       observeInputWrite(
@@ -97,7 +97,10 @@ export class PromptSubmissions {
     const sendId = readSendId(options);
     return (payload) => {
       const draft = this.draft;
-      if (draft?.expectedHookPrompt !== undefined && text.length <= maxCorrelatedPromptCodeUnits)
+      if (
+        draft?.expectedNormalizedPrompt !== undefined &&
+        text.length <= maxCorrelatedPromptCodeUnits
+      )
         draft.api = { text, ...(sendId === undefined ? {} : { sendId }) };
       beforeEnter?.(payload);
     };
@@ -108,7 +111,8 @@ export class PromptSubmissions {
     if (!this.draft?.entered) this.draft = undefined;
   };
 
-  /** Attribute only after forwarding and before publishing the authenticated hook activity. */
+  /** Associate before publishing the hook activity. Claude supplies displayed text to normalize.
+   * Codex supplies its canonical hook prompt directly. */
   observeNativeSubmit(
     turnId: string,
     nativePrompt: string | undefined,
@@ -127,7 +131,7 @@ export class PromptSubmissions {
     if (!draft?.entered) return undefined;
     if (
       nativePrompt === undefined ||
-      draft.expectedHookPrompt === undefined ||
+      draft.expectedNormalizedPrompt === undefined ||
       !hasPromptText(nativePrompt)
     ) {
       this.revoke();
@@ -137,7 +141,7 @@ export class PromptSubmissions {
       displayedNativeText === undefined
         ? nativePrompt
         : this.normalizePayload(displayedNativeText, maxCorrelatedPromptCodeUnits);
-    if (comparable !== draft.expectedHookPrompt) {
+    if (comparable !== draft.expectedNormalizedPrompt) {
       this.revoke();
       return undefined;
     }

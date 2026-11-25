@@ -1,5 +1,7 @@
 /** Exercise matched Claude API prompts through authenticated bridge hooks and FakePty writes (C-API-71). */
 
+import { symlinkSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, expect, onTestFinished, test } from "vitest";
 import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
@@ -26,6 +28,7 @@ async function setup() {
   await paint();
   return {
     session,
+    hook,
     pty,
     paint,
     append,
@@ -111,7 +114,33 @@ test("C-API-71 a reused Claude prompt ID cannot claim a second caller ID", async
   await paint();
   await session.sendGuidance(" next ", { sendId: "two" });
   await submit(" next", "reused");
-  expect(messages().flatMap(({ sendId }) => sendId ?? [])).toEqual(["one"]);
+  await submit(" next", "distinct");
+  expect(messages()).toMatchObject([
+    { text: " first ", sendId: "one" },
+    { text: " next ", sendId: "two" },
+  ]);
+});
+
+test("C-API-71 a transcript warning cannot revoke an already matched API prompt", async () => {
+  const { session, hook, messages } = await setup();
+  await session.sendMessage(" original ", { sendId: "caller" });
+  const transcript = join(session.cwd, "cyclic-transcript.jsonl");
+  symlinkSync(transcript, transcript);
+  let warned = false;
+  session.on("warning", (warning) => {
+    if (warning.code === "transcript_read_error") {
+      warned = true;
+      session.terminal.xterm.input("x");
+    }
+  });
+  await hook({
+    hook_event_name: "UserPromptSubmit",
+    prompt: " original",
+    prompt_id: "native",
+    transcript_path: transcript,
+  });
+  expect(warned).toBe(true);
+  expect(messages()).toMatchObject([{ text: " original ", sendId: "caller" }]);
 });
 
 test("C-API-71 textless native hooks recover transcript paste display without caller provenance", async () => {
