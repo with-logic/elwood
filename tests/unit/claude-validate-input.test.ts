@@ -4,9 +4,10 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { claudeAcceptanceSignal } from "../../src/claude/accepted-turn.ts";
 import { normalizeClaudeHookEvent } from "../../src/claude/normalize.ts";
 import { isClaudeHookInput } from "../../src/claude/validate/input.ts";
-import { defaultAcceptanceSignal } from "../../src/core/simple/turn-types.ts";
+import { defaultAcceptanceSignal } from "../../src/core/simple/acceptance-signal.ts";
 import {
   base,
   batchToolCall,
@@ -29,6 +30,7 @@ describe("Claude hook input validation (lifecycle)", () => {
     if (event.hook_event_name !== "UserPromptSubmit") throw new Error("Expected a submit hook");
     expect(event).toMatchObject({ prompt: "" });
     expect(defaultAcceptanceSignal(event, "")).toBe(accepted);
+    expect(claudeAcceptanceSignal(event, "")).toBe(accepted);
   });
   test("C-HOOK-07 C-HOOK-17 validates lifecycle hook inputs by event-specific schema", () => {
     expect(isClaudeHookInput(null)).toBe(false);
