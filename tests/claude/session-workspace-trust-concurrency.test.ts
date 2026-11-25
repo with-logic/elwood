@@ -114,7 +114,7 @@ test("C-ATTN-08 a failed first Claude publication preserves independent list ver
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   try {
     ptys[0]!.emitData(trustFrame(cwd));
     await session.terminal.settled();
@@ -151,6 +151,40 @@ test("C-ATTN-08 Claude closes its announced trust request on session teardown", 
       [{ phase: "closed", reason: "unavailable", request }],
     ]);
   } finally {
+    await session.teardown();
+  }
+});
+
+test("C-ATTN-08 re-registering the same Claude replay handler starts a fresh proof", async () => {
+  installFakes();
+  const cwd = realpathSync(tempDir());
+  const session = await startClaude({ cwd });
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+  const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+  session.on("dialog", live);
+  const held: Awaited<ReturnType<typeof holdFirstGitLookup>>[] = [];
+  try {
+    ptys[0]!.emitData(trustFrame(cwd));
+    await session.terminal.settled();
+    await expect.poll(() => live.mock.calls.length).toBe(1);
+    const previous = await holdFirstGitLookup(lstat, cwd);
+    held.push(previous);
+    const off = session.on("dialog", late);
+    await previous.began;
+    const current = await holdFirstGitLookup(lstat, cwd);
+    held.push(current);
+    off();
+    session.on("dialog", late);
+    const started = vi.fn();
+    void current.began.then(started);
+    await expect.poll(() => started.mock.calls.length).toBe(1);
+    previous.release();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(late).not.toHaveBeenCalled();
+    current.release();
+    await expect.poll(() => late.mock.calls).toEqual(live.mock.calls);
+  } finally {
+    for (const lookup of held) lookup.release();
     await session.teardown();
   }
 });

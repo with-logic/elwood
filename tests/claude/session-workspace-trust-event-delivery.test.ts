@@ -58,14 +58,18 @@ test("C-ATTN-08 native invalidation in one Claude listener stops a stale raise a
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
   const later = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+  let writing: Promise<void> | undefined;
   session.on("dialog", ({ phase }) => {
-    if (phase === "raised") void session.terminal.writeOutput("host output");
+    if (phase !== "raised") return;
+    writing = session.terminal.writeOutput("host output");
+    return writing;
   });
   session.on("dialog", later);
   try {
     ptys[0]!.emitData(trustFrame(cwd));
     await session.terminal.settled();
     await expect.poll(() => later.mock.calls.map(([event]) => event.phase)).toEqual(["closed"]);
+    await writing;
   } finally {
     await session.teardown();
   }
@@ -76,7 +80,7 @@ test("C-ATTN-08 an unchanged announced Claude menu does not need another publica
   const cwd = realpathSync(tempDir());
   const checks = await countChecks();
   const session = await startClaude({ cwd });
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", events);
   const menu = trustFrame(cwd);
   try {
@@ -89,6 +93,29 @@ test("C-ATTN-08 an unchanged announced Claude menu does not need another publica
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(checks).toHaveBeenCalledOnce();
     expect(events).toHaveBeenCalledOnce();
+  } finally {
+    await session.teardown();
+  }
+});
+
+test("C-ATTN-08 Claude reads reflect invalidation by a raised listener", async () => {
+  installFakes();
+  const cwd = realpathSync(tempDir());
+  const session = await startClaude({ cwd });
+  const events = vi.fn<(phase: ElwoodDialogEvent<"claude">["phase"]) => void>();
+  let writing: Promise<void> | undefined;
+  session.on("dialog", (event) => {
+    events(event.phase);
+    if (event.phase !== "raised") return;
+    writing = session.terminal.writeOutput("host output");
+    return writing;
+  });
+  try {
+    ptys[0]!.emitData(trustFrame(cwd));
+    await session.terminal.settled();
+    await expect.poll(() => events.mock.calls).toEqual([["raised"], ["closed"]]);
+    await writing;
+    expect(await session.listDialogs()).toEqual([]);
   } finally {
     await session.teardown();
   }

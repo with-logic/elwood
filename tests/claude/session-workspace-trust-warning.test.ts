@@ -24,7 +24,7 @@ test.each([
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
   const warnings = vi.fn<(warning: ElwoodWarningEvent) => void>();
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   const activity = vi.fn<(event: ElwoodActivityEvent) => void>();
   const failure = vi.fn(() => {
     const error = new Error(failureText);

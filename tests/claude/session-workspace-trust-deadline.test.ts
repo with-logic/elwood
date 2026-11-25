@@ -2,15 +2,15 @@
 import { realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 import { afterEach, assert, expect, test, vi } from "vitest";
-import { startClaude } from "../../src/index.ts";
+import { type ElwoodDialogEvent, startClaude } from "../../src/index.ts";
 import { holdGitLookup } from "../helpers/hold-git-lookup.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
 vi.mock("node:fs/promises", { spy: true });
 afterEach(() => {
+  vi.useRealTimers();
   vi.mocked(fs.lstat).mockReset();
   vi.restoreAllMocks();
   resetFakes();
@@ -20,7 +20,7 @@ test("C-ATTN-08 stalled Claude revalidation retires the request for that launch"
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", events);
   const render = async () => {
     ptys[0]!.emitData(trustFrame(cwd));
@@ -52,7 +52,7 @@ test("C-ATTN-08 Claude rechecks a same-menu repaint after an older proof complet
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const live = vi.fn();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
   const render = async (data: string) => {
     ptys[0]!.emitData(data);
@@ -64,7 +64,7 @@ test("C-ATTN-08 Claude rechecks a same-menu repaint after an older proof complet
   assert.isDefined(request);
   await expect.poll(() => live.mock.calls).toEqual([[{ phase: "raised", request }]]);
   const held = await holdGitLookup(fs.lstat, cwd, "all");
-  const late = vi.fn();
+  const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", late);
   try {
     await held.began;
@@ -82,7 +82,7 @@ test("C-ATTN-08 Claude replay checks the request again after its proof completes
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const live = vi.fn();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
   ptys[0]!.emitData(trustFrame(cwd));
   await session.terminal.settled();
@@ -90,7 +90,7 @@ test("C-ATTN-08 Claude replay checks the request again after its proof completes
   assert.isDefined(request);
   await expect.poll(() => live.mock.calls).toEqual([[{ phase: "raised", request }]]);
   const held = await holdGitLookup(fs.lstat, cwd, "all");
-  const late = vi.fn();
+  const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", (event) => {
     if (event.phase === "closed") session.off("dialog", late);
   });
@@ -122,12 +122,14 @@ test.each([
   try {
     ptys[0]!.emitData(trustFrame(cwd));
     await session.terminal.settled();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     if (detached !== "none") {
-      const off = session.on("dialog", vi.fn());
+      const off = session.on("dialog", vi.fn<(event: ElwoodDialogEvent<"claude">) => void>());
       if (detached === "pending") await held.began;
       off();
     }
-    await setTimeout(550);
+    await vi.advanceTimersByTimeAsync(500);
+    vi.useRealTimers();
     if (detached !== "pending") {
       const marker = join(cwd, ".git");
       expect(vi.mocked(fs.lstat).mock.calls.filter(([path]) => path === marker)).toEqual([]);
@@ -135,6 +137,7 @@ test.each([
     held.release();
     expect(await session.listDialogs()).toHaveLength(1);
   } finally {
+    vi.useRealTimers();
     held.release();
     await session.teardown();
   }
@@ -144,7 +147,7 @@ test("C-ATTN-08 raw Claude input after takeover does not start another scope che
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd, autotrust: true });
-  const observed = vi.fn();
+  const observed = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", observed);
   try {
     ptys[0]!.emitData(trustFrame(cwd));

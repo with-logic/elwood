@@ -1,11 +1,10 @@
 /** Check Claude event publication without additional PTY output or native snapshot access (C-ATTN-08). */
 import { realpathSync } from "node:fs";
 import { lstat, stat } from "node:fs/promises";
-import { setTimeout } from "node:timers/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeSessionImpl } from "../../src/claude/session/instance.ts";
 import { ClaudeWorkspaceTrustDiscovery } from "../../src/claude/workspace-trust/discovery.ts";
-import { startClaude } from "../../src/index.ts";
+import { type ElwoodDialogEvent, startClaude } from "../../src/index.ts";
 import { settledNativeSnapshot } from "../../src/terminal/cursor.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { holdFirstGitLookup } from "../helpers/hold-git-lookup.ts";
@@ -15,6 +14,7 @@ import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 vi.mock("node:fs/promises", { spy: true });
 vi.mock("../../src/terminal/cursor.ts", { spy: true });
 afterEach(() => {
+  vi.useRealTimers();
   vi.mocked(lstat).mockReset();
   vi.mocked(settledNativeSnapshot).mockReset();
   vi.restoreAllMocks();
@@ -25,7 +25,7 @@ test("C-ATTN-08 Claude announces a raw takeover of an already settled menu", asy
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd, autotrust: true });
-  const observed = vi.fn();
+  const observed = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", observed);
   try {
     ptys[0]!.emitData(trustFrame(cwd));
@@ -44,7 +44,7 @@ test("C-ATTN-08 a Claude snapshot failure retires retained replay without reject
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const live = vi.fn();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
   try {
     ptys[0]!.emitData(trustFrame(cwd));
@@ -52,7 +52,7 @@ test("C-ATTN-08 a Claude snapshot failure retires retained replay without reject
     await expect.poll(() => live.mock.calls.length).toBe(1);
 
     session.terminal.xterm.options.allowProposedApi = false;
-    const late = vi.fn();
+    const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
     session.on("dialog", late);
     await expect
       .poll(() => late.mock.calls)
@@ -77,7 +77,7 @@ test("C-ATTN-08 stalled Claude publication checks resume only for the latest nat
     "❯ No, exit\r\n   Yes, I trust this folder",
     "❯ Yes, I trust this folder\r\n   No, exit",
   );
-  const observed = vi.fn();
+  const observed = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   const held: Awaited<ReturnType<typeof holdFirstGitLookup>>[] = [];
   session.on("dialog", observed);
   try {
@@ -113,7 +113,7 @@ test("C-ATTN-08 a canceled Claude replay cannot retire another subscriber's requ
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const live = vi.fn();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
   try {
     ptys[0]!.emitData(trustFrame(cwd));
@@ -121,16 +121,19 @@ test("C-ATTN-08 a canceled Claude replay cannot retire another subscriber's requ
     await expect.poll(() => live.mock.calls.length).toBe(1);
     const initial = await session.listDialogs();
     const held = await holdFirstGitLookup(lstat, cwd);
-    const late = vi.fn();
+    const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const off = session.on("dialog", late);
     try {
       await held.began;
       off();
-      await setTimeout(550);
+      await vi.advanceTimersByTimeAsync(500);
+      vi.useRealTimers();
       expect(await session.listDialogs()).toEqual(initial);
       expect(live).toHaveBeenCalledTimes(1);
       expect(late).not.toHaveBeenCalled();
     } finally {
+      vi.useRealTimers();
       held.release();
     }
   } finally {
@@ -147,7 +150,7 @@ test.each([
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = await startClaude({ cwd });
-  const observed = vi.fn();
+  const observed = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   const pty = ptys[0]!;
   session.on("dialog", observed);
   try {

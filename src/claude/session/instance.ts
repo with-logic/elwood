@@ -88,7 +88,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
-    // Subscribe before buffered and retained replays.
+    // Register first so a synchronous buffered replay failure leaves the listener subscribed.
     const isRegistered = this.emitter.listen(event, handler);
     if (event === "dialog" && isRegistered)
       this.dialogs.onListenerAdded(handler as ElwoodEventHandler<"dialog">, isRegistered);

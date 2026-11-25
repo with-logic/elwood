@@ -1,7 +1,7 @@
 /** Verify Claude workspace discovery follows current native viewport evidence (C-ATTN-08). */
 import { realpathSync } from "node:fs";
 import { afterEach, assert, expect, test, vi } from "vitest";
-import { startClaude } from "../../src/index.ts";
+import { type ElwoodDialogEvent, startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { trustFrame } from "./workspace-trust-discovery-fixture.ts";
 
@@ -21,7 +21,7 @@ async function start() {
 
 test("C-ATTN-08 a Claude announcement waits for a complete native paint", async () => {
   const { cwd, session, pty, render } = await start();
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", events);
   try {
     await render("Starting Claude");
@@ -49,7 +49,7 @@ test("C-ATTN-08 a Claude announcement waits for a complete native paint", async 
 
 test("C-ATTN-08 Claude host mutation retires discovery and leaves the native hold", async () => {
   const { cwd, session, pty, render } = await start();
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", events);
   try {
     await render(trustFrame(cwd));
@@ -77,10 +77,10 @@ test("C-ATTN-08 Claude host mutation retires discovery and leaves the native hol
 
 test("C-ATTN-08 Claude replays the same announced menu after a native repaint", async () => {
   const { cwd, session, render } = await start();
-  const live = vi.fn();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
-  const late = vi.fn();
-  const removed = vi.fn();
+  const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+  const removed = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   const menu = trustFrame(cwd);
   try {
     await render(menu);
@@ -105,7 +105,7 @@ test("C-ATTN-08 Claude replays the same announced menu after a native repaint", 
 
 test("C-ATTN-08 retained Claude listeners ignore non-Promise thenables", async () => {
   const { cwd, session, render } = await start();
-  const live = vi.fn();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
   const then = vi.fn();
   const listener = vi.fn(() => ({ then }));
@@ -127,10 +127,13 @@ test.each([
   true,
 ])("C-ATTN-08 Claude dispatches the close before announcing a replacement (%s)", async (revoke) => {
   const { cwd, session, render } = await start();
-  const events = vi.fn();
+  const events = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+  let writing: Promise<void> | undefined;
   session.on("dialog", (event) => {
     events(event);
-    if (revoke && event.phase === "closed") void session.terminal.writeOutput("host output");
+    if (!revoke || event.phase !== "closed") return;
+    writing = session.terminal.writeOutput("host output");
+    return writing;
   });
   try {
     const menu = trustFrame(cwd);
@@ -145,6 +148,7 @@ test.each([
       ),
     );
     const [replacement] = await session.listDialogs();
+    await writing;
     expect(events.mock.calls.slice(0, 2)).toEqual([
       [{ phase: "raised", request }],
       [{ phase: "closed", reason: "replaced", request }],
@@ -165,35 +169,18 @@ test.each([
 
 test("C-ATTN-08 Claude replay skips a request revoked before its turn", async () => {
   const { cwd, session, render } = await start();
-  const late = vi.fn();
-  const live = vi.fn();
+  const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
+  const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", live);
   try {
     await render(trustFrame(cwd));
     const [request] = await session.listDialogs();
     assert.isDefined(request);
-
     await expect.poll(() => live.mock.calls).toEqual([[{ phase: "raised", request }]]);
     const writing = session.terminal.writeOutput("host output");
     session.on("dialog", late);
     await writing;
     expect(late.mock.calls).toEqual([[{ phase: "closed", reason: "unavailable", request }]]);
-  } finally {
-    await session.teardown();
-  }
-});
-
-test("C-ATTN-08 Claude reads reflect invalidation by a raised listener", async () => {
-  const { cwd, session, render } = await start();
-  const events = vi.fn();
-  session.on("dialog", (event) => {
-    events(event.phase);
-    if (event.phase === "raised") void session.terminal.writeOutput("host output");
-  });
-  try {
-    await render(trustFrame(cwd));
-    await expect.poll(() => events.mock.calls).toEqual([["raised"], ["closed"]]);
-    expect(await session.listDialogs()).toEqual([]);
   } finally {
     await session.teardown();
   }

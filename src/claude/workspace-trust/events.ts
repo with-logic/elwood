@@ -47,11 +47,13 @@ export class ClaudeWorkspaceTrustEvents {
   }
 
   reconcile(): void {
-    runContained(() => {
+    try {
       const candidate = this.discovery.reconcile();
       if (this.proof && this.proof.candidate !== candidate) this.proof.cancellation.abort();
       if (candidate) this.wake();
-    });
+    } catch {
+      if (this.announced) this.discovery.invalidateEvidence();
+    }
   }
 
   reconcileAfter(update: () => void): void {

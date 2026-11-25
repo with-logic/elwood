@@ -18,7 +18,7 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
   installFakes();
   const cwd = realpathSync(tempDir());
   const session = new ClaudeSession({ cwd, autotrust: false });
-  const raised = vi.fn();
+  const raised = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", raised);
   const launched = Promise.withResolvers<void>();
   const factory = currentPtyFactory();
@@ -43,7 +43,7 @@ test("C-ATTN-08 replays the active pre-return Claude disclosure", async () => {
     await expect.poll(() => raised.mock.calls).toEqual([[{ phase: "raised", request }]]);
     eager.on("dialog", raised);
 
-    const late = vi.fn();
+    const late = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
     eager.on("dialog", late);
     expect(late).not.toHaveBeenCalled();
     await expect.poll(() => late.mock.calls).toEqual([[{ phase: "raised", request }]]);
@@ -97,7 +97,7 @@ test("C-ATTN-08 Claude revalidates scope changed during terminal data dispatch",
   const cwd = realpathSync(tempDir());
   execFileSync("git", ["-C", cwd, "init", "-q"]);
   const session = await startClaude({ cwd, autotrust: false });
-  const raised = vi.fn();
+  const raised = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   session.on("dialog", raised);
   const marker = join(cwd, ".git");
   const backup = join(cwd, "former-git");
@@ -133,7 +133,7 @@ test.each([
   const eager = await session.start();
   const pty = ptys[0]!;
   const live = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
-  const removed = vi.fn();
+  const removed = vi.fn<(event: ElwoodDialogEvent<"claude">) => void>();
   const reentrant = vi.fn((): void => {
     session.off("dialog", reentrant);
   });
