@@ -355,6 +355,21 @@ message is `error.message` and `details.agentError` is the `codex_error_info`
 kind. A second turn on the same session is rejected the same way, so the first
 released the session at its real boundary. C-API-60, C-CLI-28, C-E2E-21.
 
+**Codex 0.171.0 and 0.172.0 name the refusal in `codex_error_info`, not in
+the message (2026-11-25).** For the same bogus model, the failed
+`task_complete` carries `error.message: "The '<model>' model is not supported
+when using Codex with a ChatGPT account."` and `error.codex_error_info:
+"model_not_found"`. The service's JSON body, which carried the code on
+0.164.0, is gone. `elwood run` still exits 1 with a `turn_failed` document,
+whose message is now that sentence; the CLI document carries no structured
+code. `CodexSession.send` still rejects with `turn_failed`, the same message,
+and `details.agentError: "model_not_found"`. Read the code from
+`details.agentError`, not the message. C-E2E-21 checks it there on `send`, and
+checks that both messages name the refused model. The 0.172.0 runs used
+`~/.local/bin/codex`, which the login shell resolves in a project without a
+`.node-version`. The 0.171.0 runs put the npm `codex` 0.171.0 first on the
+login shell's `PATH` through a temporary `ZDOTDIR`. C-E2E-21.
+
 **Codex 0.171.0 serializes workspace credits and ordinary usage-limit failures with
 `task_complete.error.codex_error_info: "usage_limit_exceeded"`.** Coal Harbor
 reported the credit-depleted workspace-owner diagnostic. The [0.171.0 error
