@@ -19,6 +19,8 @@ type Shape = {
   readonly headers?: Readonly<Record<string, string>>;
   readonly error: Readonly<Record<string, unknown>>;
   readonly category: ElwoodTurnFailureCategory;
+  /** The diagnostic Codex commits for this reply, which no other shape produces. */
+  readonly message: RegExp;
 };
 
 const usageLimit = { type: "usage_limit_reached", message: "The usage limit has been reached" };
@@ -30,6 +32,7 @@ const shapes: Readonly<Record<string, Shape>> = {
     headers: { "x-codex-rate-limit-reached-type": "workspace_owner_credits_depleted" },
     error: { ...usageLimit, plan_type: "business" },
     category: "quota_or_credit",
+    message: /^Your workspace is out of credits\. Add credits to continue\.$/u,
   },
   "insufficient-quota": {
     status: 429,
@@ -39,11 +42,13 @@ const shapes: Readonly<Record<string, Shape>> = {
       message: "You exceeded your current quota, please check your plan and billing details.",
     },
     category: "quota_or_credit",
+    message: /^Quota exceeded\. Check your plan and billing details\.$/u,
   },
   "usage-limit": {
     status: 429,
     error: { ...usageLimit, plan_type: "team" },
     category: "usage_limit",
+    message: /hit your usage limit\. To get more access now, send a request to your admin/u,
   },
   // Codex retries the 429, 402 and 500 below before failing the turn, for about 6.5 s, 7 s and
   // 25 s respectively.
@@ -52,16 +57,19 @@ const shapes: Readonly<Record<string, Shape>> = {
     headers: { "retry-after": "1" },
     error: { type: "requests", code: "rate_limit_exceeded", message: "Rate limit reached" },
     category: "rate_limited",
+    message: /^exceeded retry limit, last status: 429 /u,
   },
   "payment-required": {
     status: 402,
     error: { type: "billing_error", code: "payment_required", message: "Payment required." },
     category: "quota_or_credit",
+    message: /^unexpected status 402 Payment Required: Payment required\./u,
   },
   "server-error": {
     status: 500,
     error: { type: "server_error", message: "The server had an error." },
     category: "network_or_api",
+    message: /currently experiencing high demand/u,
   },
 };
 
@@ -80,14 +88,12 @@ test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures c
   timeout: 240_000,
 }, async (t) => {
   const unmatched: string[] = [];
-  const served: string[] = [];
   const { project, sandbox } = await loopbackCodexProvider(t, (request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       const name = requestedShapeName(Buffer.concat(chunks).toString());
       if (name === undefined) unmatched.push(`${request.method} ${request.url}`);
-      else served.push(name);
       const shape = name === undefined ? undefined : shapes[name];
       response.writeHead(shape?.status ?? 400, {
         "content-type": "application/json",
@@ -109,9 +115,8 @@ test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures c
   const { activities } = observed;
   const turnIds: string[] = [];
   const categories: Record<string, ElwoodTurnFailureCategory> = {};
-  for (const name of Object.keys(shapes)) {
+  for (const [name, shape] of Object.entries(shapes)) {
     const turnStartIndex = activities.length;
-    const servedStart = served.length;
     await live.sendMessage(`Reply OK. shape:${name}`);
     const turn = () => activities.slice(turnStartIndex);
     const failure = await waitWithEvidence(
@@ -122,12 +127,9 @@ test("C-API-65 real Codex billing, usage-limit, rate-limit and server failures c
       observed,
     );
     await live.waitForStatus((status) => status === "ready", 60_000);
-    // Two shapes share a category, so the category alone cannot show which reply was served.
-    assert.deepEqual(
-      new Set(served.slice(servedStart)),
-      new Set([name]),
-      `${name}: replies served`,
-    );
+    // Shapes share categories, and Codex's own title request can draw an earlier shape's reply,
+    // so the committed diagnostic is what shows that this turn ended on its own reply.
+    assert.match(failure.turnFailure.message, shape.message, name);
     const submit = turn().find((event) => event.hookEventName === "UserPromptSubmit");
     assert.ok(submit?.turnId, `${name}: the submit hook names the turn`);
     assert.equal(failure.turnId, submit.turnId, name);
