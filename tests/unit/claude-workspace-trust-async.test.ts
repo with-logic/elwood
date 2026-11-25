@@ -1,6 +1,6 @@
 /** Exercise bounded async capture and cancellation of Claude filesystem evidence (PRD §5.1). */
-import { realpathSync, statSync } from "node:fs";
-import { lstat } from "node:fs/promises";
+import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import { assert, expect, test, vi } from "vitest";
 import {
@@ -93,4 +93,57 @@ test("Claude startup stops waiting for stalled scope evidence before the lookup 
     mock.mockRestore();
     vi.useRealTimers();
   }
+});
+
+test("Claude startup cancels further reads from a stalled metadata descriptor", async () => {
+  const directory = checkedFolder();
+  const git = join(directory.cwd, ".git");
+  const head = join(git, "HEAD");
+  mkdirSync(git);
+  writeFileSync(head, "ref: refs/heads/main\n");
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  const reading = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const closed = Promise.withResolvers<void>();
+  const recordRead = vi.fn();
+  const mock = vi.mocked(open).mockImplementation(async (...args) => {
+    const handle = await actual.open(...args);
+    if (args[0] !== head) return handle;
+    const read = handle.read.bind(handle);
+    const close = handle.close.bind(handle);
+    vi.spyOn(handle, "read")
+      .mockImplementation((...args) => {
+        recordRead();
+        return read(...args);
+      })
+      .mockImplementationOnce(async () => {
+        recordRead();
+        reading.resolve();
+        await release.promise;
+        return { bytesRead: 1, buffer: Buffer.alloc(1) };
+      });
+    vi.spyOn(handle, "close").mockImplementationOnce(async () => {
+      await close();
+      closed.resolve();
+    });
+    return handle;
+  });
+
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const observed = vi.fn();
+  const checking = captureClaudeStartupTrustEvidence(directory).then(observed);
+  try {
+    await reading.promise;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(observed).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(recordRead).toHaveBeenCalledOnce();
+  } finally {
+    release.resolve();
+    await checking;
+    await closed.promise;
+    mock.mockRestore();
+    vi.useRealTimers();
+  }
+  expect(recordRead).toHaveBeenCalledOnce();
 });

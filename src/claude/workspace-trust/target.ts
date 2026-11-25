@@ -22,14 +22,17 @@ export type ClaudeLaunchTrustEvidence = {
   readonly isCurrent: (signal?: AbortSignal) => Promise<boolean>;
 };
 
-/** Capture launch and target identities before starting Claude. */
+/**
+ * Capture the launch and target identities. The caller controls cancellation
+ * through the signal. Startup uses captureClaudeStartupTrustEvidence to bound the wait.
+ */
 export async function captureClaudeLaunchTrustEvidence(
   directory: CheckedLaunchDirectory,
   signal?: AbortSignal,
 ): Promise<ClaudeLaunchTrustEvidence | undefined> {
   const captured = await verifyWorkspaceTarget(directory, signal);
   if (!captured) return undefined;
-  const { scope, key, identity } = captured;
+  const { scope, key, targetIdentity } = captured;
   let current = true;
   return {
     scope,
@@ -37,13 +40,14 @@ export async function captureClaudeLaunchTrustEvidence(
       if (!current) return false;
       const verified = await verifyWorkspaceTarget(directory, signal);
       if (signal?.aborted) return false;
-      if (verified?.key !== key || !sameDirectoryIdentity(verified.identity, identity))
+      if (verified?.key !== key || !sameDirectoryIdentity(verified.targetIdentity, targetIdentity))
         current = false;
       return current;
     },
   };
 }
 
+/** Capture within the startup deadline. Expiry cancels the capture and yields undefined. */
 export function captureClaudeStartupTrustEvidence(directory: CheckedLaunchDirectory) {
   return boundedTrustEvidence((signal) => captureClaudeLaunchTrustEvidence(directory, signal));
 }
@@ -58,15 +62,15 @@ async function verifyWorkspaceTarget(
     const scope = await resolveClaudeWorkspaceTrustTarget(cwd, signal);
     if (!scope) return undefined;
     signal?.throwIfAborted();
-    const identity = await lstat(scope.targetPath, { bigint: true });
-    if (!identity.isDirectory()) return undefined;
+    const targetIdentity = await lstat(scope.targetPath, { bigint: true });
+    if (!targetIdentity.isDirectory()) return undefined;
     if (!(await isLaunchDirectory(scope.physicalLaunchPath, launchIdentity, signal)))
       return undefined;
     if (scope.physicalLaunchPath !== cwd && !(await isLaunchDirectory(cwd, launchIdentity, signal)))
       return undefined;
     signal?.throwIfAborted();
     const key = [scope.physicalLaunchPath, scope.targetPath, scope.targetScope].join("\0");
-    return { scope, key, identity };
+    return { scope, key, targetIdentity };
   } catch {
     return undefined;
   }

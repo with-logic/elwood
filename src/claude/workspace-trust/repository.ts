@@ -13,6 +13,7 @@ import { trustedGitDirectoryPath, trustedGitFile } from "./path-trust.ts";
 const maximumMetadataBytes = 4096;
 const gitDirectoryPrefix = "gitdir: ";
 
+/** Find the nearest .git marker, including unsupported types. Undefined means none was found. */
 export async function nearestGitMarker(
   physicalLaunchPath: string,
   signal: AbortSignal | undefined,
@@ -27,6 +28,7 @@ export async function nearestGitMarker(
   }
 }
 
+/** Verify the marker and return its checkout target. Undefined means the Git evidence could not be verified. */
 export async function claudeRepositoryTarget(
   { directory, metadata }: NonNullable<Awaited<ReturnType<typeof nearestGitMarker>>>,
   user: PathUser,

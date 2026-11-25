@@ -43,7 +43,7 @@ test("a foreign-owned Git marker cannot set Claude's scope across an ancestor", 
   }
 });
 
-test("a foreign-owned HEAD cannot set Claude's scope", async () => {
+test("rejecting a foreign-owned HEAD closes its descriptor", async () => {
   const checkout = realpathSync(tempDir());
   const git = join(checkout, ".git");
   mkdirSync(git);
@@ -51,10 +51,19 @@ test("a foreign-owned HEAD cannot set Claude's scope", async () => {
   writeFileSync(head, "ref: refs/heads/main\n");
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
   const { ino, uid } = lstatSync(head);
+  const closed = vi.fn();
+  let closeHead: (() => Promise<void>) | undefined;
   const mock = vi.mocked(open).mockImplementation(async (...options) => {
     const handle = await actual.open(...options);
     if (options[0] === head) {
       const inspect = handle.stat.bind(handle);
+      const close = handle.close.bind(handle);
+      closeHead = close;
+      vi.spyOn(handle, "close").mockImplementation(async () => {
+        await close();
+        closeHead = undefined;
+        closed();
+      });
       vi.spyOn(handle, "stat").mockImplementation(async (options) => {
         const info = await inspect(options);
         if (info.ino === ino) Object.assign(info, { uid: uid + 1 });
@@ -65,7 +74,9 @@ test("a foreign-owned HEAD cannot set Claude's scope", async () => {
   });
   try {
     expect(await resolveClaudeWorkspaceTrustTarget(checkout)).toBeUndefined();
+    expect(closed).toHaveBeenCalledOnce();
   } finally {
+    await closeHead?.();
     mock.mockRestore();
   }
 });

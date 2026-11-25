@@ -111,6 +111,11 @@ test("a Claude linked worktree resolves the registered main checkout", async () 
   writeFileSync(backlink, `${relative(administrativeDir, marker)}\n`);
 
   const commonFile = join(administrativeDir, "commondir");
+  // A valid HEAD and backlink do not make .git/worktrees the common directory.
+  writeFileSync(join(root, ".git", "worktrees", "HEAD"), "ref: refs/heads/main\n");
+  writeFileSync(commonFile, "..\n");
+  expect(await resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
+
   unlinkSync(commonFile);
   expect(await resolveClaudeWorkspaceTrustTarget(child)).toBeUndefined();
   writeFileSync(commonFile, "\n");
