@@ -7,12 +7,11 @@
  * Implements C-ATTN-09 (PRD §5.3).
  */
 
-import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { claudeStagedComposerClearance } from "../../src/claude/composer/staged-input.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { offerTitle, seedOffer } from "./auto-mode-offer.ts";
+import { offerSessionOptions, offerShown, seedOffer } from "./auto-mode-offer.ts";
 import {
   cleanup,
   hookNamed,
@@ -36,16 +35,7 @@ test("C-ATTN-09 Claude keeps a draft the offer painted over in the composer shap
   const project = makeProject("claude");
   let session: ClaudeSessionApi | undefined;
   try {
-    session = await startClaude({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      autotrust: true,
-      autoupdate: false,
-      name: "Offer Draft",
-      model: "haiku",
-      permissionMode: "auto",
-      initialSize: { cols: 140, rows: 40 },
-    });
+    session = await startClaude(offerSessionOptions(project, "Offer Draft"));
     const live = session;
     const observed = observeSession(live);
     const screen = () => live.terminal.snapshot().text;
@@ -57,10 +47,7 @@ test("C-ATTN-09 Claude keeps a draft the offer painted over in the composer shap
     const draft = [`Check ${marker}: line one.`, "Line two.", "Line three.", "Reply with OK."];
     await live.sendKeys(`\u001b[200~${draft.join("\n")}\u001b[201~`);
     await waitFor(() => hookNamed(observed.hooks, "Stop"), "turn Stop", 90_000);
-    try {
-      await waitFor(() => (screen().includes(offerTitle) ? true : undefined), "offer", 15_000);
-    } catch {
-      assert.notEqual(live.status, "exited", `Claude exited instead:\n${screen()}`);
+    if (!(await offerShown(live))) {
       skipNow(t, `Claude did not offer auto-mode setup over the draft:\n${screen()}`);
       return;
     }

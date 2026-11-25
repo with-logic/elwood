@@ -12,7 +12,7 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import type { CliJsonlRecord } from "../../src/cli/output/types.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { offerTitle, seedOffer } from "./auto-mode-offer.ts";
+import { offerSessionOptions, offerShown, seedOffer } from "./auto-mode-offer.ts";
 import { invoke } from "./cli-commands-helpers.ts";
 import {
   cleanup,
@@ -54,26 +54,14 @@ test("C-ATTN-09 a sendMessage made while Claude's auto-mode offer shows is held,
   const project = makeProject("claude");
   let session: ClaudeSessionApi | undefined;
   try {
-    session = await startClaude({
-      cwd: project.cwd,
-      stateDir: project.stateDir,
-      autotrust: true,
-      autoupdate: false,
-      name: "Offer Check",
-      model: "haiku",
-      permissionMode: "auto",
-      initialSize: { cols: 140, rows: 40 },
-    });
+    session = await startClaude(offerSessionOptions(project, "Offer Check"));
     const live = session;
     const observed = observeSession(live);
     const screen = () => live.terminal.snapshot().text;
     await waitFor(() => (live.status === "ready" ? true : undefined), "initial ready", 120_000);
     await live.sendMessage("Reply with exactly OK.");
     await waitFor(() => hookNamed(observed.hooks, "Stop"), "first turn Stop", 90_000);
-    try {
-      await waitFor(() => (screen().includes(offerTitle) ? true : undefined), "offer", 15_000);
-    } catch {
-      assert.notEqual(live.status, "exited", `Claude exited instead:\n${screen()}`);
+    if (!(await offerShown(live))) {
       skipNow(t, `Claude did not offer auto-mode setup on this account:\n${screen()}`);
       return;
     }
