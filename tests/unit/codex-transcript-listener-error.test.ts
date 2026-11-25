@@ -75,13 +75,22 @@ test.each(
     appendFileSync(path, `${JSON.stringify(rejected)}\n`);
     await vi.advanceTimersByTimeAsync(250);
     expect(raw).toEqual([first, second, rejected]);
-    expect(activities.filter((event) => event.source === "transcript").at(-1)).toMatchObject({
-      agent: "codex",
-      source: "transcript",
-      turnId: "turn-2",
-      label: "task_complete",
-      raw: rejected,
-    });
+    expect(activities.filter((event) => event.source === "transcript").slice(-2)).toMatchObject([
+      {
+        agent: "codex",
+        source: "transcript",
+        turnId: "turn-2",
+        label: "task_complete",
+        raw: rejected,
+      },
+      {
+        agent: "codex",
+        source: "transcript",
+        turnId: "turn-2",
+        kind: "turn_failure",
+        turnFailure: { category: "unknown", message: "provider rejected", disposition: "final" },
+      },
+    ]);
     expect(warnings).toHaveLength(1);
     expect(warnings).toEqual(
       Array.from({ length: 1 }, () =>
@@ -105,7 +114,9 @@ test.each(
     await Promise.resolve(); // Include deferred final-flush diagnostics in the count.
     expect(raw).toEqual([first, second, rejected, final]);
     expect(
-      activities.filter((event) => event.source === "transcript").map((event) => event.raw),
+      activities
+        .filter((event) => event.source === "transcript" && event.kind !== "turn_failure")
+        .map((event) => event.raw),
     ).toEqual([first, second, rejected, final]);
     expect(warnings.map((event) => event.code)).toEqual(["transcript_listener_error"]);
   } finally {

@@ -10,6 +10,8 @@ import { hasPromptText } from "./prompt-text.ts";
 import type { SpeedActivityFields } from "./speed.ts";
 import type { UnrecognizedStartupActivity } from "./startup.ts";
 import type { FinalAssistantActivity } from "./transcript.ts";
+import type { TurnFailureActivity } from "./turn-failure.ts";
+
 export type ElwoodAgentKind = "claude" | "codex";
 export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
 export type ElwoodActivityKind =
@@ -31,8 +33,8 @@ export type ElwoodActivityKind =
   | "attention"
   | "hook"
   | "hook_result"
-  | "hook_error";
-
+  | "hook_error"
+  | "turn_failure";
 type ActivityFields = {
   readonly elwoodSessionId: string;
   readonly agent: ElwoodAgentKind;
@@ -52,7 +54,6 @@ type ActivityFields = {
   readonly transcriptPath?: string;
   readonly raw?: unknown;
 };
-
 /** Distribute the agent-and-phase event union so the activity label, nested phase,
  * and both agent fields stay correlated. */
 type QuestionActivityFields<Event extends ElwoodQuestionEvent = ElwoodQuestionEvent> =
@@ -70,7 +71,7 @@ type UnmarkedActivity =
   | {
       readonly kind: Exclude<
         ElwoodActivityKind,
-        "question" | "assistant_progress" | "user_message" | "unrecognized_startup"
+        "question" | "assistant_progress" | "user_message" | "unrecognized_startup" | "turn_failure"
       >;
     }
   | UnrecognizedStartupActivity
@@ -99,6 +100,7 @@ type UnmarkedActivity =
       readonly label: "user";
       readonly text: string;
     }
+  | TurnFailureActivity
   | QuestionActivityFields;
 
 export type ElwoodActivityEvent = ActivityFields &
@@ -174,7 +176,6 @@ export function activityFromHookError(
     raw: event,
   };
 }
-
 export { activityFromHookResult } from "../hook-result.ts";
 
 export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEvent {
@@ -188,7 +189,6 @@ export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEv
     raw: event,
   };
 }
-
 export {
   activityFromClaudeTranscript,
   activityFromCodexTranscript,

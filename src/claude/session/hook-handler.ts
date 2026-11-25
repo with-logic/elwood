@@ -19,6 +19,7 @@ import type { InitialReady } from "../../runtime/readiness/initial-ready.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
+import { claudeTurnFailureActivity } from "../hooks/stop-failure.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
@@ -77,6 +78,10 @@ export function buildClaudeHookHandler(
     }
     observation.run("hook", () => emitter.emit("hook", event));
     if (show) observation.run("activity", () => emitter.emit("activity", projected));
+    if (event.hook_event_name === "StopFailure")
+      observation.run("activity", () =>
+        emitter.emit("activity", claudeTurnFailureActivity(record.elwoodSessionId, event)),
+      );
     if (recoverAfterHook) {
       note();
       observe();

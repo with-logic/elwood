@@ -5,6 +5,7 @@
  * Separate from the reader contract so the failure shape has one home.
  */
 
+import { Buffer } from "node:buffer";
 import { type ElwoodError, elwoodError } from "../errors.ts";
 import type { TurnGate } from "./turn-gate.ts";
 import type { TurnBoundaryHook } from "./turn-types.ts";
@@ -97,5 +98,8 @@ const maxDiagnosticLength = 2_000;
 /** A nonblank agent diagnostic, bounded so a rejection message stays small (§6.1). */
 export function boundedDiagnostic(value: unknown): string | undefined {
   if (typeof value !== "string" || value.trim().length === 0) return undefined;
-  return value.length <= maxDiagnosticLength ? value : `${value.slice(0, maxDiagnosticLength)}…`;
+  if (value.length <= maxDiagnosticLength) return value;
+  // Own the short string so a V8 slice cannot retain the original diagnostic.
+  const head = Buffer.from(value.slice(0, maxDiagnosticLength), "utf16le").toString("utf16le");
+  return `${head}…`;
 }

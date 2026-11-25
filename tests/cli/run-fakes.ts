@@ -5,12 +5,12 @@
 import type { CliLifecycleClock, CliSignalSource } from "../../src/cli/lifecycle/index.ts";
 import type { CliSessionFacade } from "../../src/cli/session/index.ts";
 import type { CliWritable } from "../../src/cli/stream.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
 import type { TurnEvent } from "../../src/core/simple/events.ts";
 import type { TurnOptions } from "../../src/core/simple/turn-types.ts";
 import type { ElwoodSessionStatus, TerminalSize, Unsubscribe } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
+import { activity } from "../helpers/activity.ts";
 import { FakeUnderlying } from "../unit/simple-fakes.ts";
 
 export class FakeCliSession implements CliSessionFacade {
@@ -90,33 +90,18 @@ export class FakeCliSession implements CliSessionFacade {
   preservedSessionId(): string | null {
     return this.resumable ? this.id : null;
   }
-  emitActivity(
-    partial: Partial<
-      Omit<
-        Exclude<
-          ElwoodActivityEvent,
-          {
-            readonly kind:
-              | "assistant_progress"
-              | "question"
-              | "user_message"
-              | "unrecognized_startup";
-          }
-        >,
-        "speed" | "tokenUsage" | "rateLimits" | "subagent" | "final"
-      >
-    > & {
-      readonly kind?: Exclude<ElwoodActivityEvent["kind"], "user_message" | "unrecognized_startup">;
-    },
-  ): void {
-    this.emitter.emit("activity", {
-      elwoodSessionId: this.id,
-      agent: this.agent,
-      source: "terminal",
-      kind: "attention",
-      label: "dialog",
-      ...partial,
-    });
+  emitActivity(partial: Parameters<typeof activity>[0]): void {
+    this.emitter.emit(
+      "activity",
+      activity({
+        elwoodSessionId: this.id,
+        agent: this.agent,
+        source: "terminal",
+        kind: "attention",
+        label: "dialog",
+        ...partial,
+      }),
+    );
   }
 }
 
