@@ -30,9 +30,11 @@ back each entry are listed in `prd/14-conformance.md`.
   published and ordinary input stayed held.
 
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
-  for npm and standalone installs and at narrow widths. Elwood used to leave it
-  unrecognized, so a queued message waited until the host answered it. Elwood
-  picks `Skip`, which records no dismissal in Codex's update state.
+  for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
+  which records no dismissal in Codex's update state. It writes the key once the
+  offer has been on screen for 500 ms, never types it again onto the screen Codex
+  draws next, and holds input through that screen without reporting it as
+  `codex-unidentified-dialog`.
 
 - A matched Claude low-level text submission can include the original API text,
   the exact native hook prompt, API paste provenance, and a caller `sendId`.
@@ -69,16 +71,16 @@ back each entry are listed in `prd/14-conformance.md`.
 - Hold a resumed session's queued messages until its configured composer
   appears. A resume no longer reports `ready` on a composer marker alone, so a
   `sendMessage` queued at resume cannot land on Codex's loading placeholder or on
-  a startup screen Elwood does not recognize, such as the update offer of Codex
-  0.171. A resumed session now reaches `ready` when the configured composer
-  paints, in about two seconds rather than one.
+  a startup screen such as Codex's update offer. A resumed session now reaches
+  `ready` when the configured composer paints, in about two seconds rather than
+  one.
 
 - Hold `sendPrompt`, `listModels`, `setModel` and Claude's `login` before a
   session's first readiness until its configured composer appears or a readiness
   hook marks the session ready. They bypass the readiness queue, and until now
   only the 60-second backstop held them, so a prompt sent at start could land on a
-  startup screen Elwood does not recognize, such as the update offer of Codex
-  0.171, and its Enter could choose `Update now`.
+  startup screen such as Codex's update offer, and its Enter could choose
+  `Update now`.
 
 - Read a session's live screen as text with `readScreen()` on the low-level
   Claude and Codex sessions, with optional scrollback, a cell cursor and the

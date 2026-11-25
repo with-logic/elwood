@@ -27,7 +27,7 @@ export type InitialReadinessHold = {
    * session consults it from launch until the first readiness, which an adapter's
    * readiness hook can also bring. Operations that bypass the readiness queue
    * (`sendPrompt`, picker commands, `login`) would otherwise write onto a startup screen
-   * Elwood does not recognize, such as an update offer. The release is one-shot: once any
+   * before the composer, such as an update offer. The release is one-shot: once any
    * write has seen the configured composer the startup screen is past, so later writes
    * before readiness (the Enter after a paste, picker keys) do not wait for the composer
    * to look idle again.

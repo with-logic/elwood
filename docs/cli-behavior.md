@@ -3460,15 +3460,17 @@ painted any row with the marker, and the offer appeared after them. Before the
 first readiness, those writes now also wait for the configured composer (C-E2E-27).
 
 **After Elwood's skip (2026-11-25).** With C-CODEX-27, Elwood writes `2` on the
-offer itself. Codex does not go straight to its configured composer: it first
-repaints the screen the offer replaced, the boot composer on a start or the
-`Resuming session…` placeholder on a resume. That screen lasted about 0.3 s on a
-start and 6 s on a resume, and the configured composer with the boxed notice
-followed. Elwood held queued input across it. Elwood sometimes wrote `2` twice,
-the second time about 250 ms after the first while the offer was still painted,
-because Codex can paint the menu before its input loop takes the first key. The
-second `2` never reached the composer. The e2e allow only the offer's `Skip`
-digit, and only while the offer is on screen (C-E2E-26, C-E2E-27).
+offer itself. Codex does not go straight to its configured composer: within 8 ms it
+repaints the screen the offer replaced. On a start that is the boot composer (`› Ask
+Codex to do anything` over `? for shortcuts`), sometimes first drawn as the header
+alone with the cursor hidden; on a resume it is the `Resuming session…` placeholder.
+The configured composer, with the boxed notice above the header, followed 0.8 s
+later on a start and 4.7 s later on a resume. Neither screen has a status row, so
+Elwood, still holding input from the offer, reported it as
+`codex-unidentified-dialog` and settled the skip with no `startup_prompt`, in 5 of
+5 runs. `elwood run` exits 1 on that label. The skip now owns that repaint and
+answers on it (C-CODEX-27). Captures: the `start-*` and `resume-*` files in
+`tests/fixtures/codex-0.172.0/update/`.
 
 **Which Codex a session runs depends on the directory.** On the capture host an
 interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a
@@ -3487,6 +3489,28 @@ changes`, `code.claude.com/docs/en/changelog for details`) above a live idle
 composer and rewrote the field. A `--continue` resume with the same setting
 showed the replayed transcript and no summary. `/release-notes` opens a dialog
 only when the user asks for it.
+
+### Codex update skip keys (2026-11-25)
+
+Probes ran the standalone 0.172.0 offer at 100×30 in an Elwood session whose PTY
+output also fed a separate headless terminal, so each write could be checked
+against what Codex had drawn rather than against Elwood's rendering.
+
+**Codex drops a key that comes too soon.** Elwood used to write `2` on the first
+frame that showed the offer. That key reached Codex about 1 ms after the offer
+painted and was dropped in 5 of 5 runs, both on a start and on a resume; the retry
+written 252 ms after the offer was taken in 5 of 5. The first key now waits until
+the offer has been on screen for 500 ms.
+
+**Elwood's frame can be older than Codex's screen.** The retry wrote `2` every 250 ms
+for as long as Elwood's frame still showed the offer, with nothing to show that the
+frame was newer than the last key. Holding the session's output 2 s after the taken
+key reproduced a slow host: Codex had already drawn its boot composer, six more `2`s
+went into it, and the session's queued message followed them. Elwood now retypes
+only on a frame of the offer drawn after its last key. A dropped key leaves that
+frame unchanged, so it is not retyped; the 500 ms wait covers the drop measured
+above. The e2e keep a 2 s variant of each proof (C-E2E-26, C-E2E-27), and their input
+guard checks each write against the CLI's own screen.
 
 ## Screen buffers and scrollback (Claude 2.1.332, Codex 0.171.0 and 0.172.0, 2026-11-25)
 

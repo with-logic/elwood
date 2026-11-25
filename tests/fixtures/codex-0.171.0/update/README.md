@@ -1,4 +1,4 @@
-# Codex 0.171.0 update offer on resume
+# Codex 0.171.0 update offer at start and on resume
 
 Captured on 2026-11-24 from the installed npm Codex 0.171.0, run directly in a PTY
 (100×30) with a private `CODEX_HOME` whose `version.json` named `0.172.0`, and rendered
