@@ -37,7 +37,6 @@ export class WorkspaceTrustAnswers<
   constructor(io: AnswerIo<Option, ChoiceIndex>) {
     this.io = io;
   }
-
   async answer(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
     const current = this.io.currentRequest();
     if (!current || current.request.id !== requestId)
@@ -83,7 +82,6 @@ export class WorkspaceTrustAnswers<
   resumeNavigation(): void {
     if (this.active?.lastFrame) this.advance();
   }
-
   private advance(): void {
     const active = this.active;
     if (active?.phase !== "selecting") return;
@@ -126,23 +124,25 @@ export class WorkspaceTrustAnswers<
     if (!this.isCurrent(active)) return;
     if (confirm) {
       active.phase = "awaitingNativeOutcome";
-      this.io.reconcileDialogEvidence();
+      try {
+        this.io.reconcileDialogEvidence();
+      } catch {
+        // Contain observer failures and fail any answer still awaiting native confirmation.
+        if (this.active === active) this.finish("frame");
+      }
     } else {
       active.phase = "selecting";
       this.advance();
     }
   }
-
   private expire(): void {
     this.finish(this.confirmationDispatched ? "native_acceptance" : "frame");
   }
-
   private isCurrent(active: Active<ChoiceIndex>): boolean {
     if (this.active !== active) return false;
     if (deadlineClock.now() >= active.deadlineAtMs) this.expire();
     return this.active === active;
   }
-
   recordConfirmation(outcome: Exclude<WorkspaceTrustOutcome, "exit">): boolean {
     const active = this.active;
     if (
@@ -154,21 +154,26 @@ export class WorkspaceTrustAnswers<
     this.finish();
     return true;
   }
-
   get confirmationDispatched(): boolean {
     return (
       this.active?.phase === "awaitingNativeOutcome" || this.active?.phase === "writingConfirmation"
     );
   }
 
-  revokeIfGateChanged(gateIdentity: string): void {
-    if (this.active && this.active.gateIdentity !== gateIdentity) this.finish("frame");
+  retireNavigation(requestId: string): void {
+    if (this.active?.requestId === requestId && !this.confirmationDispatched) this.finish("frame");
+  }
+  revokeIfGateChanged(gateIdentity: string | undefined): void {
+    if (gateIdentity && this.active && this.active.gateIdentity !== gateIdentity)
+      this.finish("frame");
   }
 
   revoke(category: "aborted" | "frame" = "aborted"): void {
     this.finish(category);
   }
-
+  get awaitingNativeExit(): boolean {
+    return this.active?.phase === "awaitingNativeOutcome" && this.active.outcome === "exit";
+  }
   nativeExit(matchesNativeDecline: boolean): void {
     const active = this.active;
     if (

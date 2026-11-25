@@ -142,7 +142,7 @@ export class WorkspaceTrustPolling<
     onAvailable?: () => void,
   ): Promise<boolean | undefined> | undefined {
     if (this.unfinishedLookups >= maxUnfinishedLookups) {
-      // The publisher retries the latest frame once a submitted native read finishes.
+      // A waiting caller can retry once a submitted native read finishes.
       this.resumeWhenAvailable = onAvailable ?? this.resumeWhenAvailable;
       return undefined;
     }

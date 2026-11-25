@@ -638,6 +638,17 @@ startup layouts can show the launch folder on its own. The modern path rows
 may contain terminal padding, so Elwood verifies the exact path against the
 launch directory and Git metadata.
 
+On official Codex 0.171.0 and 0.172.0, Back returns to the Agent Command
+Center without saving trust. The native viewport begins with the command
+center heading and group, followed by the All and Needs you counters
+and a divider spanning the screen within the native margins. Those
+rows distinguish the destination from similarly named terminal text.
+The center's advertised `n` command can reopen Folder access in the
+same session. That new gate is listable and can raise a new event while
+ordinary input remains held. The same isolated launches reached the
+composer and saved trust for the disclosed repository after affirmative
+consent.
+
 A viewport resize after PTY output begins can turn clipped text into a
 seemingly complete path row. A later partial repaint can retain those cells.
 Elwood retires structured workspace trust discovery for that terminal after
@@ -762,6 +773,13 @@ the generic native footers that let an off-allowlist gate hold input. Under any 
 dialog, or in conversation text, they make no frame a trust gate. The sanitized
 captures, with the bypass and without, are `tests/fixtures/codex-0.164.0/trust/`.
 C-CODEX-15.
+
+On 0.164.0 and 0.166.0, the native Quit path exits with code zero and leaves
+workspace trust unset. On 0.166.0, the shutdown bytes restore the normal buffer
+after the fullscreen trust menu. Holding the real render callbacks in order
+can let the process exit while that restoration is still unsettled. The Quit
+answer can wait for those bytes within the existing terminal drain and answer
+limits. A settled replacement trust menu prevents confirmation.
 
 ### Where the clearance grammar lives
 

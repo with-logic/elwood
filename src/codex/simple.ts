@@ -6,6 +6,7 @@
  * factory.
  */
 
+import type { ElwoodDialogAnswerOptions } from "../core/dialogs/types.ts";
 import { assertCodexHighTrust } from "../core/high-trust.ts";
 import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
@@ -44,6 +45,10 @@ export class CodexSession extends SessionBase<CodexSessionApi, "codex"> {
     // A `highTrust` + explicit `sandbox`/`approvalPolicy` conflict is a configuration error:
     // fail at construction rather than deferring it to the first lazy `send` (C-API-54).
     assertCodexHighTrust(this.options);
+  }
+
+  async answerDialog(requestId: string, choiceId: string, options?: ElwoodDialogAnswerOptions) {
+    return (await this.start()).answerDialog(requestId, choiceId, options);
   }
 
   protected launch(): Promise<CodexSessionApi> {

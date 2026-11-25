@@ -27,7 +27,7 @@ import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import { confirmCodexRejection } from "../transcript/rejection.ts";
-import type { CodexWorkspaceTrustEvents } from "../workspace-trust/events.ts";
+import type { CodexWorkspaceTrustDialogs } from "../workspace-trust/dialogs.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
@@ -55,7 +55,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
-  private readonly dialogs: CodexWorkspaceTrustEvents;
+  private readonly dialogs: CodexWorkspaceTrustDialogs;
   /** Holds `stop`/`teardown` for the turn a `Stop` hook ends to be recorded (C-LIFE-13). */
   readonly turnCommit: CodexTurnCommit;
   constructor(
@@ -70,7 +70,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     transcriptWatcher: CodexTranscriptWatcher | undefined,
     loopDefinitions: readonly PersistedLoopDefinition[],
     resolveConfigPath: (signal: AbortSignal) => Promise<string>,
-    dialogs: CodexWorkspaceTrustEvents,
+    dialogs: CodexWorkspaceTrustDialogs,
   ) {
     super(
       "codex",
@@ -97,12 +97,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.turnCommit = new CodexTurnCommit(() => transcriptWatcher?.poll(), this.cliExit, this);
     this.resolveConfigPath = resolveConfigPath;
     this.dialogs = dialogs;
-    // A rejected Codex turn has a failed `task_complete` in place of `Stop` (C-API-60).
     emitter.on("codex:transcript", ({ item }) => confirmCodexRejection(this, item));
     emitter.on("codex:transcript", (event) => this.turnCommit.observe(event.item));
   }
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
-    // Register first so a throwing replay handler still receives future live events.
     const added = this.emitter.listen(event, handler);
     if (event === "dialog" && added)
       this.dialogs.listenerAdded(handler as CodexEventHandler<"dialog">);
@@ -110,6 +108,8 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     return () => this.off(event, handler);
   }
   readonly listDialogs = () => this.dialogs.discovery.list();
+  readonly answerDialog: CodexSessionApi["answerDialog"] = (requestId, choiceId, options) =>
+    this.dialogs.answerDialog(requestId, choiceId, options);
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     // Reserve the queue slot before waiting on the config lock, so later sends
     // cannot overtake the model switch and use the previous model.
