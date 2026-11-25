@@ -1,5 +1,6 @@
 /** Bound optional native workspace proof without blocking session startup (PRD §5.5). */
 
+// Allow routine local metadata reads while limiting how long optional proof can delay launch.
 const trustEvidenceWaitMs = 500;
 
 /** Signal the collector on expiry so it stops issuing reads. Native calls in flight may finish later. */

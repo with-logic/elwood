@@ -1,5 +1,5 @@
 /** Verify that optional Codex Git proof cannot hold launch while metadata is stalled (PRD §5.5). */
-import { realpathSync, statSync } from "node:fs";
+import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -18,31 +18,48 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("startup stops waiting for a stalled Git metadata lookup", async () => {
+test("startup times out during a descriptor read and closes it without another read", async () => {
   const cwd = realpathSync.native(tempDir("elwood-codex-trust-deadline-"));
-  const original = (await vi.importActual<typeof fsp>("node:fs/promises")).lstat;
-  const reached = Promise.withResolvers<void>();
+  mkdirSync(join(cwd, ".git"));
+  writeFileSync(join(cwd, ".git", "HEAD"), "ref: refs/heads/main\n");
+  const { open } = await vi.importActual<typeof fsp>("node:fs/promises");
+  const opened = Promise.withResolvers<void>();
   const held = Promise.withResolvers<void>();
-  vi.mocked(fsp.lstat).mockImplementation(async (...options) => {
-    reached.resolve();
-    await held.promise;
-    return Reflect.apply(original, undefined, options);
+  const closed = Promise.withResolvers<void>();
+  const recordRead = vi.fn();
+  vi.mocked(fsp.open).mockImplementationOnce(async (...args) => {
+    const handle = await open(...args);
+    const read = handle.read.bind(handle);
+    const close = handle.close.bind(handle);
+    vi.spyOn(handle, "read")
+      .mockImplementation((...args) => {
+        recordRead();
+        return read(...args);
+      })
+      .mockImplementationOnce(async () => {
+        recordRead();
+        opened.resolve();
+        await held.promise;
+        return { bytesRead: 1, buffer: Buffer.alloc(1) };
+      });
+    vi.spyOn(handle, "close").mockImplementationOnce(async () => {
+      await close();
+      closed.resolve();
+    });
+    return handle;
   });
 
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  const capture = captureStartupTrustEvidence({
-    agent: "codex",
-    cwd,
-    identity: statSync(cwd, { bigint: true }),
-  });
+  const capture = captureStartupTrustEvidence(checkedLaunch(cwd));
   try {
-    await reached.promise;
-    expect(fsp.lstat).toHaveBeenCalledExactlyOnceWith(join(cwd, ".git"));
+    await opened.promise;
     await vi.advanceTimersByTimeAsync(500);
     await expect(capture).resolves.toBeUndefined();
   } finally {
     held.resolve();
+    await closed.promise;
   }
+  expect(recordRead).toHaveBeenCalledOnce();
 });
 
 test("a timely capture preserves the exact checked launch target", async () => {
@@ -78,36 +95,48 @@ test("deadline returns unavailable and cancels a pending capture", async () => {
   expect(cancelled).toHaveBeenCalledOnce();
 });
 
-test("cancellation during the last path lookup withholds captured and revalidated evidence", async () => {
-  const cwd = realpathSync.native(tempDir("elwood-codex-trust-abort-"));
-  const launch = { agent: "codex" as const, cwd, identity: statSync(cwd, { bigint: true }) };
-  const captured = await captureLaunchTrustEvidence(launch);
+function checkedLaunch(cwd: string) {
+  return { agent: "codex" as const, cwd, identity: statSync(cwd, { bigint: true }) };
+}
+
+async function holdCanonicalPathAfter(earlierCalls: number) {
   const native = (
     await vi.importActual<typeof gitPaths>("../../src/codex/workspace-trust/git-paths.ts")
   ).canonicalGitPath;
+  const reached = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
+  const realpath = vi.mocked(gitPaths.canonicalGitPath);
+  for (let index = 0; index < earlierCalls; index++) realpath.mockImplementationOnce(native);
+  realpath.mockImplementationOnce(async (path, signal) => {
+    const result = await native(path, signal);
+    reached.resolve();
+    await held.promise;
+    return result;
+  });
+  return { reached: reached.promise, release: held.resolve };
+}
 
-  for (const operation of ["capture", "revalidate"] as const) {
-    const reached = Promise.withResolvers<void>();
-    const held = Promise.withResolvers<void>();
-    const signal = new AbortController();
-    const realpath = vi.mocked(gitPaths.canonicalGitPath);
-    realpath.mockImplementationOnce(native);
-    if (operation === "capture") realpath.mockImplementationOnce(native);
-    realpath.mockImplementationOnce(async (path, abortSignal) => {
-      const result = await native(path, abortSignal);
-      reached.resolve();
-      await held.promise;
-      return result;
-    });
-    const pending =
-      operation === "capture"
-        ? captureLaunchTrustEvidence(launch, signal.signal).then(
-            ({ targets }) => targets.length > 0,
-          )
-        : captured.isCurrent(signal.signal);
-    await reached.promise;
-    signal.abort();
-    held.resolve();
-    await expect(pending).resolves.toBe(false);
-  }
+test("a cancelled final capture lookup returns no trust targets", async () => {
+  const cwd = realpathSync.native(tempDir("elwood-codex-trust-abort-"));
+  const lookup = await holdCanonicalPathAfter(2);
+  const stop = new AbortController();
+  const pending = captureLaunchTrustEvidence(checkedLaunch(cwd), stop.signal);
+
+  await lookup.reached;
+  stop.abort();
+  lookup.release();
+  expect((await pending).targets).toEqual([]);
+});
+
+test("a cancelled final revalidation lookup withholds existing trust evidence", async () => {
+  const cwd = realpathSync.native(tempDir("elwood-codex-trust-abort-"));
+  const captured = await captureLaunchTrustEvidence(checkedLaunch(cwd));
+  const lookup = await holdCanonicalPathAfter(1);
+  const stop = new AbortController();
+  const pending = captured.isCurrent(stop.signal);
+
+  await lookup.reached;
+  stop.abort();
+  lookup.release();
+  await expect(pending).resolves.toBe(false);
 });

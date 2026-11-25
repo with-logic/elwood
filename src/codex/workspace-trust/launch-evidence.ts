@@ -30,7 +30,7 @@ export type CodexLaunchTrustEvidence = {
 
 /**
  * Capture exact path spellings and recheck directory identity and repository scope.
- * Startup uses captureStartupTrustEvidence to cap the wait.
+ * Use captureStartupTrustEvidence to cap the wait when integrating startup.
  * Failed verification yields no paths or targets. A verified non-Git launch has a folder target.
  */
 export async function captureLaunchTrustEvidence(

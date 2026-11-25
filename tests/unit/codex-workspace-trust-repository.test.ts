@@ -44,6 +44,14 @@ test("requires a valid HEAD marker when validating a direct Git directory", asyn
   expect(Number(flags) & fs.constants.O_NONBLOCK).toBe(fs.constants.O_NONBLOCK);
 });
 
+test("rejects a ref-shaped HEAD containing invalid UTF-8", async () => {
+  const git = join(root, ".git");
+  fs.mkdirSync(git);
+  const head = Buffer.concat([Buffer.from("ref: refs/heads/"), Buffer.from([0xff, 0x0a])]);
+  fs.writeFileSync(join(git, "HEAD"), head);
+  await expect(codexRepositoryTrustRoot(root)).rejects.toThrow(TypeError);
+});
+
 test("preserves significant trailing bytes in an external Git directory path", async () => {
   const git = join(root, "external ");
   const checkout = join(root, "checkout");

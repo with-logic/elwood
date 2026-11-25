@@ -11,6 +11,7 @@ export async function canonicalGitPath(path: string, signal?: AbortSignal): Prom
   return await realpathNative(path);
 }
 
+/** Return undefined on ENOENT. Propagate other errors. */
 export async function lstatGitPath(path: string, signal?: AbortSignal) {
   signal?.throwIfAborted();
   try {
