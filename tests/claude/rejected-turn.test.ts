@@ -12,6 +12,7 @@ import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { ClaudeSession } from "../../src/index.ts";
 import { effectiveRequest } from "../cli/main-fakes.ts";
+import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 import { claudeIdle as idle, claudeWorking as working } from "../fixtures/owned-turn/composer.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -42,8 +43,7 @@ function facade(kind: "public" | "cli" | "cli persona", cwd: string, prompt: str
 // Claude 2.1.332 echoes a paste of more than two line breaks inside the session's envelope
 // (sha256("claude-1") starts c26a), with CRLF as LF and each tab as four spaces (C-CLAUDE-25).
 const pasted = "one\r\n\ttwo\nthree\nfour";
-const wrapped =
-  '\n\n<pasted_content id="c26a">\none\n    two\nthree\nfour\n</pasted_content id="c26a">\n';
+const wrapped = claudePasteEnvelope("one\n    two\nthree\nfour", "c26a");
 
 test.each([
   ["public", "go", "go"],

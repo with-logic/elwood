@@ -33,14 +33,18 @@ export const defaultAcceptanceSignal = createAcceptanceSignal(
   (nativePrompt, payload) => nativePrompt === payload,
 );
 
-const sessionReaders = new WeakMap<object, AcceptanceSignalReader>();
+const acceptanceSignalsBySession = new WeakMap<object, AcceptanceSignalReader>();
 
-/** A live adapter registers how its own submit hook echoes a pasted payload. */
+/**
+ * A live adapter registers the acceptance reader built from its submit hook's paste echo. Keyed
+ * on the live session so every facade over it gets the same reader from one registration; a
+ * session that registers none silently uses the exact-match default.
+ */
 export function registerAcceptanceSignal(session: object, reader: AcceptanceSignalReader): void {
-  sessionReaders.set(session, reader);
+  acceptanceSignalsBySession.set(session, reader);
 }
 
 /** The reader a live session registered, else the default. */
-export function acceptanceSignal(session: object): AcceptanceSignalReader {
-  return sessionReaders.get(session) ?? defaultAcceptanceSignal;
+export function registeredAcceptanceSignal(session: object): AcceptanceSignalReader {
+  return acceptanceSignalsBySession.get(session) ?? defaultAcceptanceSignal;
 }

@@ -42,7 +42,7 @@ export type TurnBoundaryContract = {
  * (`null`/absent `last_assistant_message`) and clears the oracle → quiet-window settle. The
  * object form also reports that the agent REJECTED the turn (Claude `StopFailure`), which fails
  * it with `turn_failed`.
- * This is the ONE seam where adapter hook shape meets the adapter-neutral runner: `runTurn`
+ * This is the seam where adapter boundary-hook shape meets the adapter-neutral runner: `runTurn`
  * consumes only this normalized signal, never raw `hook_event_name`/`last_assistant_message`, so
  * the core is not coupled to adapter hook fields. Each `SessionBase` subclass supplies its own
  * reader (a compile-time REQUIREMENT), so a new adapter cannot wire up turns without one.
@@ -52,7 +52,13 @@ export { boundaryFailure, boundaryText } from "./boundary-signal.ts";
 
 export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => BoundarySignal | undefined;
 
-/** Normalizes shared hook evidence into positive acceptance for one exact prompt. */
+/**
+ * Normalizes shared hook evidence into positive acceptance for one exact prompt. Unlike the
+ * boundary reader a facade passes in its options, acceptance depends only on how the LIVE
+ * adapter's submit hook echoes a paste, the same under every facade, so the adapter registers it
+ * on the live session (`acceptance-signal.ts`, C-CLAUDE-25); an unregistered session compares
+ * the hook's prompt with the pasted payload for equality.
+ */
 export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: string) => boolean;
 
 /**

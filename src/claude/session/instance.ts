@@ -1,6 +1,7 @@
 /** In-memory Claude session object exposed to callers. Implements PRD §4.1, §5, §6, §7, §8. */
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
+import { registerAcceptanceSignal } from "../../core/simple/acceptance-signal.ts";
 import { terminalStatuses } from "../../core/status-categories.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type {
@@ -18,7 +19,7 @@ import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
-import { registerClaudeAcceptanceSignal } from "../accepted-turn.ts";
+import { claudeAcceptanceSignal } from "../accepted-turn.ts";
 import { attachClaudeImages } from "../attach-images.ts";
 import { liveClaudeIdleComposer } from "../composer/idle.ts";
 import { claudeLastComposerClearance } from "../composer/last.ts";
@@ -50,8 +51,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
   private readonly dialogs: ClaudeWorkspaceTrustEvents;
   private requestedSize: TerminalSize;
-  // Only a session requested BELOW the 100-column startup floor bootstraps wide and
-  // defers its restore to readiness (C-API-36); a 100+ session resizes immediately.
+  // Below the 100-column startup floor: bootstrap wide, restore at readiness (C-API-36).
   private awaitingInitialReady: boolean;
   private initialReadyDone = false;
   // Edge-detects a mid-session login-expiry banner so it warns once per occurrence.
@@ -80,7 +80,7 @@ export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeS
       terminalReplay,
       loopDefinitions,
     );
-    registerClaudeAcceptanceSignal(this);
+    registerAcceptanceSignal(this, claudeAcceptanceSignal);
     this.configureClaudeQuestions();
     this.runtimeParts = runtimeParts;
     this.emitter = emitter;

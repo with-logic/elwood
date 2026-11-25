@@ -325,7 +325,9 @@ that can end a successful turn early when its `Stop` is late. A hook that late c
 also land while the NEXT turn is running. Each hook is delivered by its own bridge
 process, so the next turn's `UserPromptSubmit` can even arrive first. Elwood
 therefore applies a `StopFailure` only after the turn's own `UserPromptSubmit`, and
-only when its `prompt_id` matches that submit's.
+only when its `prompt_id` matches that submit's. That submit is recognized by how
+Claude echoes the paste, not by equality (see "Claude native paste presentation",
+turn acceptance).
 
 **Codex 0.164.0 rejects the same bogus model without any boundary hook.** In a
 sandboxed `CODEX_HOME`, only `SessionStart` and `UserPromptSubmit` fired. The
@@ -1805,6 +1807,10 @@ Further detail from real 2.1.332 sessions in a private config dir (2026-11-24):
 
 - **Thresholds.** A paste of exactly 800 characters, or of three lines, stays typed
   text; 801 characters or four lines collapse to the pill and are wrapped.
+- **Gating (reported, not verified here).** The investigation that started this work
+  reported that the wrapper sits behind a server-side flag, with every large paste
+  wrapped on 2.1.331 and 2.1.332 and none on 2.1.323. C-E2E-25 skips its envelope
+  checks on a Claude that does not wrap a four-line paste.
 - **Placement.** Raw PTY input gave `typed \n\n<pasted_content …>…</pasted_content …>\n`
   for typed text then a paste, `…</pasted_content …>\n\n typed tail` for a paste then
   typed text, and two envelopes back to back for two pastes. A prompt queued while a
@@ -1833,15 +1839,18 @@ Further detail from real 2.1.332 sessions in a private config dir (2026-11-24):
   > Each block's opening and closing tags carry the same random id; the user never sees
   > the id, so don't mention it when referring to the pasted text.
 
-  A long prompt Elwood sends is "nothing but pasted text".
+  A long prompt Elwood sends arrives as nothing but pasted text, so the model treats
+  the paste as the user's own request.
 - **Turn acceptance (C-CLAUDE-25).** An ergonomic turn used to compare its submit
   hook's prompt with the pasted payload for equality, so a wrapped prompt, or one with a
   tab or a CR, never matched its own hook. A rejected turn's `StopFailure` then had no
   submission to belong to, and `ClaudeSession.send` of a four-line prompt on a bogus
   model resolved with the rejection text. The comparison now reads the envelope's body,
-  applies the composer's changes to the payload, and ignores trailing whitespace and
-  every `<\` backslash. A prompt with a fullwidth `＜` before a tag name still does not
-  match its own hook.
+  applies the composer's line-ending and tab changes on both sides, reads a fullwidth
+  `＜` as `<`, and ignores trailing whitespace and every `<\` backslash. C-E2E-20 checks
+  a wrapped prompt with a tab and a CRLF, and one with a fullwidth look-alike tag.
+  Claude's binary holds dozens of other `<` look-alikes; only the fullwidth one was run,
+  so a prompt using another one may still not match its own hook.
 
 ## Hook bridge request FIN and delayed decisions
 

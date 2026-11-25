@@ -12,9 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Fail a Claude `send` or `stream` turn that the agent rejects with `turn_failed`
-  when Claude wrapped its prompt in `<pasted_content>` tags, or the prompt held a
-  tab or a CR. Such a turn used to resolve with the rejection text as its reply.
+- A Claude `send` or `stream` turn that the agent rejects now fails with
+  `turn_failed` even when Claude changed the prompt on submit: it wrapped it in
+  `<pasted_content>` tags, expanded a tab or a CR, dropped trailing whitespace, or
+  escaped a `<pasted_content` look-alike. Such a turn used to resolve with the
+  rejection text as its reply.
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.

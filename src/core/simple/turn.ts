@@ -12,7 +12,7 @@
 import { toError } from "../errors.ts";
 import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
-import { acceptanceSignal } from "./acceptance-signal.ts";
+import { registeredAcceptanceSignal } from "./acceptance-signal.ts";
 import { settleHookBoundary, settleNativeBoundary } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { withSubmissionAttempt } from "./submission-context.ts";
@@ -93,7 +93,7 @@ export function runTurn(
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
     if (identity && !identity.acceptsContent(event.turnId)) return;
-    // Use the native hook text for acknowledgement so display formatting stays observational.
+    // Exact fallback on native text; adapter echo rules: registeredAcceptanceSignal.
     if (
       simple ||
       (!identity &&
@@ -136,7 +136,7 @@ export function runTurn(
       if (identity.observe(event)) acceptance.accept();
       return; // Public Stop precedes its callback outcome; only private confirmation owns the oracle.
     }
-    if (acceptanceSignal(session)(event, prompt)) {
+    if (registeredAcceptanceSignal(session)(event, prompt)) {
       acceptance.accept();
       if (event.hook_event_name === "UserPromptSubmit") acceptedBy = submitIdentity(event);
     }

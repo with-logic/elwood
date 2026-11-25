@@ -8,15 +8,15 @@
 import { describe, expect, test } from "vitest";
 import { claudeAcceptanceSignal, echoesClaudePaste } from "../../src/claude/accepted-turn.ts";
 import {
-  acceptanceSignal,
   defaultAcceptanceSignal,
   registerAcceptanceSignal,
+  registeredAcceptanceSignal,
 } from "../../src/core/simple/acceptance-signal.ts";
+import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 
 // The first four hex digits of sha256("claude-1"), the envelope id Claude derives from it.
 const sessionId = "claude-1";
-const block = (body: string, id = "c26a") =>
-  `\n\n<pasted_content id="${id}">\n${body}\n</pasted_content id="${id}">\n`;
+const block = (body: string, id = "c26a") => claudePasteEnvelope(body, id);
 const submit = (prompt: string, fields: Record<string, unknown> = { session_id: sessionId }) => ({
   hook_event_name: "UserPromptSubmit",
   prompt,
@@ -35,6 +35,8 @@ describe("echoesClaudePaste", () => {
     ).toBe(true);
     expect(echoes("tab    here\nsecond", "tab\there\r\nsecond")).toBe(true);
     expect(echoes("  padded", "  padded  ")).toBe(true);
+    // A Claude that echoes a tab or a CR unchanged still matches.
+    expect(echoes("a\tb\r\nc", "a\tb\r\nc")).toBe(true);
     expect(echoes(block("a\nb\nc\nd\n"), "a\nb\nc\nd\n\n")).toBe(true);
   });
 
@@ -43,15 +45,35 @@ describe("echoesClaudePaste", () => {
     // Claude leaves a `<` a backslash already follows, so sent text can hold the escape.
     expect(echoes("a <\\pasted_content> b", "a <\\pasted_content> b")).toBe(true);
     // A look-alike tag spelled with a Cyrillic letter is escaped too (captured on 2.1.332).
+    const cyrillicA = String.fromCodePoint(0x430);
     expect(
-      echoes(block("one\n<\\pаsted_content>\nthree\nfour"), "one\n<pаsted_content>\nthree\nfour"),
+      echoes(
+        block(`one\n<\\p${cyrillicA}sted_content>\nthree\nfour`),
+        `one\n<p${cyrillicA}sted_content>\nthree\nfour`,
+      ),
     ).toBe(true);
+  });
+
+  test("C-CLAUDE-25 reads a fullwidth `＜` as `<`, as Claude rewrites one before a tag name", () => {
+    const fullwidth = String.fromCodePoint(0xff1c);
+    const sent = `one\n${fullwidth}pasted_content>\nthree\nfour`;
+    expect(echoes(block("one\n<\\pasted_content>\nthree\nfour"), sent)).toBe(true);
+    expect(echoes(`a ${fullwidth} b`, `a ${fullwidth} b`)).toBe(true);
   });
 
   test("C-CLAUDE-25 refuses other text, mixed prompts and another session's envelope", () => {
     expect(echoes(block("a\nb\nc\nd"), "a\nb\nc\ne")).toBe(false);
     expect(echoes(`typed ${block("a\nb\nc\nd")}`, "a\nb\nc\nd")).toBe(false);
     expect(echoes(block("a\nb\nc\nd", "ff71"), "a\nb\nc\nd")).toBe(false);
+    // An empty native session id names no envelope, so nothing unwraps.
+    const wrapped = block("a\nb\nc\nd");
+    expect(echoesClaudePaste(wrapped, "a\nb\nc\nd", submit(wrapped, { session_id: "" }))).toBe(
+      false,
+    );
+  });
+
+  test("C-CLAUDE-25 the adapter-neutral hook type does not declare session_id", () => {
+    // Bridge-validated Claude hooks always carry one; the reader narrows the loose type.
     const wrapped = block("a\nb\nc\nd");
     expect(echoesClaudePaste(wrapped, "a\nb\nc\nd", submit(wrapped, {}))).toBe(false);
   });
@@ -71,8 +93,8 @@ describe("Claude acceptance reader", () => {
 
   test("C-CLAUDE-25 a session uses the reader it registered, else the default", () => {
     const session = {};
-    expect(acceptanceSignal(session)).toBe(defaultAcceptanceSignal);
+    expect(registeredAcceptanceSignal(session)).toBe(defaultAcceptanceSignal);
     registerAcceptanceSignal(session, claudeAcceptanceSignal);
-    expect(acceptanceSignal(session)).toBe(claudeAcceptanceSignal);
+    expect(registeredAcceptanceSignal(session)).toBe(claudeAcceptanceSignal);
   });
 });
