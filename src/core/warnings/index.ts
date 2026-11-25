@@ -1,14 +1,12 @@
 /**
- * Non-fatal adapter warnings (PRD §5.7, §8.2) carry diagnostic fields only.
- * They exclude counts, byte magnitudes, prompts, and transcript content.
- * Most error-code fields are allowlisted tokens (`reasons.ts`); the one
- * exception is `transcript_read_error.lastErrorCode`, which the PRD types as the
- * raw fs errno string (a system-controlled code, never transcript content).
- * Warnings are live-only: emitted once when observed, never persisted.
+ * Live-only adapter warnings carry diagnostic fields rather than prompts or transcript content
+ * (PRD §5.7, §8.2). Error codes are allowlisted except the system-controlled raw fs errno
+ * `transcript_read_error.lastErrorCode`. Warnings are emitted once and never persisted.
  */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
 import type { LoginExpiredWarning, LoginExpiringWarning } from "./auth.ts";
+import type { DialogObserverFailedWarning } from "./dialogs.ts";
 import type { ImageCopyRemovalFailedWarning } from "./images.ts";
 import type * as lifecycle from "./lifecycle.ts";
 import type {
@@ -30,6 +28,7 @@ import type {
 export type ElwoodWarningEvent =
   | QuestionAutomationDisabledWarning
   | QuestionObserverFailedWarning
+  | DialogObserverFailedWarning
   | LoginExpiringWarning
   | TranscriptListenerErrorWarning
   | ClaudePromptListenerErrorWarning

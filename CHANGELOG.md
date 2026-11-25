@@ -21,7 +21,8 @@ back each entry are listed in `prd/14-conformance.md`.
   can now carry `agent: "claude"`. Codex-only handlers can check the `agent` field.
 
 - Receive Codex workspace trust prompt lifecycle events and verified late replays
-  through `dialog` listeners.
+  through `dialog` listeners. A listener failure emits a content-free warning
+  and warning activity once per session.
 
 - Expose verified Codex workspace trust prompts through `listDialogs()`.
 

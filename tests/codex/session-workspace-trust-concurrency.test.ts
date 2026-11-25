@@ -1,5 +1,4 @@
 /** Verify that Codex list reads, event dispatch, and individual late replays use separate proof. */
-
 import { mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -138,11 +137,12 @@ test("C-ATTN-08 one live snapshot precedes reentrant list revalidation", async (
     await session.teardown();
   }
 });
+type Fixture = Awaited<ReturnType<typeof setup>>;
 
 test.each([
-  "stop",
-  "host output",
-] as const)("C-ATTN-08 cancels a held proof for late replay after %s", async (revoke) => {
+  ["stop", (session: Fixture["session"]) => session.stop()],
+  ["host output", (session: Fixture["session"]) => session.terminal.writeOutput("host output")],
+] as const)("C-ATTN-08 cancels a held proof for late replay after %s", async (_, revoke) => {
   const { cwd, session, render } = await setup();
   const live = vi.fn();
   session.on("dialog", live);
@@ -154,8 +154,7 @@ test.each([
     const late = vi.fn<(event: ElwoodDialogEvent) => void>();
     session.on("dialog", late);
     await held.began;
-    if (revoke === "stop") await session.stop();
-    else await session.terminal.writeOutput(revoke);
+    await revoke(session);
     await expect.poll(() => late.mock.calls.map(([event]) => event.phase)).toEqual(["closed"]);
     expect(await session.listDialogs()).toEqual([]);
   } finally {
@@ -165,10 +164,11 @@ test.each([
 });
 
 test.each([
-  "listener",
-  "frame",
-] as const)("C-ATTN-08 rechecks a pending replay after replacement of its %s", async (changed) => {
-  const { cwd, session, render } = await setup();
+  ["listener", (_: Fixture, resubscribe: () => void) => resubscribe()],
+  ["frame", ({ render, cwd }: Fixture) => render(menuWithQuitSelected(cwd))],
+] as const)("C-ATTN-08 rechecks a pending replay after replacement of its %s", async (_, replace) => {
+  const fixture = await setup();
+  const { cwd, session, render } = fixture;
   const live = vi.fn();
   session.on("dialog", live);
   const held = proofPause();
@@ -180,12 +180,10 @@ test.each([
     const late = vi.fn();
     const off = session.on("dialog", late);
     await held.began;
-    if (changed === "listener") {
+    await replace(fixture, () => {
       off();
       session.on("dialog", late);
-    } else {
-      await render(menuWithQuitSelected(cwd));
-    }
+    });
     held.release();
     await fresh.began;
     expect(late).not.toHaveBeenCalled();

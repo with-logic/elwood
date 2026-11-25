@@ -157,7 +157,7 @@ test("C-ATTN-08 does not announce native evidence revoked before delivery", asyn
 test("C-ATTN-08 workspace mutation by the close listener suppresses a replacement raise", async () => {
   const { cwd, session, render } = await setup();
   const original = join(tempDir(), "original");
-  const phases: string[] = [];
+  const phases: ElwoodDialogEvent["phase"][] = [];
   session.on("dialog", (event) => {
     phases.push(event.phase);
     if (event.phase === "closed" && event.reason === "replaced") {

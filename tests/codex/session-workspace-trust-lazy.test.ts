@@ -17,9 +17,9 @@ afterEach(() => {
 });
 
 test.each([
-  false,
-  true,
-])("C-ATTN-08 lazy startup replays only active verified state (%s)", async (cleared) => {
+  ["visible", [], 1],
+  ["cleared", [codexTty(codexComposer)], 0],
+] as const)("C-ATTN-08 lazy startup replays only active verified state (%s)", async (_, frames, count) => {
   installFakes();
   const cwd = realpathSync.native(tempDir());
   const session = new CodexSession({ cwd });
@@ -51,19 +51,17 @@ test.each([
     assert.isDefined(pty);
     pty.emitData(clear + menu(cwd));
     await expect.poll(renders).toBe(1);
-    if (cleared) {
-      pty.emitData(clear + codexTty(codexComposer));
-      await expect.poll(renders).toBe(2);
-    }
+    for (const frame of frames) pty.emitData(clear + frame);
+    await expect.poll(renders).toBe(1 + frames.length);
     expect(session.session).toBeUndefined();
     finishStartup.resolve();
     await starting;
-    if (!cleared) await expect.poll(() => observed.mock.calls.length).toBe(1);
+    await expect.poll(() => observed.mock.calls.length).toBe(count);
     const requests = await session.listDialogs();
     expect(observed.mock.calls).toEqual(
       requests.map((request) => [{ phase: "raised", request } satisfies ElwoodDialogEvent]),
     );
-    expect(requests).toHaveLength(cleared ? 0 : 1);
+    expect(requests).toHaveLength(count);
     expect(removedBeforeReplay).not.toHaveBeenCalled();
   } finally {
     finishStartup.resolve();

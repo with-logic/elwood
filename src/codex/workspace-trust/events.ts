@@ -1,6 +1,6 @@
 /** Deliver independently verified Codex workspace trust lifecycle events (C-ATTN-08). */
 import { setImmediate } from "node:timers/promises";
-import { runContained } from "../../core/contained.ts";
+import { observeDialogNotifications } from "../../core/warnings/dialogs.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { CodexEventMap } from "../session/types.ts";
 import { CodexWorkspaceTrustDiscovery } from "./discovery.ts";
@@ -22,6 +22,7 @@ const publicationCollectorLimit = 2;
 export class CodexWorkspaceTrustEvents {
   readonly discovery: CodexWorkspaceTrustDiscovery;
   private readonly emitter: TypedEmitter<CodexEventMap>;
+  private readonly observeNotifications: (deliver: () => void) => void;
   private readonly replays = new Set<DialogListener>();
   private pendingDeliveryCheck: PendingDeliveryCheck | undefined;
   private collecting = 0;
@@ -32,14 +33,22 @@ export class CodexWorkspaceTrustEvents {
   private publishing = false;
 
   constructor(
-    input: WorkspaceTrustDiscoveryInput & { readonly emitter: TypedEmitter<CodexEventMap> },
+    input: WorkspaceTrustDiscoveryInput & {
+      readonly emitter: TypedEmitter<CodexEventMap>;
+      readonly isLive: () => boolean;
+    },
   ) {
-    const { emitter, ...discovery } = input;
+    const { emitter, isLive, ...discovery } = input;
     this.discovery = new CodexWorkspaceTrustDiscovery(discovery, {
       onListDiscovery: () => this.refresh(),
       onRetire: (request, reason) => this.retire(request, reason),
     });
     this.emitter = emitter;
+    this.observeNotifications = observeDialogNotifications(
+      emitter,
+      { elwoodSessionId: input.elwoodSessionId, agent: "codex" },
+      isLive,
+    );
   }
 
   reconcileAfter(update: () => void): void {
@@ -49,11 +58,11 @@ export class CodexWorkspaceTrustEvents {
       const candidate = this.discovery.reconcileCandidate();
       if (this.pendingDeliveryCheck && candidate !== this.pendingDeliveryCheck.candidate)
         this.pendingDeliveryCheck.cancellation.abort();
-      if (candidate) this.refresh();
+      if (candidate && (!this.announced || this.replays.size > 0)) this.refresh();
     }
   }
 
-  readonly refreshAfterCallerTakeover = (): void => this.refresh();
+  readonly refreshAfterWorkspaceTrustTakeover = (): void => this.refresh();
 
   private readonly hasSubscribers = (): boolean => this.emitter.hasListeners("dialog");
 
@@ -86,11 +95,12 @@ export class CodexWorkspaceTrustEvents {
 
   listenerRemoved(handler: DialogListener): void {
     this.replays.delete(handler);
-    if (
-      this.pendingDeliveryCheck &&
-      (!this.hasSubscribers() || this.pendingDeliveryCheck.replay === handler)
-    ) {
-      this.pendingDeliveryCheck.cancellation.abort();
+    const pending = this.pendingDeliveryCheck;
+    if (!pending) return;
+    const hasNoSubscribers = !this.hasSubscribers();
+    const removedPendingReplayListener = pending.replay === handler;
+    if (hasNoSubscribers || removedPendingReplayListener) {
+      pending.cancellation.abort();
       if (this.replays.size > 0) this.refresh();
     }
   }
@@ -118,12 +128,12 @@ export class CodexWorkspaceTrustEvents {
     const cancellation = new AbortController();
     try {
       const candidate = this.discovery.reconcileCandidate();
-      if (!candidate) return;
+      const replay = this.replays.values().next().value;
+      if (!candidate || (this.announced && !replay)) return;
       if (this.collecting === publicationCollectorLimit) {
         this.waitingForCollector = true;
         return;
       }
-      const replay = this.replays.values().next().value;
       this.pendingDeliveryCheck = { candidate, replay, cancellation };
       // Each distinct delivery obtains evidence after previous callbacks have run.
       const verified = await this.discovery.readForPublication(
@@ -138,14 +148,15 @@ export class CodexWorkspaceTrustEvents {
       )
         return;
       const { request } = verified;
-      if (request !== this.announced) {
+      if (replay) {
+        this.replays.delete(replay);
+        const event = Object.freeze({ phase: "raised" as const, request });
+        this.observeNotifications(() => this.emitter.notifyReplay(replay, event));
+        this.needsRefresh ||= this.replays.size > 0;
+      } else {
         this.announced = request;
         this.needsRefresh = false;
         this.emit({ phase: "raised", request });
-      } else if (replay) {
-        this.replays.delete(replay);
-        this.emitter.notifyReplay(replay, Object.freeze({ phase: "raised", request }));
-        this.needsRefresh ||= this.replays.size > 0;
       }
     } catch {
       if (!cancellation.signal.aborted) this.discovery.retireUnverified();
@@ -168,6 +179,6 @@ export class CodexWorkspaceTrustEvents {
   };
 
   private emit(event: ElwoodDialogEvent): void {
-    runContained(() => this.emitter.emit("dialog", Object.freeze(event), true));
+    this.observeNotifications(() => this.emitter.emit("dialog", Object.freeze(event), true));
   }
 }

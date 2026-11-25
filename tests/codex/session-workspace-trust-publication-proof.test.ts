@@ -151,7 +151,7 @@ test("C-ATTN-08 a plain close does not retry the same failed evidence", async ()
     await interceptWorkspaceLookup(cwd, () => {
       throw new Error("workspace evidence unavailable");
     });
-    await render(menuWithQuitSelected(cwd));
+    session.on("dialog", vi.fn());
     await expect
       .poll(() => events.mock.lastCall?.[0])
       .toMatchObject({

@@ -1,8 +1,4 @@
-/**
- * Small typed event emitter used by sessions and hook dispatch.
- * Implements PRD §5.4 and §6.4/§7A.2 tool-keyed response provenance.
- */
-
+/** Typed session events and tool-keyed hook responses (PRD §5.4, §6.4, §7A.2). */
 import { types } from "node:util";
 import { runContained } from "../core/contained.ts";
 import { inertRecord } from "../core/inert-record.ts";
@@ -106,7 +102,14 @@ export class TypedEmitter<M extends Record<string, unknown>> {
 
   /** Deliver a replay to the single registration already checked by its owner. */
   notifyReplay<T>(handler: (payload: T) => unknown, payload: T): void {
-    runContained(() => this.notify(handler, payload, true));
+    runContained(() => {
+      const onError = this.observerError;
+      try {
+        this.notify(handler, payload, true, this.rejectionSink(onError));
+      } catch (error) {
+        onError?.(error);
+      }
+    });
   }
 
   private notify<T>(

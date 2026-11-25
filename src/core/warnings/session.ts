@@ -20,7 +20,7 @@ export type WarningEmit = {
   readonly activity: (event: ElwoodActivityEvent) => void;
 };
 
-type SessionWarningEmitter = {
+export type SessionWarningEmitter = {
   readonly emit: ((name: "warning", event: ElwoodWarningEvent, containRejections: true) => void) &
     ((name: "activity", event: ElwoodActivityEvent, containRejections: true) => void);
 };

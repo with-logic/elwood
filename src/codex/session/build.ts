@@ -23,7 +23,7 @@ import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.t
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { spawnCodexPty } from "../pty.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
-import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
+import { codexScreenFactTableForTrustPolicy as screenFacts } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
 import { CodexWorkspaceTrustEvents } from "../workspace-trust/events.ts";
@@ -82,6 +82,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     humanOwnedPrompt: () => promptResponder.humanOwnedPrompt,
     clearance,
     emitter,
+    isLive: () => session?.closing.signal.aborted === false,
   });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
@@ -91,12 +92,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   };
-  const snapshot = () => cachedLiveSnapshot(terminal);
   const readiness = createCodexReadinessGate(onReady, resumed, elwoodSessionId, warnGate, emitter);
   const observers = {
     turn: new TurnStateWatcher(),
     attention: new AttentionWatcher(),
-    table: codexScreenFactTableForTrustPolicy(options.autotrust ?? false, clearance, snapshot),
+    table: screenFacts(options.autotrust ?? false, clearance, () => cachedLiveSnapshot(terminal)),
     agent: "codex" as const,
     elwoodSessionId: record.elwoodSessionId,
     emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
@@ -114,7 +114,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => dialogs.reconcileAfter(frameObserver.refresh),
     clearance,
     () => activeSession.inputBlocking || activeSession.trustInputBlocking,
-    dialogs.refreshAfterCallerTakeover,
+    dialogs.refreshAfterWorkspaceTrustTakeover,
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,

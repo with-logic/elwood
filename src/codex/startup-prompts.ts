@@ -29,7 +29,7 @@ export class CodexStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly clearance: TrustClearance;
   private readonly sessionInputHeld: () => boolean;
-  private readonly onCallerTakeover: (() => void) | undefined;
+  private readonly onWorkspaceTrustTakeover: (() => void) | undefined;
   private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
@@ -48,12 +48,12 @@ export class CodexStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = codexTrustClearance,
     sessionInputHeld?: () => boolean,
-    onCallerTakeover?: () => void,
+    onWorkspaceTrustTakeover?: () => void,
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.clearance = clearance;
     this.sessionInputHeld = sessionInputHeld ?? (() => false);
-    this.onCallerTakeover = onCallerTakeover;
+    this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
     this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
       onStateChange,
@@ -89,7 +89,7 @@ export class CodexStartupPromptResponder {
     this.updateAttempt?.cancel();
     this.updateCallerOwned ||= this.updatePrompt.unresolved;
     const prompt = this.humanOwnedPrompt;
-    if (priorPrompt !== prompt && prompt === "workspace_trust") this.onCallerTakeover?.();
+    if (prompt === "workspace_trust" && priorPrompt !== prompt) this.onWorkspaceTrustTakeover?.();
   }
 
   get inputBlocking(): boolean {
