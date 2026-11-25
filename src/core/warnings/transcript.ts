@@ -1,4 +1,4 @@
-/** Transcript observer diagnostics that preserve delivery (PRD §5.7). */
+/** Transcript observer diagnostics and native quota warnings (PRD §5.4/§5.7). */
 export type TranscriptListenerErrorWarning = {
   readonly elwoodSessionId: string;
   readonly agent: "codex";

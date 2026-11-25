@@ -5,6 +5,7 @@ import { boundedDiagnostic } from "../../core/simple/boundary-signal.ts";
 import type { ClaudeUsageLimitWarning } from "../../core/warnings/transcript.ts";
 import { type ClaudeDirectRecordSummary, claudeSyntheticModel } from "./summary.ts";
 
+// Bound provider-supplied warning labels to 64 characters for display.
 const limitHeading =
   /^You['’]ve (?:hit|reached) your ([A-Za-z0-9][A-Za-z0-9 .'-]{0,63}) limit(?=[ .·]|$)/u;
 const nativeLimitCode = /^[a-z0-9_]{1,64}$/u;

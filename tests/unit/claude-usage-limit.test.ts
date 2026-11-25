@@ -32,6 +32,7 @@ const source = { elwoodSessionId: "s1", path: "/fixture.jsonl", item: record };
 test.each([
   null,
   { ...record, isApiErrorMessage: false },
+  { ...record, apiError: "rate_limit" },
   { ...record, isSidechain: true },
   { ...record, message: null },
   { ...record, apiErrorParams: null },
@@ -60,6 +61,16 @@ test.each([
   expect(warning).not.toHaveProperty("nativeLimitType");
   expect(warning).not.toHaveProperty("resetsAtUnixSeconds");
   expect(warning).not.toHaveProperty("turnId");
+});
+
+test("C-API-68 preserves an explicit zero reset time", () => {
+  const item = {
+    ...record,
+    apiErrorParams: { rate_limit_info: { status: "rejected", resetsAt: 0 } },
+  };
+  expect(claudeUsageLimitWarning({ ...source, item }, [summary(message)])).toMatchObject({
+    resetsAtUnixSeconds: 0,
+  });
 });
 
 test("C-API-68 preserves bounded native diagnostic and requires nonblank text", () => {

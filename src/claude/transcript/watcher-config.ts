@@ -6,7 +6,7 @@
 import type { ClaudeUsageLimitWarning } from "../../core/warnings/transcript.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 
-/** Notices the watcher forwards for observation problems (each fired live, once). */
+/** Live quota notices and diagnostics from transcript observation. */
 export type TranscriptNoticeHandlers = {
   readonly onDrop?: (notice: TranscriptDropNotice) => void;
   readonly onUsageLimit?: (warning: ClaudeUsageLimitWarning) => void;
