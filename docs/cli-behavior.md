@@ -1849,8 +1849,8 @@ Further detail from real 2.1.332 sessions in a private config dir (2026-11-24):
   applies the composer's line-ending and tab changes on both sides, reads a fullwidth
   `＜` as `<`, and ignores trailing whitespace and every `<\` backslash. C-E2E-20 checks
   a wrapped prompt with a tab and a CRLF, and one with a fullwidth look-alike tag.
-  Claude's binary holds dozens of other `<` look-alikes; only the fullwidth one was run,
-  so a prompt using another one may still not match its own hook.
+  Only the fullwidth `＜` was run as a stand-in for `<`, so a prompt using another `<`
+  look-alike character may still not match its own hook.
 
 ## Hook bridge request FIN and delayed decisions
 
