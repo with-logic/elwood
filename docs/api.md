@@ -93,6 +93,12 @@ present to associate it with a prompt. The same observation appears in
 `activity` with kind `warning`, label `usage_limit_reached`, and the full
 warning in `raw`.
 
+Codex uses the same warning code for explicit quota or credit rejections. It
+reports the native `nativeLimitType`, optional `limitId` and `limitName`, and
+separate `primaryResetsAtUnixSeconds` and `secondaryResetsAtUnixSeconds` when
+supplied. Codex snapshots do not identify a turn or the window that rejected
+it. The typed warning is also available on the matching activity as `raw`.
+
 ```ts
 interface ElwoodAgentSession {
   readonly elwoodSessionId: string;

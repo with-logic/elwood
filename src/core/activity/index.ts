@@ -174,7 +174,10 @@ export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEv
     label: event.code,
     text: event.message,
     ...(event.code === "usage_limit_reached"
-      ? { transcriptPath: event.transcriptPath, ...optional(event.turnId, "turnId") }
+      ? {
+          transcriptPath: event.transcriptPath,
+          ...optional(event.agent === "claude" ? event.turnId : undefined, "turnId"),
+        }
       : {}),
     raw: event,
   };

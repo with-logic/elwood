@@ -25,6 +25,7 @@ import {
 } from "../transcript/index.ts";
 import { codexTurnFailureActivity } from "../transcript/rejection.ts";
 import { seedCodexResumeCursor } from "../transcript/resume-cursor.ts";
+import { CodexUsageLimitObserver, codexUsageLimitWarning } from "../transcript/usage-limit.ts";
 import type { CodexEventMap } from "./types.ts";
 import {
   codexRolloutLocatorUnavailableWarning,
@@ -104,6 +105,7 @@ export function createCodexTranscriptWatcher(
     }
   }
   const clipboardCopies = new CodexClipboardCopies();
+  const usageLimits = new CodexUsageLimitObserver();
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) =>
@@ -111,8 +113,11 @@ export function createCodexTranscriptWatcher(
         clipboardCopies.observe(event.item);
         const projected = activity.activityFromCodexTranscript(event);
         const failure = codexTurnFailureActivity(event);
+        const rejectedQuota = usageLimits.observe(event.item);
+        const quotaWarning = rejectedQuota && codexUsageLimitWarning(event, rejectedQuota);
         deliver("codex:transcript", event);
         deliver("activity", projected);
+        if (quotaWarning) route(quotaWarning);
         if (failure) {
           emitter.observeRejections(reportFailureRejection, () => deliver("activity", failure));
         }
