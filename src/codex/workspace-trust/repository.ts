@@ -1,11 +1,11 @@
 /** Corroborate local Codex repository trust scope from Git's on-disk layout (PRD §5.5). */
-import { lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import {
   matchesGitHeadMarkerShape,
   parseGitMetadataLine,
-  readBoundedGitMetadata,
+  readBoundedGitMetadataAsync,
 } from "../../core/git-metadata.ts";
+import { canonicalGitPath, lstatGitPath } from "./git-paths.ts";
 
 // These metadata pointers are single lines. Bound the descriptor read before allocating.
 const maxGitMarkerBytes = 64 * 1024;
@@ -15,35 +15,39 @@ export type CodexRepositoryTrustRoot = {
 };
 
 /** Walk past ancestor .git directories missing HEAD. Require valid Git evidence for trust. */
-export function codexRepositoryTrustRoot(cwd: string): CodexRepositoryTrustRoot | undefined {
+export async function codexRepositoryTrustRoot(
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<CodexRepositoryTrustRoot | undefined> {
   for (let root = cwd; ; root = dirname(root)) {
     const git = join(root, ".git");
-    const marker = lstatSync(git, { throwIfNoEntry: false });
-    if (marker?.isFile()) return gitFileRepositoryRoot(root, git);
+    const marker = await lstatGitPath(git, signal);
+    if (marker?.isFile()) return await gitFileRepositoryRoot(root, git, signal);
     if (marker && !marker.isDirectory()) throw unprovedRepository();
     const head = join(git, "HEAD");
-    if (marker && lstatSync(head, { throwIfNoEntry: false })) {
-      verifyHead(head);
+    if (marker && (await lstatGitPath(head, signal))) {
+      await verifyHead(head, signal);
       return { path: root, allowsFolderFallback: false };
     }
     if (dirname(root) === root) return undefined;
   }
 }
 
-function gitFileRepositoryRoot(
+async function gitFileRepositoryRoot(
   checkout: string,
   marker: string,
-): CodexRepositoryTrustRoot | undefined {
-  const directory = gitFileTarget(marker);
-  if (!lstatSync(directory).isDirectory()) throw unprovedRepository();
-  const canonical = realpathSync.native(directory);
+  signal: AbortSignal | undefined,
+): Promise<CodexRepositoryTrustRoot | undefined> {
+  const directory = await gitFileTarget(marker, signal);
+  if (!(await lstatGitPath(directory, signal))?.isDirectory()) throw unprovedRepository();
+  const canonical = await canonicalGitPath(directory, signal);
   const backlink = join(canonical, "gitdir");
   const commondir = join(canonical, "commondir");
-  const hasBacklink = lstatSync(backlink, { throwIfNoEntry: false }) !== undefined;
-  const hasCommonDir = lstatSync(commondir, { throwIfNoEntry: false }) !== undefined;
+  const hasBacklink = (await lstatGitPath(backlink, signal)) !== undefined;
+  const hasCommonDir = (await lstatGitPath(commondir, signal)) !== undefined;
   if (!(hasBacklink || hasCommonDir)) {
     // An ordinary gitfile can disclose the checkout root or the exact launch folder.
-    verifyHead(join(canonical, "HEAD"));
+    await verifyHead(join(canonical, "HEAD"), signal);
     return { path: checkout, allowsFolderFallback: true };
   }
   const worktrees = dirname(canonical);
@@ -51,29 +55,30 @@ function gitFileRepositoryRoot(
     hasBacklink && hasCommonDir && basename(worktrees) === "worktrees";
   if (!registeredWorktreeLayout) throw unprovedRepository();
   const common = dirname(worktrees);
-  const registeredGitFile = absoluteGitPointer(canonical, readMarker(backlink));
-  const registered = realpathSync.native(dirname(registeredGitFile));
-  const commonFromCheckout = realpathSync.native(
-    absoluteGitPointer(canonical, readMarker(commondir)),
+  const registeredGitFile = absoluteGitPointer(canonical, await readMarker(backlink, signal));
+  const registered = await canonicalGitPath(dirname(registeredGitFile), signal);
+  const commonFromCheckout = await canonicalGitPath(
+    absoluteGitPointer(canonical, await readMarker(commondir, signal)),
+    signal,
   );
   const registrationMatchesCheckout =
     basename(registeredGitFile) === ".git" &&
-    registered === realpathSync.native(checkout) &&
+    registered === (await canonicalGitPath(checkout, signal)) &&
     commonFromCheckout === common;
   if (!registrationMatchesCheckout) throw unprovedRepository();
 
   const root = dirname(common);
   const mainMarker = join(root, ".git");
-  const main = lstatSync(mainMarker, { throwIfNoEntry: false });
+  const main = await lstatGitPath(mainMarker, signal);
   // An external common directory cannot identify its main checkout from the worktree.
   if (!main) return undefined;
-  const mainGit = main.isDirectory() ? mainMarker : gitFileTarget(mainMarker);
-  if (realpathSync.native(mainGit) !== common) throw unprovedRepository();
+  const mainGit = main.isDirectory() ? mainMarker : await gitFileTarget(mainMarker, signal);
+  if ((await canonicalGitPath(mainGit, signal)) !== common) throw unprovedRepository();
   return { path: root, allowsFolderFallback: false };
 }
 
-function gitFileTarget(file: string): string {
-  const contents = readMarker(file);
+async function gitFileTarget(file: string, signal: AbortSignal | undefined): Promise<string> {
+  const contents = await readMarker(file, signal);
   const prefix = "gitdir: ";
   if (!contents.startsWith(prefix)) throw unprovedRepository();
   const path = contents.slice(prefix.length);
@@ -86,14 +91,17 @@ function absoluteGitPointer(base: string, pointer: string): string {
   return isAbsolute(pointer) ? pointer : `${base}${sep}${pointer}`;
 }
 
-function verifyHead(file: string): void {
-  if (!matchesGitHeadMarkerShape(readMarker(file))) throw unprovedRepository();
+/** Accept a symbolic ref or a detached SHA-1 or SHA-256 object ID. */
+async function verifyHead(file: string, signal: AbortSignal | undefined): Promise<void> {
+  if (!matchesGitHeadMarkerShape(await readMarker(file, signal))) throw unprovedRepository();
 }
 
-function readMarker(file: string): string {
-  const contents = parseGitMetadataLine(readBoundedGitMetadata(file, maxGitMarkerBytes));
-  if (contents === undefined) throw unprovedRepository();
-  return contents;
+async function readMarker(file: string, signal: AbortSignal | undefined): Promise<string> {
+  const value = parseGitMetadataLine(
+    await readBoundedGitMetadataAsync(file, maxGitMarkerBytes, signal),
+  );
+  if (value === undefined) throw unprovedRepository();
+  return value;
 }
 
 function unprovedRepository(): Error {

@@ -11,3 +11,10 @@ export function registerWorktree(checkout: string, repo: string) {
   writeFileSync(join(slot, "commondir"), "../..\n");
   return { slot, marker };
 }
+
+export function createLinkedCheckout(root: string) {
+  const repo = join(root, "project ");
+  const checkout = join(root, "checkout");
+  mkdirSync(checkout);
+  return { repo, checkout, ...registerWorktree(checkout, repo) };
+}
