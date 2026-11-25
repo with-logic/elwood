@@ -1,21 +1,20 @@
 /**
- * Real-CLI proof that a RESUMED Codex which opens on a screen Elwood does not recognize
- * receives no queued input (PRD §5.3, C-API-28, C-E2E-26). Codex 0.171.0 paints a
- * `› Ask Codex to do anything` placeholder and then its update offer, whose selected row
- * is `› 1. Update now`; Elwood's update recognizer matches only Codex 0.155's layout.
- * Both carry the composer marker, and Enter on the offer runs a global installer. The
- * queued message must stay held until the host answers the offer with a raw key and
- * Codex shows its configured composer.
+ * Real-CLI proof that a RESUMED Codex which opens on its own update offer has Elwood skip
+ * it before any queued input (PRD §5.3, §5.5, C-API-28, C-CODEX-27, C-E2E-26). Codex
+ * 0.171 paints a `Resuming session…` placeholder and then the offer, whose selected row
+ * is `› 1. Update now`. Both carry the composer marker, and Enter on the offer runs a
+ * global installer. Only Elwood's `Skip` digit may reach the offer; the queued message
+ * then drains onto the configured composer.
  */
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
 import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
-import { codexUpdateOffer, offerSkipDigit, refusedAtMarkedRows } from "./codex-update-offer.ts";
+import { readCodexDismissedVersion } from "./codex-update-check.ts";
+import { codexUpdateOffer, refusedAtMarkedRows } from "./codex-update-offer.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -37,16 +36,13 @@ const SEND_MS = 10_000;
 const SESSION_START_MS = 10_000;
 // Codex paints the offer within a second of a resume; a loaded host gets more.
 const OFFER_MS = 20_000;
-// Longer than the 10 s readiness deadline, so the resume composer path and the deadline
-// have both had their chance to write.
-const HOLD_MS = 12_000;
 const LAUNCHES_MS = 2 * (probeLaunchTimeoutMs + probeCommandTimeoutMs);
 const TEST_TIMEOUT_MS =
-  2 * (READY_MS + SEND_MS + TURN_MS) + SESSION_START_MS + OFFER_MS + HOLD_MS + LAUNCHES_MS + 30_000;
+  2 * (READY_MS + SEND_MS + TURN_MS) + SESSION_START_MS + OFFER_MS + LAUNCHES_MS + 30_000;
 
 const ONE = "Reply exactly: ONE. Do not use tools.";
 
-test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued input", {
+test("C-E2E-26 a resumed Codex that opens on its update offer is skipped before queued input", {
   skip: skipIf(skipReason("codex"), skipTurns, codexAuthMissing()),
   timeout: TEST_TIMEOUT_MS,
 }, async (t) => {
@@ -98,38 +94,24 @@ test("C-E2E-26 a resumed Codex that opens on its update offer receives no queued
       }),
     );
     resumed = active;
-    const screen = () => active.terminal.snapshot().text;
-    input.watch(screen);
+    input.watch(() => active.terminal.snapshot().text);
     let settled = false;
     const queued = active.sendMessage(ONE).finally(() => {
       settled = true;
     });
     // A failed run tears the session down with this send still queued.
     queued.catch(() => {});
-    await waitForCondition(
-      active,
-      () => offerSkipDigit(screen()) !== undefined,
-      "the update offer",
-      OFFER_MS,
-    );
-    await delay(HOLD_MS);
-    assert.deepEqual(
-      refusedAtMarkedRows(input.refused),
-      [],
-      "no application input may be written while the update offer is on screen",
-    );
-    assert.equal(settled, false, "the queued message stays queued");
-    assert.notEqual(active.status, "ready");
-    const skip = offerSkipDigit(screen());
-    assert.ok(skip !== undefined, "the offer is still on screen");
-
-    // The host answers the offer itself; the held message then drains to a real turn.
-    input.release(skip);
-    await active.sendKeys(skip);
+    await waitForCondition(active, () => input.skips.length > 0, "Elwood's skip", OFFER_MS);
     await waitForCondition(active, () => settled, "queued ONE submitted", READY_MS + SEND_MS);
     await queued;
     await waitForCondition(active, () => stops >= 1, "queued ONE answered", TURN_MS);
+    assert.deepEqual(
+      refusedAtMarkedRows(input.refused),
+      [],
+      "only Elwood's Skip may reach the offer, and nothing may come before it",
+    );
     assert.deepEqual(prompts, [ONE]);
-    assert.deepEqual(input.refused, []);
+    // `Skip`, unlike `Skip until next version`, leaves Codex's update state alone.
+    assert.equal(readCodexDismissedVersion(sandbox.home), null);
   }).finally(() => input.dispose());
 });

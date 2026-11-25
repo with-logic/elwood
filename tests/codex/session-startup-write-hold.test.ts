@@ -1,21 +1,18 @@
 /**
  * Before its first readiness, a Codex session writes a `sendPrompt` or a picker command
- * only onto its configured composer: a bare composer marker can be an unrecognized
- * startup screen's selected row, such as Codex 0.171.0's `› 1. Update now`. Covers PRD
- * §5.3 and C-API-28.
+ * only onto its configured composer: a bare composer marker can be the selected row of
+ * a startup screen Elwood does not recognize. Covers PRD §5.3 and C-API-28.
  */
 
 import { afterEach, expect, test } from "vitest";
 import { unsafeWriteRetryMs } from "../../src/core/input/constants.ts";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
+import { unrecognizedStartupScreen as startup } from "../fixtures/codex-unrecognized-startup.ts";
 import { codexComposer, codexTty, tty } from "../fixtures/trust-composer.ts";
-import { capturedFrame } from "../helpers/captured-frames.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-/** Codex 0.171.0's update offer, which Elwood does not recognize. */
-const offer = capturedFrame("codex-0.171.0/update/offer-npm");
 /** Two write retries: a writer the hold had released would have written by then. */
 const settleMs = unsafeWriteRetryMs * 2;
 
@@ -42,7 +39,7 @@ test.each([
   try {
     const sent = session.sendPrompt("held prompt");
     sent.catch(() => {});
-    await render(session, tty(offer));
+    await render(session, tty(startup));
     await render(session, "› ");
     expect(pty.writes).toEqual([]);
     await render(session, codexTty(codexComposer));
@@ -61,7 +58,7 @@ test("C-API-28 a readiness hook releases a held sendPrompt without a configured 
   try {
     const sent = session.sendPrompt("held prompt");
     sent.catch(() => {});
-    await render(session, tty(offer));
+    await render(session, tty(startup));
     expect(pty.writes).toEqual([]);
     await becomeReady(session.elwoodSessionId, cwd);
     await sent;
@@ -81,7 +78,7 @@ test.each([
   try {
     const picking = run(session);
     picking.catch(() => {});
-    await render(session, tty(offer));
+    await render(session, tty(startup));
     expect(pty.writes).toEqual([]);
     await render(session, codexTty(codexComposer));
     await expect.poll(() => pty.writes.join("")).toContain("/model");
@@ -99,7 +96,7 @@ test("C-API-28 a picker command held past its deadline reports it was never writ
       code: "model_automation_failed",
       message: "Timed out before the command that opens the codex model picker could be submitted.",
     });
-    await render(session, tty(offer));
+    await render(session, tty(startup));
     await rejected;
     expect(ptys[0]!.writes).toEqual([]);
   } finally {

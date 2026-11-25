@@ -29,6 +29,11 @@ back each entry are listed in `prd/14-conformance.md`.
   `Submit` or `Next` row. On Claude Code 2.1.332 such a question was never
   published and ordinary input stayed held.
 
+- Skip the update offer that Codex 0.171 and later show at start and on resume,
+  for npm and standalone installs and at narrow widths. Elwood used to leave it
+  unrecognized, so a queued message waited until the host answered it. Elwood
+  picks `Skip`, which records no dismissal in Codex's update state.
+
 - A matched Claude low-level text submission can include the original API text,
   the exact native hook prompt, API paste provenance, and a caller `sendId`.
 

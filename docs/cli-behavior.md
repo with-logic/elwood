@@ -3426,15 +3426,19 @@ else it prints only a passive notice. An npm install offers its action unaided.
 The managed standalone 0.172.0 wraps a new install command:
 ``1. Update now (runs `sh -c 's=$(curl -fsSL https://chatgpt.com/codex/install.sh) &&``
 then, indented five columns, ``CODEX_NON_INTERACTIVE=1 eval "$s"'`)``. At 60
-columns `Release notes:` and its URL take two rows. The cursor is hidden. The
-banner has no `!`, uses `·` and `→`, and the footer is `enter continue · esc
-skip`, so the recognizer written for 0.155.1 (`Update available! X -> Y`, `Press
-enter to continue`) matches none of it: `classifyCodexUpdateFrame` reports
-`visible: false`, and nothing blocks or skips. `2` and Esc both dismiss the offer
-without writing `dismissed_version`. Codex then prints a boxed passive notice
-above the header (`│ ✨_ Update available! 0.171.0 -> 0.172.0 │`, `│ Run npm
-install -g @openai/codex to update. │`) and shows its configured composer.
-Captures: `tests/fixtures/codex-0.171.0/update/`.
+columns `Release notes:` and its URL take two rows, and the command three. At 40
+columns the URL itself breaks mid-word (`…/codex/rele`, `ases/latest`), and the
+command takes five rows, each continuation indented five columns. The cursor is
+hidden. The banner has no `!`, uses `·` and `→`, and the footer is `enter continue
+· esc skip`, so the recognizer written for 0.155.1 (`Update available! X -> Y`,
+`Press enter to continue`) matched none of it: `classifyCodexUpdateFrame` reported
+`visible: false`, and nothing blocked or skipped. Elwood now recognizes this layout
+too, comparing wrapped rows without their whitespace against the exact link and
+install commands (C-CODEX-27). `2` and Esc both dismiss the offer without writing
+`dismissed_version`; `3` (`Skip until next version`) writes it. Codex then prints a
+boxed passive notice above the header (`│ ✨_ Update available! 0.171.0 -> 0.172.0
+│`, `│ Run npm install -g @openai/codex to update. │`). Captures:
+`tests/fixtures/codex-0.171.0/update/` and `tests/fixtures/codex-0.172.0/update/`.
 
 **Order of screens.** On a start, Codex paints its boot composer (`› Ask Codex to
 do anything` over `? for shortcuts`) first and the offer 0.1 to 5 s later (the
@@ -3454,6 +3458,17 @@ A `sendPrompt` called at a start bypassed the readiness queue: on 2026-11-25
 `start-update-offer-codex.e2e.ts` recorded its paste and its `\r` before Codex had
 painted any row with the marker, and the offer appeared after them. Before the
 first readiness, those writes now also wait for the configured composer (C-E2E-27).
+
+**After Elwood's skip (2026-11-25).** With C-CODEX-27, Elwood writes `2` on the
+offer itself. Codex does not go straight to its configured composer: it first
+repaints the screen the offer replaced, the boot composer on a start or the
+`Resuming session…` placeholder on a resume. That screen lasted about 0.3 s on a
+start and 6 s on a resume, and the configured composer with the boxed notice
+followed. Elwood held queued input across it. Elwood sometimes wrote `2` twice,
+the second time about 250 ms after the first while the offer was still painted,
+because Codex can paint the menu before its input loop takes the first key. The
+second `2` never reached the composer. The e2e allow only the offer's `Skip`
+digit, and only while the offer is on screen (C-E2E-26, C-E2E-27).
 
 **Which Codex a session runs depends on the directory.** On the capture host an
 interactive login shell resolved `codex` to an npm 0.171.0 inside a folder with a

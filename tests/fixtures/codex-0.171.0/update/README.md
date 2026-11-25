@@ -12,5 +12,10 @@ from the one `2` that skipped the offer. The project path was replaced with
   same rows.
 - `resume-skipped-composer.txt` is the screen 1.3 s after `2` was written: Codex's boxed
   passive notice, the replayed turn, and the configured composer.
+- `offer-npm-60x30.txt` was captured on 2026-11-25 from a fresh start at 60×30, with
+  `version.json` naming `99.0.0` and every application write dropped. `Release notes:`
+  and its link take two rows.
+
+`../../codex-0.172.0/update/` holds the standalone 0.172.0 offer at 100, 60 and 40 columns.
 
 See `docs/cli-behavior.md`, "Codex 0.171.0 update offer".
