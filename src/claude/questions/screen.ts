@@ -2,6 +2,7 @@
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { claudeNamedBorder } from "../composer/border.ts";
+import { claudeQuestionFooterEnd } from "./footer.ts";
 import {
   normalizeClaudeQuestionText,
   OTHER_CONTINUATION_INDENT_COLUMNS,
@@ -35,8 +36,6 @@ const CLAUDE_REVIEW_TITLE = "Review your answers";
 const CLAUDE_REVIEW_READY_LABEL = "Ready to submit your answers?";
 const fence = /^[─━]{3,}$/;
 const header = /^(?:←\s+)?\s*[☐☒] /;
-/** A shorter question can draw its footer on a replaced notice's row, which keeps blank cells. */
-const questionFooter = /^Enter to select · .+ · Esc to cancel *$/;
 const reviewCancelRow = /^(?:❯| )\s+2\. Cancel$/;
 
 /** Native chrome may be partial; a candidate alone grants no complete parse or answer authority. */
@@ -47,7 +46,7 @@ export function claudeQuestionCandidate(text: string): boolean {
   if (start < 0) return false;
   // Only a composer after completed native actions can retire this panel. Question
   // copy may itself contain carets, fences, and footer text; partial panels stay held.
-  const footer = lines.findLastIndex((line) => questionFooter.test(line));
+  const footer = claudeQuestionFooterEnd(lines);
   const closingFence = lines.findLastIndex((line, index) => index < footer && fence.test(line));
   const lastOption = lines.findLastIndex((line, index) => index < closingFence && row.test(line));
   const questionEnd = lastOption > start ? footer : -1;
@@ -74,7 +73,7 @@ export function parseClaudeQuestionScreen(
       ? parseReview(frame, body, first)
       : undefined;
   }
-  const footer = body.findLastIndex((line) => questionFooter.test(line));
+  const footer = claudeQuestionFooterEnd(body);
   if (footer < 0 || !hasOnlyOptionalNamedBorder(body.slice(footer + 1))) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
