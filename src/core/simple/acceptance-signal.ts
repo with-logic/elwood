@@ -20,12 +20,16 @@ export type PasteEcho = (
  * payload Elwood pasted: the caller's prompt with control characters removed (§5.3).
  */
 export function createAcceptanceSignal(echoes: PasteEcho): AcceptanceSignalReader {
-  return (hookEvent, prompt) =>
-    hookEvent.hook_event_name === "Stop" ||
-    (hookEvent.hook_event_name === "UserPromptSubmit" &&
-      !hasSynthesizedPrompt(hookEvent) &&
-      hookEvent.prompt !== undefined &&
-      echoes(hookEvent.prompt, sanitizePasteText(prompt), hookEvent));
+  return (hookEvent, prompt) => {
+    if (hookEvent.hook_event_name === "Stop") return true;
+    // Only a native submit of real prompt text can echo the paste; a synthesized one cannot.
+    const nativePrompt =
+      hookEvent.hook_event_name === "UserPromptSubmit" && !hasSynthesizedPrompt(hookEvent)
+        ? hookEvent.prompt
+        : undefined;
+    if (nativePrompt === undefined) return false;
+    return echoes(nativePrompt, sanitizePasteText(prompt), hookEvent);
+  };
 }
 
 /** The default echo is the pasted payload itself. */
@@ -44,7 +48,7 @@ export function registerAcceptanceSignal(session: object, reader: AcceptanceSign
   acceptanceSignalsBySession.set(session, reader);
 }
 
-/** The reader a live session registered, else the default. */
-export function registeredAcceptanceSignal(session: object): AcceptanceSignalReader {
+/** The reader a live session registered, else the exact-match default. */
+export function acceptanceSignalForSession(session: object): AcceptanceSignalReader {
   return acceptanceSignalsBySession.get(session) ?? defaultAcceptanceSignal;
 }

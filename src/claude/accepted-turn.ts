@@ -6,7 +6,7 @@
 import { createAcceptanceSignal, type PasteEcho } from "../core/simple/acceptance-signal.ts";
 import type { TurnBoundaryHook } from "../core/simple/turn-types.ts";
 import type { ClaudeHookEventFor } from "./hooks/index.ts";
-import { claudePasteEnvelopeId, claudePromptPresentation } from "./pasted-content.ts";
+import { claudePasteEnvelopeId, claudeSubmitPresentation } from "./pasted-content.ts";
 
 // The native session id the envelope id derives from must stay a field of the real submit hook.
 type SessionField = Pick<ClaudeHookEventFor<"UserPromptSubmit">, "session_id">;
@@ -22,10 +22,10 @@ function nativeSessionId(hookEvent: TurnBoundaryHook): string {
 const fullwidthLessThan = String.fromCodePoint(0xff1c);
 
 /**
- * Compared text ignores what Claude's composer changes. CRLF and CR become LF and each tab four
- * spaces, read so on both sides so a Claude that echoes them unchanged still matches. A prompt
- * Claude does not wrap loses its trailing whitespace, and a wrapped body loses one trailing
- * newline. Claude's `<\` escape of a look-alike tag cannot be undone exactly: it skips a `<` that
+ * Compared text ignores what Claude's composer changes. Both the echo and the payload get the
+ * same normalization: CRLF and CR become LF and each tab becomes four spaces, so an echo matches
+ * whether Claude made those changes or not. A prompt Claude does not wrap loses its trailing
+ * whitespace, and a wrapped body loses one trailing newline. Claude's `<\` escape of a look-alike tag cannot be undone exactly: it skips a `<` that
  * a backslash already follows and also escapes look-alike spellings, so every `<\` reads as `<`.
  * Claude rewrites a fullwidth `＜` before a tag name to ASCII `<\`, so a fullwidth `＜` reads as
  * `<` too.
@@ -45,7 +45,8 @@ function comparable(text: string): string {
  */
 export const echoesClaudePaste: PasteEcho = (nativePrompt, payload, hookEvent) => {
   const envelopeId = claudePasteEnvelopeId(nativeSessionId(hookEvent));
-  const { text: echoed } = claudePromptPresentation(nativePrompt, envelopeId);
+  // The hook handler already presented this event's `user_message`; reuse it.
+  const { text: echoed } = claudeSubmitPresentation(hookEvent, nativePrompt, envelopeId);
   return comparable(echoed) === comparable(payload);
 };
 

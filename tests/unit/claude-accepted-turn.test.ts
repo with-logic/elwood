@@ -7,10 +7,11 @@
 
 import { describe, expect, test } from "vitest";
 import { claudeAcceptanceSignal, echoesClaudePaste } from "../../src/claude/accepted-turn.ts";
+import { claudeSubmitPresentation } from "../../src/claude/pasted-content.ts";
 import {
+  acceptanceSignalForSession,
   defaultAcceptanceSignal,
   registerAcceptanceSignal,
-  registeredAcceptanceSignal,
 } from "../../src/core/simple/acceptance-signal.ts";
 import { claudePasteEnvelope } from "../fixtures/claude-paste.ts";
 
@@ -73,9 +74,25 @@ describe("echoesClaudePaste", () => {
   });
 
   test("C-CLAUDE-25 the adapter-neutral hook type does not declare session_id", () => {
-    // Bridge-validated Claude hooks always carry one; the reader narrows the loose type.
+    // Bridge-validated Claude hooks always carry a string; the reader narrows the loose type.
     const wrapped = block("a\nb\nc\nd");
     expect(echoesClaudePaste(wrapped, "a\nb\nc\nd", submit(wrapped, {}))).toBe(false);
+    expect(echoesClaudePaste(wrapped, "a\nb\nc\nd", submit(wrapped, { session_id: 42 }))).toBe(
+      false,
+    );
+  });
+
+  test("C-CLAUDE-25 reuses the presentation the hook handler made for the same event", () => {
+    const wrapped = block("a\nb\nc\nd");
+    const event = submit(wrapped);
+    const presented = claudeSubmitPresentation(event, wrapped, "c26a");
+    expect(presented.text).toBe("a\nb\nc\nd");
+    expect(claudeSubmitPresentation(event, wrapped, "c26a")).toBe(presented);
+    expect(echoesClaudePaste(wrapped, "a\nb\nc\nd", event)).toBe(true);
+    // A cached presentation is what acceptance reads for that event.
+    const unwrapped = submit(wrapped);
+    claudeSubmitPresentation(unwrapped, wrapped, undefined);
+    expect(echoesClaudePaste(wrapped, "a\nb\nc\nd", unwrapped)).toBe(false);
   });
 });
 
@@ -93,8 +110,15 @@ describe("Claude acceptance reader", () => {
 
   test("C-CLAUDE-25 a session uses the reader it registered, else the default", () => {
     const session = {};
-    expect(registeredAcceptanceSignal(session)).toBe(defaultAcceptanceSignal);
+    const other = {};
+    expect(acceptanceSignalForSession(session)).toBe(defaultAcceptanceSignal);
     registerAcceptanceSignal(session, claudeAcceptanceSignal);
-    expect(registeredAcceptanceSignal(session)).toBe(claudeAcceptanceSignal);
+    expect(acceptanceSignalForSession(session)).toBe(claudeAcceptanceSignal);
+    // Registration is per session: another session still requires an exact echo.
+    const wrapped = submit(block("one\n    two\nthree\nfour"));
+    const sent = "one\r\n\ttwo\nthree\nfour";
+    expect(acceptanceSignalForSession(session)(wrapped, sent)).toBe(true);
+    expect(acceptanceSignalForSession(other)).toBe(defaultAcceptanceSignal);
+    expect(acceptanceSignalForSession(other)(wrapped, sent)).toBe(false);
   });
 });

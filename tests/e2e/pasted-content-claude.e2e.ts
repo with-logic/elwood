@@ -1,6 +1,6 @@
 /**
- * Real Claude wraps a large paste in `<pasted_content>` tags, and Elwood reports the standalone
- * envelope's body as `user_message.text` (PRD §5.4, C-API-67). Implements C-E2E-25 with the
+ * Real Claude, where its paste wrapper is on, wraps a large paste in `<pasted_content>` tags,
+ * and Elwood reports the standalone envelope's body as `user_message.text` (PRD §5.4, C-API-67). Implements C-E2E-25 with the
  * rejected wrapped prompts in `rejected-turn-claude.e2e.ts` (C-CLAUDE-25). A bogus `--model` is
  * refused before any model quota is consumed, and the submit hook still fires, so this runs on
  * an out-of-quota account.
@@ -67,7 +67,7 @@ test("C-E2E-25 real Claude user_message reports a wrapped paste's body", {
       return message;
     };
 
-    // More than two line breaks: Claude collapses the paste and wraps it at submit.
+    // More than two line breaks: a wrapping Claude collapses the paste and wraps it at submit.
     const fourLines = "ELWOOD wrapped one\nline two\nline three\nline four";
     const wrapped = await submit(fourLines);
     const native = rawPrompt(wrapped);

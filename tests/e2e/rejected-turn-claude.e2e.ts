@@ -50,8 +50,9 @@ test("C-E2E-20 elwood run reports a rejected real Claude turn as turn_failed wit
 });
 
 // The BEL is removed before pasting (§5.3), so Claude's submit hook echoes the prompt without
-// it. The four-line prompts are wrapped in Claude's paste envelope, with tabs and the CRLF
-// changed by the composer or a fullwidth look-alike tag escaped as ASCII (C-CLAUDE-25).
+// it. Where Claude's paste wrapper is on (it is reported to be flag-gated), the four-line
+// prompts arrive in its paste envelope, with tabs and the CRLF changed by the composer or a
+// fullwidth look-alike tag escaped as ASCII (C-CLAUDE-25); a row skips when no envelope arrives.
 const fullwidthTag = `${String.fromCodePoint(0xff1c)}pasted_content id="abcd">`;
 const rejectedPrompts = [
   ["C-E2E-20", "a control character", "Reply with exactly OK.\u0007", false],
