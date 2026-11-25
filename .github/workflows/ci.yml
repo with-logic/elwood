@@ -17,7 +17,8 @@ jobs:
   check:
     name: check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Hosted macOS can reach the shorter cap before the suite reports its result.
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 20 || 15 }}
     strategy:
       fail-fast: false
       matrix:
