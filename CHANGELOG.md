@@ -69,6 +69,12 @@ back each entry are listed in `prd/14-conformance.md`.
   now settles at `ready`. 0.172 draws a question it asks as a `? ` cell under the
   prompt, and Elwood did not read that history as finished, so the session stayed
   `blocked` and `send()` timed out.
+- Codex 0.172 questions whose footer wraps onto more rows are recognized: a modal
+  question's footer wraps in a pane narrower than about 90 columns, and a queued
+  one's at about 60 columns or fewer. Elwood read the footer only on one row, so it
+  missed the question: ordinary input was not held for it and `answerQuestions()`
+  failed. A modal question whose option descriptions also wrap holds input but is
+  not yet listed.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A
@@ -98,6 +104,13 @@ back each entry are listed in `prd/14-conformance.md`.
   activities, or readiness's view of it. A new content-free
   `frame_observer_failed` warning reports the first such failure in a session.
   A throwing `status` listener also no longer skips that status's `activity`.
+- The `initial_ready_backstop` `unrecognized_startup` activity now replaces
+  `sk-` API-key-shaped tokens in its screen text with `sk-[REDACTED]`, including
+  a key wrapped across rows. Each continuing key run becomes `[REDACTED]`, even
+  when it is an ordinary word. Codex's API-key sign-in page, for
+  example, shows the `OPENAI_API_KEY` from the login shell unmasked.
+  `terminal:data`, `terminal.snapshot()` and `readScreen()` still show the screen
+  as drawn.
 - Report a startup screen Elwood does not recognize as `blocked` from the
   10-second readiness deadline instead of only at the 60-second backstop. Claude's
   first-launch text-style picker and Codex's sign-in screen are examples. The
@@ -108,7 +121,7 @@ back each entry are listed in `prd/14-conformance.md`.
   showing its placeholder, whose footer Elwood cannot verify, is reported the same
   way, and `elwood run` fails such a start as `blocked_prompt`. The agent's own
   header drawn alone while it loads is not reported, and the report redacts `sk-`
-  API-key-shaped tokens, including a key wrapped across rows.
+  API-key-shaped tokens as the backstop's activity does.
 
 ## [0.8.0] - 2026-11-25
 

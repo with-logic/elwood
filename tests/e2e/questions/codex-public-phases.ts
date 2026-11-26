@@ -14,6 +14,7 @@ import {
   publicCodexOptionAnswer,
   publicCodexQuestionRecords,
   type publicCodexQuestionSandbox,
+  publicCodexTextAnswer,
   waitForPublicCodexQuestionsBeforeReply as waitBeforeReply,
   waitForPublicCodexQuestion as waitFor,
 } from "./codex-public-sandbox.ts";
@@ -61,11 +62,9 @@ export async function publicCodexQueuedPhase(
   );
   assert.equal(settled, false);
   assert.equal(live.status, "running");
-  await facade.answerQuestions(
-    requests[1]!.id,
-    [{ questionId: requests[1]!.questions[0]!.id, text: note.text }],
-    { timeoutMs: 30_000 },
-  );
+  await facade.answerQuestions(requests[1]!.id, [publicCodexTextAnswer(requests[1]!, note.text)], {
+    timeoutMs: 30_000,
+  });
   assert.deepEqual(await facade.listQuestions(), [requests[0], requests[2]]);
   assert.equal(settled, false);
   // Native submission advances to the remaining editor, which still owns ordinary input.
@@ -73,7 +72,7 @@ export async function publicCodexQueuedPhase(
   signal.throwIfAborted();
   await facade.answerQuestions(
     requests[2]!.id,
-    [{ questionId: requests[2]!.questions[0]!.id, text: queuedLiteralAnswer }],
+    [publicCodexTextAnswer(requests[2]!, queuedLiteralAnswer)],
     { timeoutMs: 30_000 },
   );
   assert.deepEqual(await facade.listQuestions(), [requests[0]]);

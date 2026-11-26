@@ -143,14 +143,10 @@ first frame (C-E2E-30, C-E2E-31):
   times a second, with `> 1. Sign in with ChatGPT`, `2. Sign in with Device Code`,
   `3. Sign in another way` and `Press enter to continue`. Its caret is an ASCII `>`,
   not the composer's `›`. The animation means a run of frames, which reports once.
-  `3` leads to an API-key page that prefills `OPENAI_API_KEY` and shows it in full.
-  An `OPENAI_API_KEY` that the session's `env` overrides still appears there when
-  the launch shell's startup files export it. A report of that page would carry the
-  key, so C-E2E-31 stays on the first page and never prints the screen. Reports
-  replace `sk-` key-shaped tokens with `sk-[redacted]` (§5.4). A probe on 2026-11-26,
-  with every character masked, showed that `3` opens a submenu whose first choice is
-  that page. The key sits in a one-row bordered field (`│sk-…│`), cut at the border at
-  80 and 120 columns rather than wrapped.
+  `3` leads to an API-key page that shows `OPENAI_API_KEY` in full (see "Startup
+  screens that show an API key" below). That page's screen carries the key, so
+  C-E2E-31 stays on the first page and never prints the screen. Reports replace
+  `sk-` key-shaped tokens with `sk-[REDACTED]` (§5.4).
 
 Both CLIs also draw their own header alone while they load, and a slow boot can hold
 that frame past the deadline. It is a boot frame, not an unrecognized screen: the
@@ -784,6 +780,22 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   can otherwise splice that stale text into a live hook dialog or mistake it for
   the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
   native binary and field-captured model/effort dialogs.
+
+## Startup screens that show an API key (2026-11-26)
+
+Codex 0.171.0, on a `CODEX_HOME` with no `auth.json`, offers `3. Sign in another
+way`. That opens a submenu whose first choice is an API-key page, which prefills
+`OPENAI_API_KEY` and shows it unmasked. An `OPENAI_API_KEY` that the session's `env`
+overrides still appears there when the launch shell's startup files export it. A probe
+that replaced every character of the key showed it in a one-row bordered field
+(`│sk-…│`), cut at the border at 80 and 120 columns rather than wrapped. No screen
+observed so far wraps a key across rows, so the wrap rules of the `unrecognized_startup`
+redaction (§5.4, C-ATTN-06) are defensive; other widths and later versions were not
+probed. Claude 2.1.332 shows a custom `ANTHROPIC_API_KEY` masked with dots (`sk-ant-...`
+and its last characters) when it asks whether to use it. Elwood recognizes neither
+screen, so a session left on one is reported from the readiness deadline (C-ATTN-11)
+and again at the initial-readiness backstop. Both activities carry the screen redacted.
+The terminal stream carries it as drawn.
 
 ## Login-shell `CODEX_HOME` (2026-10-25)
 
@@ -3972,3 +3984,24 @@ should then clear it was refused, because the prompt with the `? ` cells under i
 an unfinished menu, and `send()` timed out with the session still `blocked`. Elwood now
 accepts `? ` as the start of a transcript cell. Capture:
 `tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.
+
+**A narrow pane wraps question footers.** Codex 0.172 breaks a footer only between its
+hints. The queued panel's footer is four hints three spaces apart:
+`enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question` (`⇧→ prev question` after
+the first question; the last question has no `⇧←` hint, and its shorter footer still fits on
+one row at 60 columns). At 60 and 50 columns 0.172 moves `⇧← next question` to a row of its
+own; in a 40-column probe whose frame had not settled it drew `enter submit   ⌃] skip`
+above `⇧→ main prompt   ⇧← next question`. The modal footer's four hints are joined by
+` | ` and, with its two-space indent, need 90 columns. 0.172 fits as many hints on a row as
+it can: at 80 columns it moves `esc to interrupt` to a row of its own, at 60 and 50 it
+splits the footer after `enter to submit answer`, and at 40 it gives each hint a row.
+Elwood read a footer only on one row, so whenever one wrapped it did not recognize the
+question: it did not hold ordinary input for it, and `answerQuestions()` failed. Elwood now
+joins up to four trailing rows with the footer's own separator. Captures in
+`tests/fixtures/codex-0.172.0/questions/`: `queued-footer-*.json` at 60 and 50 columns and
+`modal-footer-wrapped-{80,60,40}.json`. The 50-column modal split was seen in a probe, not
+captured, and the 40-column queued layout is synthesized in
+`tests/unit/codex-questions/narrow-footer.test.ts`. A narrow pane also wraps a modal
+option's description onto a continuation row (at 60 columns and below for the proofs'
+options), which Elwood does not yet match to the question, so such a modal question holds
+input but is not listed. C-ATTN-02, C-QUESTION-04.

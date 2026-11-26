@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
-import { CodexSession, type ElwoodQuestionRequest } from "../../../src/index.ts";
+import { CodexSession, type ElwoodQuestionRequest, type TerminalSize } from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
@@ -30,11 +30,19 @@ export function publicCodexOptionAnswer(request: ElwoodQuestionRequest, label: s
   return { questionId: question.id, optionIds: [option.id] };
 }
 
-/** A session on the pinned Codex and model inside `sandbox`, sized like the captures. */
-export function publicCodexQuestionSession(sandbox: {
-  readonly cwd: string;
-  readonly stateDir: string;
-}): CodexSession {
+/** An answer with `text` for the request's first question only; later questions are ignored. */
+export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: string) {
+  const question = request.questions[0];
+  if (!question) throw new Error("Native question request contains no questions");
+  return { questionId: question.id, text };
+}
+
+/** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default;
+ * the narrow-pane proof passes its own pane size. */
+export function publicCodexQuestionSession(
+  sandbox: { readonly cwd: string; readonly stateDir: string },
+  initialSize: TerminalSize = nativeQuestionSize,
+): CodexSession {
   return new CodexSession({
     cwd: sandbox.cwd,
     stateDir: sandbox.stateDir,
@@ -44,7 +52,7 @@ export function publicCodexQuestionSession(sandbox: {
     autoupdate: false,
     sandbox: "read-only",
     approvalPolicy: "never",
-    initialSize: nativeQuestionSize,
+    initialSize,
   });
 }
 

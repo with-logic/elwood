@@ -7,14 +7,15 @@ import { fixture } from "./helpers.ts";
 
 test("C-ATTN-02 blocking chrome requires its native header and terminal footer", () => {
   const header = "Question 1/2 (2 unanswered)";
+  const footer =
+    "tab to add notes | enter to submit answer | ←/→ to navigate questions | esc to interrupt";
+  // Codex draws a blank row above every footer.
+  expect(blockingQuestionVisible(`${header}\n\n${footer}`)).toBe(true);
   expect(
-    blockingQuestionVisible(
-      `${header}\ntab to add notes | enter to submit answer | ←/→ to navigate questions | esc to interrupt`,
-    ),
+    blockingQuestionVisible(`${header}\n\ntab or esc to clear notes | enter to submit all`),
   ).toBe(true);
-  expect(
-    blockingQuestionVisible(`${header}\ntab or esc to clear notes | enter to submit all`),
-  ).toBe(true);
+  // C-QUESTION-04: a footer right below another row is a layout Elwood has not seen.
+  expect(blockingQuestionVisible(`${header}\n${footer}`)).toBe(false);
   expect(blockingQuestionVisible(`${header}\nOther footer`)).toBe(false);
   expect(blockingQuestionVisible("tab or esc to clear notes | enter to submit answer")).toBe(false);
   expect(blockingQuestionVisible("")).toBe(false);
@@ -33,13 +34,14 @@ test.each([
 test("C-ATTN-02 queued editors require their own header and footer", () => {
   const header = "• Queued follow-up inputs";
   const footer = "enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question";
-  expect(blockingQuestionVisible(`${header}\n${footer}`)).toBe(true);
+  expect(blockingQuestionVisible(`${header}\n\n${footer}`)).toBe(true);
+  expect(blockingQuestionVisible(`${header}\n${footer}`)).toBe(false);
   expect(blockingQuestionVisible(`${header}\n? 1 question\n⇧← to answer\n› Ask Codex`)).toBe(false);
   expect(blockingQuestionVisible(`${header}\nOther footer`)).toBe(false);
   expect(blockingQuestionVisible(footer)).toBe(false);
-  expect(blockingQuestionVisible(`Quoted ${header}\n${footer}`)).toBe(false);
-  expect(blockingQuestionVisible(`Question 1/2 (2 unanswered)\n${footer}`)).toBe(false);
+  expect(blockingQuestionVisible(`Quoted ${header}\n\n${footer}`)).toBe(false);
+  expect(blockingQuestionVisible(`Question 1/2 (2 unanswered)\n\n${footer}`)).toBe(false);
   expect(
-    blockingQuestionVisible(`${header}\ntab or esc to clear notes | enter to submit all`),
+    blockingQuestionVisible(`${header}\n\ntab or esc to clear notes | enter to submit all`),
   ).toBe(false);
 });
