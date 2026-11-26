@@ -2989,8 +2989,9 @@ cells. Elwood now reads a footer that ends in blank cells.
 ### Claude questionnaire footer in a narrow pane (2026-11-25)
 
 With the cursor on the Other row, `Next` or `Submit`, Claude 2.1.332 adds
-`ctrl+g to edit in Nvim` to the questionnaire footer. At 60 columns it then
-wraps the footer at spaces over two rows. A grouped panel draws
+`ctrl+g to edit in <editor>` to the questionnaire footer, naming `$EDITOR`:
+`Nvim` for `nvim`, `Vim` for `vim`. At 60 columns it then wraps the footer at
+spaces over two rows. The captures and the proof use `EDITOR=nvim`. A grouped panel draws
 `Enter to select · Tab/Arrow keys to navigate · ctrl+g to` then
 `edit in Nvim · Esc to cancel`; a single question draws
 `Enter to select · ↑/↓ to navigate · ctrl+g to edit in Nvim ·` then
