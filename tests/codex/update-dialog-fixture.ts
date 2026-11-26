@@ -20,6 +20,16 @@ import { becomeReady, installFakes, ptys, render, tempDir } from "./helpers.ts";
 export const offer = capturedFrame("codex-0.172.0/update/offer-standalone-100x30");
 /** The same offer for a newer release: a different offer, not a redraw. */
 export const newerOffer = offer.replace("→ 99.0.0", "→ 99.1.0");
+/** Skip before the action is never selected, so Elwood leaves this offer to the host. */
+export const noSafeChoice = [
+  "  Update available · 0.172.0 → 99.0.0",
+  "  Release notes: https://github.com/openai/codex/releases/latest",
+  "",
+  "› 1. Skip",
+  "  2. Update now (runs `npm install -g @openai/codex`)",
+  "",
+  "  enter continue · esc skip",
+].join("\n");
 
 /** Each event's phase and request ID, then its reason when closed. */
 export const summary = (events: readonly ElwoodDialogEvent[]) =>

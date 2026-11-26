@@ -13,27 +13,19 @@ import {
   firstListed,
   listed,
   newerOffer,
+  noSafeChoice,
   offer,
   openOnFakeTimers,
   required,
   summary,
 } from "./update-dialog-fixture.ts";
 
+const down = "\u001b[B";
+
 afterEach(() => {
   vi.useRealTimers();
   resetFakes();
 });
-
-/** Skip before the action is never selected, so Elwood leaves this offer to the host. */
-const noSafeChoice = [
-  "  Update available · 0.172.0 → 99.0.0",
-  "  Release notes: https://github.com/openai/codex/releases/latest",
-  "",
-  "› 1. Skip",
-  "  2. Update now (runs `npm install -g @openai/codex`)",
-  "",
-  "  enter continue · esc skip",
-].join("\n");
 
 test("C-ATTN-12 a different offer replaces the listed one with new IDs", async () => {
   const { session, events, show, id } = await listed();
@@ -136,14 +128,20 @@ test("C-ATTN-12 an offer with no safe choice is listed with nothing written, unt
   });
 });
 
-test("C-ATTN-12 answerDialog does not answer an update request", async () => {
-  const { session } = await listed();
+test("C-ATTN-12 answerDialog does not answer an update request, and writes nothing", async () => {
+  const { session, pty, paintOffer } = await openOnFakeTimers();
   await closing(session, async () => {
+    await paintOffer();
+    await session.sendKeys(down);
     const request = await firstListed(session);
     await expect(
       session.answerDialog(request.id, required(request.choices[1], "the Skip choice").id),
     ).rejects.toMatchObject({
       code: "dialog_not_found",
     });
+    // Past the first-key wait and every retry, only the caller's own key reached Codex.
+    await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 5_000);
+    expect(pty.writes).toEqual([down]);
+    expect(await session.listDialogs()).toEqual([request]);
   });
 });

@@ -16,6 +16,7 @@ import {
   offer,
   openCodex,
   openOnFakeTimers,
+  required,
   skippedComposer,
 } from "./update-dialog-fixture.ts";
 
@@ -64,7 +65,11 @@ test("C-ATTN-12 raw caller input on the offer hands it to the host, and Codex's 
       id: expect.any(String),
       elwoodSessionId: session.elwoodSessionId,
     });
-    expect(Object.isFrozen(request) && Object.isFrozen(request.choices)).toBe(true);
+    // The whole snapshot is immutable, down to each choice and the version pair.
+    if (request.kind !== "update") throw new Error("the offer is not an update request");
+    const versions = required(request.versions, "the version pair");
+    for (const value of [request, request.choices, ...request.choices, versions])
+      expect(Object.isFrozen(value)).toBe(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(phases(events, request)).toEqual([["raised", undefined, true]]);
     // The caret moves to Skip: the same appearance keeps its request.

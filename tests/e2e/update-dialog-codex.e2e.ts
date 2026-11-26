@@ -16,6 +16,7 @@ import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
 import { readCodexDismissedVersion } from "./codex-update-check.ts";
 import { inputProblems, noInputProblems } from "./codex-update-offer/checks.ts";
 import { codexUpdateOffer } from "./codex-update-offer/index.ts";
+import { firstLaunchOfferMs, testEndReserveMs } from "./codex-update-offer/timing.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -28,13 +29,14 @@ import {
 // No turn runs, so no model quota is spent. The update check stays on (Codex's default).
 const CODEX_CONFIG = 'model = "gpt-6-luna"\ncheck_for_update_on_startup = true\n';
 
-// A first launch in a fresh home paints the offer later than a resume does.
-const OFFER_MS = 30_000;
-// The skip waits 500 ms for its first key and retries for 5 s.
-const RETRIES_MS = 15_000;
+// How long this test waits, once Codex paints the offer, for Elwood's skip to give up and
+// the offer to be raised. The skip itself waits 500 ms for its first key and then retries
+// for 5 s; the remaining 9.5 s absorbs a loaded machine's late frames.
+const RAISE_AFTER_PAINT_MS = 15_000;
 const READY_MS = 45_000;
 const LAUNCHES_MS = probeLaunchTimeoutMs + probeCommandTimeoutMs;
-const TEST_TIMEOUT_MS = OFFER_MS + RETRIES_MS + READY_MS + LAUNCHES_MS + 30_000;
+const TEST_TIMEOUT_MS =
+  firstLaunchOfferMs + RAISE_AFTER_PAINT_MS + READY_MS + LAUNCHES_MS + testEndReserveMs;
 
 test("C-E2E-33 a Codex update offer whose skip never lands is listed for the host, who skips it", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
@@ -61,14 +63,20 @@ test("C-E2E-33 a Codex update offer whose skip never lands is listed for the hos
     );
     session = active;
     const events: ElwoodDialogEvent[] = [];
+    // Dialog phases and statuses in the order the session emitted them.
+    const trace: string[] = [];
     active.on("dialog", (event) => {
       events.push(event);
+      trace.push(`dialog ${event.phase}`);
+    });
+    active.on("status", (event) => {
+      trace.push(`status ${event.status}`);
     });
     await waitForCondition(
       active,
       () => events.length > 0,
       "the offer raised",
-      OFFER_MS + RETRIES_MS,
+      firstLaunchOfferMs + RAISE_AFTER_PAINT_MS,
     );
     assert.ok(input.withheld.length > 0, "Elwood wrote no Skip key for the test to withhold");
     const [request, ...others] = await active.listDialogs();
@@ -98,6 +106,9 @@ test("C-E2E-33 a Codex update offer whose skip never lands is listed for the hos
       ],
     );
     assert.equal(events[1]?.request, request);
+    // The offer ends before Codex's first readiness, inside the startup window.
+    const closed = trace.indexOf("dialog closed");
+    assert.ok(closed >= 0 && trace.indexOf("status ready") > closed, `trace: ${trace.join(", ")}`);
     assert.deepEqual(await active.listDialogs(), []);
     assert.deepEqual(inputProblems(input), noInputProblems);
     assert.deepEqual(input.skips, [String(labels.indexOf("Skip") + 1)]);

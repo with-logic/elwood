@@ -30,8 +30,8 @@ export type WorkspaceTrustFacts<Agent extends ElwoodAgentKind> = Agent extends "
     }
   : { readonly agent: Agent };
 
-/** One agent's request. Internal code that is generic over the agent builds and holds this. */
-export type AgentDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTarget &
+/** One agent's workspace trust request, which internal code generic over the agent builds. */
+export type WorkspaceTrustDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTarget &
   WorkspaceTrustFacts<Agent> & {
     readonly id: string;
     readonly elwoodSessionId: string;
@@ -47,7 +47,7 @@ export type AgentDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTa
  * `disclosesHooks`.
  */
 export type ElwoodTrustDialogRequest<Agent extends ElwoodAgentKind = "codex"> =
-  AgentDialogRequest<Agent>;
+  WorkspaceTrustDialogRequest<Agent>;
 
 /**
  * Codex's update offer, once Elwood's own skip does not answer it (C-ATTN-12). Claude
