@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,
+  for the service's `insufficient_quota` (Codex records it as
+  `usage_limit_exceeded` with `Quota exceeded. Check your plan and billing
+  details.`). It reports `quota_or_credit`, not `network_or_api`, for an HTTP
+  402, and `rate_limited`, not `network_or_api`, when Codex gives up retrying an
+  HTTP 429.
+
 - Require Claude's completion of an Elwood answer to report exactly the
   submitted values. A completion with other values closes the request as
   `unavailable`, and the answer fails with `question_answer_failed`. A person's
