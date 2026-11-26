@@ -1,0 +1,83 @@
+{
+  "_id": "@with-logic/elwood",
+  "name": "@with-logic/elwood",
+  "dist-tags": {
+    "latest": "0.8.0"
+  },
+  "versions": {
+    "0.1.0": {
+      "name": "@with-logic/elwood",
+      "version": "0.1.0",
+      "gitHead": "d8b4e78e0d6979f6a081689fcbb42987a2c66d7f",
+      "_npmUser": {
+        "name": "maintainer",
+        "email": "maintainer@example.test"
+      },
+      "dist": {
+        "integrity": "sha512-GbKDVMbOQ+7KWwHyBTQ+H+vIvYex4xo59o6pO6CJf6km7fHxC2P1utf07TPLtmYCjaqUuvgBeBb61qbJ93t93A==",
+        "shasum": "6a4ae84a49af9b7c9ef8c7ab239b3746a8c6a7ce",
+        "tarball": "https://registry.npmjs.org/@with-logic/elwood/-/elwood-0.1.0.tgz"
+      }
+    },
+    "0.6.1": {
+      "name": "@with-logic/elwood",
+      "version": "0.6.1",
+      "gitHead": "27775a696ba8ee564834db659a5d46ae06e9c577",
+      "_npmUser": {
+        "name": "GitHub Actions",
+        "email": "npm-oidc-no-reply@github.com",
+        "trustedPublisher": {
+          "id": "github",
+          "oidcConfigId": "7e80842b-dceb-4e20-ac47-8dba36a3ae27"
+        }
+      },
+      "dist": {
+        "integrity": "sha512-9zji17JhnElPMbuOpfwu9zA8ICWh/Uut44BGG7B3SS+epuvI3SAK1kVujpEQJYLhYcTIy5wKxaHMsAAXosxejA==",
+        "shasum": "7b4383de96d9ee3eace684704ca9204c499cdaab",
+        "tarball": "https://registry.npmjs.org/@with-logic/elwood/-/elwood-0.6.1.tgz"
+      }
+    },
+    "0.7.0": {
+      "name": "@with-logic/elwood",
+      "version": "0.7.0",
+      "gitHead": "5ac725b514fe26d1ef71a837f029c8f6fd15c4d3",
+      "_npmUser": {
+        "name": "GitHub Actions",
+        "email": "npm-oidc-no-reply@github.com",
+        "trustedPublisher": {
+          "id": "github",
+          "oidcConfigId": "7e80842b-dceb-4e20-ac47-8dba36a3ae27"
+        }
+      },
+      "dist": {
+        "integrity": "sha512-ehtnm2/LUiHZIBK+J8ooFNsMM0yMFtrywj+rCmdEIbKgD7yF3ENWUyqkb9hH+9NjKgxhFJ3MJCcZ/R7aIoNJgw==",
+        "shasum": "ffa8d0db5efe4653cb24c2eb6534cc3eac442f5c",
+        "tarball": "https://registry.npmjs.org/@with-logic/elwood/-/elwood-0.7.0.tgz"
+      }
+    },
+    "0.8.0": {
+      "name": "@with-logic/elwood",
+      "version": "0.8.0",
+      "gitHead": "86b962487b962a1c8ff628aee7ad45fc527a386e",
+      "_npmUser": {
+        "name": "GitHub Actions",
+        "email": "npm-oidc-no-reply@github.com",
+        "trustedPublisher": {
+          "id": "github",
+          "oidcConfigId": "7e80842b-dceb-4e20-ac47-8dba36a3ae27"
+        }
+      },
+      "dist": {
+        "integrity": "sha512-M2LXSmpaI1feE0VtLRh8ESwqbKI/z8efjffeR/TUk2ZC4D3yBeAGh/xx+5n8ApBUN5GwMKoVQLhs7tOO43V59Q==",
+        "shasum": "42a85457bfbae1097dda35cb6ec6e6f00cdd42c3",
+        "tarball": "https://registry.npmjs.org/@with-logic/elwood/-/elwood-0.8.0.tgz"
+      }
+    }
+  },
+  "time": {
+    "0.1.0": "2026-09-13T08:54:52.901Z",
+    "0.6.1": "2026-11-21T08:24:35.234Z",
+    "0.7.0": "2026-11-25T08:19:27.004Z",
+    "0.8.0": "2026-11-26T06:19:36.284Z"
+  }
+}

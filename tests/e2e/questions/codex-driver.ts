@@ -66,7 +66,7 @@ export function nativeCodexQuestionDriver(sandbox: Sandbox) {
         codexEmptyInputFrame(sandbox.terminal) !== undefined &&
         !codexWorkingTitle.test(sandbox.terminal.title);
       await waitFor(empty);
-      // The cold placeholder is byte-identical to a live composer. Pinned 0.163.0
+      // The cold placeholder is byte-identical to a live composer. Pinned 0.172.0
       // handles /pwd locally; its response proves the input loop handled a command
       // before this driver submits /plan or any quota-bearing question prompt.
       await write("/pwd\r");

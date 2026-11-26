@@ -4,7 +4,7 @@
  * reads, and Enter submits it. Elwood's held Enter is covered by
  * `tests/claude/session-auto-mode-offer-staged.test.ts`, because the race that stages
  * Elwood's own paste under the offer cannot be timed on the real CLI.
- * Implements C-ATTN-09 (PRD §5.3) and C-CLAUDE-26 (PRD §5.1).
+ * Implements C-ATTN-09 (PRD §5.3) and C-CLAUDE-27 (PRD §5.1).
  */
 
 import test from "node:test";

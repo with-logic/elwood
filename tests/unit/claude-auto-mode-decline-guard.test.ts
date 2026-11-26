@@ -1,7 +1,7 @@
 /**
  * Claude's auto-mode offer decline through the real guarded writer, on fixed contract timing:
  * Esc 750 ms after the menu and 750 ms apart, at most four times, never after raw caller
- * input and never onto a screen that replaced the menu (C-CLAUDE-26, PRD §5.1).
+ * input and never onto a screen that replaced the menu (C-CLAUDE-27, PRD §5.1).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeAutoModeOfferDecliner } from "../../src/claude/auto-mode/decline.ts";
@@ -48,7 +48,7 @@ function declining() {
   };
 }
 
-test("C-CLAUDE-26 an ignored offer gets four Escapes 750 ms apart, then is left alone", async () => {
+test("C-CLAUDE-27 an ignored offer gets four Escapes 750 ms apart, then is left alone", async () => {
   const { settled, escapes } = declining();
   await vi.advanceTimersByTimeAsync(749);
   expect(escapes()).toEqual([]);
@@ -61,7 +61,7 @@ test("C-CLAUDE-26 an ignored offer gets four Escapes 750 ms apart, then is left 
   expect(await settled).toBe("cancelled");
 });
 
-test("C-CLAUDE-26 caller input while an Esc waits for settlement withholds it", async () => {
+test("C-CLAUDE-27 caller input while an Esc waits for settlement withholds it", async () => {
   const { screen, decliner, settled, settles, escapes } = declining();
   screen.held = Promise.withResolvers<void>();
   await vi.advanceTimersByTimeAsync(750);
@@ -74,7 +74,7 @@ test("C-CLAUDE-26 caller input while an Esc waits for settlement withholds it", 
   expect(await settled).toBe("cancelled");
 });
 
-test("C-CLAUDE-26 caller input after the first Esc stops the retries", async () => {
+test("C-CLAUDE-27 caller input after the first Esc stops the retries", async () => {
   const { decliner, settled, escapes } = declining();
   await vi.advanceTimersByTimeAsync(750);
   expect(escapes()).toHaveLength(1);
@@ -84,7 +84,7 @@ test("C-CLAUDE-26 caller input after the first Esc stops the retries", async () 
   expect(await settled).toBe("cancelled");
 });
 
-test("C-CLAUDE-26 an Esc is withheld when settlement replaces the menu, and claims nothing", async () => {
+test("C-CLAUDE-27 an Esc is withheld when settlement replaces the menu, and claims nothing", async () => {
   const { screen, settled, settles, escapes } = declining();
   screen.held = Promise.withResolvers<void>();
   await vi.advanceTimersByTimeAsync(750);

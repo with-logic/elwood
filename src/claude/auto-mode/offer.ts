@@ -1,7 +1,7 @@
 /**
  * Recognizes Claude's auto-mode setup offer, its first menu and the setup step that menu
  * opens, as a blocking dialog, and the first menu alone as the one Elwood declines.
- * Implements PRD §5.3, §5.1, C-ATTN-09 and C-CLAUDE-26.
+ * Implements PRD §5.3, §5.1, C-ATTN-09 and C-CLAUDE-27.
  */
 
 /** The offer's screen rule and attention label; `elwood run` matches it too (C-CLI-05). */
@@ -59,7 +59,7 @@ export function isClaudeAutoModeOffer(text: string): boolean {
 const notNow = /^(?:❯\s*)?2\. Not now$/;
 const dontShowAgain = /^(?:❯\s*)?3\. Don't show again$/;
 
-/** True only for the offer's first menu, the one Elwood declines (C-CLAUDE-26). */
+/** True only for the offer's first menu, the one Elwood declines (C-CLAUDE-27). */
 export function isClaudeAutoModeOfferMenu(text: string): boolean {
   const rows = offerRows(text) ?? [];
   return rows.some((row) => notNow.test(row)) && rows.some((row) => dontShowAgain.test(row));

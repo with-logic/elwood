@@ -1,7 +1,7 @@
 /**
  * Declines Claude's auto-mode setup offer, a first-party onboarding prompt that would
  * otherwise block an embedded session after a turn, with its own Esc (`Not now`).
- * Implements PRD §5.1 and C-CLAUDE-26.
+ * Implements PRD §5.1 and C-CLAUDE-27.
  */
 import { waitForInput } from "../../core/input/abort.ts";
 import type { AutomationWriteResult } from "../../core/startup/barrier.ts";

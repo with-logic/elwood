@@ -4,7 +4,7 @@
  * so Elwood does not decline it. A caller's `sendMessage` made while it is visible writes
  * nothing to Claude, then submits once the human dismisses the offer. A headless
  * `elwood run` whose turn the offer follows still succeeds.
- * Implements C-ATTN-09 (PRD §5.3), C-CLAUDE-26 (PRD §5.1) and C-CLI-05 (PRD §12A.2).
+ * Implements C-ATTN-09 (PRD §5.3), C-CLAUDE-27 (PRD §5.1) and C-CLI-05 (PRD §12A.2).
  */
 
 import assert from "node:assert/strict";

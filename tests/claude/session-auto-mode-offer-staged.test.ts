@@ -3,7 +3,7 @@
  * it. Its Enter is held, and the captured frame after the offer closes, the composer still
  * holding that paste, releases it. Only input still awaiting its Enter gets that clearance.
  * Elwood declines the offer itself unless raw input reached it first
- * (C-ATTN-09, C-ATTN-02, C-API-56, C-CLAUDE-26, PRD §5.3, §5.1).
+ * (C-ATTN-09, C-ATTN-02, C-API-56, C-CLAUDE-27, PRD §5.3, §5.1).
  */
 import { afterEach, expect, test } from "vitest";
 import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
@@ -50,7 +50,7 @@ async function withOfferOn(trigger: string, dialog = offerOnScreen) {
   return { facade, live, pty, firstWrite, painted: () => paintedAt };
 }
 
-test("C-ATTN-09 C-CLAUDE-26 an Enter held behind the offer submits the paste it closed over", async () => {
+test("C-ATTN-09 C-CLAUDE-27 an Enter held behind the offer submits the paste it closed over", async () => {
   const { facade, live, pty, firstWrite, painted } = await withOfferOn(paste);
   try {
     await expect.poll(() => live.status).toBe("ready");

@@ -2,7 +2,7 @@
  * Claude's auto-mode setup offer is a first-party onboarding prompt that blocks an
  * embedded session after a turn. Elwood declines it on its own with Esc (`Not now`),
  * reports that once the offer is gone, and a message held behind it then submits.
- * Implements C-CLAUDE-26 (PRD §5.1).
+ * Implements C-CLAUDE-27 (PRD §5.1).
  */
 
 import assert from "node:assert/strict";
@@ -32,7 +32,7 @@ import { holdCliOutput } from "./output-hold.ts";
 const actions = offerActions();
 holdCliOutput({ output: (data) => actions.observe(data) });
 
-test("C-CLAUDE-26 Elwood declines Claude's auto-mode setup offer, unattended", {
+test("C-CLAUDE-27 Elwood declines Claude's auto-mode setup offer, unattended", {
   skip: skipIf(skipReason("claude"), skipTurns),
   timeout: 240_000,
 }, async (t) => {

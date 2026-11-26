@@ -4,6 +4,7 @@
  */
 
 import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
+import type { AgentDialogRequest } from "../../src/core/dialogs/types.ts";
 import {
   type ClaudeEventMap,
   type ClaudeSession,
@@ -58,6 +59,44 @@ describe("ElwoodAgentSession", () => {
     expectTypeOf<ReturnType<CodexSession["listDialogs"]>>().toEqualTypeOf<
       Promise<readonly ElwoodDialogRequest<"codex">[]>
     >();
+  });
+
+  test("C-CLAUDE-26 narrowing a shared request's agent exposes only Claude's hooks disclosure", () => {
+    type Shared = ElwoodDialogRequest<"claude" | "codex">;
+    expectTypeOf<Extract<Shared, { readonly agent: "claude" }>>().toEqualTypeOf<
+      ElwoodDialogRequest<"claude">
+    >();
+    expectTypeOf<Extract<Shared, { readonly agent: "claude" }>["disclosesHooks"]>().toBeBoolean();
+    expectTypeOf<Extract<Shared, { readonly agent: "codex" }>>().not.toHaveProperty(
+      "disclosesHooks",
+    );
+    // Narrowing in code compiles only because the shared request is a discriminated union.
+    const disclosure = (request: Shared) =>
+      request.agent === "claude" ? request.disclosesHooks : undefined;
+    expectTypeOf(disclosure).returns.toEqualTypeOf<boolean | undefined>();
+  });
+
+  test("C-CLAUDE-26 a request for either agent cannot carry the other agent's facts", () => {
+    type Either = AgentDialogRequest<"claude" | "codex">;
+    const target = { targetPath: "/workspace", targetScope: "folder" } as const;
+    const request = {
+      id: "1",
+      elwoodSessionId: "s",
+      kind: "trust",
+      label: "workspace_trust",
+    } as const;
+    // @ts-expect-error A Claude request always says whether its prompt disclosed hooks.
+    const claude: Either = { ...target, ...request, text: "", choices: [], agent: "claude" };
+    const codex: Either = {
+      ...target,
+      ...request,
+      text: "",
+      choices: [],
+      agent: "codex",
+      // @ts-expect-error A Codex request never has Claude's hooks disclosure.
+      disclosesHooks: true,
+    };
+    expect([claude.agent, codex.agent]).toEqual(["claude", "codex"]);
   });
 
   test("C-API-27 both adapters satisfy the common session type", async () => {

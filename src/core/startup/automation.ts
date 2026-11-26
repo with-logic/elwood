@@ -11,7 +11,7 @@ export type { TrustPromptIdFor } from "../trust/prompts.ts";
 /**
  * The single source of truth for the non-trust startup-prompt labels, keyed by
  * owning agent: the browser-tools and auto-mode setup declines are Claude-only
- * (C-CLAUDE-11, C-CLAUDE-26) and the skip-update prompt is Codex-only
+ * (C-CLAUDE-11, C-CLAUDE-27) and the skip-update prompt is Codex-only
  * (C-CODEX-12). Every non-trust union and the runtime check below are DERIVED
  * from this table, so they cannot drift from each other or from the §5.4 label
  * contract. Adding an agent's label here extends both the type and the check.

@@ -808,6 +808,47 @@ across physical rows** on a narrow terminal. Its option format is version-couple
   dialog waiting. From 2.1.310 evidence, never do that with a relative arrow and a
   separate Enter (see "Claude trust selection reset" below).
 
+**Claude 2.1.329 and later disclose a folder's hooks on the workspace prompt.** When
+the project's `.claude/settings.json` declares hooks, the prompt shows
+`⚠ This folder configures hooks that can run commands without asking, declared in
+.claude/settings.json` and `Trusting this folder loads .claude/settings.json (runs
+commands).` between `Claude Code'll be able to read, edit, and execute files here.` and
+`Security guide`, with the cursor on `No, exit`. At Elwood's 100-column startup minimum
+the first row wraps before `.claude/settings.json`; at 120 columns it fits on one row
+(`tests/fixtures/claude-2.1.332/trust/workspace-hooks-*.txt`). Hooks in
+`.claude/settings.local.json` draw the same rows naming that file. Hooks in both files
+draw `declared in .claude/settings.json and .claude/settings.local.json` and `loads
+.claude/settings.json (runs commands) and .claude/settings.local.json (runs
+commands).` A status line command alone, with no hooks, draws the `.claude/settings.json`
+rows too, and trusting the folder runs it. Hooks in a Git repository root's
+`.claude/settings.json` draw no rows for a launch from a subdirectory, and they do not
+run there once that launch is trusted: Claude reads project settings from the launch
+directory only. Earlier versions do not disclose hooks (2026-11-26, a `SessionStart`
+hook in untrusted scratch projects in a private config dir). For hooks in
+`.claude/settings.json`, 2.1.144, 2.1.231, 2.1.290, 2.1.310 and 2.1.322 through
+2.1.325 draw the plain prompt; 2.1.326 through 2.1.328 draw the load row alone, which
+Elwood does not verify, so it holds that prompt; 2.1.329 through 2.1.332 draw both
+rows. Hooks in `.claude/settings.local.json` drew the same on 2.1.325, 2.1.326,
+2.1.328, 2.1.329 and 2.1.330, and a status line command alone drew both rows on
+2.1.329 and 2.1.330. A plain prompt from a Claude before 2.1.329 is therefore no
+evidence that nothing runs, which is why the model probe refuses every workspace
+prompt from such a Claude (§5.3). Accepting runs the project's hooks: a `SessionStart`
+hook ran as the trusted session started. C-E2E-28 runs the real prompt for each settings file under
+`autotrust` and through `answerDialog()`, checks that `listClaudeModels` refuses it,
+and checks that the probe refuses the plain prompt of an installed 2.1.325 (§5.3). Claude does not wait for a project `SessionStart`
+hook before it shows the composer: with a hook that slept 20 s, `answerDialog()`
+resolved and the session reached `ready` about 2.3 s after the answer, and the hook
+finished at about 22 s. A slow hook therefore cannot push an answer that trusted the
+folder past `answerDialog()`'s 12 s default.
+
+**Claude 2.1.332 draws other load rows that Elwood does not verify.** A folder with
+only `.mcp.json` draws `Trusting this folder loads .mcp.json here or above (MCP
+servers).` in the hooks rows' place, with no warning row. A folder whose
+`.claude/settings.json` enables a plugin from a project marketplace, and declares no
+hooks, draws `Trusting this folder loads .claude/settings.json.` Either row alone is
+unknown prose, so `autotrust: true` stays `blocked` on such a folder and the model
+probe fails when readiness runs out, without trusting it or starting the MCP server.
+
 **Claude 2.1.331 displayed a launch subdirectory but persisted trust at the
 repository root.** The discovery matcher verifies the full path in the native
 `Accessing workspace:` prelude and derives the scope from local Git metadata.
@@ -2098,7 +2139,7 @@ Esc also selects, stamps `autoModeEnvSetup.dismissedAt` and suppresses the offer
 for 7 days; `Don't show again` sets `dismissed: true`.
 
 Declining is safe: `Not now` grants nothing and leaves auto mode as it was, so
-Elwood declines the first menu itself (C-CLAUDE-26). It waits 750 ms after it
+Elwood declines the first menu itself (C-CLAUDE-27). It waits 750 ms after it
 first sees the menu, past the guard, sends Esc, and repeats 750 ms apart until a
 settled frame no longer shows the menu; only then does it report
 `startup_prompt` with label `auto_mode_setup`. After four ignored Escapes it stops
@@ -3186,9 +3227,11 @@ that pulses between `•` and `◦`. Both glyphs retain the elapsed-time and
 A blocking question panel ends with its own navigation/submission footer and
 must hold ordinary input even though its selected option also uses `›`.
 The captured queued choice panel hides the native cursor and can leave its
-coordinates at the end of the working row above the panel. That position is
-valid only with hidden cursor, exact working-row geometry, and blank intervening
-rows; a visible or unrelated cursor does not establish panel ownership.
+coordinates at the end of the working row above the panel. On 0.163.0 that
+position was valid only with hidden cursor, exact working-row geometry, and blank
+intervening rows; a visible or unrelated cursor does not establish panel
+ownership. 0.172.0 parks it elsewhere on the working row and can draw pending
+answers above the panel; see "Codex 0.172.0 Plan mode and queued choices".
 
 After a Plan mode question completes, the native model footer includes the exact
 right-aligned `Plan mode (⇧tab to cycle)` suffix. That suffix preserves empty
@@ -3796,3 +3839,70 @@ both ends through `sendMessage`. Codex removed the outer spaces and kept
 both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
 Use Rust's Unicode `White_Space` when comparing forwarded text with the
 hook. JavaScript `trim()` would remove U+FEFF and miss the match.
+
+## Codex 0.172.0 Plan mode and queued choices (2026-11-25)
+
+**The Plan-mode badge moved to the hint row.** Real `CodexSession`s with a private
+`CODEX_HOME` ran `/plan` at 140, 100, 80, 60, 50 and 40 columns. 0.172 draws the status
+row as the model and effort alone (`  GPT-6-Luna medium`). It draws `Plan mode (⇧tab to
+cycle)` on the hint row instead, right-aligned in front of the warnings badge and joined
+to it with ` · `. At 60 columns and below it shortens the badge to `Plan mode`, and the
+warnings badge shortens as before (`⚠ 3 · f2` at 50 and 40). At 80 columns and below the
+hint is `← for agents` alone. After a Plan-mode turn in a direct 140-column launch, one
+capture had the long form and another the short one. Earlier releases put the suffix at
+the end of the status row. Footer grammar that refuses the new row leaves a Plan-mode
+turn unsettled: the session reaches `ready`, but the idle composer that a `send()` needs
+at its native end never matches, so `send()` timed out after 90 s. Elwood now reads
+either badge form on the hint row, but only in front of a warnings badge, the only
+layout captured. The captures are `tests/fixtures/codex-footer-captures-172.ts`. The
+warnings badge is still on every Elwood session: F2 shows `Codex is ignoring 1
+unrecognized configuration setting` for `session-flags: hookTrust`. C-CODEX-26,
+C-E2E-19.
+
+**The hidden cursor parks after the last working-row cell Codex changed.** With a queued
+choice panel open below a running turn, 0.172 redraws only the cells of the working row
+that changed and leaves the hidden cursor after the last one. In 3 s of 15 ms samples it
+was after the pulsing `•` (column 1), after the elapsed time's changed digit (column 12 in
+`• Working (7s • esc to interrupt)`), at the row's end, or at the end of the panel's
+footer row. 0.163 left it only at the row's end. Elwood accepted only the row's end, so an
+answer to the remaining color choice failed as `adapter` when the glyph or the time was
+the last cell drawn. Elwood now accepts a hidden cursor at any column from 1 to the
+working row's end, counted in terminal cells. Capture:
+`tests/fixtures/codex-0.172.0/questions/remaining-color-glyph-cursor.json`.
+
+**Codex shows a queued answer it has not sent above the panel.** Right after the literal
+answer, 0.172 draws `• Messages to be submitted after next tool call (press esc to
+interrupt and send immediately)`, then `  ↳ ` and the question, then the answer indented
+four spaces, between the working row and `• Queued follow-up inputs`. The hidden cursor
+stays parked on the working row above it. In eight sampled C-E2E-19 runs at 10 ms the block
+was on screen for 0.3 to 3 s. Elwood's previous answer resolves on the committed answer
+record, which landed 60 to 210 ms before Codex cleared the block. Elwood required blank
+rows between the working row and the panel, so under load the next answer started inside
+the window and failed as `adapter`, in 1 of 22 runs. Elwood now also accepts this block
+there: the header, which a pane narrower than its 93 columns wraps onto indented rows,
+then one or more `  ↳ ` items with their four-space-indented rows. Capture:
+`tests/fixtures/codex-0.172.0/questions/remaining-color-pending-literal.json`.
+
+**`gpt-6-luna` can end its turn before every queued answer arrives.** Asked to wait for
+all three answers, it ended the turn 1.0 to 1.8 s after the second answer in 8 of 28
+C-E2E-19-shaped runs that paused 0.7 to 4 s before the color answer, once with an empty
+final answer. It waited in all 12 runs whose pause was 0.85 s or less, and in five runs
+that answered without a pause. The rollout records the final answer and `task_complete`,
+and Codex withdraws the open color question. An answer started at that moment fails:
+as `unavailable` once Elwood has closed the request, or as `adapter` when it reads the
+frame in the few milliseconds after the panel vanishes and before the close. In three
+probes that asked one or two choice questions, the model replied at once without
+waiting. One earlier run, which aborted the color answer after selecting Blue and then
+pressed Enter, had `send()` return `ELWOOD_ASYNC_DONE` twice; none of these 28 runs
+reproduced that.
+
+**Codex draws a question it asks as a `? ` transcript cell.** 0.163 drew the titles of a
+`request_user_input_async` call as a `• ` transcript cell under the prompt; 0.172 draws
+`? ELWOOD_ASYNC_COLOR: Which color?` with its options indented below. Elwood reads a
+wrapped prompt above the composer as finished history only when a transcript cell follows
+it, and accepted only `• `. In the 8 early endings above, the Stop hook arrived while the
+queued panel still blocked the session, so Elwood held `blocked`. The idle composer that
+should then clear it was refused, because the prompt with the `? ` cells under it read as
+an unfinished menu, and `send()` timed out with the session still `blocked`. Elwood now
+accepts `? ` as the start of a transcript cell. Capture:
+`tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.

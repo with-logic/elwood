@@ -4,7 +4,7 @@
  * answer the offer: it is submitted exactly once, after Elwood declines the offer. One run holds
  * Elwood's view of the CLI back from `Stop`, so the offer is mounted and, to Elwood,
  * unpainted; the other runs at live speed with a status observer that throws at that `ready`.
- * Implements C-ATTN-10 (PRD §5.3) and C-CLAUDE-26 (PRD §5.1).
+ * Implements C-ATTN-10 (PRD §5.3) and C-CLAUDE-27 (PRD §5.1).
  */
 
 import assert from "node:assert/strict";

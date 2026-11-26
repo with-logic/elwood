@@ -3,7 +3,7 @@
  * it, while Elwood may already report `ready`. Input queued during the turn waits for a
  * stable end frame, however the turn ends and even when a status observer throws, so the
  * offer holds it instead of taking its Enter while Elwood declines the offer; and resumed
- * work ends the hold (C-ATTN-10, C-ATTN-09, C-CLAUDE-26, C-API-37, PRD §5.3).
+ * work ends the hold (C-ATTN-10, C-ATTN-09, C-CLAUDE-27, C-API-37, PRD §5.3).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { turnEndSettleMs } from "../../src/claude/session/turn-end-hold.ts";
@@ -65,7 +65,7 @@ const until = (ready: () => boolean, timeoutMs = 1_000) =>
 
 /**
  * What was written before the offer painted, behind it until Elwood's own decline went out
- * (C-CLAUDE-26), and once it closed.
+ * (C-CLAUDE-27), and once it closed.
  */
 async function writesAroundOffer(live: ClaudeSessionApi, pty: FakePty) {
   await wait(turnEndSettleMs / 2);

@@ -4,7 +4,7 @@
  * held back from the turn's `Stop`, so a message queued during the turn goes out while the
  * offer is mounted and, to Elwood, unpainted. The message must not answer the offer: it is
  * submitted exactly once, after Elwood declines the offer. Implements C-ATTN-10 (PRD §5.3)
- * and C-CLAUDE-26 (PRD §5.1).
+ * and C-CLAUDE-27 (PRD §5.1).
  */
 
 import assert from "node:assert/strict";

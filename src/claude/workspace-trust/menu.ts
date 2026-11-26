@@ -1,8 +1,10 @@
-/** Match Claude's native workspace trust disclosure to a checked launch (C-ATTN-07). */
+/** Match Claude's native workspace trust disclosure to a checked launch (C-ATTN-07, C-CLAUDE-26). */
 import type { IBufferCell } from "@xterm/headless";
+import type { WorkspaceTrustFacts } from "../../core/dialogs/types.ts";
 import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
 import type { SelectableOption } from "../../core/terminal-options.ts";
 import { isClaudeWorkspaceQuestionPrefix } from "../../core/trust/allowlist.ts";
+import { claudeWorkspaceDisclosesHooks } from "../../core/trust/copy.ts";
 import { hasTrustConversationBefore } from "../../core/trust/dialog.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
 import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";
@@ -23,6 +25,7 @@ type WorkspaceTrustDialog = TrustCandidate["dialog"] & {
 type MatchedWorkspaceTrustMenu = {
   readonly promptHeaderKey: string;
   readonly target: Pick<ClaudeLaunchTrustEvidence["scope"], "targetPath" | "targetScope">;
+  readonly facts: WorkspaceTrustFacts<"claude">;
   readonly dialog: WorkspaceTrustDialog;
 };
 
@@ -54,6 +57,11 @@ export function createClaudeWorkspaceTrustMenuMatcher(scope: ClaudeLaunchTrustEv
     return {
       promptHeaderKey: candidate.key,
       target: { targetPath, targetScope },
+      // The copy is verified by now, so the hooks rows can only be the native pair (§5.4).
+      facts: {
+        agent: "claude",
+        disclosesHooks: claudeWorkspaceDisclosesHooks(candidate.dialog.header),
+      },
       dialog: candidate.dialog,
     };
   };

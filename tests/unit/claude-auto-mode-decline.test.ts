@@ -1,6 +1,6 @@
 /**
  * Claude's auto-mode setup offer is declined with Esc, spaced past the offer's input guard
- * and retried until a settled frame shows it gone (C-CLAUDE-26, PRD §5.1).
+ * and retried until a settled frame shows it gone (C-CLAUDE-27, PRD §5.1).
  */
 import { expect, test } from "vitest";
 import {
@@ -29,13 +29,13 @@ function screen(closesAfter: number) {
   return { keys, write, read: () => text, set: (next: string) => (text = next) };
 }
 
-test("C-CLAUDE-26 only the offer's first menu is the decline target, never the setup step", () => {
+test("C-CLAUDE-27 only the offer's first menu is the decline target, never the setup step", () => {
   expect(isClaudeAutoModeOfferMenu(offer)).toBe(true);
   expect(isClaudeAutoModeOfferMenu(setupStep)).toBe(false);
   expect(isClaudeAutoModeOfferMenu(idle)).toBe(false);
 });
 
-test("C-CLAUDE-26 an ignored Esc is retried until a settled frame shows the menu gone", async () => {
+test("C-CLAUDE-27 an ignored Esc is retried until a settled frame shows the menu gone", async () => {
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
   const { keys, write, read } = screen(2);
   const started = decliner.handle(read(), write, read);
@@ -47,7 +47,7 @@ test("C-CLAUDE-26 an ignored Esc is retried until a settled frame shows the menu
   expect(keys).toEqual(["\u001b", "\u001b"]);
 });
 
-test("C-CLAUDE-26 an offer that outlasts every attempt is left on screen, unclaimed", async () => {
+test("C-CLAUDE-27 an offer that outlasts every attempt is left on screen, unclaimed", async () => {
   const lifetime = new AbortController();
   const decliner = new ClaudeAutoModeOfferDecliner(lifetime.signal, spacingMs);
   const { keys, write, read } = screen(Number.POSITIVE_INFINITY);
@@ -63,7 +63,7 @@ test("C-CLAUDE-26 an offer that outlasts every attempt is left on screen, unclai
   expect(await next?.settled).toBe("cancelled");
 });
 
-test("C-CLAUDE-26 raw caller input on the offer hands it to the human", async () => {
+test("C-CLAUDE-27 raw caller input on the offer hands it to the human", async () => {
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
   const { keys, write, read } = screen(1);
   decliner.callerInput(); // No offer yet: nothing to hand over.
@@ -76,7 +76,7 @@ test("C-CLAUDE-26 raw caller input on the offer hands it to the human", async ()
   expect(await decliner.handle(offer, write, read)?.settled).toBe("answered");
 });
 
-test("C-CLAUDE-26 a menu that closes or never settles before the first Esc claims nothing", async () => {
+test("C-CLAUDE-27 a menu that closes or never settles before the first Esc claims nothing", async () => {
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
   const closing = screen(1);
   expect(decliner.handle(idle, closing.write, closing.read)).toBeUndefined();
@@ -91,7 +91,7 @@ test("C-CLAUDE-26 a menu that closes or never settles before the first Esc claim
   expect(await later.handle(offer, withheld, () => undefined)?.settled).toBe("cancelled");
 });
 
-test("C-CLAUDE-26 session close cancels a decline in flight; a failed write rejects and retries", async () => {
+test("C-CLAUDE-27 session close cancels a decline in flight; a failed write rejects and retries", async () => {
   const lifetime = new AbortController();
   const decliner = new ClaudeAutoModeOfferDecliner(lifetime.signal, spacingMs);
   const { write, read } = screen(1);
