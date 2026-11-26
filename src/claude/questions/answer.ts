@@ -23,7 +23,15 @@ export async function answerClaudeQuestions(
   answers: readonly ValidatedQuestionAnswer[],
   io: QuestionIo,
 ): Promise<void> {
-  const bound = bindClaudeQuestionAnswers(request, answers);
+  await driveClaudeQuestions(request, bindClaudeQuestionAnswers(request, answers), io);
+}
+
+/** Drives an already bound batch, so a caller can derive what the completion must report. */
+export async function driveClaudeQuestions(
+  request: ElwoodQuestionRequest,
+  bound: readonly BoundClaudeQuestionAnswer[],
+  io: QuestionIo,
+): Promise<void> {
   const initial = io.frame();
   const first = initial && parseClaudeQuestionScreen(initial, request.questions);
   if (first?.kind !== "question" || first.questionIndex !== 0) throw questionLayoutFailed();
@@ -53,12 +61,18 @@ async function answerOne(
     answer.text === undefined ? () => true : claudeDrawnTextMatcher(answer.text);
   if (usesCheckboxes[question.selection]) {
     if (navigation.read().checked[otherCursorIndex]) throw questionAnswerFailed();
-    for (let option = 0; option < question.options.length; option += 1) {
-      const selected = answer.optionIndexes.includes(option);
-      if (navigation.read().checked[option] === selected) continue;
-      await navigation.move(option);
-      await io.write(" ", (frame) => navigation.at(frame)?.cursor === option);
-      await io.wait((frame) => navigation.at(frame)?.checked[option] === selected);
+    // Claude lists labels in the order they were checked. Only the answer's first box can already
+    // be checked; the first pass clears every other box, and the second checks the rest in order.
+    const [first] = answer.optionIndexes;
+    for (const pass of ["clear", "check"] as const) {
+      for (let option = 0; option < question.options.length; option += 1) {
+        const selected =
+          answer.optionIndexes.includes(option) && (pass === "check" || option === first);
+        if (navigation.read().checked[option] === selected) continue;
+        await navigation.move(option);
+        await io.write(" ", (frame) => navigation.at(frame)?.cursor === option);
+        await io.wait((frame) => navigation.at(frame)?.checked[option] === selected);
+      }
     }
   }
   if (answer.text !== undefined) {

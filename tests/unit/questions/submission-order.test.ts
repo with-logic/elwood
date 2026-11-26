@@ -2,8 +2,12 @@
 import assert from "node:assert/strict";
 import { afterEach, expect, test } from "vitest";
 import { disposeTerminals } from "./controller-helpers.ts";
-import { nativeHook } from "./lifecycle-helpers.ts";
-import { type SubmissionScenario, submissionOrderDriver } from "./submission-order-driver.ts";
+import { answeredHook } from "./lifecycle-helpers.ts";
+import {
+  orderAnswers,
+  type SubmissionScenario,
+  submissionOrderDriver,
+} from "./submission-order-driver.ts";
 import { submissionOrderSnapshot } from "./submission-order-snapshot.ts";
 
 afterEach(disposeTerminals);
@@ -50,7 +54,7 @@ async function submit(scenario: SubmissionScenario) {
       ? undefined
       : submissionOrderSnapshot(h, request, observed);
     if (!scenario.failure && scenario.acknowledgementOrder === "composer-first")
-      h.events.emit("activity", nativeHook("PostToolUse"));
+      h.events.emit("activity", answeredHook(orderAnswers));
     return {
       outcome: failureOutcome ?? (await pending),
       inputWriteCount: driver.inputWriteCount(),
@@ -132,4 +136,18 @@ test("an early input failure reaches the answer operation as terminal_write", as
     error: { code: "question_answer_failed", details: { category: "terminal_write" } },
   });
   expect(result.inputWriteCount).toBe(1);
+});
+
+test("C-QUESTION-03 a mismatched completion during final dispatch fails the answer", async () => {
+  const reported = { ...orderAnswers, "Which test color?": "Amber" };
+  const result = await submit({ acknowledgementOrder: "hook-first", reported });
+  expect(result.outcome).toMatchObject({
+    kind: "failed",
+    error: { code: "question_answer_failed" },
+  });
+  expect(result.inputWriteCount).toBe(result.expectedInputWriteCount);
+  expect(result.observed.filter((event) => event.phase === "closed")).toEqual([
+    expect.objectContaining({ phase: "closed", reason: "unavailable", request: result.request }),
+  ]);
+  expect(result.holdsInputAfterAcknowledgement).toBe(false);
 });
