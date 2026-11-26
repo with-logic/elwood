@@ -118,12 +118,14 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
     if (this.record.claude.launch?.permissionMode === "auto") return true;
     return claudeFooterMode(cachedLiveSnapshot(this.terminal).text) === "⏵⏵ auto mode on";
   }
-  /** Delivered outside the queued writer that found the limit, which a listener cannot stop. */
+  /**
+   * Delivered after the queued writer that found the limit has moved on, so a listener can
+   * neither reenter nor stop it. Writers stop polling once the session closes, so this
+   * cannot follow a close.
+   */
   private reportExpiredHold(): void {
     const warning = turnEndHoldExpiredWarning(this.elwoodSessionId);
-    queueMicrotask(() => {
-      if (!this.closing.signal.aborted) runContained(() => this.emitWarnings([warning]));
-    });
+    queueMicrotask(() => runContained(() => this.emitWarnings([warning])));
   }
   /** The hold reads every frame while input waits, even behind a dialog, so it knows why. */
   protected override queuedInputBlocked(): boolean {
