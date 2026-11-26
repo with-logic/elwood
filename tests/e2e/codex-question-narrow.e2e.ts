@@ -88,7 +88,7 @@ const modalPanes = [
 ];
 
 for (const { cols, footer } of modalPanes) {
-  test(`C-QUESTION-04 a modal Codex question is answered in a ${cols}-column pane`, {
+  test(`C-QUESTION-04 a modal Codex question is answered in a pane ${cols} columns wide`, {
     skip: codexQuestionProofSkip("one valid-model turn"),
     timeout: 240_000,
   }, async (t) => {
