@@ -2,7 +2,7 @@
  * A real Claude first launch opens on screens Elwood does not recognize. From the readiness
  * deadline the session is `blocked` on them with their text, the host answers them with
  * raw keys, and a message queued at start is then submitted onto the verified composer.
- * Implements C-E2E-28 (PRD §5.4, C-ATTN-11).
+ * Implements C-E2E-29 (PRD §5.4, C-ATTN-11).
  */
 
 import assert from "node:assert/strict";
@@ -14,7 +14,7 @@ import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts"
 import { recordPty } from "./pty-record.ts";
 import { awaitStartupBlock } from "./unrecognized-startup.ts";
 
-test("C-E2E-28 Claude's first-launch screens block the session, and raw keys answer them", {
+test("C-E2E-29 Claude's first-launch screens block the session, and raw keys answer them", {
   skip: skipIf(skipReason("claude")),
   timeout: 240_000,
 }, async () => {

@@ -94,3 +94,9 @@ export function createUnrecognizedStartupWatch(
     },
   };
 }
+
+/** Without adapter evidence no frame is an unrecognized startup screen. */
+export const noUnrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report"> = {
+  classify: () => false,
+  report: () => undefined,
+};

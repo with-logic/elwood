@@ -1,6 +1,6 @@
 /**
  * The raw key a host answers each Claude 2.1.332 first-launch screen with, by the screen's
- * own text (PRD §5.4, C-E2E-28). The offer to change the terminal's own settings edits the
+ * own text (PRD §5.4, C-E2E-29). The offer to change the terminal's own settings edits the
  * user's real terminal configuration when accepted, so it is skipped with Esc, and it is
  * matched first: a frame that still shows an earlier screen's text with it gets Esc, never
  * Enter. A screen not listed here gets no key.

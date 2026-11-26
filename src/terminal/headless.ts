@@ -5,6 +5,7 @@ import type { PtyProcess } from "../pty/types.ts";
 import { RenderCursor } from "./cursor.ts";
 import { observedInputWriter } from "./forwarded-input.ts";
 import { PtyOutput } from "./pty-output.ts";
+import { reportRenderFailed } from "./render-failure.ts";
 import { RenderQueue } from "./render-queue.ts";
 import { retainFinalScreen } from "./screen.ts";
 import { type TerminalSnapshot, terminalSnapshot } from "./snapshot.ts";
@@ -97,7 +98,10 @@ class HeadlessTerminal implements ElwoodTerminal {
     this.renders = new RenderQueue(
       (data, done) => this.xterm.write(data, done),
       () => this.#ptyOutput?.flush(),
-      () => this.#cursor.nativeEvidence.invalidate(),
+      () => {
+        this.#cursor.nativeEvidence.invalidate();
+        reportRenderFailed(this.xterm);
+      },
     );
     this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {

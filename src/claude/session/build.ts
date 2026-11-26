@@ -19,7 +19,7 @@ import { liveClaudeAttentionClearance, liveClaudeIdleComposer } from "../compose
 import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
-import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
+import { claudeStartupSize } from "../startup-size.ts";
 import { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
@@ -94,8 +94,7 @@ export async function buildClaudeSession(
     buildClaudeHookErrorHandler(record, emitter, () => session),
   );
   const requestedSize = options.initialSize ?? defaultTerminalSize;
-  const cols = Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS);
-  const startupSize = { ...requestedSize, cols };
+  const startupSize = claudeStartupSize(requestedSize);
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
     pty = spawnClaudePty(record, runtime.settingsPath, { ...options, initialSize: startupSize });
@@ -119,6 +118,7 @@ export async function buildClaudeSession(
     () => dialogs.reconcileAfter(frameObserver.refresh),
     idleComposerClearance,
     dialogs.onWorkspaceTrustTakeover,
+    options.probeTrust,
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();

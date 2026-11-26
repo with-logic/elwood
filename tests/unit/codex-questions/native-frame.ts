@@ -4,9 +4,9 @@ import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { fixture } from "./helpers.ts";
 import { snapshot } from "./snapshot-fixtures.ts";
 
-export function nativeFrame(name: string): QuestionFrame {
-  const geometry = snapshot(name);
-  const value: unknown = JSON.parse(fixture(name));
+export function nativeFrame(name: string, version?: string): QuestionFrame {
+  const geometry = snapshot(name, version);
+  const value: unknown = JSON.parse(fixture(name, version));
   if (
     !isRecord(value) ||
     value["cursorRow"] !== geometry.cursorY ||

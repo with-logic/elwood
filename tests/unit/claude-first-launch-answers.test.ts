@@ -1,7 +1,7 @@
 /**
  * The real Claude first-launch proof answers the terminal-setup offer with Esc, even beside
  * an earlier screen's text, and never presses a key on a screen it does not know
- * (PRD §5.4, C-E2E-28).
+ * (PRD §5.4, C-E2E-29).
  */
 import { expect, test } from "vitest";
 import { firstLaunchKey } from "../e2e/claude-first-launch-answers.ts";
@@ -18,6 +18,6 @@ test.each([
   ["the text-style picker", picker, "\r"],
   ["the security notes", notes, "\r"],
   ["a screen it does not know", " Select login method:\n ❯ 1. Claude account", undefined],
-])("C-E2E-28 %s", (_, screen, key) => {
+])("C-E2E-29 %s", (_, screen, key) => {
   expect(firstLaunchKey(screen)).toBe(key);
 });

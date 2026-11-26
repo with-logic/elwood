@@ -1,6 +1,6 @@
 /**
  * A private Claude config dir that has not finished onboarding, so a real Claude starts on
- * its first-launch screens, and a host's raw-key answers to them (PRD §5.4, C-E2E-28).
+ * its first-launch screens, and a host's raw-key answers to them (PRD §5.4, C-E2E-29).
  *
  * Claude 2.1.332's first launch draws, in order: a text-style picker, security notes, on
  * some terminals an offer to change the terminal's own settings, and the workspace trust
