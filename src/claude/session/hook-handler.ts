@@ -19,6 +19,7 @@ import type { InitialReady } from "../../runtime/readiness/initial-ready.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
+import { claudePromptId } from "../hooks/prompt-id.ts";
 import { claudeTurnFailureActivity } from "../hooks/stop-failure.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { claudePasteEnvelopeId, claudeSubmitPresentation } from "../pasted-content.ts";
@@ -109,6 +110,7 @@ export function buildClaudeHookHandler(
         ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
         : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
+    const answerGuidance = deps.getSession()?.guidanceHook(event);
     publish(event, observation);
     const outcome = await requestHook(
       {
@@ -125,6 +127,7 @@ export function buildClaudeHookHandler(
     );
     const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     const blocked = isBlock(outcome.result);
+    observation.run("lifecycle", () => answerGuidance?.(blocked));
     // Claude can emit SessionStart before a conversation transcript exists.
     // Persist its native resume ID after an unblocked UserPromptSubmit (C-CLAUDE-08).
     if (event.hook_event_name === "UserPromptSubmit" && !blocked)
@@ -152,11 +155,10 @@ export function buildClaudeHookHandler(
       // Diagnostic callbacks may submit input; report before comparing physical generations.
       observation.report();
       // Guidance may steer the current turn; every physical submission supersedes this Stop.
-      const sameSubmissionGeneration = submissionGenerationUnchanged?.() ?? true;
-      if (sameSubmissionGeneration) {
-        deps.getTurnWatcher().arm();
-        observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
-      }
+      const superseded = !(submissionGenerationUnchanged?.() ?? true);
+      if (!superseded) deps.getTurnWatcher().arm();
+      const promptId = claudePromptId(event["prompt_id"]);
+      observation.run("lifecycle", () => deps.getSession()?.submitStop(promptId, superseded));
     }
     observation.report();
     return serialized;

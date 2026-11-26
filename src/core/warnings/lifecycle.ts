@@ -132,3 +132,17 @@ export type TurnCommitWaitExpiredWarning = {
   readonly message: string;
   readonly raw: string;
 };
+
+/**
+ * Content-free: a Claude `Stop` held for queued guidance reached its hang limit with neither the
+ * queued turn's `Stop` nor an idle composer, so it marked the session ready (§6.5, C-HOOK-24).
+ */
+export type ClaudeQueuedTurnUnconfirmedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "claude";
+  readonly source: "lifecycle";
+  readonly code: "queued_turn_unconfirmed";
+  readonly severity: "warning";
+  readonly message: "Claude did not finish the guidance queued at its Stop within the limit, so the session was marked ready.";
+  readonly raw: "queued_turn_unconfirmed";
+};

@@ -43,7 +43,7 @@ export abstract class SessionLifecycle {
   private readonly terminalReplay: TerminalReplayBuffer;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
-  private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
+  protected readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
   protected readonly pasteGuard: PasteGuard;
   /** Called during base construction. Return a normalizer without using adapter instance fields. */
   protected abstract promptNormalizer(): PromptNormalizer;

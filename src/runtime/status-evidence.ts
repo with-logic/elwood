@@ -50,12 +50,14 @@ const requiresLiveSession = new Set<StatusEvidenceKind>([
 export type StatusEvidenceContext = {
   readonly inputBlocked?: boolean;
   readonly workingVisible?: boolean;
+  /** Why an adapter holds this turn end; evidence that would mark ready is then ignored. */
+  readonly heldBy?: string;
 };
 
 export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
-  { inputBlocked = false, workingVisible = false }: StatusEvidenceContext = {},
+  { inputBlocked = false, workingVisible = false, heldBy }: StatusEvidenceContext = {},
 ): StatusDecision {
   const target =
     evidence === "blocking_prompt_cleared" && workingVisible
@@ -64,6 +66,7 @@ export function decideStatus(
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
   if (inputBlocked && target === "ready")
     return ignored("ignored: a trust gate or closing session holds input");
+  if (heldBy !== undefined && target === "ready") return ignored(`ignored: ${heldBy}`);
   // Turn/blocking evidence describes in-session activity; before the session
   // is live (`starting`) it must not fabricate `ready`/`running`/`blocked`.
   if (requiresLiveSession.has(evidence) && !liveStatuses.has(from)) {
