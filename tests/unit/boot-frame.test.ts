@@ -36,3 +36,28 @@ test("C-ATTN-09 a frame with nothing to answer but no header of the agent's is n
   expect(claudeBootFrame("  Loading your workspace\n  Please wait")).toBe(false);
   expect(codexBootFrame("  Loading your workspace\n  Please wait")).toBe(false);
 });
+
+test.each([
+  [
+    "Claude's banner",
+    claudeBootFrame,
+    "claude-2.1.310/trust-slow-boot/banner-only",
+    "/tmp/ELWOOD_CAPTURE/project",
+  ],
+  [
+    "Codex's header",
+    codexBootFrame,
+    "codex-0.172.0/update/start-boot-partial",
+    "/tmp/elwood-update-CAPTURE",
+  ],
+] as const)("C-ATTN-09 %s over a workspace path of hint words is still a boot frame", (_, bootFrame, path, cwd) => {
+  const frame = capturedFrame(path).replace(cwd, "~/src/continue/press/enter/esc/cancel/confirm");
+  expect(frame).toContain("/continue/");
+  expect(bootFrame(frame)).toBe(true);
+});
+
+test("C-ATTN-09 a header over a prompt that ends in a caret is not a boot frame", () => {
+  expect(claudeBootFrame(" ▐▛███▛█   Claude Code v2.1.332\n  Paste code here if prompted >")).toBe(
+    false,
+  );
+});

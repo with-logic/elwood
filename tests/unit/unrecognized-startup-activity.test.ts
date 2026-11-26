@@ -33,3 +33,27 @@ test("C-ATTN-09 redacts API-key-shaped tokens before the bound, both whole and m
     "  OPENAI_API_KEY\n  sk-[redacted]\n  ANTHROPIC_API_KEY: sk-[redacted]\n  sk-short ask-me",
   );
 });
+
+test("C-ATTN-09 redacts a key the terminal wrapped onto following rows, and nothing after it", () => {
+  const key = `sk-proj-${"Ab3_-".repeat(20)}`;
+  const screen = [
+    "  OPENAI_API_KEY",
+    `  ${key.slice(0, 38)}`,
+    key.slice(38, 78),
+    `${key.slice(78)}`,
+    "  Press Enter to continue",
+    "│ ANTHROPIC_API_KEY: sk-ant-...Tail2-x_y │",
+    "│ Do you want to use this API key?        │",
+  ].join("\n");
+  expect(unrecognizedStartupActivity("codex", "session", screen).text).toBe(
+    [
+      "  OPENAI_API_KEY",
+      "  sk-[redacted]",
+      "[redacted]",
+      "[redacted]",
+      "  Press Enter to continue",
+      "│ ANTHROPIC_API_KEY: sk-[redacted] │",
+      "│ Do you want to use this API key?        │",
+    ].join("\n"),
+  );
+});

@@ -3,9 +3,12 @@
  * answer. Such a frame is not an unrecognized startup screen (PRD §5.4, C-ATTN-09).
  */
 
-/** A selection caret with text after it, a numbered choice, or a key hint. */
+/**
+ * A selection caret before text, a prompt ending in a caret, a numbered choice, a key hint
+ * or a yes/no question. Hints need their phrasing, so a word in the workspace path is none.
+ */
 const answerableRow =
-  /^\s*[❯›»>]\s*\S|^\s*\d+[.)]\s+\S|\b(?:Enter|Esc|Press|confirm|cancel|continue)\b|\(y\/n\)/i;
+  /^\s*[❯›»>]\s*\S|\S\s*[❯›»>]\s*$|^\s*\d+[.)]\s+\S|\b(?:Enter|Esc|Tab)\s+to\b|\bPress\s+\S|\bto\s+(?:continue|confirm|cancel)\b|\(y\/n\)/i;
 
 /**
  * Whether `frame` shows the agent's `header` and no row besides it that a person could

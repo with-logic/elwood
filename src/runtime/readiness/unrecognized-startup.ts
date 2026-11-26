@@ -42,6 +42,10 @@ export type UnrecognizedStartupWatch = {
   readonly report: (text: string) => void;
 };
 
+/**
+ * The watch for one session's startup: inert until the deadline, ended by the first
+ * readiness, and reporting through `evidence.report`.
+ */
 export function createUnrecognizedStartupWatch(
   evidence: StartupScreenEvidence,
 ): UnrecognizedStartupWatch {
