@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-25
+
 - Require Claude's completion of an Elwood answer to report exactly the
   submitted values. A completion with other values closes the request as
   `unavailable`, and the answer fails with `question_answer_failed`. A person's
