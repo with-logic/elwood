@@ -57,7 +57,7 @@ export function runStep(header, { cwd, env = {}, expressions = {}, prelude = "" 
   return result;
 }
 
-/** Returns a step's keys: the lines after its header, up to the next step, comment or job. */
+/** Returns a step's body text: the lines after its header, up to the next step, comment or job. */
 function stepText(header) {
   const opening = `\n      - ${header}\n`;
   const start = workflow.indexOf(opening);

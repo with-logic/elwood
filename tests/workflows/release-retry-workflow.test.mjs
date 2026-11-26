@@ -122,6 +122,9 @@ for (const [label, tagTarget] of [
   test(`a version bump whose tag ${label} is not released`, () => {
     const { result } = resolve(tagTarget());
     assert.equal(result.status, 1);
-    assert.match(result.stdout, /tag v1\.2\.3 already exists on another commit/u);
+    assert.match(
+      result.stdout,
+      /tag v1\.2\.3 already exists and is not a lightweight tag on this commit/u,
+    );
   });
 }

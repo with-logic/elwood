@@ -1,92 +1,111 @@
-/** Re-runs the release npm publication step against the real npm registry. */
+/** Re-runs the release npm publication step with the real npm client, offline. */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, test } from "node:test";
+import { after, before, test } from "node:test";
 
+import { startRegistry } from "./npm-registry.mjs";
 import { runStep } from "./release-fixture.mjs";
 
 const scratch = mkdtempSync(join(tmpdir(), "elwood-release-publish-"));
-after(() => rmSync(scratch, { recursive: true, force: true }));
+let registry;
+before(async () => {
+  registry = await startRegistry(scratch);
+});
+after(() => {
+  registry?.stop();
+  rmSync(scratch, { recursive: true, force: true });
+});
 
-// What actions/setup-node writes for `registry-url: https://registry.npmjs.org`.
-const npmrc = join(scratch, "npmrc");
-writeFileSync(
-  npmrc,
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: npm expands this npmrc placeholder.
-  "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\nregistry=https://registry.npmjs.org/\n",
-);
-const npmEnv = {
-  NODE_AUTH_TOKEN: "XXXXX-XXXXX-XXXXX-XXXXX",
-  npm_config_cache: join(scratch, "npm-cache"),
-  npm_config_registry: "https://registry.npmjs.org/",
-  npm_config_update_notifier: "false",
-  npm_config_userconfig: npmrc,
-};
-
-// Real releases, as the registry records them: this workflow published 0.7.0
+// The recorded releases: this workflow published 0.7.0 and 0.8.0 (`latest`)
 // through trusted publishing, and a maintainer published 0.1.0 by hand.
-const fromWorkflow = { version: "0.7.0", commit: "5ac725b514fe26d1ef71a837f029c8f6fd15c4d3" };
-const byHand = { version: "0.1.0", commit: "d8b4e78e0d6979f6a081689fcbb42987a2c66d7f" };
+const commitOf = {
+  "0.1.0": "d8b4e78e0d6979f6a081689fcbb42987a2c66d7f",
+  "0.7.0": "5ac725b514fe26d1ef71a837f029c8f6fd15c4d3",
+  "0.8.0": "86b962487b962a1c8ff628aee7ad45fc527a386e",
+};
+const otherCommit = "0".repeat(40);
 
-// The registry answers every lookup; only `npm publish` itself is stubbed.
-const recordPublish =
-  'npm() { if [ "$1" = publish ]; then echo "$*" >> "$PUBLISH_LOG"; else command npm "$@"; fi; }';
+// Records each `npm publish` and runs it for real against the local registry
+// as a dry run, so npm's own version and dist-tag checks still apply.
+const dryRunPublish =
+  'npm() { if [ "$1" = publish ]; then echo "$*" >> "$PUBLISH_LOG"; command npm "$@" --dry-run; else command npm "$@"; fi; }';
 
-function publish(name, version, releaseCommit) {
-  const cwd = join(scratch, name);
-  mkdirSync(cwd);
-  writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "@with-logic/elwood", version }));
+function publish({ name = "@with-logic/elwood", version, releaseCommit = otherCommit }) {
+  const cwd = mkdtempSync(join(scratch, "package-"));
+  writeFileSync(join(cwd, "package.json"), JSON.stringify({ name, version }));
   const log = join(cwd, "publish.log");
+  const output = join(cwd, "github-output");
   writeFileSync(log, "");
+  writeFileSync(output, "");
   const result = runStep("name: Publish to npm", {
     cwd,
-    env: { ...npmEnv, PUBLISH_LOG: log, RUNNER_TEMP: cwd },
+    env: { ...registry.env, GITHUB_OUTPUT: output, PUBLISH_LOG: log },
     expressions: {
       "needs.resolve.outputs.version": version,
       "needs.secret-scan.outputs.commit": releaseCommit,
     },
-    prelude: recordPublish,
+    prelude: dryRunPublish,
   });
-  return { publishes: readFileSync(log, "utf8"), result };
+  return { output: readFileSync(output, "utf8"), publishes: readFileSync(log, "utf8"), result };
 }
 
-test("a re-run skips a version this workflow already published from the release commit", () => {
-  const live = spawnSync(
-    "npm",
-    ["view", `@with-logic/elwood@${fromWorkflow.version}`, "gitHead", "_npmUser.email", "--json"],
-    { encoding: "utf8", env: { ...process.env, ...npmEnv } },
-  );
-  assert.equal(
-    live.stdout.replaceAll(/\s/gu, ""),
-    `{"gitHead":"${fromWorkflow.commit}","_npmUser.email":"npm-oidc-no-reply@github.com"}`,
-    `This test needs registry.npmjs.org to report how 0.7.0 was published: ${live.stderr}`,
-  );
-
-  const { publishes, result } = publish("from-workflow", fromWorkflow.version, fromWorkflow.commit);
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(publishes, "");
-  assert.match(result.stdout, /This workflow already published @with-logic\/elwood@0\.7\.0 from/u);
-});
-
-for (const [label, version, releaseCommit] of [
-  ["an unpublished version", "0.0.0-never-published", fromWorkflow.commit],
-  ["a version published from another commit", fromWorkflow.version, "0".repeat(40)],
-  ["a version a maintainer published by hand", byHand.version, byHand.commit],
+for (const [version, distTag] of [
+  ["0.8.0", "latest"],
+  ["0.7.0", "latest-0.7"],
 ]) {
-  test(`${label} goes to npm publish`, () => {
-    const { publishes, result } = publish(label.replaceAll(" ", "-"), version, releaseCommit);
+  test(`a re-run skips ${version}, which this workflow published from the release commit`, () => {
+    const { output, publishes, result } = publish({ version, releaseCommit: commitOf[version] });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(publishes, "publish --access public\n");
+    assert.equal(publishes, "");
+    assert.equal(output, `dist_tag=${distTag}\n`);
+    assert.match(result.stdout, /: skip .*this workflow already published it/u);
   });
 }
 
-test("the step logs what the registry reported before it publishes", () => {
-  const { result } = publish("logged", "0.0.0-never-published", fromWorkflow.commit);
-  assert.match(
-    result.stdout,
-    /^Registry lookup for @with-logic\/elwood@0\.0\.0-never-published: gitHead=none publisher=none \(code E404\)$/mu,
-  );
+test("a version newer than every published one publishes as latest", () => {
+  const { output, publishes, result } = publish({ version: "0.9.0" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(publishes, "publish --access public\n");
+  assert.equal(output, "dist_tag=latest\n");
 });
+
+test("a version a newer release overtook publishes under its line's dist-tag", () => {
+  const { output, publishes, result } = publish({ version: "0.6.2" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(publishes, "publish --access public --tag latest-0.6\n");
+  assert.equal(output, "dist_tag=latest-0.6\n");
+  assert.match(result.stdout, /newer versions: 0\.7\.0 0\.8\.0/u);
+});
+
+for (const [label, options, reason] of [
+  [
+    "a version a maintainer published by hand",
+    { version: "0.1.0", releaseCommit: commitOf["0.1.0"] },
+    `already published from ${commitOf["0.1.0"]} by maintainer@example.test`,
+  ],
+  [
+    "a version published from another commit",
+    { version: "0.8.0" },
+    `already published from ${commitOf["0.8.0"]} by npm-oidc-no-reply@github.com`,
+  ],
+  [
+    "a failed registry lookup",
+    { name: "@with-logic/registry-down", version: "1.0.0" },
+    "could not read the registry: E500",
+  ],
+]) {
+  test(`${label} fails the step without publishing`, () => {
+    const { output, publishes, result } = publish(options);
+    assert.equal(result.status, 1);
+    assert.equal(publishes, "");
+    assert.equal(output, "");
+    assert.ok(
+      result.stdout.includes(
+        `::error::cannot publish ${options.name ?? "@with-logic/elwood"}@${options.version}: ${reason}\n`,
+      ),
+      result.stdout,
+    );
+  });
+}
