@@ -3,13 +3,11 @@ import { runContained } from "../../core/contained.ts";
 import type { AutomationWriteResult } from "../../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../../core/startup/write.ts";
 import { trustGateVisible } from "../../core/trust/blocking.ts";
-import type { TrustClearance } from "../../core/trust/clearance.ts";
-import type { TrustWriteResult } from "../../core/trust/responder.ts";
 import { writeCodexUpdateSkip } from "../update-prompt.ts";
 import { updateScreenBanner } from "./recognition.ts";
 import { codexDialogVisible, codexUnconfiguredComposerVisible } from "./repaint.ts";
 import { safeUpdateOption } from "./selection.ts";
-import type { CodexUpdatePromptTracker } from "./tracker.ts";
+import type { UpdateSkipAttempt, UpdateSkipRequest } from "./types.ts";
 
 /**
  * Codex drew its boot composer or resume placeholder within 8 ms of a skip in every run
@@ -18,36 +16,6 @@ import type { CodexUpdatePromptTracker } from "./tracker.ts";
 export const repaintGraceMs = 2_000;
 /** Codex's configured composer followed that repaint within 5 s in every run measured. */
 export const answeredRepaintBoundMs = 30_000;
-
-type UpdateSkipRequest = {
-  readonly option: string;
-  readonly generation: number;
-  readonly screenText: string;
-  readonly tracker: CodexUpdatePromptTracker;
-  readonly writeAutomation: (
-    input: string,
-    perWrite?: (frameText: string) => boolean,
-  ) => TrustWriteResult | Promise<AutomationWriteResult>;
-  readonly readFrame: (() => string) | undefined;
-  readonly signal: AbortSignal;
-  readonly clearance: TrustClearance;
-  /** The session's input hold, which includes this attempt's own repaint hold. */
-  readonly inputHeld: () => boolean;
-  readonly releaseLatch: () => void;
-  /** A grace or answered bound expired with no frame to follow; the session reads its frame again. */
-  readonly repaintExpired: () => void;
-};
-
-type UpdateSkipAttempt = {
-  readonly settled: Promise<StartupWriteCompletion>;
-  readonly observeClearance: (frame: string) => void;
-  /** Each frame the session renders, before its input hold is classified. */
-  readonly observeFrame: (frame: string) => void;
-  /** Codex is repainting after this attempt's key: input stays held, and no dialog is reported. */
-  readonly ownsRepaint: () => boolean;
-  /** Raw caller input owns this appearance: no retry or pending write follows it. */
-  readonly cancel: () => void;
-};
 
 /**
  * One bounded skip of one update appearance. `settled` and the repaint hold end apart: it

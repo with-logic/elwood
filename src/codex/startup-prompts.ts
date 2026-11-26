@@ -1,16 +1,13 @@
 /** Handle blocking Codex startup prompts (PRD §4.4, §5.5, and §5.7). */
 import type { AutomationWriteResult } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome } from "../core/startup/write.ts";
-import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
 import { codexBannerKey, codexWarningsFromText } from "./startup-warnings.ts";
 import { codexNumberedRetry } from "./trust-retry.ts";
-import { safeUpdateOption } from "./update/selection.ts";
-import { startCodexUpdateSkip } from "./update/skip-attempt.ts";
-import { CodexUpdatePromptTracker } from "./update/tracker.ts";
+import { CodexUpdateSkips } from "./update/skips.ts";
 import type { CodexWorkspaceTrustHooks } from "./workspace-trust/prelude-input.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
@@ -26,18 +23,9 @@ type CodexStartupPromptResult = {
 export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
-  private readonly clearance: TrustClearance;
-  private readonly sessionInputHeld: () => boolean;
   private readonly workspaceTrust: CodexWorkspaceTrustHooks | undefined;
-  private readonly onStateChange: (() => void) | undefined;
-  private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
-  // The update-screen generation that owns the skip latch (0 = none). Only that
-  // generation's own completion may release it; a stale completion is a no-op.
-  private skipGeneration = 0;
-  private updateAttempt: ReturnType<typeof startCodexUpdateSkip> | undefined;
-  // Raw caller input owns an unresolved update until a native composer clears it.
-  private updateCallerOwned = false;
+  private readonly updates: CodexUpdateSkips;
   // Emit only newly appearing warning banners; clearing re-arms a later occurrence.
   private warnedBanners = new Set<string>();
   private conversationStarted = false;
@@ -51,11 +39,13 @@ export class CodexStartupPromptResponder {
     workspaceTrust?: CodexWorkspaceTrustHooks,
   ) {
     this.elwoodSessionId = elwoodSessionId;
-    this.clearance = clearance;
-    this.sessionInputHeld = sessionInputHeld ?? (() => false);
     this.workspaceTrust = workspaceTrust;
-    this.onStateChange = onStateChange;
-    this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
+    this.updates = new CodexUpdateSkips({
+      clearance,
+      inputHeld: sessionInputHeld,
+      signal: this.lifetime.signal,
+      onStateChange,
+    });
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
       onStateChange,
       numberedRetry: codexNumberedRetry,
@@ -64,9 +54,7 @@ export class CodexStartupPromptResponder {
   }
 
   observeClearance(frame: string): void {
-    if (this.updatePrompt.needsClearance)
-      this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
-    this.updateAttempt?.observeClearance(frame);
+    this.updates.observeClearance(frame);
   }
 
   get closingSignal(): AbortSignal {
@@ -89,15 +77,14 @@ export class CodexStartupPromptResponder {
     const priorPrompt = this.humanOwnedPrompt;
     this.workspaceTrust?.prelude.record();
     this.trust.callerInput();
-    this.updateAttempt?.cancel();
-    this.updateCallerOwned ||= this.updatePrompt.unresolved;
+    this.updates.callerInput();
     const prompt = this.humanOwnedPrompt;
     if (prompt === "workspace_trust" && priorPrompt !== prompt) this.workspaceTrust?.onTakeover();
   }
 
   /** Trust automation, or Codex's repaint after an update skip, holds input (C-CODEX-27). */
   get inputBlocking(): boolean {
-    return this.trust.inputBlocking || this.updateAttempt?.ownsRepaint() === true;
+    return this.trust.inputBlocking || this.updates.ownsRepaint();
   }
 
   /**
@@ -126,53 +113,12 @@ export class CodexStartupPromptResponder {
     } else if (trust?.kind === "option_pending") {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
-    // One bounded skip belongs to one appearance. Unknown replacements disable
-    // reauthorization immediately; a fresh banner with a valid current safe-option
-    // block or authoritative native clearance can rearm it. The live observer confirms
-    // clearance after this frame's retained hold is classified, before queued input can repaint it.
-    this.updateCallerOwned &&= this.updatePrompt.unresolved; // a later appearance is new
-    const renewUpdateAttention = this.updatePrompt.renewsAttention(screenText);
-    const onUpdateScreen = this.updatePrompt.observe(screenText);
-    this.updateAttempt?.observeFrame(screenText);
-    const generation = this.updatePrompt.currentGeneration;
-    // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
-    // update-skip automation, even when its rows resemble the update options. Note this
-    // gates the WRITE only: `updatePrompt.observe` above still tracks such a frame as an
-    // update appearance, so generation latching and re-arming are unaffected.
-    const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
-    const automatable = onUpdateScreen && !this.updateCallerOwned;
-    if (automatable && this.skipGeneration !== generation && noTrustGate(screenText)) {
-      const parsed = this.updatePrompt.classify(screenText);
-      const option = safeUpdateOption(screenText, parsed.options ?? [])?.number ?? null;
-      if (option && this.updatePrompt.currentFramePredicate()(screenText)) {
-        // Latch this appearance before writing; rejection can release the latch
-        // for a later frame, while success requires observed clearance (C-CODEX-17).
-        this.skipGeneration = generation;
-        this.updateAttempt = startCodexUpdateSkip({
-          option,
-          generation,
-          screenText,
-          tracker: this.updatePrompt,
-          writeAutomation,
-          readFrame,
-          signal: this.lifetime.signal,
-          clearance: this.clearance,
-          inputHeld: this.sessionInputHeld,
-          releaseLatch: () => {
-            this.skipGeneration = 0;
-          },
-          repaintExpired: () => this.onStateChange?.(),
-        });
-        outcomes.push({
-          outcome: { kind: "attempted", prompt: "update", input: option },
-          settled: this.updateAttempt.settled,
-        });
-      }
-    }
+    const update = this.updates.observe(screenText, writeAutomation, readFrame);
+    if (update.outcome) outcomes.push(update.outcome);
     return {
       warnings: this.newWarnings(screenText),
       outcomes,
-      ...(renewUpdateAttention ? { updateGeneration: generation } : {}),
+      ...(update.renewAttention ? { updateGeneration: update.generation } : {}),
     };
   }
 
