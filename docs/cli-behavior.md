@@ -2081,7 +2081,7 @@ then submitted it. Load averages were 33–85.
 
 The paste has to wait until Claude has taken the turn's prompt.
 `sendMessage` resolves once its Enter is written, and Claude can still show
-the prompt in its composer at that moment: it did in all five captures. One run
+the prompt in its composer at that moment: it did in all four captures. One run
 that pasted then (load average 60) found the composer empty after Esc, with the
 pill gone and never submitted. The test now waits for the prompt's
 `UserPromptSubmit` and the working footer first, and passed three times out of
