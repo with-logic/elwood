@@ -44,13 +44,14 @@ function ledger() {
 /** A turn `p1` whose own prompt Claude submitted. */
 function running() {
   const fixture = ledger();
-  expect(fixture.subject.heard("p1")).toBeUndefined();
+  fixture.subject.heard("p1");
   return fixture;
 }
 
 describe("C-HOOK-24 Claude guidance ledger", () => {
-  test("a Stop with nothing queued behind its turn is not held", () => {
-    const { subject } = running();
+  test("a turn's own prompt is not guidance, and its Stop with nothing queued is not held", () => {
+    const { subject } = ledger();
+    expect(subject.heard("p1")).toBeUndefined();
     expect(subject.stopHolds("p1")).toBe(false);
     expect(subject.renderedEndReleases()).toBe(true);
   });
