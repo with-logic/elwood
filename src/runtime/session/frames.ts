@@ -131,7 +131,8 @@ export function createSessionFrameObserver(
       reportFailure();
     }
   };
-  // At the deadline an idle CLI does not repaint, so its current frame is classified again.
+  // At the deadline, or when an adapter's evidence changes with time (Codex's effort wait), an
+  // idle CLI does not repaint, so its current frame is classified again.
   readiness.setDeadlineListener((settled) => {
     if (frame !== undefined && settled !== undefined) frame = { ...frame, ...settled };
     refresh();

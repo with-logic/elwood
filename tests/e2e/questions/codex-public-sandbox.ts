@@ -10,6 +10,7 @@ import {
   type TerminalSize,
 } from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
+import type { PtyProcess } from "../../../src/pty/types.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
   resetRuntimeSeamsForTests,
@@ -119,6 +120,7 @@ export async function publicCodexQuestionSandbox() {
   try {
     const stateDir = join(files.root, "state");
     const writes: string[] = [];
+    let spawned: PtyProcess | undefined;
     mkdirSync(stateDir, { mode: 0o700 });
     const pin = (args: readonly string[]) =>
       args.map((arg, index) =>
@@ -135,6 +137,7 @@ export async function publicCodexQuestionSandbox() {
         args: pin(options.args),
         env: { ...options.env, CODEX_HOME: files.home, ZDOTDIR: files.home },
       });
+      spawned = pty;
       return {
         ...pty,
         write(data) {
@@ -147,6 +150,8 @@ export async function publicCodexQuestionSandbox() {
       ...files,
       stateDir,
       writes,
+      /** The PTY the session's Codex runs on: its pid is Codex's, which `exec`s in its shell. */
+      spawned: () => spawned,
       dispose() {
         resetRuntimeSeamsForTests();
         files.dispose();

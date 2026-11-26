@@ -4154,6 +4154,23 @@ override, came back with the effort and model it started
 with (`GPT-6-Luna low`). With `-c model_reasoning_effort="low"` it came back as
 `GPT-6.2-Sol low` (Codex's default model, since the config names none, at the requested effort), and resumed with
 `high` after starting at `low` it read `GPT-6.2-Sol high`. No resumed footer read `default`
-after its configuration. Elwood waits for the label until the 60 s backstop at the latest,
-so a footer that never shows the effort cannot hold readiness for good
+after its configuration. Elwood waits for the label until 50 s after launch, or until the
+initial-readiness deadline, 10 s after the first frame, when that comes later (not the 60 s
+backstop), so a footer that never shows the effort cannot hold readiness for good
 (`codex_effort_unconfirmed`). C-API-28, C-E2E-34.
+
+**Codex bounds its own wait for the network, so the label is late, not missing.** With every
+connection held 90 s by the delaying proxy, the footer appeared 14.0 s after `start()` and
+the configuration landed 7.4 s later (`GPT-6-Luna low`) with no tunnel opened, and a bogus
+`--model` (`gpt-elwood-bogus-9`) was configured 1 s after its footer. So on 0.172 the label
+stays `default` only when Codex never applies the configuration, or applies an effort it
+shows as `default` (`none`). The first rendered frame, which arms the readiness timers, came
+116 to 294 ms before `start()` resolved in four launches at load 30 to 54. So a host that
+waits as soon as `start()` returns starts its default 60 s `waitForStatus` clock only that
+long after the first frame: a wait for the label timed from that frame with the full 60 s
+would leave almost no headroom, and a render still in flight could push `ready` past the
+host's timeout. Elwood ends the wait 50 s after launch, which no host wait can precede, and
+never before the deadline, so pre-ready writes and readiness release together. A runner
+killed by a signal while Codex is stopped closes Codex's PTY, which ends that Codex too: a
+test runner `SIGKILL`ed with Codex in state `T` left no Codex process 3 s later. C-E2E-37 stops Codex with `SIGSTOP` once its
+`default` footer is painted, so the configuration never lands. C-API-28, C-E2E-37.
