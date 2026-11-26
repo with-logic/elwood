@@ -13,7 +13,7 @@ import {
   textDigest,
   turnDigestKey,
 } from "./prompt-keys.ts";
-import { ClaudeQueuedPrompts, type QueuedPromptsView } from "./queued-prompts.ts";
+import { ClaudeQueuedPrompts, type QueuedPromptsAccess } from "./queued-prompts.ts";
 import { maxIdentifierBytes } from "./turn-identity.ts";
 import type {
   PromptEvidence,
@@ -51,7 +51,7 @@ export class ClaudeUserPrompts {
   forgetQueued(): void {
     this.queued.clear();
   }
-  get queuedPrompts(): QueuedPromptsView {
+  get queuedPrompts(): QueuedPromptsAccess {
     return this.queued;
   }
 

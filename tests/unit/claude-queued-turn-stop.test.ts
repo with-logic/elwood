@@ -1,9 +1,7 @@
 /** How a Claude `Stop` ends its turn around a queued turn (PRD §6.5, C-HOOK-24, C-HOOK-22). */
 import { afterEach, expect, test, vi } from "vitest";
-import {
-  endTurnUnlessQueued,
-  queuedTurnStartLimitMs,
-} from "../../src/claude/session/queued-turn.ts";
+import { endTurnUnlessQueued } from "../../src/claude/session/queued-turn.ts";
+import { SubmitScreening } from "../../src/claude/session/submit-screening.ts";
 import { textDigest } from "../../src/claude/transcript/prompt-keys.ts";
 import { ClaudeQueuedPrompts } from "../../src/claude/transcript/queued-prompts.ts";
 import { hookObservationBoundary } from "../../src/core/hook-observation.ts";
@@ -48,8 +46,10 @@ function stop(options: StopOptions = {}) {
   observation.report(); // the Stop's dispatch has finished before any poll runs
   let submissionUnchanged = true;
   let decisions: ElwoodStatusDecision[] = [decision("running")];
+  const screening = new SubmitScreening();
   const session = {
     elwoodSessionId: "session",
+    terminal: { xterm: {} },
     status: options.status ?? "running",
     closing: new AbortController(),
     statusDecisions: () => decisions,
@@ -62,9 +62,10 @@ function stop(options: StopOptions = {}) {
   };
   endTurnUnlessQueued({
     session,
-    transcriptWatcher: { scan: () => {}, queuedPrompts: () => queued },
+    transcriptWatcher: { scan: () => true, queuedPrompts: () => queued },
     observation,
     submissionGenerationUnchanged: () => submissionUnchanged,
+    screening,
   });
   const supersede = () => {
     submissionUnchanged = false;
@@ -73,8 +74,10 @@ function stop(options: StopOptions = {}) {
   const evict = () => {
     decisions = [decision(undefined)];
   };
-  const pastBound = () => vi.advanceTimersByTimeAsync(queuedTurnStartLimitMs + 100);
-  return { evidence, warnings, session, supersede, record, evict, pastBound };
+  /** Past C-HOOK-24's 2-second bound, stated independently of the implementation. */
+  const pastBound = () => vi.advanceTimersByTimeAsync(2_100);
+  const submit = () => screening.begin(queued, queued.nextPosition, "later");
+  return { evidence, warnings, session, supersede, record, evict, pastBound, submit };
 }
 
 test("C-HOOK-24 a Stop without queued messages ends the turn at once", () => {
@@ -116,6 +119,24 @@ test("C-HOOK-11 C-HOOK-24 the bound ends no turn that already ended, changed, or
   superseded.supersede();
   await superseded.pastBound();
   expect([...superseded.evidence, ...superseded.warnings]).toEqual([]);
+  // A submit after the Stop that the caller's handler allowed started a turn of its own.
+  const newer = stop();
+  newer.submit()(false);
+  await newer.pastBound();
+  expect([...newer.evidence, ...newer.warnings]).toEqual([]);
+});
+
+test("C-HOOK-24 a submit still screening holds the bound, and a blocked one does not supersede", async () => {
+  const { evidence, warnings, submit, pastBound } = stop();
+  const settle = submit();
+  await pastBound();
+  await pastBound();
+  expect(evidence).toEqual([]);
+  settle(true);
+  expect(evidence).toEqual([]);
+  await pastBound();
+  expect(evidence).toEqual(["hook_turn_ended"]);
+  expect(warnings).toEqual([expect.objectContaining({ code: "queued_turn_unconfirmed" })]);
 });
 
 test("C-HOOK-22 C-HOOK-24 a failing readiness listener at the bound is contained in the Stop's one warning", async () => {

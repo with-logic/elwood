@@ -3,7 +3,6 @@
  * a real transcript watcher (PRD §6.5, C-HOOK-24).
  */
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import { queuedTurnStartLimitMs } from "../../src/claude/session/queued-turn.ts";
 import type { ClaudeSessionApi, ElwoodWarningEvent, StartClaudeOptions } from "../../src/index.ts";
 import { claudeIdle, claudeWorking } from "../fixtures/owned-turn/composer.ts";
 import { resetFakes } from "./helpers.ts";
@@ -18,14 +17,17 @@ const queuedUser = (promptId: string, text: string) => ({
   ...user(promptId, text),
   promptSource: "queued",
 });
-const pastBound = () => vi.advanceTimersByTimeAsync(queuedTurnStartLimitMs + 100);
+/** Past C-HOOK-24's 2-second bound, stated independently of the implementation. */
+const pastBound = () => vi.advanceTimersByTimeAsync(2_100);
 
 type QueuedStop = {
   readonly onStop?: (session: ClaudeSessionApi) => void;
   readonly options?: Omit<StartClaudeOptions, "cwd">;
+  /** The caller's handler is still screening the queued message at the `Stop`. */
+  readonly screening?: boolean;
 };
 
-async function stopWithQueuedMessage({ onStop, options }: QueuedStop = {}) {
+async function stopWithQueuedMessage({ onStop, options, screening }: QueuedStop = {}) {
   // Only the test advances the watcher's background poll; the session starts on real timeouts.
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   const activity = await startPromptActivitySession(options);
@@ -37,7 +39,15 @@ async function stopWithQueuedMessage({ onStop, options }: QueuedStop = {}) {
   await submit("essay", "turn-1");
   append(user("turn-1", "essay"));
   // Claude screens a message queued during the turn under the running turn's prompt ID.
-  await submit("note", "turn-1");
+  let noted = false;
+  session.on("hook", (event) => {
+    noted ||= event.hook_event_name === "UserPromptSubmit" && event.prompt === "note";
+  });
+  const note = submit("note", "turn-1");
+  const seen = () => {
+    if (!noted) throw new Error("The note's hook has not arrived.");
+  };
+  await (screening ? vi.waitFor(seen) : note);
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"],
   });
@@ -93,10 +103,10 @@ test("C-HOOK-24 a queued message the caller blocked holds no Stop", async () => 
 
 test("C-HOOK-24 the bound ends no turn the screen ended, nor a turn started since", async () => {
   const { session, pty, warnings } = await stopWithQueuedMessage();
-  for (const frame of [claudeWorking, claudeIdle]) {
-    pty.emitData(frame);
-    await vi.advanceTimersByTimeAsync(20);
-  }
+  pty.emitData(claudeWorking);
+  await vi.advanceTimersByTimeAsync(20);
+  pty.emitData(claudeIdle);
+  await vi.advanceTimersByTimeAsync(20);
   expect(session.status).toBe("ready");
   // Raw input started a turn after the screen ended the Stop's turn.
   pty.emitData(claudeWorking);
@@ -105,6 +115,57 @@ test("C-HOOK-24 the bound ends no turn the screen ended, nor a turn started sinc
   await pastBound();
   expect(session.status).toBe("running");
   expect(turnEnds(session)).toEqual(["rendered_turn_ended"]);
+  expect(warnings).toEqual([]);
+});
+
+test("C-HOOK-24 the bound ends no turn that raw input or a later allowed submit may have started", async () => {
+  const typed = await stopWithQueuedMessage();
+  const keys = typed.session.sendKeys("x");
+  await vi.advanceTimersByTimeAsync(20);
+  await keys;
+  await pastBound();
+  const submitted = await stopWithQueuedMessage();
+  await submitted.submit("typed at the terminal", "turn-typed");
+  await pastBound();
+  for (const { session, warnings } of [typed, submitted]) {
+    expect(session.status).toBe("running");
+    expect(turnEnds(session)).toEqual([]);
+    expect(warnings).toEqual([]);
+  }
+});
+
+test.each([
+  ["allows it, and Claude then runs it", undefined, []],
+  [
+    "blocks it, so Claude runs none",
+    { decision: "block" as const, reason: "No." },
+    ["hook_turn_ended"],
+  ],
+])("C-HOOK-24 a handler still screening at the Stop holds readiness until it %s", async (_, answer, ends) => {
+  let screened: (result: typeof answer) => void = () => {};
+  const hooks = {
+    UserPromptSubmit: (event: { prompt: string }) =>
+      event.prompt === "note"
+        ? new Promise<typeof answer>((resolve) => (screened = resolve))
+        : undefined,
+  };
+  const { session, append, stop, warnings } = await stopWithQueuedMessage({
+    options: { hooks },
+    screening: true,
+  });
+  await pastBound();
+  await pastBound();
+  expect(session.status).toBe("running");
+  screened(answer);
+  await vi.advanceTimersByTimeAsync(100);
+  if (answer === undefined) {
+    append(dequeue, queuedUser("turn-2", "note"));
+    await pastBound();
+    expect(session.status).toBe("running");
+    await stop("turn-2");
+  }
+  expect(session.status).toBe("ready");
+  expect(turnEnds(session)).toEqual(answer === undefined ? ["hook_turn_ended"] : ends);
   expect(warnings).toEqual([]);
 });
 

@@ -37,7 +37,7 @@ test.each([
     emitter,
     ready: initialReady(() => {}),
     transcriptWatcher: {
-      scan: () => {},
+      scan: () => true,
       observeUserPromptHook: ({ hasText }) => hasText,
       queuedPrompts: () => undefined,
     },

@@ -27,8 +27,9 @@ test.each([
   emitter.on("warning", (event) => warnings.push(event));
   const turn = new TurnStateWatcher();
   const arm = vi.spyOn(turn, "arm");
-  const scan = vi.fn(() => {
+  const scan = vi.fn((): boolean => {
     if (failure === "transcript_scan") throw new Error("private transcript");
+    return true;
   });
   const ready = initialReady(() => {
     throw new Error("private lifecycle");

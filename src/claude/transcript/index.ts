@@ -20,7 +20,7 @@ import {
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
 import { observeTranscriptBaseline } from "./observe-initial.ts";
-import type { QueuedPromptsView } from "./queued-prompts.ts";
+import type { QueuedPromptsAccess } from "./queued-prompts.ts";
 import type { UserPromptHookEvidence } from "./user-prompt-types.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
@@ -95,7 +95,7 @@ export class ClaudeTranscriptWatcher {
   }
 
   /** Messages queued during a running turn, while transcript correlation can see them. */
-  queuedPrompts(): QueuedPromptsView | undefined {
+  queuedPrompts(): QueuedPromptsAccess | undefined {
     return this.correlationActive ? this.lines.userPrompts.queuedPrompts : undefined;
   }
 
@@ -103,15 +103,18 @@ export class ClaudeTranscriptWatcher {
     return !(this.finished || this.lines.turns.correlationDisabled);
   }
 
-  scan(): void {
-    if (this.finished) return;
-    const budget = { chunks: scanChunksPerScan };
-    for (const cursor of this.cursors.values()) {
-      if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
+  /** Reads up to `chunks` chunks. Returns whether it reached the end of every transcript. */
+  scan(chunks = scanChunksPerScan): boolean {
+    if (this.finished) return true;
+    const budget = { chunks };
+    // A cursor stops short only when the watcher-wide budget is spent; the next scan resumes there.
+    const reachedEnd = [...this.cursors.values()].every((cursor) => {
+      if (budget.chunks <= 0) return false;
       cursor.runInitialRetry(budget);
-      this.scanCursor(cursor, budget);
-    }
+      return this.scanCursor(cursor, budget);
+    });
     this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
+    return reachedEnd;
   }
 
   // Flush + retire a stopped subagent's transcript (one-shot): drained against the
@@ -183,13 +186,15 @@ export class ClaudeTranscriptWatcher {
 
   // Drain a cursor in bounded chunks against the SHARED per-scan budget (sync work
   // bounded across ALL cursors); the read is contained, parse/emit run outside it.
-  private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): void {
+  /** Returns whether it read to the end, or stopped at a contained FS failure. */
+  private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): boolean {
     while (budget.chunks > 0) {
       budget.chunks -= 1;
       const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
-      if (chunk === undefined) return; // contained FS failure; keep last offset
+      if (chunk === undefined) return true; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
-      if (!chunk.canContinueNow) return;
-    } // budget exhausted with more to read: the next poll tick resumes here.
+      if (!chunk.canContinueNow) return true;
+    }
+    return false; // budget exhausted with more to read: the next poll tick resumes here.
   }
 }

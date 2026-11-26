@@ -137,18 +137,25 @@ test("C-API-62 a transcript rewind leaves no queued message pending", () => {
 test("C-HOOK-24 only live dequeue records of the main transcript count as a started queued turn", () => {
   const [live, agent] = [tmpFile(), tmpFile()];
   const watcher = new ClaudeTranscriptWatcher("s", () => undefined);
-  const dequeue = { type: "queue-operation", operation: "dequeue" };
+  const earlier = Date.now() - 10_000;
+  const dequeue = (at = Date.now()) => ({
+    type: "queue-operation",
+    operation: "dequeue",
+    timestamp: new Date(at).toISOString(),
+  });
   const queued = () => watcher.queuedPrompts();
+  const dequeuedAfterEarlier = () => queued()?.dequeuedSince(earlier + 1);
   const anyPending = () => queued()?.hasPendingIn({ from: 0, to: Number.MAX_SAFE_INTEGER });
   writeRecords(live);
   writeRecords(agent);
   try {
     watcher.observe(live);
     watcher.observe(agent, false, undefined, true);
-    appendRecords(live, [], nativeUser("old-1", "x".repeat(200)), dequeue);
-    appendRecords(agent, [], dequeue);
+    appendRecords(live, [], nativeUser("old-1", "x".repeat(200)), dequeue(earlier));
+    appendRecords(agent, [], dequeue());
     watcher.scan();
-    expect(queued()?.dequeueCount).toBe(1); // counted with nothing pending; not the subagent's
+    expect(queued()?.dequeuedSince(earlier)).toBe(true); // read with nothing pending
+    expect(dequeuedAfterEarlier()).toBe(false); // the subagent's never counts
     watcher.observeUserPromptHook({
       path: live,
       turnId: "running",
@@ -163,9 +170,9 @@ test("C-HOOK-24 only live dequeue records of the main transcript count as a star
     });
     expect(anyPending()).toBe(true);
     // A shorter rewrite replays old records: an old dequeue starts no turn now.
-    writeRecords(live, dequeue);
+    writeRecords(live, dequeue());
     watcher.scan();
-    expect(queued()?.dequeueCount).toBe(1);
+    expect(dequeuedAfterEarlier()).toBe(false);
     expect(anyPending()).toBe(false);
     watcher.finish();
     expect(queued()).toBeUndefined();

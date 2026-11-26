@@ -1,6 +1,6 @@
 /**
- * The Claude hook-bridge message and error handlers that `build.ts` hands to the bridge factory.
- * Implements PRD §5.2, §5.3, §5.4, §6, and §8: normalize each hook, emit its `hook`/`activity`
+ * The Claude hook-bridge message and error handlers that `build.ts` hands to the bridge factory,
+ * for PRD §5.2, §5.3, §5.4, §6, and §8: normalize each hook, emit its `hook`/`activity`
  * events, run the caller's hook with a bounded timeout, and drive readiness/turn state — initial
  * readiness on `InstructionsLoaded` (C-API-28), turn-end on an unblocked `Stop` (C-CLAUDE-15)
  * unless Claude is about to run queued messages as a new turn (C-HOOK-24).
@@ -25,7 +25,8 @@ import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 import { associateClaudePrompt } from "./prompt-activity.ts";
-import { endTurnUnlessQueued } from "./queued-turn.ts";
+import { endUnblockedStop } from "./queued-turn.ts";
+import { SubmitScreening } from "./submit-screening.ts";
 
 /** The live pieces the Claude hook handler drives; `session`/`turnWatcher` are read
  * lazily because both are assigned after the bridge is constructed. */
@@ -49,6 +50,7 @@ export function buildClaudeHookHandler(
   deps: ClaudeHookHandlerDeps,
 ): (input: unknown) => Promise<BridgeProcessResult> {
   const { record, options, emitter, transcriptWatcher, ready } = deps;
+  const screening = new SubmitScreening();
   return async (input: unknown): Promise<BridgeProcessResult> => {
     const event = freezeHookEvent(normalizeClaudeHookEvent(input));
     return await withStopInput(
@@ -107,13 +109,19 @@ export function buildClaudeHookHandler(
   }
 
   async function observeAndRequest(event: ClaudeHookEvent): Promise<BridgeProcessResult> {
-    const capturedGeneration =
+    const submissionGenerationUnchanged =
       event.hook_event_name === "Stop"
         ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
         : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
-    const queuedAt = transcriptWatcher.queuedPrompts()?.nextPosition;
+    const queued = transcriptWatcher.queuedPrompts();
+    const queuedPromptPosition = queued?.nextPosition;
     publish(event, observation);
+    // Claude runs a submitted message only once the caller's handler allows it (C-HOOK-24).
+    const settleSubmit =
+      event.hook_event_name === "UserPromptSubmit"
+        ? screening.begin(queued, queuedPromptPosition, event.prompt)
+        : undefined;
     const outcome = await requestHook(
       {
         hasListeners: (name) => emitter.hasListeners(name),
@@ -127,17 +135,15 @@ export function buildClaudeHookHandler(
       options.hookTimeoutMs ?? 25_000,
       record.elwoodSessionId,
     );
-    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     const blocked = isBlock(outcome.result);
+    settleSubmit?.(blocked);
+    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     // Claude can emit SessionStart before a conversation transcript exists.
     // Persist its native resume ID after an unblocked UserPromptSubmit (C-CLAUDE-08).
     if (event.hook_event_name === "UserPromptSubmit" && !blocked)
       observation.run("lifecycle", () =>
         deps.getSession()?.rememberClaudeSessionId(event.session_id),
       );
-    // Claude never runs a queued message the caller blocked, so it holds no `Stop` (C-HOOK-24).
-    if (event.hook_event_name === "UserPromptSubmit" && blocked)
-      transcriptWatcher.queuedPrompts()?.block(queuedAt, event.prompt);
     observation.run("activity", () =>
       emitter.emit(
         "activity",
@@ -155,21 +161,16 @@ export function buildClaudeHookHandler(
     if (event.hook_event_name === "InstructionsLoaded")
       observation.run("lifecycle", () => ready.mark());
     if (event.hook_event_name === "Stop" && !blocked)
-      endUnblockedStop(observation, capturedGeneration ?? (() => true));
+      endUnblockedStop({
+        transcriptWatcher,
+        observation,
+        screening,
+        submissionGenerationUnchanged: submissionGenerationUnchanged ?? (() => true),
+        getSession: deps.getSession,
+        getTurnWatcher: deps.getTurnWatcher,
+      });
     observation.report();
     return serialized;
-  }
-
-  function endUnblockedStop(observation: HookObservation, unchanged: () => boolean): void {
-    observation.run("transcript", () => transcriptWatcher.scan());
-    // Diagnostic callbacks may submit input; report before comparing physical generations.
-    observation.report();
-    // Guidance may steer the current turn; every physical submission supersedes this Stop.
-    const session = deps.getSession();
-    if (!unchanged()) return;
-    deps.getTurnWatcher().arm();
-    const stop = { transcriptWatcher, observation, submissionGenerationUnchanged: unchanged };
-    if (session) endTurnUnlessQueued({ session, ...stop });
   }
 }
 
