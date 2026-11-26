@@ -3,17 +3,11 @@
  * Implements PRD §5.3 and §9.4.
  */
 
-import {
-  causeDetails,
-  type ElwoodError,
-  elwoodError,
-  errnoCode,
-  toError,
-} from "../../core/errors.ts";
+import { type ElwoodError, elwoodError, errnoCode, toError } from "../../core/errors.ts";
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
-import type { SweepFailure } from "./detached-sweep/failures.ts";
 import type { SessionReaper } from "./reap-tree.ts";
+import { terminationFailure, thrownTerminationFailure } from "./termination-errors.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached" | "signalLeaderPty">;
@@ -49,7 +43,7 @@ export async function terminatePty(
   timeouts: TerminationTimeouts = defaultTimeouts,
 ): Promise<void> {
   let terminationError: ElwoodError | undefined;
-  let sweepError: unknown;
+  let sweepError: Error | undefined;
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
   try {
@@ -71,32 +65,20 @@ export async function terminatePty(
       }
     }
   } catch (error) {
-    terminationError =
-      "processGroupIds" in toError(error) ? sweepOnlyFailed(error) : ptyOperationFailed(error);
+    terminationError = thrownTerminationFailure(error);
   } finally {
     exit?.dispose();
   }
-  if (sweepError !== undefined) {
-    terminationError =
-      terminationError === undefined
-        ? sweepOnlyFailed(sweepError)
-        : withCause(terminationError, "sweepError", sweepError);
-  }
   // Reap on every path — even if the wait timed out or a PTY call threw — so a
   // termination_failed outcome never leaks the descendant tree (C-LIFE-10). The
-  // reaper does NOT latch on failure, so a later teardown can retry. When BOTH
-  // termination and reap fail, neither cause is dropped: the thrown error keeps
-  // the termination message and carries the reap failure in its details. When
-  // ONLY the reap fails (termination succeeded), the raw system error is wrapped
-  // as a typed `termination_failed` so the caller always rejects with an
-  // ElwoodError, never a bare EPERM (PRD §10, C-ERR-01).
-  try {
-    await reapAfterTermination(reaper, observedExit);
-  } catch (reapError) {
-    if (terminationError === undefined) throw reapOnlyFailed(reapError);
-    throw withCause(terminationError, "reapError", reapError);
-  }
-  if (terminationError !== undefined) throw terminationError;
+  // reaper does NOT latch on failure, so a later teardown can retry. No cause is dropped
+  // and no raw system error escapes (PRD §10, C-ERR-01).
+  const reapFailure = await reapAfterTermination(reaper, observedExit).then(
+    () => undefined,
+    (error: unknown) => ({ error }),
+  );
+  const failure = terminationFailure(terminationError, sweepError, reapFailure);
+  if (failure !== undefined) throw failure;
 }
 
 async function reapAfterTermination(
@@ -114,79 +96,4 @@ async function reapAfterTermination(
       await new Promise((resolve) => setTimeout(resolve, POST_EXIT_REAP_RETRY_MS));
     }
   }
-}
-
-type SecondaryErrorKey = "reapError" | "sweepError";
-const secondaryErrnoKey: Readonly<Record<SecondaryErrorKey, string>> = {
-  reapError: "reapErrno",
-  sweepError: "sweepErrno",
-};
-
-/** Preserve primary diagnostics and label secondary cleanup details by phase (C-LIFE-10). */
-function withCause(
-  terminationError: ElwoodError,
-  key: SecondaryErrorKey,
-  secondary: unknown,
-): ElwoodError {
-  const errno = errnoCode(secondary);
-  return elwoodError(terminationError.code, terminationError.message, {
-    ...terminationError.details,
-    [key]: toError(secondary).message,
-    ...(errno === undefined ? {} : { [secondaryErrnoKey[key]]: errno }),
-    ...(key === "sweepError" ? unconfirmedGroupsDetail(toError(secondary)) : {}),
-  });
-}
-
-/**
- * Wraps a throwing PTY operation (`kill` or `onExit`) as the documented typed
- * `termination_failed`, keeping the underlying message and errno/syscall/path in
- * details, so `stop()`/`kill()` never reject with a raw system error whose own
- * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
- */
-function ptyOperationFailed(error: unknown): ElwoodError {
-  return elwoodError(
-    "termination_failed",
-    `Could not terminate the PTY: ${toError(error).message}`,
-    { ...causeDetails(error), ...unconfirmedGroupsDetail(toError(error)) },
-  );
-}
-
-/**
- * Wraps a reap-only failure (PTY termination SUCCEEDED, the group reap FAILED) as
- * a typed `termination_failed` error with a normalized cause (errno/syscall/path
- * when available), so `stop()`/`kill()` reject with an ElwoodError rather than a
- * raw system error (PRD §10, C-ERR-01, C-LIFE-10).
- */
-function reapOnlyFailed(reapError: unknown): ElwoodError {
-  return elwoodError(
-    "termination_failed",
-    "PTY exited but its process group could not be reaped.",
-    {
-      ...causeDetails(reapError),
-    },
-  );
-}
-
-/** The same typed wrapping when only the process-tree sweep failed. */
-function sweepOnlyFailed(sweepError: unknown): ElwoodError {
-  return elwoodError(
-    "termination_failed",
-    "PTY exited but its process-tree groups could not be confirmed reaped.",
-    { ...causeDetails(sweepError), ...unconfirmedGroupsDetail(toError(sweepError)) },
-  );
-}
-
-/**
- * `unconfirmedProcessGroupIds`: the process-group ids a sweep failure names, if any: the
- * groups it could not confirm reaped, the leader's own included when its group was not
- * confirmed stopped. Like `processGroupId` they are diagnostic only; an id may already
- * belong to another group.
- */
-export function unconfirmedGroupsDetail(error: Error): {
-  readonly unconfirmedProcessGroupIds?: number[];
-} {
-  const { processGroupIds } = error as Partial<SweepFailure>;
-  return processGroupIds !== undefined && processGroupIds.length > 0
-    ? { unconfirmedProcessGroupIds: [...processGroupIds] }
-    : {};
 }

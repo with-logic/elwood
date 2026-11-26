@@ -13,6 +13,15 @@ export type SweepFailure = Error & {
   readonly code?: string;
 };
 
+/**
+ * Whether `error` is a sweep failure: it carries an array of process-group ids, which every
+ * sweep failure does, even an empty one. Checked rather than cast, so no other `processGroupIds`
+ * value is read as group ids.
+ */
+export function isSweepFailure(error: Error): error is SweepFailure {
+  return "processGroupIds" in error && Array.isArray(error.processGroupIds);
+}
+
 /** At most this many process-group ids travel with a failure: enough to inspect, bounded. */
 export const MAX_REPORTED_GROUPS = 16;
 
