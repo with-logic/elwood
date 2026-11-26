@@ -2,7 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -17,9 +17,10 @@ test("C-ATTN-02 Claude Stop and the same permission repaint stay blocked until c
     if (event.kind === "attention") attention.push(event.label);
   });
   try {
+    showComposer();
     await session.sendPrompt("busy");
     const before = [...ptys[0]!.writes];
-    ptys[0]!.emitData(permission);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${permission}`);
     await session.terminal.settled();
     expect(session.status).toBe("blocked");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -23,6 +23,7 @@ describe("ClaudeSessionApi hook handling", () => {
     expect(results[0]).toMatchObject({ hookEventName: "UserPromptSubmit", failedOpen: false });
     const statuses: string[] = [];
     const offStatus = session.on("status", (event) => statuses.push(event.status));
+    showComposer();
     await session.sendPrompt("busy");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
@@ -41,6 +42,7 @@ describe("ClaudeSessionApi hook handling", () => {
       cwd,
       hooks: { Stop: () => ({ decision: "block", reason: "tests are still failing" }) },
     });
+    showComposer();
     await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",

@@ -22,6 +22,7 @@ import {
   setStartupWaitMsForTests,
 } from "../../src/runtime/startup/index.ts";
 import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { FAKE_PID } from "../helpers/fake-pid.ts";
 import { createScratchRegistry, FakePty } from "../helpers/fake-pty.ts";
 import { isolateFakeSocketHomes, removeFakeSocketHomes } from "../helpers/fake-socket-homes.ts";
@@ -71,4 +72,13 @@ export function resetFakes(): void {
 /** A fresh scratch directory (removed after the current test). */
 export function tempDir(): string {
   return scratch.make();
+}
+
+/**
+ * Paints Claude's verified idle composer. Before its first readiness a session writes a
+ * prompt or picker command only onto it (C-API-28), so tests that write before readiness
+ * show it first.
+ */
+export function showComposer(pty = ptys[0]!): void {
+  pty.emitData(claudeTty(claudeComposer));
 }

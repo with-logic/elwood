@@ -143,6 +143,9 @@ export function userConfig(dir: string, globalConfig = join(dir, ".claude.json")
       projects: { "/work": {} },
       mcpServers: { s: {} },
       bypassPermissionsModeAccepted: true,
+      fullscreenBootPending: { "1": { version: "2.1.332" } },
+      fullscreenBootStrikes: { count: 1, version: "2.1.332" },
+      fullscreenAutoDisabled: { version: "2.1.332" },
       theme: "dark",
     }),
   );

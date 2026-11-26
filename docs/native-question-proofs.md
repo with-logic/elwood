@@ -1,7 +1,8 @@
 # Native question proofs
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
-real authenticated CLI processes. Each entrypoint uses two valid-model turns.
+real authenticated CLI processes. The Claude entrypoint uses five valid-model
+turns in two isolated sessions and the Codex entrypoint uses two.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -10,17 +11,39 @@ Run them separately after `npm run check`; they consume model quota.
 ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/claude-questions.e2e.ts
 ```
 
-The proof pins Claude Code 2.1.305 and uses `haiku`. It prefers that exact binary
+The proof pins Claude Code 2.1.332 and uses `haiku`. It prefers that exact binary
 in `~/.local/share/claude/versions/`, falling back to the installed binary only
 when its version matches. It copies credentials into a private temporary home
 and writes a minimal temporary configuration. Parent configuration is checked
 for changes; it is not copied into the proof's home. The parent CLI installation
 remains unchanged.
 
-The first turn submits grouped single and multiple choices. The second submits
-multiline alternative text. Both compare the native `AskUserQuestion`
-PostToolUse answers, require an answered closure and an empty pending list,
-and keep the original `send()` waiting for the final assistant reply.
+The first turn submits grouped multiple and single choices, opening on the
+multiple choice. The second submits multiline alternative text. The third
+submits two long alternative texts in one questionnaire and confirms them on
+Claude's review. The summary's first line wraps at spaces and carries a tab,
+then a CRLF and a second line; Elwood pastes the CRLF as LF, and Claude must
+report LF. Its five rows shrink the link question's panel so that its footer
+lands on the notice row. The link has no spaces, so the editor and the review
+break it inside. The fourth submits a standalone multiple choice. Before each
+prompt the proof presses Alt+T at the native terminal and repeats it every
+second until the `AskUserQuestion` `PreToolUse` hook, so Claude's transient
+notice leaves blank cells on the questionnaire's last row: the checkbox action
+row for the first and fourth, `Type something.` for the second and third. The
+proof fails if the notice is gone at that hook or the blank cells are absent,
+or if no footer is drawn on the notice row with them. All turns compare
+the native `AskUserQuestion` PostToolUse answers, require an answered closure
+and an empty pending list, and keep the original `send()` waiting for the final
+assistant reply.
+
+A second isolated session is launched with `--name "Question Asker"`, as
+embedders that name every agent do, and submits the standalone multiple choice
+after the same notice. Before Elwood answers Apple and Cherry, the proof checks
+Cherry at the native terminal, as a person might, and the completion must still
+report `Apple, Cherry`. A named session's questionnaire closing rule replaces the
+notice row, so this session requires the notice at the hook, no blank cells and
+the session label under the questionnaire footer. The two sessions run one after
+the other, even when the first times out.
 
 Question events and normalized activities must correspond exactly and contain
 no submitted answer marker. The proof recursively checks Elwood-owned state

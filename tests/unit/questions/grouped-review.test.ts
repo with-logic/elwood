@@ -10,7 +10,7 @@ const questions = ["Shape", "Styles", "Size", "Color"].map((header) => ({
   prompt: `Which test ${header.toLowerCase()}?`,
 }));
 const summary =
-  "● Which test shape? → Third ● Which test styles? → First, Second, Fourth ● Which test size? → Third ● Which test color? → First";
+  "● Which test shape?\n→ Third\n● Which test styles?\n→ First, Second, Fourth\n● Which test size?\n→ Third\n● Which test color?\n→ First";
 
 test("C-QUESTION-03 reads every answer above Submit in a named Claude 2.1.329 session", () => {
   expect(parseClaudeQuestionScreen(captured, questions)).toEqual({

@@ -33,7 +33,7 @@ export abstract class SessionLifecycle {
   readonly stopCompletion = new StopCompletion(this);
   readonly promptSubmissions: PromptSubmissions | undefined;
   protected everReady = false;
-  private initialReadinessHeld: (() => boolean) | undefined;
+  private initialReadinessHold: import("./readiness.ts").InitialReadinessHold | undefined;
   inputBlocking = false;
   trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
@@ -145,17 +145,17 @@ export abstract class SessionLifecycle {
     const held =
       this.inputBlocking ||
       this.trustInputBlocking ||
-      (!this.everReady && this.initialReadinessHeld?.() === true);
+      (!this.everReady && this.initialReadinessHold?.holdsWrites() === true);
     return this.closing.signal.aborted || held || this.status === "blocked";
   }
-  bindInitialReadinessHold(isHeld: () => boolean): void {
-    this.initialReadinessHeld = isHeld;
+  bindInitialReadinessHold(hold: import("./readiness.ts").InitialReadinessHold): void {
+    this.initialReadinessHold = hold;
   }
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
       this.trustInputBlocking ||
       this.closing.signal.aborted ||
-      (!this.everReady && this.initialReadinessHeld?.() === true);
+      (!this.everReady && this.initialReadinessHold?.holdsReadiness() === true);
     return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
   }
   submitExit(): StatusDecision {

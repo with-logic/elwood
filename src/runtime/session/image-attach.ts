@@ -5,8 +5,9 @@
  * call cannot change what is attached — the clone does not wait for queue dispatch.
  * The submission is then enqueued synchronously in call order (preserving FIFO).
  * Inside the queued task, at dispatch, the async pass (path readability/size) runs,
- * then byte materialization and the adapter attach — so a bad input rejects the op
- * (never wedging the queue) and pending submissions accumulate no temp-disk usage.
+ * then, once the session could take the attach's input, byte materialization and the
+ * adapter attach — so a bad input rejects the op (never wedging the queue) and neither
+ * pending nor held submissions accumulate temp-disk usage.
  * Implements PRD §5.3 (C-API-44).
  */
 
@@ -35,6 +36,9 @@ export type AttachDriver = (paths: readonly string[], signal: AbortSignal) => Pr
 /** Queues a submission through the control queue, optionally with an attach task. */
 type QueueSend = (attach?: AttachTask) => Promise<void>;
 
+/** Resolves once the session could take an attach's input, such as after a startup hold. */
+export type AttachWritable = (signal: AbortSignal) => Promise<void>;
+
 /**
  * Queues a text submission, optionally attaching `images`. With no images it is a
  * plain `send()`; the queue call happens synchronously so a later plain submission
@@ -49,6 +53,7 @@ export function enqueueSubmission(
   driver: AttachDriver,
   send: QueueSend,
   budget?: QueuedImageBudget,
+  writable?: AttachWritable,
 ): Promise<void> {
   // Fast-path ONLY a truly absent list. Any supplied value — including a non-array
   // like `""` or a zero-length array-like `{ length: 0 }` from an untyped caller —
@@ -72,13 +77,14 @@ export function enqueueSubmission(
   }
   // Release on EVERY settle path (attach done, reject, or the op never dispatching), so
   // the clone memory is always accounted back even when a session closes mid-queue.
-  const done = send((signal) => runAttach(snapshot, driver, signal));
+  const done = send((signal) => runAttach(snapshot, driver, signal, writable));
   done.finally(() => reservation?.release(bytes)).catch(() => undefined);
   return done;
 }
 
 /**
- * Validate paths (async) → materialize → drive the adapter attach → clean up temp files.
+ * Validate paths (async) → wait until writable → materialize → drive the adapter attach →
+ * clean up temp files. A held attach keeps its bytes in the budgeted memory copy, not on disk.
  * Materialization watches the attach's abort signal, so an abort, as when the session
  * closes, removes the temp files at once, before `stop`, `kill`, or `teardown` resolves
  * (best-effort: the cleanup here retries a removal that failed then; §5.3, §8.4).
@@ -87,8 +93,10 @@ async function runAttach(
   snapshot: ImageSnapshot,
   driver: AttachDriver,
   signal: AbortSignal,
+  writable: AttachWritable | undefined,
 ): Promise<void> {
   const validated = await validateImagePaths(snapshot);
+  await writable?.(signal);
   const materialized = await materializeImages(validated, signal);
   try {
     await driver(materialized.paths, signal);

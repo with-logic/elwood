@@ -37,6 +37,15 @@ export function nativeHook(name = "PreToolUse", extra: Readonly<Record<string, u
     },
   } as const satisfies ElwoodActivityEvent;
 }
+/** What a completion reports, keyed by question prompt. */
+export type ReportedAnswers = NonNullable<AskUserQuestionInput["answers"]>;
+/** A completion reporting these answers in its `tool_input`, as Claude's PostToolUse does. */
+export function answeredHook(
+  answers: ReportedAnswers,
+  toolInput: AskUserQuestionInput = { questions: nativeQuestions },
+) {
+  return nativeHook("PostToolUse", { tool_input: { ...toolInput, answers } });
+}
 export function composer() {
   return {
     ...frame("Claude Code v2.1.305\n────\n❯ \n────\n⏸ manual mode on · ? for shortcuts"),

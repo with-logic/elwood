@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -17,6 +17,7 @@ describe("CodexSessionApi hook dispatch edges", () => {
       cwd,
       hooks: { Stop: () => ({ continue: false, stopReason: "Verify output first." }) },
     });
+    showComposer();
     await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(JSON.parse(result.stdout)).toMatchObject({

@@ -77,7 +77,8 @@ for (const agent of ["claude", "codex"] as const) {
         await expect.poll(() => session.status).toBe("ready");
       }
       vi.useFakeTimers();
-      if (state.endsWith("empty")) {
+      // Before readiness a prompt is written only onto the configured composer (C-API-28).
+      if (state.endsWith("empty") || state === "pre-ready-working") {
         paint(idle);
         await vi.advanceTimersByTimeAsync(50);
       }

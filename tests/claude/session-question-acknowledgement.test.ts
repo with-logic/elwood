@@ -68,9 +68,13 @@ test("C-QUESTION-03 unrelated and prior ID-less completions cannot settle public
     await hook("PostToolUse", { tool_response: {} });
     expect(await session.listQuestions()).toEqual([request]);
     expect(settled).toBe(false);
+    // Claude reports the recorded answers in both tool_input and tool_response.
+    const answers = {
+      [replacement.question]: "Brief (short)",
+    } satisfies AskUserQuestionInput["answers"];
     await hook("PostToolUse", {
-      tool_input: { questions: [replacement] },
-      tool_response: { answers: { [replacement.question]: "Brief (short)" } },
+      tool_input: { questions: [replacement], answers },
+      tool_response: { answers },
     });
     expect(await answering).toBe("accepted");
     expect(session.terminal.snapshot().text).toContain("Historical output");

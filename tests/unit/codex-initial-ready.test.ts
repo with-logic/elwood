@@ -66,13 +66,18 @@ describe("initialReady", () => {
     blocking_prompt_visible,
   });
 
-  test("C-API-28 on RESUME the first visible composer marks readiness", () => {
+  // The adapter's configured-composer verdict for the frame (C-API-28).
+  const configured = () => true;
+  const unconfigured = () => false;
+
+  test("C-API-28 on RESUME the first configured composer marks readiness", () => {
     let calls = 0;
     const ready = initialReady(() => calls++);
-    markReadyOnResumeComposer(ready, true, facts(false)); // composer not up yet: no-op
+    markReadyOnResumeComposer(ready, true, facts(false), configured); // composer not up yet: no-op
+    markReadyOnResumeComposer(ready, true, facts(true), unconfigured); // marker alone: no-op
     expect(calls).toBe(0);
-    markReadyOnResumeComposer(ready, true, facts(true)); // composer visible on resume: ready
-    markReadyOnResumeComposer(ready, true, facts(true)); // idempotent
+    markReadyOnResumeComposer(ready, true, facts(true), configured); // configured composer: ready
+    markReadyOnResumeComposer(ready, true, facts(true), configured); // idempotent
     expect(calls).toBe(1);
   });
 
@@ -81,14 +86,14 @@ describe("initialReady", () => {
     const ready = initialReady(() => calls++);
     // The dialog option caret is byte-identical to the composer marker, so composer AND
     // blocking are both visible: readiness must wait, or a queued Enter could approve it.
-    markReadyOnResumeComposer(ready, true, facts(true, true));
+    markReadyOnResumeComposer(ready, true, facts(true, true), configured);
     expect(calls).toBe(0);
   });
 
   test("C-API-28 on a COLD start the composer never marks readiness (would be swallowed)", () => {
     let calls = 0;
     const ready = initialReady(() => calls++);
-    markReadyOnResumeComposer(ready, false, facts(true)); // not resumed: composer is unsafe
+    markReadyOnResumeComposer(ready, false, facts(true), configured); // not resumed: composer is unsafe
     expect(calls).toBe(0);
   });
 
@@ -97,7 +102,7 @@ describe("initialReady", () => {
     let calls = 0;
     const ready = initialReady(() => calls++, 100);
     ready.armDeadline();
-    markReadyOnResumeComposer(ready, true, facts(true));
+    markReadyOnResumeComposer(ready, true, facts(true), configured);
     vi.advanceTimersByTime(150);
     expect(calls).toBe(1); // fired once on the composer; the later deadline is a no-op
   });

@@ -14,9 +14,11 @@
  *   (`claude-login.ts`). It lasts as long
  *   as the access token, so each process copies it afresh.
  * - `.claude.json`: the user's global config without `projects` (one entry per directory
- *   Claude ever ran in), `mcpServers`, or `bypassPermissionsModeAccepted`, so first-run
- *   screens and notices the user has already dismissed stay dismissed, no user MCP server
- *   starts, and the bypass-permissions dialog always renders for the e2e to answer.
+ *   Claude ever ran in), `mcpServers`, `bypassPermissionsModeAccepted`, or Claude's
+ *   fullscreen crash tracking (`claude-global-config.ts`), so first-run screens and notices
+ *   the user has already dismissed stay dismissed, no user MCP server starts, the
+ *   bypass-permissions dialog always renders for the e2e to answer, and a user session that
+ *   died early does not change the renderer the suite's Claude starts with.
  * - `cache/model-catalog/`: the served model catalog, so the model picker lists it without
  *   racing its first fetch (`claude-compiled-fallback.ts`).
  */
@@ -24,8 +26,8 @@
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { isRecord } from "../../src/core/predicates.ts";
 import { privateTempDir, removeAtExit } from "../helpers/private-temp.ts";
+import { parseGlobalConfig, privateGlobalConfig } from "./claude-global-config.ts";
 import {
   accessOnlyLogin,
   keychainLogin,
@@ -84,25 +86,12 @@ function userCredentials(): string | undefined {
   return existsSync(file) ? readFileSync(file, "utf8") : undefined;
 }
 
-/** The user's global config without its per-project entries, MCP servers, or bypass acceptance. */
+/** The user's global config, as `privateGlobalConfig` trims it. */
 function seededGlobalConfig(): string {
-  if (!existsSync(userGlobalConfig)) return JSON.stringify({ hasCompletedOnboarding: true });
+  if (!existsSync(userGlobalConfig)) return privateGlobalConfig({});
   // A read failure throws as itself; only a parse failure is the file not being JSON.
   const text = readFileSync(userGlobalConfig, "utf8");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`${userGlobalConfig} is not JSON`);
-  }
-  if (!isRecord(parsed)) throw new Error(`${userGlobalConfig} does not hold a JSON object`);
-  const {
-    projects: _projects,
-    mcpServers: _mcp,
-    bypassPermissionsModeAccepted: _accepted,
-    ...rest
-  } = parsed;
-  return JSON.stringify({ ...rest, hasCompletedOnboarding: true });
+  return privateGlobalConfig(parseGlobalConfig(text, userGlobalConfig));
 }
 
 /**
