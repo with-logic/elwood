@@ -43,16 +43,26 @@ test("a blank row ends bounded quotation before a partially painted panel", () =
 // Captured while Codex had not yet submitted the literal answer: the hidden cursor is parked
 // after the working row's glyph, and the pending-message block sits between it and the panel.
 const pending = nativeFrame("remaining-color-pending-literal.json", "0.172.0");
-const panelRow = pending.lines.lastIndexOf("• Queued follow-up inputs");
-const between = pending.lines.slice(pending.cursorRow + 1, panelRow).map((row) => row.trimEnd());
+// The same moment in an 80-column pane, where Codex wraps the header onto a second row.
+const wrapped = nativeFrame("remaining-color-pending-literal-80.json", "0.172.0");
+/** The rows between the parked cursor's working row and the queued panel. */
+const betweenRows = (frame: typeof pending) =>
+  frame.lines
+    .slice(frame.cursorRow + 1, frame.lines.lastIndexOf("• Queued follow-up inputs"))
+    .map((row) => row.trimEnd());
+const between = betweenRows(pending);
 const [header, item] = between.filter((row) => row !== "");
-// The same header as Codex 0.163.0 wrapped it in a 60-column pane
+// The header as Codex 0.163.0 wrapped it at another point in a 60-column pane
 // (`codex-0.163.0/questions/editor/queued-long-typed-narrow.json`).
 const narrow = nativeFrame("editor/queued-long-typed-narrow.json").lines.slice(3, 6);
 
-test("a hidden cursor above Codex's pending answers keeps the remaining choice", () => {
-  expect(between.filter((row) => row !== "")).toHaveLength(3);
-  expect(questionView(pending)).toMatchObject({ kind: "queued", count: 1, index: 0, selected: 0 });
+test.each([
+  [140, pending, 3],
+  [80, wrapped, 4],
+])("a hidden cursor above Codex's pending answers keeps the remaining choice at %i columns", (cols, frame, rows) => {
+  expect(frame.cols).toBe(cols);
+  expect(betweenRows(frame).filter((row) => row !== "")).toHaveLength(rows);
+  expect(questionView(frame)).toMatchObject({ kind: "queued", count: 1, index: 0, selected: 0 });
 });
 
 test.each([
