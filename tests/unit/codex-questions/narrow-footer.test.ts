@@ -12,13 +12,18 @@ const queuedFirst = at("queued-footer-wrapped-60-first.json");
 const queuedSecond = at("queued-footer-wrapped-50-second.json");
 // The last queued editor at 60 columns, whose shorter footer fits on one row.
 const queuedLast = at("queued-footer-60-third.json");
-// The first of three modal questions: its footer splits after the second hint at 60 columns,
-// and takes a row per hint at 40.
-const modal = [60, 40].map((cols) => [cols, at(`modal-footer-wrapped-${cols}.json`)] as const);
+// The first of three modal questions: its footer puts its last hint on a row of its own at 80
+// columns, splits after the second hint at 60, and takes a row per hint at 40.
+const modalFrames = [80, 60, 40].map(
+  (cols) => [cols, at(`modal-footer-wrapped-${cols}.json`)] as const,
+);
+const [, modal80] = modalFrames[0]!;
 
-/** The frame with its two footer rows replaced by `footer`. */
+/** The frame with its two footer rows, below a blank row, replaced by `footer`. */
 function withFooter(frame: QuestionFrame, footer: readonly string[]): QuestionFrame {
   const end = frame.lines.findLastIndex((line) => line.trim() !== "");
+  if (frame.lines[end - 1]!.trim() === "" || frame.lines[end - 2]!.trim() !== "")
+    throw new Error("withFooter needs a frame whose footer has two rows");
   const lines = [...frame.lines.slice(0, end - 1), ...footer, ...frame.lines.slice(end + 1)];
   return { ...frame, lines, text: lines.join("\n") };
 }
@@ -53,7 +58,7 @@ test.each([
 });
 
 test.each(
-  modal,
+  modalFrames,
 )("C-QUESTION-04 C-ATTN-02 a modal question keeps its wrapped footer at %i columns", (_, frame) => {
   const view = questionView(frame);
   expect(view).toMatchObject({ kind: "blocking", count: 3, index: 0, selected: 0, notes: false });
@@ -64,8 +69,7 @@ test.each(
 });
 
 test("C-QUESTION-04 C-ATTN-02 a modal notes editor keeps its wrapped footer", () => {
-  const [, frame] = modal[0]!;
-  const notes = withFooter(frame, ["  tab or esc to clear notes", "  enter to submit answer"]);
+  const notes = withFooter(modal80, ["  tab or esc to clear notes", "  enter to submit answer"]);
   expect(questionView(notes)).toMatchObject({ kind: "blocking", count: 3, notes: true });
   expect(blockingQuestionVisible(notes.text)).toBe(true);
 });
@@ -82,6 +86,14 @@ test.each([
   ["a missing queued hint", ["  enter submit   ⇧→ main prompt", "  ⇧← next question"]],
   ["an unknown queued hint", ["  enter submit   ⌃] skip   ⇧→ main prompt", "  ⇧← next page"]],
   ["queued hints run together", ["  enter submit ⌃] skip   ⇧→ main prompt", "  ⇧← next question"]],
+])("C-QUESTION-04 C-ATTN-02 a wrapped queued footer refuses %s", (_, footer) => {
+  const frame = withFooter(queuedFirst, footer);
+  expect(questionView(frame)).toBeUndefined();
+  expect(blockingQuestionVisible(frame.text)).toBe(false);
+});
+
+// Under the modal question header, so only the footer grammar can refuse these.
+test.each([
   [
     "modal hints out of order",
     [
@@ -90,19 +102,25 @@ test.each([
     ],
   ],
   [
+    "a modal hint split across rows",
+    [
+      "  tab to add notes | enter to submit",
+      "  answer | ←/→ to navigate questions | esc to interrupt",
+    ],
+  ],
+  [
     "queued and modal hints mixed",
     ["  tab to add notes | enter to submit answer", "  ⇧← next question"],
   ],
-])("C-QUESTION-04 C-ATTN-02 a wrapped footer refuses %s", (_, footer) => {
-  const frame = withFooter(queuedFirst, footer);
+])("C-QUESTION-04 C-ATTN-02 a wrapped modal footer refuses %s", (_, footer) => {
+  const frame = withFooter(modal80, footer);
   expect(questionView(frame)).toBeUndefined();
   expect(blockingQuestionVisible(frame.text)).toBe(false);
 });
 
 test("C-QUESTION-04 C-ATTN-02 a wrapped modal footer still needs its question header", () => {
-  const [, frame] = modal[0]!;
-  const lines = frame.lines.map((line) => line.replace("Question 1/3", "Questions 1/3"));
-  const headless = { ...frame, lines, text: lines.join("\n") };
+  const lines = modal80.lines.map((line) => line.replace("Question 1/3", "Questions 1/3"));
+  const headless = { ...modal80, lines, text: lines.join("\n") };
   expect(questionView(headless)).toBeUndefined();
   expect(blockingQuestionVisible(headless.text)).toBe(false);
 });

@@ -2,8 +2,7 @@
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
 real authenticated CLI processes. The Claude entrypoint uses eight valid-model
-turns in three isolated sessions. Each Codex entrypoint uses two, except the
-narrow-pane proof, which uses one.
+turns in three isolated sessions. Each Codex entrypoint uses two.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -99,16 +98,23 @@ unavailable, and the prompt to be followed by the `? ` question cells Codex
 0.172 draws. The session must then settle at `ready`, and its composer must take
 a second prompt.
 
-## Codex: queued questions in a narrow pane (C-QUESTION-04)
+## Codex: questions in a narrow pane (C-QUESTION-04)
 
 ```sh
 ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-narrow.e2e.ts
 ```
 
-On the same pinned Codex and model, a 50-column session asks the three queued
-questions of C-E2E-19 in one asynchronous call. At that width Codex 0.172 wraps
-the footer of every question but the last onto a second row. The proof answers
-the note first, while it is question 2 of 3, then the color, while it is 1 of 2,
-both under a wrapped footer, and then the literal. It requires the session to
-have been `blocked`, the three requests to close as answered and `send()` to
-return the final reply.
+On the same pinned Codex and model, two isolated sessions each take one turn
+in a pane too narrow for the question footer, which Codex 0.172 wraps onto a
+second row.
+
+- A 50-column session asks the three queued questions of C-E2E-19 in one
+  asynchronous call. The proof answers the color while it is question 1 of 3.
+  Codex then shows the note as 1 of 2 under a wrapped footer, and the session
+  must be `blocked` with the note and the literal still listed. The proof
+  answers both, and requires the three requests to close as answered in that
+  order and `send()` to return the final reply.
+- An 80-column session in Plan mode asks the three modal questions of C-E2E-19.
+  The footer's last hint is on a row of its own, and the session must be
+  `blocked`. The proof answers the first option of each question, and requires
+  the request to close as answered and `send()` to return the final reply.

@@ -5,7 +5,8 @@ import { displayColumns } from "../screen/display-columns.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
-  type ModalQuestionFooter,
+  type ModalQuestionFooterKind,
+  modalFooterLayouts,
   questionFooter,
   queuedPanelHeader,
 } from "./chrome.ts";
@@ -71,11 +72,12 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   let count: number;
   let index: number;
   let kind: QuestionView["kind"];
+  let notes = false;
   if (footer.kind === "queued") {
     start = lines.lastIndexOf(queuedPanelHeader);
     if (start < 0) return undefined;
     const position = lines
-      .slice(start + 1, footer.start)
+      .slice(start + 1, footer.firstRow)
       .map((line) => line.trim())
       .find((line) => /^\d+ of \d+$/.test(line));
     const match = position?.match(/^(\d+) of (\d+)$/);
@@ -85,11 +87,11 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   } else {
     const modal = modalQuestionPosition(lines, footer.kind);
     if (!modal) return undefined;
-    ({ start, count, index } = modal);
+    ({ start, count, index, notes } = modal);
     kind = "blocking";
   }
   if (!questionCursor(frame, lines, start, kind) || index < 0 || index >= count) return undefined;
-  const rawBody = frame.lines.slice(start + 1, footer.start);
+  const rawBody = frame.lines.slice(start + 1, footer.firstRow);
   const body = rawBody.map((line) => line.trim());
   return {
     kind,
@@ -98,7 +100,7 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     body,
     rawBody,
     selected: nativeSelection(rawBody, kind === "queued" && count > 1),
-    notes: footer.kind === "notes",
+    notes,
     cursor: {
       row: frame.cursorRow - start - 1,
       visible: frame.cursorVisible,
@@ -107,14 +109,14 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     },
   };
 }
-function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooter) {
+function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooterKind) {
+  const { requireSingleQuestion, notes } = modalFooterLayouts[footer];
   const start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
   const match = nativeQuestionHeader.exec(lines[start] ?? "");
   if (!match) return undefined;
   const count = Number(match[2]);
-  // Codex leaves out the navigation hint only for a single question.
-  if (footer === "withoutNavigation" && count !== 1) return undefined;
-  return { start, count, index: Number(match[1]) - 1 };
+  if (requireSingleQuestion && count !== 1) return undefined;
+  return { start, count, index: Number(match[1]) - 1, notes };
 }
 /** Native choice lists hide the cursor; a working redraw leaves it above the panel, after the
  * last working-row cell Codex changed: the pulsing glyph, an elapsed-time digit or the row's end. */
