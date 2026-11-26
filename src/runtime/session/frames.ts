@@ -13,7 +13,7 @@ import {
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { createFrameObserverFailureReporter } from "../../core/warnings/frames.ts";
-import type { SessionWarningEmitter } from "../../core/warnings/session.ts";
+import type { SessionWarningSink } from "../../core/warnings/session.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
@@ -34,10 +34,11 @@ type StartupAutomationState = {
 
 /**
  * Timers and PTY frames use the same guards, facts, and attention edge owner. A frame whose
- * notifications failed is reported to `observers.warnings` (C-API-72).
+ * notifications failed is reported to `observers.warnings`, the session's startup warning
+ * gate (C-API-14, C-API-72).
  */
 export function createSessionFrameObserver(
-  observers: RenderedObservers & { readonly warnings: SessionWarningEmitter },
+  observers: RenderedObservers & { readonly warnings: SessionWarningSink },
   session: () => FrameSession | undefined,
   trust: () => StartupAutomationState,
   readiness: ReadinessGate,

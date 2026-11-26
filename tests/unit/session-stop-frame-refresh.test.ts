@@ -41,7 +41,7 @@ for (const agent of ["claude", "codex"] as const) {
       agent,
       elwoodSessionId: "test",
       emitActivity() {},
-      warnings: { emit() {} },
+      warnings: { emitWarnings() {} },
     };
     observers.turn.arm();
     const session = bindTurnSubmission(

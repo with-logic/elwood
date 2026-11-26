@@ -2,6 +2,7 @@
 import { setImmediate } from "node:timers/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import * as startupFrame from "../../src/core/startup/frame.ts";
+import type { SessionWarningSink } from "../../src/core/warnings/session.ts";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import * as terminal from "../../src/terminal/headless.ts";
@@ -98,7 +99,7 @@ test("C-CLAUDE-22 disposal drops a write-failure warning buffered before start r
 
 test("C-CLAUDE-22 reentrant stop suppresses later non-trust decline failures but preserves trust diagnostics", async () => {
   installFakes();
-  let deliver: startupFrame.FrameWarningSink["emitWarnings"] = () => {};
+  let deliver: SessionWarningSink["emitWarnings"] = () => {};
   const createGate = startupFrame.createStartupWarningGate;
   vi.spyOn(startupFrame, "createStartupWarningGate").mockImplementation((sink) => {
     deliver = sink.emitWarnings;
