@@ -2191,7 +2191,10 @@ settled frame no longer shows the menu; only then does it report
 and reports nothing, so a CLI that changes the guard or the menu leaves the
 session `blocked` on the offer, as it was before Elwood declined it. A session that
 stays `blocked` on `claude-auto-mode-offer` with no `startup_prompt` activity is
-the sign: either a human owns the offer, or Claude no longer honours the Esc.
+the sign. Either a human owns the offer, Claude no longer honours the Esc, or
+Elwood failed three times to verify a settled frame. Withheld writes and
+unreadable frames report nothing; only a rejected write among the failures
+reports a `startup_prompt_write_failed` warning.
 It never touches the setup step that `Yes` opens, and it leaves the offer alone
 once raw input has reached it.
 `tests/e2e/auto-mode-decline-claude.e2e.ts` covers this with a message held

@@ -81,7 +81,7 @@ test("C-ATTN-10 a message queued during a turn is not taken by an offer Elwood h
     await sending;
     await delay(settleMs);
     assert.equal(submissions(), 1, "the queued message is submitted exactly once");
-    assert.equal(actions.offerAnswered, false, "the offer's Yes was never chosen");
+    assert.equal(actions.yesChosen, false, "the offer's Yes was never chosen");
     assert.equal(actions.setupOpened, false, "no setup step opened");
     assert.equal(
       typeof offerSetupState()?.["dismissedAt"],

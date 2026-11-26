@@ -3,7 +3,7 @@
  * Covers C-CLAUDE-10, C-CLAUDE-11, and C-CLAUDE-16.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   browserToolsPromptVisible,
   ClaudeStartupPromptResponder,
@@ -11,6 +11,7 @@ import {
 import type { SettledStartupOutcome } from "../../src/core/startup/write.ts";
 import { claudeTrust } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { fakeOfferSpacing } from "../helpers/offer-spacing.ts";
 
 // Captured from a real claude session that wedged an embedded start.
 const browserPrompt = [
@@ -162,5 +163,31 @@ test("C-CLAUDE-27 a settled reader without the guarded writer starts no auto-mod
       () => offer,
     ),
   ).toEqual([]);
+  responder.dispose();
+});
+
+test("C-CLAUDE-27 the auto-mode offer is declined without autotrust", async () => {
+  const spacingMs = fakeOfferSpacing();
+  let screen = capturedFrame("claude-2.1.332/auto-mode-offer");
+  const writes: string[] = [];
+  const responder = new ClaudeStartupPromptResponder(false);
+  const declining = (input: string) => {
+    writes.push(input);
+    screen = "❯ \n";
+    return Promise.resolve("written" as const);
+  };
+  const settled = responder.handle(
+    screen,
+    () => undefined,
+    () => screen,
+    declining,
+    () => screen,
+  );
+  expect(outcomesOf(settled)).toEqual([
+    { kind: "attempted", prompt: "auto_mode_setup", input: "esc" },
+  ]);
+  await vi.advanceTimersByTimeAsync(spacingMs * 2);
+  expect(await settled[0]?.settled).toBe("answered");
+  expect(writes).toEqual([esc]);
   responder.dispose();
 });

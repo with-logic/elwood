@@ -106,22 +106,22 @@ export async function offerShown(session: ClaudeSessionApi, timeoutMs = 15_000):
 export function offerActions() {
   let answered = outputMatcher(/Yes✔/);
   let setupStep = outputMatcher(/Spacetotoggle/);
-  let offerAnswered = false;
+  let yesChosen = false;
   let setupOpened = false;
   return {
     observe(data: string): void {
-      offerAnswered ||= answered(data);
+      yesChosen ||= answered(data);
       setupOpened ||= setupStep(data);
     },
     /** Forget earlier output, for a file that starts several sessions. */
     reset(): void {
       answered = outputMatcher(/Yes✔/);
       setupStep = outputMatcher(/Spacetotoggle/);
-      offerAnswered = false;
+      yesChosen = false;
       setupOpened = false;
     },
-    get offerAnswered(): boolean {
-      return offerAnswered;
+    get yesChosen(): boolean {
+      return yesChosen;
     },
     get setupOpened(): boolean {
       return setupOpened;

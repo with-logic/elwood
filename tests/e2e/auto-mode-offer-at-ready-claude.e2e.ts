@@ -100,7 +100,7 @@ for (const run of runs) {
       await sending;
       await delay(settleMs);
       assert.equal(submissions(), 1, "the message is submitted exactly once");
-      assert.equal(actions.offerAnswered, false, "the offer's Yes was never chosen");
+      assert.equal(actions.yesChosen, false, "the offer's Yes was never chosen");
       assert.equal(actions.setupOpened, false, "no setup step opened");
       assert.equal(
         typeof offerSetupState()?.["dismissedAt"],

@@ -70,7 +70,9 @@ test("C-CLAUDE-27 an offer that outlasts every attempt is left on screen, unclai
 test("C-CLAUDE-27 raw caller input on the offer hands it to the human", async () => {
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
   const { keys, write, read } = screen(1);
-  decliner.callerInput(); // No offer yet: nothing to hand over.
+  decliner.callerInput();
+  // Input before a frame without the menu went to that screen: nothing to hand over.
+  decliner.handle(idle, write, () => idle);
   const settled = decliner.handle(read(), write, read)?.settled;
   decliner.callerInput();
   expect(await settled).toBe("cancelled");
@@ -147,4 +149,26 @@ test("C-CLAUDE-27 session close cancels a decline in flight", async () => {
   expect(await settled).toBe("cancelled");
   expect(decliner.handle(idle, write, read)).toBeUndefined();
   expect(decliner.handle(offer, write, read)).toBeUndefined();
+});
+
+test("C-CLAUDE-27 raw input after the last frame without the menu hands the next appearance to the human", async () => {
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
+  const { keys, write, read } = screen(1);
+  decliner.handle(idle, write, () => idle);
+  // Claude already shows the menu when the key arrives; Elwood's first frame of it follows.
+  decliner.callerInput();
+  expect(await decliner.handle(offer, write, read)?.settled).toBe("cancelled");
+  expect(keys).toEqual([]);
+});
+
+test("C-CLAUDE-27 the next turn's frames re-arm the decliner after a dismissal", async () => {
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
+  const { write, read, set } = screen(1);
+  expect(await decliner.handle(read(), write, read)?.settled).toBe("answered");
+  // Claude mounts the offer only when a turn ends, and every turn first paints frames
+  // without it, so a later offer, after the snooze too, always finds the decliner armed.
+  const turn = "❯ Reply with exactly OK.\n\n✻ Working…\n";
+  decliner.handle(turn, write, () => turn);
+  set(offer);
+  expect(await decliner.handle(offer, write, read)?.settled).toBe("answered");
 });

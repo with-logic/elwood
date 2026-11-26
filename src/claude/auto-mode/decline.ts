@@ -44,6 +44,10 @@ export class ClaudeAutoModeOfferDecliner {
    * the offer arms the next one.
    */
   private appearance: "none" | "declining" | "spent" = "none";
+  /**
+   * Raw caller input arrived since the last frame without the menu outside an appearance, so
+   * it may have reached the offer: Claude can show the menu before Elwood sees it.
+   */
   private humanOwned = false;
   /** Escapes this appearance has written. A withheld one never reached the PTY. */
   private escapes = 0;
@@ -60,9 +64,10 @@ export class ClaudeAutoModeOfferDecliner {
   }
 
   /**
-   * Raw caller input reached the session, so it may have reached the offer: the current
-   * appearance is the human's. Only the next appearance clears that. A dismissal a settled
-   * frame already showed still wins (`check`), since that input went to what replaced the offer.
+   * Raw caller input reached the session, so it may have reached the offer: the current or
+   * coming appearance is the human's. Only a frame without the menu, outside an appearance,
+   * clears that. A dismissal a settled frame already showed still wins (`check`), since that
+   * input went to what replaced the offer.
    */
   callerInput(): void {
     this.humanOwned = true;
@@ -80,11 +85,12 @@ export class ClaudeAutoModeOfferDecliner {
       // stays up, so only a settled frame without any of the offer ends an appearance.
       const settled = this.appearance === "spent" ? readSettled() : undefined;
       if (settled !== undefined && !isClaudeAutoModeOffer(settled)) this.appearance = "none";
+      // Input before a frame without the menu went to what that frame shows.
+      if (this.appearance === "none") this.humanOwned = false;
       return undefined;
     }
     if (this.appearance !== "none" || this.signal.aborted) return undefined;
     this.appearance = "declining";
-    this.humanOwned = false;
     this.escapes = 0;
     this.dismissed = false;
     const settled = this.decline(write, readSettled);
@@ -99,7 +105,7 @@ export class ClaudeAutoModeOfferDecliner {
   /**
    * Checked on the settled frame just before each Esc goes out, after the writer's wait for
    * settlement: raw caller input during that wait hands the offer to the human, so the Esc
-   * is withheld. Only a new appearance clears `humanOwned`, and none starts mid-decline.
+   * is withheld. Nothing clears `humanOwned` until the appearance is over.
    */
   private readonly stillDeclinable = (frameText: string): boolean =>
     !this.humanOwned && isClaudeAutoModeOfferMenu(frameText);

@@ -158,3 +158,19 @@ test("C-ATTN-09 a draft left after awaited input's Enter does not clear the offe
     await sending;
   }
 });
+
+test("C-CLAUDE-27 a raw key that reaches the offer before Elwood's first frame of it keeps it the human's", async () => {
+  const down = "\u001b[B";
+  // Claude shows the menu by the time the key lands; Elwood sees it only after the write.
+  const { facade, live, pty } = await withOfferOn(down);
+  try {
+    await expect.poll(() => live.status).toBe("ready");
+    await facade.sendKeys(down);
+    await expect.poll(() => live.status).toBe("blocked");
+    await wait(heldMs);
+    await live.terminal.settled();
+    expect(pty.writes).toEqual([down]);
+  } finally {
+    await facade.teardown();
+  }
+});
