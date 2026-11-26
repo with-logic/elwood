@@ -1898,6 +1898,32 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   message left the composer must read only the last `❯` line, because the queued row
   also starts with `❯` and holds the message. Observed with `sendGuidance` in a private
   config dir, 2026-10-26 (C-API-37).
+- Claude 2.1.332 fires `UserPromptSubmit` for that queued message when it queues it, about
+  130 ms after the Enter. The hook's `prompt_id` is the RUNNING turn's, and its `prompt` is
+  the guidance text. The transcript gets a `queue-operation` `enqueue` record about 180 ms
+  later. Claude then delivers the message in one of two ways, and neither fires a second
+  `UserPromptSubmit`:
+  - In a turn that uses tools, at the next tool boundary, inside the same turn. The transcript
+    gets a `queue-operation` `remove` record and a `queued_command` attachment, both under the
+    running turn's prompt ID, and the reply answers both prompts.
+  - In a turn without tools, as a new turn after the running turn's `Stop`. A `dequeue` record
+    lands about 340 ms after that `Stop`, followed by a user record with a NEW `promptId` and
+    `promptSource: "queued"`.
+
+  Elwood used to treat the reused ID as a duplicate and drop the guidance's `user_message`. A
+  shown prompt ID now suppresses only transcript recovery, never a nonblank hook. Measured with
+  `sendGuidance` in three private-config sessions, two without tools and one with, 2026-11-25
+  (C-API-62).
+- An interrupt while Claude 2.1.332 is still screening the queued message, that is, before its
+  `UserPromptSubmit` hook has returned, makes Claude fire the hook AGAIN as it runs the message as
+  its own turn. The second hook has a NEW `prompt_id` and the same `prompt`. The transcript then
+  gets `[Request interrupted by user]`, an `enqueue` and a `dequeue` record on either side of that
+  hook, and the user record with `promptSource: "queued"` only after it. An interrupt 3 s after
+  the hook returned fired no second hook. Elwood shows the re-screened message once: a hook under
+  a new ID with the text of a message still queued is suppressed, until the `remove` record or the
+  `queued` user record shows the message delivered. Measured in three sessions on 2026-11-25:
+  an interrupt about 100 ms after the hook and one during a 3 s caller hold both re-fired, the late
+  one did not (C-API-62, `tests/e2e/guidance-interrupt-claude.e2e.ts`).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
