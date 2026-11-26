@@ -1,8 +1,10 @@
 /**
  * Codex's initial-readiness gate: its deadline needs the configured composer (the native
  * status footer, whose effort label, for a session that requested an effort Codex labels, is
- * no longer `default` once Codex applied it, or any footer from 50 seconds after launch), and missing
- * evidence at the backstop is reported as a content-free warning (PRD §5.3, §5.7, C-API-28).
+ * no longer `default` once Codex applied it, or any footer once the wait for that label ends:
+ * 50 seconds after launch, or at the deadline, 10 seconds after the first frame, when that is
+ * later), and missing evidence at the separate 60-second backstop is reported as a
+ * content-free warning (PRD §5.3, §5.7, C-API-28).
  * Its header drawn alone, its boot composer, its resume placeholder and its footer before it
  * shows the requested effort are startup screens Codex draws before that composer, not
  * unrecognized ones (§5.4, C-ATTN-11).
@@ -64,7 +66,7 @@ export function codexConfiguredCheck(
   effort: CodexReasoningEffort | undefined,
   { onWaitEnded, onUnconfirmed }: CodexEffortWaitEvents,
 ) {
-  const launchedAt = deadlineClock.now();
+  const launchedAtMs = deadlineClock.now();
   let lapse: ReturnType<typeof setTimeout> | undefined;
   let lapsed = false;
   let stopped = false;
@@ -78,13 +80,14 @@ export function codexConfiguredCheck(
     arm: () => {
       // Without an effort Codex labels, the footer counts as soon as it is drawn.
       if (stopped || !codexFooterShowsEffort(effort)) return;
-      const fromLaunch = launchedAt + codexEffortWaitFromLaunchMs - deadlineClock.now();
+      const remainingEffortWaitMs =
+        launchedAtMs + codexEffortWaitFromLaunchMs - deadlineClock.now();
       lapse ??= setTimeout(
         () => {
           lapsed = true;
           runContained(onWaitEnded);
         },
-        Math.max(initialDeadlineMs, fromLaunch),
+        Math.max(initialDeadlineMs, remainingEffortWaitMs),
       );
     },
     stop: () => {

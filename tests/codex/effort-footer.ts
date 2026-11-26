@@ -19,7 +19,7 @@ export const effortDefault = capturedFrame("codex-0.172.0/boot/effort-default");
 export const effortLow = capturedFrame("codex-0.172.0/boot/effort-low");
 export const paint = (text: string) => `\u001b[2J\u001b[H${codexTty(text, true)}`;
 export const paste = "\u001b[200~after configuration\u001b[201~";
-export const initialSize = { cols: 140, rows: 45 };
+export const initialSize = { cols: 140, rows: 45 } as const;
 /** Screen text the content-free warning must never carry. */
 export const sentinel = "elwood-effort-sentinel";
 
@@ -29,9 +29,16 @@ export const sentinel = "elwood-effort-sentinel";
  * wait `afterFrameMs` more. A host on defaults waits for `ready` from the start (`waited`).
  * Callers restore mocks and real timers, and tear the session down.
  */
+/** When the default footer is painted, how long the start then runs, and what it wrote. */
+export type DefaultFooterTiming = {
+  readonly firstFrameAfterMs?: number;
+  readonly afterFrameMs?: number;
+  readonly write?: "message" | "prompt";
+};
+
 export async function deadlineOnDefaultFooter(
   options: Partial<StartCodexOptions>,
-  { firstFrameAfterMs = 0, afterFrameMs = 10_500, write = "message" } = {},
+  { firstFrameAfterMs = 0, afterFrameMs = 10_500, write = "message" }: DefaultFooterTiming = {},
 ) {
   installFakes();
   // The effort wait counts from launch on the monotonic clock, which fake timers restart at 0.

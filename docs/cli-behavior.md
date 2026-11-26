@@ -4123,8 +4123,9 @@ override, came back with the effort and model it started
 with (`GPT-6-Luna low`). With `-c model_reasoning_effort="low"` it came back as
 `GPT-6.2-Sol low` (Codex's default model, since the config names none, at the requested effort), and resumed with
 `high` after starting at `low` it read `GPT-6.2-Sol high`. No resumed footer read `default`
-after its configuration. Elwood waits for the label until 50 s after launch at the latest,
-so a footer that never shows the effort cannot hold readiness for good
+after its configuration. Elwood waits for the label until 50 s after launch, or until the
+initial-readiness deadline, 10 s after the first frame, when that comes later (not the 60 s
+backstop), so a footer that never shows the effort cannot hold readiness for good
 (`codex_effort_unconfirmed`). C-API-28, C-E2E-34.
 
 **Codex bounds its own wait for the network, so the label is late, not missing.** With every

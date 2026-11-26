@@ -20,7 +20,8 @@ back each entry are listed in `prd/14-conformance.md`.
   counts the footer 50 seconds after launch, never before the deadline, and emits a new
   `codex_effort_unconfirmed` warning, so a host waiting for `ready` with
   `waitForStatus`'s default 60-second timeout gets `ready` rather than `wait_timeout`
-  when Codex drew its first frame within 40 seconds. With no `reasoningEffort`, or
+  when Codex drew its first frame within 40 seconds and no blocking startup dialog holds
+  readiness. With no `reasoningEffort`, or
   `none`, `ready` can still come first, including when the effort comes from
   `configOverrides`, a profile or config.toml.
 

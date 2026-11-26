@@ -25,8 +25,16 @@ import { runPublicProof } from "./questions/proof-run.ts";
 // Held connections widen the seconds between Codex's `default` footer and its configuration,
 // so the test stops Codex inside them.
 const connectionHoldMs = 12_000;
-// The default wait sees `ready` only when Codex drew its first frame within 40 s of launch.
-const firstFrameWithinMs = 40_000;
+// Codex paints its `default` footer seconds after launch; this run fails fast on one not drawn
+// by 40 s. That keeps it in the launch-bound case, where the deadline, 10 s after the first
+// frame, has passed when the wait ends 50 s after launch. It is not a limit on the default
+// wait, which a first frame up to about 50 s after launch still meets.
+const defaultFooterWithinMs = 40_000;
+/** When the wait for the label ends, in the launch-bound case (C-API-28). */
+const effortWaitFromLaunchMs = 50_000;
+// `launched` is read just before `start()` makes the session, and `ready` needs a render after
+// the wait ends; this covers both on a loaded machine. Main's lapse came about 61 s after it.
+const launchSlackMs = 3_000;
 // The host's wait starts after launch, so `ready` 50 s after launch comes sooner than that on
 // its clock; main's lapse, 60 s after the first frame, came about 60 s into it.
 const readyWithinMs = 55_000;
@@ -64,18 +72,19 @@ test("C-E2E-37 a host's default wait sees ready when Codex never applies its con
       reasoningEffort: "low",
       env: proxy.env,
     });
-    const launched = Date.now();
+    // Elapsed times use the monotonic clock, which a wall-clock adjustment cannot move.
+    const launched = performance.now();
     const live = await session.start();
     const warnings: ElwoodWarningEvent[] = [];
     live.on("warning", (warning) => warnings.push(warning));
     const screen = () => live.terminal.snapshot().text;
     // A host on defaults: no timeout of its own, waiting as soon as the session exists.
-    const waitStarted = Date.now();
+    const waitStarted = performance.now();
     const settle = (status: string, shown: string | undefined) => ({
       status,
       shown,
-      at: Date.now() - waitStarted,
-      sinceLaunch: Date.now() - launched,
+      at: Math.round(performance.now() - waitStarted),
+      sinceLaunch: Math.round(performance.now() - launched),
     });
     const waited = live
       .waitForStatus((status) => status === "ready")
@@ -84,7 +93,10 @@ test("C-E2E-37 a host's default wait sees ready when Codex never applies its con
         (error: unknown) => settle(String(error), undefined),
       );
     while (!footer(screen())?.startsWith(unconfigured)) {
-      assert.ok(Date.now() - launched < firstFrameWithinMs, `Codex painted ${unconfigured}`);
+      assert.ok(
+        performance.now() - launched < defaultFooterWithinMs,
+        `Codex painted ${unconfigured}`,
+      );
       await delay(20);
     }
     // Stopped inside the held connections, Codex never applies its configuration.
@@ -98,7 +110,11 @@ test("C-E2E-37 a host's default wait sees ready when Codex never applies its con
     resume();
     t.diagnostic(`ready ${at} ms into the host's wait, ${sinceLaunch} ms after launch`);
     assert.equal(status, "ready", `the default wait saw ready (${at} ms into it)`);
-    assert.ok(at < readyWithinMs, `ready 50 s after launch, within ${readyWithinMs} ms: ${at} ms`);
+    assert.ok(
+      sinceLaunch < effortWaitFromLaunchMs + launchSlackMs,
+      `ready 50 s after launch, within ${launchSlackMs} ms: ${sinceLaunch} ms`,
+    );
+    assert.ok(at < readyWithinMs, `ready within ${readyWithinMs} ms of the host's wait: ${at} ms`);
     assert.ok(shown?.startsWith(unconfigured), `Codex had not applied its configuration: ${shown}`);
     const unconfirmed = warnings.filter(({ code }) => code === "codex_effort_unconfirmed");
     assert.equal(
