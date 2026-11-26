@@ -24,6 +24,12 @@ test("C-LIFE-10 merged failures retain both causes, the first errno, and bounded
   });
 });
 
+test("C-LIFE-10 a processGroupIds that is not an array names no groups", () => {
+  const malformed = Object.assign(new Error("force failed"), { processGroupIds: "7001" });
+  const later = Object.assign(new Error("survivor failed"), { processGroupIds: [7002] });
+  expect(mergeSweepErrors(malformed, later)).toMatchObject({ processGroupIds: [7002] });
+});
+
 test("C-LIFE-10 later errno is preserved when the first cause has none", () => {
   expect(
     mergeSweepErrors("force failed", Object.assign(new Error("later"), { code: "ESRCH" })),

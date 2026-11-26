@@ -28,8 +28,8 @@ type Script = {
   readonly exitDuringSweep?: boolean;
   readonly sweepError?: unknown;
   readonly killError?: Error;
-  /** Thrown by every reap, after it is logged. */
-  readonly reapError?: Error;
+  /** Thrown by every reap, after it is logged, when present: even `undefined` is thrown. */
+  readonly reapError?: unknown;
 };
 
 export function harness(script: Script) {
@@ -57,7 +57,7 @@ export function harness(script: Script) {
     },
     reap: () => {
       calls.push("reap");
-      if (script.reapError) throw script.reapError;
+      if ("reapError" in script) throw script.reapError;
     },
     sweepDetached: (leaderExited: () => boolean) => {
       calls.push(`sweep (exited: ${leaderExited()})`);

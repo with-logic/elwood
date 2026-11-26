@@ -100,10 +100,11 @@ export function thrownTerminationFailure(error: unknown): ElwoodError {
 
 /**
  * The one error a termination reports, if any. Precedence is termination, then sweep, then
- * reap: the first failure present supplies the message and later ones ride in its details
- * (`sweepError`, `reapError`), so a sweep and a reap failure without a termination failure
- * report the sweep message with `reapError` attached. A sweep or reap failure alone is a
- * typed `termination_failed`, never a bare system error (C-ERR-01). The reap rejection is
+ * reap: the first failure present is the primary error and later ones ride in its details
+ * (`sweepError`, `reapError`). A primary sweep or reap failure is wrapped as a typed
+ * `termination_failed` with its own fixed message and the failure as `details.cause`, never a
+ * bare system error (C-ERR-01), so a sweep and a reap failure without a termination failure
+ * report the sweep wrapper's message, the sweep failure as its cause, and `reapError`. The reap rejection is
  * boxed so its raw value is kept as caught, its errno included, and a rejection with
  * `undefined` still counts as a failure.
  */

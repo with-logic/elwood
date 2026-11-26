@@ -105,12 +105,12 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
     });
   });
 
-  // Precedence is termination, then sweep, then reap: the first failure present supplies the
-  // message and the later ones ride in its details. EIO is not retried, unlike EPERM.
+  // Precedence is termination, then sweep, then reap: the first failure present is the primary
+  // error and the later ones ride in its details. EIO is not retried, unlike EPERM.
   const reapError = Object.assign(new Error("reap refused"), { code: "EIO" });
   const sweepCause = "Could not reap process-tree groups: process table unreadable (ETIMEDOUT)";
 
-  test("a sweep and a reap failure report the sweep's message with the reap's cause", async () => {
+  test("a sweep and a reap failure report the sweep wrapper, its cause, and the reap", async () => {
     const sweepError = sweepFailure("process table unreadable", [7001], "ETIMEDOUT");
     const { pty, reaper } = harness({ exitsOn: ["SIGKILL"], sweepError, reapError });
     await expect(terminatePty(pty, "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
@@ -139,6 +139,15 @@ describe("C-LIFE-10 terminatePty detached sweep", () => {
         reapError: "reap refused",
         reapErrno: "EIO",
       },
+    });
+  });
+
+  test("a reap that rejects with undefined still fails termination", async () => {
+    const { pty, reaper } = harness({ exitsOn: ["SIGKILL"], reapError: undefined });
+    await expect(terminatePty(pty, "SIGKILL", reaper, timeouts)).rejects.toMatchObject({
+      code: "termination_failed",
+      message: "PTY exited but its process group could not be reaped.",
+      details: { cause: "undefined" },
     });
   });
 
