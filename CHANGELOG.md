@@ -78,6 +78,12 @@ back each entry are listed in `prd/14-conformance.md`.
   never settled, a content-free `turn_end_hold_expired` warning reports it.
   `elwood run` no longer fails when the offer appears after its prompt's turn
   has ended.
+- A `status` or `activity` listener that throws while Elwood observes a
+  rendered frame, such as one handling a dialog that blocks the session, no
+  longer drops that frame's `terminal:data`, its status and attention
+  activities, or readiness's view of it. A new content-free
+  `frame_observer_failed` warning reports the first such failure in a session.
+  A throwing `status` listener also no longer skips that status's `activity`.
 
 ## [0.8.0] - 2026-11-25
 

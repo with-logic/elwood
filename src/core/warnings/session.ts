@@ -7,6 +7,7 @@
  */
 
 import { activityFromWarning, type ElwoodActivityEvent } from "../activity/index.ts";
+import { runContained } from "../contained.ts";
 import type { ElwoodWarningEvent } from "../types.ts";
 
 /**
@@ -51,6 +52,27 @@ export function emitSessionWarnings(
     firstError = deliver(() => emit.activity(activityFromWarning(warning)), firstError);
   }
   if (firstError !== undefined) throw firstError;
+}
+
+/**
+ * Report a content-free observer failure once per session. Delivery waits for a microtask,
+ * outside the failed notification, ends once the session closes, and contains failures of
+ * the diagnostic's own listeners so they never recursively warn.
+ */
+export function reportOnceWhileLive(
+  emitter: SessionWarningEmitter,
+  isLive: () => boolean,
+  warning: () => ElwoodWarningEvent,
+): () => void {
+  let reported = false;
+  return () => {
+    if (reported) return;
+    reported = true;
+    queueMicrotask(() => {
+      if (!isLive()) return;
+      runContained(() => emitSessionWarningsWithRejectionHandling([warning()], emitter));
+    });
+  };
 }
 
 /** Run a fan-out step; return the FIRST error seen so both steps always run. */
