@@ -9,7 +9,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { cleanup, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
-import { queuedTurnMarker, readyEvidenceSinceEssay, startEssay } from "./queued-turn-claude.ts";
+import {
+  queuedTurnMarker,
+  queuedTurnRecorded,
+  readyEvidenceSinceEssay,
+  startEssay,
+} from "./queued-turn-claude.ts";
 
 const options = { skip: skipIf(skipReason("claude"), skipTurns), timeout: 240_000 };
 /** C-HOOK-24's bound, stated independently of the implementation. */
@@ -24,9 +29,9 @@ test(
       await session.sendGuidance(
         "Coordinator note A: after the essay, write a 300-word poem about keyboards. Do not use tools.",
       );
-      await waitFor(() => (seen.stops > 0 ? true : undefined), "the essay's Stop", 120_000);
+      await waitFor(() => (seen.stopCount > 0 ? true : undefined), "the essay's Stop", 120_000);
       const queuedTurnStarted = () =>
-        /"promptSource":\s*"queued"/.test(readFileSync(seen.transcript, "utf8"));
+        /"promptSource":\s*"queued"/.test(readFileSync(seen.transcriptPath, "utf8"));
       await waitFor(
         () => (queuedTurnStarted() ? true : undefined),
         "the queued turn's record",
@@ -43,9 +48,9 @@ test(
       );
       await waitFor(() => (session.status === "ready" ? true : undefined), "ready", 30_000);
       assert.deepEqual(seen.guidanceAfterStops, [0, 1], "each note queued behind a running turn");
-      assert.equal(seen.stops, 3, "the essay, the poem, and the reply each stop");
+      assert.equal(seen.stopCount, 3, "the essay, the poem, and the reply each stop");
       assert.deepEqual(seen.readyAfterStops, [3], "ready only after the last queued turn's Stop");
-      assert.deepEqual(seen.warnings, []);
+      assert.deepEqual(seen.warningCodes, []);
     } finally {
       await cleanup(session);
     }
@@ -57,15 +62,17 @@ test("C-HOOK-24 real Claude blocked guidance never runs and holds no Stop", opti
   const { session, seen } = await startEssay(() => blocked);
   try {
     await session.sendGuidance(`Coordinator note: reply with only the word ${queuedTurnMarker}.`);
-    await waitFor(() => (seen.stops > 0 ? true : undefined), "the essay's Stop", 120_000);
+    await waitFor(() => (seen.stopCount > 0 ? true : undefined), "the essay's Stop", 120_000);
     await waitFor(() => (session.status === "ready" ? true : undefined), "ready", 30_000);
     await new Promise((resolve) => setTimeout(resolve, queuedTurnStartLimitMs + 1_000));
     assert.deepEqual(seen.guidanceAfterStops, [0], "the note queued before the essay's Stop");
-    assert.equal(seen.stops, 1);
+    assert.equal(seen.stopCount, 1);
     assert.deepEqual(seen.readyAfterStops, [1]);
     // The essay's own `Stop` marked readiness: no hold, so the screen's later end changed nothing.
     assert.deepEqual(readyEvidenceSinceEssay(session), ["hook_turn_ended"]);
-    assert.deepEqual(seen.warnings, []);
+    assert.deepEqual(seen.warningCodes, []);
+    assert.equal(queuedTurnRecorded(seen), false, "Claude started no queued turn");
+    assert.equal(seen.replied, false);
   } finally {
     await cleanup(session);
   }

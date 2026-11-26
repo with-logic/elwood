@@ -2,15 +2,25 @@
  * Shared real-Claude setup for the queued-turn readiness e2e tests (PRD §6.5, C-HOOK-24): a
  * session writing a long tool-free essay, so guidance sent now queues behind a running turn.
  */
+import { readFileSync } from "node:fs";
 import {
   type ClaudeHookEventFor,
   type ClaudeHookResultForEvent,
   type ClaudeSessionApi,
+  type ElwoodStatusEvidence,
+  type ElwoodWarningEvent,
   startClaude,
 } from "../../src/index.ts";
 import { cleanup, makeProject, waitFor, waitForVisibleTurn } from "./helpers.ts";
 
 export const queuedTurnMarker = "ELWOOD_QUEUED_TURN";
+/** The records Claude writes as it starts a queued turn: a `dequeue`, then a `queued` user record. */
+const queuedTurnStartRecord = /"operation":\s*"dequeue"|"promptSource":\s*"queued"/;
+
+/** Whether the session's transcript shows Claude starting a queued turn. */
+export function queuedTurnRecorded(seen: Pick<QueuedTurnObservations, "transcriptPath">): boolean {
+  return queuedTurnStartRecord.test(readFileSync(seen.transcriptPath, "utf8"));
+}
 
 type ScreenResult = ClaudeHookResultForEvent<ClaudeHookEventFor<"UserPromptSubmit">> | undefined;
 type Screen = (
@@ -18,10 +28,10 @@ type Screen = (
 ) => ScreenResult | Promise<ScreenResult>;
 
 export type QueuedTurnObservations = {
-  stops: number;
-  transcript: string;
+  stopCount: number;
+  transcriptPath: string;
   replied: boolean;
-  readonly warnings: string[];
+  readonly warningCodes: ElwoodWarningEvent["code"][];
   /** The `Stop` count each time the session became `ready`. */
   readonly readyAfterStops: number[];
   /** The `Stop` count when each guidance `UserPromptSubmit` arrived. */
@@ -50,10 +60,10 @@ export async function startEssay(
     stopped = resolve;
   });
   const seen: QueuedTurnObservations = {
-    stops: 0,
-    transcript: "",
+    stopCount: 0,
+    transcriptPath: "",
     replied: false,
-    warnings: [],
+    warningCodes: [],
     readyAfterStops: [],
     guidanceAfterStops: [],
     firstStop,
@@ -61,20 +71,20 @@ export async function startEssay(
   try {
     session.on("hook", (event) => {
       if (event.hook_event_name === "UserPromptSubmit" && guidance(event.prompt))
-        seen.guidanceAfterStops.push(seen.stops);
+        seen.guidanceAfterStops.push(seen.stopCount);
       if (event.hook_event_name !== "Stop") return;
-      seen.stops += 1;
-      seen.transcript = event.transcript_path ?? seen.transcript;
+      seen.stopCount += 1;
+      seen.transcriptPath = event.transcript_path ?? seen.transcriptPath;
       stopped();
     });
     session.on("activity", (event) => {
       if (event.kind === "assistant_message" && event.text?.includes(queuedTurnMarker))
         seen.replied = true;
     });
-    session.on("warning", (warning) => void seen.warnings.push(warning.code));
+    session.on("warning", (warning) => void seen.warningCodes.push(warning.code));
     await waitFor(() => (session.status === "ready" ? true : undefined), "initial ready", 60_000);
     session.on("status", (event) => {
-      if (event.status === "ready") seen.readyAfterStops.push(seen.stops);
+      if (event.status === "ready") seen.readyAfterStops.push(seen.stopCount);
     });
     await session.sendMessage(
       "Write a detailed 400-word essay about the history of terminals. Do not use tools.",
@@ -88,7 +98,9 @@ export async function startEssay(
 }
 
 /** The evidence of each transition to `ready` since the essay was sent. */
-export function readyEvidenceSinceEssay(session: ClaudeSessionApi): readonly string[] {
+export function readyEvidenceSinceEssay(
+  session: ClaudeSessionApi,
+): readonly ElwoodStatusEvidence[] {
   const decisions = session.statusDecisions();
   const essay = decisions.findLastIndex((decision) => decision.evidence === "caller_submitted");
   return decisions

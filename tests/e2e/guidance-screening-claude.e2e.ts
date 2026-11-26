@@ -6,7 +6,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cleanup, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
-import { queuedTurnMarker, readyEvidenceSinceEssay, startEssay } from "./queued-turn-claude.ts";
+import {
+  queuedTurnMarker,
+  queuedTurnRecorded,
+  readyEvidenceSinceEssay,
+  startEssay,
+} from "./queued-turn-claude.ts";
 
 const options = { skip: skipIf(skipReason("claude"), skipTurns), timeout: 240_000 };
 /** Past C-HOOK-24's 2-second bound, stated independently of the implementation. */
@@ -21,7 +26,7 @@ test(
     const { session, seen } = await startEssay(async () => {
       await seen.firstStop;
       await sleep(pastTheBoundMs);
-      screened.push(seen.stops);
+      screened.push(seen.stopCount);
       return undefined;
     });
     try {
@@ -29,12 +34,12 @@ test(
       await waitFor(() => (seen.replied ? true : undefined), "the queued turn's reply", 120_000);
       await waitFor(() => (session.status === "ready" ? true : undefined), "ready", 30_000);
       assert.deepEqual(
-        { guidance: seen.guidanceAfterStops, screened, stops: seen.stops },
+        { guidance: seen.guidanceAfterStops, screened, stops: seen.stopCount },
         { guidance: [0], screened: [1], stops: 2 },
         "the handler allowed the note after the essay's Stop, and Claude then ran it",
       );
       assert.deepEqual(seen.readyAfterStops, [2], "ready only after the queued turn's Stop");
-      assert.deepEqual(seen.warnings, []);
+      assert.deepEqual(seen.warningCodes, []);
     } finally {
       await cleanup(session);
     }
@@ -52,15 +57,17 @@ test(
     });
     try {
       await session.sendGuidance(`Coordinator note: reply with only the word ${queuedTurnMarker}.`);
-      await waitFor(() => (seen.stops > 0 ? true : undefined), "the essay's Stop", 120_000);
+      await waitFor(() => (seen.stopCount > 0 ? true : undefined), "the essay's Stop", 120_000);
       await waitFor(() => (session.status === "ready" ? true : undefined), "ready", 30_000);
       await sleep(pastTheBoundMs);
       assert.deepEqual(
-        { guidance: seen.guidanceAfterStops, stops: seen.stops, ready: seen.readyAfterStops },
+        { guidance: seen.guidanceAfterStops, stops: seen.stopCount, ready: seen.readyAfterStops },
         { guidance: [0], stops: 1, ready: [1] },
       );
       assert.deepEqual(readyEvidenceSinceEssay(session), ["hook_turn_ended"]);
-      assert.deepEqual(seen.warnings, []);
+      assert.deepEqual(seen.warningCodes, []);
+      assert.equal(queuedTurnRecorded(seen), false, "Claude started no queued turn");
+      assert.equal(seen.replied, false);
     } finally {
       await cleanup(session);
     }
