@@ -1,6 +1,6 @@
 /**
- * Starts the local npm registry for the release publish tests, so they run the
- * real npm client offline against registry documents recorded from
+ * Provides the local npm registry for the release publish tests, so they run
+ * the real npm client offline against registry documents recorded from
  * registry.npmjs.org (fixtures/elwood-packument.json; the hand-published
  * version's maintainer identity is replaced).
  */

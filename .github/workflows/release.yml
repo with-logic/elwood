@@ -11,9 +11,8 @@ name: Release
 # release. The lightweight tag this workflow pushes on the release commit is
 # reused, and a version this workflow already published from that commit and a
 # published GitHub release are left as they are. Any other tag of that name
-# fails the run. A version older than one already on npm, such as a retry a
-# later release overtook, is published under `latest-<major>.<minor>` and is
-# not marked latest on GitHub.
+# fails the run. A re-run cannot publish a version older than one already on
+# npm: npm refuses to move `latest` back, so the publish step fails.
 on:
   push:
     branches: [main]
@@ -184,8 +183,6 @@ jobs:
     # reject other platforms at startup.
     runs-on: macos-latest
     timeout-minutes: 20
-    outputs:
-      dist_tag: ${{ steps.npm.outputs.dist_tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -259,58 +256,57 @@ jobs:
       # npmjs.com/package/@with-logic/elwood/access and every later release
       # runs tokenlessly through this workflow.
       #
-      # One lookup reads every stable version at or above this one; E404 means
-      # there is none, and any other failure stops the step. The registry
-      # records each version's commit as `gitHead`, which any publisher can
-      # set, and its publishing account as `_npmUser`, which only trusted
+      # One lookup asks the registry for this version. The registry records the
+      # commit a version was published from as `gitHead`, which any publisher
+      # can set, and the publishing account as `_npmUser`, which only trusted
       # publishing sets to GitHub Actions.
-      # - This version from this commit by this workflow: a re-run has nothing
+      # - Not on npm (E404): publish.
+      # - Published by this workflow from this commit: a re-run has nothing
       #   left to publish.
-      # - This version any other way: the step fails; npm never replaces one.
-      # - A newer version, as when a later release overtook a retry: publish
-      #   under `latest-<major>.<minor>` so `latest` never moves back.
+      # - Published any other way: fail, because npm never replaces a version.
+      #   The log names the commit and whether trusted publishing published
+      #   it, never the publishing account.
+      # - Anything else, including a failed lookup or no answer: fail.
       - name: Publish to npm
-        id: npm
         env:
           RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
-          name="$(node -p 'require("./package.json").name')"
+          package="$(node -p 'require("./package.json").name')@$VERSION"
           status=0
-          found="$(npm view "$name@>=$VERSION" version gitHead _npmUser.email --json 2>/dev/null)" || status=$?
-          plan="$(node -e '
-            const [found, status, version, commit] = process.argv.slice(1);
+          found="$(npm view "$package" gitHead _npmUser.email --json 2>/dev/null)" || status=$?
+          outcome="$(node -e '
+            const [found, status, commit] = process.argv.slice(1);
             const answer = found ? JSON.parse(found) : {};
-            if (status !== "0" && answer.error?.code !== "E404") {
-              console.log(`error - could not read the registry: ${answer.error?.code ?? `npm exited ${status}`}`);
-              process.exit();
-            }
-            const entries = status === "0" ? [answer].flat() : [];
-            const newer = entries.filter((entry) => entry.version !== version).map((entry) => entry.version);
-            const tag = newer.length > 0 ? `latest-${version.split(".").slice(0, 2).join(".")}` : "latest";
-            const same = entries.find((entry) => entry.version === version);
-            if (!same) {
-              console.log(`publish ${tag} newer versions: ${newer.join(" ") || "none"}`);
-            } else if (same.gitHead === commit && same["_npmUser.email"] === "npm-oidc-no-reply@github.com") {
-              console.log(`skip ${tag} this workflow already published it from ${commit}`);
+            const trusted = answer["_npmUser.email"] === "npm-oidc-no-reply@github.com";
+            if (status !== "0") {
+              const code = answer.error?.code ?? `npm-exit-${status}`;
+              console.log(code === "E404" ? "unpublished" : `lookup-failed ${code}`);
+            } else if (answer.gitHead === commit && trusted) {
+              console.log("published-here");
             } else {
-              console.log(`error - already published from ${same.gitHead ?? "no commit"} by ${same["_npmUser.email"] ?? "an unknown account"}`);
+              const publisher = trusted ? "trusted publishing" : "another account";
+              console.log(`published-elsewhere from ${answer.gitHead ?? "an unrecorded commit"} by ${publisher}`);
             }
-          ' "${found:-}" "$status" "$VERSION" "$RELEASE_COMMIT")"
-          read -r action tag detail <<< "$plan"
-          echo "Registry lookup for $name@$VERSION: $action $tag ($detail)"
-          if [ "$action" = error ]; then
-            echo "::error::cannot publish $name@$VERSION: $detail"
-            exit 1
-          fi
-          echo "dist_tag=$tag" >> "$GITHUB_OUTPUT"
-          # Leaving `--tag` off for `latest` keeps npm's own refusal to move it back.
-          if [ "$action" = publish ] && [ "$tag" = latest ]; then
-            npm publish --access public
-          elif [ "$action" = publish ]; then
-            npm publish --access public --tag "$tag"
-          fi
+          ' "$found" "$status" "$RELEASE_COMMIT")"
+          echo "Registry lookup for $package: ${outcome:-no answer}"
+          case "$outcome" in
+            unpublished)
+              npm publish --access public
+              ;;
+            published-here)
+              echo "This workflow already published $package from $RELEASE_COMMIT; skipping."
+              ;;
+            "published-elsewhere "*)
+              echo "::error::$package is already on npm, ${outcome#published-elsewhere }; npm never replaces a version"
+              exit 1
+              ;;
+            *)
+              echo "::error::could not read $package from the registry: ${outcome:-no answer}"
+              exit 1
+              ;;
+          esac
 
   github-release:
     # Re-run the failed job without attempting to publish the npm version again.
@@ -346,5 +342,3 @@ jobs:
           tag_name: ${{ needs.resolve.outputs.tag }}
           name: ${{ needs.resolve.outputs.tag }}
           generate_release_notes: true
-          # A release a newer one overtook stays off GitHub's latest, as on npm.
-          make_latest: ${{ needs.publish.outputs.dist_tag == 'latest' }}

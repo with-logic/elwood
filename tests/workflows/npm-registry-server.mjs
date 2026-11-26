@@ -1,5 +1,5 @@
 /**
- * Serves npm registry documents on localhost for the release publish tests:
+ * Serves npm registry documents on localhost for npm-registry-fixture.mjs:
  * the recorded @with-logic/elwood packument, a 500 for
  * @with-logic/registry-down, and a 404 for anything else. Prints its port.
  */

@@ -20,15 +20,17 @@ test("GitHub release creation retries independently of npm publication", () => {
   assert.match(githubRelease, /uses: softprops\/action-gh-release/);
   assert.match(githubRelease, /tag_name:.*needs\.resolve\.outputs\.tag/);
   assert.doesNotMatch(githubRelease, /npm publish/);
-  // A release a newer one overtook stays off GitHub's latest, as on npm.
-  assert.match(
-    publish,
-    /^ {4}outputs:\n {6}dist_tag: \$\{\{ steps\.npm\.outputs\.dist_tag \}\}$/mu,
+});
+
+// The re-run notes sit directly above `on:`; an edit to them must keep every release path.
+test("the release workflow keeps its push, tag and manual triggers", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/release.yml", import.meta.url),
+    "utf8",
   );
-  assert.match(publish, /^ {6}- name: Publish to npm\n {8}id: npm$/mu);
   assert.match(
-    githubRelease,
-    /^ {10}make_latest: \$\{\{ needs\.publish\.outputs\.dist_tag == 'latest' \}\}$/mu,
+    workflow,
+    /^on:\n {2}push:\n {4}branches: \[main\]\n {4}tags: \["v\*\.\*\.\*"\]\n {2}workflow_dispatch:\n/mu,
   );
 });
 
