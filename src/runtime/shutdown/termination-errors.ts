@@ -9,7 +9,7 @@ import {
   errnoCode,
   toError,
 } from "../../core/errors.ts";
-import type { SweepFailure } from "./detached-sweep/failures.ts";
+import { isSweepFailure } from "./detached-sweep/failures.ts";
 
 type SecondaryErrorKey = "reapError" | "sweepError";
 const secondaryErrnoKey: Readonly<Record<SecondaryErrorKey, string>> = {
@@ -18,7 +18,7 @@ const secondaryErrnoKey: Readonly<Record<SecondaryErrorKey, string>> = {
 };
 
 /** Preserve primary diagnostics and label secondary cleanup details by phase (C-LIFE-10). */
-export function withCause(
+function withCause(
   terminationError: ElwoodError,
   key: SecondaryErrorKey,
   secondary: unknown,
@@ -38,11 +38,11 @@ export function withCause(
  * details, so `stop()`/`kill()` never reject with a raw system error whose own
  * `code` (e.g. `ESRCH`) masquerades as an Elwood error name (PRD §10, C-ERR-01).
  */
-export function ptyOperationFailed(error: unknown): ElwoodError {
+function ptyOperationFailed(error: unknown): ElwoodError {
   return elwoodError(
     "termination_failed",
     `Could not terminate the PTY: ${toError(error).message}`,
-    { ...causeDetails(error), ...unconfirmedGroupsDetail(toError(error)) },
+    causeDetails(error),
   );
 }
 
@@ -52,7 +52,7 @@ export function ptyOperationFailed(error: unknown): ElwoodError {
  * when available), so `stop()`/`kill()` reject with an ElwoodError rather than a
  * raw system error (PRD §10, C-ERR-01, C-LIFE-10).
  */
-export function reapOnlyFailed(reapError: unknown): ElwoodError {
+function reapOnlyFailed(reapError: unknown): ElwoodError {
   return elwoodError(
     "termination_failed",
     "PTY exited but its process group could not be reaped.",
@@ -62,8 +62,12 @@ export function reapOnlyFailed(reapError: unknown): ElwoodError {
   );
 }
 
-/** The same typed wrapping when only the process-tree sweep failed. */
-export function sweepOnlyFailed(sweepError: unknown): ElwoodError {
+/**
+ * Wraps a sweep failure (the process-tree sweep could not confirm every group reaped) as a
+ * typed `termination_failed`, carrying its cause and `unconfirmedProcessGroupIds` (PRD §10,
+ * C-ERR-01, C-LIFE-10).
+ */
+function sweepOnlyFailed(sweepError: unknown): ElwoodError {
   return elwoodError(
     "termination_failed",
     "PTY exited but its process-tree groups could not be confirmed reaped.",
@@ -80,20 +84,32 @@ export function sweepOnlyFailed(sweepError: unknown): ElwoodError {
 export function unconfirmedGroupsDetail(error: Error): {
   readonly unconfirmedProcessGroupIds?: number[];
 } {
-  const { processGroupIds } = error as Partial<SweepFailure>;
-  return processGroupIds !== undefined && processGroupIds.length > 0
-    ? { unconfirmedProcessGroupIds: [...processGroupIds] }
+  return isSweepFailure(error) && error.processGroupIds.length > 0
+    ? { unconfirmedProcessGroupIds: [...error.processGroupIds] }
     : {};
 }
 
 /**
- * The one error a termination reports, if any: a termination failure keeps its message
- * and carries sweep and reap failures in its details; a sweep or reap failure alone is
- * wrapped as a typed `termination_failed`, never a bare system error (C-ERR-01).
+ * The typed `termination_failed` for a PTY step that threw: a sweep failure, which
+ * `signalLeaderPty` rethrows when an earlier sweep left groups unconfirmed, keeps its groups;
+ * anything else is a PTY operation failure.
+ */
+export function thrownTerminationFailure(error: unknown): ElwoodError {
+  return isSweepFailure(toError(error)) ? sweepOnlyFailed(error) : ptyOperationFailed(error);
+}
+
+/**
+ * The one error a termination reports, if any. Precedence is termination, then sweep, then
+ * reap: the first failure present supplies the message and later ones ride in its details
+ * (`sweepError`, `reapError`), so a sweep and a reap failure without a termination failure
+ * report the sweep message with `reapError` attached. A sweep or reap failure alone is a
+ * typed `termination_failed`, never a bare system error (C-ERR-01). The reap rejection is
+ * boxed so its raw value is kept as caught, its errno included, and a rejection with
+ * `undefined` still counts as a failure.
  */
 export function terminationFailure(
   terminationError: ElwoodError | undefined,
-  sweepError: unknown,
+  sweepError: Error | undefined,
   reapFailure: { readonly error: unknown } | undefined,
 ): ElwoodError | undefined {
   let failure = terminationError;

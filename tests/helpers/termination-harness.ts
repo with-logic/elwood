@@ -28,6 +28,8 @@ type Script = {
   readonly exitDuringSweep?: boolean;
   readonly sweepError?: unknown;
   readonly killError?: Error;
+  /** Thrown by every reap, after it is logged. */
+  readonly reapError?: Error;
 };
 
 export function harness(script: Script) {
@@ -53,7 +55,10 @@ export function harness(script: Script) {
     signalLeaderPty: (send: () => void) => {
       send();
     },
-    reap: () => void calls.push("reap"),
+    reap: () => {
+      calls.push("reap");
+      if (script.reapError) throw script.reapError;
+    },
     sweepDetached: (leaderExited: () => boolean) => {
       calls.push(`sweep (exited: ${leaderExited()})`);
       if (script.exitDuringSweep) onExit?.({ exitCode: 0 });

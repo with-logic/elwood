@@ -7,7 +7,7 @@ import { type ElwoodError, elwoodError, errnoCode, toError } from "../../core/er
 import { PtyExitLatch } from "../../pty/exit-latch.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SessionReaper } from "./reap-tree.ts";
-import { ptyOperationFailed, sweepOnlyFailed, terminationFailure } from "./termination-errors.ts";
+import { terminationFailure, thrownTerminationFailure } from "./termination-errors.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 type TerminationReaper = Pick<SessionReaper, "reap" | "sweepDetached" | "signalLeaderPty">;
@@ -43,7 +43,7 @@ export async function terminatePty(
   timeouts: TerminationTimeouts = defaultTimeouts,
 ): Promise<void> {
   let terminationError: ElwoodError | undefined;
-  let sweepError: unknown;
+  let sweepError: Error | undefined;
   let observedExit = false;
   let exit: PtyExitLatch | undefined;
   try {
@@ -65,8 +65,7 @@ export async function terminatePty(
       }
     }
   } catch (error) {
-    terminationError =
-      "processGroupIds" in toError(error) ? sweepOnlyFailed(error) : ptyOperationFailed(error);
+    terminationError = thrownTerminationFailure(error);
   } finally {
     exit?.dispose();
   }
