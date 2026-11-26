@@ -4,12 +4,12 @@ import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.t
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { boundedTrustEvidence } from "../trust/evidence-deadline.ts";
 import type { TrustPromptId } from "../trust/prompts.ts";
-import type { ElwoodDialogRequest } from "./types.ts";
+import type { AgentDialogRequest } from "./types.ts";
 import { createWorkspaceTrustRequest, type WorkspaceTrustMenu } from "./workspace-trust-request.ts";
 
 export type VerifiedWorkspaceTrust<Agent extends ElwoodAgentKind> = {
   readonly frame: TerminalSnapshot;
-  readonly request: ElwoodDialogRequest<Agent>;
+  readonly request: AgentDialogRequest<Agent>;
 };
 
 type Checked<Agent extends ElwoodAgentKind> = VerifiedWorkspaceTrust<Agent> | undefined;
@@ -18,10 +18,10 @@ type NativeTrustView = {
   readonly humanOwnedPrompt: () => TrustPromptId | undefined;
 };
 
-type TrustFrame = {
+type TrustFrame<Agent extends ElwoodAgentKind> = {
   readonly frame: TerminalSnapshot;
   readonly identity: string;
-  readonly menu: WorkspaceTrustMenu;
+  readonly menu: WorkspaceTrustMenu<Agent>;
 };
 
 // One already-issued filesystem operation may outlive its deadline. Allow a newer
@@ -30,13 +30,13 @@ const maxUnfinishedLookups = 2;
 
 export class WorkspaceTrustPolling<
   Agent extends ElwoodAgentKind,
-  Candidate extends TrustFrame = TrustFrame,
+  Candidate extends TrustFrame<Agent> = TrustFrame<Agent>,
 > {
   private sampled:
     | { readonly frame: TerminalSnapshot; readonly candidate: Candidate | undefined }
     | undefined;
   private open:
-    | { readonly identity: string; readonly request: ElwoodDialogRequest<Agent> }
+    | { readonly identity: string; readonly request: AgentDialogRequest<Agent> }
     | undefined;
 
   private readonly controller = new AbortController();
@@ -54,7 +54,7 @@ export class WorkspaceTrustPolling<
     return this.controller.signal;
   }
 
-  get currentRequest(): ElwoodDialogRequest<Agent> | undefined {
+  get currentRequest(): AgentDialogRequest<Agent> | undefined {
     return this.open?.request;
   }
 
@@ -70,12 +70,11 @@ export class WorkspaceTrustPolling<
   }
 
   acceptVerified(
-    agent: Agent,
     elwoodSessionId: string,
     { frame, identity, menu }: Candidate,
   ): VerifiedWorkspaceTrust<Agent> {
     if (this.open?.identity !== identity) {
-      this.open = { identity, request: createWorkspaceTrustRequest(agent, elwoodSessionId, menu) };
+      this.open = { identity, request: createWorkspaceTrustRequest(elwoodSessionId, menu) };
     }
     return { frame, request: this.open.request };
   }

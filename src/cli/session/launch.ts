@@ -62,6 +62,8 @@ function claudeLaunch(
   const common = {
     cwd: request.cwd,
     stateDir: request.stateDir,
+    // `--trust` is the caller's choice, so it also approves a prompt that discloses the folder's
+    // hooks (§12A.2). `startClaudeWithId`'s probe policy would leave that prompt unanswered.
     autotrust: request.trust,
     permissionMode: request.permissionMode ?? "dontAsk",
     ...optional(request.initialSize, "initialSize"),

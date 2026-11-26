@@ -3,7 +3,7 @@
  * Covers PRD §5.3 and C-API-41 teardown/cleanup/error semantics.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { type ListModelsOptions, probeModels } from "../../src/core/models/list.ts";
 import type { AgentModelOption } from "../../src/core/models/rows.ts";
@@ -41,7 +41,7 @@ function harness(over: Partial<Probe> = {}): Harness {
 }
 
 /** Build the ProbeAdapter for a harness, counting `removeState` calls. */
-function adapterFor(h: Harness, start?: () => Promise<Probe>) {
+function adapterFor(h: Harness, start?: (refuse: (error: Error) => void) => Promise<Probe>) {
   return {
     start: start ?? (() => Promise.resolve(h.probe)),
     removeState: () => {
@@ -144,5 +144,41 @@ describe("probeModels", () => {
     // MUST run even though no session was returned (C-API-41).
     expect(h.removals).toBe(1);
     expect(h.teardowns).toBe(0);
+  });
+
+  test("C-CLAUDE-26 a refusal during start ends the probe without waiting for readiness", async () => {
+    const h = harness({ waitForStatus: () => new Promise(() => undefined) });
+    const refusal = new Error("refused");
+    const start = (refuse: (error: Error) => void) => {
+      refuse(refusal);
+      return Promise.resolve(h.probe);
+    };
+    expect(await rejectionOf(probeModels(adapterFor(h, start), opts))).toBe(refusal);
+    expect(h.teardowns).toBe(1);
+    expect(h.removals).toBe(1);
+  });
+
+  test("C-CLAUDE-26 a refusal while waiting for readiness tears the probe down", async () => {
+    let waiting = false;
+    const h = harness({
+      waitForStatus: () => {
+        waiting = true;
+        return new Promise(() => undefined);
+      },
+    });
+    const refusal = new Error("refused");
+    let refuse: (error: Error) => void = () => {
+      throw new Error("the probe never received its refusal");
+    };
+    const start = (received: (error: Error) => void) => {
+      refuse = received;
+      return Promise.resolve(h.probe);
+    };
+    const probe = probeModels(adapterFor(h, start), opts);
+    await vi.waitFor(() => expect(waiting).toBe(true));
+    refuse(refusal);
+    expect(await rejectionOf(probe)).toBe(refusal);
+    expect(h.teardowns).toBe(1);
+    expect(h.removals).toBe(1);
   });
 });
