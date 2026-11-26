@@ -8,6 +8,7 @@
 import { outsideStopInput } from "../../core/stop-input.ts";
 import type { ChunkBudget, DrainContext } from "../../core/transcript/drain.ts";
 import { drainToBudget, newTerminalBudget } from "../../core/transcript/drain.ts";
+import { recoverFromPollError } from "../../core/transcript/poll-recovery.ts";
 import { TranscriptCursor } from "./cursor.ts";
 import { buildDrainContext } from "./drain-context.ts";
 import {
@@ -165,24 +166,10 @@ export class ClaudeTranscriptWatcher {
     // A delivery failure reaching the background poll stops the watcher with a contained diagnostic.
     this.interval = outsideStopInput(() =>
       setInterval(() => {
-        void this.poll().catch((error) => this.recoverFromPollError(error));
+        void this.poll().catch((error) => recoverFromPollError(this, this.onPollError, error));
       }, this.pollIntervalMs),
     );
     this.interval.unref?.();
-  }
-
-  // Non-throwing recovery for a failed poll: finish() and the poll-error diagnostic
-  // can each throw a listener error, which would become a host-terminating unhandled
-  // rejection, so each step is contained.
-  private recoverFromPollError(error: unknown): void {
-    try {
-      this.finish();
-    } catch {
-      this.stop(); // finish() threw mid-drain: still guarantee the timer is cleared
-    }
-    try {
-      this.onPollError?.(error);
-    } catch {} // a diagnostic listener bug must not resurrect the failure
   }
 
   // Drain a cursor in bounded chunks against the SHARED per-scan budget (sync work
