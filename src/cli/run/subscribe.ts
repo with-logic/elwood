@@ -34,7 +34,7 @@ export function subscribeRunEvents(
   head: HeadedDisplay | undefined,
   updateAttention: CodexUpdateAttentionGuard | undefined,
 ): readonly (() => void)[] {
-  let promptRunning = false;
+  let promptSawRunning = false;
   let promptReachedReadyAfterRunning = false;
   const common = [
     session.on("activity", (event) => {
@@ -57,8 +57,8 @@ export function subscribeRunEvents(
     }),
     session.on("status", ({ status }) => {
       if (observer.promptPhaseStarted()) {
-        if (status === "running") promptRunning = true;
-        else if (status === "ready" && promptRunning) promptReachedReadyAfterRunning = true;
+        if (status === "running") promptSawRunning = true;
+        else if (status === "ready" && promptSawRunning) promptReachedReadyAfterRunning = true;
       }
       updateAttention?.status(status);
       observer.status(status);

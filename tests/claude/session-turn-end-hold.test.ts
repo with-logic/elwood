@@ -55,12 +55,12 @@ const decisions = (live: ClaudeSessionApi) =>
   live.statusDecisions().map(({ evidence, to }) => `${evidence}:${to}`);
 
 /** Waits for `ready()` without asserting, so that helpers can share it. */
-const until = (ready: () => boolean, timeout = 1_000) =>
+const until = (ready: () => boolean, timeoutMs = 1_000) =>
   vi.waitFor(
     () => {
       if (!ready()) throw new Error("Not yet");
     },
-    { timeout },
+    { timeout: timeoutMs },
   );
 
 /** What was written before the offer painted, behind it, and once it closed. */

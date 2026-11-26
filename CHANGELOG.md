@@ -35,8 +35,10 @@ back each entry are listed in `prd/14-conformance.md`.
   Claude's idle composer has stayed unchanged for 500 ms, at most 5 s, so an
   offer Claude has mounted but not yet painted cannot take its Enter. This holds
   at widths where the offer's title fits on one row (about 41 columns), and the
-  next turn ends the wait. `elwood run` no longer fails when the offer appears
-  after its prompt's turn has ended.
+  next turn ends the wait. If the 5 s limit releases input from a screen that
+  never settled, a content-free `turn_end_hold_expired` warning reports it.
+  `elwood run` no longer fails when the offer appears after its prompt's turn
+  has ended.
 
 ## [0.8.0] - 2026-11-25
 

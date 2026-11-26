@@ -4,6 +4,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode-offer.ts";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
 import { isRecord } from "../../src/core/predicates.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
@@ -11,8 +12,6 @@ import type { ClaudeSessionApi, StartClaudeOptions } from "../../src/index.ts";
 import { defaultClaudeConfigDir } from "./claude-home.ts";
 import type { E2eProject } from "./scratch.ts";
 import { waitFor } from "./wait-for.ts";
-
-export const offerTitle = "Teach auto mode about your environment?";
 
 /**
  * Claude 2.1.332 offers setup after a turn in auto mode once it has started five times and
@@ -68,7 +67,12 @@ const offerLabel = "offer";
 export async function offerShown(session: ClaudeSessionApi, timeoutMs = 15_000): Promise<boolean> {
   const screen = () => session.terminal.snapshot().text;
   try {
-    await waitFor(() => (screen().includes(offerTitle) ? true : undefined), offerLabel, timeoutMs);
+    // The offer's dialog shape, so that a reply quoting its title is not taken for it.
+    await waitFor(
+      () => (isClaudeAutoModeOffer(screen()) ? true : undefined),
+      offerLabel,
+      timeoutMs,
+    );
     return true;
   } catch (error) {
     if (!(error instanceof Error && error.message === `Timed out waiting for ${offerLabel}`))

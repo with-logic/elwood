@@ -8,13 +8,18 @@ import { readNativeInputFrame } from "./native-input-frame.ts";
 import { tty } from "./trust-composer.ts";
 
 const offerRows = capturedFrame("claude-2.1.332/auto-mode-offer").trimEnd().split("\n");
+/** The offer spans its top rule, the row above its title, through its key hint row. */
+const offerTop = offerRows.findIndex((row) => row.includes("Teach auto mode about")) - 1;
+const offerEnd = offerRows.findIndex((row) => row.includes("Esc to cancel")) + 1;
 
 /** The captured offer frame's text. */
 export const offerText = offerRows.join("\n");
 /** The captured offer frame without the offer: the composer and footer it painted over. */
-export const idleText = offerRows
-  .map((row, index) => (index >= 26 && index < 36 ? "" : row))
-  .join("\n");
+export const idleText = [
+  ...offerRows.slice(0, offerTop),
+  ...offerRows.slice(offerTop, offerEnd).map(() => ""),
+  ...offerRows.slice(offerEnd),
+].join("\n");
 /** That idle screen while a turn works, as its footer shows. */
 export const workingText = idleText.replace(
   "auto mode on (shift+tab to cycle)",
@@ -29,10 +34,13 @@ const permissionRows = readNativeInputFrame(
   .split("\n")
   .slice(-12)
   .map((row) => row.slice(0, 140));
-/** Another Claude dialog where the offer would be, above the same composer. */
-export const permissionText = offerRows
-  .flatMap((row, index) => (index < 24 || index >= 36 ? [row] : index === 24 ? permissionRows : []))
-  .join("\n");
+/** Another Claude dialog in the rows that end where the offer ends, above the same composer. */
+const dialogTop = offerEnd - permissionRows.length;
+export const permissionText = [
+  ...offerRows.slice(0, dialogTop),
+  ...permissionRows,
+  ...offerRows.slice(offerEnd),
+].join("\n");
 
 /** A whole repaint of `text`, then the hardware cursor at `cursor` (CSI row;col H). */
 export function offerScreen(text: string, cursor = "\u001b[38;3H"): string {
