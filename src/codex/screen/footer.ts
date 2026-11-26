@@ -4,27 +4,56 @@
  * Implements PRD §5.3/§5.4, C-API-28/C-TRUST-01/C-CODEX-26.
  */
 
-import { codexReasoningEfforts } from "../../core/reasoning-effort.ts";
+import { type CodexReasoningEffort, codexReasoningEfforts } from "../../core/reasoning-effort.ts";
 import { codexServiceTierChoices } from "../../core/speed/types.ts";
 import { displayColumns } from "./display-columns.ts";
+
+/**
+ * The effort labels of Codex's status footer. Codex shows `default` both when no effort is set
+ * and when the effort is `none`, and for every effort before it applies the session's
+ * configuration (C-API-28).
+ */
+const codexFooterEffortLabels = [...codexReasoningEfforts, "default"] as const;
+export type CodexFooterEffortLabel = (typeof codexFooterEffortLabels)[number];
+
+/**
+ * Whether Codex labels `effort` on its footer once it applies the session's configuration.
+ * Codex 0.172 labels every effort but `none`, including one the model does not list, which it
+ * shows as the model's default effort (C-API-28).
+ */
+const codexFooterLabelsEffort = {
+  none: false,
+  minimal: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+  max: true,
+  ultra: true,
+} as const satisfies Record<CodexReasoningEffort, boolean>;
+
+/** Whether a session that requested `effort` shows a label other than `default` once configured. */
+export function codexFooterShowsEffort(effort: CodexReasoningEffort | undefined): boolean {
+  return effort !== undefined && codexFooterLabelsEffort[effort];
+}
 
 const tierBadges = codexServiceTierChoices
   .filter((tier) => tier !== "default")
   .map((tier) => tier.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`))
   .join("|");
 const directory = String.raw` · (?:~?\/|[A-Z]:[\\/])[^\n]*`;
-// Groups: the model, the effort label (`default` for none), and the directory.
 const statusFooter = new RegExp(
-  String.raw`^ {2}((?:gpt|GPT)-[\w.-]+(?: Terra)? )?(${codexReasoningEfforts.join("|")}|default)(?: (?:${tierBadges}))?(${directory})?(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
+  String.raw`^ {2}(?<model>(?:gpt|GPT)-[\w.-]+(?: Terra)? )?(?<effort>${codexFooterEffortLabels.join("|")})(?: (?:${tierBadges}))?(?<directory>${directory})?(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
 );
 
 /**
  * The effort label of a status row, or undefined when `row` is not one. An effort-only row
- * needs its directory: a bare effort word cannot prove configuration.
+ * needs its directory: a bare effort word cannot prove the row is Codex's status footer.
  */
-function statusEffort(row: string): string | undefined {
-  const match = statusFooter.exec(row);
-  return match && (match[1] ?? match[3]) !== undefined ? match[2] : undefined;
+function statusEffortLabel(row: string): CodexFooterEffortLabel | undefined {
+  const groups = statusFooter.exec(row)?.groups ?? {};
+  const anchored = groups["model"] !== undefined || groups["directory"] !== undefined;
+  return anchored ? codexFooterEffortLabels.find((label) => label === groups["effort"]) : undefined;
 }
 
 // Beside a warnings badge that leaves no room, Codex drops `? for shortcuts` from the hint.
@@ -55,16 +84,10 @@ function rowWasCut(row: string, next: string, cols: number): boolean {
   return displayColumns(row) + 1 + displayColumns(word) > cols;
 }
 
-/** Native footer rows beneath a composer. */
-export type CodexFooter = {
-  /** A status row is among them. */
-  readonly hasStatus: boolean;
-  /**
-   * The status row's effort label. Codex labels no effort, and `none`, `default`, as it does
-   * every effort before it applies the session's configuration (C-API-28).
-   */
-  readonly effort: string | undefined;
-};
+/** Native footer rows beneath a composer, with the effort label of their status row if any. */
+export type CodexFooter =
+  | { readonly hasStatus: false }
+  | { readonly hasStatus: true; readonly effortLabel: CodexFooterEffortLabel };
 
 /**
  * Classify the rows beneath a composer in a terminal `cols` columns wide: every row must
@@ -77,19 +100,19 @@ export function classifyCodexFooter(
   cols: number,
 ): CodexFooter | undefined {
   const below = rowsBelow.map((row) => row.replace(trailingBadges, "").trimEnd());
-  let effort: string | undefined;
+  let effortLabel: CodexFooterEffortLabel | undefined;
   // The status row, or continuation, that the current row would continue.
   let open: string | undefined;
   for (const row of below) {
-    const rowEffort = statusEffort(row);
+    const rowEffortLabel = statusEffortLabel(row);
     const hasContinuationShape = continuation.test(row) && !unknownBadge.test(row);
     const continuesOpenRow =
       open !== undefined && hasContinuationShape && rowWasCut(open, row, cols);
     if (row === "") {
       // A blank row ends any wrapped footer: a continuation sits directly beneath its row.
       open = undefined;
-    } else if (rowEffort !== undefined) {
-      effort = rowEffort;
+    } else if (rowEffortLabel !== undefined) {
+      effortLabel = rowEffortLabel;
       open = row;
     } else if (hintFooter.test(row)) {
       open = undefined;
@@ -99,5 +122,5 @@ export function classifyCodexFooter(
       return undefined;
     }
   }
-  return { hasStatus: effort !== undefined, effort };
+  return effortLabel === undefined ? { hasStatus: false } : { hasStatus: true, effortLabel };
 }

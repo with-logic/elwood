@@ -37,6 +37,26 @@ export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: stri
   return { questionId: question.id, text };
 }
 
+/** The effort the question proofs request. */
+export const publicCodexQuestionEffort = "low";
+
+/** Options for a session on the pinned Codex and model inside `sandbox`, with no effort. */
+export function publicCodexSessionOptions(
+  sandbox: { readonly cwd: string; readonly stateDir: string },
+  initialSize: TerminalSize = nativeQuestionSize,
+) {
+  return {
+    cwd: sandbox.cwd,
+    stateDir: sandbox.stateDir,
+    model: questionCodexModel,
+    autotrust: true,
+    autoupdate: false,
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    initialSize,
+  } as const;
+}
+
 /** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default;
  * the narrow-pane proof passes its own pane size. */
 export function publicCodexQuestionSession(
@@ -44,15 +64,8 @@ export function publicCodexQuestionSession(
   initialSize: TerminalSize = nativeQuestionSize,
 ): CodexSession {
   return new CodexSession({
-    cwd: sandbox.cwd,
-    stateDir: sandbox.stateDir,
-    model: questionCodexModel,
-    reasoningEffort: "low",
-    autotrust: true,
-    autoupdate: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    initialSize,
+    ...publicCodexSessionOptions(sandbox, initialSize),
+    reasoningEffort: publicCodexQuestionEffort,
   });
 }
 

@@ -3,9 +3,10 @@
  * Implements PRD §5.3/§5.4, C-API-31/C-API-56/C-TRUST-01/C-ATTN-02.
  */
 
+import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
-import { classifyCodexFooter, unknownCols } from "./footer.ts";
+import { classifyCodexFooter, codexFooterShowsEffort, unknownCols } from "./footer.ts";
 import { codexWelcomeBox } from "./welcome.ts";
 import { codexWorkingScreen } from "./working.ts";
 import { isFolderAccessPrelude } from "./workspace-trust-copy.ts";
@@ -124,19 +125,22 @@ export function codexComposerRow(
  * composer it paints while booting has none, and under load its directory-trust gate can
  * follow seconds later, so readiness waits for this footer (C-API-28). Codex 0.172 paints
  * the footer before it applies the session's configuration, which discards a mode or model
- * picked before it, and labels the effort `default` until then. A session that requested an
- * effort Codex labels (`effortShown`) therefore also waits for another label. A wrapped
- * footer counts only with the width of the terminal that drew the frame (C-CODEX-26).
+ * picked before it, and labels the effort `default` until then. For a session that requested
+ * an effort Codex labels (`requestedEffort`), a `default` label therefore does not count.
+ * Without one, true means only that the footer is painted: Codex may not have applied the
+ * configuration yet. A wrapped footer counts only with the width of the terminal that drew
+ * the frame (C-CODEX-26).
  */
 export function codexComposerConfigured(
   frame: string,
   cols = unknownCols,
-  effortShown = false,
+  requestedEffort?: CodexReasoningEffort,
 ): boolean {
   const rows = frame.split("\n").map((row) => row.trimEnd());
   const at = rows.findLastIndex((row) => composerRowStart.test(row));
   const footer = at >= 0 ? classifyCodexFooter(rows.slice(at + 1), cols) : undefined;
-  return footer?.hasStatus === true && !(effortShown && footer.effort === "default");
+  if (footer?.hasStatus !== true) return false;
+  return footer.effortLabel !== "default" || !codexFooterShowsEffort(requestedEffort);
 }
 
 /** Require the composer's own footer unless the caller permits welcome evidence. */

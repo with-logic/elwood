@@ -3998,13 +3998,6 @@ and the `/plan` menu row reads "switch to Plan mode", so a proof waits for the b
 front of the warnings badge. Captures: `modal-footer-wrapped-{60,50,40}.json`.
 C-QUESTION-04.
 
-`modal-footer-wrapped-{80,60,40}.json`. The 50-column modal split was seen in a probe, not
-captured, and the 40-column queued layout is synthesized in
-`tests/unit/codex-questions/narrow-footer.test.ts`. A narrow pane also wraps a modal
-option's description onto a continuation row (at 60 columns and below for the proofs'
-options), which Elwood does not yet match to the question, so such a modal question holds
-input but is not listed. C-ATTN-02, C-QUESTION-04.
-
 ## Codex 0.172.0 applies its configuration after its footer (2026-11-26)
 
 **Codex paints its status footer before it applies the session's configuration.** The
@@ -4032,15 +4025,29 @@ configured composer. In one launch at load 34, the 10 s deadline fired 1.4 s bef
 configuration, onto `GPT-6-Luna default`. With no effort requested, a launch at load 10
 configured at 11.0 s, 0.85 s after `ready`, and discarded the `/plan` typed before it.
 
-**Only a requested effort makes the configuration visible.** The footer labels no effort,
-and `none`, `default` (`status_line_reasoning_effort_label`), and every footer reads
-`default` before the configuration. With `low` requested, the frames before and after
+**Only a requested effort makes the configuration visible.** The footer shows `default`
+both with no effort and with `none` (`status_line_reasoning_effort_label`), and every footer
+reads `default` before the configuration. With `low` requested, the frames before and after
 differ only in that label (`tests/fixtures/codex-0.172.0/boot/`). With no effort they do not
-differ at all. The title, the header box, the welcome art and the warnings badge do not
-change either. Codex creates its rollout at the first turn, not at `thread/start`, so no
-transcript appears, and its `SessionStart` hook is lazy too. The only file written as the
-configuration lands is `tui-thread-reference-capabilities/<thread id>` in `CODEX_HOME`,
-about 20 ms before it. Elwood does not read that file, and a resumed thread already has
-one. So readiness waits for a label other than `default` only when the session requested
-an effort other than `none`. Without one, `ready` can still precede the configuration (§5.3).
-C-API-28, C-E2E-34.
+differ at all. Behind the delaying proxy the footer before the configuration also carried a
+`fast` tier badge, which the configuration removed; without the proxy it did not, and a
+session configured for that tier keeps it, so the badge is no signal. The title, the header
+box, the welcome art and the warnings badge do not change either. Codex creates its rollout
+at the first turn, not at `thread/start`, so no transcript appears, and its `SessionStart`
+hook is lazy too. The only file written as the configuration lands is
+`tui-thread-reference-capabilities/<thread id>` in `CODEX_HOME`, about 20 ms before it.
+Elwood does not read that file, and a resumed thread already has one. So readiness waits
+for a label other than `default` only when the session requested a `reasoningEffort` other
+than `none`. Without one, `ready` can still precede the configuration (§5.3), including
+when the effort comes from `configOverrides`, a profile or config.toml.
+
+**Every requested effort but `none` gets a label once configured.** On `gpt-6-luna`, which
+lists `low` to `max`: `minimal`, `xhigh` and `max` read as themselves, and `ultra`, which it
+does not list, read `medium`, the model's default effort. A resumed thread, with no effort
+override, came back with the effort and model it started
+with (`GPT-6-Luna low`). With `-c model_reasoning_effort="low"` it came back as
+`GPT-6.2-Sol low` (Codex's default model, since the config names none, at the requested effort), and resumed with
+`high` after starting at `low` it read `GPT-6.2-Sol high`. No resumed footer read `default`
+after its configuration. Elwood waits for the label until the 60 s backstop at the latest,
+so a footer that never shows the effort cannot hold readiness for good
+(`codex_effort_unconfirmed`). C-API-28, C-E2E-34.

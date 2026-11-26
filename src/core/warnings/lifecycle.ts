@@ -88,6 +88,23 @@ export type InitialReadyBackstopWarning = {
   readonly raw: string;
 };
 
+/**
+ * Codex's footer did not show the effort the session requested by the initial-readiness
+ * backstop, so readiness was released on its status footer alone. Content-free (§5.3, C-API-28).
+ */
+export type CodexEffortUnconfirmedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "codex_effort_unconfirmed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: "codex_effort_unconfirmed";
+};
+
+/** The warnings the initial-readiness gate emits. */
+export type InitialReadinessWarning = InitialReadyBackstopWarning | CodexEffortUnconfirmedWarning;
+
 /** One content-free diagnostic for a failed rendered-frame notification (§5.4, C-API-72). */
 export type FrameObserverFailedWarning = {
   readonly elwoodSessionId: string;

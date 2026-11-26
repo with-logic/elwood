@@ -3,22 +3,26 @@
  * standing in for a slow network in front of a real CLI. Supports C-E2E-34.
  */
 import { createServer } from "node:http";
-import { connect, type Socket } from "node:net";
+import { connect } from "node:net";
+import type { Duplex } from "node:stream";
 
 export type DelayingProxy = {
   /** Proxy variables for a launch; `NO_PROXY` is cleared so every host goes through. */
   readonly env: Readonly<Record<string, string>>;
-  /** Tunnels requested so far: proof that the CLI used the proxy. */
-  readonly tunnels: () => number;
+  /** Tunnels opened to their hosts so far: proof that the CLI went through the proxy. */
+  readonly openedTunnelCount: () => number;
+  /** Why tunnels failed to reach their hosts, for a failure message: empty when none did. */
+  readonly failures: () => readonly string[];
   /** Stops listening and drops every held and open tunnel. */
   close(): Promise<void>;
 };
 
 export async function startDelayingProxy(holdMs: number): Promise<DelayingProxy> {
-  const sockets = new Set<Socket>();
+  const sockets = new Set<Duplex>();
   const holds = new Set<ReturnType<typeof setTimeout>>();
-  let tunnels = 0;
-  const track = (socket: Socket) => {
+  const failures: string[] = [];
+  let opened = 0;
+  const track = <T extends Duplex>(socket: T): T => {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
     socket.on("error", () => socket.destroy());
@@ -27,21 +31,23 @@ export async function startDelayingProxy(holdMs: number): Promise<DelayingProxy>
   const server = createServer((_request, response) => {
     response.writeHead(405).end();
   });
-  server.on("connect", (request, client: Socket, head: Buffer) => {
-    tunnels += 1;
+  server.on("connect", (request, client, head) => {
     track(client);
-    const [host = "", port = "443"] = String(request.url).split(":");
+    const target = String(request.url);
+    const [host = "", port = "443"] = target.split(":");
     const hold = setTimeout(() => {
       holds.delete(hold);
       if (client.destroyed) return;
       const upstream = track(
         connect(Number(port), host, () => {
+          opened += 1;
           client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
           upstream.write(head);
           upstream.pipe(client);
           client.pipe(upstream);
         }),
       );
+      upstream.once("error", (error) => failures.push(`${target}: ${error.message}`));
       upstream.once("close", () => client.destroy());
       client.once("close", () => upstream.destroy());
     }, holdMs);
@@ -60,7 +66,8 @@ export async function startDelayingProxy(holdMs: number): Promise<DelayingProxy>
       NO_PROXY: "",
       no_proxy: "",
     },
-    tunnels: () => tunnels,
+    openedTunnelCount: () => opened,
+    failures: () => [...failures],
     async close() {
       for (const hold of holds) clearTimeout(hold);
       for (const socket of sockets) socket.destroy();
