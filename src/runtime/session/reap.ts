@@ -18,7 +18,7 @@ import { reapFailureWarning } from "../../core/activity/index.ts";
 import { causeDetails, elwoodError, toError } from "../../core/errors.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { SessionReaper } from "../shutdown/reap-tree.ts";
-import { unconfirmedGroupsDetail } from "../shutdown/terminate.ts";
+import { unconfirmedGroupsDetail } from "../shutdown/termination-errors.ts";
 
 export class SessionReapPolicy {
   readonly reaper: SessionReaper;
