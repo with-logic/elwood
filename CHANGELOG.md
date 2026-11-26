@@ -69,6 +69,12 @@ back each entry are listed in `prd/14-conformance.md`.
   now settles at `ready`. 0.172 draws a question it asks as a `? ` cell under the
   prompt, and Elwood did not read that history as finished, so the session stayed
   `blocked` and `send()` timed out.
+- Codex 0.172 questions whose footer wraps onto more rows are recognized: a modal
+  question's footer wraps in a pane narrower than about 90 columns, and a queued
+  one's at about 60 columns or fewer. Elwood read the footer only on one row, so it
+  missed the question: ordinary input was not held for it and `answerQuestions()`
+  failed. A modal question whose option descriptions also wrap holds input but is
+  not yet listed.
 
 - Decline Claude's auto-mode setup offer on its own, with Esc (`Not now`), so an
   unattended session no longer stays `blocked` behind it. Elwood waits past the
