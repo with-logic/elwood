@@ -1,11 +1,13 @@
 /**
  * What a numbered trust answer may write again: with Codex's adapter retry, Enter alone
  * while its caret is on the affirmative; otherwise the number only after output shows the
- * gate kept (C-TRUST-01).
+ * gate kept. A frame read again with no output wakes a waiting answer but is no such
+ * output (C-TRUST-01).
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import { codexTrustClearance } from "../../src/codex/screen-table.ts";
+import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { codexNumberedRetry } from "../../src/codex/trust-retry.ts";
 import { selectableOptions } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
@@ -77,4 +79,67 @@ test.each<[string, readonly string[]]>([
   await vi.advanceTimersByTimeAsync(1_000);
   expect(writes.slice(before.length).length).toBeGreaterThan(0);
   expect(writes.slice(before.length).every((input) => input === "\r")).toBe(true);
+});
+
+/**
+ * Claude's gate through Claude's own adapter, its answer typed, and a settled read that
+ * pending rendering can withhold. `handle(false)` hands over a frame read again.
+ */
+async function answeredClaudeGate() {
+  const frame = `${claudeTrust}\n❯ 1. Yes\n  2. No`;
+  const view = { settled: frame as string | undefined };
+  const write = vi.fn<(input: string) => void>();
+  const responder = new ClaudeStartupPromptResponder(true);
+  const read = () => view.settled;
+  const handle = (drawn = true) =>
+    responder.handle(frame, write, () => frame, undefined, read, { drawn });
+  handle();
+  await vi.advanceTimersByTimeAsync(1_000);
+  return { frame, view, write, handle };
+}
+
+test("C-TRUST-01 a waiting answer reads a frame read again with no output", async () => {
+  const { frame, view, write, handle } = await answeredClaudeGate();
+  expect(write.mock.calls).toEqual([["1\r"]]);
+  // Claude draws its gate again while rendering is pending, so no frame is settled.
+  view.settled = undefined;
+  handle();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(write.mock.calls).toEqual([["1\r"]]);
+  // The frame settles and is read again with no output: the answer reads the gate Claude drew
+  // and retypes.
+  view.settled = frame;
+  handle(false);
+  await vi.advanceTimersByTimeAsync(250);
+  expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
+});
+
+test("C-TRUST-01 a frame read again with no output retypes no answer", async () => {
+  const { write, handle } = await answeredClaudeGate();
+  expect(write.mock.calls).toEqual([["1\r"]]);
+  // The frame is read again, but Claude has drawn nothing since the answer.
+  handle(false);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(write.mock.calls).toEqual([["1\r"]]);
+  handle(); // output that still shows the gate
+  await vi.advanceTimersByTimeAsync(250);
+  expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
+});
+
+test("C-TRUST-01 Codex's adapter retypes no answer on a frame read again", async () => {
+  // With its caret off the affirmative, Codex's retry is the number, and only after output.
+  const frame = `${codexTrust}\n  1. Yes, continue\n› 2. No, quit\nPress enter to continue`;
+  const write = vi.fn<(input: string) => void>();
+  const responder = new CodexStartupPromptResponder("s1", true);
+  const read = () => frame;
+  responder.handle(frame, write, read);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(write.mock.calls).toEqual([["1\r"]]);
+  responder.handle(frame, write, read, write, read, { drawn: false });
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(write.mock.calls).toEqual([["1\r"]]);
+  responder.handle(frame, write, read); // output that still shows the gate
+  await vi.advanceTimersByTimeAsync(250);
+  expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
+  responder.dispose();
 });

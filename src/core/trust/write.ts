@@ -46,9 +46,8 @@ export class TrustAttempt {
     return this.clearance;
   }
 
-  /** A frame rendered: a waiting answer or retry re-reads it (`awaiting`, `numberedRetry`). */
+  /** Resume a waiting answer or retry, which reads the frame. `noteFrame` marks drawn frames. */
   wake(): void {
-    this.phase.renderedSinceWrite = true;
     const waiter = this.wakeWaiter;
     this.wakeWaiter = undefined;
     waiter?.();

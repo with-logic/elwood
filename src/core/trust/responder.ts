@@ -5,7 +5,7 @@ import type { TrustClearance } from "./clearance.ts";
 import { GateDeadline, gateBudgetMs } from "./deadline.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
 import type { Episode, TrustHooks, TrustPromptResult, TrustWriteResult } from "./types.ts";
-import { attempted, leaveFrame, newEpisode } from "./types.ts";
+import { attempted, leaveFrame, newEpisode, noteFrame } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
@@ -43,20 +43,20 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     return id as TrustPromptIdFor<A> | undefined;
   }
   /** Read the latest settled frame; undefined during pending/synchronized/failed rendering
-   * holds input until the deadline. Omit the reader only for static/legacy numbered writes. */
+   * holds input until the deadline. Omit the reader only for static/legacy numbered writes.
+   * No retry counts a frame read again (`drawn: false`, see `noteFrame`). */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string | undefined,
+    { drawn = true }: { readonly drawn?: boolean } = {},
   ): TrustPromptResult<A> {
     if (this.disposed) return undefined;
     const priorIdentity = this.episode?.lastIdentity;
     const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
     if (this.hooks.claimCallerOwnership?.(view)) this.callerInput();
-    // A rendered frame is evidence for the gate's next attempt as well as its current one.
-    if (this.episode !== undefined) this.episode.phase.renderedSinceWrite = true;
-    this.episode?.attempt?.wake();
+    if (this.episode !== undefined) noteFrame(this.episode, drawn);
     const episode = this.episode;
     if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
       return undefined;

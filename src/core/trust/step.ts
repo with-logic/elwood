@@ -44,7 +44,7 @@ export type TrustPhase = {
   confirmationWriteAttempted: boolean;
   /** A confirming write fulfilled. That is not clearance, which only a frame verifies. */
   confirmationWriteFulfilled: boolean;
-  /** A frame rendered after the last write: only such a frame can show it was ignored. */
+  /** A frame the CLI drew (`drawn`) after the last write: only it can show the write ignored. */
   renderedSinceWrite: boolean;
 };
 

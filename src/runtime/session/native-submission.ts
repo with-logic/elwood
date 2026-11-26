@@ -4,10 +4,10 @@ import { ControlQueue } from "../../core/control-queue/index.ts";
 import type { AdmitOperation, ControlSubmitter } from "../../core/control-queue/types.ts";
 import { queuedInputSubmitter, type RecoveryComposer } from "../../core/input/index.ts";
 import { reserveLoopSubmission } from "../../core/simple/loop-boundary.ts";
-import { registerNativeIdle } from "../../core/simple/native-idle.ts";
+import { type IdleSource, registerNativeIdle } from "../../core/simple/native-idle.ts";
 import { observeOwnedLoop } from "../../core/simple/owned-loop.ts";
 import { nativeTurnReader } from "../../core/simple/submission-context.ts";
-import { captureRenderProgress } from "../../terminal/cursor.ts";
+import { captureRenderProgress, subscribeRender } from "../../terminal/cursor.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import { notRunningError } from "./not-running.ts";
 import { PasteRecoveryRevocation } from "./paste-recovery.ts";
@@ -28,20 +28,7 @@ export function bindNativeInput(
     },
     on: events.on.bind(events),
   };
-  registerNativeIdle(session, {
-    capture: () => {
-      const progressed = captureRenderProgress(session.terminal);
-      const isReady = () =>
-        !session.closing.signal.aborted &&
-        progressed() &&
-        session.status === "ready" &&
-        !session.inputBlocking &&
-        !session.automationInputBlocking;
-      return { isReady, isIdle: () => isReady() && readEmpty() !== undefined };
-    },
-    // Both adapters emit terminal:data after attachPtyTerminal's completed-render observer.
-    subscribe: (listener) => events.on("terminal:data", listener),
-  });
+  registerNativeIdle(session, nativeIdleSource(session, readEmpty));
   const admit: AdmitOperation = (origin, signal) => {
     if (origin.kind !== "loop") return undefined;
     const reader = nativeTurnReader(session);
@@ -115,4 +102,44 @@ export function bindSessionControl(
     native.admit,
   );
   return { controlQueue, pasteGuard, promptSubmissions: prompts };
+}
+
+type IdleSession = Pick<
+  SessionLifecycle,
+  "terminal" | "closing" | "status" | "inputBlocking" | "automationInputBlocking"
+>;
+
+/**
+ * A session's native idle evidence, read once its frame is classified: a render notifies its
+ * listeners before the PTY render observer classifies the frame (C-API-48). Unsubscribing
+ * also cancels a delivery already queued.
+ */
+export function nativeIdleSource(
+  session: IdleSession,
+  readEmpty: () => object | undefined,
+): IdleSource {
+  return {
+    capture: () => {
+      const progressed = captureRenderProgress(session.terminal);
+      const isReady = () =>
+        !session.closing.signal.aborted &&
+        progressed() &&
+        session.status === "ready" &&
+        !session.inputBlocking &&
+        !session.automationInputBlocking;
+      return { isReady, isIdle: () => isReady() && readEmpty() !== undefined };
+    },
+    subscribe: (listener) => {
+      let live = true;
+      const off = subscribeRender(session.terminal, () =>
+        queueMicrotask(() => {
+          if (live) listener();
+        }),
+      );
+      return () => {
+        live = false;
+        off();
+      };
+    },
+  };
 }

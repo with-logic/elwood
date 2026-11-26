@@ -49,6 +49,11 @@ describe("ClaudeStartupPromptResponder", () => {
         writes.push(input);
       }),
     ).toEqual([]);
+    const reread = { drawn: false };
+    const write = (input: string) => void writes.push(input);
+    expect(responder.handle(browserPrompt, write, undefined, undefined, undefined, reread)).toEqual(
+      [],
+    );
     expect(writes).toEqual([esc]);
   });
 
