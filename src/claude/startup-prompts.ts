@@ -1,8 +1,8 @@
 /**
  * Answers Claude first-party startup prompts that block embedded readiness:
- * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder)
- * and the browser-tools prompt. Implements PRD §5.1, C-CLAUDE-10, C-CLAUDE-11,
- * C-CLAUDE-14, and C-CLAUDE-16.
+ * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder),
+ * the browser-tools prompt and the auto-mode setup offer. Implements PRD §5.1,
+ * C-CLAUDE-10, C-CLAUDE-11, C-CLAUDE-14, C-CLAUDE-16 and C-CLAUDE-26.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";
@@ -15,6 +15,8 @@ import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/star
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
+import { ClaudeAutoModeOfferDecliner } from "./auto-mode-decline.ts";
+import { isClaudeAutoModeOfferMenu } from "./auto-mode-offer.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -24,6 +26,7 @@ export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclineLatched = false;
   private readonly lifetime = new AbortController();
+  private readonly autoModeOfferDecliner = new ClaudeAutoModeOfferDecliner(this.lifetime.signal);
   private readonly onWorkspaceTrustTakeover: (() => void) | undefined;
 
   constructor(
@@ -60,6 +63,7 @@ export class ClaudeStartupPromptResponder {
   callerInput(): void {
     const previous = this.trust.humanOwnedPrompt;
     this.trust.callerInput();
+    this.autoModeOfferDecliner.callerInput();
     const current = this.trust.humanOwnedPrompt;
     if (current === "workspace_trust" && current !== previous) this.onWorkspaceTrustTakeover?.();
   }
@@ -82,7 +86,8 @@ export class ClaudeStartupPromptResponder {
    * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
    * where a trust gate must withhold unrelated automated keys.
    * Live adapters must supply `readTrustFrame` from `settledLiveSnapshot`, returning
-   * undefined for pending rendering, synchronized output, or render failure.
+   * undefined for pending rendering, synchronized output, or render failure. It also
+   * verifies the auto-mode offer's decline, which runs only when it is supplied.
    * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
    * reader must not replace the settlement-aware reader in a live session.
    */
@@ -90,7 +95,10 @@ export class ClaudeStartupPromptResponder {
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
-    writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
+    writeAutomation: (
+      input: string,
+      stillValid?: (frameText: string) => boolean,
+    ) => TrustWriteResult | Promise<AutomationWriteResult> = write,
     readTrustFrame?: () => string | undefined,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
@@ -114,7 +122,7 @@ export class ClaudeStartupPromptResponder {
       // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
       // so the decline must not claim success: un-latch it and settle as `cancelled`,
       // which emits no activity; a later frame retries only while still live.
-      const writeSettled = Promise.resolve(writeAutomation(declineKey))
+      const writeSettled = Promise.resolve(writeAutomation(declineKey, browserToolsPromptVisible))
         .then((result): StartupWriteCompletion => {
           // Disposal DURING the write wins: the session is gone, so report neither a
           // success activity nor a write-failure warning for it (C-CLAUDE-22).
@@ -133,14 +141,20 @@ export class ClaudeStartupPromptResponder {
         settled: writeSettled,
       });
     }
+    // Its decline is verified on settled frames, which only a live session can read.
+    const offer =
+      readTrustFrame &&
+      this.autoModeOfferDecliner.handle(screenText, writeAutomation, readTrustFrame);
+    if (offer) settled.push(offer);
     return settled;
   }
 }
 
 /**
- * The Claude non-trust automation barrier. The decline is only correct while its own
+ * The Claude non-trust automation barrier. A decline is only correct while its own
  * prompt is still on screen: if the prompt cleared during settlement, an Escape would
  * land in whatever replaced it (a composer, clearing staged text), so it is withheld.
+ * A writer may narrow that to one prompt for a single write.
  */
 export function guardedClaudeAutomationWrite(
   terminal: InputTerminal,
@@ -148,13 +162,13 @@ export function guardedClaudeAutomationWrite(
   readFrame: () => string,
   cancelled: () => boolean = () => false,
   signal?: AbortSignal,
-): (input: string) => Promise<AutomationWriteResult> {
+): (input: string, stillValid?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
   return guardedNonTrustAutomationWrite(
     terminal,
     write,
     readFrame,
     "claude",
-    (frameText) => browserToolsPromptVisible(frameText),
+    (frameText) => browserToolsPromptVisible(frameText) || isClaudeAutoModeOfferMenu(frameText),
     cancelled,
     signal,
   );

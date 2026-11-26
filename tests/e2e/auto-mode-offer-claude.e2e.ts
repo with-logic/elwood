@@ -1,9 +1,10 @@
 /**
  * Claude's auto-mode setup offer, which Claude paints right after a turn's Stop above a
- * composer that stays visible, blocks a named session. A caller's `sendMessage` made while
- * it is visible writes nothing to Claude, then submits once the offer is dismissed.
- * A headless `elwood run` whose turn the offer follows still succeeds.
- * Implements C-ATTN-09 (PRD §5.3) and C-CLI-05 (PRD §12A.2).
+ * composer that stays visible, blocks a named session. A human who moves its menu owns it,
+ * so Elwood does not decline it. A caller's `sendMessage` made while it is visible writes
+ * nothing to Claude, then submits once the human dismisses the offer. A headless
+ * `elwood run` whose turn the offer follows still succeeds.
+ * Implements C-ATTN-09 (PRD §5.3), C-CLAUDE-26 (PRD §5.1) and C-CLI-05 (PRD §12A.2).
  */
 
 import assert from "node:assert/strict";
@@ -72,6 +73,8 @@ test("C-ATTN-09 a sendMessage made while Claude's auto-mode offer shows is held,
       skipNow(t, `Claude did not offer auto-mode setup on this account:\n${screen()}`);
       return;
     }
+    // A key on the menu, before Elwood's decline, hands the offer to the human.
+    await live.sendKeys("\u001b[B");
 
     const marker = `zq${Date.now().toString(36)}`;
     const hooksBefore = observed.hooks.length;
@@ -90,10 +93,17 @@ test("C-ATTN-09 a sendMessage made while Claude's auto-mode offer shows is held,
     void sending.catch(() => undefined);
     await delay(heldWindowMs);
     assert.equal(resolved, false, `the message was written into the offer:\n${screen()}`);
+    // Neither the held message nor Elwood's decline reaches the human's offer.
     assert.deepEqual(writes.slice(writesBefore), [], "nothing was written to the offer");
-    assert.match(screen(), /❯ 1\. Yes/, "the offer's menu is unanswered");
+    assert.match(screen(), /❯ 2\. Not now/, "the human's offer is unanswered and not declined");
     assert.doesNotMatch(screen(), /Space to toggle/, "no setup step opened");
     assert.equal(live.status, "blocked");
+    assert.ok(
+      !observed.activities.some(
+        (event) => event.kind === "startup_prompt" && event.label === "auto_mode_setup",
+      ),
+      "Elwood did not decline the human's offer",
+    );
     assert.ok(
       observed.activities.some(
         (event) => event.kind === "attention" && event.label === "claude-auto-mode-offer",
@@ -101,7 +111,7 @@ test("C-ATTN-09 a sendMessage made while Claude's auto-mode offer shows is held,
       "the block names the offer rule",
     );
 
-    // Dismissing the offer releases the held message as a normal turn.
+    // The human dismissing the offer releases the held message as a normal turn.
     await live.sendKeys("\u001b");
     await sending;
     await waitFor(() => (submitted() ? true : undefined), "held message submitted", 30_000);

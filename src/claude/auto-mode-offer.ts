@@ -1,6 +1,7 @@
 /**
  * Recognizes Claude's auto-mode setup offer, its first menu and the setup step that menu
- * opens, as a blocking dialog. Implements PRD §5.3 and C-ATTN-09.
+ * opens, as a blocking dialog, and the first menu alone as the one Elwood declines.
+ * Implements PRD §5.3, §5.1, C-ATTN-09 and C-CLAUDE-26.
  */
 
 /** The offer's screen rule and attention label; `elwood run` matches it too (C-CLI-05). */
@@ -21,18 +22,35 @@ const ruleRow = /^[─━▔]{3,}/;
 /** The dialog's own key-hint row: both the menu's and the setup step's end this way. */
 const cancelHint = /Esc to cancel$/i;
 
+/** The offer's rows between its title and its key hint, or undefined when it is not shown. */
+function offerRows(text: string): readonly string[] | undefined {
+  const lines = text.split("\n");
+  const title = lines.findLastIndex((line) => line.trim() === offerTitle);
+  if (title < 1 || !ruleRow.test(lines[title - 1] as string)) return undefined;
+  const rows: string[] = [];
+  for (const line of lines.slice(title + 1)) {
+    if (cancelHint.test(line.trim())) return rows;
+    if (ruleRow.test(line)) return undefined;
+    rows.push(line.trim());
+  }
+  return undefined;
+}
+
 /**
  * True while the offer's first menu or the setup step it opens is on screen. Claude can
  * paint the menu above a composer that stays visible, so a caller's paste and Enter would
  * otherwise go to the offer and answer it.
  */
 export function isClaudeAutoModeOffer(text: string): boolean {
-  const lines = text.split("\n");
-  const title = lines.findLastIndex((line) => line.trim() === offerTitle);
-  if (title < 1 || !ruleRow.test(lines[title - 1] as string)) return false;
-  for (const line of lines.slice(title + 1)) {
-    if (cancelHint.test(line.trim())) return true;
-    if (ruleRow.test(line)) return false;
-  }
-  return false;
+  return offerRows(text) !== undefined;
+}
+
+/** The first menu's deferring and declining options; the setup step has neither. */
+const notNow = /^(?:❯\s*)?2\. Not now$/;
+const dontShowAgain = /^(?:❯\s*)?3\. Don't show again$/;
+
+/** True only for the offer's first menu, the one Elwood declines (C-CLAUDE-26). */
+export function isClaudeAutoModeOfferMenu(text: string): boolean {
+  const rows = offerRows(text) ?? [];
+  return rows.some((row) => notNow.test(row)) && rows.some((row) => dontShowAgain.test(row));
 }

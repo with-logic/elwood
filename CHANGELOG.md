@@ -30,6 +30,12 @@ back each entry are listed in `prd/14-conformance.md`.
   stalled until it failed with `question_answer_failed` and closed the request
   as `unavailable`.
 
+- Decline Claude's auto-mode setup offer on its own, with Esc (`Not now`), so an
+  unattended session no longer stays `blocked` behind it. Elwood waits past the
+  offer's input guard, retries until the offer is gone, and then emits
+  `startup_prompt` activity with label `auto_mode_setup`; a message held behind
+  the offer then submits. Raw input on the offer leaves it to the human.
+
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A
   `sendMessage` sent while it is visible now waits for it to close. Before, its

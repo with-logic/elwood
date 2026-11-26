@@ -1,10 +1,10 @@
 /**
  * A caller that sends the moment a Claude turn's `Stop` reports `ready` reaches Claude while
  * the auto-mode offer that turn's end mounted may not have painted yet. The message must not
- * answer the offer: it is submitted exactly once, after the offer is dismissed. One run holds
+ * answer the offer: it is submitted exactly once, after Elwood declines the offer. One run holds
  * Elwood's view of the CLI back from `Stop`, so the offer is mounted and, to Elwood,
  * unpainted; the other runs at live speed with a status observer that throws at that `ready`.
- * Implements C-ATTN-10 (PRD §5.3).
+ * Implements C-ATTN-10 (PRD §5.3) and C-CLAUDE-26 (PRD §5.1).
  */
 
 import assert from "node:assert/strict";
@@ -92,9 +92,6 @@ for (const run of runs) {
       }
       const hooksBefore = observed.hooks.length;
 
-      // Claude ignores a choice made within 500 ms of the offer's first render.
-      await delay(1_000);
-      await live.sendKeys("\u001b");
       const submissions = () =>
         observed.hooks.filter(
           (hook) => hook.hook_event_name === "UserPromptSubmit" && hook.prompt.includes(marker),
@@ -106,7 +103,11 @@ for (const run of runs) {
       assert.equal(submissions(), 1, "the message is submitted exactly once");
       assert.equal(offerAnswered, false, "the offer's Yes was never chosen");
       assert.equal(setupOpened, false, "no setup step opened");
-      assert.equal(typeof offerSetupState()?.["dismissedAt"], "number", "Esc declined the offer");
+      assert.equal(
+        typeof offerSetupState()?.["dismissedAt"],
+        "number",
+        "Elwood's Esc declined the offer",
+      );
       observed.dispose();
     } finally {
       await cleanup(session);

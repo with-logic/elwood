@@ -3,7 +3,8 @@
  * but Elwood only sees the offer once its frame arrives. Here Elwood's view of the CLI is
  * held back from the turn's `Stop`, so a message queued during the turn goes out while the
  * offer is mounted and, to Elwood, unpainted. The message must not answer the offer: it is
- * submitted exactly once, after the offer is dismissed. Implements C-ATTN-10 (PRD §5.3).
+ * submitted exactly once, after Elwood declines the offer. Implements C-ATTN-10 (PRD §5.3)
+ * and C-CLAUDE-26 (PRD §5.1).
  */
 
 import assert from "node:assert/strict";
@@ -69,8 +70,6 @@ test("C-ATTN-10 a message queued during a turn is not taken by an offer Elwood h
       return;
     }
     const hooksBefore = observed.hooks.length;
-
-    await live.sendKeys("\u001b");
     const submissions = () =>
       observed.hooks.filter(
         (hook) => hook.hook_event_name === "UserPromptSubmit" && hook.prompt.includes(marker),
@@ -82,7 +81,11 @@ test("C-ATTN-10 a message queued during a turn is not taken by an offer Elwood h
     assert.equal(submissions(), 1, "the queued message is submitted exactly once");
     assert.equal(offerAnswered, false, "the offer's Yes was never chosen");
     assert.equal(setupOpened, false, "no setup step opened");
-    assert.equal(typeof offerSetupState()?.["dismissedAt"], "number", "Esc declined the offer");
+    assert.equal(
+      typeof offerSetupState()?.["dismissedAt"],
+      "number",
+      "Elwood's Esc declined the offer",
+    );
     observed.dispose();
   } finally {
     await cleanup(session);

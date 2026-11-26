@@ -1,10 +1,12 @@
 /**
  * A paste written at `ready` can still be staged when Claude's auto-mode offer paints over
  * it. Its Enter is held, and the captured frame after the offer closes, the composer still
- * holding that paste, releases it. Only input still awaiting its Enter gets that clearance
- * (C-ATTN-09, C-ATTN-02, C-API-56, PRD §5.3).
+ * holding that paste, releases it. Only input still awaiting its Enter gets that clearance.
+ * Elwood declines the offer itself unless raw input reached it first
+ * (C-ATTN-09, C-ATTN-02, C-API-56, C-CLAUDE-26, PRD §5.3, §5.1).
  */
 import { afterEach, expect, test } from "vitest";
+import { offerDeclineSpacingMs } from "../../src/claude/auto-mode-decline.ts";
 import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 import { offerOnScreen, permissionScreen } from "../fixtures/offer-frames.ts";
 import { createFacadeFixture, nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
@@ -20,11 +22,15 @@ const closed = nativeFrameOutput(
 const prompt = "Check: line one.\nLine two.\nLine three.\nReply with exactly OK.";
 const paste = `\u001b[200~${prompt}\u001b[201~`;
 const esc = "\u001b";
-/** Well past the paste's 150 ms settle delay, and past the first 1 s recovery Enter. */
+/** Past the paste's 150 ms settle delay, the first 1 s recovery Enter and Elwood's decline. */
 const heldMs = 1_200;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A 140x40 Claude session, past its readiness hook, that paints `dialog` once `trigger` is written. */
+/**
+ * A 140x40 Claude session, past its readiness hook, that paints `dialog` once `trigger` is
+ * written. `painted()` is when the dialog painted, and `firstWrite` when each payload first
+ * went out.
+ */
 async function withOfferOn(trigger: string, dialog = offerOnScreen) {
   const { helper, cwd, facade } = createFacadeFixture("claude", {
     initialSize: { cols: 140, rows: 40 },
@@ -33,18 +39,56 @@ async function withOfferOn(trigger: string, dialog = offerOnScreen) {
   const pty: FakePty = helper.ptys[0]!;
   await nativeHooks("claude", live, cwd, pty).ready();
   const write = pty.write.bind(pty);
+  const firstWrite = new Map<string, number>();
+  let paintedAt: number | undefined;
   pty.write = (data) => {
     write(data);
-    if (data === trigger) pty.emitData(dialog);
+    if (typeof data === "string" && !firstWrite.has(data)) firstWrite.set(data, Date.now());
+    if (data !== trigger) return;
+    paintedAt = Date.now();
+    pty.emitData(dialog);
   };
-  return { facade, live, pty };
+  return { facade, live, pty, firstWrite, painted: () => paintedAt };
 }
 
-test.each([
-  { dialog: "the offer", frame: offerOnScreen },
-  { dialog: "another Claude dialog", frame: permissionScreen },
-])("C-ATTN-09 an Enter held behind $dialog submits the paste it closed over", async ({ frame }) => {
-  const { facade, live, pty } = await withOfferOn(paste, frame);
+test("C-ATTN-09 C-CLAUDE-26 an Enter held behind the offer submits the paste it closed over", async () => {
+  const { facade, live, pty, firstWrite, painted } = await withOfferOn(paste);
+  try {
+    await expect.poll(() => live.status).toBe("ready");
+    const declined: unknown[] = [];
+    live.on("activity", (activity) => {
+      if (activity.kind === "startup_prompt") declined.push(activity.label);
+    });
+    const sending = live.sendMessage(prompt);
+    void sending.catch(() => undefined);
+    await expect.poll(() => live.status).toBe("blocked");
+
+    // Elwood declines the offer, past its input guard; the composer it closes over still
+    // holds the paste, and the held Enter submits it.
+    await expect.poll(() => pty.writes, { timeout: 3_000 }).toEqual([paste, esc]);
+    const paintedAt = painted();
+    const declinedAt = firstWrite.get(esc);
+    expect(paintedAt).toBeDefined();
+    expect(declinedAt).toBeDefined();
+    // Node timers can fire a millisecond early against `Date.now()`, so allow a few.
+    expect(
+      Number(declinedAt) - Number(paintedAt),
+      "Elwood's Esc went out past the offer's input guard",
+    ).toBeGreaterThanOrEqual(offerDeclineSpacingMs - 25);
+    expect(declined).toEqual([]);
+    pty.emitData(closed);
+    await expect.poll(() => pty.writes).toEqual([paste, esc, "\r"]);
+    await sending;
+    expect(live.status).toBe("running");
+    // Reported once a settled frame shows the offer gone.
+    await expect.poll(() => declined, { timeout: 3_000 }).toEqual(["auto_mode_setup"]);
+  } finally {
+    await facade.teardown();
+  }
+});
+
+test("C-ATTN-09 an Enter held behind another Claude dialog submits the paste it closed over", async () => {
+  const { facade, live, pty } = await withOfferOn(paste, permissionScreen);
   try {
     await expect.poll(() => live.status).toBe("ready");
     const sending = live.sendMessage(prompt);
@@ -76,15 +120,16 @@ test.each([
     await expect.poll(() => live.status).toBe("ready");
     const sending = facade.send(prompt).catch((error: unknown) => error);
     await expect.poll(() => live.status).toBe("blocked");
-    await wait(heldMs);
     expect(pty.writes).toEqual([paste]);
 
+    // A raw key before Elwood's decline also hands the offer to the human.
     await facade.sendKeys(key);
     if (frame !== undefined) pty.emitData(frame);
     expect(await sending).toMatchObject({
       code: "wait_timeout",
       message: "Raw input replaced the staged turn input.",
     });
+    await wait(heldMs);
     await live.terminal.settled();
     expect(pty.writes).toEqual([paste, key]);
   } finally {
