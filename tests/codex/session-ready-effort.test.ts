@@ -1,52 +1,27 @@
 /**
  * A requested effort holds Codex readiness and queued writes until its footer shows a label
- * other than `default`, or until the backstop falls, which releases them with a content-free
- * `codex_effort_unconfirmed` warning (PRD §5.3, §5.7, C-API-28).
+ * other than `default`, or until 50 s after launch (never before the deadline), which releases
+ * them with a content-free `codex_effort_unconfirmed` warning before a host's default
+ * `waitForStatus` can expire (PRD §5.3, §5.7, C-API-28).
  */
 import { afterEach, expect, test, vi } from "vitest";
+import { resumeCodex, startCodex } from "../../src/index.ts";
 import {
-  type ElwoodActivityEvent,
-  type ElwoodWarningEvent,
-  resumeCodex,
-  type StartCodexOptions,
-  startCodex,
-} from "../../src/index.ts";
-import { codexTty } from "../fixtures/trust-composer.ts";
-import { capturedFrame } from "../helpers/captured-frames.ts";
+  deadlineOnDefaultFooter,
+  effortDefault,
+  effortLow,
+  initialSize,
+  paint,
+  paste,
+  sentinel,
+} from "./effort-footer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
-
-const effortDefault = capturedFrame("codex-0.172.0/boot/effort-default");
-const effortLow = capturedFrame("codex-0.172.0/boot/effort-low");
-const paint = (text: string) => `\u001b[2J\u001b[H${codexTty(text, true)}`;
-const paste = "\u001b[200~after configuration\u001b[201~";
-const initialSize = { cols: 140, rows: 45 };
-/** Screen text the content-free warning must never carry. */
-const sentinel = "elwood-effort-sentinel";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   resetFakes();
 });
-
-/** Start, queue a message, and paint the default footer `firstFrameAfterMs` after launch. */
-async function deadlineOnDefaultFooter(options: Partial<StartCodexOptions>, firstFrameAfterMs = 0) {
-  installFakes();
-  const session = await startCodex({ cwd: tempDir(), initialSize, ...options });
-  const warnings: ElwoodWarningEvent[] = [];
-  const activities: ElwoodActivityEvent[] = [];
-  session.on("warning", (warning) => warnings.push(warning));
-  session.on("activity", (event) => activities.push(event));
-  const queued = session.sendMessage("after configuration");
-  // Teardown rejects pending input if an assertion fails.
-  void queued.catch(() => undefined);
-  // The startup warning gate opens on a real timer before this test takes over the clock.
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  vi.useFakeTimers();
-  await vi.advanceTimersByTimeAsync(firstFrameAfterMs);
-  ptys[0]!.emitData(paint(effortDefault.replace("elwood-boot-CAPTURE", sentinel)));
-  await vi.advanceTimersByTimeAsync(10_500);
-  return { session, warnings, activities, queued, pty: ptys[0]! };
-}
 
 test("C-API-28 a requested effort holds ready until Codex shows it", async () => {
   const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter({
@@ -86,20 +61,29 @@ test.each([
   }
 });
 
-test("C-API-28 the effort wait lapses at the backstop after a late first frame, with a warning", async () => {
-  // Launch time before the first frame does not count toward the lapse.
-  const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter(
+test.each([
+  // The deadline, 10 s after the frame, has passed by 50 s after launch.
+  { firstFrameAfterMs: 20_000, heldAtMs: 45_000, readyAtMs: 50_500 },
+  // A frame after 40 s: the wait ends with the deadline, 10 s after it, not at 50 s.
+  { firstFrameAfterMs: 45_000, heldAtMs: 50_500, readyAtMs: 55_500 },
+])("C-API-28 a host's default wait sees ready when the label never comes, first frame at $firstFrameAfterMs ms", async ({
+  firstFrameAfterMs,
+  heldAtMs,
+  readyAtMs,
+}) => {
+  const { session, warnings, activities, queued, waited, pty } = await deadlineOnDefaultFooter(
     { reasoningEffort: "low" },
-    55_000,
+    { firstFrameAfterMs, afterFrameMs: heldAtMs - firstFrameAfterMs },
   );
   try {
-    await vi.advanceTimersByTimeAsync(49_000);
     expect(session.status).not.toBe("ready");
     expect(pty.writes).not.toContain(paste);
     expect(warnings).toEqual([]);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await queued;
+    // With no repaint, and before the host's 60 s default expires.
+    await vi.advanceTimersByTimeAsync(readyAtMs - heldAtMs);
     expect(pty.writes).toContain(paste);
+    expect(await waited).toBe("ready");
+    await queued;
     const warning = {
       elwoodSessionId: session.elwoodSessionId,
       agent: "codex",
@@ -107,7 +91,7 @@ test("C-API-28 the effort wait lapses at the backstop after a late first frame, 
       code: "codex_effort_unconfirmed",
       severity: "warning",
       message:
-        "Codex did not show the requested reasoning effort within 60 seconds; readiness was released on its status footer, and a mode or model picked before Codex applies its configuration can be discarded.",
+        "Codex did not show the requested reasoning effort within 50 seconds of launch; readiness was released on its status footer, and a mode or model picked before Codex applies its configuration can be discarded.",
       raw: "codex_effort_unconfirmed",
     } as const;
     expect(warnings).toEqual([warning]);

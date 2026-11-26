@@ -13,7 +13,11 @@ import {
   publicCodexQuestionSandbox,
   publicCodexSessionOptions,
 } from "./questions/codex-public-sandbox.ts";
-import { pinnedCodexSkip, questionCodexModel } from "./questions/codex-sandbox.ts";
+import {
+  codexFooterRow as footer,
+  pinnedCodexSkip,
+  questionCodexModel,
+} from "./questions/codex-sandbox.ts";
 import { runPublicProof } from "./questions/proof-run.ts";
 
 // Every connection waits this long, so Codex loads its model catalog, and paints its footer,
@@ -23,13 +27,6 @@ import { runPublicProof } from "./questions/proof-run.ts";
 const connectionHoldMs = 12_000;
 const effort = "low";
 const pinnedSkip = pinnedCodexSkip();
-
-/** The status footer row, lowercased like the model id, such as `gpt-6-luna low`. */
-function footer(screen: string): string | undefined {
-  const prefix = `  ${questionCodexModel} `;
-  const row = screen.split("\n").find((line) => line.toLowerCase().startsWith(prefix));
-  return row?.trim().toLowerCase();
-}
 
 async function waitForScreen(screen: () => string, check: (text: string) => boolean, what: string) {
   const deadline = Date.now() + 30_000;

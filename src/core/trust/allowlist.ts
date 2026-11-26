@@ -6,15 +6,17 @@
  */
 
 import {
-  claudeBypassDescription,
-  claudeMcpDescription,
   claudePermissionsCloseIsNative,
   claudeWorkspaceDescription,
+} from "./copy/claude-workspace.ts";
+import {
+  claudeBypassDescription,
+  claudeMcpDescription,
   codexFolderAccessDescription,
   codexHooksDescription,
   codexWorkspaceDescription,
   noTrustDescription,
-} from "./copy.ts";
+} from "./copy/index.ts";
 import {
   claudeBypassOptions,
   claudeExtensionOptions,
