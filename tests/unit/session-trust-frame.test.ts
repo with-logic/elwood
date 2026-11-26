@@ -34,7 +34,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
     bindInitialReadinessHold: vi.fn(),
     terminal: { xterm: {} },
     inputBlocking: false,
-    trustInputBlocking: false,
+    automationInputBlocking: false,
     get status() {
       return engine.status;
     },
@@ -49,7 +49,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   };
   const activity = vi.fn(() => {
     expect(active.inputBlocking).toBe(true);
-    expect(active.trustInputBlocking).toBe(true);
+    expect(active.automationInputBlocking).toBe(true);
   });
   const readiness = createReadinessGate(vi.fn(), false);
   const observe = createSessionFrameObserver(
@@ -71,7 +71,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   observe.refresh();
   expect(vi.getTimerCount()).toBe(0);
   observe.observe({ text: "Do you trust this folder?", title: "" });
-  expect(active.trustInputBlocking).toBe(true);
+  expect(active.automationInputBlocking).toBe(true);
   expect(engine.status).toBe("running");
   trust.blockedPrompt = "workspace_trust";
   observe.refresh();
@@ -105,12 +105,12 @@ test("C-TRUST-01 replays a consumed human clear edge when automation finally rel
   const active = {
     closing: new AbortController(),
     inputBlocking: false,
-    trustInputBlocking: false,
+    automationInputBlocking: false,
     get status() {
       return engine.status;
     },
     submitEvidence(kind: ElwoodStatusEvidence, workingVisible = false) {
-      return engine.submit(kind, { inputBlocked: active.trustInputBlocking, workingVisible });
+      return engine.submit(kind, { inputBlocked: active.automationInputBlocking, workingVisible });
     },
   };
   const trust = {

@@ -33,7 +33,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
   const active = {
     closing: new AbortController(),
     inputBlocking: false,
-    trustInputBlocking: false,
+    automationInputBlocking: false,
     get status() {
       return engine.status;
     },
@@ -45,7 +45,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
     false,
     undefined,
     codexComposerClearance,
-    () => active.inputBlocking || active.trustInputBlocking,
+    () => active.inputBlocking || active.automationInputBlocking,
   );
   const queuedInput = vi.fn(() => {
     frame = "› queued persona input";

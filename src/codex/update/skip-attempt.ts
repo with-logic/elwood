@@ -49,6 +49,11 @@ type UpdateSkipAttempt = {
   readonly cancel: () => void;
 };
 
+/**
+ * One bounded skip of one update appearance. `settled` and the repaint hold end apart: it
+ * answers when Codex shows it took the key, which can be its boot composer or resume
+ * placeholder while `ownsRepaint()` holds input until the configured composer (C-CODEX-27).
+ */
 export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAttempt {
   const { tracker, generation, readFrame, screenText, signal, releaseLatch } = request;
   const completion = Promise.withResolvers<StartupWriteCompletion>();
@@ -65,9 +70,11 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
   // Codex's repaint after a fulfilled key: not reached, owned, or no longer owned.
   let repaint: "none" | "owned" | "released" = "none";
   let expiry: ReturnType<typeof setTimeout> | undefined;
+  // Always after settlement: nothing of the attempt is left for a close to cancel.
   const releaseRepaint = () => {
     clearTimeout(expiry);
     repaint = "released";
+    signal.removeEventListener("abort", cancelAndReleaseRepaint);
   };
   // PTY frames the session rendered during this attempt, and their count at its last key.
   let framesDrawn = 0;
@@ -122,8 +129,11 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
     if (configured) releaseRepaint();
   };
   signal.addEventListener("abort", cancelAndReleaseRepaint, { once: true });
+  // The configured composer ends the attempt and any repaint it could own.
   const answerIfCleared = () => {
-    if (written && cleared && ownsAttempt()) finish("answered");
+    if (!(written && cleared && ownsAttempt())) return;
+    finish("answered");
+    releaseRepaint();
   };
   void writeCodexUpdateSkip(
     request.option,

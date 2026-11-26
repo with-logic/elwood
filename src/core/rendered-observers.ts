@@ -50,14 +50,14 @@ export function observeRenderedFrame(
 }
 
 /**
- * Include a retained trust hold as an ordinary blocking fact (C-TRUST-01). `trustInputBlocking`
- * is any startup automation hold, including Codex's update-skip repaint (C-CODEX-27).
+ * Include a retained trust hold as an ordinary blocking fact (C-TRUST-01). The automation
+ * hold is any startup automation's: a trust answer, or Codex's update-skip repaint (C-CODEX-27).
  */
 export function readRenderedFrame(
   observers: RenderedObservers,
   frame: RenderedFrame,
   trustBlock?: string,
-  trustInputBlocking = false,
+  automationInputBlocking = false,
 ): ScreenFactReading {
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
@@ -65,7 +65,9 @@ export function readRenderedFrame(
   const reading = readScreenFacts(
     observers.table,
     frame,
-    trustInputBlocking || trustBlock !== undefined ? observers.table.trustOwnedFallback : undefined,
+    automationInputBlocking || trustBlock !== undefined
+      ? observers.table.automationOwnedFallback
+      : undefined,
   );
   if (trustBlock === undefined || reading.facts.blocking_prompt_visible) return reading;
   const id = `${observers.agent}-${trustBlock}-prompt`;

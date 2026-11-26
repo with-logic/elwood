@@ -112,7 +112,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     autotrust,
     () => dialogs.reconcileAfter(frameObserver.refresh),
     clearance,
-    () => activeSession.inputBlocking || activeSession.trustInputBlocking,
+    () => activeSession.inputBlocking || activeSession.automationInputBlocking,
     { prelude, onTakeover: dialogs.refreshAfterWorkspaceTrustTakeover },
   );
   const terminal = attachPtyTerminal(

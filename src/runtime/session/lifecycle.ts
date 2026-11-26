@@ -36,7 +36,7 @@ export abstract class SessionLifecycle {
   private initialReadinessHold: import("./readiness.ts").InitialReadinessHold | undefined;
   inputBlocking = false;
   /** Startup automation holds input: a trust answer, or Codex's update-skip repaint (C-CODEX-27). */
-  trustInputBlocking = false;
+  automationInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
   protected readonly persist: (record: SessionRecord) => void;
   private readonly reapPolicy: SessionReapPolicy;
@@ -145,7 +145,7 @@ export abstract class SessionLifecycle {
   protected isInputBlocked(): boolean {
     const held =
       this.inputBlocking ||
-      this.trustInputBlocking ||
+      this.automationInputBlocking ||
       (!this.everReady && this.initialReadinessHold?.holdsWrites() === true);
     return this.closing.signal.aborted || held || this.status === "blocked";
   }
@@ -154,7 +154,7 @@ export abstract class SessionLifecycle {
   }
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
-      this.trustInputBlocking ||
+      this.automationInputBlocking ||
       this.closing.signal.aborted ||
       (!this.everReady && this.initialReadinessHold?.holdsReadiness() === true);
     return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });

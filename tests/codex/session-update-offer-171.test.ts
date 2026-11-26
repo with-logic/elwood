@@ -176,7 +176,9 @@ test.each([
     const sent = session.sendMessage("queued at launch");
     sent.catch(() => {});
     await showOffer(session, capture);
-    await new Promise((resolve) => setTimeout(resolve, firstKeyDelayMs + 1_000));
+    await expect.poll(() => pty.writes, firstKey).toEqual(["2"]);
+    // Four retry intervals after the key, with the offer still on Elwood's screen.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
     expect(pty.writes).toEqual(["2"]);
   } finally {
     await session.stop();

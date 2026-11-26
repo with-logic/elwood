@@ -105,7 +105,7 @@ export function codexScreenFactTableForTrustPolicy(
   const table = withTrustBlockingRules(tracked, "codex", autotrust);
   return {
     ...table,
-    trustOwnedFallback: "codex-unidentified-dialog",
+    automationOwnedFallback: "codex-unidentified-dialog",
     rules: [
       ...table.rules,
       // Specific approval/trust rules keep their diagnostic identity.

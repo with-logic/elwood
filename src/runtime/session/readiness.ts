@@ -39,7 +39,7 @@ export type ReadinessGate = InitialReadinessHold & {
   readonly ready: InitialReady;
   readonly observeFrameHold: (
     facts: ComposerReadyFacts,
-    trustInputBlocking: boolean,
+    automationInputBlocking: boolean,
     frame: string,
     cols?: number,
   ) => void;
@@ -47,7 +47,7 @@ export type ReadinessGate = InitialReadinessHold & {
    * and (on resume) mark readiness on the first non-blocking configured composer. */
   readonly observeReadinessFrame: (
     facts: ComposerReadyFacts,
-    trustInputBlocking: boolean,
+    automationInputBlocking: boolean,
     frame: string,
     cols?: number,
   ) => void;
@@ -73,7 +73,7 @@ export function createReadinessGate(
   let latest: { facts: ComposerReadyFacts; frame: string; cols: number | undefined } | undefined;
   const observeFrameHold = (
     facts: ComposerReadyFacts,
-    trustInputBlocking: boolean,
+    automationInputBlocking: boolean,
     frame: string,
     cols?: number,
   ) => {
@@ -81,7 +81,7 @@ export function createReadinessGate(
     // retains the existing hook/deadline path instead of waiting on itself.
     readinessHeld =
       facts.blocking_prompt_visible ||
-      trustInputBlocking ||
+      automationInputBlocking ||
       (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
     latest = { facts, frame, cols };
   };
@@ -125,8 +125,8 @@ export function createReadinessGate(
     holdsReadiness: () => readinessHeld || backstopHold?.() === true,
     holdsWrites: () => readinessHeld || !sawConfiguredComposer(),
     observeFrameHold,
-    observeReadinessFrame: (facts, trustInputBlocking, frame, cols) => {
-      observeFrameHold(facts, trustInputBlocking, frame, cols);
+    observeReadinessFrame: (facts, automationInputBlocking, frame, cols) => {
+      observeFrameHold(facts, automationInputBlocking, frame, cols);
       if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
     },
