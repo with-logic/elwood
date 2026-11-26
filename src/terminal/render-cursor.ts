@@ -10,6 +10,8 @@ import { NativeRenderEvidence, trackRenderMutations } from "./render-mutations.t
 const tracked = new WeakMap<Terminal, RenderCursor>();
 export type RenderSource = "any" | "pty";
 type CachedFrame = { readonly position: string; readonly frame: TerminalSnapshot };
+/** DECTCEM: `CSI ? 25 h` shows the cursor and `CSI ? 25 l` hides it. */
+const cursorVisibilityMode = 25;
 
 /** The tracker of `terminal`'s renders, shared by every wrapper of that xterm. */
 export function renderCursorOf(terminal: Terminal): RenderCursor | undefined {
@@ -49,7 +51,7 @@ export class RenderCursor {
     this.handlers = [
       ...(["h", "l"] as const).map((final) =>
         terminal.parser.registerCsiHandler({ prefix: "?", final }, (params) => {
-          if (params.includes(25)) this.visible = final === "h";
+          if (params.includes(cursorVisibilityMode)) this.visible = final === "h";
           return false;
         }),
       ),

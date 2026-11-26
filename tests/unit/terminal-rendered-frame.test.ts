@@ -9,7 +9,7 @@ import {
   subscribeRender,
 } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
-import { RenderCursor } from "../../src/terminal/render-cursor.ts";
+import { RenderCursor, renderCursorOf } from "../../src/terminal/render-cursor.ts";
 
 test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on output and resize", async () => {
   const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, () => undefined);
@@ -41,9 +41,11 @@ test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on ou
     });
     await expect(terminal.writeOutput("failed")).rejects.toThrow("render failed");
     expect(settledLiveSnapshot(terminal)).toBeUndefined();
+    expect(renderCursorOf(terminal.xterm)).toBeInstanceOf(RenderCursor);
   } finally {
     terminal.dispose();
   }
+  expect(renderCursorOf(terminal.xterm)).toBeUndefined();
   expect(settledLiveSnapshot(terminal)).toBeUndefined();
   expect(hasUnknownOrNonPristineOutput(terminal)).toBe(true);
   expect(cachedLiveSnapshot(terminal).text).toContain("first second");
@@ -54,8 +56,10 @@ test("C-API-15 disposal detaches frame invalidation from retained raw xterm hand
   const original = { write: terminal.write, writeln: terminal.writeln, reset: terminal.reset };
   const cursor = new RenderCursor(terminal, () => false);
   try {
+    expect(renderCursorOf(terminal)).toBe(cursor);
     expect(terminal.write).not.toBe(original.write);
     cursor.dispose();
+    expect(renderCursorOf(terminal)).toBeUndefined();
     expect(terminal.write).toBe(original.write);
     expect(terminal.writeln).toBe(original.writeln);
     expect(terminal.reset).toBe(original.reset);
