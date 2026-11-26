@@ -113,3 +113,39 @@ test("C-API-31 staged retry pacing is not accelerated by repeated completed fram
   }
   expect(h.listeners.size).toBe(0);
 });
+
+test("C-API-56 cleanup's consumption proof needs a fresh empty frame after the captured Enter", () => {
+  let revision = 0;
+  let empty: object | undefined = {};
+  const before = empty;
+  const nudges = preparePasteNudges(
+    { sendInput: async () => undefined, settled: async () => undefined },
+    {
+      prepareStaged: () => () => false,
+      emptyFrame: () => empty,
+      captureRenderProgress: () => {
+        const captured = revision;
+        return () => revision > captured;
+      },
+    },
+    "hello",
+    undefined,
+    1_000,
+    before,
+  )!;
+  const paintEmpty = () => {
+    revision += 1;
+    empty = {};
+  };
+  // A fresh empty frame before the Enter is captured, such as one drawn before the paste.
+  paintEmpty();
+  expect(nudges.enteredInputConsumed()).toBe(false);
+  nudges.beforeEnter();
+  expect(nudges.enteredInputConsumed()).toBe(false);
+  paintEmpty();
+  expect(nudges.enteredInputConsumed()).toBe(true);
+  // The empty frame from before the paste never counts, however much renders after Enter.
+  revision += 1;
+  empty = before;
+  expect(nudges.enteredInputConsumed()).toBe(false);
+});

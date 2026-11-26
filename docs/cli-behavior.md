@@ -2188,16 +2188,17 @@ turn-end hold (C-ATTN-10) arms at the `Stop` and hides that composer from the wr
 the hold ends. Either way the writer is cancelled while it still owns a draft Claude has
 already taken.
 
-Claude repaints nothing for `^U^K` sent to an empty composer. Cleanup used to confirm a
-clear only from a fresh empty frame, so the next `send()` wrote the keys, waited 1 s and
-failed with `wait_timeout` ("Could not clear the staged composer draft."). In auto mode the
-hold keeps the screen still first, so nothing else repaints in that second either. With the
-auto-mode offer snoozed (`autoModeEnvSetup.dismissedAt` seeded), two auto-mode sends failed
-like this in 4 of 5 runs of `auto-mode-sends-claude.e2e.ts` and in 2 of 2 probe runs at load
-20–47. C-E2E-14, whose session started in auto mode on this machine without asking for it, failed the same way. Cleanup
-now reads the writer's own evidence again: a frame after its latest Enter shows empty input
-that differs from the empty frame before its paste. If it holds, cleanup releases the draft
-without writing, and the same e2e passed 5 of 5 times at load 9–17.
+Claude repaints nothing for `^U^K` sent to an empty composer, so no fresh frame can confirm
+that clear. A cancelled draft therefore keeps the writer's own evidence: a frame after its
+latest Enter shows empty input that differs from the empty frame before its paste. When that
+holds at cleanup's safe point, cleanup releases the draft without writing any keys. Without
+that evidence, the next `send()` wrote the keys, waited 1 s and failed with `wait_timeout`
+("Could not clear the staged composer draft."). In auto mode the hold first keeps the screen
+still, so nothing else repaints in that second either. With the auto-mode offer snoozed
+(`autoModeEnvSetup.dismissedAt` seeded), two auto-mode sends failed like this in 4 of 5 runs
+of `auto-mode-sends-claude.e2e.ts` and in 2 of 2 probe runs at load 20–47. C-E2E-14 failed
+the same way; on this machine its session starts in auto mode without asking for it. With the
+evidence kept, the same e2e passed 5 of 5 times at load 9–17.
 
 ## Hook bridge request FIN and delayed decisions
 

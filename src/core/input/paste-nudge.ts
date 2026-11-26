@@ -37,7 +37,7 @@ export function preparePasteNudges(
   };
   const hasRenderedAfterEnter = (requireProof: boolean) => hasFreshFrame?.() ?? !requireProof;
   /** A fresh post-Enter frame shows input that is empty and not the frame from before it. */
-  const consumed = (requireProof: boolean): boolean => {
+  const inputConsumed = (requireProof: boolean): boolean => {
     const empty = guard.emptyFrame?.();
     return hasRenderedAfterEnter(requireProof) && !!empty && empty !== priorEmptyFrame;
   };
@@ -59,7 +59,7 @@ export function preparePasteNudges(
     if (!awaitInputConsumption && recoveryRevoked) return "revoked";
     if (unsafe) return "pending";
     // A geometry-only token change cannot replace post-Enter rendered output.
-    if (consumed(awaitInputConsumption)) return "accepted";
+    if (inputConsumed(awaitInputConsumption)) return "accepted";
     if (recoveryRevoked) return "revoked";
     const fresh = hasRenderedAfterEnter(awaitInputConsumption);
     if (!(fresh && staged())) return guard.emptyFrame ? "pending" : "legacy_done";
@@ -94,8 +94,11 @@ export function preparePasteNudges(
       wakeup.dispose();
     }
   };
-  /** The same proof, for cleanup after the wait ends: it never retires unentered input. */
-  const enteredInputConsumed = () => consumed(true);
+  /**
+   * The same check for cleanup after the wait ends. It requires render proof, so input whose
+   * Enter was never captured is never taken for consumed.
+   */
+  const enteredInputConsumed = () => inputConsumed(true);
   return { beforeEnter, start: schedule, awaitEmptyInput, enteredInputConsumed };
 }
 

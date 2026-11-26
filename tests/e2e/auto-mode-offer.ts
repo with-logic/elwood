@@ -20,24 +20,22 @@ import { waitFor } from "./wait-for.ts";
  * (`dismissedAt`); see `docs/cli-behavior.md`. Seed this process's private config, and
  * replace `autoModeEnvSetup` outright so that an earlier test's dismissal is cleared too.
  */
-export function seedOffer(): void {
+export function seedOffer(setup: Record<string, unknown> = {}): void {
   const path = configPath();
   const config = readConfig();
   const prior = config["numStartups"];
   const numStartups = Math.max(typeof prior === "number" ? prior : 0, 5);
-  const seeded = { ...config, numStartups, autoModeEnvSetup: { denials: 5 } };
+  const seeded = { ...config, numStartups, autoModeEnvSetup: { denials: 5, ...setup } };
   writeFileSync(path, JSON.stringify(seeded), { mode: 0o600 });
 }
 
 /**
- * The same seed, then the state Claude's `Not now` records (`dismissedAt`, which Esc also
- * stamps), so that an auto-mode test can run its turns without the offer.
+ * The same seed plus the state Claude's `Not now` records (`dismissedAt`, which Esc also
+ * stamps), so that an auto-mode test runs its turns without the offer. Returns that stamp.
  */
-export function snoozeOffer(): number {
-  seedOffer();
+export function seedSnoozedOffer(): number {
   const dismissedAt = Date.now();
-  const config = { ...readConfig(), autoModeEnvSetup: { denials: 5, dismissedAt } };
-  writeFileSync(configPath(), JSON.stringify(config), { mode: 0o600 });
+  seedOffer({ dismissedAt });
   return dismissedAt;
 }
 

@@ -14,9 +14,9 @@ import { clearAndObserveComposer, type EmptyComposerObserver } from "./clear-ack
 import { unsafeWriteRetryMs } from "./constants.ts";
 
 const owners = new WeakMap<InputTerminal, ComposerCleanup>();
-/** `consumed`: the awaited writer's acceptance proof (fresh empty input after its Enter). */
-type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean; consumed?: Consumed };
-type Consumed = (() => boolean) | undefined;
+/** The awaited writer's acceptance check, read when cleanup runs: fresh empty input after Enter. */
+type ConsumedProof = () => boolean;
+type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean; consumed?: ConsumedProof };
 
 /** Register ComposerCleanup before staging; unregistered terminals deliberately record no ownership. */
 export function stageComposer(terminal: InputTerminal): AbortSignal | undefined {
@@ -26,9 +26,12 @@ export function stageComposer(terminal: InputTerminal): AbortSignal | undefined 
 export function submittedComposer(terminal: InputTerminal): void {
   owners.get(terminal)?.submitted();
 }
-/** Mark awaited input's physical Enter; its draft stays owned until consumption is verified. */
-export function enteredComposer(terminal: InputTerminal): void {
-  owners.get(terminal)?.entered();
+/**
+ * Mark awaited input's physical Enter; its draft stays owned until consumption is verified.
+ * `consumed` lets later cleanup release that draft without clear keys once it holds.
+ */
+export function enteredComposer(terminal: InputTerminal, consumed?: ConsumedProof): void {
+  owners.get(terminal)?.entered(consumed);
 }
 
 /**
@@ -39,10 +42,9 @@ export function enteredComposer(terminal: InputTerminal): void {
 export async function requestComposerCleanup(
   terminal: InputTerminal,
   blocked?: () => boolean,
-  consumed?: Consumed,
 ): Promise<void> {
   const owner = owners.get(terminal);
-  if (owner) owner.defer(consumed);
+  if (owner) owner.defer();
   else if (!(await writeUnsafe(terminal, { blocked: () => blocked?.() === true })))
     await clearStagedComposer(terminal);
 }
@@ -109,15 +111,13 @@ export class ComposerCleanup {
     this.stagedGeneration = undefined;
     this.draft = undefined;
   }
-  entered(): void {
+  entered(consumed?: ConsumedProof): void {
     this.staged = false;
+    if (this.draft && consumed) this.draft.consumed = consumed;
   }
-  /** A later defer without proof, such as the queue's own, keeps the writer's proof. */
-  defer(consumed?: Consumed): void {
+  defer(): void {
     this.staged = false;
-    if (!this.reconcileDraftOwnership()) return;
-    this.draft!.pending = true;
-    if (consumed) this.draft!.consumed = consumed;
+    if (this.reconcileDraftOwnership()) this.draft!.pending = true;
   }
 
   /** Preparation may cancel before work; once invoked exactly once, work owns its task lifetime. */
@@ -134,7 +134,7 @@ export class ComposerCleanup {
         !(await writeUnsafe(this.terminal, { blocked: this.blocked }, this.closing))
       ) {
         try {
-          await this.settle();
+          await this.releaseOrClear();
         } catch {
           /* The next operation must retry or reject. */
         }
@@ -153,7 +153,7 @@ export class ComposerCleanup {
       const observe = AbortSignal.any([signal, this.closing, this.draft!.rawInputSignal]);
       try {
         if (!(await writeUnsafe(this.terminal, { blocked: this.blocked }, observe))) {
-          await this.settle(observe);
+          await this.releaseOrClear(observe);
           break;
         }
         await waitForInput(unsafeWriteRetryMs, observe);
@@ -166,7 +166,7 @@ export class ComposerCleanup {
   }
 
   /** Taken input needs no clear keys, which no fresh frame could confirm on empty input. */
-  private async settle(preparationSignal = this.closing): Promise<void> {
+  private async releaseOrClear(preparationSignal = this.closing): Promise<void> {
     if (!this.reconcileDraftOwnership()) return;
     const draft = this.draft!;
     if (draft.consumed?.()) this.release(draft);

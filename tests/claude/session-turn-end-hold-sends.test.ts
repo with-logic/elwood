@@ -6,30 +6,25 @@
  * still. Cleanup releases the taken draft on the writer's own proof, and the second send
  * submits without clear keys (C-API-56, C-ATTN-10, PRD §5.3, §5.8).
  */
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { idleScreen, offerScreen, workingText } from "../fixtures/offer-frames.ts";
 import { createFacadeFixture, nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
+import type { FakePty } from "../helpers/fake-pty.ts";
 
 afterEach(resetAdapters);
 
 const first = "Remember the word axolotl.";
 const second = "Which word did I ask you to remember?";
 const paste = (prompt: string) => `\u001b[200~${prompt}\u001b[201~`;
-const clearKeys = "\u0015\u000b";
-
-const until = (ready: () => boolean, timeoutMs = 3_000) =>
-  vi.waitFor(
-    () => {
-      if (!ready()) throw new Error("Not yet");
-    },
-    { timeout: timeoutMs },
-  );
+const paintEnd = (pty: FakePty) => pty.emitData(idleScreen);
+const paintNothing = () => undefined;
 
 test.each([
-  { end: "before the first send completes", paintEndFirst: true },
-  { end: "after the first send completes", paintEndFirst: false },
+  { end: "before the first send completes", beforeReply: paintEnd, afterReply: paintNothing },
+  { end: "after the first send completes", beforeReply: paintNothing, afterReply: paintEnd },
 ])("C-API-56 C-ATTN-10 a second send follows an auto-mode turn whose end frame paints $end", async ({
-  paintEndFirst,
+  beforeReply,
+  afterReply,
 }) => {
   const { helper, cwd, facade } = createFacadeFixture("claude", {
     initialSize: { cols: 140, rows: 40 },
@@ -41,25 +36,25 @@ test.each([
   try {
     await hooks.ready();
     pty.emitData(idleScreen);
-    await until(() => live.status === "ready");
+    await expect.poll(() => live.status).toBe("ready");
 
     const firstReply = facade.send(first);
     replies = firstReply.catch(() => undefined);
-    await until(() => pty.writes.includes("\r"));
+    await expect.poll(() => pty.writes.includes("\r")).toBe(true);
     pty.emitData(offerScreen(workingText));
     await hooks.submit("turn-1", first);
-    await until(() => live.status === "running");
+    await expect.poll(() => live.status).toBe("running");
     // Claude fires Elwood's `Stop` while it still draws the turn as working.
     await hooks.stop("turn-1");
-    if (paintEndFirst) pty.emitData(idleScreen);
+    beforeReply(pty);
     expect(await firstReply).toBe("");
-    if (!paintEndFirst) pty.emitData(idleScreen);
+    afterReply(pty);
 
+    // Only the two pastes and their Enters: no clear keys went to the empty composer.
     const secondReply = facade.send(second);
     replies = secondReply.catch(() => undefined);
-    await until(() => pty.writes.length === 4);
+    await expect.poll(() => pty.writes.length, { timeout: 3_000 }).toBe(4);
     expect(pty.writes).toEqual([paste(first), "\r", paste(second), "\r"]);
-    expect(pty.writes).not.toContain(clearKeys);
     pty.emitData(offerScreen(workingText));
     await hooks.submit("turn-2", second);
     await hooks.stop("turn-2");

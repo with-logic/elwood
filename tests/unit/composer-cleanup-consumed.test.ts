@@ -32,13 +32,13 @@ function setup() {
     () => () => false,
     onCleared,
   );
-  /** A failed awaited write after its Enter, deferring with the writer's own proof. */
+  /** An awaited write cancelled after its Enter, which carried the writer's own proof. */
   const fail = (consumed: (() => boolean) | undefined) =>
     owner
       .run(async () => {
         stageComposer(terminal);
-        enteredComposer(terminal);
-        await requestComposerCleanup(terminal, () => held, consumed);
+        enteredComposer(terminal, consumed);
+        await requestComposerCleanup(terminal, () => held);
         throw new Error("cancelled at acceptance");
       }, lifetime.signal)
       .catch((error: unknown) => error);
@@ -58,7 +58,7 @@ test("C-API-56 a draft its writer saw taken is released without clear keys", asy
   expect(onCleared).toHaveBeenCalledOnce();
 });
 
-test("C-ATTN-10 C-API-56 a successor releases a taken draft once the hold that kept it ends", async () => {
+test("C-API-56 a successor releases a taken draft once the blocking predicate clears", async () => {
   const { terminal, owner, lifetime, onCleared, fail, hold } = setup();
   hold(true);
   await fail(() => true);

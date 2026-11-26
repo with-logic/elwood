@@ -10,12 +10,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { claudeAutoModeOfferRuleId } from "../../src/claude/auto-mode-offer.ts";
+import { composerClearKeys } from "../../src/core/input/constants.ts";
 import { ClaudeSession } from "../../src/index.ts";
-import { offerSetupState, snoozeOffer } from "./auto-mode-offer.ts";
+import { offerSetupState, seedSnoozedOffer } from "./auto-mode-offer.ts";
 import { makeProject, skipIf, skipReason, skipTurns } from "./helpers.ts";
 import { holdCliOutput } from "./output-hold.ts";
 
-const clearKeys = "\u0015\u000b";
 /** Every string Elwood writes to Claude in this process, in order; nothing is held. */
 const writes: string[] = [];
 holdCliOutput({ input: (data) => writes.push(data) });
@@ -24,7 +24,7 @@ test("C-API-56 C-ATTN-10 a second ClaudeSession.send follows an auto-mode turn",
   skip: skipIf(skipReason("claude"), skipTurns),
   timeout: 240_000,
 }, async () => {
-  const dismissedAt = snoozeOffer();
+  const dismissedAt = seedSnoozedOffer();
   const project = makeProject("claude");
   const session = new ClaudeSession({
     cwd: project.cwd,
@@ -51,7 +51,7 @@ test("C-API-56 C-ATTN-10 a second ClaudeSession.send follows an auto-mode turn",
       { timeoutMs: 90_000 },
     );
     assert.match(second.toLowerCase(), /axolotl/, "the second turn retains first-turn context");
-    assert.ok(!writes.includes(clearKeys), "no clear keys went to the composer");
+    assert.ok(!writes.includes(composerClearKeys), "no clear keys went to the composer");
     assert.deepEqual(offered, [], "the snoozed offer did not show");
     assert.equal(offerSetupState()?.["dismissedAt"], dismissedAt, "the snooze stayed as seeded");
   } finally {
