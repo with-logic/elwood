@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { vi } from "vitest";
 import * as shell from "../../src/runtime/shell.ts";
 import { tempDir } from "./tmp.ts";
+import { writeWarmExecutable } from "./warm-executable.ts";
 
 export function usageProtocolFixture(rc = "") {
   const root = tempDir("usage-protocol-");
@@ -17,7 +18,7 @@ export function usageProtocolFixture(rc = "") {
   return {
     root,
     cli(name: string, body: string) {
-      writeFileSync(join(root, name), `#!${process.execPath}\n${body}\n`, { mode: 0o700 });
+      writeWarmExecutable(join(root, name), `#!${process.execPath}\n${body}\n`);
     },
   };
 }
