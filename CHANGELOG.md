@@ -12,6 +12,57 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
+  ("Could not clear the staged composer draft.") when the previous turn completed
+  before Elwood saw the empty composer. This was most likely in auto mode. Elwood
+  sent clear keys to a composer that was already empty, and Claude repaints nothing
+  for them. When the frames after the earlier send's Enter show that Claude took
+  its input, Elwood now releases that draft without sending keys.
+
+- `autotrust: true` now approves Claude's workspace trust prompt for a folder with
+  project settings or MCP servers. Claude Code 2.1.326 and later add a load row to the
+  workspace prompt, `Trusting this folder loads <items>.`, naming `.claude/settings.json`,
+  `.claude/settings.local.json` and `.mcp.json`. Elwood treated that row, apart from the
+  hooks rows, as unknown prose, so such a session stayed `blocked`. A load row with
+  another annotation, such as ` (sets environment variables)`, is still never answered.
+
+- `autotrust: true` now answers Claude's MCP server prompt, `New MCP server found in this
+  project: <name>`, with `Use this MCP server`. Claude shows it after the workspace answer
+  for a folder whose `.mcp.json` declares a new server. Elwood did not recognize its
+  native body or its `Esc to reject` footer, so such a session stayed `blocked` there,
+  with the folder trusted and the server not started. Claude's checklist for several new
+  servers at once is still never answered.
+
+- `listClaudeModels` now answers only the plain workspace prompt. It rejects with
+  `claude_start_failed` for any load row and for Claude's MCP server, plugin and skill
+  prompts, with `details.category` `"workspace_hooks"`, `"workspace_mcp_servers"`,
+  `"workspace_settings"`, `"workspace_plugins"` or `"workspace_skills"`. A settings row
+  with no annotation is refused too: those settings can enable a plugin whose hooks run
+  as the session starts. A workspace prompt Elwood cannot verify now rejects with
+  `"workspace_unverified"` after five seconds instead of waiting for readiness to run
+  out. List models from a folder Claude already trusts. The probe still accepts Claude's
+  bypass-permissions disclaimer, as before.
+
+- `autotrust: true` now approves Claude's workspace trust prompt when it discloses the
+  folder's hooks, and Claude then runs those hooks. Claude Code 2.1.329 and later add two
+  hooks rows to that prompt, naming `.claude/settings.json`, `.claude/settings.local.json`
+  or both. Elwood treated them as unknown prose, so the session stayed `blocked`. The
+  `elwood` CLI's `--trust`, on by default, approves it too.
+
+- `listClaudeModels` does not approve that prompt, because its autotrust is implied
+  rather than chosen. It rejects with `claude_start_failed` and
+  `details.category: "workspace_hooks"`, and the folder stays untrusted. A Claude older
+  than 2.1.329, or of an unparseable version, cannot disclose hooks, so on it
+  `listClaudeModels` refuses every workspace trust prompt Elwood verifies the same way.
+  List models from a folder Claude already trusts.
+
+- Claude workspace trust requests have `disclosesHooks`. It is `true` when the prompt
+  disclosed hooks that run once the folder is trusted. `false` means only that the prompt
+  disclosed none, not that the folder has no hooks: a load row naming settings files alone
+  can enable plugins whose hooks run. `ElwoodDialogRequest<ElwoodAgentKind>`
+  is now a union, so narrowing `agent` to `"claude"` exposes the field. With automatic
+  trust off, `listDialogs()` now lists that prompt and `answerDialog()` answers it.
+
 - Codex sessions list and announce Codex's update offer as a `kind: "update"`
   dialog when Elwood's own skip does not answer it: after raw caller input
   takes the offer over, after the skip's retries end with the offer still on
@@ -29,6 +80,7 @@ back each entry are listed in `prd/14-conformance.md`.
   `user_message` carries the running turn's `turnId`, so one Claude turn can
   have more than one `user_message`. Guidance appears once even when an
   interrupt makes Claude screen it again under a new prompt ID.
+
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
   for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
   which records no dismissal in Codex's update state. It writes the key once the
@@ -40,6 +92,73 @@ back each entry are listed in `prd/14-conformance.md`.
   `Next` or `Submit`. A checkbox, alternative-text or grouped answer then
   stalled until it failed with `question_answer_failed` and closed the request
   as `unavailable`.
+- Codex 0.172 Plan-mode turns settle again. 0.172 draws `Plan mode (⇧tab to
+  cycle)` in front of the warnings badge instead of on the status row. Elwood
+  did not recognize that footer, so `send()` in Plan mode timed out after
+  90 s. Answering a queued Codex choice also no longer fails with
+  `question_answer_failed` (`details.category: "adapter"`) when 0.172 leaves its
+  hidden cursor after the working row's glyph or elapsed time, or while it still
+  shows the previous answer as waiting to be submitted.
+- A Codex 0.172 turn that ends while one of its queued questions is still open
+  now settles at `ready`. 0.172 draws a question it asks as a `? ` cell under the
+  prompt, and Elwood did not read that history as finished, so the session stayed
+  `blocked` and `send()` timed out.
+- Codex 0.172 questions whose footer wraps onto more rows are recognized: a modal
+  question's footer wraps in a pane narrower than about 90 columns, and a queued
+  one's at about 60 columns or fewer. Elwood read the footer only on one row, so it
+  missed the question: ordinary input was not held for it and `answerQuestions()`
+  failed.
+- Codex modal questions whose option descriptions wrap in a narrow pane (about 60
+  columns or fewer for short descriptions) are listed and can be answered. Elwood
+  read each option from one row, so it held input for such a question but never
+  listed it.
+
+- Report Claude's auto-mode setup offer, which can appear right after a turn
+  ends, as `blocked` with attention label `claude-auto-mode-offer`. A
+  `sendMessage` sent while it is visible now waits for it to close. Before, its
+  Enter answered the offer and the message was lost. When any Claude dialog
+  closes over a paste whose Enter it held, the paste now submits instead of
+  leaving the session `blocked`; awaited `send`/`stream` input that raw input
+  took over during that hold rejects without its Enter, even if the dialog stays
+  open. When a Claude turn ends in auto mode, queued input now waits until
+  Claude's idle composer has stayed unchanged for 500 ms, at most 5 s, so an
+  offer Claude has mounted but not yet painted cannot take its Enter. This holds
+  at widths where the offer's title fits on one row (about 41 columns), and the
+  next turn ends the wait. If the 5 s limit releases input from a screen that
+  never settled, a content-free `turn_end_hold_expired` warning reports it.
+  `elwood run` no longer fails when the offer appears after its prompt's turn
+  has ended.
+- Initial readiness waits for PTY output the agent has already sent to render,
+  including an open synchronized update. A repaint still in progress could
+  replace the configured composer Elwood last rendered, and the readiness
+  deadline, Claude's `InstructionsLoaded` hook or Codex's `SessionStart` hook
+  then released queued input onto the screen that replaced it. A hook, deadline
+  or backstop that meets undrawn output now judges the frame it draws, or the
+  last frame if that render fails.
+- A `status` or `activity` listener that throws while Elwood observes a
+  rendered frame, such as one handling a dialog that blocks the session, no
+  longer drops that frame's `terminal:data`, its status and attention
+  activities, or readiness's view of it. A new content-free
+  `frame_observer_failed` warning reports the first such failure in a session.
+  A throwing `status` listener also no longer skips that status's `activity`.
+- The `initial_ready_backstop` `unrecognized_startup` activity now replaces
+  `sk-` API-key-shaped tokens in its screen text with `sk-[REDACTED]`, including
+  a key wrapped across rows. Each continuing key run becomes `[REDACTED]`, even
+  when it is an ordinary word. Codex's API-key sign-in page, for
+  example, shows the `OPENAI_API_KEY` from the login shell unmasked.
+  `terminal:data`, `terminal.snapshot()` and `readScreen()` still show the screen
+  as drawn.
+- Report a startup screen Elwood does not recognize as `blocked` from the
+  10-second readiness deadline instead of only at the 60-second backstop. Claude's
+  first-launch text-style picker and Codex's sign-in screen are examples. The
+  session raises `claude-unrecognized-startup` or `codex-unrecognized-startup`
+  attention, and an `unrecognized_startup` activity labelled
+  `initial_ready_deadline` carries the screen text. Answer it with `sendKeys`.
+  Queued input is released once a verified composer follows. A Codex composer
+  showing its placeholder, whose footer Elwood cannot verify, is reported the same
+  way, and `elwood run` fails such a start as `blocked_prompt`. The agent's own
+  header drawn alone while it loads is not reported, and the report redacts `sk-`
+  API-key-shaped tokens as the backstop's activity does.
 
 ## [0.8.0] - 2026-11-25
 

@@ -1,12 +1,19 @@
-/** Session-owned frame and trust-deadline observation (PRD §5.3/§5.4, C-TRUST-01). */
+/**
+ * Session-owned frame and trust-deadline observation, and the block on an unrecognized
+ * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-API-72, C-ATTN-11).
+ */
 import { activityFromAttention, blockingRuleIds } from "../../core/attention.ts";
+import { runEach } from "../../core/contained.ts";
 import {
   observeRenderedReading,
   type RenderedObservers,
   readRenderedFrame,
+  withBlockingRule,
 } from "../../core/rendered-observers.ts";
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
+import { createFrameObserverFailureReporter } from "../../core/warnings/frames.ts";
+import type { SessionWarningEmitter } from "../../core/warnings/session.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
@@ -25,14 +32,22 @@ type StartupAutomationState = {
   observeClearance?(frame: string): void;
 };
 
-/** Timers and PTY frames use the same guards, facts, and attention edge owner. */
+/**
+ * Timers and PTY frames use the same guards, facts, and attention edge owner. A frame whose
+ * notifications failed is reported to `observers.warnings` (C-API-72).
+ */
 export function createSessionFrameObserver(
-  observers: RenderedObservers,
+  observers: RenderedObservers & { readonly warnings: SessionWarningEmitter },
   session: () => FrameSession | undefined,
   trust: () => StartupAutomationState,
   readiness: ReadinessGate,
   isIdleComposer: TrustClearance,
 ) {
+  const reportFailure = createFrameObserverFailureReporter(
+    observers.warnings,
+    observers,
+    () => session()?.closing.signal.aborted === false,
+  );
   const attentionClearance = createAttentionClearance(isIdleComposer);
   let frame: RenderedFrame | undefined;
   let ruleIds: readonly string[] = [];
@@ -50,13 +65,27 @@ export function createSessionFrameObserver(
     }
     if (active.status !== "blocked") pendingAutomationClearance = false;
   };
-  const refresh = () => {
+  const refreshUncontained = () => {
     const active = session();
-    if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
+    const current = frame;
+    if (active === undefined || active.closing.signal.aborted || current === undefined) return;
     const state = trust();
+    const rendered = readRenderedFrame(
+      observers,
+      current,
+      state.blockedPrompt,
+      state.inputBlocking,
+    );
+    const unrecognized = readiness.unrecognizedStartup.classify(
+      rendered.facts,
+      state.inputBlocking,
+      current,
+    );
     const reading = attentionClearance(
-      readRenderedFrame(observers, frame, state.blockedPrompt, state.inputBlocking),
-      frame.text,
+      unrecognized
+        ? withBlockingRule(rendered, `${observers.agent}-unrecognized-startup`)
+        : rendered,
+      current.text,
       state.inputBlocking,
     );
     const released = active.automationInputBlocking && !state.inputBlocking;
@@ -68,29 +97,44 @@ export function createSessionFrameObserver(
     if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
     if (released && active.status === "blocked") pendingAutomationClearance = true;
     // Settle automation against this frame before evidence/readiness releases input.
-    state.observeClearance?.(frame.text);
+    state.observeClearance?.(current.text);
     // Publish this frame's hold before evidence listeners can submit readiness.
     readiness.observeFrameHold(
       reading.facts,
       active.automationInputBlocking,
-      frame.text,
-      frame.cols,
+      current.text,
+      current.cols,
     );
     readiness.ready.armDeadline();
-    try {
-      observeRenderedReading(observers, reading, active);
+    runEach(
+      () => observeRenderedReading(observers, reading, active),
       // Automation can consume the human clear edge. Retain its replay until a
       // positive frame shows either resumed work or an idle composer.
-      replayAutomationClearance(active, reading.facts);
-    } finally {
-      readiness.observeReadinessFrame(
-        reading.facts,
-        active.automationInputBlocking,
-        frame.text,
-        frame.cols,
-      );
+      () => replayAutomationClearance(active, reading.facts),
+      () => readiness.unrecognizedStartup.report(current.text),
+      () =>
+        readiness.observeReadinessFrame(
+          reading.facts,
+          active.automationInputBlocking,
+          current.text,
+          current.cols,
+        ),
+    );
+  };
+  // A throwing listener cannot escape into the render loop or a timer, and cannot drop the
+  // frame's other notifications or its `terminal:data`. Its failure is reported (C-API-72).
+  const refresh = () => {
+    try {
+      refreshUncontained();
+    } catch {
+      reportFailure();
     }
   };
+  // At the deadline an idle CLI does not repaint, so its current frame is classified again.
+  readiness.setDeadlineListener((settled) => {
+    if (frame !== undefined && settled !== undefined) frame = { ...frame, ...settled };
+    refresh();
+  });
   return {
     refresh,
     observe: (current: RenderedFrame) => {
@@ -117,12 +161,12 @@ export function createSessionFrameObserver(
  * session's terminal.
  */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold"> & {
-    readonly terminal: { readonly xterm: object };
-  },
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold" | "terminal">,
   trust: StartupAutomationState & { callerInput(): void },
   readiness: ReadinessGate,
 ): void {
+  // Bound synchronously after the terminal attaches, before PTY output can arrive.
+  readiness.bindTerminal(session.terminal);
   session.bindInitialReadinessHold(readiness);
   const stopCallerInput = onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(

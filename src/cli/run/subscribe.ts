@@ -5,6 +5,7 @@
  * Implements PRD §12A.2/§12A.10 and C-CLI-05/C-CLI-09/C-CLI-26.
  */
 
+import { claudeAutoModeOfferRuleId } from "../../claude/auto-mode-offer.ts";
 import {
   blockingTrustSpecs,
   type TrustPromptSpec,
@@ -21,6 +22,8 @@ import type { CodexUpdateAttentionGuard } from "../update-attention.ts";
 export type RunEventObserver = {
   readonly status: (status: ElwoodSessionStatus) => void;
   readonly warning: (event: ElwoodWarningEvent) => void;
+  /** True once setup is done and the run has moved on to its own prompt's turn. */
+  readonly promptPhaseStarted: () => boolean;
 };
 
 export function subscribeRunEvents(
@@ -31,12 +34,21 @@ export function subscribeRunEvents(
   head: HeadedDisplay | undefined,
   updateAttention: CodexUpdateAttentionGuard | undefined,
 ): readonly (() => void)[] {
+  let promptSawRunning = false;
+  let promptReachedReadyAfterRunning = false;
   const common = [
     session.on("activity", (event) => {
       if (event.kind === "attention" && event.label === "codex-update-prompt") {
         if (updateAttention === undefined) lifecycle.block(event.label);
         else updateAttention.attention(event.promptGeneration);
-      } else if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
+      } else if (
+        event.kind === "attention" &&
+        attentionNeedsHuman(request, event.label) &&
+        // Claude mounts its auto-mode setup offer only when a query ends (C-ATTN-09). Once the
+        // prompt's session has gone from `running` to `ready`, by its Stop or by a cleared
+        // dialog, an offer comes from the end of the prompt's own turn and does not fail the run.
+        !(promptReachedReadyAfterRunning && event.label === claudeAutoModeOfferRuleId)
+      ) {
         lifecycle.block(event.label);
       }
       if (event.kind === "startup_prompt" && event.label === "update") {
@@ -44,6 +56,10 @@ export function subscribeRunEvents(
       }
     }),
     session.on("status", ({ status }) => {
+      if (observer.promptPhaseStarted()) {
+        if (status === "running") promptSawRunning = true;
+        else if (status === "ready" && promptSawRunning) promptReachedReadyAfterRunning = true;
+      }
       updateAttention?.status(status);
       observer.status(status);
     }),

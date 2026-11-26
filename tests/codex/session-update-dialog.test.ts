@@ -1,7 +1,7 @@
 /**
  * A Codex session lists and announces its update offer once no Elwood skip answers it:
  * after raw caller input, or after the skip's bounded retries run out. The frames are real
- * standalone Codex 0.172.0 captures (PRD §5.13 "Codex update offers", C-ATTN-10).
+ * standalone Codex 0.172.0 captures (PRD §5.13 "Codex update offers", C-ATTN-12).
  */
 
 import { afterEach, expect, test } from "vitest";
@@ -55,7 +55,7 @@ const phases = (events: readonly ElwoodDialogEvent[], request: ElwoodDialogReque
     event.request === request,
   ]);
 
-test("C-ATTN-10 raw caller input on the offer hands it to the host, and Codex's composer clears it", async () => {
+test("C-ATTN-12 raw caller input on the offer hands it to the host, and Codex's composer clears it", async () => {
   const { session, pty, events, showOffer } = await open();
   try {
     await showOffer();
@@ -88,7 +88,7 @@ test("C-ATTN-10 raw caller input on the offer hands it to the host, and Codex's 
   }
 });
 
-test("C-ATTN-10 an offer Elwood's skip answers is never listed or announced", async () => {
+test("C-ATTN-12 an offer Elwood's skip answers is never listed or announced", async () => {
   const { session, pty, events, showOffer } = await open();
   try {
     await showOffer();
@@ -102,7 +102,7 @@ test("C-ATTN-10 an offer Elwood's skip answers is never listed or announced", as
   }
 });
 
-test("C-ATTN-10 an offer still drawn after the skip's retries run out is handed to the host", async () => {
+test("C-ATTN-12 an offer still drawn after the skip's retries run out is handed to the host", async () => {
   const { session, pty, events, showOffer } = await open();
   try {
     await showOffer();
@@ -116,7 +116,7 @@ test("C-ATTN-10 an offer still drawn after the skip's retries run out is handed 
   }
 });
 
-test("C-ATTN-10 the first readiness ends update discovery", async () => {
+test("C-ATTN-12 the first readiness ends update discovery", async () => {
   const { session, events, showOffer, cwd } = await open();
   try {
     await render(session, codexTty(composer));

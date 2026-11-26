@@ -1,6 +1,6 @@
 /**
  * How a listed Codex update offer ends: replaced, lost, closed, or taken back by a new skip
- * (PRD §5.13 "Codex update offers", C-ATTN-10).
+ * (PRD §5.13 "Codex update offers", C-ATTN-12).
  */
 
 import { afterEach, expect, test } from "vitest";
@@ -21,7 +21,7 @@ const noSafeChoice = [
   "  enter continue · esc skip",
 ].join("\n");
 
-test("C-ATTN-10 a different offer replaces the listed one with new IDs", async () => {
+test("C-ATTN-12 a different offer replaces the listed one with new IDs", async () => {
   const { session, events, show, id } = await listed();
   await closing(session, async () => {
     await show(newerOffer);
@@ -38,7 +38,7 @@ test("C-ATTN-10 a different offer replaces the listed one with new IDs", async (
   });
 });
 
-test("C-ATTN-10 unsettled output keeps the request, and a settled banner without choices ends it", async () => {
+test("C-ATTN-12 unsettled output keeps the request, and a settled banner without choices ends it", async () => {
   const { session, events, show, id, pty } = await listed();
   await closing(session, async () => {
     pty.emitData("\u001b[?2026h");
@@ -55,7 +55,7 @@ test("C-ATTN-10 unsettled output keeps the request, and a settled banner without
   });
 });
 
-test("C-ATTN-10 a settled screen without the banner clears the request, even before a composer", async () => {
+test("C-ATTN-12 a settled screen without the banner clears the request, even before a composer", async () => {
   const { session, events, show, id } = await listed();
   await closing(session, async () => {
     // Codex 0.172.0's first screen after a skip on a start: its header alone.
@@ -70,7 +70,7 @@ test("C-ATTN-10 a settled screen without the banner clears the request, even bef
   });
 });
 
-test("C-ATTN-10 host output ends update discovery for the life of the terminal", async () => {
+test("C-ATTN-12 host output ends update discovery for the life of the terminal", async () => {
   const { session, events, show, id } = await listed();
   await closing(session, async () => {
     session.terminal.writeOutput("host banner\r\n");
@@ -85,7 +85,7 @@ test("C-ATTN-10 host output ends update discovery for the life of the terminal",
   });
 });
 
-test("C-ATTN-10 closing the session closes the listed request", async () => {
+test("C-ATTN-12 closing the session closes the listed request", async () => {
   const { session, events, id } = await listed();
   await session.stop();
   await expect
@@ -96,7 +96,7 @@ test("C-ATTN-10 closing the session closes the listed request", async () => {
     ]);
 });
 
-test("C-ATTN-10 a new skip of the offer takes it back from the host", async () => {
+test("C-ATTN-12 a new skip of the offer takes it back from the host", async () => {
   const { session, events, show } = await openCodex();
   await closing(session, async () => {
     await show(noSafeChoice);
@@ -116,7 +116,7 @@ test("C-ATTN-10 a new skip of the offer takes it back from the host", async () =
   });
 });
 
-test("C-ATTN-10 answerDialog does not answer an update request", async () => {
+test("C-ATTN-12 answerDialog does not answer an update request", async () => {
   const { session } = await listed();
   await closing(session, async () => {
     const [request] = await session.listDialogs();

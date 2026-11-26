@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
-import type { ElwoodQuestionRequest } from "../../../src/index.ts";
+import { CodexSession, type ElwoodQuestionRequest, type TerminalSize } from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
@@ -14,15 +14,46 @@ import {
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { subscribeRender } from "../../../src/terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../../src/terminal/headless.ts";
-import { nativeCodexQuestionFiles } from "./codex-sandbox.ts";
+import {
+  nativeCodexQuestionFiles,
+  nativeQuestionSize,
+  questionCodexModel,
+} from "./codex-sandbox.ts";
 import { committedCodexQuestionRecords, privateQuestionArtifacts } from "./proof-files.ts";
 
-export function publicCodexBlueAnswer(request: ElwoodQuestionRequest) {
+/** An answer choosing `label` in the request's first question only; later questions are ignored. */
+export function publicCodexOptionAnswer(request: ElwoodQuestionRequest, label: string) {
   const question = request.questions[0];
   if (!question) throw new Error("Native question request contains no questions");
-  const option = question.options.find((item) => item.label === "Blue");
-  if (!option) throw new Error("Native question did not offer Blue");
+  const option = question.options.find((item) => item.label === label);
+  if (!option) throw new Error(`Native question did not offer ${label}`);
   return { questionId: question.id, optionIds: [option.id] };
+}
+
+/** An answer with `text` for the request's first question only; later questions are ignored. */
+export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: string) {
+  const question = request.questions[0];
+  if (!question) throw new Error("Native question request contains no questions");
+  return { questionId: question.id, text };
+}
+
+/** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default;
+ * the narrow-pane proof passes its own pane size. */
+export function publicCodexQuestionSession(
+  sandbox: { readonly cwd: string; readonly stateDir: string },
+  initialSize: TerminalSize = nativeQuestionSize,
+): CodexSession {
+  return new CodexSession({
+    cwd: sandbox.cwd,
+    stateDir: sandbox.stateDir,
+    model: questionCodexModel,
+    reasoningEffort: "low",
+    autotrust: true,
+    autoupdate: false,
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    initialSize,
+  });
 }
 
 const publicQuestionTimeoutMs = 60_000;
@@ -37,6 +68,31 @@ export async function waitForPublicCodexQuestion(
     signal?.throwIfAborted();
     if (Date.now() > deadline) throw new Error("Native public question proof timed out");
     await delay(publicQuestionPollMs, undefined, { signal });
+  }
+}
+
+/** Waits for `check`, failing at once if `reply` settles first: a turn must raise its expected
+ * questions before it can finish or fail. */
+export async function waitForPublicCodexQuestionsBeforeReply(
+  check: () => boolean,
+  reply: Promise<string>,
+  signal?: AbortSignal,
+): Promise<void> {
+  const waiting = new AbortController();
+  const abort = () => waiting.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    signal?.throwIfAborted();
+    await Promise.race([
+      waitForPublicCodexQuestion(check, waiting.signal),
+      reply.then(() => {
+        if (!check()) throw new Error("Native turn finished before raising expected questions");
+      }),
+    ]);
+    signal?.throwIfAborted();
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    waiting.abort();
   }
 }
 

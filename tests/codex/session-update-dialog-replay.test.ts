@@ -1,6 +1,6 @@
 /**
  * How late, nested and failing `dialog` listeners see a listed Codex update offer
- * (PRD §5.13 "Codex update offers", C-ATTN-10).
+ * (PRD §5.13 "Codex update offers", C-ATTN-12).
  */
 
 import { afterEach, expect, test, vi } from "vitest";
@@ -10,7 +10,7 @@ import { closing, listed, newerOffer, offer, openCodex, summary } from "./update
 
 afterEach(resetFakes);
 
-test("C-ATTN-10 a late listener gets one replay; one that leaves first gets none", async () => {
+test("C-ATTN-12 a late listener gets one replay; one that leaves first gets none", async () => {
   const { session, events, id } = await listed();
   await closing(session, async () => {
     const late: ElwoodDialogEvent[] = [];
@@ -26,7 +26,7 @@ test("C-ATTN-10 a late listener gets one replay; one that leaves first gets none
   });
 });
 
-test("C-ATTN-10 a listener added while a raise waits for dispatch gets that dispatch once", async () => {
+test("C-ATTN-12 a listener added while a raise waits for dispatch gets that dispatch once", async () => {
   const { session, show, id } = await listed();
   await closing(session, async () => {
     const nested: ElwoodDialogEvent[] = [];
@@ -46,7 +46,7 @@ test("C-ATTN-10 a listener added while a raise waits for dispatch gets that disp
   });
 });
 
-test("C-ATTN-10 a listener added during the raised dispatch gets a replay", async () => {
+test("C-ATTN-12 a listener added during the raised dispatch gets a replay", async () => {
   const { session, events, show } = await openCodex();
   await closing(session, async () => {
     const nested: ElwoodDialogEvent[] = [];
@@ -64,7 +64,7 @@ test("C-ATTN-10 a listener added during the raised dispatch gets a replay", asyn
   });
 });
 
-test("C-ATTN-10 a throwing dialog listener produces one warning and does not stop delivery", async () => {
+test("C-ATTN-12 a throwing dialog listener produces one warning and does not stop delivery", async () => {
   const { session, events, show } = await openCodex();
   const warnings: ElwoodWarningEvent[] = [];
   session.on("warning", (warning) => {

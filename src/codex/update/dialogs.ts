@@ -1,6 +1,6 @@
 /**
  * Lists and announces the Codex update offer while no Elwood skip answers it
- * (PRD §5.13 "Codex update offers", C-ATTN-10).
+ * (PRD §5.13 "Codex update offers", C-ATTN-12).
  */
 import type { ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";

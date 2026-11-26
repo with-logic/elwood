@@ -175,7 +175,9 @@ only its allowlisted workspace-directory and extension trust dialogs.
 `--no-trust` disables those approvals. Codex hook trust is always bypassed for
 the entire session, including third-party hooks configured in Codex, because
 Elwood needs its own hook bridge to run. This bypass is independent of `--trust`.
-Other recognized dialogs fail as `blocked_prompt`. The same error applies when
+Other recognized dialogs fail as `blocked_prompt`, except Claude's auto-mode
+setup offer once the prompt's own turn has finished, when the answer is already
+complete. The same error applies when
 safe trust automation cannot clear a gate within five seconds; queued prompt
 input is never sent into that gate.
 

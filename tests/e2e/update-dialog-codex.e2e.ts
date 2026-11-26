@@ -1,6 +1,6 @@
 /**
  * Real-CLI proof that a Codex update offer Elwood's skip cannot answer is listed and
- * announced for the host (PRD §5.13 "Codex update offers", C-ATTN-10, C-E2E-30). Codex
+ * announced for the host (PRD §5.13 "Codex update offers", C-ATTN-12, C-E2E-33). Codex
  * never receives Elwood's `Skip` key here, as when it drops a key it gets while painting,
  * so the skip's retries end with the offer on screen. The host then answers with Codex's
  * own `Skip` key. The offer's default is `› 1. Update now`, so no Enter may reach it.
@@ -36,7 +36,7 @@ const READY_MS = 45_000;
 const LAUNCHES_MS = probeLaunchTimeoutMs + probeCommandTimeoutMs;
 const TEST_TIMEOUT_MS = OFFER_MS + RETRIES_MS + READY_MS + LAUNCHES_MS + 30_000;
 
-test("C-E2E-30 a Codex update offer whose skip never lands is listed for the host, who skips it", {
+test("C-E2E-33 a Codex update offer whose skip never lands is listed for the host, who skips it", {
   skip: skipIf(skipReason("codex"), codexAuthMissing()),
   timeout: TEST_TIMEOUT_MS,
 }, async (t) => {

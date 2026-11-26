@@ -37,9 +37,9 @@ import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import type { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
-import { ClaudeQuestionsSession } from "./questions.ts";
+import { ClaudeTurnEndSession } from "./turn-end-hold.ts";
 
-export class ClaudeSessionImpl extends ClaudeQuestionsSession implements ClaudeSessionApi {
+export class ClaudeSessionImpl extends ClaudeTurnEndSession implements ClaudeSessionApi {
   protected override shouldCaptureApiPrompt(options?: SendOptions): boolean {
     return !isErgonomicSubmission(options);
   }

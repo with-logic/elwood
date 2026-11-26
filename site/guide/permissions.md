@@ -23,7 +23,7 @@ It layers like any other setting: `ELWOOD_HIGH_TRUST=true`, `elwood config set h
 
 High trust removes the agent's own guardrails, including Codex's workspace sandbox. Use it for work you would let run unattended, in a directory you trust. Claude shows a one-time acceptance dialog the first time a machine runs in bypass mode; Elwood answers it under the same trust automation as the workspace gate.
 
-The CLI automates only allowlisted trust dialogs. An unhandled blocking prompt exits as `blocked_prompt`. `--no-trust` disables workspace and extension trust automation; it does not turn an unattended command into a permission UI.
+The CLI automates only allowlisted trust dialogs. An unhandled blocking prompt exits as `blocked_prompt`, except Claude's auto-mode setup offer after the prompt's own turn has finished, when the answer is already complete. `--no-trust` disables workspace and extension trust automation; it does not turn an unattended command into a permission UI.
 
 ```sh
 elwood --agent claude --claude-permission-mode plan \

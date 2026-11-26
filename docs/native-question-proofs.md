@@ -2,7 +2,8 @@
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
 real authenticated CLI processes. The Claude entrypoint uses eight valid-model
-turns in three isolated sessions and the Codex entrypoint uses two.
+turns in three isolated sessions. Each Codex entrypoint uses two, except the
+narrow-pane proof, which uses three.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -62,7 +63,7 @@ configuration, authentication and process environment remain unchanged.
 ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-questions.e2e.ts
 ```
 
-The proof pins Codex 0.163.0 and uses `gpt-6-luna` with low effort. The first
+The proof pins Codex 0.172.0 and uses `gpt-6-luna` with low effort. The first
 turn asks three queued questions in one asynchronous call. It answers Note,
 Literal, then Color through the public API, checking the other requests remain
 available and the original turn remains running. The second turn submits one
@@ -83,3 +84,42 @@ arrays, requires four answered request closures and final-only ergonomic
 replies, and applies the same telemetry/state privacy and parent-state checks
 as the Claude proof. Native transcripts and diagnostic captures stay inside
 private sandbox directories that teardown removes.
+
+## Codex: a turn that ends with a queued question open (C-ATTN-02)
+
+```sh
+ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-turn-end.e2e.ts
+```
+
+On the same pinned Codex and model, one session asks two queued choices in one
+asynchronous call, and the proof answers only the first. The model ends its turn
+at that answer, so Codex withdraws the second choice. The proof requires the
+session to have been `blocked`, the two requests to close as answered and
+unavailable, and the prompt to be followed by the `? ` question cells Codex
+0.172 draws. The session must then settle at `ready`, and its composer must take
+a second prompt.
+
+## Codex: questions in a narrow pane (C-QUESTION-04)
+
+```sh
+ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-narrow.e2e.ts
+```
+
+On the same pinned Codex and model, three isolated sessions each take one turn
+in a pane too narrow for the question footer, which Codex 0.172 wraps onto a
+second row.
+
+- A 50-column session asks the three queued questions of C-E2E-19 in one
+  asynchronous call. The proof answers the color while it is question 1 of 3.
+  Codex then shows the note as 1 of 2 under a wrapped footer, and the session
+  must be `blocked` with the note and the literal still listed. The proof
+  answers both, and requires the three requests to close as answered in that
+  order and `send()` to return the final reply.
+- An 80-column and a 50-column session in Plan mode each ask the three modal
+  questions of C-E2E-19. At 80 columns the footer's last hint is on a row of its
+  own; at 50 the footer splits in two and the description of "None of the above"
+  wraps too. The proof requires that layout on screen and the session to be
+  `blocked`, then runs the C-E2E-19 modal phase: its answers select "None of the
+  above" and add notes, and it requires the committed native answers, the final
+  reply, no remaining question and `ready`, and the request to close as
+  answered.

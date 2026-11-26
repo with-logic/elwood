@@ -2,14 +2,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import {
-  CodexSession,
-  type ElwoodActivityEvent,
-  type ElwoodQuestionEvent,
-} from "../../src/index.ts";
+import type { CodexSession, ElwoodActivityEvent, ElwoodQuestionEvent } from "../../src/index.ts";
 import {
   modalLiteralAnswer,
   publicCodexLongAnswer,
@@ -20,17 +14,13 @@ import {
   captureCodexQuestionCursor,
   publicCodexQuestionRecords,
   publicCodexQuestionSandbox,
+  publicCodexQuestionSession,
 } from "./questions/codex-public-sandbox.ts";
-import { questionCodexBinary, questionCodexModel } from "./questions/codex-sandbox.ts";
+import { codexQuestionProofSkip, questionCodexVersion } from "./questions/codex-sandbox.ts";
 import { assertQuestionAnswerPrivacy, privateQuestionArtifacts } from "./questions/proof-files.ts";
 
 test("C-E2E-19 native Codex queued and grouped answers preserve the caller turn", {
-  skip:
-    process.env["ELWOOD_NATIVE_QUESTIONS_PROOF"] === "1"
-      ? existsSync(questionCodexBinary) && existsSync(join(homedir(), ".codex/auth.json"))
-        ? false
-        : "requires pinned Codex and auth"
-      : "set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for two isolated valid-model turns",
+  skip: codexQuestionProofSkip("two isolated valid-model turns"),
   timeout: 240_000,
 }, async (t) => {
   const sandbox = await publicCodexQuestionSandbox();
@@ -77,17 +67,7 @@ test("C-E2E-19 native Codex queued and grouped answers preserve the caller turn"
     );
     const create = () => {
       t.signal.throwIfAborted();
-      const session = new CodexSession({
-        cwd: sandbox.cwd,
-        stateDir: sandbox.stateDir,
-        model: questionCodexModel,
-        reasoningEffort: "low",
-        autotrust: true,
-        autoupdate: false,
-        sandbox: "read-only",
-        approvalPolicy: "never",
-        initialSize: { cols: 140, rows: 45 },
-      });
+      const session = publicCodexQuestionSession(sandbox);
       session.on("question", (event) => events.push(event));
       session.on("activity", (event) => {
         if (event.kind === "assistant_message" && event.text) messages.push(event.text);
@@ -130,7 +110,7 @@ test("C-E2E-19 native Codex queued and grouped answers preserve the caller turn"
     );
     assertQuestionAnswerPrivacy(sandbox.stateDir, [...events, ...normalized], privateAnswers);
     t.diagnostic(
-      "Codex0.163.0: three independent queued answers and one three-question Plan set matched complete native records; send completed only on final.",
+      `${questionCodexVersion}: three independent queued answers and one three-question Plan set matched complete native records; send completed only on final.`,
     );
   } catch (error) {
     primaryFailure = true;

@@ -322,7 +322,9 @@ Headless mode is non-interactive. With the default `--trust`, Elwood answers onl
 its allowlisted workspace-directory and extension trust dialogs. Codex hook
 trust is bypassed session-wide, including hooks beyond Elwood’s own hooks. `--no-trust` disables the
 workspace/extension approvals. Any other recognized dialog fails safely as
-`blocked_prompt` instead of hanging or guessing.
+`blocked_prompt` instead of hanging or guessing. The one exception is Claude's
+auto-mode setup offer after the prompt's own turn has finished: the answer is
+complete, so the run succeeds.
 
 Piped text and image paths are prompt input with the same authority as text typed
 by the caller. Do not combine untrusted input with broad filesystem permissions.
@@ -549,7 +551,9 @@ immediate; both are safe after the process has already exited.
   per-agent posture is a usage error rather than a silent override.
 - `autotrust` changes the security posture of the launched agent. Point it only
   at directories you already trust. The standalone `listClaudeModels` /
-  `listCodexModels` probes always start with `autotrust: true`.
+  `listCodexModels` probes always start with `autotrust: true`;
+  `listClaudeModels` still refuses any prompt whose answer could run the folder's
+  code (see [docs/api.md](docs/api.md)).
 - The persisted session record holds schema version, `elwoodSessionId`,
   adapter, `cwd`, and per-adapter resume state. Loop definitions are the only
   persisted prompt text, in an owner-only `0600` sidecar.

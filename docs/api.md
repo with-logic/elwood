@@ -176,8 +176,14 @@ the event, capability, validation and input-ownership contract.
 Claude and Codex sessions expose workspace trust prompts through `listDialogs()`
 and emit typed `dialog` events when verified requests appear or close. Each
 request names the exact folder or repository root and lists the native choices
-in display order. Both adapters accept verified choice IDs through
-`answerDialog()`. The `ElwoodDialogEvent` type defaults to Codex. Pass
+in display order. A Claude request also has `disclosesHooks`. It is `true` when
+Claude's prompt disclosed the folder's hooks: trusting the folder runs them, and
+`autotrust: true` approves that prompt too. `false` means only that the prompt disclosed
+none, not that no hooks run: a Claude older than 2.1.329 cannot disclose them, and a
+load row naming settings files alone can enable plugins whose hooks run as the
+session starts. Narrow
+`request.agent` to `"claude"` to read it. Codex requests have no such field. Both
+adapters accept verified choice IDs through `answerDialog()`. The `ElwoodDialogEvent` type defaults to Codex. Pass
 `ElwoodDialogEvent<"claude">` for Claude events. See [native dialog discovery](../prd/05-api/5.13-dialogs.md).
 With `autotrust: false`, Claude callers can use `answerDialog(requestId, choiceId, options?)`.
 The promise resolves when Claude confirms acceptance or when Claude exits after
@@ -267,9 +273,33 @@ They accept `cwd`, `stateDir`, `autoupdate`, `hookTimeoutMs`,
 `strictVersionCheck`, and a `timeoutMs` for the picker automation. A start
 failure surfaces the adapter's normal typed error; a picker failure rejects
 with `model_automation_failed` (a secondary teardown failure is attached as
-`cause`). Trust note: the probe starts with `autotrust: true` for the given
-`cwd`, so it answers that directory's workspace, skill, plugin, and MCP trust
-prompts automatically. Point these functions at a directory you already trust.
+`cause`). Trust note: both probes start with `autotrust: true` for the given
+`cwd`. `listCodexModels` answers that directory's trust prompts automatically.
+`listClaudeModels` never answers a prompt whose answer could run the folder's
+code. Of Claude's workspace, MCP server, plugin, and skill prompts, it answers
+only the plain workspace prompt, which has no load row, from Claude 2.1.329 or
+later. It still accepts Claude's bypass-permissions disclaimer, which runs none
+of the folder's code. Any other workspace, MCP server, plugin, or skill prompt
+it leaves unanswered, and rejects with `claude_start_failed` and a
+`details.category` naming what in the folder it declined to trust:
+
+- `"workspace_hooks"`: the load row says a settings file runs commands, or a
+  Claude older than 2.1.329, or of an unparseable version, which does not
+  disclose hooks, shows any workspace prompt Elwood verifies.
+- `"workspace_mcp_servers"`: the load row names MCP servers, or Claude asks to
+  use a new MCP server.
+- `"workspace_settings"`: the load row names settings files alone. Settings can
+  enable plugins whose hooks run as the session starts, and the prompt does not
+  show it.
+- `"workspace_plugins"`, `"workspace_skills"`: Claude asks to trust a plugin or
+  load a skill.
+- `"workspace_unverified"`: Elwood cannot verify the painted workspace prompt,
+  for example a load row that says a settings file sets environment variables.
+  This rejection comes when the prompt's five-second trust budget runs out.
+
+When a load row says more than one, the first category in this list applies.
+The folder stays untrusted. Point these functions at a directory Claude already
+trusts, with no trust prompts left to answer.
 
 Both adapters accept a `persona` start option: an instruction delivered as the
 session's guaranteed first user message once the agent is ready, ahead of

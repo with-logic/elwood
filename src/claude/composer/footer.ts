@@ -1,6 +1,6 @@
 /**
  * Claude's native composer footer: the row directly beneath the composer's bottom rule
- * (PRD §5.3, §5.4; C-TRUST-01, C-API-55, C-API-56).
+ * (PRD §5.3, §5.4; C-TRUST-01, C-API-55, C-API-56, C-ATTN-10).
  *
  * Captured on Claude Code 2.1.310 for every `--permission-mode` (see
  * `tests/fixtures/claude-2.1.310/mode-footers/`), on top of the 2.1.278 to 2.1.305 rows:
@@ -33,3 +33,19 @@ export const claudeComposerFooter = new RegExp(`^${claudeComposerFooterRow}$`);
 export const claudeFooterOverflow = new RegExp(
   String.raw`^\s*(?:${claudeTokenCount}|${effortLevel})\s*$`,
 );
+
+/** The mode item that opens a footer row, idle or working (`· esc to interrupt` follows). */
+const footerMode = new RegExp(String.raw`^[ \t]*(?:-- INSERT -- )?(${mode})(?=\s|$)`);
+/** A rule with no label: the composer's bottom rule, the last one on screen. */
+const plainRule = /^[─━]{3,}\s*$/;
+
+/**
+ * The permission mode that Claude's footer shows, as in `⏵⏵ auto mode on`. It is read from
+ * the row under the screen's last plain rule, so transcript text that quotes a mode is never
+ * taken for it (C-ATTN-10).
+ */
+export function claudeFooterMode(text: string): string | undefined {
+  const rows = text.split("\n");
+  const bottomRule = rows.findLastIndex((row) => plainRule.test(row));
+  return bottomRule < 0 ? undefined : footerMode.exec(rows[bottomRule + 1] ?? "")?.[1];
+}

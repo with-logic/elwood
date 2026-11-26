@@ -21,8 +21,10 @@ import type {
   ResizeErrorCode,
 } from "./reasons.ts";
 import type * as transcript from "./transcript.ts";
+import type { TurnEndHoldExpiredWarning } from "./turn-end-hold.ts";
 
 export type ElwoodWarningEvent =
+  | TurnEndHoldExpiredWarning
   | QuestionAutomationDisabledWarning
   | QuestionObserverFailedWarning
   | DialogObserverFailedWarning
@@ -46,6 +48,7 @@ export type ElwoodWarningEvent =
   | lifecycle.ObserverFailureWarning
   | lifecycle.TurnCommitWaitExpiredWarning
   | lifecycle.InitialReadyBackstopWarning
+  | lifecycle.FrameObserverFailedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";

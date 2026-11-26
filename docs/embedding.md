@@ -219,11 +219,21 @@ flush barrier. Older Claude records without native prompt identity can remain
 untagged. Claude's synthetic interrupted-resume placeholder is omitted from
 normalized assistant activity.
 
-On Claude and Codex, `initial_ready_backstop` warns that startup evidence is still missing:
-readiness and queued text remain held. If no recognized dialog hold is active, the
-matching `unrecognized_startup` activity carries bounded live screen text for
-display. The text can include whatever the agent showed, including account or
-workspace details.
+From the 10-second readiness deadline, a startup screen Elwood does not recognize makes
+the session `blocked` with `claude-unrecognized-startup` or `codex-unrecognized-startup`
+attention, and an `unrecognized_startup` activity labelled `initial_ready_deadline`
+carries the screen's bounded text. Answer it with `sendKeys`, or stop the session;
+queued input is released once a verified composer follows. On Claude and Codex,
+`initial_ready_backstop` warns that startup evidence is still missing after 60 seconds:
+readiness and queued text remain held. If no recognized dialog or other recognized
+startup hold, such as trust automation or Codex's repaint after an update skip, is
+active, the matching `unrecognized_startup` activity carries bounded live screen text
+for display. Elwood replaces `sk-` API-key-shaped tokens in either text, including a key
+wrapped across rows, with `sk-[REDACTED]`. Only the `unrecognized_startup` activity
+text is redacted. `terminal:data`, `terminal.snapshot()` and `readScreen()` are not
+redacted: they show the screen as drawn, keys included. Even redacted, the activity text
+can include whatever else the agent showed, such as account or workspace details or
+other credentials.
 Recognized update menus are safely skipped or reported as `blocked` with
 `codex-update-prompt` attention. Elwood never chooses `Update now` in the TUI.
 

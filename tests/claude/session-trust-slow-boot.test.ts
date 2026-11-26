@@ -58,13 +58,15 @@ afterEach(async () => {
 });
 
 /** Emit every captured chunk at its recorded offset; `beforeComposer` runs just before the
- * composer chunk, nearly nine seconds after the dialog first painted. */
-async function replay(beforeComposer: () => void): Promise<void> {
+ * composer chunk, nearly nine seconds after the dialog first painted, or `slowerBy` later. */
+async function replay(beforeComposer: () => void, slowerBy = 0, from = capture): Promise<void> {
   vi.useFakeTimers();
   let elapsed = 0;
-  for (const [index, chunk] of capture.entries()) {
-    await vi.advanceTimersByTimeAsync(chunk.atMs - elapsed);
-    elapsed = chunk.atMs;
+  for (const chunk of from) {
+    const index = capture.indexOf(chunk);
+    const atMs = chunk.atMs + (index >= composerChunkIndex ? slowerBy : 0);
+    await vi.advanceTimersByTimeAsync(atMs - elapsed);
+    elapsed = atMs;
     if (index === composerChunkIndex) beforeComposer();
     ptys[0]!.emitData(chunk.data);
   }
@@ -108,4 +110,26 @@ test("C-CLAUDE-10 the same real 2.1.310 launch reports its answer once, when the
   expect(answered).toEqual([
     "workspace_trust: Detected claude workspace_trust prompt; sent home+down+enter.",
   ]);
+});
+
+test("C-ATTN-11 the boot alone, slowed until only its banner shows at the readiness deadline, never blocks", async () => {
+  installFakes();
+  const live = await startClaude({ cwd: tempDir() });
+  session = live;
+  const statuses: ElwoodSessionStatus[] = [];
+  const reports: string[] = [];
+  live.on("status", (event) => statuses.push(event.status));
+  live.on("activity", (event) => {
+    if (event.kind === "attention" || event.kind === "unrecognized_startup")
+      reports.push(event.label);
+  });
+  const queued = live.sendMessage("hello");
+  // A trusted folder: the same launch without the trust dialog and its erase. The banner
+  // paints 5 s after the first frame and the composer 13 s, 3 s past the readiness deadline.
+  const erase = chunkIndexOf("\u001b[2K");
+  const boot = capture.filter((_, index) => index < dialogChunkIndex || index > erase);
+  await replay(() => expect(statuses).not.toContain("blocked"), 4_000, boot);
+  await queued;
+  expect(statuses).not.toContain("blocked");
+  expect(reports).toEqual([]);
 });

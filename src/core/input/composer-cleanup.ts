@@ -14,7 +14,9 @@ import { clearAndObserveComposer, type EmptyComposerObserver } from "./clear-ack
 import { unsafeWriteRetryMs } from "./constants.ts";
 
 const owners = new WeakMap<InputTerminal, ComposerCleanup>();
-type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean };
+/** The awaited writer's acceptance check, read when cleanup runs: fresh empty input after Enter. */
+type ConsumedProof = () => boolean;
+type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean; consumed?: ConsumedProof };
 
 /** Register ComposerCleanup before staging; unregistered terminals deliberately record no ownership. */
 export function stageComposer(terminal: InputTerminal): AbortSignal | undefined {
@@ -23,6 +25,13 @@ export function stageComposer(terminal: InputTerminal): AbortSignal | undefined 
 /** Mark submission after staging; this is also a no-op without prior registration. */
 export function submittedComposer(terminal: InputTerminal): void {
   owners.get(terminal)?.submitted();
+}
+/**
+ * Mark awaited input's physical Enter; its draft stays owned until consumption is verified.
+ * `consumed` lets later cleanup release that draft without clear keys once it holds.
+ */
+export function enteredComposer(terminal: InputTerminal, consumed?: ConsumedProof): void {
+  owners.get(terminal)?.entered(consumed);
 }
 
 /**
@@ -42,6 +51,7 @@ export async function requestComposerCleanup(
 
 export class ComposerCleanup {
   private draft: Draft | undefined;
+  private staged = false;
   private baseline: AbortSignal;
   private stagedGeneration: AbortSignal | undefined;
   private readonly terminal: InputTerminal;
@@ -79,19 +89,34 @@ export class ComposerCleanup {
     );
   }
 
+  /**
+   * Input this owner staged still awaits its Enter and is not abandoned, whoever owns the
+   * draft now. A dialog painted over it can hold that Enter (C-ATTN-09).
+   */
+  get holdsUnsubmittedInput(): boolean {
+    return this.staged;
+  }
+
   stage(): AbortSignal {
+    this.staged = true;
     this.stagedGeneration = this.rawInputSignal();
     if (this.stagedGeneration === this.baseline)
       this.draft ??= { rawInputSignal: this.stagedGeneration, pending: false };
     return this.stagedGeneration;
   }
   submitted(): void {
+    this.staged = false;
     // Only an uninterrupted submission establishes a fresh composer after raw edits.
     if (this.stagedGeneration === this.rawInputSignal()) this.baseline = this.stagedGeneration;
     this.stagedGeneration = undefined;
     this.draft = undefined;
   }
+  entered(consumed?: ConsumedProof): void {
+    this.staged = false;
+    if (this.draft && consumed) this.draft.consumed = consumed;
+  }
   defer(): void {
+    this.staged = false;
     if (this.reconcileDraftOwnership()) this.draft!.pending = true;
   }
 
@@ -109,7 +134,7 @@ export class ComposerCleanup {
         !(await writeUnsafe(this.terminal, { blocked: this.blocked }, this.closing))
       ) {
         try {
-          await this.clear();
+          await this.releaseOrClear();
         } catch {
           /* The next operation must retry or reject. */
         }
@@ -128,7 +153,7 @@ export class ComposerCleanup {
       const observe = AbortSignal.any([signal, this.closing, this.draft!.rawInputSignal]);
       try {
         if (!(await writeUnsafe(this.terminal, { blocked: this.blocked }, observe))) {
-          await this.clear(observe);
+          await this.releaseOrClear(observe);
           break;
         }
         await waitForInput(unsafeWriteRetryMs, observe);
@@ -140,9 +165,15 @@ export class ComposerCleanup {
     throwIfInputAborted(this.closing);
   }
 
-  private async clear(preparationSignal = this.closing): Promise<void> {
+  /** Taken input needs no clear keys, which no fresh frame could confirm on empty input. */
+  private async releaseOrClear(preparationSignal = this.closing): Promise<void> {
     if (!this.reconcileDraftOwnership()) return;
     const draft = this.draft!;
+    if (draft.consumed?.()) this.release(draft);
+    else await this.clear(draft, preparationSignal);
+  }
+
+  private async clear(draft: Draft, preparationSignal: AbortSignal): Promise<void> {
     const signal = AbortSignal.any([preparationSignal, this.closing, draft.rawInputSignal]);
     try {
       await clearAndObserveComposer(
@@ -156,9 +187,12 @@ export class ComposerCleanup {
       throwIfInputAborted(signal);
       throw elwoodError("wait_timeout", "Could not clear the staged composer draft.");
     }
-    if (this.draft === draft) {
-      this.draft = undefined;
-      if (this.onCleared) runContained(this.onCleared);
-    }
+    this.release(draft);
+  }
+
+  private release(draft: Draft): void {
+    if (this.draft !== draft) return;
+    this.draft = undefined;
+    if (this.onCleared) runContained(this.onCleared);
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Shared hook-backed readiness evidence checks and a diagnostic backstop.
- * Implements PRD §5.3/§9.4, C-API-19, and C-API-28.
+ * Implements PRD §5.3/§9.4, C-API-19, C-API-28, and the deadline of C-ATTN-11.
  *
  * On a COLD start both adapters gate the first queued message on a pre-input
  * readiness hook — Claude's `InstructionsLoaded`, Codex's `SessionStart` — the CLI's
@@ -10,7 +10,8 @@
  * would swallow the message. On RESUME the conversation already exists, so
  * `markReadyOnResumeComposer` releases readiness on the first CONFIGURED composer
  * instead of the deadline, subject to `createReadinessGate`'s composite hold:
- * human/automation gates and their working or partial clearance frames. A composer
+ * human/automation gates, their working or partial clearance frames, and PTY output
+ * that has not rendered yet. A composer
  * marker alone is not that evidence: a resumed CLI paints a loading placeholder with
  * the marker, and a startup dialog can select a row with it (Codex 0.171.0's update
  * offer draws `› 1. Update now`). The hooks differ on resume:
@@ -21,6 +22,8 @@
  * backstop reports missing evidence while retaining queued input.
  */
 
+import { runContained } from "../../core/contained.ts";
+
 export type InitialReady = {
   /** Permanently cancel readiness, including frames drained after process exit. */
   readonly cancel: () => void;
@@ -30,8 +33,9 @@ export type InitialReady = {
   readonly mark: () => void;
   /**
    * Per rendered frame: re-attempt a hook/deadline mark the composite readiness hold
-   * deferred, once it releases (a dialog must clear to a nonblocking idle composer), or
-   * a deadline mark still waiting for a configured composer (C-API-28).
+   * deferred, once it releases (a dialog must clear to a nonblocking idle composer, and
+   * received PTY output must render), or a deadline mark still waiting for a configured
+   * composer (C-API-28).
    */
   readonly retryWhenReleased: (readinessHeld: boolean) => void;
 };
@@ -80,6 +84,8 @@ export type ConfiguredComposerEvidence = {
   /** The latest frame shows a configured session's composer outside any blocking dialog. */
   readonly shown: () => boolean;
   readonly onBackstop: () => void;
+  /** The deadline passed without readiness (C-ATTN-11). */
+  readonly onDeadline?: () => void;
   readonly backstopMs?: number;
 };
 
@@ -115,10 +121,11 @@ export function initialReady(
   };
   const mark = () => {
     if (ready || cancelled) return;
-    // createReadinessGate owns the composite hold: human/automation gates and
-    // their working or partial clearance frames, including startup. Remember the
-    // request and re-fire it from retryWhenReleased once that hold releases — never
-    // latch here, so readiness is neither drained into the dialog nor starved by it.
+    // createReadinessGate owns the composite hold: human/automation gates, their
+    // working or partial clearance frames, including startup, and unrendered PTY
+    // output. Remember the request and re-fire it from retryWhenReleased once that hold
+    // releases — never latch here, so readiness is neither drained into the dialog nor
+    // starved by it.
     if (isReadinessHeld()) {
       deferredByHold = true;
       return;
@@ -151,7 +158,11 @@ export function initialReady(
     // contained so later hooks or configured frames can retry.
     armDeadline: () => {
       if (cancelled || ready) return;
-      deadline ??= setTimeout(() => markFromTimer(), initialDeadlineMs);
+      deadline ??= setTimeout(() => {
+        markFromTimer();
+        // Observer failure must not stop the timer path, as below.
+        if (!ready) runContained(() => composer?.onDeadline?.());
+      }, initialDeadlineMs);
       backstop ??= setTimeout(() => {
         markFromTimer();
         try {

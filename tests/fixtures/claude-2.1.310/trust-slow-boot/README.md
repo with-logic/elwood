@@ -13,3 +13,6 @@ resets its selection to "No, exit" once on the way, at +680 ms). The screen then
 stays blank, and from +5032 ms shows only the welcome banner. The composer paints
 at +8976 ms. Live, origin/main reported `blocked` with `claude-workspace_trust-prompt`
 attention at +5.0 s in this launch, while only the banner was on screen.
+
+`banner-only.txt` is the screen that capture rendered just before the composer chunk,
+from +5032 ms to +8976 ms: the welcome banner and the rule under it, alone.

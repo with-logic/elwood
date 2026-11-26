@@ -1,7 +1,7 @@
 /**
  * Forces Codex's own in-TUI update offer in a private `CODEX_HOME`, and lets only the
  * offer's `Skip` digit reach it (PRD §5.3, §5.5, §5.13, §12, C-API-28, C-CODEX-27,
- * C-E2E-26, C-E2E-27, C-E2E-30). The offer's default choice is "Update now", which runs a global installer on
+ * C-E2E-26, C-E2E-27, C-E2E-33). The offer's default choice is "Update now", which runs a global installer on
  * the host, so a test that opens a session on the offer must be able to prove what reached
  * the CLI, and must never let an Enter through. Each write is judged against the CLI's own
  * screen, drawn from its output by a terminal of the harness, never against Elwood's

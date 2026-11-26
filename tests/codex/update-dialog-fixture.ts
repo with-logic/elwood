@@ -1,7 +1,7 @@
 /**
  * Opens a Codex session on an update offer that raw caller input has taken over, so the
  * session lists it as a `kind: "update"` request (PRD §5.13 "Codex update offers",
- * C-ATTN-10). Offers are real standalone Codex 0.172.0 captures, edited where a test needs
+ * C-ATTN-12). Offers are real standalone Codex 0.172.0 captures, edited where a test needs
  * another version or choice order.
  */
 

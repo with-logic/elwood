@@ -7,8 +7,7 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { withAutomatedInput } from "../../runtime/session/session-input.ts";
-import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
+import { stagedInputPending, withAutomatedInput } from "../../runtime/session/session-input.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -16,15 +15,16 @@ import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
 import { settledLiveSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
-import { liveClaudeIdleComposer } from "../composer/idle.ts";
+import { liveClaudeAttentionClearance, liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
-import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
+import { claudeStartupSize } from "../startup-size.ts";
 import { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
+import { createClaudeReadinessGate } from "./readiness.ts";
 import {
   type BuildClaudeSessionInput,
   buildClaudeObservers,
@@ -67,14 +67,14 @@ export async function buildClaudeSession(
     isLive: () => session?.closing.signal.aborted === false,
     manualTrust: !autotrust,
   });
-  const readiness = createStartupReadinessGate(
+  const readiness = createClaudeReadinessGate(
     () => {
       dialogs.discovery.endStartup();
       observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
       void session?.completeInitialReady();
     },
     resumed,
-    { session: observers, warnings: warnGate, events: emitter, configured: idleComposerClearance },
+    { elwoodSessionId, warnings: warnGate, events: emitter, configured: idleComposerClearance },
   );
   const bridge = await startClaudeHookBridge(
     runtime.socketPath,
@@ -94,8 +94,7 @@ export async function buildClaudeSession(
     buildClaudeHookErrorHandler(record, emitter, () => session),
   );
   const requestedSize = options.initialSize ?? defaultTerminalSize;
-  const cols = Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS);
-  const startupSize = { ...requestedSize, cols };
+  const startupSize = claudeStartupSize(requestedSize);
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
     pty = spawnClaudePty(record, runtime.settingsPath, { ...options, initialSize: startupSize });
@@ -112,13 +111,14 @@ export async function buildClaudeSession(
     () => session,
     () => promptResponder,
     readiness,
-    idleComposerClearance,
+    liveClaudeAttentionClearance(idleComposerClearance, () => terminal, stagedInputPending),
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,
     () => dialogs.reconcileAfter(frameObserver.refresh),
     idleComposerClearance,
     dialogs.onWorkspaceTrustTakeover,
+    options.probeTrust,
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();

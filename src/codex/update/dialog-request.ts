@@ -1,7 +1,7 @@
 /**
  * Reads Codex's update offer as a public `kind: "update"` dialog request: the banner and
  * the rows before the choices, the version pair, and the choices in native order
- * (PRD §5.13 "Codex update offers", C-ATTN-10).
+ * (PRD §5.13 "Codex update offers", C-ATTN-12).
  */
 import { randomUUID } from "node:crypto";
 import type { ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";

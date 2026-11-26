@@ -20,11 +20,20 @@ import { registerPrivateHome } from "../home-guard.ts";
 import { assertParentEnvironmentUnchanged } from "../parent-environment.ts";
 
 export const questionCodexBinary = join(homedir(), ".local/bin/codex");
-export const questionCodexVersion = "codex-cli 0.163.0";
+export const questionCodexVersion = "codex-cli 0.172.0";
 export const questionCodexModel = "gpt-6-luna";
 
 /** Capture coordinates and the PTY viewport must describe the same native layout. */
-const nativeQuestionSize = { cols: 140, rows: 45 } as const;
+export const nativeQuestionSize = { cols: 140, rows: 45 } as const;
+
+/** Why a native Codex question proof is skipped, or false when it can run. */
+export function codexQuestionProofSkip(turns: string): string | false {
+  if (process.env["ELWOOD_NATIVE_QUESTIONS_PROOF"] !== "1")
+    return `set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for ${turns}`;
+  return existsSync(questionCodexBinary) && existsSync(join(homedir(), ".codex/auth.json"))
+    ? false
+    : "requires pinned Codex and auth";
+}
 /** Let Codex flush its private home before escalating a stopped capture to SIGKILL. */
 const shutdownGraceMs = 2_000;
 
@@ -59,7 +68,9 @@ export async function nativeCodexQuestionFiles() {
       "--version",
     ]);
     if (version.status !== 0 || version.error || version.stdout.trim() !== questionCodexVersion)
-      throw new Error("Pinned Codex question version unavailable");
+      throw new Error(
+        `Pinned Codex question version unavailable: expected ${questionCodexVersion}, found ${version.stdout.trim() || "no version"}`,
+      );
     return {
       root,
       home,

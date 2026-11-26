@@ -1,16 +1,18 @@
 /** Recognize captured Codex question layouts without matching transcript prose (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { displayColumns } from "../screen/display-columns.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
-  type ModalQuestionFooter,
-  modalQuestionFooter,
-  queuedFooter,
+  type ModalQuestionFooterKind,
+  modalFooterLayouts,
+  questionFooter,
   queuedPanelHeader,
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
-import { nativeSelection } from "./selection.ts";
+import { blankOrPendingMessages } from "./native-pending.ts";
+import { foldOptionRows, nativeSelection, readsAsWrapped } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
 export type QuestionView = {
@@ -62,30 +64,34 @@ const nativeQuestionHeader = /^ {2}Question (\d+)\/(\d+) \(\d+ unanswered\)$/;
 export function questionView(frame: QuestionFrame): QuestionView | undefined {
   const lines = frame.lines.map((line) => line.trimEnd());
   const end = lines.findLastIndex((line) => line.trim().length > 0);
-  const footer = lines[end]?.trim() ?? "";
   if (frame.cursorRow < 0 || frame.cursorRow > end + footerCursorAllowanceRows) return undefined;
+  // The panel's body ends above its footer, which a narrow pane wraps onto more rows.
+  const footer = questionFooter(lines, end);
+  if (!footer) return undefined;
   let start: number;
   let count: number;
   let index: number;
   let kind: QuestionView["kind"];
-  const modal = modalQuestionPosition(lines, modalQuestionFooter(footer));
-  if (modal) {
-    ({ start, count, index } = modal);
-    kind = "blocking";
-  } else if (queuedFooter.test(footer)) {
+  let notes = false;
+  if (footer.kind === "queued") {
     start = lines.lastIndexOf(queuedPanelHeader);
     if (start < 0) return undefined;
     const position = lines
-      .slice(start + 1, end)
+      .slice(start + 1, footer.firstRow)
       .map((line) => line.trim())
       .find((line) => /^\d+ of \d+$/.test(line));
     const match = position?.match(/^(\d+) of (\d+)$/);
     index = match ? Number(match[1]) - 1 : 0;
     count = match ? Number(match[2]) : 1;
     kind = "queued";
-  } else return undefined;
+  } else {
+    const modal = modalQuestionPosition(lines, footer.kind);
+    if (!modal) return undefined;
+    ({ start, count, index, notes } = modal);
+    kind = "blocking";
+  }
   if (!questionCursor(frame, lines, start, kind) || index < 0 || index >= count) return undefined;
-  const rawBody = frame.lines.slice(start + 1, end);
+  const rawBody = frame.lines.slice(start + 1, footer.firstRow);
   const body = rawBody.map((line) => line.trim());
   return {
     kind,
@@ -94,7 +100,7 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     body,
     rawBody,
     selected: nativeSelection(rawBody, kind === "queued" && count > 1),
-    notes: modal?.notes ?? false,
+    notes,
     cursor: {
       row: frame.cursorRow - start - 1,
       visible: frame.cursorVisible,
@@ -103,15 +109,8 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     },
   };
 }
-const modalEditorLayouts = {
-  withNavigation: { requireSingleQuestion: false, notes: false },
-  withoutNavigation: { requireSingleQuestion: true, notes: false },
-  notes: { requireSingleQuestion: false, notes: true },
-} satisfies Record<ModalQuestionFooter, { requireSingleQuestion: boolean; notes: boolean }>;
-
-function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooter | undefined) {
-  if (!footer) return undefined;
-  const { requireSingleQuestion, notes } = modalEditorLayouts[footer];
+function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooterKind) {
+  const { requireSingleQuestion, notes } = modalFooterLayouts[footer];
   const start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
   const match = nativeQuestionHeader.exec(lines[start] ?? "");
   if (!match) return undefined;
@@ -119,7 +118,8 @@ function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFo
   if (requireSingleQuestion && count !== 1) return undefined;
   return { start, count, index: Number(match[1]) - 1, notes };
 }
-/** Native choice lists hide the cursor; a working redraw leaves its position above the panel. */
+/** Native choice lists hide the cursor; a working redraw leaves it above the panel, after the
+ * last working-row cell Codex changed: the pulsing glyph, an elapsed-time digit or the row's end. */
 function questionCursor(
   frame: QuestionFrame,
   lines: readonly string[],
@@ -128,17 +128,18 @@ function questionCursor(
 ): boolean {
   if (frame.cursorRow >= start) return true;
   const row = lines[frame.cursorRow]!;
-  return (
-    kind === "queued" &&
-    frame.cursorVisible === false &&
-    frame.cursorX === row.length &&
-    codexWorkingScreen.test(row) &&
-    lines.slice(frame.cursorRow + 1, start).every((line) => !line.trim())
-  );
+  const hiddenQueuedCursor = kind === "queued" && frame.cursorVisible === false;
+  const cursorWithinWorkingRow =
+    frame.cursorX > 0 && frame.cursorX <= displayColumns(row) && codexWorkingScreen.test(row);
+  const interveningRowsAllowed = blankOrPendingMessages(lines.slice(frame.cursorRow + 1, start));
+  return hiddenQueuedCursor && cursorWithinWorkingRow && interveningRowsAllowed;
 }
 /** Correlate the prompt and complete ordered native options with a known definition. */
+// An option row, trimmed: its number, then its label and any description, folded across rows.
+const numberedOption = /^(?:› )?(\d+)\. ([\s\S]*)$/;
 export function matchesQuestion(view: QuestionView, question: QuestionDefinition): boolean {
-  const content = view.body.filter((line) => line.length > 0);
+  const body = view.body;
+  const content = body.filter((line) => line.length > 0);
   if (
     view.kind === "queued" &&
     view.count > 1 &&
@@ -148,19 +149,22 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
   if (content[0] !== question.prompt) return false;
   if (question.options.length === 0) return view.selected === undefined;
   const expected = expectedOptions(view.kind, question);
-  const afterPrompt = view.body.slice(view.body.indexOf(question.prompt) + 1);
+  const promptRow = body.indexOf(question.prompt);
+  const afterPrompt = body.slice(promptRow + 1);
   const start = afterPrompt.findIndex((line) => line.length > 0);
   const block = afterPrompt.slice(start);
   const end = block.findIndex((line) => line.length === 0);
-  const rows = (end < 0 ? block : block.slice(0, end)).map((line) =>
-    /^(?:› )?(\d+)\. (.*)$/.exec(line),
-  );
+  const optionBlockStart = promptRow + 1 + start;
+  const optionBlockEnd = optionBlockStart + (end < 0 ? block.length : end);
+  // Read the option rows as drawn: a wrapped option description is known by its indentation.
+  const optionBlock = view.rawBody.slice(optionBlockStart, optionBlockEnd);
+  const rows = foldOptionRows(optionBlock).map((line) => numberedOption.exec(line.trim()));
   const editingOther =
     view.kind === "queued" &&
     view.selected === question.options.length &&
     view.cursor.visible === true &&
     view.cursor.before !== undefined &&
-    view.cursor.row >= view.body.indexOf(question.prompt) + 1 + start + question.options.length &&
+    view.cursor.row >= optionBlockStart + question.options.length &&
     view.cursor.row < view.rawBody.length;
   const tooFewOptionRows = rows.length < expected.length;
   const extraRowsOutsideOtherEditor = !editingOther && rows.length > expected.length;
@@ -173,7 +177,7 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
     if (displayed === option.label) return !option.description;
     return (
       displayed.startsWith(`${option.label}  `) &&
-      displayed.slice(option.label.length).trim() === option.description
+      readsAsWrapped(displayed.slice(option.label.length).trim(), option.description ?? "")
     );
   });
 }

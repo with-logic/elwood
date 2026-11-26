@@ -77,11 +77,13 @@ also carried the thread name (the first prompt, cut with an ellipsis). The captu
 - An Elwood session always has a badge on 0.170.0: Codex warns that it ignores the
   `hookTrust` session flag that Elwood passes.
 
-A footer that the grammar does not recognize leaves the session `running`: it never
-becomes `ready` and never types a queued prompt, and a host that waits for `ready` before
-it calls `stop()` never reaches that call (`stop()` itself works while the session is
-`running`). A short directory in a wide terminal hides the wrapped shapes. Every width
-above reached `ready` and completed its turn.
+A footer that the grammar does not recognize keeps the session from `ready`: it never
+types a queued prompt, and a host that waits for `ready` before it calls `stop()` never
+reaches that call (`stop()` itself works in any live status). From the readiness
+deadline the session reports `blocked` on it with `codex-unrecognized-startup`, since a
+composer Elwood cannot verify is a startup screen it does not recognize (C-ATTN-11). A
+short directory in a wide terminal hides the wrapped shapes. Every width above reached
+`ready` and completed its turn.
 
 A continuation row counts only directly beneath a status row, or another continuation
 row, that the terminal's width cut: the row above, one space and the continuation's first
@@ -116,6 +118,54 @@ cursor and surrounding fence and chrome. A separately configured launch showed
 the native composer with its auto-mode footer and passed this check without a
 prompt. At the 60-second backstop, an unfamiliar screen stays held and appears
 in live-only `unrecognized_startup` activity. C-API-28, C-ATTN-06.
+
+**Unrecognized startup screens block from the readiness deadline (2026-11-25).** A
+host learned of a screen like that text-style picker only at the 60-second backstop, with
+the session still `running`. From the 10-second deadline the session is now `blocked`
+with `<agent>-unrecognized-startup` attention and an `initial_ready_deadline` report of
+the screen (§5.4, C-ATTN-11). Two real screens do this, each reported 10 s after the
+first frame (C-E2E-30, C-E2E-31):
+
+- Claude 2.1.332's first launch, with a config dir that has not finished onboarding
+  (no `hasCompletedOnboarding`, `lastOnboardingVersion` or `theme` in `.claude.json`),
+  draws the text-style picker (`❯ ✔ Auto (match terminal)` and a diff preview), then
+  `Security notes:` with `Press Enter to continue`, then, in some terminals, `Use
+  Claude Code's terminal setup?`, then the workspace trust question. The picker is
+  static, so the deadline re-reads the frame instead of waiting for a repaint. Enter
+  answers the picker and the notes. **Do not press Enter on the terminal-setup offer:**
+  it edits the user's own terminal configuration, outside any config dir. In
+  Alacritty, detected through `ALACRITTY_*` variables, it appended a Shift+Enter
+  binding to `~/.config/alacritty/alacritty.toml` and left a
+  `alacritty.toml.<hash>.bak` beside it. Esc skips it ("Esc to skip"), and the e2e
+  unsets those variables too.
+- Codex 0.171.0, on a `CODEX_HOME` with no `auth.json`, draws `Welcome to Codex,
+  OpenAI's command-line coding agent` over an animated logo that repaints about four
+  times a second, with `> 1. Sign in with ChatGPT`, `2. Sign in with Device Code`,
+  `3. Sign in another way` and `Press enter to continue`. Its caret is an ASCII `>`,
+  not the composer's `›`. The animation means a run of frames, which reports once.
+  `3` leads to an API-key page that shows `OPENAI_API_KEY` in full (see "Startup
+  screens that show an API key" below). That page's screen carries the key, so
+  C-E2E-31 stays on the first page and never prints the screen. Reports replace
+  `sk-` key-shaped tokens with `sk-[REDACTED]` (§5.4).
+
+Both CLIs also draw their own header alone while they load, and a slow boot can hold
+that frame past the deadline. It is a boot frame, not an unrecognized screen: the
+header (`Claude Code v<version>`, `>_ OpenAI Codex (v<version>)`) with no other row a
+person could answer (`createNativeBootFrameMatcher`, `src/runtime/readiness/boot-frame.ts`).
+
+- Claude 2.1.310, on a loaded host, showed only its banner from 5.0 s after the first
+  frame, once trust was answered, until its composer at 9.0 s
+  (`tests/fixtures/claude-2.1.310/trust-slow-boot/`). In the 130 loaded launches
+  under "The five seconds count on-screen time only" below, the composer painted up
+  to 8.9 s after the dialog, so a slightly slower boot shows only that banner at the
+  deadline. A session test replays the boot with its composer 4 s later.
+- Claude 2.1.332, at load average 25, drew its composer about 0.1 s after the trust
+  answer. With no `CLAUDE.md`, `InstructionsLoaded` did not fire, and `ready` came at
+  about 12 s through the deadline, onto that composer.
+- Codex 0.172.0 draws its header over the braille logo, and then the notice box over
+  the header with a bare `›` and `? for shortcuts`, before its boot composer
+  (`tests/fixtures/codex-0.172.0/update/start-boot-partial.txt`,
+  `start-notice-partial.txt`).
 
 **Codex 0.164 paints a boot composer before its session is configured
 (2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do
@@ -731,6 +781,22 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
   native binary and field-captured model/effort dialogs.
 
+## Startup screens that show an API key (2026-11-26)
+
+Codex 0.171.0, on a `CODEX_HOME` with no `auth.json`, offers `3. Sign in another
+way`. That opens a submenu whose first choice is an API-key page, which prefills
+`OPENAI_API_KEY` and shows it unmasked. An `OPENAI_API_KEY` that the session's `env`
+overrides still appears there when the launch shell's startup files export it. A probe
+that replaced every character of the key showed it in a one-row bordered field
+(`│sk-…│`), cut at the border at 80 and 120 columns rather than wrapped. No screen
+observed so far wraps a key across rows, so the wrap rules of the `unrecognized_startup`
+redaction (§5.4, C-ATTN-06) are defensive; other widths and later versions were not
+probed. Claude 2.1.332 shows a custom `ANTHROPIC_API_KEY` masked with dots (`sk-ant-...`
+and its last characters) when it asks whether to use it. Elwood recognizes neither
+screen, so a session left on one is reported from the readiness deadline (C-ATTN-11)
+and again at the initial-readiness backstop. Both activities carry the screen redacted.
+The terminal stream carries it as drawn.
+
 ## Login-shell `CODEX_HOME` (2026-10-25)
 
 Codex runs as `$SHELL -l -i -c 'exec codex …'` (§4.2). The login shell inherits
@@ -807,6 +873,82 @@ across physical rows** on a narrow terminal. Its option format is version-couple
   to the affirmative and pressing Enter; sending the old numeric answer leaves the
   dialog waiting. From 2.1.310 evidence, never do that with a relative arrow and a
   separate Enter (see "Claude trust selection reset" below).
+
+**Claude 2.1.329 and later disclose a folder's hooks on the workspace prompt.** When
+the project's `.claude/settings.json` declares hooks, the prompt shows
+`⚠ This folder configures hooks that can run commands without asking, declared in
+.claude/settings.json` and `Trusting this folder loads .claude/settings.json (runs
+commands).` between `Claude Code'll be able to read, edit, and execute files here.` and
+`Security guide`, with the cursor on `No, exit`. At Elwood's 100-column startup minimum
+the first row wraps before `.claude/settings.json`; at 120 columns it fits on one row
+(`tests/fixtures/claude-2.1.332/trust/workspace-hooks-*.txt`). Hooks in
+`.claude/settings.local.json` draw the same rows naming that file. Hooks in both files
+draw `declared in .claude/settings.json and .claude/settings.local.json` and `loads
+.claude/settings.json (runs commands) and .claude/settings.local.json (runs
+commands).` A status line command alone, with no hooks, draws the `.claude/settings.json`
+rows too, and trusting the folder runs it. Hooks in a Git repository root's
+`.claude/settings.json` draw no rows for a launch from a subdirectory, and they do not
+run there once that launch is trusted: Claude reads project settings from the launch
+directory only. Earlier versions do not disclose hooks (2026-11-26, a `SessionStart`
+hook in untrusted scratch projects in a private config dir). For hooks in
+`.claude/settings.json`, 2.1.144, 2.1.231, 2.1.290, 2.1.310 and 2.1.322 through
+2.1.325 draw the plain prompt; 2.1.326 through 2.1.328 draw the load row alone, which
+Elwood does not verify, so it holds that prompt; 2.1.329 through 2.1.332 draw both
+rows. Hooks in `.claude/settings.local.json` drew the same on 2.1.325, 2.1.326,
+2.1.328, 2.1.329 and 2.1.330, and a status line command alone drew both rows on
+2.1.329 and 2.1.330. A plain prompt from a Claude before 2.1.329 is therefore no
+evidence that nothing runs, which is why the model probe refuses every workspace
+prompt from such a Claude (§5.3). Accepting runs the project's hooks: a `SessionStart`
+hook ran as the trusted session started. C-E2E-28 runs the real prompt for each settings file under
+`autotrust` and through `answerDialog()`, checks that `listClaudeModels` refuses it,
+and checks that the probe refuses the plain prompt of an installed 2.1.325 (§5.3). Claude does not wait for a project `SessionStart`
+hook before it shows the composer: with a hook that slept 20 s, `answerDialog()`
+resolved and the session reached `ready` about 2.3 s after the answer, and the hook
+finished at about 22 s. A slow hook therefore cannot push an answer that trusted the
+folder past `answerDialog()`'s 12 s default.
+
+**Claude's load row names every project file trusting the folder loads.** From the
+2.1.332 binary, confirmed by captures on 2.1.329 and 2.1.332 (2026-11-26, untrusted
+scratch projects in a private config dir), the row is `Trusting this folder loads
+<items>.` Its items are, in order, `.claude/settings.json` and
+`.claude/settings.local.json` when each exists and parses (even `{}`), then
+`.mcp.json here or above (MCP servers)` when an `.mcp.json` declares servers. One
+item stands alone, two join with ` and `, and three as `a, b, and c`. A settings
+file is annotated ` (runs commands)` for hooks, a status line command, or helpers,
+and ` (sets environment variables)` for an `env` entry Claude does not consider
+safe (`NODE_OPTIONS` drew it), or both. An `.mcp.json` alone draws the MCP item
+with no warning row. Captures for each kind are in
+`tests/fixtures/claude-2.1.332/trust/` and `tests/fixtures/claude-2.1.329/trust/`.
+Elwood verifies every combination of the three items with ` (runs commands)` only
+on files the hooks warning names. The environment annotation, and the binary's other
+warnings (pre-approved tool permissions, added directories, a headers helper), are
+not verified, so those prompts fail closed. C-CLAUDE-29.
+
+**A settings row with no annotation can still run code.** A project
+`.claude/settings.json` that only adds a directory marketplace inside the project
+and enables a plugin from it draws `Trusting this folder loads
+.claude/settings.json.`, the same row as an inert settings file. Trusting that
+folder ran the plugin's `SessionStart` hook as the session started, with no plugin
+prompt or other dialog (2.1.332, 2026-11-26). So the row cannot tell an inert
+settings file from one that runs code, which is why the model probe refuses any
+load row (§5.3). C-E2E-29 checks both on the real CLI.
+
+**Trusting an `.mcp.json` folder opens Claude's MCP server prompt.** After the
+workspace answer, Claude 2.1.332 shows `New MCP server found in this project:
+<name>`, then `MCP servers may execute code or access system resources. All tool
+calls require approval. Learn more in the MCP documentation.`, cursor rows `Use this
+MCP server`, `Use this and all future MCP servers in this project`, and `❯ Continue
+without using this MCP server`, and the footer `Enter to confirm · Esc to reject`
+(`tests/fixtures/claude-2.1.332/trust/mcp-server-*.txt`). The session waits on it,
+and the server starts only after `Use this MCP server`. Elwood recognizes the prompt
+only with that body, and binds the footer to it, so `Esc to reject` ends no other
+dialog: `autotrust: true` chooses `Use this MCP server`, never the all-future row,
+which persists approval for every server the folder adds later, and the model probe
+refuses the prompt from its header. For a server a plugin provides, the binary
+appends ` (from plugin <plugin>)` to the header (not captured); Elwood does not
+recognize that variant, so it fails closed. For several new servers at once,
+the binary draws a checklist instead, `<N> new MCP servers found in this project`,
+which Elwood does not recognize (not captured). C-E2E-29.
 
 **Claude 2.1.331 displayed a launch subdirectory but persisted trust at the
 repository root.** The discovery matcher verifies the full path in the native
@@ -1999,6 +2141,166 @@ Further detail from real 2.1.332 sessions in a private config dir (2026-11-24):
   Only the fullwidth `＜` was run as a stand-in for `<`, so a prompt using another `<`
   look-alike character may still not match its own hook.
 
+### Claude's auto-mode setup offer takes a post-turn paste (2.1.332, 2026-11-25)
+
+In auto mode, Claude 2.1.332 can paint `Teach auto mode about your environment?`
+38–287 ms after a turn's `Stop` in six probes, with the longer gaps at load
+averages of 100–360. It sits under a column-0 `─` rule, next to a composer
+that stays visible: copy, a `❯ 1. Yes` / `2. Not now` / `3. Don't show again`
+menu, and `Enter to confirm · Esc to cancel`. The hardware cursor sits on the
+menu's caret row. In the fixture the offer is above the composer
+(`tests/fixtures/claude-2.1.332/auto-mode-offer.txt`); one probe painted it
+below. The binary shows the offer once Claude has started at least five times
+and auto mode has denied at least five actions (`autoModeEnvSetup.denials` in
+`.claude.json`). It skips the offer when settings already hold an
+`autoMode.environment`, after "Don't show again" (`dismissed`), or less than 7
+days after an Esc (`dismissedAt`). An account flag can also turn it off.
+
+Before C-ATTN-09, Elwood stayed `ready` under the offer. A `sendMessage` 1.5 s
+after `ready` resolved, but its Enter answered `1. Yes`. That opened a setup step
+under a `▔` rule (`How you use Claude here`, `Also scan shell history  on`,
+`Also scan your other repos  off`, `Continue`, then `↑/↓ to navigate · Space to
+toggle · Esc to cancel`) in place of the composer
+(`tests/fixtures/claude-2.1.332/auto-mode-setup-step.txt`). The message never
+reached `UserPromptSubmit` or the transcript, and Elwood stayed `running`. A space
+key on the first menu changed nothing. Now the offer is a blocking dialog: the
+session goes `ready` → `blocked`, the paste waits, and after Esc it submits as a
+turn about 250 ms later (`tests/e2e/auto-mode-offer-claude.e2e.ts`). Later steps
+after `Continue` (a background scan, then `Review proposed auto-mode setup`) use
+other titles and were not captured.
+
+Before the turn-end hold (C-ATTN-10, below), a message queued during the turn
+went out the moment Elwood reported `ready` on its own `Stop` hook, so its paste
+landed in Claude's composer before the offer painted. Six such probes had three
+outcomes:
+
+- The offer painted before the Enter, 150 ms after the paste (2 of 6, one pill
+  and one inline). The Enter was held. Esc left the paste staged in the composer
+  with the cursor after it (`offer-closed-staged.json`). While its Enter is
+  still held, Elwood now accepts that composer as clearance, and the held Enter
+  submitted the message.
+- The Enter reached the composer before Claude mounted the offer (1 of 6,
+  inline). The message submitted, and the offer appeared after the next turn.
+- Claude had mounted the offer but not painted it when the Enter arrived (3 of 6,
+  all pills, at load averages of 100–360). The Enter answered it (`❯ 1. Yes ✔`),
+  and the offer painted 70–136 ms later. The paste stayed staged and was never
+  submitted. Elwood's Enter has already gone out, so the draft Esc leaves is not
+  clearance and the session stays `blocked` until the composer is empty. Elwood
+  cannot see the offer before it paints, so C-ATTN-09 does not cover this;
+  C-ATTN-10, below, does.
+
+The binary explains the third case. At the end of a query Claude runs
+`if (shouldOffer) this.offerEnvOnboarding(); ... this.resetLoadingState()`.
+`offerEnvOnboarding` sets `envOnboardingOffered` synchronously, so the offer
+mounts in the same tick that clears the loading state and takes keys from then
+on. Ink paints both changes in one later frame. Elwood's `Stop` hook has already
+reported `ready` before that frame, so a queued message's paste and Enter went
+out to a mounted offer that Elwood could not see yet. A frame probe
+(load averages 35–62) showed the order every time: the title switches to `✳`
+27–30 ms after `Stop` while the footer still reads `esc to interrupt`, and the
+first frame without that footer, 35–48 ms after `Stop`, already holds the offer.
+The raw bytes agree (load average 14): 15 ms after `Stop`, one 733-byte chunk
+repainted top-down, from the `✻ Baked for 1s` row through the offer's rule,
+title, menu and hint to the composer, and only then erased ` · esc to
+interrupt` from the footer. The predicate in front of `offerEnvOnboarding` is
+`rJe`, which requires `toolPermissionContext.mode === "auto"` at that moment, so
+only a turn that ends in auto mode can mount the offer.
+
+A first hold released on the first frame without the working footer. That frame
+already held the offer in every capture, but only because of that paint order: a
+blank, partial or offer-less frame would have released it too. So Elwood now
+holds every queued write, after a turn that ends in auto mode, until a frame
+showing Claude's verified composer with no working indicator and no dialog has
+stayed unchanged for 500 ms, capped at 5 s from the turn's end (C-ATTN-10). The
+hold is armed by the `Stop` hook or the rendered end before either reports
+`ready`, and stays through a dialog whose dismissal ended the turn. It covers
+widths at which the offer's title fits on one row, so that Elwood recognizes
+the offer (C-ATTN-09); the working footer no longer matters. The title row,
+with its two-column indent, is 41 columns wide. At 46 and 60 columns, below the
+footer's elision, the offer painted with its title and hint on one row each,
+and the live at-ready run below passed at both (load averages 47 and 103).
+
+`tests/e2e/auto-mode-offer-prepaint-claude.e2e.ts` reproduces the case on
+demand by holding Elwood's view of the PTY for 1.5 s from `Stop`. With the
+first hold it passed: exactly one submission, no `Yes ✔`, and Esc's
+`dismissedAt` recorded (21 s, load average 35). With the hold removed it failed:
+the queued message was never submitted (load average 31).
+`tests/e2e/auto-mode-offer-at-ready-claude.e2e.ts` sends from the status
+listener at the turn's `ready` instead, once with Elwood's view held back and
+once at live speed with a status listener that throws there. On `origin/main`
+both runs lost the message (load average 38). With the stable-frame hold both
+runs passed in each of nine runs of the file, at load averages 4–362. They passed
+on the first hold too (load average 15).
+
+The offer ignores a choice, Enter on its menu or Esc, made less than 500 ms
+after its first render or after the previous attempt, and every attempt,
+ignored or not, restarts that window (`z5e = 500` in `J3`). That is why an Esc
+sent as soon as the title appeared, below, did nothing. Its options: `Yes` clears `autoModeEnvSetup` and opens setup; `Not now`, which
+Esc also selects, stamps `autoModeEnvSetup.dismissedAt` and suppresses the offer
+for 7 days; `Don't show again` sets `dismissed: true`.
+
+A paste typed during the turn shows the same shape on demand
+(`tests/e2e/auto-mode-offer-draft-claude.e2e.ts`). Claude paints the offer
+above the composer that holds the pill, with the hardware cursor on the menu.
+Twice, an Esc sent as soon as the offer's title appeared was ignored: the offer
+was still there 15 s later. An Esc sent 1.5 s after the title closed it, leaving
+the pill in the composer that Elwood's staged-input check accepts, and Enter
+then submitted it. Load averages were 33–85.
+
+The paste has to wait until Claude has taken the turn's prompt.
+`sendMessage` resolves once its Enter is written, and Claude can still show
+the prompt in its composer at that moment: it did in all four captures. One run
+that pasted then (load average 60) found the composer empty after Esc, with the
+pill gone and never submitted. The test now waits for the prompt's
+`UserPromptSubmit` and the working footer first, and passed three times out of
+three at load averages 50–71.
+
+A `Plugins changed. Run /reload-plugins to activate.` notice can sit under the
+composer's footer for about 4 s after a startup `ConfigChange`. The composer
+check does not accept that row, so clearance waited until the notice went away.
+
+A headless `elwood run --claude-permission-mode auto` sees the offer too: it
+painted after the prompt's turn reached `ready` in 4 of 6 runs, before the stream
+ended. One run before the §12A.2 exception failed as `blocked_prompt`. In the
+committed C-CLI-05 run without the exception, the `blocked` status came 20 ms
+after the prompt's `ready`, and the run failed the same way.
+
+### Claude queues a send made while user Stop hooks run (2.1.332, 2026-11-25)
+
+Without the offer, no `sendMessage` was lost. The probes sent a 6-line,
+492-character paste (a pill) in named bypass-mode sessions, at delays of 0,
+200 ms and 1.5 s after `ready`, interleaved: 5 of 5 and 6 of 6 sends on one
+session, and 24 of 24 across four concurrent sessions. A slow user `Stop` hook
+(3–4 s) keeps Claude in `running Stop hooks…` after Elwood's own `Stop` hook has
+reported `ready`. A send in that window is not lost. Claude queues it (`❯ Press
+up to edit queued messages`, a `queue-operation` `enqueue` record holding the
+text), fires `UserPromptSubmit` about 100–300 ms after Enter with the previous
+turn's prompt id, and writes the user record when the hooks finish, about 2.2 s
+later. Codex 0.171.0 lost none of 10 sends of the same paste (4 at 0 ms, 3 at
+200 ms, 3 at 1.5 s) across two concurrent sessions at load 34–38.
+
+### An ergonomic send can finish before Claude draws its empty composer (2.1.332, 2026-11-26)
+
+Claude fires Elwood's `Stop` hook while it still draws the turn as working (`running Stop
+hook · esc to interrupt`). The idle composer follows 20–30 ms later. A `send()` completes as
+soon as the transcript holds the `Stop` text, which was 1 ms to about 550 ms after `ready` in
+these runs. That can come before awaited input sees an empty composer, and in auto mode the
+turn-end hold (C-ATTN-10) arms at the `Stop` and hides that composer from the writer until
+the hold ends. Either way the writer is cancelled while it still owns a draft Claude has
+already taken.
+
+Claude repaints nothing for `^U^K` sent to an empty composer, so no fresh frame can confirm
+that clear. A cancelled draft therefore keeps the writer's own evidence: a frame after its
+latest Enter shows empty input that differs from the empty frame before its paste. When that
+holds at cleanup's safe point, cleanup releases the draft without writing any keys. Without
+that evidence, the next `send()` wrote the keys, waited 1 s and failed with `wait_timeout`
+("Could not clear the staged composer draft."). In auto mode the hold first keeps the screen
+still, so nothing else repaints in that second either. With the auto-mode offer snoozed
+(`autoModeEnvSetup.dismissedAt` seeded), two auto-mode sends failed like this in 4 of 5 runs
+of `auto-mode-sends-claude.e2e.ts` and in 2 of 2 probe runs at load 20–47. C-E2E-14 failed
+the same way; on this machine its session starts in auto mode without asking for it. With the
+evidence kept, the same e2e passed 5 of 5 times at load 9–17.
+
 ## Hook bridge request FIN and delayed decisions
 
 The generated bridge child calls `client.end(request)` after connecting. That FIN
@@ -2574,8 +2876,11 @@ token count and a login-expiry notice. No further valid-model requests were made
 
 The sanitized `working-empty-input.json` fixtures retain these actual completed
 frames and cursor coordinates. Empty-input observers may use this geometry to
-confirm a consumed draft during work. They do not release trust, model-picker, or
-cleanup holds: those retain their stricter idle contract. Replay callers must
+confirm a consumed draft during work. Geometry alone does not release trust,
+model-picker, or cleanup holds: those retain their stricter idle contract. The one
+exception is an awaited draft cancelled after its Enter: cleanup releases it, without
+clear keys, when the writer's own evidence holds (a fresh empty frame after that draft's
+latest Enter, other than the one before its paste; C-API-56). Replay callers must
 also retain their existing dialog-blocking check and require a fresh frame after
 submission; an old empty frame does not prove acceptance.
 
@@ -3035,9 +3340,11 @@ that pulses between `•` and `◦`. Both glyphs retain the elapsed-time and
 A blocking question panel ends with its own navigation/submission footer and
 must hold ordinary input even though its selected option also uses `›`.
 The captured queued choice panel hides the native cursor and can leave its
-coordinates at the end of the working row above the panel. That position is
-valid only with hidden cursor, exact working-row geometry, and blank intervening
-rows; a visible or unrelated cursor does not establish panel ownership.
+coordinates at the end of the working row above the panel. On 0.163.0 that
+position was valid only with hidden cursor, exact working-row geometry, and blank
+intervening rows; a visible or unrelated cursor does not establish panel
+ownership. 0.172.0 parks it elsewhere on the working row and can draw pending
+answers above the panel; see "Codex 0.172.0 Plan mode and queued choices".
 
 After a Plan mode question completes, the native model footer includes the exact
 right-aligned `Plan mode (⇧tab to cycle)` suffix. That suffix preserves empty
@@ -3645,3 +3952,104 @@ both ends through `sendMessage`. Codex removed the outer spaces and kept
 both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
 Use Rust's Unicode `White_Space` when comparing forwarded text with the
 hook. JavaScript `trim()` would remove U+FEFF and miss the match.
+
+## Codex 0.172.0 Plan mode and queued choices (2026-11-25)
+
+**The Plan-mode badge moved to the hint row.** Real `CodexSession`s with a private
+`CODEX_HOME` ran `/plan` at 140, 100, 80, 60, 50 and 40 columns. 0.172 draws the status
+row as the model and effort alone (`  GPT-6-Luna medium`). It draws `Plan mode (⇧tab to
+cycle)` on the hint row instead, right-aligned in front of the warnings badge and joined
+to it with ` · `. At 60 columns and below it shortens the badge to `Plan mode`, and the
+warnings badge shortens as before (`⚠ 3 · f2` at 50 and 40). At 80 columns and below the
+hint is `← for agents` alone. After a Plan-mode turn in a direct 140-column launch, one
+capture had the long form and another the short one. Earlier releases put the suffix at
+the end of the status row. Footer grammar that refuses the new row leaves a Plan-mode
+turn unsettled: the session reaches `ready`, but the idle composer that a `send()` needs
+at its native end never matches, so `send()` timed out after 90 s. Elwood now reads
+either badge form on the hint row, but only in front of a warnings badge, the only
+layout captured. The captures are `tests/fixtures/codex-footer-captures-172.ts`. The
+warnings badge is still on every Elwood session: F2 shows `Codex is ignoring 1
+unrecognized configuration setting` for `session-flags: hookTrust`. C-CODEX-26,
+C-E2E-19.
+
+**The hidden cursor parks after the last working-row cell Codex changed.** With a queued
+choice panel open below a running turn, 0.172 redraws only the cells of the working row
+that changed and leaves the hidden cursor after the last one. In 3 s of 15 ms samples it
+was after the pulsing `•` (column 1), after the elapsed time's changed digit (column 12 in
+`• Working (7s • esc to interrupt)`), at the row's end, or at the end of the panel's
+footer row. 0.163 left it only at the row's end. Elwood accepted only the row's end, so an
+answer to the remaining color choice failed as `adapter` when the glyph or the time was
+the last cell drawn. Elwood now accepts a hidden cursor at any column from 1 to the
+working row's end, counted in terminal cells. Capture:
+`tests/fixtures/codex-0.172.0/questions/remaining-color-glyph-cursor.json`.
+
+**Codex shows a queued answer it has not sent above the panel.** Right after the literal
+answer, 0.172 draws `• Messages to be submitted after next tool call (press esc to
+interrupt and send immediately)`, then `  ↳ ` and the question, then the answer indented
+four spaces, between the working row and `• Queued follow-up inputs`. The hidden cursor
+stays parked on the working row above it. In eight sampled C-E2E-19 runs at 10 ms the block
+was on screen for 0.3 to 3 s. Elwood's previous answer resolves on the committed answer
+record, which landed 60 to 210 ms before Codex cleared the block. Elwood required blank
+rows between the working row and the panel, so under load the next answer started inside
+the window and failed as `adapter`, in 1 of 22 runs. Elwood now also accepts this block
+there: the header, which a pane narrower than its 93 columns wraps onto indented rows,
+then one or more `  ↳ ` items with their four-space-indented rows. Capture:
+`tests/fixtures/codex-0.172.0/questions/remaining-color-pending-literal.json`.
+
+**`gpt-6-luna` can end its turn before every queued answer arrives.** Asked to wait for
+all three answers, it ended the turn 1.0 to 1.8 s after the second answer in 8 of 28
+C-E2E-19-shaped runs that paused 0.7 to 4 s before the color answer, once with an empty
+final answer. It waited in all 12 runs whose pause was 0.85 s or less, and in five runs
+that answered without a pause. The rollout records the final answer and `task_complete`,
+and Codex withdraws the open color question. An answer started at that moment fails:
+as `unavailable` once Elwood has closed the request, or as `adapter` when it reads the
+frame in the few milliseconds after the panel vanishes and before the close. In three
+probes that asked one or two choice questions, the model replied at once without
+waiting. One earlier run, which aborted the color answer after selecting Blue and then
+pressed Enter, had `send()` return `ELWOOD_ASYNC_DONE` twice; none of these 28 runs
+reproduced that.
+
+**Codex draws a question it asks as a `? ` transcript cell.** 0.163 drew the titles of a
+`request_user_input_async` call as a `• ` transcript cell under the prompt; 0.172 draws
+`? ELWOOD_ASYNC_COLOR: Which color?` with its options indented below. Elwood reads a
+wrapped prompt above the composer as finished history only when a transcript cell follows
+it, and accepted only `• `. In the 8 early endings above, the Stop hook arrived while the
+queued panel still blocked the session, so Elwood held `blocked`. The idle composer that
+should then clear it was refused, because the prompt with the `? ` cells under it read as
+an unfinished menu, and `send()` timed out with the session still `blocked`. Elwood now
+accepts `? ` as the start of a transcript cell. Capture:
+`tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.
+
+**A narrow pane wraps question footers.** Codex 0.172 breaks a footer only between its
+hints. The queued panel's footer is four hints three spaces apart:
+`enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question` (`⇧→ prev question` after
+the first question; the last question has no `⇧←` hint, and its shorter footer still fits on
+one row at 60 columns). At 60 and 50 columns 0.172 moves `⇧← next question` to a row of its
+own; in a 40-column probe whose frame had not settled it drew `enter submit   ⌃] skip`
+above `⇧→ main prompt   ⇧← next question`. The modal footer's four hints are joined by
+` | ` and, with its two-space indent, need 90 columns. 0.172 fits as many hints on a row as
+it can: at 80 columns it moves `esc to interrupt` to a row of its own, at 60 and 50 it
+splits the footer after `enter to submit answer`, and at 40 it gives each hint a row.
+Elwood read a footer only on one row, so whenever one wrapped it did not recognize the
+question: it did not hold ordinary input for it, and `answerQuestions()` failed. Elwood now
+joins up to four trailing rows with the footer's own separator. Captures in
+`tests/fixtures/codex-0.172.0/questions/`: `queued-footer-*.json` at 60 and 50 columns and
+`modal-footer-wrapped-{80,60,50,40}.json`. The 40-column queued layout is synthesized in
+`tests/unit/codex-questions/narrow-footer.test.ts`. C-ATTN-02, C-QUESTION-04.
+
+**A narrow pane wraps modal option descriptions.** 0.172 pads option labels to the longest
+one, so every description starts in one column, and wraps a description too long for its
+row onto rows indented to that column. At 60 columns only `(tab)` moves to a row of its
+own under `3. None of the above  Optionally, add details in notes`; at 50 columns
+`Optionally, add` is followed by `details in notes (tab)`; at 40 the rest takes three rows.
+A terminal wraps at a space, or inside a word too long for the row (the 0.172 update offer
+breaks a URL mid-word at 40 columns). Elwood read each option from one row, so it found an
+unknown row after the options and never listed the question, while the wrapped footer
+still held input. Elwood now takes the description column as the gap end every described
+option shares, joins each row indented exactly to it to the described option above, and
+reads each row break as one space or nothing, before matching and reading the selection.
+In the same pane the transcript's "Model changed to … for Plan" cell wraps before `mode.`,
+the hint-row badge reads `Plan mode` (see "The Plan-mode badge moved to the hint row"),
+and the `/plan` menu row reads "switch to Plan mode", so a proof waits for the badge in
+front of the warnings badge. Captures: `modal-footer-wrapped-{60,50,40}.json`.
+C-QUESTION-04.
