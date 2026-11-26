@@ -1,4 +1,4 @@
-/** Real Codex 0.170.0 footers, read at the width of the terminal that drew them (C-CODEX-26). */
+/** Real Codex 0.170.0 and 0.172.0 footers, read at the width of the terminal that drew them (C-CODEX-26). */
 import { expect, test } from "vitest";
 import {
   codexComposerClearance,
@@ -14,10 +14,12 @@ import {
   type CapturedFooter,
   codexFooterCaptures170,
 } from "../../fixtures/codex-footer-captures-170.ts";
+import { codexPlanModeFooters172 } from "../../fixtures/codex-footer-captures-172.ts";
 import { codexTty } from "../../fixtures/trust-composer.ts";
 
-const wrapped = codexFooterCaptures170.filter((capture) => capture.wrapped);
-const unwrapped = codexFooterCaptures170.filter((capture) => !capture.wrapped);
+const captures = [...codexFooterCaptures170, ...codexPlanModeFooters172];
+const wrapped = captures.filter((capture) => capture.wrapped);
+const unwrapped = captures.filter((capture) => !capture.wrapped);
 /** Each wrapped capture in its own terminal, and in one four times as wide that cut no row. */
 const atWidths = wrapped.flatMap((capture) => [
   { capture, shape: capture.shape, cols: capture.cols, cut: true },
@@ -43,10 +45,7 @@ test("C-CODEX-26 the captures cover wrapped and unwrapped footers", () => {
   expect(unwrapped.length).toBeGreaterThan(0);
 });
 
-test.each(codexFooterCaptures170)("C-CODEX-26 captured at $cols columns: $shape", ({
-  rows,
-  cols,
-}) => {
+test.each(captures)("C-CODEX-26 captured at $cols columns: $shape", ({ rows, cols }) => {
   expect(recognized(rows, cols)).toEqual([true, true]);
 });
 
