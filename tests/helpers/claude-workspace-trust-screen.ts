@@ -1,7 +1,7 @@
 /**
  * Captured Claude workspace disclosures, replayed at the test's launch path: the load rows Claude
  * 2.1.326 and later add for a folder's project settings files and `.mcp.json`, and the hooks
- * warning 2.1.329 and later put before them (C-ATTN-07, C-CLAUDE-26, C-CLAUDE-27).
+ * warning 2.1.329 and later put before them (C-ATTN-07, C-CLAUDE-26, C-CLAUDE-29).
  */
 import { capturedFrame } from "./captured-frames.ts";
 

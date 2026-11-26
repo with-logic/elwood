@@ -2,7 +2,7 @@
  * Answers Claude first-party startup prompts that block embedded readiness:
  * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder)
  * and the browser-tools prompt. Implements PRD §5.1, §5.3, C-CLAUDE-10, C-CLAUDE-11,
- * C-CLAUDE-14, C-CLAUDE-16, C-CLAUDE-26, and C-CLAUDE-27.
+ * C-CLAUDE-14, C-CLAUDE-16, C-CLAUDE-26, and C-CLAUDE-29.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";

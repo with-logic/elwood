@@ -1,5 +1,5 @@
 /**
- * The model probe's refusals of load rows and extension prompts (PRD §5.3, §10, C-CLAUDE-27):
+ * The model probe's refusals of load rows and extension prompts (PRD §5.3, §10, C-CLAUDE-29):
  * each rejects with `claude_start_failed`, its own `details.category`, and a message that names
  * why and the remedy, writes nothing, and tears the probe down.
  */
@@ -62,13 +62,13 @@ test.each([
     "workspace_skills",
     /^Claude asks to load a skill/,
   ],
-] as const)("C-CLAUDE-27 the probe refuses %s", async (_, frame, category, reason) => {
+] as const)("C-CLAUDE-29 the probe refuses %s", async (_, frame, category, reason) => {
   const end = await probeEnd(await probeShown("2.1.332", (cwd) => atLaunchPath(frame, cwd)));
   expect(end).toEqual(refused(reason, category));
   expect(end.error).toMatchObject({ message: expect.stringMatching(remedy) });
 });
 
-test("C-CLAUDE-27 the probe refuses a workspace prompt it cannot verify once its budget runs out", async () => {
+test("C-CLAUDE-29 the probe refuses a workspace prompt it cannot verify once its budget runs out", async () => {
   // Faked once the probe has spawned, so its five-second trust budget passes at once. After that
   // the faked clock keeps pace with real time, so the probe's teardown runs as it would.
   const beforeShow = () =>

@@ -1,5 +1,5 @@
 /**
- * Claude's workspace load row (PRD §5.4, C-CLAUDE-27): every captured load row verifies and
+ * Claude's workspace load row (PRD §5.4, C-CLAUDE-29): every captured load row verifies and
  * says what trusting the folder loads, autotrust answers it, and a changed row or annotation
  * fails closed, as does Claude's MCP server prompt with its native body.
  */
@@ -57,7 +57,7 @@ const failedClosed = { kind: "candidate", valid: false, outcome: undefined, writ
 
 test.each(
   claudeLoadRowCaptures,
-)("C-CLAUDE-27 the captured load row %s verifies and discloses what trusting loads", async (_, frame, disclosure) => {
+)("C-CLAUDE-29 the captured load row %s verifies and discloses what trusting loads", async (_, frame, disclosure) => {
   const view = trustView(frame, "claude", claudeTrustClearance);
   expect(view).toMatchObject({ kind: "candidate", valid: true, spec: { id: "workspace_trust" } });
   const header = view.kind === "candidate" ? view.dialog.header : "";
@@ -69,7 +69,7 @@ test.each(
   });
 });
 
-test("C-CLAUDE-27 the plain prompt discloses nothing", () => {
+test("C-CLAUDE-29 the plain prompt discloses nothing", () => {
   const plain = mcpOnly.replace(`\n ${mcpRow}`, "");
   const view = trustView(plain, "claude", claudeTrustClearance);
   expect(view).toMatchObject({ kind: "candidate", valid: true });
@@ -109,7 +109,7 @@ const everyLoadRow = [
 
 test.each(
   everyLoadRow,
-)("C-CLAUDE-27 a load row warning about %s and naming %s verifies", (warned, items, disclosure) => {
+)("C-CLAUDE-29 a load row warning about %s and naming %s verifies", (warned, items, disclosure) => {
   const load = `Trusting this folder loads ${items}.`;
   const warning = `⚠ This folder configures hooks that can run commands without asking, declared in ${warned}`;
   const frame = mcpOnly.replace(mcpRow, warned === undefined ? load : `${warning}\n\n ${load}`);
@@ -120,7 +120,7 @@ test.each(
   expect(claudeWorkspaceDisclosesHooks(header)).toBe(disclosure === "hooks");
 });
 
-test("C-CLAUDE-27 a settings file that sets environment variables fails closed", () => {
+test("C-CLAUDE-29 a settings file that sets environment variables fails closed", () => {
   expect(claudeSettingsEnvPrompt).toContain(
     "loads .claude/settings.json (sets environment variables).",
   );
@@ -140,12 +140,12 @@ test.each([
   ["two items joined by a comma", ".claude/settings.json, .mcp.json here or above (MCP servers)."],
   ["commands without the hooks warning", ".claude/settings.json (runs commands)."],
   ["an unknown item", ".claude/agents."],
-] as const)("C-CLAUDE-27 a load row with %s fails closed", (_, items) => {
+] as const)("C-CLAUDE-29 a load row with %s fails closed", (_, items) => {
   const frame = mcpOnly.replace(mcpRow, `Trusting this folder loads ${items}`);
   expect(autotrustView(frame)).toEqual(failedClosed);
 });
 
-test("C-CLAUDE-27 another warning before the load row fails closed", () => {
+test("C-CLAUDE-29 another warning before the load row fails closed", () => {
   const frame = mcpOnly.replace(
     mcpRow,
     `⚠ This folder pre-approves 3 tool permissions\n\n ${mcpRow}`,
@@ -153,6 +153,6 @@ test("C-CLAUDE-27 another warning before the load row fails closed", () => {
   expect(autotrustView(frame)).toEqual(failedClosed);
 });
 
-test("C-CLAUDE-27 Claude's MCP server prompt with its native body fails closed", () => {
+test("C-CLAUDE-29 Claude's MCP server prompt with its native body fails closed", () => {
   expect(autotrustView(claudeMcpServerPrompt)).toEqual(failedClosed);
 });

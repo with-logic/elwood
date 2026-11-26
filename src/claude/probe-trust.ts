@@ -1,6 +1,6 @@
 /**
  * The model probe's trust policy: which prompts its implied automatic trust must leave to a
- * human, and why. Implements PRD §5.3, C-CLAUDE-26, and C-CLAUDE-27.
+ * human, and why. Implements PRD §5.3, C-CLAUDE-26, and C-CLAUDE-29.
  */
 
 import {

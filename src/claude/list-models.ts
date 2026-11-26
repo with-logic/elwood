@@ -19,7 +19,7 @@ import { startClaudeWithId } from "./session/index.ts";
  * opened and cancelled only, so the user's saved default stays untouched. The implied
  * autotrust approves only the plain workspace prompt, from a Claude that discloses hooks; it
  * rejects any prompt whose answer could run the folder's code instead (§5.3, C-CLAUDE-26,
- * C-CLAUDE-27).
+ * C-CLAUDE-29).
  */
 export function listClaudeModels(options: ListModelsOptions): Promise<readonly AgentModelOption[]> {
   const state = ownedProbeStateDir("claude", options.stateDir);

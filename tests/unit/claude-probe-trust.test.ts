@@ -1,5 +1,5 @@
 /**
- * The model probe's trust policy over load rows and other prompts (PRD §5.3, C-CLAUDE-27): it
+ * The model probe's trust policy over load rows and other prompts (PRD §5.3, C-CLAUDE-29): it
  * refuses each captured load row and Claude's MCP server, plugin, and skill prompts with their
  * reasons, still accepts the bypass-permissions disclaimer, and refuses a painted workspace
  * prompt that never verified when its five-second trust budget runs out, but not one that
@@ -34,7 +34,7 @@ const midPaint = (options: boolean) =>
 
 test.each(
   claudeLoadRowCaptures,
-)("C-CLAUDE-27 the probe refuses the captured load row %s", (_, frame, disclosure) => {
+)("C-CLAUDE-29 the probe refuses the captured load row %s", (_, frame, disclosure) => {
   expect(probeOutcome(frame)).toEqual(refusedOutcome(disclosureRefusals[disclosure]));
 });
 
@@ -53,14 +53,14 @@ test.each(
   extensionPrompts.flatMap(([name, ...prompt]) =>
     [true, false].map((canDisclose) => [name, canDisclose, ...prompt] as const),
   ),
-)("C-CLAUDE-27 the probe refuses Claude's prompt for %s (can disclose: %s)", (_, canDisclose, frame, reason, owner) => {
+)("C-CLAUDE-29 the probe refuses Claude's prompt for %s (can disclose: %s)", (_, canDisclose, frame, reason, owner) => {
   expect(probeOutcome(frame, canDisclose)).toEqual(refusedOutcome(reason, owner));
 });
 
 test.each([
   true,
   false,
-])("C-CLAUDE-27 the probe still accepts the bypass-permissions disclaimer (can disclose: %s)", (canDiscloseHooks) => {
+])("C-CLAUDE-29 the probe still accepts the bypass-permissions disclaimer (can disclose: %s)", (canDiscloseHooks) => {
   const disclaimer = capturedFrame("claude-2.1.310/bypass-permissions-100");
   expect(probeOutcome(disclaimer, canDiscloseHooks)).toMatchObject({
     outcomes: [{ outcome: { kind: "attempted", prompt: "bypass_permissions" } }],
@@ -71,7 +71,7 @@ test.each([
 test.each([
   true,
   false,
-])("C-CLAUDE-27 the probe refuses a workspace prompt still unverified when its budget runs out (can disclose: %s)", (canDiscloseHooks) => {
+])("C-CLAUDE-29 the probe refuses a workspace prompt still unverified when its budget runs out (can disclose: %s)", (canDiscloseHooks) => {
   vi.useFakeTimers();
   const { responder, show, refusals, writes, stateChanges } = probeResponder(canDiscloseHooks);
   expect(show(claudeSettingsEnvPrompt)).toEqual([]);
@@ -85,7 +85,7 @@ test.each([
   responder.dispose();
 });
 
-test("C-CLAUDE-27 a refused load row that reaches its budget is not also unverified", () => {
+test("C-CLAUDE-29 a refused load row that reaches its budget is not also unverified", () => {
   vi.useFakeTimers();
   const { responder, show, refusals } = probeResponder();
   show(capturedFrame("claude-2.1.332/trust/workspace-settings-120"));
@@ -95,7 +95,7 @@ test("C-CLAUDE-27 a refused load row that reaches its budget is not also unverif
   responder.dispose();
 });
 
-test("C-CLAUDE-27 an unverified workspace prompt replaced by a verified one before its budget runs out is not refused", () => {
+test("C-CLAUDE-29 an unverified workspace prompt replaced by a verified one before its budget runs out is not refused", () => {
   vi.useFakeTimers();
   const { responder, show, refusals } = probeResponder();
   show(claudeSettingsEnvPrompt);
@@ -105,7 +105,7 @@ test("C-CLAUDE-27 an unverified workspace prompt replaced by a verified one befo
   responder.dispose();
 });
 
-test("C-CLAUDE-27 a verified workspace prompt read mid-paint as its budget runs out is not refused", () => {
+test("C-CLAUDE-29 a verified workspace prompt read mid-paint as its budget runs out is not refused", () => {
   vi.useFakeTimers();
   const { responder, show, refusals } = probeResponder();
   show(plain);
@@ -117,7 +117,7 @@ test("C-CLAUDE-27 a verified workspace prompt read mid-paint as its budget runs 
   responder.dispose();
 });
 
-test("C-CLAUDE-27 a workspace prompt whose options have not painted when its budget runs out is answered once they paint", () => {
+test("C-CLAUDE-29 a workspace prompt whose options have not painted when its budget runs out is answered once they paint", () => {
   vi.useFakeTimers();
   const { responder, show, refusals } = probeResponder();
   expect(show(midPaint(false))).toEqual([]);

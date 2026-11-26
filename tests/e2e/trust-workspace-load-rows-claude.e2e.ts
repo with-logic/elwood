@@ -1,5 +1,5 @@
 /**
- * Claude's workspace load rows on the REAL Claude CLI (PRD §5.3, §5.4, C-E2E-29, C-CLAUDE-27),
+ * Claude's workspace load rows on the REAL Claude CLI (PRD §5.3, §5.4, C-E2E-29, C-CLAUDE-29),
  * each in a fresh, untrusted project on Claude 2.1.329 or later. For a folder whose `.mcp.json`
  * declares a server that writes a marker as it starts, `listClaudeModels` refuses the folder,
  * which stays untrusted, and the server never starts; `autotrust: true` answers the workspace

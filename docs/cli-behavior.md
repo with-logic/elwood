@@ -856,7 +856,7 @@ with no warning row. Captures for each kind are in
 Elwood verifies every combination of the three items with ` (runs commands)` only
 on files the hooks warning names. The environment annotation, and the binary's other
 warnings (pre-approved tool permissions, added directories, a headers helper), are
-not verified, so those prompts fail closed. C-CLAUDE-27.
+not verified, so those prompts fail closed. C-CLAUDE-29.
 
 **A settings row with no annotation can still run code.** A project
 `.claude/settings.json` that only adds a directory marketplace inside the project

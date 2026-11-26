@@ -1,6 +1,6 @@
 /**
  * Recognized native trust-dialog explanations, excluding arbitrary intervening prose.
- * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26/C-CLAUDE-27. Claude copy is captured in
+ * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26/C-CLAUDE-29. Claude copy is captured in
  * trust-responder-cursor, trust-bypass-permissions, claude-workspace-trust-hooks and
  * claude-workspace-load-rows tests, the last two from `tests/fixtures/claude-2.1.329/trust/` and
  * `tests/fixtures/claude-2.1.332/trust/`; Codex directory/hooks were captured from 0.154.0.

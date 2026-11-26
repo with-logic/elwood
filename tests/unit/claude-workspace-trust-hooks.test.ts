@@ -3,7 +3,7 @@
  * before its load row, naming exactly the files the row marks ` (runs commands)`, is native
  * copy, anything else in its place fails closed, and the model probe's policy leaves it to a
  * human, as it does every workspace prompt from a Claude that cannot disclose hooks (PRD §5.3,
- * §5.4, C-CLAUDE-26, C-CLAUDE-27).
+ * §5.4, C-CLAUDE-26, C-CLAUDE-29).
  */
 import { expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";

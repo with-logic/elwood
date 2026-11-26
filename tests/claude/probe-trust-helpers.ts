@@ -1,6 +1,6 @@
 /**
  * Drives `listClaudeModels` on a fake Claude to a trust prompt and reports how the probe ended,
- * for the probe's trust policy tests (PRD §5.3, C-CLAUDE-26, C-CLAUDE-27).
+ * for the probe's trust policy tests (PRD §5.3, C-CLAUDE-26, C-CLAUDE-29).
  */
 import { readdirSync } from "node:fs";
 import { join } from "node:path";

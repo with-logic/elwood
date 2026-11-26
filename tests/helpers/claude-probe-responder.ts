@@ -1,6 +1,6 @@
 /**
  * A Claude startup-prompt responder with the model probe's trust policy, and what it does with
- * a frame, for the probe's policy tests (PRD §5.3, C-CLAUDE-26, C-CLAUDE-27).
+ * a frame, for the probe's policy tests (PRD §5.3, C-CLAUDE-26, C-CLAUDE-29).
  */
 import { vi } from "vitest";
 import type { ProbeTrustRefusal } from "../../src/claude/probe-trust.ts";
