@@ -95,7 +95,8 @@ export class ClaudeStartupPromptResponder {
    * only when both it and `writeAutomation` are supplied, since only the guarded writer can
    * withhold an Esc after caller input. The fallback to `readFrame` preserves static/direct
    * callers; a snapshot-only reader must not replace the settlement-aware reader in a live
-   * session.
+   * session. Only trust tells a frame read again (`drawn: false`): each decline types once
+   * per appearance, and the auto-mode decline reads settled frames to verify and to rearm.
    */
   handle(
     screenText: string,
@@ -103,10 +104,11 @@ export class ClaudeStartupPromptResponder {
     readFrame?: () => string,
     writeAutomation?: DeclineWriter,
     readSettledFrame?: () => string | undefined,
+    { drawn = true }: { readonly drawn?: boolean } = {},
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
     if (this.closing) return settled;
-    const trust = this.trust.handle(screenText, write, readSettledFrame ?? readFrame);
+    const trust = this.trust.handle(screenText, write, readSettledFrame ?? readFrame, { drawn });
     if (trust?.kind === "attempted") {
       settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {

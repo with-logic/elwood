@@ -34,15 +34,15 @@ type UpdateSkipRequest = {
   /** The session's input hold, which includes this attempt's own repaint hold. */
   readonly inputHeld: () => boolean;
   readonly releaseLatch: () => void;
-  /** A grace or answered bound expired with no frame to follow; the session reads its frame again. */
+  /** A grace or answered bound expired with no frame to follow; the session classifies again. */
   readonly repaintExpired: () => void;
 };
 
 type UpdateSkipAttempt = {
   readonly settled: Promise<StartupWriteCompletion>;
   readonly observeClearance: (frame: string) => void;
-  /** Each frame the session renders, before its input hold is classified. */
-  readonly observeFrame: (frame: string) => void;
+  /** Each frame before its input hold is classified; `drawn: false`: see `noteFrame`. */
+  readonly observeFrame: (frame: string, drawn: boolean) => void;
   /** Codex is repainting after this attempt's key: input stays held, and no dialog is reported. */
   readonly ownsRepaint: () => boolean;
   /** Raw caller input owns this appearance: no retry or pending write follows it. */
@@ -177,8 +177,8 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
     settled: completion.promise,
     cancel: cancelAndReleaseRepaint,
     ownsRepaint: () => repaint === "owned",
-    observeFrame(frame: string): void {
-      framesDrawn += 1;
+    observeFrame(frame: string, drawn: boolean): void {
+      if (drawn) framesDrawn += 1;
       if (!written || repaint === "released") return;
       // The prompt drawn again is a new appearance, never this key's repaint.
       if (updateScreenBanner.test(frame)) {

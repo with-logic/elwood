@@ -1,5 +1,5 @@
 /** Native output progress plus current idle evidence for one physical attempt (PRD §5.8). */
-type IdleSource = {
+export type IdleSource = {
   readonly capture: () => { readonly isIdle: () => boolean; readonly isReady: () => boolean };
   readonly subscribe: (listener: () => void) => () => void;
 };

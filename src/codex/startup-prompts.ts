@@ -32,13 +32,15 @@ export class CodexStartupPromptResponder {
   private readonly onStateChange: (() => void) | undefined;
   private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
+  readonly closingSignal: AbortSignal = this.lifetime.signal;
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
   private skipGeneration = 0;
   private updateAttempt: ReturnType<typeof startCodexUpdateSkip> | undefined;
   // Raw caller input owns an unresolved update until a native composer clears it.
   private updateCallerOwned = false;
-  // Emit only newly appearing warning banners; clearing re-arms a later occurrence.
+  // Emit only newly appearing warning banners, keyed by semantic identity, independent of
+  // padding and wrapping. Clearing one re-arms a later appearance (C-API-14, §5.7).
   private warnedBanners = new Set<string>();
   private conversationStarted = false;
 
@@ -67,10 +69,6 @@ export class CodexStartupPromptResponder {
     if (this.updatePrompt.needsClearance)
       this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
     this.updateAttempt?.observeClearance(frame);
-  }
-
-  get closingSignal(): AbortSignal {
-    return this.lifetime.signal;
   }
 
   get blockedPrompt() {
@@ -104,7 +102,7 @@ export class CodexStartupPromptResponder {
    * `write` answers trust. A trust hold withholds `writeAutomation` keys for other prompts.
    * Live adapters must supply `readTrustFrame` from `settledLiveSnapshot`, returning
    * undefined for pending rendering, synchronized output, or render failure.
-   * The `readFrame` fallback is for static callers.
+   * The `readFrame` fallback is for static callers. `drawn: false`: see `noteFrame`.
    */
   handle(
     screenText: string,
@@ -112,12 +110,13 @@ export class CodexStartupPromptResponder {
     readFrame?: () => string,
     writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
     readTrustFrame?: () => string | undefined,
+    { drawn = true }: { readonly drawn?: boolean } = {},
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
     if (this.lifetime.signal.aborted) return { warnings: [], outcomes };
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // an earlier frame must never pair with a different dialog's answer.
-    const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
+    const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame, { drawn });
     if (trust?.kind === "attempted") {
       outcomes.push({
         outcome: { kind: "attempted", ...trust.automation },
@@ -126,6 +125,10 @@ export class CodexStartupPromptResponder {
     } else if (trust?.kind === "option_pending") {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
+    // A frame read again with no output from Codex only lets the repaint a skip owns end: the
+    // tracker and the skip's retype guard count only the frames Codex drew (C-CODEX-12/27).
+    if (!drawn) this.updateAttempt?.observeFrame(screenText, false);
+    if (!drawn) return { warnings: [], outcomes };
     // One bounded skip belongs to one appearance. Unknown replacements disable
     // reauthorization immediately; a fresh banner with a valid current safe-option
     // block or authoritative native clearance can rearm it. The live observer confirms
@@ -133,7 +136,7 @@ export class CodexStartupPromptResponder {
     this.updateCallerOwned &&= this.updatePrompt.unresolved; // a later appearance is new
     const renewUpdateAttention = this.updatePrompt.renewsAttention(screenText);
     const onUpdateScreen = this.updatePrompt.observe(screenText);
-    this.updateAttempt?.observeFrame(screenText);
+    this.updateAttempt?.observeFrame(screenText, true);
     const generation = this.updatePrompt.currentGeneration;
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
     // update-skip automation, even when its rows resemble the update options. Note this
@@ -176,9 +179,6 @@ export class CodexStartupPromptResponder {
     };
   }
 
-  // Key newly visible warnings by semantic identity, independent of terminal
-  // padding and wrapping. Removing a banner from the current frame re-arms it
-  // for a later appearance (C-API-14, §5.7).
   /** The session is about to write caller input; nothing after this is a startup banner. */
   endStartup(): void {
     this.conversationStarted = true;

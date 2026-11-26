@@ -66,6 +66,17 @@ export function newEpisode(candidate: TrustCandidate, blocked: boolean): Episode
   };
 }
 
+/**
+ * A frame the CLI drew is evidence for the gate's next attempt as well as its current one.
+ * A frame read again (`drawn: false`) brings no CLI output since the last frame, though a
+ * resize or host output can change its text: it only wakes a waiting answer or retry
+ * (C-TRUST-01).
+ */
+export function noteFrame(episode: Episode, drawn: boolean): void {
+  if (drawn) episode.phase.renderedSinceWrite = true;
+  episode.attempt?.wake();
+}
+
 /** The result announcing an attempt at `prompt`'s affirmative `option`. */
 export function attempted<A extends ElwoodAgentKind>(
   prompt: TrustPromptIdFor<A>,
