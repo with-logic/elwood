@@ -322,7 +322,9 @@ Headless mode is non-interactive. With the default `--trust`, Elwood answers onl
 its allowlisted workspace-directory and extension trust dialogs. Codex hook
 trust is bypassed session-wide, including hooks beyond Elwood’s own hooks. `--no-trust` disables the
 workspace/extension approvals. Any other recognized dialog fails safely as
-`blocked_prompt` instead of hanging or guessing.
+`blocked_prompt` instead of hanging or guessing. The one exception is Claude's
+auto-mode setup offer after the prompt's own turn has finished: the answer is
+complete, so the run succeeds.
 
 Piped text and image paths are prompt input with the same authority as text typed
 by the caller. Do not combine untrusted input with broad filesystem permissions.

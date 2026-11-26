@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /tmp/ELWOOD_CAPTURE/project
+
+
+❯ Reply with exactly OK.
+
+⏺ OK
+
+✻ Baked for 0s · done 2:26 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Teach auto mode about your environment?
+
+  Auto mode works better when it knows your environment. Takes about a minute.
+
+  ❯ 1. Yes
+    2. Not now
+    3. Don't show again
+
+  Enter to confirm · Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Probe Offer ─
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

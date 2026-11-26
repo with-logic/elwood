@@ -63,7 +63,11 @@ default Elwood answers only the folder/directory and extension trust classes
 documented in §5.1, including Claude's workspace prompt when it discloses the
 folder's hooks (§5.4), after which Claude runs those hooks. `--no-trust` disables that authorization but does not
 disable Codex's session-wide hook-trust bypass, which also covers non-Elwood hooks. Any other recognized blocking
-prompt fails as `blocked_prompt` and reports only its stable rule label.
+prompt fails as `blocked_prompt` and reports only its stable rule label. The one
+exception is Claude's auto-mode setup offer (`claude-auto-mode-offer`, §5.3) once
+the prompt's own turn has gone `running` and back to `ready`: the answer is
+complete by then, so the run finishes normally. The offer still fails the run as
+`blocked_prompt` before that point, such as after a persona turn.
 
 The built-in non-interactive launch posture is Claude `dontAsk`, and Codex
 `workspace-write` with approval policy `never`. Flags and global configuration

@@ -1,0 +1,12 @@
+{
+  "text": "\n ▐▛███▛█   Claude Code v2.1.332\n▝▜██████▀  Haiku 5.5 · Claude Ultra\n ▝▝   ▝▝   /tmp/ELWOOD_CAPTURE/project\n\n\n❯ Count from 1 to 15, one number per line. No tools.\n\n⏺ 1\n  2\n  3\n  4\n  5\n  6\n  7\n  8\n  9\n  10\n  11\n  12\n  13\n  14\n  15\n\n✻ Baked for 1s · done 3:14 AM\n\n\n\n\n\n\n\n\n\n\n                                                                                         Plugins changed. Run /reload-plugins to activate.\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Probe Race ─\n❯ [Pasted text #1 +3 lines]\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  paste again to expand",
+  "title": "✳ Probe Race",
+  "cursorX": 27,
+  "cursorY": 37,
+  "cols": 140,
+  "rows": 40,
+  "baseY": 0,
+  "viewportY": 0,
+  "visible": true,
+  "sanitization": "2026-11-25 capture from Claude Code 2.1.332 (named session, auto mode, 140x40), the first frame after Esc closed the auto-mode offer with a queued paste still staged. Project path normalized; trailing spaces removed."
+}

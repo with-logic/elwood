@@ -13,7 +13,12 @@ import {
   throwIfInputAborted,
   waitForInput,
 } from "./abort.ts";
-import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
+import {
+  enteredComposer,
+  requestComposerCleanup,
+  stageComposer,
+  submittedComposer,
+} from "./composer-cleanup.ts";
 import { bracketedPasteEnd, bracketedPasteStart } from "./constants.ts";
 import type { PasteGuard } from "./paste-guard.ts";
 import { preparePasteNudges } from "./paste-nudge.ts";
@@ -45,7 +50,8 @@ export function ignoreInputFailure(input: void | Promise<void>): void {
  * Sanitize the input to keep embedded control bytes from escaping the paste (§5.3).
  * Ordinary sends release composer ownership on Enter while recovery runs in the
  * background. Awaited input retains ownership until a fresh empty frame. Raw input
- * revokes recovery and cleanup over the replacement draft.
+ * revokes recovery and cleanup over the replacement draft; raw input that lands
+ * before awaited input's Enter rejects that input without the Enter.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -92,15 +98,17 @@ async function writePastedPrompt(
     // Hold the submitting Enter while a blocking dialog is on screen: firing it
     // would confirm the dialog's highlighted option instead of submitting the
     // staged paste (C-API-37 dialog safety). The paste stays staged behind the
-    // dialog and submits once it clears.
-    await holdWhileUnsafe(terminal, guard, signal);
-    throwIfInputAborted(signal);
+    // dialog and submits once it clears. Raw input takes over awaited input, even with
+    // the dialog still open: it ends the hold and rejects before the Enter (C-API-56).
+    const entering = awaitInputConsumption ? nudgeSignal : signal;
+    await holdWhileUnsafe(terminal, guard, entering);
+    throwIfInputAborted(entering);
     nudges?.beforeEnter();
     guard?.beforeEnter?.();
     beforeEnter?.(payload);
     await writeEnter();
     // Physical submission is observable in both modes; only ordinary sends release here.
-    if (!awaitInputConsumption) submittedComposer(terminal);
+    (awaitInputConsumption ? enteredComposer : submittedComposer)(terminal);
     onSubmitted?.();
     if (awaitInputConsumption) {
       if (!(await nudges?.awaitEmptyInput()))
@@ -127,6 +135,18 @@ export async function writeQueuedInput(
   onSubmitted?: () => void,
   beforeEnter?: (payload: string) => void,
 ): Promise<void> {
+  const pasted = (awaitInputConsumption: boolean) => () =>
+    writePastedPrompt(
+      terminal,
+      input,
+      awaitInputConsumption,
+      guard,
+      signal,
+      undefined,
+      undefined,
+      onSubmitted,
+      beforeEnter,
+    );
   // Dispatch through a Record keyed by ControlSubmitMode: a new mode must add an
   // entry here or the object fails to type-check, so it can never silently reuse
   // pasted-input behavior. The map has no unreachable default arm, so 100%
@@ -134,30 +154,8 @@ export async function writeQueuedInput(
   const submitters: Readonly<Record<ControlSubmitMode, () => Promise<void>>> = {
     // Resolve only after the input's submitting Enter has dispatched, so the next
     // queued operation cannot write into the composer first (FIFO).
-    pasted_input: () =>
-      writePastedPrompt(
-        terminal,
-        input,
-        false,
-        guard,
-        signal,
-        undefined,
-        undefined,
-        onSubmitted,
-        beforeEnter,
-      ),
-    awaited_input: () =>
-      writePastedPrompt(
-        terminal,
-        input,
-        true,
-        guard,
-        signal,
-        undefined,
-        undefined,
-        onSubmitted,
-        beforeEnter,
-      ),
+    pasted_input: pasted(false),
+    awaited_input: pasted(true),
     // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
     // chunk as the command text, so Enter follows as a separate keystroke. The
     // returned promise resolves only after that Enter is dispatched, so a queued
