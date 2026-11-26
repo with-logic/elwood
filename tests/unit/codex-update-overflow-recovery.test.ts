@@ -36,7 +36,7 @@ test.each([
     const previous = tracker.currentFramePredicate();
     if (kind === "exhausted action-only") {
       await vi.runAllTimersAsync();
-      expect(writes).toHaveLength(20);
+      expect(writes).toEqual(["2"]);
       frame = `${banner}\n1. Update now`;
     } else frame = overflow;
     observe();
@@ -93,12 +93,12 @@ test("C-CODEX-12 invalid overflow replacements cannot renew grace and a recovere
     expect(tracker.renewsAttention(frame)).toBe(true);
     expect(observe().updateGeneration).toBeDefined();
     await vi.runAllTimersAsync();
-    expect(writes).toHaveLength(20);
+    expect(writes).toEqual(["2"]);
     for (let redraw = 0; redraw < 10; redraw += 1) {
       expect(tracker.renewsAttention(frame)).toBe(false);
       expect(observe().updateGeneration).toBeUndefined();
     }
-    expect(writes).toHaveLength(20);
+    expect(writes).toEqual(["2"]);
   } finally {
     responder.dispose();
     await vi.runAllTimersAsync();

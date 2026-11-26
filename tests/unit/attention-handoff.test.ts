@@ -32,12 +32,12 @@ function harness(started = true) {
   const active = {
     closing: new AbortController(),
     inputBlocking: false,
-    trustInputBlocking: false,
+    automationInputBlocking: false,
     get status() {
       return engine.status;
     },
     submitEvidence: (kind: Parameters<typeof engine.submit>[0], workingVisible = false) =>
-      engine.submit(kind, { inputBlocked: active.trustInputBlocking, workingVisible }),
+      engine.submit(kind, { inputBlocked: active.automationInputBlocking, workingVisible }),
   };
   const trust = { inputBlocking: false, blockedPrompt: undefined, dispose() {} };
   const turn = new TurnStateWatcher();
