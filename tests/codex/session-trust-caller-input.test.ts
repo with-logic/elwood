@@ -4,6 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
+import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { codexComposer, codexTty, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -69,7 +70,7 @@ test("C-TRUST-01 caller keys own only the gate on screen; the next gate is answe
 test("C-CODEX-12 caller keys during an update skip stop its retries; the next prompt is answered", async () => {
   const session = await start();
   ptys[0]!.emitData(update);
-  await vi.advanceTimersByTimeAsync(20);
+  await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 20);
   expect(ptys[0]!.writes).toEqual(["2"]);
   // Codex may already have taken the skip and drawn its trust gate, where 2 is Quit,
   // while Elwood's frame still shows the update prompt.
@@ -85,7 +86,7 @@ test("C-CODEX-12 caller keys during an update skip stop its retries; the next pr
 test("C-CODEX-12 caller keys after the update leaves the screen own its redraw until a composer", async () => {
   const session = await start();
   ptys[0]!.emitData(update);
-  await vi.advanceTimersByTimeAsync(20);
+  await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 20);
   expect(ptys[0]!.writes).toEqual(["2"]);
   // Elwood's frame can lose and regain a stale update while Codex is already elsewhere.
   ptys[0]!.emitData("\u001b[2J\u001b[H");
@@ -98,6 +99,17 @@ test("C-CODEX-12 caller keys after the update leaves the screen own its redraw u
   ptys[0]!.emitData(composer);
   await vi.advanceTimersByTimeAsync(20);
   ptys[0]!.emitData(update);
-  await vi.advanceTimersByTimeAsync(20);
+  await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 20);
   expect(ptys[0]!.writes).toEqual(["2", "hello", "2"]);
+});
+
+test("C-CODEX-12 caller keys during the first-key wait leave the update prompt to the caller", async () => {
+  const session = await start();
+  ptys[0]!.emitData(update);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(ptys[0]!.writes).toEqual([]);
+  // A host that answers the prompt itself: Elwood's own key must not follow it.
+  await session.sendKeys("2");
+  await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 1_000);
+  expect(ptys[0]!.writes).toEqual(["2"]);
 });

@@ -33,7 +33,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
   const active = {
     closing: new AbortController(),
     inputBlocking: false,
-    trustInputBlocking: false,
+    automationInputBlocking: false,
     get status() {
       return engine.status;
     },
@@ -45,7 +45,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
     false,
     undefined,
     codexComposerClearance,
-    () => active.inputBlocking || active.trustInputBlocking,
+    () => active.inputBlocking || active.automationInputBlocking,
   );
   const queuedInput = vi.fn(() => {
     frame = "› queued persona input";
@@ -155,6 +155,9 @@ test("C-CODEX-12 a completed clearance edge owns settlement despite a late withh
   const f = fixture(write);
   try {
     const first = f.observe();
+    // Codex redraws its prompt after the first key, so the next poll retypes it.
+    await vi.advanceTimersByTimeAsync(0);
+    f.observe(update.replace("1. Update now", "› 1. Update now"));
     await vi.advanceTimersByTimeAsync(250);
     expect(write).toHaveBeenCalledTimes(2);
     f.observe(codexSmallComposer);

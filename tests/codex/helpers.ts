@@ -8,6 +8,7 @@
 import { afterEach } from "vitest";
 import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
 import { resetCodexSessionSeamsForTests } from "../../src/codex/session/index.ts";
+import { unsafeWriteRetryMs } from "../../src/core/input/constants.ts";
 import type { CodexHookEventFor } from "../../src/index.ts";
 import {
   resetRuntimeSeamsForTests,
@@ -114,4 +115,17 @@ export function becomeReady(
  */
 export function showComposer(pty = ptys[0]!): void {
   pty.emitData(codexTty(codexComposer));
+}
+
+/** Two write retries: a writer the input hold had released would have written by then. */
+const settleMs = unsafeWriteRetryMs * 2;
+
+/** Paints `frame` on a cleared screen and gives any released writer time to write. */
+export async function render(
+  session: { readonly terminal: { settled(): Promise<void> } },
+  frame: string,
+): Promise<void> {
+  ptys.at(-1)!.emitData(`\u001b[2J\u001b[H${frame}`);
+  await session.terminal.settled();
+  await new Promise((resolve) => setTimeout(resolve, settleMs));
 }

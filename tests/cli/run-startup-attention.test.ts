@@ -101,8 +101,9 @@ test("C-CODEX-12 a quietly exhausted update skip first seen while starting still
   // the startup `attention` (#37) can have armed the CLI's grace timer.
   await new Promise((resolve) => setTimeout(resolve, 5_600));
   expect(clock.delays).toEqual([codexUpdateAttentionGraceMs]);
+  // The unchanged screen got one key and no retype (C-CODEX-12).
   const keys = codex.ptys[0]?.writes.length;
-  expect(keys).toBeGreaterThan(1);
+  expect(keys).toBe(1);
   codex.ptys[0]?.emitData(tty(update)); // a repaint of the same screen starts no new loop
   await new Promise((resolve) => setTimeout(resolve, 300));
   expect(codex.ptys[0]?.writes).toHaveLength(keys ?? 0);

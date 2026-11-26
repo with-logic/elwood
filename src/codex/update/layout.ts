@@ -1,9 +1,12 @@
-/** Bound update choices to one current dialog block (PRD §5.5, C-CODEX-12). */
+/** Bound update choices to one current dialog block (PRD §5.5, C-CODEX-12, C-CODEX-27). */
 import { type NumberedOption, numberedOptions } from "../../core/terminal-options.ts";
 
-/** Versioned and alternate native banners; a version pair, when present, identifies an appearance. */
+/**
+ * Versioned and alternate native banners; a version pair, when present, identifies an
+ * appearance. Codex 0.155 draws `Update available! X -> Y`, 0.171 `Update available · X → Y`.
+ */
 export const updateScreenBanner =
-  /^[^\S\r\n]*(?:✨[^\S\r\n]*)?(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
+  /^[^\S\r\n]*(?:✨[^\S\r\n]*)?(?:Update available(?:!|[^\S\r\n]+·)\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
 
 /** Unknown content after choices, or numbered scrollback before the banner, is ambiguous. */
 export function updateDialogOptions(frame: string): readonly NumberedOption[] | undefined {
@@ -17,30 +20,66 @@ export function updateDialogOptions(frame: string): readonly NumberedOption[] | 
 }
 
 function parseOptionBody(body: readonly string[], hasBanner: boolean) {
-  const optionRows: string[] = [];
-  let footer = false;
+  let optionRows: readonly string[] = [];
+  let footerSeen = false;
+  const header = updateHeaderReader();
   for (const row of body) {
     if (row.trim() === "") continue;
     if (/^\s*[›>]?\s*\d+[.)]\s*\S/.test(row)) {
-      if (footer) return undefined;
-      optionRows.push(row);
+      if (footerSeen || !header.complete()) return undefined;
+      optionRows = [...optionRows, row];
       continue;
     }
-    if (optionRows.length > 0) {
-      if (/^\s*Press enter to continue\s*$/i.test(row)) {
-        footer = true;
-        continue;
-      }
-      const previous = optionRows.at(-1) as string;
-      if (!footer && wrappedUpdateAction(previous, row)) {
-        optionRows[optionRows.length - 1] = `${previous} ${row.trim()}`;
-        continue;
-      }
-      return undefined;
+    const previous = optionRows.at(-1);
+    if (previous !== undefined) {
+      const folded = foldAfterChoices(optionRows, previous, row, footerSeen);
+      if (folded === undefined) return undefined;
+      ({ rows: optionRows, footerSeen } = folded);
+      continue;
     }
-    if (!(hasBanner && updateHeaderRow(row))) return undefined;
+    if (!(hasBanner && header.accept(row))) return undefined;
   }
   return orderedNativeOptions(numberedOptions(optionRows.join("\n")));
+}
+
+/**
+ * Folds one row after the choices, whose last row is `previous`, into them: the footer, or
+ * the wrapped action's next row. Undefined when the row is neither, which withholds the
+ * whole block.
+ */
+function foldAfterChoices(
+  rows: readonly string[],
+  previous: string,
+  row: string,
+  footerSeen: boolean,
+) {
+  if (/^\s*(?:Press enter to continue|enter continue · esc skip)\s*$/i.test(row))
+    return { rows, footerSeen: true };
+  if (footerSeen || !wrappedUpdateAction(previous, row)) return undefined;
+  return { rows: [...rows.slice(0, -1), `${previous} ${row.trim()}`], footerSeen };
+}
+
+const releaseNotesWithoutWhitespace = withoutWhitespace(
+  "Release notes: https://github.com/openai/codex/releases/latest",
+);
+
+/** The rows above the choices: banners anywhere among them, and release notes that may wrap. */
+function updateHeaderReader() {
+  let read = "";
+  return {
+    accept(row: string): boolean {
+      if (updateScreenBanner.test(row)) return true;
+      read += withoutWhitespace(row);
+      return releaseNotesWithoutWhitespace.startsWith(read);
+    },
+    /** No release notes, or all of them. */
+    complete: () => read === "" || read === releaseNotesWithoutWhitespace,
+  };
+}
+
+/** A terminal wraps at spaces or mid-word, so wrapped native text is compared without whitespace. */
+function withoutWhitespace(text: string): string {
+  return text.replace(/\s+/g, "");
 }
 
 function orderedNativeOptions(options: readonly NumberedOption[]) {
@@ -55,26 +94,27 @@ function orderedNativeOptions(options: readonly NumberedOption[]) {
   return options;
 }
 
-const nativeAction =
-  "Update now (runs `sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'`)";
+/**
+ * The install commands Codex's update action names, without whitespace: npm, then
+ * standalone 0.155 and 0.172.
+ */
+const nativeActionsWithoutWhitespace = [
+  "Update now (runs `npm install -g @openai/codex`)",
+  "Update now (runs `sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'`)",
+  "Update now (runs `sh -c 's=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval \"$s\"'`)",
+].map(withoutWhitespace);
 
+/** A clipped screen can cut an action's command short; its visible part must still match. */
 function nativeOptionLabel(label: string): boolean {
   return (
     /^(?:Update now|Skip(?: until next version)?|Continue without updating|Not now|Later)$/i.test(
       label,
     ) ||
-    label === "Update now (runs `npm install -g @openai/codex`)" ||
-    (label.startsWith("Update now (runs `") && nativeAction.startsWith(label))
+    (label.startsWith("Update now (runs `") &&
+      nativeActionsWithoutWhitespace.some((action) => action.startsWith(withoutWhitespace(label))))
   );
 }
 
 function wrappedUpdateAction(previous: string, row: string): boolean {
   return /Update now \(runs `[^`]*$/.test(previous) && /^ {4,}\S/.test(row);
-}
-
-function updateHeaderRow(row: string): boolean {
-  return (
-    updateScreenBanner.test(row) ||
-    /^\s*Release notes: https:\/\/github\.com\/openai\/codex\/releases\/latest\s*$/.test(row)
-  );
 }

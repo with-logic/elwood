@@ -121,7 +121,7 @@ test("C-ATTN-03 adapters own the fallback suppressed by pending trust", () => {
   const { observers } = harness(true);
   observers.table = {
     ...claudeScreenFactTable,
-    trustOwnedFallback: "adapter-retained-dialog",
+    automationOwnedFallback: "adapter-retained-dialog",
     rules: [
       {
         id: "adapter-retained-dialog",
