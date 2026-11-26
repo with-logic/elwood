@@ -2060,9 +2060,9 @@ the queued message was never submitted (load average 31).
 `tests/e2e/auto-mode-offer-at-ready-claude.e2e.ts` sends from the status
 listener at the turn's `ready` instead, once with Elwood's view held back and
 once at live speed with a status listener that throws there. On `origin/main`
-both runs lost the message (load average 38). On the branch they passed ten
-times out of ten at load averages 12–98, and they passed on the first hold too
-(load average 15).
+both runs lost the message (load average 38). With the stable-frame hold both
+runs passed in each of nine runs of the file, at load averages 4–362. They passed
+on the first hold too (load average 15).
 
 The offer ignores a choice, Enter on its menu or Esc, made less than 500 ms
 after its first render or after the previous attempt, and every attempt,
