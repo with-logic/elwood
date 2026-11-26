@@ -1,8 +1,7 @@
 /**
- * Claude mounts a post-turn dialog, such as its auto-mode setup offer, when a query ends, and
- * takes keys from then on. Elwood only sees it once it paints, which can follow the frame that
- * clears the turn's working indicator and the session's own `ready`. So after a turn ends in
- * auto mode, where Claude makes that offer, queued Claude input waits for a fresh frame that
+ * Claude mounts its auto-mode setup offer when a query ends in auto mode, and the offer takes
+ * keys from then on. Elwood only sees it once it paints, which can follow the session's own
+ * `ready`. So after a turn ends in auto mode, queued Claude input waits for a fresh frame that
  * has stayed unchanged for a settle window and shows Claude's composer with no working
  * indicator and no dialog, for a bounded time. Implements PRD §5.3 and C-ATTN-10.
  */
@@ -15,10 +14,10 @@ import { ClaudeQuestionsSession } from "./questions.ts";
 
 /** How long the end frame must stay unchanged: past the offer's mount-to-paint window. */
 export const turnEndSettleMs = 500;
-/** Longest queued input waits for that frame after reaching `ready` (C-ATTN-10). */
+/** Longest queued input waits for that frame after the turn ends (C-ATTN-10). */
 export const turnEndPaintLimitMs = 5_000;
 
-/** From reaching `ready` until a stable, idle, dialog-free composer frame. */
+/** From a turn's end until a stable, idle, dialog-free composer frame, or the limit. */
 export class ClaudeTurnEndHold {
   private armedAt: number | undefined;
   private frame: string | undefined;

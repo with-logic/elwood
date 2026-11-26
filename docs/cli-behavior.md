@@ -1968,9 +1968,10 @@ turn about 250 ms later (`tests/e2e/auto-mode-offer-claude.e2e.ts`). Later steps
 after `Continue` (a background scan, then `Review proposed auto-mode setup`) use
 other titles and were not captured.
 
-A message queued during the turn goes out the moment Elwood reports `ready` on
-its own `Stop` hook, so its paste lands in Claude's composer before the offer
-paints. Six such probes had three outcomes:
+Before the turn-end hold (C-ATTN-10, below), a message queued during the turn
+went out the moment Elwood reported `ready` on its own `Stop` hook, so its paste
+landed in Claude's composer before the offer painted. Six such probes had three
+outcomes:
 
 - The offer painted before the Enter, 150 ms after the paste (2 of 6, one pill
   and one inline). The Enter was held. Esc left the paste staged in the composer
@@ -1997,15 +1998,38 @@ out to a mounted offer that Elwood could not see yet. A frame probe
 (load averages 35–62) showed the order every time: the title switches to `✳`
 27–30 ms after `Stop` while the footer still reads `esc to interrupt`, and the
 first frame without that footer, 35–48 ms after `Stop`, already holds the offer.
-So after a turn's `Stop` Elwood now holds every queued write until a frame no
-longer shows the turn working, capped at 5 s (C-ATTN-10). The footer is the
-exact signal; the title clears one frame early, which is why the guarantee
-needs widths that show the footer.
+The raw bytes agree (load average 14): 15 ms after `Stop`, one 733-byte chunk
+repainted top-down, from the `✻ Baked for 1s` row through the offer's rule,
+title, menu and hint to the composer, and only then erased ` · esc to
+interrupt` from the footer. The predicate in front of `offerEnvOnboarding` is
+`rJe`, which requires `toolPermissionContext.mode === "auto"` at that moment, so
+only a turn that ends in auto mode can mount the offer.
+
+A first hold released on the first frame without the working footer. That frame
+already held the offer in every capture, but only because of that paint order: a
+blank, partial or offer-less frame would have released it too. So Elwood now
+holds every queued write, after a turn that ends in auto mode, until a frame
+showing Claude's verified composer with no working indicator and no dialog has
+stayed unchanged for 500 ms, capped at 5 s from the turn's end (C-ATTN-10). The
+hold is armed by the `Stop` hook or the rendered end before either reports
+`ready`, and stays through a dialog whose dismissal ended the turn. It covers
+widths at which the offer's title fits on one row, so that Elwood recognizes
+the offer (C-ATTN-09); the working footer no longer matters. The title row,
+with its two-column indent, is 41 columns wide. At 46 and 60 columns, below the
+footer's elision, the offer painted with its title and hint on one row each,
+and the live at-ready run below passed at both (load averages 47 and 103).
+
 `tests/e2e/auto-mode-offer-prepaint-claude.e2e.ts` reproduces the case on
 demand by holding Elwood's view of the PTY for 1.5 s from `Stop`. With the
-hold it passed: exactly one submission, no `Yes ✔`, and Esc's `dismissedAt`
-recorded (21 s, load average 35). With the hold removed it failed: the queued
-message was never submitted (load average 31).
+first hold it passed: exactly one submission, no `Yes ✔`, and Esc's
+`dismissedAt` recorded (21 s, load average 35). With the hold removed it failed:
+the queued message was never submitted (load average 31).
+`tests/e2e/auto-mode-offer-at-ready-claude.e2e.ts` sends from the status
+listener at the turn's `ready` instead, once with Elwood's view held back and
+once at live speed with a status listener that throws there. On `origin/main`
+both runs lost the message (load average 38). On the branch they passed ten
+times out of ten at load averages 12–98, and they passed on the first hold too
+(load average 15).
 
 The offer ignores a choice, Enter on its menu or Esc, made less than 500 ms
 after its first render or after the previous attempt, and every attempt,

@@ -36,9 +36,11 @@ back each entry are listed in `prd/14-conformance.md`.
   closes over a paste whose Enter it held, the paste now submits instead of
   leaving the session `blocked`; awaited `send`/`stream` input that raw input
   took over during that hold rejects without its Enter, even if the dialog stays
-  open. A message queued during a Claude turn now waits, at most 5 s, for the
-  frame that ends the turn, so an offer Claude has mounted but not yet painted
-  cannot take its Enter. `elwood run` no longer fails when the offer appears
+  open. When a Claude turn ends in auto mode, queued input now waits until
+  Claude's idle composer has stayed unchanged for 500 ms, at most 5 s, so an
+  offer Claude has mounted but not yet painted cannot take its Enter. This holds
+  at widths where the offer's title fits on one row (about 41 columns), and the
+  next turn ends the wait. `elwood run` no longer fails when the offer appears
   after its prompt's turn has ended.
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
