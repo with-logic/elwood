@@ -9,6 +9,7 @@ import { initialBackstopMs } from "../../src/runtime/readiness/initial-ready.ts"
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { ptyOutputPending } from "../../src/terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 import { setupTerminalPty } from "../helpers/terminal-pty.ts";
 
 const terminals: ElwoodTerminal[] = [];
@@ -45,6 +46,7 @@ function beforeTimer({
 } = {}) {
   vi.useFakeTimers();
   const gate = createReadinessGate(ready, false, {
+    ...noStartupScreens,
     configured: (frame) => frame === composerFrame.text,
     onBackstop,
   });

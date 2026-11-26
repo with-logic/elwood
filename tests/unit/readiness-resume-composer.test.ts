@@ -12,11 +12,16 @@ import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { unrecognizedStartupScreen as unrecognized } from "../fixtures/codex-unrecognized-startup.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 
 const placeholder = capturedFrame("codex-0.171.0/update/resume-placeholder");
 const skipped = capturedFrame("codex-0.171.0/update/resume-skipped-composer");
 const facts = (text: string) => readScreenFacts(codexScreenFactTable, { text, title: "" }).facts;
-const codex = (configured = codexComposerConfigured) => ({ configured, onBackstop: () => {} });
+const codex = (configured = codexComposerConfigured) => ({
+  ...noStartupScreens,
+  configured,
+  onBackstop: () => {},
+});
 
 test.each([
   ["placeholder", placeholder],

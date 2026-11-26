@@ -71,16 +71,16 @@ export function readRenderedFrame(
       : undefined,
   );
   if (trustBlock === undefined || reading.facts.blocking_prompt_visible) return reading;
-  const id = `${observers.agent}-${trustBlock}-prompt`;
+  return withBlockingRule(reading, `${observers.agent}-${trustBlock}-prompt`);
+}
+
+/** A reading that a hold Elwood owns makes blocking, under that hold's rule id. */
+export function withBlockingRule(reading: ScreenFactReading, id: string): ScreenFactReading {
   return {
     facts: { ...reading.facts, blocking_prompt_visible: true },
     matched: [
       ...reading.matched,
-      {
-        id,
-        fact: "blocking_prompt_visible" as const,
-        region: "screen" as const,
-      },
+      { id, fact: "blocking_prompt_visible" as const, region: "screen" as const },
     ],
   };
 }
