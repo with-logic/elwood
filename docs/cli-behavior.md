@@ -921,8 +921,39 @@ with no warning row. Captures for each kind are in
 `tests/fixtures/claude-2.1.332/trust/` and `tests/fixtures/claude-2.1.329/trust/`.
 Elwood verifies every combination of the three items with ` (runs commands)` only
 on files the hooks warning names. The environment annotation, and the binary's other
-warnings (pre-approved tool permissions, added directories, a headers helper), are
-not verified, so those prompts fail closed. C-CLAUDE-29.
+warnings (added directories, a headers helper), are not verified, so those prompts
+fail closed. C-CLAUDE-29.
+
+**Pre-approved tool permissions add a warning that quotes the folder's rules.** A
+settings file whose `permissions.allow` lists rules draws, before the hooks warning
+or the load row, `⚠ This folder pre-approves <N> tool permission[s] in <files>:`
+(singular for one; `<files>` joined like the load row), then the rules, then `These
+will apply without asking. Only proceed if you trust this configuration.`, with no
+blank row before a hooks warning. That sentence closes a group:
+`permissions.additionalDirectories` draws `⚠ This folder adds <N> director(y|ies) to
+the workspace in <files>:` and the directories, and an `.mcp.json` server's
+`headersHelper` draws `⚠ This folder runs commands to mint HTTP headers
+(headersHelper), declared in .mcp.json`, each after the permissions rules and before
+the one closing sentence, which also follows the directories warning alone. 2.1.329,
+2.1.330, and 2.1.331 draw the permissions and directories warnings byte for byte as
+2.1.332 does (2026-11-26). Elwood verifies only the permissions warning, so a rule
+may not contain `⚠` and any other warning between the rules and the closing sentence
+fails closed. The closing sentence is always a whole row of its own, followed by a
+blank row or the hooks warning. A rule that quotes it is cut, at about 57 characters
+with `…`, and rules that split it are joined with ` and ` or `, `, so no rules row
+is ever the whole sentence, and Elwood requires that row (`-quote-close-`,
+`-quote-split-`). A rule shaped like a numbered option fails closed
+(`-numbered-rule-`); one shaped like a dialog footer is read as a rule
+(`-footer-rule-`). The rules are joined like a list, at most eight then `, and <k>
+more`; one longer than about 60 characters is cut with `…`; the list wraps onto rows
+indented one column; a zero-width character in a rule does not reach the screen.
+`deny` and `ask` rules draw no warning. Because the rules are the folder's own text,
+Elwood checks only the rows around them, and reads what the prompt discloses only
+from the hooks warning and load row that end the copy. Captures:
+`tests/fixtures/claude-2.1.332/trust/workspace-permissions-*.txt`, with `-dirs-`,
+`-dirsonly-`, and `-headers-` for the other warnings, and
+`tests/fixtures/claude-2.1.329/trust/workspace-permissions-*.txt`. C-CLAUDE-30,
+C-E2E-29.
 
 **A settings row with no annotation can still run code.** A project
 `.claude/settings.json` that only adds a directory marketplace inside the project
