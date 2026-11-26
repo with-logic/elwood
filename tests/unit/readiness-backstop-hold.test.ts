@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { initialReady } from "../../src/runtime/readiness/initial-ready.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -10,6 +11,7 @@ test("C-API-28 a resume caret cannot release the backstop hold without configure
   const callback = vi.fn();
   const warning = vi.fn();
   const gate = createReadinessGate(callback, true, {
+    ...noStartupScreens,
     configured: (frame) => frame === "configured composer",
     onBackstop: warning,
   });
@@ -49,6 +51,7 @@ test("C-API-28 a throwing Claude readiness observer remains retryable after the 
 test("C-API-28 the backstop does not re-hold writes once a configured composer was seen", () => {
   vi.useFakeTimers();
   const gate = createReadinessGate(() => {}, false, {
+    ...noStartupScreens,
     configured: (frame) => frame === "configured composer",
     onBackstop: () => {},
   });

@@ -7,8 +7,9 @@
  * clears to a positive idle composer — and marks resume-composer readiness. Before the
  * first readiness it also holds physical writes until a configured composer is seen; the
  * first readiness, from a hook or otherwise, ends that hold too. No readiness source
- * judges a frame that received PTY output can still replace (`render-wait.ts`).
- * Implements PRD §5.3 (C-API-28).
+ * judges a frame that received PTY output can still replace (`render-wait.ts`). From the
+ * deadline until that readiness it classifies unrecognized startup screens (§5.4,
+ * C-ATTN-11). Implements PRD §5.3 (C-API-28).
  */
 
 import { runContained } from "../../core/contained.ts";
@@ -20,14 +21,23 @@ import {
   initialReady,
   markReadyOnResumeComposer,
 } from "../readiness/initial-ready.ts";
+import {
+  createUnrecognizedStartupWatch,
+  noUnrecognizedStartup,
+  type StartupScreenEvidence,
+  type UnrecognizedStartupWatch,
+} from "../readiness/unrecognized-startup.ts";
 import { createDeferredBackstop, createRenderWait, type DeferredBackstop } from "./render-wait.ts";
 
 /** The holds a session applies before its first readiness (C-API-28). */
 export type InitialReadinessHold = {
-  /** Readiness evidence waits: a dialog, trust, or, after the backstop, no configured composer. */
+  /**
+   * Readiness evidence waits on a blocking hold (a recognized dialog, an unrecognized startup
+   * screen's block, or startup automation) or, after the backstop, no configured composer.
+   */
   readonly holdsReadiness: () => boolean;
   /**
-   * A physical write waits: a dialog, trust, or no configured composer seen yet. The
+   * A physical write waits: a blocking hold, or no configured composer seen yet. The
    * session consults it from launch until the first readiness, which an adapter's
    * readiness hook can also bring. Operations that bypass the readiness queue
    * (`sendPrompt`, picker commands, `login`) would otherwise write onto a startup screen
@@ -57,7 +67,17 @@ export type ReadinessGate = InitialReadinessHold & {
     frame: string,
     cols?: number,
   ) => void;
+  /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-11). */
+  readonly unrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report">;
+  /**
+   * Re-read the current frame when the deadline passes: an idle CLI does not repaint. The
+   * listener gets the terminal's current settled frame when the gate can read one.
+   */
+  readonly setDeadlineListener: (listener: (current?: SettledFrame) => void) => void;
 };
+
+/** A terminal's current settled frame, which a resize can have reflowed since it painted. */
+export type SettledFrame = { readonly text: string; readonly cols: number };
 
 /**
  * An adapter's `composer.configured`, when supplied, is its readiness evidence for a rendered
@@ -71,9 +91,9 @@ export type ReadinessGate = InitialReadinessHold & {
 export function createReadinessGate(
   onReady: () => void,
   resumed: boolean,
-  composer?: {
-    readonly configured: (frame: string, cols?: number) => boolean;
-    readonly onBackstop: (dialogHeld: boolean) => void;
+  composer?: StartupScreenEvidence & {
+    /** `recognizedHold`: a recognized dialog or startup automation holds readiness. */
+    readonly onBackstop: (recognizedHold: boolean) => void;
   },
 ): ReadinessGate {
   let readinessHeld = false;
@@ -107,7 +127,11 @@ export function createReadinessGate(
   // Claude verifies an idle composer. Codex can verify its configured composer
   // during background work such as an MCP server retry.
   let evidence: ConfiguredComposerEvidence | undefined;
+  let watch: UnrecognizedStartupWatch | undefined;
+  let deadlineListener: ((current?: SettledFrame) => void) | undefined;
   if (composer) {
+    const startup = createUnrecognizedStartupWatch(composer);
+    watch = startup;
     const shown = () =>
       !render.rendering() &&
       latest?.facts.composer_visible === true &&
@@ -117,14 +141,24 @@ export function createReadinessGate(
       // During an open synchronized update no composer is shown, so it reports.
       if (readyFired || shown()) return;
       backstopHold = () => !shown();
-      composer.onBackstop(readinessHeld);
+      // An unrecognized startup screen's block holds readiness, but it is no recognized
+      // dialog, including on a blank, incomplete or native startup frame inside it.
+      composer.onBackstop(readinessHeld && !startup.blocking());
     });
-    evidence = { shown, onBackstop: backstop.fall };
+    evidence = {
+      shown,
+      onBackstop: backstop.fall,
+      onDeadline: () => {
+        startup.deadlinePassed();
+        deadlineListener?.();
+      },
+    };
   }
   const configured = evidence?.shown ?? (() => false);
   const ready = initialReady(
     () => {
       backstopHold = undefined;
+      watch?.end();
       onReady();
       readyFired = true;
     },
@@ -156,6 +190,10 @@ export function createReadinessGate(
       if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
       backstop?.settle();
+    },
+    unrecognizedStartup: watch ?? noUnrecognizedStartup,
+    setDeadlineListener: (listener) => {
+      deadlineListener = listener;
     },
   };
 }

@@ -14,6 +14,7 @@ import { createSessionFrameObserver } from "../../src/runtime/session/frames.ts"
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
 import { codexSmallComposer } from "../fixtures/trust-composer.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 
 const update = "Update available! 0.153.3 -> 0.153.4\n1. Update now\n2. Skip";
 afterEach(() => vi.useRealTimers());
@@ -51,6 +52,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
     frame = "› queued persona input";
   });
   const readiness = createReadinessGate(queuedInput, true, {
+    ...noStartupScreens,
     configured: codexReadinessEvidence,
     onBackstop: () => {},
   });

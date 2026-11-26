@@ -1,5 +1,6 @@
 /**
- * Session-owned frame and trust-deadline observation (PRD §5.3/§5.4, C-TRUST-01, C-API-72).
+ * Session-owned frame and trust-deadline observation, and the block on an unrecognized
+ * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-API-72, C-ATTN-11).
  */
 import { activityFromAttention, blockingRuleIds } from "../../core/attention.ts";
 import { runEach } from "../../core/contained.ts";
@@ -7,6 +8,7 @@ import {
   observeRenderedReading,
   type RenderedObservers,
   readRenderedFrame,
+  withBlockingRule,
 } from "../../core/rendered-observers.ts";
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
@@ -68,8 +70,21 @@ export function createSessionFrameObserver(
     const current = frame;
     if (active === undefined || active.closing.signal.aborted || current === undefined) return;
     const state = trust();
+    const rendered = readRenderedFrame(
+      observers,
+      current,
+      state.blockedPrompt,
+      state.inputBlocking,
+    );
+    const unrecognized = readiness.unrecognizedStartup.classify(
+      rendered.facts,
+      state.inputBlocking,
+      current,
+    );
     const reading = attentionClearance(
-      readRenderedFrame(observers, current, state.blockedPrompt, state.inputBlocking),
+      unrecognized
+        ? withBlockingRule(rendered, `${observers.agent}-unrecognized-startup`)
+        : rendered,
       current.text,
       state.inputBlocking,
     );
@@ -96,6 +111,7 @@ export function createSessionFrameObserver(
       // Automation can consume the human clear edge. Retain its replay until a
       // positive frame shows either resumed work or an idle composer.
       () => replayAutomationClearance(active, reading.facts),
+      () => readiness.unrecognizedStartup.report(current.text),
       () =>
         readiness.observeReadinessFrame(
           reading.facts,
@@ -114,6 +130,11 @@ export function createSessionFrameObserver(
       reportFailure();
     }
   };
+  // At the deadline an idle CLI does not repaint, so its current frame is classified again.
+  readiness.setDeadlineListener((settled) => {
+    if (frame !== undefined && settled !== undefined) frame = { ...frame, ...settled };
+    refresh();
+  });
   return {
     refresh,
     observe: (current: RenderedFrame) => {

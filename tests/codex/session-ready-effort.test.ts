@@ -49,11 +49,13 @@ async function deadlineOnDefaultFooter(options: Partial<StartCodexOptions>, firs
 }
 
 test("C-API-28 a requested effort holds ready until Codex shows it", async () => {
-  const { session, warnings, queued, pty } = await deadlineOnDefaultFooter({
+  const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter({
     reasoningEffort: "low",
   });
   try {
-    expect(session.status).not.toBe("ready");
+    // Past the deadline, the footer waiting for the effort is Codex's own startup screen.
+    expect(session.status).not.toBe("blocked");
+    expect(activities.some(({ kind }) => kind === "unrecognized_startup")).toBe(false);
     expect(pty.writes).not.toContain(paste);
     pty.emitData(paint(effortLow));
     await vi.advanceTimersByTimeAsync(500);

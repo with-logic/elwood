@@ -92,15 +92,15 @@ export function codexAuthMissing(): string | undefined {
 }
 
 /**
- * Creates the private Codex home `home`: a 0600 copy of the user's `auth.json` and the given
- * `config.toml`, whose path it returns, registered with the CLI home guard (`home-guard.ts`).
- * Callers decide who names the home.
+ * Creates the private Codex home `home`: a 0600 copy of the user's `auth.json`, unless
+ * `login` is false, and the given `config.toml`, whose path it returns, registered with the
+ * CLI home guard (`home-guard.ts`). Callers decide who names the home.
  */
-export function seedCodexHome(home: string, config: string): string {
-  if (!existsSync(userCodexAuthPath)) throw new Error(codexAuthMissing());
+export function seedCodexHome(home: string, config: string, login = true): string {
+  if (login && !existsSync(userCodexAuthPath)) throw new Error(codexAuthMissing());
   mkdirSync(home, { recursive: true, mode: 0o700 });
   registerPrivateHome(home);
-  copyCodexAuth(home);
+  if (login) copyCodexAuth(home);
   const configPath = join(home, "config.toml");
   writeFileSync(configPath, config);
   return configPath;
@@ -116,11 +116,15 @@ export function seedCodexHome(home: string, config: string): string {
  * `dispose()` restores the suite's default home (`codex-home.ts`). The user's own Codex
  * home is never read or written beyond the auth copy.
  */
-export function sandboxedCodexHome(project: E2eProject, config: string): CodexSandbox {
+export function sandboxedCodexHome(
+  project: E2eProject,
+  config: string,
+  { login = true }: { readonly login?: boolean } = {},
+): CodexSandbox {
   // Named after the project's scratch root so a leftover is attributable to its test.
   const home = mkdtempSync(`${project.cwd}-codex-home-`);
   scratchRoots.push(home);
-  const configPath = seedCodexHome(home, config);
+  const configPath = seedCodexHome(home, config, login);
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = home;
   const restoreHome = () => {

@@ -3,16 +3,24 @@
  * status footer, whose effort label, for a session that requested an effort Codex labels, is
  * no longer `default` once Codex applied it, or when the backstop falls), and missing
  * evidence at the backstop is reported as a content-free warning (PRD §5.3, §5.7, C-API-28).
+ * Its header drawn alone, its boot composer, its resume placeholder and its footer before it
+ * shows the requested effort are startup screens Codex draws before that composer, not
+ * unrecognized ones (§5.4, C-ATTN-11).
  */
 import { runContained } from "../../core/contained.ts";
 import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { InitialReadinessWarning } from "../../core/warnings/lifecycle.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
+import { createNativeBootFrameMatcher } from "../../runtime/readiness/boot-frame.ts";
 import { initialBackstopMs } from "../../runtime/readiness/initial-ready.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 import { codexReadinessEvidence } from "../screen/clearance.ts";
 import { codexFooterShowsEffort } from "../screen/footer.ts";
+import { codexUnconfiguredComposerVisible } from "../update/repaint.ts";
 import type { CodexEventMap } from "./types.ts";
+
+/** Codex's header drawn alone while it loads (C-ATTN-11). */
+export const isCodexBootFrame = createNativeBootFrameMatcher(/>_ OpenAI Codex \(v\d+\.\d+\.\d+/);
 
 /** The launch facts the gate reads: a resume, the session id and the requested effort. */
 export type CodexReadinessLaunch = {
@@ -96,6 +104,11 @@ export function createCodexReadinessGate(
     {
       session: { agent: "codex", elwoodSessionId },
       configured: check.configured,
+      // A footer still waiting for the requested effort is Codex's own, not unrecognized.
+      nativeStartupScreen: (frame, cols) =>
+        isCodexBootFrame(frame) ||
+        codexUnconfiguredComposerVisible(frame) ||
+        codexReadinessEvidence(frame, cols),
       warnings,
       events,
     },

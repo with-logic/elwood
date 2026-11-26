@@ -146,6 +146,17 @@ back each entry are listed in `prd/14-conformance.md`.
   example, shows the `OPENAI_API_KEY` from the login shell unmasked.
   `terminal:data`, `terminal.snapshot()` and `readScreen()` still show the screen
   as drawn.
+- Report a startup screen Elwood does not recognize as `blocked` from the
+  10-second readiness deadline instead of only at the 60-second backstop. Claude's
+  first-launch text-style picker and Codex's sign-in screen are examples. The
+  session raises `claude-unrecognized-startup` or `codex-unrecognized-startup`
+  attention, and an `unrecognized_startup` activity labelled
+  `initial_ready_deadline` carries the screen text. Answer it with `sendKeys`.
+  Queued input is released once a verified composer follows. A Codex composer
+  showing its placeholder, whose footer Elwood cannot verify, is reported the same
+  way, and `elwood run` fails such a start as `blocked_prompt`. The agent's own
+  header drawn alone while it loads is not reported, and the report redacts `sk-`
+  API-key-shaped tokens as the backstop's activity does.
 
 ## [0.8.0] - 2026-11-25
 

@@ -9,6 +9,7 @@ import { codexReadinessEvidence } from "../../src/codex/screen/clearance.ts";
 import { initialReady } from "../../src/runtime/readiness/initial-ready.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -17,6 +18,7 @@ const configured = capturedFrame("codex-0.164.0/boot/configured-composer");
 const idle = { composer_visible: true, working_visible: false, blocking_prompt_visible: false };
 const dialog = { ...idle, blocking_prompt_visible: true };
 const codex = (configured = codexReadinessEvidence, onBackstop = () => {}) => ({
+  ...noStartupScreens,
   configured,
   onBackstop,
 });
