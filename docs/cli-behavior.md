@@ -929,14 +929,21 @@ settings file whose `permissions.allow` lists rules draws, before the hooks warn
 or the load row, `⚠ This folder pre-approves <N> tool permission[s] in <files>:`
 (singular for one; `<files>` joined like the load row), then the rules, then `These
 will apply without asking. Only proceed if you trust this configuration.`, with no
-blank row before a hooks warning (2.1.332, 2026-11-26). The rules are joined like a
+blank row before a hooks warning (2.1.332, 2026-11-26). That sentence closes a group:
+`permissions.additionalDirectories` draws `⚠ This folder adds <N> director(y|ies) to
+the workspace in <files>:` and the directories, and an `.mcp.json` server's
+`headersHelper` draws `⚠ This folder runs commands to mint HTTP headers
+(headersHelper), declared in .mcp.json`, each after the permissions rules and before
+the one closing sentence, which also follows the directories warning alone (2.1.332,
+2026-11-26). Elwood verifies only the permissions warning, so a rule may not contain
+`⚠` and any warning before the closing sentence fails closed. The rules are joined like a
 list, at most eight then `, and <k> more`; one longer than about 60 characters is cut
 with `…`; the list wraps onto rows indented one column; a zero-width character in a
 rule does not reach the screen. `deny` and `ask` rules draw no warning. Because the
 rules are the folder's own text, Elwood checks only the rows around them, and reads
 what the prompt discloses from the hooks warning and load row with the rules
-removed. Captures: `tests/fixtures/claude-2.1.332/trust/workspace-permissions-*.txt`.
-C-CLAUDE-30, C-E2E-29.
+removed. Captures: `tests/fixtures/claude-2.1.332/trust/workspace-permissions-*.txt`,
+with `-dirs-` and `-headers-` for the two other warnings. C-CLAUDE-30, C-E2E-29.
 
 **A settings row with no annotation can still run code.** A project
 `.claude/settings.json` that only adds a directory marketplace inside the project

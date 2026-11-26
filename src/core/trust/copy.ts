@@ -28,11 +28,11 @@ const ableTo = String.raw`Claude Code'll be able to read, edit, and execute file
 // `.claude/settings.local.json`, then `.mcp.json here or above (MCP servers)` when a folder
 // declares MCP servers. A settings file whose hooks, status line command, or helpers run
 // commands carries ` (runs commands)`, and Claude 2.1.329 and later put a hooks warning before the row, naming
-// exactly those files. Items join as Claude's lists do: `a`, `a and b`, `a, b, and c`. Before
-// those, Claude 2.1.332 warns of a settings file's pre-approved tool permissions. Only
-// these combinations verify. A file marked as running commands that the warning does not
+// exactly those files. Items join as Claude's lists do: `a`, `a and b`, `a, b, and c`. Only
+// these combinations verify. A file marked as running commands that the hooks warning does not
 // name, either hooks row alone, or any other annotation or warning is unknown prose and fails
-// closed.
+// closed. Before the hooks warning, or the load row when there is none, Claude 2.1.332 may
+// warn of pre-approved tool permissions (`permissionsWarning`).
 const fileLoads = ["absent", "loads", "runs"] as const;
 type FileLoad = (typeof fileLoads)[number];
 const settingsFiles = [
@@ -45,10 +45,17 @@ type EachOf<T extends readonly unknown[], V> = { readonly [entry in keyof T]: V 
 type SettingsLoads = EachOf<typeof settingsFiles, FileLoad>;
 type LoadDisclosure = { readonly settingsLoads: SettingsLoads; readonly mcpServers: boolean };
 const mcpServersItem = String.raw`\.mcp\.json here or above \(MCP servers\)`;
+const permissionsHeader = "⚠ This folder pre-approves ";
 const permissionsClose = String.raw`These will apply without asking\. Only proceed if you trust this configuration\.`;
+// A character of the folder's rules: anything but a warning sign. Claude ends its
+// added-directories and headers-helper warnings, after the rules, with the same closing
+// sentence, so rules that could cross a `⚠` would take those unverified warnings for rules.
+const permissionsRuleChar = "[^⚠]";
 // Greedy, so it ends at the last closing sentence: a rule that quotes one cannot leave the
 // rest of the folder's rules to be read as rows.
-const permissionRules = new RegExp(`⚠ This folder pre-approves .*${permissionsClose}`);
+const permissionsWarningText = new RegExp(
+  `${permissionsHeader}${permissionsRuleChar}*${permissionsClose}`,
+);
 const loadDisclosures: readonly LoadDisclosure[] = fileLoads
   .flatMap((settings) => fileLoads.map((local): SettingsLoads => [settings, local]))
   .flatMap((settingsLoads) => [false, true].map((mcpServers) => ({ settingsLoads, mcpServers })))
@@ -84,21 +91,24 @@ const disclosurePatterns: Readonly<Record<ClaudeWorkspaceDisclosure, RegExp>> = 
 export function claudeWorkspaceStrongestDisclosure(
   copy: string,
 ): ClaudeWorkspaceDisclosure | undefined {
-  const rows = withoutPermissionRules(copy);
+  const rows = withoutPermissionsWarning(copy);
   return disclosureOrder.find((disclosure) => disclosurePatterns[disclosure].test(rows));
 }
 
 /** Whether verified Claude workspace copy discloses hooks, which trusting the folder runs. */
 export function claudeWorkspaceDisclosesHooks(copy: string): boolean {
-  return hooksRows.test(withoutPermissionRules(copy));
+  return hooksRows.test(withoutPermissionsWarning(copy));
 }
 
 /** `copy` without the permissions warning, whose rules are the folder's text, not Claude's. */
-function withoutPermissionRules(copy: string): string {
-  return copy.replace(permissionRules, "");
+function withoutPermissionsWarning(copy: string): string {
+  return copy.replace(permissionsWarningText, "");
 }
 
-/** Any of the rows for `disclosures`: the hooks warning, if a file runs commands, then the load row. */
+/**
+ * Any of the rows for `disclosures`: the permissions warning, if any, then the hooks warning,
+ * if a file runs commands, then the load row.
+ */
 function rowsPattern(disclosures: readonly LoadDisclosure[]): string {
   return `(?:${disclosures.map(disclosureRows).join("|")})`;
 }
@@ -121,17 +131,21 @@ function disclosureRows({ settingsLoads, mcpServers }: LoadDisclosure): string {
 /**
  * Claude 2.1.332's optional warning for pre-approved tool permissions, naming any of the
  * `loaded` settings files. The rules between its header and its closing sentence are the
- * folder's own text, so they are matched as opaque text and nothing is read from them.
+ * folder's own text, so they are matched as opaque text, without a warning sign, and nothing
+ * is read from them. Lazy is enough: the description is anchored, so the match still has to
+ * end at the real closing sentence before the real load row.
  */
 function permissionsWarning(loaded: readonly string[]): string {
   if (loaded.length === 0) return "";
-  const named = loaded.flatMap((file, index) => [
-    [file],
-    ...loaded.slice(index + 1).map((later) => [file, later]),
-  ]);
+  // Every non-empty subset of `loaded`, in its order.
+  const namedFileLists: (readonly string[])[] = [];
+  for (const file of loaded) {
+    for (const subset of [...namedFileLists]) namedFileLists.push([...subset, file]);
+    namedFileLists.push([file]);
+  }
   const count = String.raw`(?:1 tool permission|(?:[2-9]|[1-9]\d+) tool permissions)`;
-  const files = named.map((subset) => joinAsClaudeList(subset)).join("|");
-  return `(?:⚠ This folder pre-approves ${count} in (?:${files}):\\s*\\S.*?\\s*${permissionsClose}\\s*)?`;
+  const files = namedFileLists.map((subset) => joinAsClaudeList(subset)).join("|");
+  return `(?:${permissionsHeader}${count} in (?:${files}):\\s*[^\\s⚠]${permissionsRuleChar}*?\\s*${permissionsClose}\\s*)?`;
 }
 
 /** Claude's list join: `a`, `a and b`, `a, b, and c`. */

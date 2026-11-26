@@ -1,13 +1,15 @@
 /**
  * Shared proof steps for Claude's workspace prompt on the REAL Claude CLI (PRD §5.3, §5.4,
  * C-E2E-28, C-E2E-29): the skip for a Claude that does not disclose hooks, the timeouts, a
- * trusted session's readiness with the folder's code, and the model probe's refusal that leaves
- * the folder untrusted.
+ * project's settings files, an autotrust session and the prompts it answers, a trusted
+ * session's readiness with the folder's code, and the model probe's refusal that leaves the
+ * folder untrusted.
  */
 // biome-ignore-all lint/suspicious/noMisplacedAssertion: these checks are each proof's own assertions.
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ProbeRefusalCategory } from "../../src/claude/list-models.ts";
 import { claudeHooksDisclosureVersion } from "../../src/claude/preflight.ts";
 import { compareVersions } from "../../src/core/versions.ts";
@@ -44,6 +46,26 @@ export const disclosingSkip = skipIf(
   !disclosing && `requires Claude ${claudeHooksDisclosureVersion}+, which discloses hooks`,
 );
 
+/** Writes `body` as JSON at `path`, creating its directory. */
+export function writeJson(path: string, body: object): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(body));
+}
+
+/** Starts an autotrust session and returns it with the trust prompts it answers, in order. */
+export async function autotrusted(project: E2eProject) {
+  const session = await startClaude({
+    cwd: project.cwd,
+    stateDir: project.stateDir,
+    autotrust: true,
+  });
+  const answers: string[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "startup_prompt") answers.push(String(event.label));
+  });
+  return { session, answers };
+}
+
 /** The session reaches `ready`, and then the folder's code writes `marker`. */
 export async function readyWithMarker(session: ClaudeSessionApi, marker: string): Promise<void> {
   const ready = () => (session.status === "ready" ? true : undefined);
@@ -78,10 +100,13 @@ export async function assertProbeRefuses(
     assert.equal(existsSync(marker), false, "the probe never ran the folder's code");
 }
 
-/** A later session in the project is shown the workspace prompt again: it is still untrusted. */
+/**
+ * A later session in the project is shown the workspace prompt again: it is still untrusted,
+ * and the code that writes `marker`, when the folder has any, has not run.
+ */
 export async function assertStillUntrusted(
   project: E2eProject,
-  marker: string,
+  marker: string | undefined,
   disclosesHooks: boolean,
 ): Promise<void> {
   let session: ClaudeSessionApi | undefined;
@@ -89,7 +114,8 @@ export async function assertStillUntrusted(
     session = await startClaude({ cwd: project.cwd, stateDir: project.stateDir, autotrust: false });
     const request = await listedRequest(session);
     assert.equal(request.disclosesHooks, disclosesHooks, "the folder is still untrusted");
-    assert.equal(existsSync(marker), false, "none of the folder's code has run");
+    if (marker !== undefined)
+      assert.equal(existsSync(marker), false, "none of the folder's code has run");
   } finally {
     await cleanup(session);
   }
