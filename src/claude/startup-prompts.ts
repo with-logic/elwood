@@ -15,8 +15,8 @@ import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/star
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
-import { ClaudeAutoModeOfferDecliner } from "./auto-mode-decline.ts";
-import { isClaudeAutoModeOfferMenu } from "./auto-mode-offer.ts";
+import { ClaudeAutoModeOfferDecliner } from "./auto-mode/decline.ts";
+import { isClaudeAutoModeOfferMenu } from "./auto-mode/offer.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -85,9 +85,9 @@ export class ClaudeStartupPromptResponder {
   /**
    * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
    * where a trust gate must withhold unrelated automated keys.
-   * Live adapters must supply `readTrustFrame` from `settledLiveSnapshot`, returning
-   * undefined for pending rendering, synchronized output, or render failure. It also
-   * verifies the auto-mode offer's decline, which runs only when it is supplied.
+   * Live adapters must supply `readSettledFrame` from `settledLiveSnapshot`, returning
+   * undefined for pending rendering, synchronized output, or render failure. Trust reads
+   * it, and so does the auto-mode offer's decline, which runs only when it is supplied.
    * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
    * reader must not replace the settlement-aware reader in a live session.
    */
@@ -99,11 +99,11 @@ export class ClaudeStartupPromptResponder {
       input: string,
       stillValid?: (frameText: string) => boolean,
     ) => TrustWriteResult | Promise<AutomationWriteResult> = write,
-    readTrustFrame?: () => string | undefined,
+    readSettledFrame?: () => string | undefined,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
     if (this.closing) return settled;
-    const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
+    const trust = this.trust.handle(screenText, write, readSettledFrame ?? readFrame);
     if (trust?.kind === "attempted") {
       settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {
@@ -143,8 +143,8 @@ export class ClaudeStartupPromptResponder {
     }
     // Its decline is verified on settled frames, which only a live session can read.
     const offer =
-      readTrustFrame &&
-      this.autoModeOfferDecliner.handle(screenText, writeAutomation, readTrustFrame);
+      readSettledFrame &&
+      this.autoModeOfferDecliner.handle(screenText, writeAutomation, readSettledFrame);
     if (offer) settled.push(offer);
     return settled;
   }

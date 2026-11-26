@@ -6,7 +6,6 @@
  * (C-ATTN-09, C-ATTN-02, C-API-56, C-CLAUDE-26, PRD §5.3, §5.1).
  */
 import { afterEach, expect, test } from "vitest";
-import { offerDeclineSpacingMs } from "../../src/claude/auto-mode-decline.ts";
 import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 import { offerOnScreen, permissionScreen } from "../fixtures/offer-frames.ts";
 import { createFacadeFixture, nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
@@ -74,7 +73,7 @@ test("C-ATTN-09 C-CLAUDE-26 an Enter held behind the offer submits the paste it 
     expect(
       Number(declinedAt) - Number(paintedAt),
       "Elwood's Esc went out past the offer's input guard",
-    ).toBeGreaterThanOrEqual(offerDeclineSpacingMs - 25);
+    ).toBeGreaterThanOrEqual(750 - 25);
     expect(declined).toEqual([]);
     pty.emitData(closed);
     await expect.poll(() => pty.writes).toEqual([paste, esc, "\r"]);

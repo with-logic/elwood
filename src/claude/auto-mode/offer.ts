@@ -22,8 +22,18 @@ const ruleRow = /^[─━▔]{3,}/;
 /** The dialog's own key-hint row: both the menu's and the setup step's end this way. */
 const cancelHint = /Esc to cancel$/i;
 
+/** The last frame read, so the screen rule and the decliner split each frame only once. */
+let lastFrame: { readonly text: string; readonly rows: readonly string[] | undefined } | undefined;
+
 /** The offer's rows between its title and its key hint, or undefined when it is not shown. */
 function offerRows(text: string): readonly string[] | undefined {
+  // Nearly every frame lacks the title: one substring search, with no split or allocation.
+  if (!text.includes(offerTitle)) return undefined;
+  if (lastFrame?.text !== text) lastFrame = { text, rows: readOfferRows(text) };
+  return lastFrame.rows;
+}
+
+function readOfferRows(text: string): readonly string[] | undefined {
   const lines = text.split("\n");
   const title = lines.findLastIndex((line) => line.trim() === offerTitle);
   if (title < 1 || !ruleRow.test(lines[title - 1] as string)) return undefined;

@@ -6,9 +6,8 @@ import { expect, test } from "vitest";
 import {
   ClaudeAutoModeOfferDecliner,
   type OfferDeclineWriter,
-  offerDeclineAttempts,
-} from "../../src/claude/auto-mode-decline.ts";
-import { isClaudeAutoModeOfferMenu } from "../../src/claude/auto-mode-offer.ts";
+} from "../../src/claude/auto-mode/decline.ts";
+import { isClaudeAutoModeOfferMenu } from "../../src/claude/auto-mode/offer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 
 const offer = capturedFrame("claude-2.1.332/auto-mode-offer");
@@ -53,7 +52,8 @@ test("C-CLAUDE-26 an offer that outlasts every attempt is left on screen, unclai
   const decliner = new ClaudeAutoModeOfferDecliner(lifetime.signal, spacingMs);
   const { keys, write, read } = screen(Number.POSITIVE_INFINITY);
   expect(await decliner.handle(read(), write, read)?.settled).toBe("cancelled");
-  expect(keys).toHaveLength(offerDeclineAttempts);
+  // The contract's cap, not the implementation's constant.
+  expect(keys).toHaveLength(4);
   // Still the same appearance: no new decline until the offer has gone and come back.
   expect(decliner.handle(read(), write, read)).toBeUndefined();
   expect(decliner.handle(idle, write, read)).toBeUndefined();

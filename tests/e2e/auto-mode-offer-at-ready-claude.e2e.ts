@@ -11,7 +11,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { offerSessionOptions, offerSetupState, offerShown, seedOffer } from "./auto-mode-offer.ts";
+import {
+  offerActions,
+  offerSessionOptions,
+  offerSetupState,
+  offerShown,
+  seedOffer,
+} from "./auto-mode-offer.ts";
 import {
   cleanup,
   hookNamed,
@@ -23,7 +29,7 @@ import {
   skipTurns,
   waitFor,
 } from "./helpers.ts";
-import { type HeldOutput, holdCliOutput, outputMatcher } from "./output-hold.ts";
+import { type HeldOutput, holdCliOutput } from "./output-hold.ts";
 
 /** How long Elwood's view trails the CLI after `Stop`: far past the offer's paint. */
 const lagMs = 1_500;
@@ -31,15 +37,11 @@ const lagMs = 1_500;
 const settleMs = 2_000;
 
 let held: HeldOutput | undefined;
-let answered = outputMatcher(/Yes✔/);
-let setupStep = outputMatcher(/Spacetotoggle/);
-let offerAnswered = false;
-let setupOpened = false;
+const actions = offerActions();
 holdCliOutput({
   output: (data, output) => {
     held = output;
-    offerAnswered ||= answered(data);
-    setupOpened ||= setupStep(data);
+    actions.observe(data);
   },
 });
 
@@ -54,10 +56,7 @@ for (const run of runs) {
     timeout: 240_000,
   }, async (t) => {
     seedOffer();
-    answered = outputMatcher(/Yes✔/);
-    setupStep = outputMatcher(/Spacetotoggle/);
-    offerAnswered = false;
-    setupOpened = false;
+    actions.reset();
     const project = makeProject("claude");
     let session: ClaudeSessionApi | undefined;
     try {
@@ -101,8 +100,8 @@ for (const run of runs) {
       await sending;
       await delay(settleMs);
       assert.equal(submissions(), 1, "the message is submitted exactly once");
-      assert.equal(offerAnswered, false, "the offer's Yes was never chosen");
-      assert.equal(setupOpened, false, "no setup step opened");
+      assert.equal(actions.offerAnswered, false, "the offer's Yes was never chosen");
+      assert.equal(actions.setupOpened, false, "no setup step opened");
       assert.equal(
         typeof offerSetupState()?.["dismissedAt"],
         "number",

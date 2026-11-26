@@ -8,7 +8,7 @@
  */
 
 import test from "node:test";
-import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode-offer.ts";
+import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode/offer.ts";
 import { claudeStagedComposerClearance } from "../../src/claude/composer/staged-input.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { offerSessionOptions, offerShown, seedOffer } from "./auto-mode-offer.ts";

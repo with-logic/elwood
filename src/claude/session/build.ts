@@ -137,8 +137,8 @@ export async function buildClaudeSession(
       () => promptResponder.closing,
       promptResponder.closingSignal,
     );
-    const trustRead = () => settledLiveSnapshot(renderedTerminal)?.text;
-    const autos = promptResponder.handle(snapshot.text, send, read, guarded, trustRead);
+    const readSettled = () => settledLiveSnapshot(renderedTerminal)?.text;
+    const autos = promptResponder.handle(snapshot.text, send, read, guarded, readSettled);
     dialogs.reconcile();
     emitSettledStartupOutcomes(emitter, "claude", elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),

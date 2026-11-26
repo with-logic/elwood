@@ -4,7 +4,7 @@
  * input and never onto a screen that replaced the menu (C-CLAUDE-26, PRD §5.1).
  */
 import { afterEach, expect, test, vi } from "vitest";
-import { ClaudeAutoModeOfferDecliner } from "../../src/claude/auto-mode-decline.ts";
+import { ClaudeAutoModeOfferDecliner } from "../../src/claude/auto-mode/decline.ts";
 import { guardedClaudeAutomationWrite } from "../../src/claude/startup-prompts.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 

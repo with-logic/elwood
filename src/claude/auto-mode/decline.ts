@@ -3,11 +3,11 @@
  * otherwise block an embedded session after a turn, with its own Esc (`Not now`).
  * Implements PRD §5.1 and C-CLAUDE-26.
  */
-import { waitForInput } from "../core/input/abort.ts";
-import type { AutomationWriteResult } from "../core/startup/barrier.ts";
-import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
-import type { TrustWriteResult } from "../core/trust/responder.ts";
-import { isClaudeAutoModeOfferMenu } from "./auto-mode-offer.ts";
+import { waitForInput } from "../../core/input/abort.ts";
+import type { AutomationWriteResult } from "../../core/startup/barrier.ts";
+import type { SettledStartupOutcome, StartupWriteCompletion } from "../../core/startup/write.ts";
+import type { TrustWriteResult } from "../../core/trust/responder.ts";
+import { isClaudeAutoModeOfferMenu } from "./offer.ts";
 
 /**
  * Between attempts, and before the first. The offer ignores a choice made less than

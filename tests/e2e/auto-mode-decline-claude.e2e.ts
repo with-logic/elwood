@@ -7,9 +7,15 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode-offer.ts";
+import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode/offer.ts";
 import { type ClaudeSessionApi, type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
-import { offerSessionOptions, offerSetupState, offerShown, seedOffer } from "./auto-mode-offer.ts";
+import {
+  offerActions,
+  offerSessionOptions,
+  offerSetupState,
+  offerShown,
+  seedOffer,
+} from "./auto-mode-offer.ts";
 import {
   cleanup,
   hookNamed,
@@ -21,18 +27,10 @@ import {
   skipTurns,
   waitFor,
 } from "./helpers.ts";
-import { holdCliOutput, outputMatcher } from "./output-hold.ts";
+import { holdCliOutput } from "./output-hold.ts";
 
-const answered = outputMatcher(/Yes✔/);
-const setupStep = outputMatcher(/Spacetotoggle/);
-let offerAnswered = false;
-let setupOpened = false;
-holdCliOutput({
-  output: (data) => {
-    offerAnswered ||= answered(data);
-    setupOpened ||= setupStep(data);
-  },
-});
+const actions = offerActions();
+holdCliOutput({ output: (data) => actions.observe(data) });
 
 test("C-CLAUDE-26 Elwood declines Claude's auto-mode setup offer, unattended", {
   skip: skipIf(skipReason("claude"), skipTurns),
@@ -75,8 +73,8 @@ test("C-CLAUDE-26 Elwood declines Claude's auto-mode setup offer, unattended", {
     await sending;
     assert.equal(submissions(), 1, "the held message is submitted exactly once");
     assert.equal(declines.length, 1, "one decline is reported");
-    assert.equal(offerAnswered, false, "the offer's Yes was never chosen");
-    assert.equal(setupOpened, false, "no setup step opened");
+    assert.equal(actions.offerAnswered, false, "the offer's Yes was never chosen");
+    assert.equal(actions.setupOpened, false, "no setup step opened");
     observed.dispose();
   } finally {
     await cleanup(session);

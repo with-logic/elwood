@@ -4,12 +4,13 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode-offer.ts";
+import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode/offer.ts";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
 import { isRecord } from "../../src/core/predicates.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import type { ClaudeSessionApi, StartClaudeOptions } from "../../src/index.ts";
 import { defaultClaudeConfigDir } from "./claude-home.ts";
+import { outputMatcher } from "./output-hold.ts";
 import type { E2eProject } from "./scratch.ts";
 import { waitFor } from "./wait-for.ts";
 
@@ -86,4 +87,34 @@ export async function offerShown(session: ClaudeSessionApi, timeoutMs = 15_000):
       throw new Error(`No offer, and no idle composer either (${session.status}):\n${frame.text}`);
     return false;
   }
+}
+
+/**
+ * Watches the CLI's raw output for the offer's `Yes` being chosen (`Yes ✔`) or the setup step
+ * that `Yes` opens (`Space to toggle`). Feed it every output chunk.
+ */
+export function offerActions() {
+  let answered = outputMatcher(/Yes✔/);
+  let setupStep = outputMatcher(/Spacetotoggle/);
+  let offerAnswered = false;
+  let setupOpened = false;
+  return {
+    observe(data: string): void {
+      offerAnswered ||= answered(data);
+      setupOpened ||= setupStep(data);
+    },
+    /** Forget earlier output, for a file that starts several sessions. */
+    reset(): void {
+      answered = outputMatcher(/Yes✔/);
+      setupStep = outputMatcher(/Spacetotoggle/);
+      offerAnswered = false;
+      setupOpened = false;
+    },
+    get offerAnswered(): boolean {
+      return offerAnswered;
+    },
+    get setupOpened(): boolean {
+      return setupOpened;
+    },
+  };
 }
