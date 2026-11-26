@@ -14,6 +14,9 @@ type ComposerGeometry = { readonly cursorRow?: number; readonly cols?: number | 
 const caretRow = /^\s*[›»]/;
 export const composerRowStart = /^[›»](?:\s|$)/;
 const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
+// A native transcript cell: a reply or tool cell (`• `), or the cell Codex 0.172 draws for a
+// question it asks (`? `; 0.163 drew `• `). The working row shares the bullet but is not one.
+const nativeCell = (row: string): boolean => /^[•?] \S/.test(row) && !codexWorkingScreen.test(row);
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
 export const codexPlaceholders: ReadonlySet<string> = new Set([
   "Ask Codex to do anything",
@@ -63,7 +66,7 @@ function unquotedRows(rows: readonly string[], liveCursor: boolean): readonly st
     if (liveCursor && isUserHistoryRow(row, rows, index))
       userEnd = completeUserHistoryEnd(rows, index);
     if (index < userEnd) return "";
-    if (liveCursor && /^• \S/.test(row) && !codexWorkingScreen.test(row)) {
+    if (liveCursor && nativeCell(row)) {
       quoted = true;
       return "";
     }
@@ -73,13 +76,13 @@ function unquotedRows(rows: readonly string[], liveCursor: boolean): readonly st
   });
 }
 
-/** A native reply bounds consecutive user/question-answer echoes, including wrapped text. */
+/** A native cell bounds consecutive user/question-answer echoes, including wrapped text. */
 function completeUserHistoryEnd(rows: readonly string[], start: number): number {
   let end = start + 1;
   for (; end < rows.length; end++) {
     const row = rows[end] as string;
     if (row === "" || /^ {2,}\S/.test(row) || isUserHistoryRow(row, rows, end)) continue;
-    return /^• \S/.test(row) && !codexWorkingScreen.test(row) ? end : start;
+    return nativeCell(row) ? end : start;
   }
   return start;
 }
