@@ -35,14 +35,16 @@ export async function firstListed(session: CodexSessionApi): Promise<ElwoodDialo
   return required((await session.listDialogs())[0], "a listed dialog request");
 }
 
-export async function openCodex() {
+/** `listen: false` leaves the session without a `dialog` listener. */
+export async function openCodex({ listen = true } = {}) {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd, initialSize: { cols: 100, rows: 30 } });
   const events: ElwoodDialogEvent[] = [];
-  session.on("dialog", (event) => {
-    events.push(event);
-  });
+  if (listen)
+    session.on("dialog", (event) => {
+      events.push(event);
+    });
   /** Codex hides the cursor on the offer. */
   const show = (text: string) => render(session, `${tty(text)}\u001b[?25l`);
   return { session, events, show, cwd, pty: required(ptys.at(-1), "the session's PTY") };

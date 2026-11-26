@@ -186,8 +186,10 @@ export class CodexUpdateDialogs {
     this.reconcile(); // a retired or replaced request clears the replays
     if (!this.current) return;
     const event = Object.freeze({ phase: "raised" as const, request: this.current.request });
-    for (const handler of this.replays) {
-      this.replays.delete(handler);
+    // A listener a replayed one adds waits for the next delivery, which reads the frame first;
+    // one removed, or a request retired, meanwhile skips the rest of this batch.
+    for (const handler of [...this.replays]) {
+      if (!this.replays.delete(handler)) continue;
       this.input.observeNotifications(() => this.input.emitter.notifyReplay(handler, event));
     }
   }

@@ -34,6 +34,62 @@ test("C-ATTN-12 a late listener gets one replay; one that leaves first gets none
   });
 });
 
+test("C-ATTN-12 the first listener, added after a raise no listener saw, gets one replay", async () => {
+  const { session, show } = await openCodex({ listen: false });
+  await closing(session, async () => {
+    await show(offer);
+    await session.sendKeys("\u001b[B");
+    const { id } = await firstListed(session);
+    // The raise is dispatched to no listener before this one registers.
+    await new Promise((resolve) => setImmediate(resolve));
+    const late: ElwoodDialogEvent[] = [];
+    session.on("dialog", (event) => {
+      late.push(event);
+    });
+    await expect.poll(() => summary(late)).toEqual([["raised", id]]);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(summary(late)).toEqual([["raised", id]]);
+  });
+});
+
+test("C-ATTN-12 a listener an earlier replayed listener removes gets no replay", async () => {
+  const { session, id } = await listed();
+  await closing(session, async () => {
+    const first: ElwoodDialogEvent[] = [];
+    const second = vi.fn();
+    let removeSecond: () => void = () => undefined;
+    session.on("dialog", (event) => {
+      first.push(event);
+      removeSecond();
+    });
+    removeSecond = session.on("dialog", second);
+    await expect.poll(() => summary(first)).toEqual([["raised", id]]);
+    expect(second).not.toHaveBeenCalled();
+  });
+});
+
+test("C-ATTN-12 a listener added by a replayed listener waits for a fresh read of the offer", async () => {
+  const { session, events, id } = await listed();
+  await closing(session, async () => {
+    const added: ElwoodDialogEvent[] = [];
+    session.on("dialog", (event) => {
+      if (event.phase !== "raised") return;
+      // Host output ends native evidence for the life of the terminal (§5.13).
+      session.terminal.writeOutput("host banner\r\n");
+      session.on("dialog", (nested) => {
+        added.push(nested);
+      });
+    });
+    await expect
+      .poll(() => summary(events))
+      .toEqual([
+        ["raised", id],
+        ["closed", "unavailable"],
+      ]);
+    expect(summary(added)).toEqual([["closed", "unavailable"]]);
+  });
+});
+
 test("C-ATTN-12 a listener added while a raise waits for dispatch gets that dispatch once", async () => {
   const { session, show, id } = await listed();
   await closing(session, async () => {
