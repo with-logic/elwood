@@ -130,9 +130,8 @@ export type ElwoodWarningEvent =
       readonly message: string;
       // A short, allowlisted error reason only — never raw transcript content.
       readonly reason: PollErrorReason;
-      // Which lifecycle phase failed: a live periodic poll or the final flush at
-      // PTY exit — so lost trailing shutdown activity is distinguishable from a
-      // live-watcher poll failure without a distinct warning code.
+      // Which lifecycle phase failed: a live periodic poll or the final flush at PTY exit, so lost
+      // trailing shutdown activity is distinguishable from a live poll failure without a new code.
       readonly phase: PollPhase;
       readonly raw: string;
     }
