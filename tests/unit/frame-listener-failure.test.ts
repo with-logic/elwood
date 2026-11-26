@@ -8,6 +8,7 @@ import {
   type ElwoodActivityEvent,
   type ElwoodAgentSession,
   type ElwoodSessionStatus,
+  type ElwoodWarningEvent,
   startClaude,
   startCodex,
 } from "../../src/index.ts";
@@ -48,11 +49,11 @@ async function started(agent: keyof typeof adapters) {
   const statuses: ElwoodSessionStatus[] = [];
   const activities: ElwoodActivityEvent[] = [];
   const chunks: string[] = [];
-  const warnings: string[] = [];
+  const warnings: ElwoodWarningEvent[] = [];
   session.on("status", ({ status }) => statuses.push(status));
   session.on("activity", (event) => activities.push(event));
   session.on("terminal:data", ({ data }) => chunks.push(data));
-  session.on("warning", ({ code }) => warnings.push(code));
+  session.on("warning", (event) => warnings.push(event));
   // The startup warning gate opens on a real timer before the test takes over the clock.
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.useFakeTimers();
@@ -65,13 +66,43 @@ async function started(agent: keyof typeof adapters) {
   return { session, statuses, activities, chunks, warnings, paint };
 }
 
+const sentinel = "listener failure 7f3c9e";
+
+type Run = Awaited<ReturnType<typeof started>>;
+
+/** The warnings and warning activities delivered, and any error or frame text they carry. */
+function delivered({ warnings, activities }: Run, agent: keyof typeof adapters) {
+  const activity = activities.filter(({ kind }) => kind === "warning");
+  const text = JSON.stringify([warnings, activity]);
+  const frameText = adapters[agent].dialog.split("\r\n")[0] ?? "";
+  return { warnings, activity, leaked: [sentinel, frameText].filter((t) => text.includes(t)) };
+}
+
+/** One content-free `frame_observer_failed` warning and its activity. */
+function oneWarning({ session }: Run, agent: keyof typeof adapters) {
+  const warning = {
+    elwoodSessionId: session.elwoodSessionId,
+    agent,
+    source: "lifecycle",
+    code: "frame_observer_failed",
+    severity: "warning",
+    message: "A rendered-frame notification failed.",
+    raw: "frame_observer_failed",
+  };
+  const { elwoodSessionId, source } = warning;
+  const text = warning.message;
+  const activity = { elwoodSessionId, agent, source, kind: "warning", label: warning.code, text };
+  return { warnings: [warning], activity: [{ ...activity, raw: warning }], leaked: [] };
+}
+
 test.each([
   "codex",
   "claude",
 ] as const)("C-API-72 %s delivers a blocking frame's notifications despite a throwing status listener", async (agent) => {
-  const { session, statuses, activities, chunks, warnings, paint } = await started(agent);
+  const run = await started(agent);
+  const { session, statuses, activities, chunks, paint } = run;
   session.on("status", () => {
-    throw new Error("listener failure");
+    throw new Error(sentinel);
   });
   const { dialog } = adapters[agent];
   await paint(dialog);
@@ -79,24 +110,25 @@ test.each([
   // The warning is delivered after the frame, as its own activity.
   expect(activities.map(({ kind }) => kind)).toEqual(["status", "attention", "warning"]);
   expect(chunks.at(-1)).toContain(dialog);
-  expect(warnings).toEqual(["frame_observer_failed"]);
+  expect(delivered(run, agent)).toEqual(oneWarning(run, agent));
   // A later failure is not reported again.
   await paint(adapters[agent].composer);
   await paint(dialog);
-  expect(warnings).toEqual(["frame_observer_failed"]);
+  expect(delivered(run, agent)).toEqual(oneWarning(run, agent));
 });
 
 test.each([
   "codex",
   "claude",
 ] as const)("C-API-72 %s delivers a blocking frame despite a throwing attention listener", async (agent) => {
-  const { session, statuses, chunks, warnings, paint } = await started(agent);
+  const run = await started(agent);
+  const { session, statuses, chunks, paint } = run;
   session.on("activity", ({ kind }) => {
-    if (kind === "attention") throw new Error("listener failure");
+    if (kind === "attention") throw new Error(sentinel);
   });
   const { dialog } = adapters[agent];
   await paint(dialog);
   expect(statuses).toEqual(["blocked"]);
   expect(chunks.at(-1)).toContain(dialog);
-  expect(warnings).toEqual(["frame_observer_failed"]);
+  expect(delivered(run, agent)).toEqual(oneWarning(run, agent));
 });

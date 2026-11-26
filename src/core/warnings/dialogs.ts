@@ -1,6 +1,6 @@
 /** Report one content-free dialog observer failure per live session (PRD §5.4). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { reportOnceWhileLive, type SessionWarningEmitter } from "./session.ts";
+import { createOnceWhileLiveReporter, type SessionWarningEmitter } from "./session.ts";
 
 export type DialogObserverFailedWarning = {
   readonly elwoodSessionId: string;
@@ -26,7 +26,7 @@ export function observeDialogNotifications(
   isLive: () => boolean,
 ): (deliver: () => void) => void {
   // Deliver diagnostics outside the dialog observer scope.
-  const report = reportOnceWhileLive(emitter, isLive, () =>
+  const report = createOnceWhileLiveReporter(emitter, isLive, () =>
     Object.freeze({
       elwoodSessionId: session.elwoodSessionId,
       agent: session.agent,

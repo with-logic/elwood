@@ -7,7 +7,7 @@
  */
 
 import { activityFromWarning, type ElwoodActivityEvent } from "../activity/index.ts";
-import { runContained } from "../contained.ts";
+import { runContained, runEach } from "../contained.ts";
 import type { ElwoodWarningEvent } from "../types.ts";
 
 /**
@@ -46,12 +46,12 @@ export function emitSessionWarnings(
   // warnings #2+, whose identities/buffer were already consumed upstream and cannot
   // be recovered. The FIRST error is retained and rethrown only after the whole batch
   // fired, so an enclosing boundary still sees a failure without losing siblings.
-  let firstError: unknown;
-  for (const warning of warnings) {
-    firstError = deliver(() => emit.warning(warning), firstError);
-    firstError = deliver(() => emit.activity(activityFromWarning(warning)), firstError);
-  }
-  if (firstError !== undefined) throw firstError;
+  runEach(
+    ...warnings.flatMap((warning) => [
+      () => emit.warning(warning),
+      () => emit.activity(activityFromWarning(warning)),
+    ]),
+  );
 }
 
 /**
@@ -59,7 +59,7 @@ export function emitSessionWarnings(
  * outside the failed notification, ends once the session closes, and contains failures of
  * the diagnostic's own listeners so they never recursively warn.
  */
-export function reportOnceWhileLive(
+export function createOnceWhileLiveReporter(
   emitter: SessionWarningEmitter,
   isLive: () => boolean,
   warning: () => ElwoodWarningEvent,
@@ -73,14 +73,4 @@ export function reportOnceWhileLive(
       runContained(() => emitSessionWarningsWithRejectionHandling([warning()], emitter));
     });
   };
-}
-
-/** Run a fan-out step; return the FIRST error seen so both steps always run. */
-function deliver(step: () => void, prior?: unknown): unknown {
-  try {
-    step();
-    return prior;
-  } catch (error) {
-    return prior ?? error;
-  }
 }

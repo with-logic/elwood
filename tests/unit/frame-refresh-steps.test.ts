@@ -2,15 +2,21 @@
  * Each step of a frame refresh runs even when an earlier one throws, and the refresh
  * reports the failure instead of throwing (PRD §5.4, C-API-72).
  */
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { claudeScreenFactTable, claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import type { ElwoodSessionStatus, ElwoodStatusDecision } from "../../src/core/types.ts";
 import { createSessionFrameObserver } from "../../src/runtime/session/frames.ts";
-import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
+import { createReadinessGate, type ReadinessGate } from "../../src/runtime/session/readiness.ts";
 import type { StatusEvidenceKind } from "../../src/runtime/status-evidence.ts";
 import { claudeComposer } from "../fixtures/trust-composer.ts";
+
+// Observing a frame arms the readiness deadline, which a failed assertion would leave running.
+const gates: ReadinessGate[] = [];
+afterEach(() => {
+  for (const gate of gates.splice(0)) gate.ready.cancel();
+});
 
 const dialog = "Do you want to create elwood.txt?\n ❯ 1. Yes\n   3. No\n Esc to cancel";
 
@@ -35,6 +41,7 @@ function harness(failing: StatusEvidenceKind, status: ElwoodSessionStatus) {
   };
   const automation = { inputBlocking: false, blockedPrompt: undefined, dispose() {} };
   const readiness = createReadinessGate(() => {}, false);
+  gates.push(readiness);
   const observedByReadiness = vi.spyOn(readiness, "observeReadinessFrame");
   const frames = createSessionFrameObserver(
     {
@@ -54,11 +61,11 @@ function harness(failing: StatusEvidenceKind, status: ElwoodSessionStatus) {
     claudeTrustClearance,
   );
   const observe = (text: string) => frames.observe({ text, title: "" });
-  return { active, automation, submitted, warnings, observedByReadiness, observe, readiness };
+  return { active, automation, submitted, warnings, observedByReadiness, observe };
 }
 
 test("C-API-72 readiness observes a frame whose blocking evidence throws, and one warning reports it", async () => {
-  const { submitted, warnings, observedByReadiness, observe, readiness } = harness(
+  const { submitted, warnings, observedByReadiness, observe } = harness(
     "blocking_prompt_shown",
     "ready",
   );
@@ -70,14 +77,10 @@ test("C-API-72 readiness observes a frame whose blocking evidence throws, and on
   expect(warnings).toEqual([]);
   await Promise.resolve();
   expect(warnings).toMatchObject([{ code: "frame_observer_failed", agent: "claude" }]);
-  readiness.ready.cancel();
 });
 
 test("C-API-72 the automation clearance replay runs after a throwing attention step", () => {
-  const { active, automation, submitted, observe, readiness } = harness(
-    "blocking_prompt_cleared",
-    "blocked",
-  );
+  const { active, automation, submitted, observe } = harness("blocking_prompt_cleared", "blocked");
   // Automation owns the dialog, then releases it on a frame that shows the composer.
   automation.inputBlocking = true;
   observe(dialog);
@@ -86,5 +89,4 @@ test("C-API-72 the automation clearance replay runs after a throwing attention s
   // The attention step's clearance threw; the replay submitted it again.
   expect(submitted.filter((kind) => kind === "blocking_prompt_cleared")).toHaveLength(2);
   expect(active.status).toBe("ready");
-  readiness.ready.cancel();
 });

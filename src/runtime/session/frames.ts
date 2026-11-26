@@ -10,7 +10,7 @@ import {
 } from "../../core/rendered-observers.ts";
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
-import { reportFrameObserverFailure } from "../../core/warnings/frames.ts";
+import { createFrameObserverFailureReporter } from "../../core/warnings/frames.ts";
 import type { SessionWarningEmitter } from "../../core/warnings/session.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
@@ -41,7 +41,7 @@ export function createSessionFrameObserver(
   readiness: ReadinessGate,
   isIdleComposer: TrustClearance,
 ) {
-  const reportFailure = reportFrameObserverFailure(
+  const reportFailure = createFrameObserverFailureReporter(
     observers.warnings,
     observers,
     () => session()?.closing.signal.aborted === false,

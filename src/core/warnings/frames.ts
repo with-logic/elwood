@@ -1,14 +1,15 @@
 /** Report one content-free rendered-frame notification failure per live session (PRD §5.4, C-API-72). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { FrameObserverFailedWarning } from "./lifecycle.ts";
-import { reportOnceWhileLive, type SessionWarningEmitter } from "./session.ts";
+import { createOnceWhileLiveReporter, type SessionWarningEmitter } from "./session.ts";
 
-export function reportFrameObserverFailure(
+/** The returned callback reports; calling this only creates it. */
+export function createFrameObserverFailureReporter(
   emitter: SessionWarningEmitter,
   session: { readonly elwoodSessionId: string; readonly agent: ElwoodAgentKind },
   isLive: () => boolean,
 ): () => void {
-  return reportOnceWhileLive(emitter, isLive, () =>
+  return createOnceWhileLiveReporter(emitter, isLive, () =>
     Object.freeze({
       elwoodSessionId: session.elwoodSessionId,
       agent: session.agent,
