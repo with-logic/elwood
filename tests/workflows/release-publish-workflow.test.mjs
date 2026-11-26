@@ -22,23 +22,23 @@ const unreachable = "http://127.0.0.1:1023/";
 
 for (const version of ["0.8.0", "0.7.0"]) {
   test(`a re-run skips ${version}, which this workflow published from the release commit`, () => {
-    const { publishes, result } = publish({ version, releaseCommit: commitOf[version] });
+    const { publishLog, result } = publish({ version, releaseCommit: commitOf[version] });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(publishes, "");
+    assert.equal(publishLog, "");
     assert.match(result.stdout, /This workflow already published .*; skipping\./u);
   });
 }
 
 // The flaky registry fails a path's first five requests, each a different way.
 test("a lookup retries every transient failure, as often as fetch-retries allows", () => {
-  const { publishes, result } = publish({
+  const { publishLog, result } = publish({
     name: "@with-logic/elwood-flaky",
     version: "0.8.0",
     releaseCommit: commitOf["0.8.0"],
     env: retrying(5),
   });
   assert.equal(result.status, 0, result.stdout);
-  assert.equal(publishes, "");
+  assert.equal(publishLog, "");
   assert.match(result.stdout, /: published-here\n/u);
 });
 

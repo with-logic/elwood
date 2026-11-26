@@ -7,6 +7,7 @@
 
 // biome-ignore-all lint/suspicious/noMisplacedAssertion: Failure tests call this check inside their test.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,7 +37,9 @@ const dryRunPublish =
 
 /**
  * Starts the local registry for the calling test file, and returns its
- * scratch directory and `publish()`, which runs the step for one package.
+ * scratch directory, `publish()`, which runs the step for one package, and
+ * `npmPublishDryRun()`, which runs npm's own dry-run publish for one, without
+ * the step.
  */
 export function usePublishStep() {
   const scratch = mkdtempSync(join(tmpdir(), "elwood-release-publish-"));
@@ -48,6 +51,11 @@ export function usePublishStep() {
     registry?.stop();
     rmSync(scratch, { recursive: true, force: true });
   });
+  function packageDirectory(name, version) {
+    const cwd = mkdtempSync(join(scratch, "package-"));
+    writeFileSync(join(cwd, "package.json"), JSON.stringify({ name, version }));
+    return cwd;
+  }
   function publish({
     name = "@with-logic/elwood",
     version,
@@ -55,8 +63,7 @@ export function usePublishStep() {
     prelude = "",
     env = {},
   }) {
-    const cwd = mkdtempSync(join(scratch, "package-"));
-    writeFileSync(join(cwd, "package.json"), JSON.stringify({ name, version }));
+    const cwd = packageDirectory(name, version);
     const log = join(cwd, "publish.log");
     writeFileSync(log, "");
     const result = runStep("name: Publish to npm", {
@@ -68,17 +75,27 @@ export function usePublishStep() {
       },
       prelude: `${dryRunPublish}\n${prelude}`,
     });
-    return { publishes: readFileSync(log, "utf8"), result };
+    return { publishLog: readFileSync(log, "utf8"), result };
   }
-  return { publish, scratch };
+  function npmPublishDryRun({ name = "@with-logic/elwood", version }) {
+    return spawnSync("npm", ["publish", "--access", "public", "--dry-run"], {
+      cwd: packageDirectory(name, version),
+      encoding: "utf8",
+      env: { ...process.env, ...registry.env },
+    });
+  }
+  return { npmPublishDryRun, publish, scratch };
 }
 
-/** Asserts that a step failed on an `::error::` ending in `reason`, without publishing. */
-export function assertFailedWithoutPublishing({ publishes, result }, reason) {
+/** Asserts that a step failed on an `::error::` line ending in `reason`, without publishing. */
+export function assertFailedWithoutPublishing({ publishLog, result }, reason) {
   assert.equal(result.status, 1);
-  assert.equal(publishes, "");
-  assert.ok(result.stdout.includes(`::error::`), result.stdout);
-  assert.ok(result.stdout.includes(`${reason}\n`), result.stdout);
+  assert.equal(publishLog, "");
+  const errorLines = result.stdout.split("\n").filter((line) => line.startsWith("::error::"));
+  assert.ok(
+    errorLines.some((line) => line.endsWith(reason)),
+    result.stdout,
+  );
   // The registry's publisher email stays out of the log.
   assert.ok(!`${result.stdout}${result.stderr}`.includes(handPublisher), result.stdout);
 }

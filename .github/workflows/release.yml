@@ -14,8 +14,11 @@ name: Release
 # fails the run. A version that a newer stable, undeprecated one on npm has
 # overtaken when the publish step looks is not published, because it cannot
 # take `latest`: the step fails, naming the newer version. Release runs take
-# turns, so only a version published by hand can land between that look and
-# the upload. The newest GitHub release stays Latest.
+# turns, but a tag push, dispatch or re-run runs this file as it is at its
+# commit, and a revision without `concurrency` does not wait: release only
+# from commits that have it. A run of such a revision, like a version
+# published by hand, can land between that look and the upload. The newest
+# GitHub release stays Latest.
 on:
   push:
     branches: [main]
