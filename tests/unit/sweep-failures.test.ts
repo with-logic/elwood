@@ -5,11 +5,22 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  isSweepFailure,
   MAX_REPORTED_GROUPS,
   SweepFailures,
 } from "../../src/runtime/shutdown/detached-sweep/failures.ts";
 
 describe("C-LIFE-10 sweep failures", () => {
+  test("only an array of group ids makes an error a sweep failure", () => {
+    const failures = new SweepFailures();
+    failures.record("process table unreadable", undefined, []);
+    expect(isSweepFailure(failures.result() as Error)).toBe(true);
+    expect(isSweepFailure(new Error("plain"))).toBe(false);
+    expect(isSweepFailure(Object.assign(new Error("odd"), { processGroupIds: "7001" }))).toBe(
+      false,
+    );
+  });
+
   test("nothing recorded is no failure", () => {
     expect(new SweepFailures().result()).toBeUndefined();
   });
