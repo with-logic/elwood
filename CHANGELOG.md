@@ -19,6 +19,16 @@ back each entry are listed in `prd/14-conformance.md`.
   draws next, and holds input through that screen without reporting it as
   `codex-unidentified-dialog`.
 
+- Report a startup screen Elwood does not recognize as `blocked` from the
+  10-second readiness deadline instead of only at the 60-second backstop. Claude's
+  first-launch text-style picker and Codex's sign-in screen are examples. The
+  session raises `claude-unrecognized-startup` or `codex-unrecognized-startup`
+  attention, and an `unrecognized_startup` activity labelled
+  `initial_ready_deadline` carries the screen text. Answer it with `sendKeys`.
+  Queued input is released once a verified composer follows. A Codex composer
+  whose footer Elwood cannot verify is reported the same way, and `elwood run`
+  fails such a start as `blocked_prompt`.
+
 ## [0.8.0] - 2026-11-25
 
 - Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,

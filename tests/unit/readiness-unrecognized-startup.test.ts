@@ -31,7 +31,7 @@ test("C-ATTN-09 the deadline re-reads the frame when readiness did not fire", ()
   expect(subject.unrecognizedStartup.classify(idle, false, screen)).toBe(true);
 });
 
-test("C-ATTN-09 a deadline that fires readiness re-reads nothing, and readiness ends the screen", () => {
+test("C-ATTN-09 a deadline that fires readiness re-reads nothing", () => {
   vi.useFakeTimers();
   const { subject, ready, reread } = gate();
   subject.observeReadinessFrame({ ...idle, composer_visible: true }, false, "configured composer");
@@ -39,6 +39,17 @@ test("C-ATTN-09 a deadline that fires readiness re-reads nothing, and readiness 
   vi.advanceTimersByTime(10_000);
   expect(ready).toHaveBeenCalledOnce();
   expect(reread).not.toHaveBeenCalled();
+});
+
+test("C-ATTN-09 readiness after the deadline ends unrecognized startup screens", () => {
+  vi.useFakeTimers();
+  const { subject, ready } = gate();
+  subject.observeReadinessFrame(idle, false, screen.text);
+  subject.ready.armDeadline();
+  vi.advanceTimersByTime(10_000);
+  expect(subject.unrecognizedStartup.classify(idle, false, screen)).toBe(true);
+  subject.observeReadinessFrame({ ...idle, composer_visible: true }, false, "configured composer");
+  expect(ready).toHaveBeenCalledOnce();
   expect(subject.unrecognizedStartup.classify(idle, false, screen)).toBe(false);
 });
 

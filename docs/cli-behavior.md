@@ -77,11 +77,13 @@ also carried the thread name (the first prompt, cut with an ellipsis). The captu
 - An Elwood session always has a badge on 0.170.0: Codex warns that it ignores the
   `hookTrust` session flag that Elwood passes.
 
-A footer that the grammar does not recognize leaves the session `running`: it never
-becomes `ready` and never types a queued prompt, and a host that waits for `ready` before
-it calls `stop()` never reaches that call (`stop()` itself works while the session is
-`running`). A short directory in a wide terminal hides the wrapped shapes. Every width
-above reached `ready` and completed its turn.
+A footer that the grammar does not recognize keeps the session from `ready`: it never
+types a queued prompt, and a host that waits for `ready` before it calls `stop()` never
+reaches that call (`stop()` itself works in any live status). From the readiness
+deadline the session reports `blocked` on it with `codex-unrecognized-startup`, since a
+composer Elwood cannot verify is a startup screen it does not recognize (C-ATTN-09). A
+short directory in a wide terminal hides the wrapped shapes. Every width above reached
+`ready` and completed its turn.
 
 A continuation row counts only directly beneath a status row, or another continuation
 row, that the terminal's width cut: the row above, one space and the continuation's first
@@ -116,6 +118,35 @@ cursor and surrounding fence and chrome. A separately configured launch showed
 the native composer with its auto-mode footer and passed this check without a
 prompt. At the 60-second backstop, an unfamiliar screen stays held and appears
 in live-only `unrecognized_startup` activity. C-API-28, C-ATTN-06.
+
+**Unrecognized startup screens block from the readiness deadline (2026-11-25).** A
+host learned of a screen like that theme picker only at the 60-second backstop, with
+the session still `running`. From the 10-second deadline the session is now `blocked`
+with `<agent>-unrecognized-startup` attention and an `initial_ready_deadline` report of
+the screen (§5.4, C-ATTN-09). Two real screens do this, each reported 10 s after the
+first frame (C-E2E-28, C-E2E-29):
+
+- Claude 2.1.332's first launch, with a config dir that has not finished onboarding
+  (no `hasCompletedOnboarding`, `lastOnboardingVersion` or `theme` in `.claude.json`),
+  draws the text-style picker (`❯ ✔ Auto (match terminal)` and a diff preview), then
+  `Security notes:` with `Press Enter to continue`, then, in some terminals, `Use
+  Claude Code's terminal setup?`, then the workspace trust question. The picker is
+  static, so the deadline re-reads the frame instead of waiting for a repaint. Enter
+  answers the picker and the notes. **Do not press Enter on the terminal-setup offer:**
+  it edits the user's own terminal configuration, outside any config dir. In
+  Alacritty, detected through `ALACRITTY_*` variables, it appended a Shift+Enter
+  binding to `~/.config/alacritty/alacritty.toml` and left a
+  `alacritty.toml.<hash>.bak` beside it. Esc skips it ("Esc to skip"), and the e2e
+  unsets those variables too.
+- Codex 0.171.0, on a `CODEX_HOME` with no `auth.json`, draws `Welcome to Codex,
+  OpenAI's command-line coding agent` over an animated logo that repaints about four
+  times a second, with `> 1. Sign in with ChatGPT`, `2. Sign in with Device Code`,
+  `3. Sign in another way` and `Press enter to continue`. Its caret is an ASCII `>`,
+  not the composer's `›`. The animation means a run of frames, which reports once.
+  `3` leads to an API-key page that prefills `OPENAI_API_KEY` and shows it in full.
+  An `OPENAI_API_KEY` that the session's `env` overrides still appears there when
+  the launch shell's startup files export it. A report of that page would carry the
+  key, so C-E2E-29 stays on the first page and never prints the screen.
 
 **Codex 0.164 paints a boot composer before its session is configured
 (2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do

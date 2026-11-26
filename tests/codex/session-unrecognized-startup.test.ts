@@ -132,8 +132,11 @@ test("C-ATTN-09 work on screen clears the block to running", async () => {
 
 test("C-ATTN-09 after the first readiness no screen is an unrecognized startup screen", async () => {
   const { statuses, paint, reports } = await start();
-  await paint(codexTty(codexComposer));
+  // The deadline passes on the boot composer, so readiness comes after it.
+  await paint(codexTty(boot));
   await vi.advanceTimersByTimeAsync(10_000);
+  await paint(codexTty(codexComposer));
+  await vi.advanceTimersByTimeAsync(500);
   expect(statuses).toEqual(["ready"]);
   await paint(tty(signIn));
   await vi.advanceTimersByTimeAsync(60_000);
