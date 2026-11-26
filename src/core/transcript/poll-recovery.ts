@@ -1,7 +1,8 @@
 /**
- * Non-throwing recovery for a failed transcript poll (PRD §5.4 and §5.7 `transcript_poll_stopped`,
- * C-CODEX-20). `finish()` and the poll-error diagnostic can each throw a listener error, which would
- * become a host-terminating unhandled rejection, so each step is contained.
+ * Non-throwing recovery for a failed transcript poll, shared by the Claude and Codex watchers
+ * (PRD §5.4 and §5.7 `transcript_poll_stopped`, C-CODEX-20). `finish()` and the poll-error
+ * diagnostic can each throw a listener error, which would terminate the host from a timer, so
+ * each step is contained.
  */
 export function recoverFromPollError(
   watcher: { finish(): void; stop(): void },
