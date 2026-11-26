@@ -888,11 +888,16 @@ workspace answer, Claude 2.1.332 shows `New MCP server found in this project:
 calls require approval. Learn more in the MCP documentation.`, cursor rows `Use this
 MCP server`, `Use this and all future MCP servers in this project`, and `❯ Continue
 without using this MCP server`, and the footer `Enter to confirm · Esc to reject`
-(`tests/fixtures/claude-2.1.332/trust/mcp-server-120.txt`). The session waits on it,
-and the server starts only after `Use this MCP server`. Elwood's MCP gate accepts no
-body and does not know that footer, so the prompt fails closed: `autotrust: true`
-answers the workspace prompt, then stays `blocked` here, and the server never
-starts. The model probe refuses the prompt from its header. C-E2E-29.
+(`tests/fixtures/claude-2.1.332/trust/mcp-server-*.txt`). The session waits on it,
+and the server starts only after `Use this MCP server`. Elwood recognizes the prompt
+only with that body, and binds the footer to it, so `Esc to reject` ends no other
+dialog: `autotrust: true` chooses `Use this MCP server`, never the all-future row,
+which persists approval for every server the folder adds later, and the model probe
+refuses the prompt from its header. For a server a plugin provides, the binary
+appends ` (from plugin <plugin>)` to the header (not captured); Elwood does not
+recognize that variant, so it fails closed. For several new servers at once,
+the binary draws a checklist instead, `<N> new MCP servers found in this project`,
+which Elwood does not recognize (not captured). C-E2E-29.
 
 **Claude 2.1.331 displayed a launch subdirectory but persisted trust at the
 repository root.** The discovery matcher verifies the full path in the native
