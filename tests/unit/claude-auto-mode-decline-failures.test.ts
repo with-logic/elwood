@@ -162,3 +162,22 @@ test("C-CLAUDE-27 caller input during a dismissal the menu then undoes hands the
   expect(await settled).toBe("cancelled");
   expect(keys).toEqual([esc]);
 });
+
+test("C-CLAUDE-27 a settled menu frame between checks undoes a dismissal the check cannot read", async () => {
+  const fakeSpacingMs = fakeOfferSpacing();
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
+  const { keys, write } = scripted([]);
+  let settledFrame: string | undefined = offer;
+  const settled = decliner.handle(offer, write, () => settledFrame)?.settled;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  // A settled chunk of a repaint lacks the menu, then the completed repaint shows it again.
+  decliner.handle(idle, write, () => idle);
+  decliner.handle(offer, write, () => offer);
+  // The check's own read finds rendering pending, so it cannot undo the dismissal itself.
+  settledFrame = undefined;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  expect(keys).toEqual([esc, esc]);
+  settledFrame = idle;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  expect(await settled).toBe("answered");
+});

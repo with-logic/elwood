@@ -29,11 +29,6 @@ export type DeclineWriter = (
   stillValid: (frameText: string) => boolean,
 ) => TrustWriteResult | Promise<AutomationWriteResult>;
 
-/** A settled frame that `shows` nothing of; an unreadable one proves nothing either way. */
-function settledWithout(frame: string | undefined, shows: (text: string) => boolean): boolean {
-  return frame !== undefined && !shows(frame);
-}
-
 /** Escape, the documented decline of Claude's first-party prompts. */
 export const declineKey = "\u001b";
 
@@ -79,12 +74,12 @@ export class ClaudeAutoModeOfferDecliner {
     write: DeclineWriter,
     readSettled: () => string | undefined,
   ): SettledStartupOutcome<"claude"> | undefined {
+    if (this.appearance === "declining") this.noteFrame(readSettled());
     if (!isClaudeAutoModeOfferMenu(frameText)) {
       // A partial repaint, or the setup step `Yes` opens, drops the menu while the offer
       // stays up, so only a settled frame without any of the offer ends an appearance.
-      if (this.appearance === "spent" && settledWithout(readSettled(), isClaudeAutoModeOffer))
-        this.appearance = "none";
-      else if (this.appearance === "declining") this.noteDismissal(readSettled);
+      const settled = this.appearance === "spent" ? readSettled() : undefined;
+      if (settled !== undefined && !isClaudeAutoModeOffer(settled)) this.appearance = "none";
       return undefined;
     }
     if (this.appearance !== "none" || this.signal.aborted) return undefined;
@@ -110,12 +105,15 @@ export class ClaudeAutoModeOfferDecliner {
     !this.humanOwned && isClaudeAutoModeOfferMenu(frameText);
 
   /**
-   * Records the dismissal as soon as a settled frame shows it, so caller input during the
-   * rest of the spacing wait cannot take a decline that has already landed.
+   * Tracks Elwood's dismissal on every settled frame while declining, so caller input during
+   * the rest of the spacing wait cannot take a decline that has already landed. The menu gone
+   * after an Esc and before caller input shows it; the menu back undoes one seen mid-repaint.
+   * An unreadable frame shows nothing either way.
    */
-  private noteDismissal(readSettled: () => string | undefined): void {
-    if (this.escapes === 0 || this.humanOwned) return;
-    if (settledWithout(readSettled(), isClaudeAutoModeOfferMenu)) this.dismissed = true;
+  private noteFrame(settledFrame: string | undefined): void {
+    if (settledFrame === undefined) return;
+    if (isClaudeAutoModeOfferMenu(settledFrame)) this.dismissed = false;
+    else if (this.escapes > 0 && !this.humanOwned) this.dismissed = true;
   }
 
   /**
@@ -158,15 +156,14 @@ export class ClaudeAutoModeOfferDecliner {
 
   /** How the decline ends at this check, or undefined to attempt again. */
   private check(frame: string | undefined): StartupWriteCompletion | undefined {
-    const menuShown = frame !== undefined && isClaudeAutoModeOfferMenu(frame);
-    // A settled frame with the menu back shows that a dismissal seen mid-repaint was not one.
-    if (menuShown) this.dismissed = false;
-    // Otherwise a seen dismissal wins over caller input, an unreadable frame and exhaustion.
+    this.noteFrame(frame);
+    // A seen dismissal wins over caller input, an unreadable frame and exhaustion.
     if (this.dismissed) return "answered";
     if (this.humanOwned) return "cancelled";
-    if (frame !== undefined && !menuShown) return this.escapes > 0 ? "answered" : "cancelled";
-    if (this.escapes === maxOfferEscapes && menuShown) return "cancelled";
-    return undefined;
+    if (frame === undefined) return undefined;
+    // A menu gone before any Esc went out is not Elwood's dismissal.
+    if (!isClaudeAutoModeOfferMenu(frame)) return "cancelled";
+    return this.escapes === maxOfferEscapes ? "cancelled" : undefined;
   }
 
   /** One Esc: written, withheld (it never reached the PTY, so it spends no Escape), or rejected. */
