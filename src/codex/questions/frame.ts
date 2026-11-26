@@ -119,7 +119,8 @@ function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFo
   if (requireSingleQuestion && count !== 1) return undefined;
   return { start, count, index: Number(match[1]) - 1, notes };
 }
-/** Native choice lists hide the cursor; a working redraw leaves its position above the panel. */
+/** Native choice lists hide the cursor; a working redraw leaves it above the panel, after the
+ * last working-row cell Codex changed: the pulsing glyph, an elapsed-time digit or the row's end. */
 function questionCursor(
   frame: QuestionFrame,
   lines: readonly string[],
@@ -131,7 +132,8 @@ function questionCursor(
   return (
     kind === "queued" &&
     frame.cursorVisible === false &&
-    frame.cursorX === row.length &&
+    frame.cursorX > 0 &&
+    frame.cursorX <= row.length &&
     codexWorkingScreen.test(row) &&
     lines.slice(frame.cursorRow + 1, start).every((line) => !line.trim())
   );
