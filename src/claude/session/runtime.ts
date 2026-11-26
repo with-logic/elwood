@@ -27,7 +27,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "../command.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
-import type { ProbeWorkspaceTrust } from "../probe-trust.ts";
+import type { ProbeTrustOptions } from "../probe-trust.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
 import type { ClaudeLaunchTrustEvidence } from "../workspace-trust/target.ts";
@@ -37,7 +37,7 @@ export type ClaudeLaunchOptions = StartClaudeOptions & {
   readonly env: ChildEnvironment;
   readonly launchDirectory: CheckedLaunchDirectory;
   /** Internal, set only by `listClaudeModels`: its workspace trust policy (§5.3). */
-  readonly probeTrust?: ProbeWorkspaceTrust | undefined;
+  readonly probeTrust?: ProbeTrustOptions | undefined;
 };
 
 export type BuildClaudeSessionInput = {
