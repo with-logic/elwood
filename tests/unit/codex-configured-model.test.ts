@@ -99,6 +99,14 @@ describe("Codex configured default model", () => {
     expect(configuredCodexModel(path)).toBe("gpt-6.1-sol");
   });
 
+  // This scanner does not read a multiline value; the selected profile still sets the key.
+  test("C-API-23 a multiline model in the selected profile reads as empty, not the root's", () => {
+    const path = tempCodexHome(
+      'model = "gpt-6.1-sol"\nprofile = "fast"\n\n[profiles.fast]\nmodel = """\ngpt-6-luna"""\n',
+    );
+    expect(configuredCodexModel(path)).toBe("");
+  });
+
   test("C-API-23 falls back to the root model when the selected profile is missing", () => {
     const path = tempCodexHome('profile = "gone"\nmodel = "gpt-6.1-sol"\n');
     expect(configuredCodexModel(path)).toBe("gpt-6.1-sol");

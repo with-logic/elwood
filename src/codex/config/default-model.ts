@@ -9,11 +9,7 @@ import type { AgentModelOption } from "../../core/models/rows.ts";
 import { withCodexConfigLock } from "./lock.ts";
 import { readBoundedTextFile } from "./read.ts";
 import { withCodexServiceTiers } from "./service-tiers.ts";
-
-const tableHeader = /^\s*\[/;
-const profileTable = /^\s*\[\s*profiles\.(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*\]/;
-const modelKey = /^\s*model\s*=\s*(?:"([^"]*)"|'([^']*)')/;
-const profileKey = /^\s*profile\s*=\s*(?:"([^"]*)"|'([^']*)')/;
+import { configuredCodexString } from "./toml-keys.ts";
 
 /**
  * Marks the configured default once per listing, under the lock for the session's config. A
@@ -52,24 +48,12 @@ export function markCodexDefault(
 
 /**
  * The model a plain `codex` launch with the config at `path` runs: the `model` of the profile
- * the root `profile` key selects, else the root `model` key. TOML requires root keys to
- * precede the first table header, so a `model` inside any other table is never read.
- * Undefined when the config names no model and Codex falls back to its built-in default.
+ * the root `profile` key selects, else the root `model` key. Undefined when the config names no
+ * model and Codex falls back to its built-in default.
  */
 export function configuredCodexModel(path: string): string | undefined {
   const text = readConfig(path);
-  if (text === undefined) return undefined;
-  const lines = keyLines(text);
-  const root = tableBody(lines, -1);
-  const profile = stringValue(root, profileKey);
-  const selected =
-    profile === undefined
-      ? -1
-      : lines.findIndex((line) => profileNameFromTableHeader(line) === profile);
-  return (
-    (selected < 0 ? undefined : stringValue(tableBody(lines, selected), modelKey)) ??
-    stringValue(root, modelKey)
-  );
+  return text === undefined ? undefined : configuredCodexString(text, "model");
 }
 
 /** Only a missing file means "no config"; any other failure must not pass as one. */
@@ -83,74 +67,4 @@ function readConfig(path: string): string | undefined {
       { path, code: errnoCode(error) },
     );
   }
-}
-
-/**
- * The config's lines, with every line that starts inside a multiline string blanked: that
- * text is a value (an instruction quoting `model = "…"`, say), never a key or a header.
- */
-function keyLines(text: string): readonly string[] {
-  let open: string | undefined;
-  return text.split("\n").map((line) => {
-    const inValue = open !== undefined;
-    open = openAtLineEnd(line, open);
-    return inValue ? "" : line;
-  });
-}
-
-/** The multiline-string delimiter still open after `line`, given the one open before it. */
-function openAtLineEnd(line: string, openAtStart: string | undefined): string | undefined {
-  let open = openAtStart;
-  let at = 0;
-  while (at < line.length) {
-    if (open === undefined && line[at] === "#") return undefined;
-    const delimiter = open ?? stringOpening(line, at);
-    if (delimiter === undefined) {
-      at += 1;
-      continue;
-    }
-    const close = closingIndex(line, open === undefined ? at + delimiter.length : at, delimiter);
-    // A single-line string cannot span lines; an unterminated one just ends this line.
-    if (close < 0) return delimiter.length === 3 ? delimiter : undefined;
-    open = undefined;
-    at = close + delimiter.length;
-  }
-  return open;
-}
-
-/** The delimiter of a string opening at `at`, the multiline form before the plain quote. */
-function stringOpening(line: string, at: number): string | undefined {
-  const quote = line[at];
-  if (quote !== '"' && quote !== "'") return undefined;
-  return line.startsWith(quote.repeat(3), at) ? quote.repeat(3) : quote;
-}
-
-/** Where `delimiter` closes, from `from`; basic (`"`) strings skip backslash escapes. */
-function closingIndex(line: string, from: number, delimiter: string): number {
-  for (let at = from; at < line.length; at += 1) {
-    if (delimiter.startsWith('"') && line[at] === "\\") at += 1;
-    else if (line.startsWith(delimiter, at)) return at;
-  }
-  return -1;
-}
-
-/** The key lines after the header at `header` (-1 for the root) up to the next header. */
-function tableBody(lines: readonly string[], header: number): readonly string[] {
-  const rest = lines.slice(header + 1);
-  const end = rest.findIndex((line) => tableHeader.test(line));
-  return end < 0 ? rest : rest.slice(0, end);
-}
-
-/** The `<name>` of a `[profiles.<name>]` header line, else undefined. */
-function profileNameFromTableHeader(line: string): string | undefined {
-  const match = profileTable.exec(line);
-  return match?.[1] ?? match?.[2] ?? match?.[3];
-}
-
-function stringValue(lines: readonly string[], key: RegExp): string | undefined {
-  for (const line of lines) {
-    const match = key.exec(line);
-    if (match) return match[1] ?? match[2];
-  }
-  return undefined;
 }
