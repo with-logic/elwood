@@ -24,6 +24,7 @@ import { sessionRuntime } from "../../state/runtime-paths.ts";
 import { releaseLaunchSocket } from "../../state/socket-home.ts";
 import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import { createSessionRecord, defaultStateDir, type SessionRecord } from "../../state/store.ts";
+import { validateConfigOverrides } from "../config/overrides.ts";
 import * as preflight from "../preflight.ts";
 import { type CodexLaunchOptions, codexHomeReportPath, explainCodexStartFailure } from "../pty.ts";
 import { buildCodexSession } from "./build.ts";
@@ -114,13 +115,15 @@ export function startCodexFromRecord(
 ) {
   // Validate the effort enum before any spawn (C-CODEX-21): both start and resume funnel
   // through here. Codex validates server-side (a bad value fails at the first turn), so
-  // this turns a deferred provider error into a fast, clear start-time rejection.
+  // this turns a deferred provider error into a fast, clear start-time rejection. Readiness
+  // reads `configOverrides` after the PTY spawns, so its shape is checked here too (C-CODEX-03).
   validateSpeed("codex", options.serviceTier);
   validateReasoningEffort(
     options.reasoningEffort,
     codexReasoningEfforts,
     "codex_invalid_reasoning_effort",
   );
+  validateConfigOverrides(options.configOverrides);
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
   // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure

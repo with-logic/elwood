@@ -48,7 +48,7 @@ const routes = [
 ] as const;
 
 for (const route of routes) {
-  test(`C-E2E-34 Codex reaches ready only once it shows the effort ${route.label} requested, so Plan mode survives`, {
+  test(`C-E2E-34 Codex reaches ready only once it shows the effort requested via ${route.label}, so Plan mode survives`, {
     skip: skipIf(skipReason("codex"), pinnedSkip),
     timeout: 180_000,
   }, async (t) => {

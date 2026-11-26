@@ -5,8 +5,13 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import type { CodexSessionImpl } from "../../src/codex/session/instance.ts";
-import { startCodex } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import {
+  type ResumeCodexOptions,
+  resumeCodex,
+  type StartCodexOptions,
+  startCodex,
+} from "../../src/index.ts";
+import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -56,5 +61,34 @@ describe("CodexSessionApi lifecycle edges", () => {
       message: expect.stringContaining("bogus"),
     });
     expect(ptys).toHaveLength(0); // validation happens before the launch — no PTY spawned
+  });
+
+  test.each([
+    ["a string", "model_reasoning_effort=low"],
+    ["a non-string entry", ["model_reasoning_effort=low", 42]],
+  ])("C-CODEX-03 a configOverrides that is %s rejects before spawn", async (_label, overrides) => {
+    installFakes();
+    // A dynamically typed caller's value, which the declared type would refuse.
+    const options: StartCodexOptions = { cwd: tempDir() };
+    Reflect.set(options, "configOverrides", overrides);
+    await expect(startCodex(options)).rejects.toMatchObject({
+      code: "codex_invalid_config_overrides",
+      message: "configOverrides must be an array of strings.",
+    });
+    expect(ptys).toHaveLength(0); // no PTY or hook bridge is left behind
+  });
+
+  test("C-CODEX-03 a resume with a configOverrides that is not an array rejects before spawn", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const first = await startCodex({ cwd });
+    await becomeReady(first.elwoodSessionId, cwd);
+    await first.stop();
+    const options: ResumeCodexOptions = { cwd, elwoodSessionId: first.elwoodSessionId };
+    Reflect.set(options, "configOverrides", "service_tier=fast");
+    await expect(resumeCodex(options)).rejects.toMatchObject({
+      code: "codex_invalid_config_overrides",
+    });
+    expect(ptys).toHaveLength(1); // only the first launch's
   });
 });

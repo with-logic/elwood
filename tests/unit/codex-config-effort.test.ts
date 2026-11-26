@@ -5,7 +5,10 @@
 
 import { expect, test } from "vitest";
 import { buildCodexShellCommand } from "../../src/codex/command.ts";
-import { requestedCodexEffort } from "../../src/codex/config/effort.ts";
+import {
+  requestedCodexEffort,
+  unrecognizedCodexEffortOverride,
+} from "../../src/codex/config/effort.ts";
 import type { StartCodexOptions } from "../../src/index.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
 import { tempDirForUnit } from "./helpers.ts";
@@ -16,6 +19,8 @@ test.each([
   [{ configOverrides: ['model_reasoning_effort="high"', "model_reasoning_effort='max'"] }, "max"],
   [{ configOverrides: [" model_reasoning_effort = xhigh ", 'model="gpt-6-luna"'] }, "xhigh"],
   // The spellings Codex 0.172 applied: TOML strings, with or without a comment, or raw text.
+  [{ configOverrides: ["model_reasoning_effort=minimal"] }, "minimal"],
+  [{ configOverrides: ["model_reasoning_effort = minimal"] }, "minimal"],
   [{ configOverrides: ['model_reasoning_effort="""minimal"""'] }, "minimal"],
   [{ configOverrides: ["model_reasoning_effort='''minimal'''"] }, "minimal"],
   [{ configOverrides: ['model_reasoning_effort="minimal" # note'] }, "minimal"],
@@ -39,6 +44,20 @@ test.each([
   [{}, undefined],
 ] as const)("C-API-28 the launch's `-c` arguments %j request %s", (options, effort) => {
   expect(requestedCodexEffort(options)).toBe(effort);
+});
+
+test.each([
+  [
+    { configOverrides: ['model_reasoning_effort="high"', 'model_reasoning_effort="lo\\u0077"'] },
+    true,
+  ],
+  [{ configOverrides: ['model_reasoning_effort="extreme"'] }, true],
+  [{ reasoningEffort: "low", configOverrides: ['model_reasoning_effort="extreme"'] }, false],
+  [{ configOverrides: ['model_reasoning_effort="extreme"', "model_reasoning_effort=low"] }, false],
+  [{ configOverrides: ['profiles.fast.model_reasoning_effort="extreme"'] }, false],
+  [{}, false],
+] as const)("C-API-28 the launch's `-c` arguments %j set an unrecognized effort: %s", (options, unrecognized) => {
+  expect(unrecognizedCodexEffortOverride(options)).toBe(unrecognized);
 });
 
 test.each<Partial<StartCodexOptions>>([

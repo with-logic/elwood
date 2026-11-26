@@ -22,8 +22,14 @@ back each entry are listed in `prd/14-conformance.md`.
   `waitForStatus`'s default 60-second timeout gets `ready` rather than `wait_timeout`
   when Codex drew its first frame within 40 seconds and no blocking startup dialog holds
   readiness. An effort set by a `model_reasoning_effort` entry in `configOverrides` is
-  waited for the same way. With neither, or `none`, `ready` can still come first,
-  including when the effort comes from config.toml or a profile.
+  waited for the same way. If Elwood does not recognize that entry's effort, Codex still
+  receives it, but `ready` does not wait, and the session emits a new
+  `codex_effort_unrecognized` warning. With neither, or `none`, `ready` can still come
+  first, including when the effort comes from config.toml or a profile.
+
+- `startCodex` and `resumeCodex` now reject a `configOverrides` that is not an array of
+  strings with the new `codex_invalid_config_overrides` error before spawning anything.
+  A string was split into one override per character.
 
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed

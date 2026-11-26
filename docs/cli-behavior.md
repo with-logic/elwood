@@ -4153,7 +4153,8 @@ the configuration (§5.3), including when the effort comes from config.toml or a
 20 to 62, reading the footer after the configuration landed and running no turn:
 
 - **Spellings.** `-c model_reasoning_effort=` followed by `"minimal"`, `'minimal'`, `minimal`,
-  ` = minimal`, `"minimal" # note` or `"""minimal"""` each read `gpt-6-luna minimal`. With two
+  `"minimal" # note` or `"""minimal"""`, and `-c "model_reasoning_effort = minimal"`, with
+  spaces around the `=`, each read `gpt-6-luna minimal`. With two
   entries, `"high"` then `"minimal"`, it read `minimal`: the last entry wins.
 - **Profile file.** `--profile deep` layers `$CODEX_HOME/deep.config.toml`. With
   `model_reasoning_effort = "high"` there, the footer read `high`. A root

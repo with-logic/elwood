@@ -23,13 +23,15 @@ afterEach(() => {
   resetFakes();
 });
 
-test.each([
-  { label: "reasoningEffort", options: { reasoningEffort: "low" } },
-  {
-    label: "a configOverrides entry",
-    options: { configOverrides: ["model_reasoning_effort=low"] },
-  },
-] as const)("C-API-28 an effort $label requests holds ready until Codex shows it", async ({
+/** The two routes by which a launch requests the effort `low`. */
+const lowRoutes = [
+  { route: "reasoningEffort", options: { reasoningEffort: "low" } },
+  { route: "configOverrides", options: { configOverrides: ["model_reasoning_effort=low"] } },
+] as const;
+
+test.each(
+  lowRoutes,
+)("C-API-28 holds ready for the effort requested via $route until Codex shows it", async ({
   options,
 }) => {
   const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter(options);
@@ -66,6 +68,36 @@ test.each<{ readonly label: string; readonly options: Partial<StartCodexOptions>
     await queued;
     expect(pty.writes).toContain(paste);
     expect(warnings).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+    await session.teardown();
+  }
+});
+
+test.each([
+  // Codex reads this basic string's escape as `low`; Elwood does not read escapes.
+  'model_reasoning_effort="lo\\u0077"',
+  // Codex launches with an effort it does not know and fails at the first turn.
+  'model_reasoning_effort="extreme"',
+])("C-API-28 an effort Elwood does not recognize in %s holds no wait and warns once", async (override) => {
+  const { session, warnings, queued, pty } = await deadlineOnDefaultFooter({
+    configOverrides: ['model_reasoning_effort="high"', override],
+  });
+  try {
+    await queued;
+    expect(pty.writes).toContain(paste);
+    expect(warnings).toEqual([
+      {
+        elwoodSessionId: session.elwoodSessionId,
+        agent: "codex",
+        source: "lifecycle",
+        code: "codex_effort_unrecognized",
+        severity: "warning",
+        message:
+          "Elwood did not recognize the reasoning effort that the last model_reasoning_effort entry in configOverrides sets. Codex receives it unchanged, but readiness does not wait for Codex to apply it, so a mode or model picked before then can be discarded.",
+        raw: "codex_effort_unrecognized",
+      },
+    ]);
   } finally {
     vi.useRealTimers();
     await session.teardown();
@@ -127,14 +159,16 @@ test.each([
   }
 });
 
-test("C-API-28 a resume that requests an effort waits for Codex to show it", async () => {
+test.each(lowRoutes)("C-API-28 a resume waits for the effort requested via $route", async ({
+  options,
+}) => {
   const cwd = tempDir();
   installFakes();
   const first = await startCodex({ cwd });
   await becomeReady(first.elwoodSessionId, cwd);
   await first.stop();
   const elwoodSessionId = first.elwoodSessionId;
-  const resumed = await resumeCodex({ cwd, elwoodSessionId, initialSize, reasoningEffort: "low" });
+  const resumed = await resumeCodex({ cwd, elwoodSessionId, initialSize, ...options });
   const queued = resumed.sendMessage("after configuration");
   void queued.catch(() => undefined);
   const render = async (frame: string) => {
