@@ -1,7 +1,6 @@
 /** Handle blocking Codex startup prompts (PRD §4.4, §5.5, and §5.7). */
 import type { AutomationWriteResult } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome } from "../core/startup/write.ts";
-import { numberedOptions } from "../core/terminal-options.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
@@ -30,6 +29,7 @@ export class CodexStartupPromptResponder {
   private readonly clearance: TrustClearance;
   private readonly sessionInputHeld: () => boolean;
   private readonly workspaceTrust: CodexWorkspaceTrustHooks | undefined;
+  private readonly onStateChange: (() => void) | undefined;
   private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
@@ -54,6 +54,7 @@ export class CodexStartupPromptResponder {
     this.clearance = clearance;
     this.sessionInputHeld = sessionInputHeld ?? (() => false);
     this.workspaceTrust = workspaceTrust;
+    this.onStateChange = onStateChange;
     this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, {
       onStateChange,
@@ -94,8 +95,9 @@ export class CodexStartupPromptResponder {
     if (prompt === "workspace_trust" && priorPrompt !== prompt) this.workspaceTrust?.onTakeover();
   }
 
+  /** Trust automation, or Codex's repaint after an update skip, holds input (C-CODEX-27). */
   get inputBlocking(): boolean {
-    return this.trust.inputBlocking;
+    return this.trust.inputBlocking || this.updateAttempt?.ownsRepaint() === true;
   }
 
   /**
@@ -131,6 +133,7 @@ export class CodexStartupPromptResponder {
     this.updateCallerOwned &&= this.updatePrompt.unresolved; // a later appearance is new
     const renewUpdateAttention = this.updatePrompt.renewsAttention(screenText);
     const onUpdateScreen = this.updatePrompt.observe(screenText);
+    this.updateAttempt?.observeFrame(screenText);
     const generation = this.updatePrompt.currentGeneration;
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
     // update-skip automation, even when its rows resemble the update options. Note this
@@ -158,6 +161,7 @@ export class CodexStartupPromptResponder {
           releaseLatch: () => {
             this.skipGeneration = 0;
           },
+          repaintExpired: () => this.onStateChange?.(),
         });
         outcomes.push({
           outcome: { kind: "attempted", prompt: "update", input: option },
@@ -193,8 +197,4 @@ export class CodexStartupPromptResponder {
     this.warnedBanners = new Set(matched.map(codexBannerKey));
     return fresh;
   }
-}
-
-export function findNumberedOption(text: string, pattern: RegExp): string | null {
-  return numberedOptions(text).find((option) => pattern.test(option.label))?.number ?? null;
 }

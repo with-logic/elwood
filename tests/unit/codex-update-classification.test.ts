@@ -20,7 +20,7 @@ test("C-CODEX-12 responder selection reuses its tracker's current classification
   responder.dispose();
 });
 
-test("C-CODEX-12 retries reuse one classification while the exact frame persists", async () => {
+test("C-CODEX-12 an exact frame that persists is classified once and gets one key", async () => {
   vi.useFakeTimers();
   const parse = vi.spyOn(layout, "updateDialogOptions");
   const responder = new CodexStartupPromptResponder("classification");
@@ -28,7 +28,7 @@ test("C-CODEX-12 retries reuse one classification while the exact frame persists
   const result = responder.handle(options, write, () => options);
   await vi.runAllTimersAsync();
   await expect(result.outcomes[0]?.settled).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledTimes(20);
+  expect(write).toHaveBeenCalledOnce();
   expect(parse).toHaveBeenCalledTimes(1);
   responder.dispose();
 });

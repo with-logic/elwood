@@ -14,10 +14,11 @@ import { onCallerInput } from "./session-input.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
-  "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
+  "closing" | "inputBlocking" | "automationInputBlocking" | "submitEvidence" | "status"
 >;
 
-type TrustState = {
+/** The startup prompt responder: trust automation and Codex's update-skip repaint (C-CODEX-27). */
+type StartupAutomationState = {
   readonly inputBlocking: boolean;
   readonly blockedPrompt: string | undefined;
   dispose(): void;
@@ -28,7 +29,7 @@ type TrustState = {
 export function createSessionFrameObserver(
   observers: RenderedObservers,
   session: () => FrameSession | undefined,
-  trust: () => TrustState,
+  trust: () => StartupAutomationState,
   readiness: ReadinessGate,
   isIdleComposer: TrustClearance,
 ) {
@@ -40,7 +41,7 @@ export function createSessionFrameObserver(
     if (
       pendingAutomationClearance &&
       active.status === "blocked" &&
-      !active.trustInputBlocking &&
+      !active.automationInputBlocking &&
       !active.inputBlocking &&
       (facts.working_visible || facts.composer_visible)
     ) {
@@ -58,8 +59,8 @@ export function createSessionFrameObserver(
       frame.text,
       state.inputBlocking,
     );
-    const released = active.trustInputBlocking && !state.inputBlocking;
-    active.trustInputBlocking = state.inputBlocking;
+    const released = active.automationInputBlocking && !state.inputBlocking;
+    active.automationInputBlocking = state.inputBlocking;
     active.inputBlocking =
       reading.facts.blocking_prompt_visible ||
       (active.inputBlocking && !reading.facts.working_visible && !reading.facts.composer_visible);
@@ -69,7 +70,12 @@ export function createSessionFrameObserver(
     // Settle automation against this frame before evidence/readiness releases input.
     state.observeClearance?.(frame.text);
     // Publish this frame's hold before evidence listeners can submit readiness.
-    readiness.observeFrameHold(reading.facts, active.trustInputBlocking, frame.text, frame.cols);
+    readiness.observeFrameHold(
+      reading.facts,
+      active.automationInputBlocking,
+      frame.text,
+      frame.cols,
+    );
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
@@ -79,7 +85,7 @@ export function createSessionFrameObserver(
     } finally {
       readiness.observeReadinessFrame(
         reading.facts,
-        active.trustInputBlocking,
+        active.automationInputBlocking,
         frame.text,
         frame.cols,
       );
@@ -114,7 +120,7 @@ export function bindStartupLifetime(
   session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold"> & {
     readonly terminal: { readonly xterm: object };
   },
-  trust: TrustState & { callerInput(): void },
+  trust: StartupAutomationState & { callerInput(): void },
   readiness: ReadinessGate,
 ): void {
   session.bindInitialReadinessHold(readiness);
