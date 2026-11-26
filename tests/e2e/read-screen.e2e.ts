@@ -2,8 +2,9 @@
  * Real agents answer with more rows than one screen holds. `readScreen()` returns the
  * live rows with the composer and the end of the reply under each CLI's fullscreen
  * renderer, and under its inline renderer it also returns scrollback and stays live
- * while the host is scrolled back. Once a stopped session's terminal is disposed, the
- * read rejects. Implements C-SCREEN-01 to C-SCREEN-03, C-E2E-02, and C-E2E-03.
+ * while the host is scrolled back. After `stop()` resolves, the read returns the final
+ * screen from memory: Claude's resume command on the normal screen, or Codex's last frame.
+ * Implements C-SCREEN-01 to C-SCREEN-03, C-E2E-02, and C-E2E-03.
  */
 // biome-ignore-all lint/suspicious/noMisplacedAssertion: afterLongReply owns the checks both renderers share.
 
@@ -71,8 +72,19 @@ const idleBelowReply = (agent: Agent, screen: ElwoodScreen) =>
   shows(screen.lines, last);
 
 /**
+ * What each CLI leaves on the screen once `stop()`'s SIGTERM quits it. Claude prints its
+ * resume command on the normal buffer, leaving the alternate screen first under its
+ * fullscreen renderer. Codex exits without redrawing.
+ */
+const leftAtStop: Record<Agent, (screen: ElwoodScreen) => boolean> = {
+  claude: (screen) =>
+    screen.buffer === "normal" && screen.lines.some((row) => row.startsWith("claude --resume ")),
+  codex: (screen) => idleBelowReply("codex", screen),
+};
+
+/**
  * Runs one long reply, reads the idle screen with all scrollback, checks what every
- * renderer shares, hands the read to `check`, then stops and expects the read to reject.
+ * renderer shares, hands the read to `check`, then stops and reads the final screen.
  */
 async function afterLongReply(
   agent: Agent,
@@ -108,7 +120,16 @@ async function afterLongReply(
     assert.deepEqual(nearest.scrollback, screen.scrollback.slice(-3));
     await check(session, screen);
     await session.stop();
-    await assert.rejects(session.readScreen(), { code: "session_not_running" });
+    // The terminal is disposed once `stop()` resolves, so these reads use the final screen.
+    const final = await session.readScreen({ scrollback: true });
+    t.diagnostic(
+      `final: ${final.buffer} buffer, ${final.scrollback.length} scrollback rows, cursor ${JSON.stringify(final.cursor)}`,
+    );
+    assert.ok(leftAtStop[agent](final), "the final screen is what the CLI left as it quit");
+    assert.equal(final.outputLost, false);
+    assert.deepEqual(await session.readScreen({ scrollback: true }), final);
+    const finalNearest = await session.readScreen({ scrollback: 3 });
+    assert.deepEqual(finalNearest.scrollback, final.scrollback.slice(-3));
   } finally {
     await cleanup(session);
   }

@@ -1,9 +1,7 @@
 /** Real Codex service tiers at the HTTP boundary, without model quota. C-SPEED-01. */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import test from "node:test";
 import { isRecord } from "../../src/core/predicates.ts";
 import { parseVersion } from "../../src/core/versions.ts";
@@ -15,8 +13,9 @@ import {
 } from "../../src/index.ts";
 import { runProbe } from "../../src/runtime/probe/index.ts";
 import { probeShellCommand, userShell } from "../../src/runtime/shell.ts";
+import { loopbackCodexProvider } from "./codex-loopback-provider.ts";
 import { codexLaunches, endCodexTestAfter } from "./codex-test-end.ts";
-import { makeProject, sandboxedCodexHome, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { skipIf, skipReason, waitFor } from "./helpers.ts";
 
 const tokenCountFixtureVersion = "codex-cli 0.170.0";
 const fixtureTotalTokens = 23;
@@ -32,12 +31,6 @@ test("C-SPEED-01 C-STATS-01 Codex selects tiers and reports native usage across 
   const checkUsage = version.stdout.trim() === tokenCountFixtureVersion;
   const requests: string[] = [];
   const failures: unknown[] = [];
-  const server = createServer((request, response) => {
-    void respond(request, response).catch((error: unknown) => {
-      failures.push(error);
-      response.destroy();
-    });
-  });
   async function respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -76,36 +69,12 @@ test("C-SPEED-01 C-STATS-01 Codex selects tiers and reports native usage across 
     });
     response.end();
   }
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+  const { project, sandbox, config } = await loopbackCodexProvider(t, (request, response) => {
+    void respond(request, response).catch((error: unknown) => {
+      failures.push(error);
+      response.destroy();
+    });
   });
-  const address = server.address();
-  assert(address !== null && typeof address !== "string");
-  const project = makeProject("codex");
-  execFileSync("git", ["init", "-q", project.cwd]);
-  const catalogPath = join(project.cwd, "models.json");
-  writeFileSync(
-    catalogPath,
-    readFileSync(new URL("../fixtures/speed-models.json", import.meta.url)),
-  );
-  const config = `model_catalog_json = ${JSON.stringify(catalogPath)}
-model = "gpt-6-astra"
-model_provider = "fixture"
-[model_providers.fixture]
-name = "Loopback fixture"
-base_url = "http://127.0.0.1:${address.port}/v1"
-wire_api = "responses"
-requires_openai_auth = false
-[projects.${JSON.stringify(project.cwd)}]
-trust_level = "trusted"
-[tui]
-screen_reader_detection_done = true
-`;
-  const sandbox = sandboxedCodexHome(project, config);
   const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
   t.after(() => endCodexTestAfter(t, { sessions: [session], sandbox, launches }));
