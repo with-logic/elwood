@@ -53,11 +53,11 @@ export function nativeQuestionFragment(frame: QuestionFrame): boolean {
 export function blankOrPendingMessages(rows: readonly string[]): boolean {
   const content = rows.filter((row) => row.trim() !== "");
   if (content.length === 0) return true;
-  const item = content.findIndex((row) => row.startsWith("  ↳ "));
-  if (item < 1) return false;
-  const header = content.slice(0, item).map((row) => row.trim());
+  const firstPendingMessageRowIndex = content.findIndex((row) => row.startsWith("  ↳ "));
+  if (firstPendingMessageRowIndex < 1) return false;
+  const header = content.slice(0, firstPendingMessageRowIndex).map((row) => row.trim());
   return (
     header.join(" ") === pendingHeaderText &&
-    content.slice(item).every((row) => pendingMessageRow.test(row))
+    content.slice(firstPendingMessageRowIndex).every((row) => pendingMessageRow.test(row))
   );
 }

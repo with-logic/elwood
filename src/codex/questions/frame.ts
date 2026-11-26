@@ -131,14 +131,11 @@ function questionCursor(
 ): boolean {
   if (frame.cursorRow >= start) return true;
   const row = lines[frame.cursorRow]!;
-  return (
-    kind === "queued" &&
-    frame.cursorVisible === false &&
-    frame.cursorX > 0 &&
-    frame.cursorX <= displayColumns(row) &&
-    codexWorkingScreen.test(row) &&
-    blankOrPendingMessages(lines.slice(frame.cursorRow + 1, start))
-  );
+  const hiddenQueuedCursor = kind === "queued" && frame.cursorVisible === false;
+  const cursorWithinWorkingRow =
+    frame.cursorX > 0 && frame.cursorX <= displayColumns(row) && codexWorkingScreen.test(row);
+  const interveningRowsAllowed = blankOrPendingMessages(lines.slice(frame.cursorRow + 1, start));
+  return hiddenQueuedCursor && cursorWithinWorkingRow && interveningRowsAllowed;
 }
 /** Correlate the prompt and complete ordered native options with a known definition. */
 export function matchesQuestion(view: QuestionView, question: QuestionDefinition): boolean {
