@@ -6,7 +6,12 @@
  */
 
 import { vi } from "vitest";
-import { type CodexSessionApi, type ElwoodDialogEvent, startCodex } from "../../src/index.ts";
+import {
+  type CodexSessionApi,
+  type ElwoodDialogEvent,
+  type ElwoodDialogRequest,
+  startCodex,
+} from "../../src/index.ts";
 import { tty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { installFakes, ptys, render, tempDir } from "./helpers.ts";
@@ -19,16 +24,28 @@ export const newerOffer = offer.replace("→ 99.0.0", "→ 99.1.0");
 export const summary = (events: readonly ElwoodDialogEvent[]) =>
   events.map((event) => [event.phase, event.phase === "closed" ? event.reason : event.request.id]);
 
+/** `value`, or a failure that names what is missing rather than a TypeError on its use. */
+export function required<T>(value: T | undefined, what: string): T {
+  if (value === undefined) throw new Error(`Missing ${what}`);
+  return value;
+}
+
+/** The session's only listed request. */
+export async function firstListed(session: CodexSessionApi): Promise<ElwoodDialogRequest> {
+  return required((await session.listDialogs())[0], "a listed dialog request");
+}
+
 export async function openCodex() {
   installFakes();
-  const session = await startCodex({ cwd: tempDir(), initialSize: { cols: 100, rows: 30 } });
+  const cwd = tempDir();
+  const session = await startCodex({ cwd, initialSize: { cols: 100, rows: 30 } });
   const events: ElwoodDialogEvent[] = [];
   session.on("dialog", (event) => {
     events.push(event);
   });
   /** Codex hides the cursor on the offer. */
   const show = (text: string) => render(session, `${tty(text)}\u001b[?25l`);
-  return { session, events, show, pty: ptys.at(-1)! };
+  return { session, events, show, cwd, pty: required(ptys.at(-1), "the session's PTY") };
 }
 
 /** A session whose offer raw caller input took over, listed and announced. */
@@ -36,11 +53,11 @@ export async function listed() {
   const opened = await openCodex();
   await opened.show(offer);
   await opened.session.sendKeys("\u001b[B");
-  const [request] = await opened.session.listDialogs();
+  const request = await firstListed(opened.session);
   await vi.waitFor(() => {
     if (opened.events.length !== 1) throw new Error("the offer is not announced yet");
   });
-  return { ...opened, id: request!.id };
+  return { ...opened, id: request.id };
 }
 
 export async function closing(session: CodexSessionApi, run: () => Promise<void>) {

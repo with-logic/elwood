@@ -69,7 +69,8 @@ back each entry are listed in `prd/14-conformance.md`.
   screen, or when the offer has no safe choice. The request carries the banner
   text, the installed and offered versions, and the native choices. `dialog`
   events close it with `cleared` once the offer leaves the screen. Hosts answer
-  it at the terminal for now. Claude has no update screen, so Claude sessions
+  it at the terminal: `answerDialog()` rejects an update request ID with
+  `dialog_not_found`. Claude has no update screen, so Claude sessions
   never report one. **Breaking for TypeScript hosts:** `ElwoodDialogRequest` is
   now a union discriminated by `kind`; check `kind === "trust"` before reading
   `targetPath` or `targetScope`. `ElwoodTrustDialogRequest` and

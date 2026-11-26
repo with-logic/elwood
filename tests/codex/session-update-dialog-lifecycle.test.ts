@@ -4,9 +4,19 @@
  */
 
 import { afterEach, expect, test } from "vitest";
+import type { CodexSessionApi } from "../../src/index.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { resetFakes } from "./helpers.ts";
-import { closing, listed, newerOffer, offer, openCodex, summary } from "./update-dialog-fixture.ts";
+import {
+  closing,
+  firstListed,
+  listed,
+  newerOffer,
+  offer,
+  openCodex,
+  required,
+  summary,
+} from "./update-dialog-fixture.ts";
 
 afterEach(resetFakes);
 
@@ -25,15 +35,15 @@ test("C-ATTN-12 a different offer replaces the listed one with new IDs", async (
   const { session, events, show, id } = await listed();
   await closing(session, async () => {
     await show(newerOffer);
-    const [next] = await session.listDialogs();
+    const next = await firstListed(session);
     expect(next).toMatchObject({ versions: { installed: "0.172.0", offered: "99.1.0" } });
-    expect(next!.id).not.toBe(id);
+    expect(next.id).not.toBe(id);
     await expect
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
         ["closed", "replaced"],
-        ["raised", next!.id],
+        ["raised", next.id],
       ]);
   });
 });
@@ -70,10 +80,13 @@ test("C-ATTN-12 a settled screen without the banner clears the request, even bef
   });
 });
 
-test("C-ATTN-12 host output ends update discovery for the life of the terminal", async () => {
+test.each([
+  ["host output", (session: CodexSessionApi) => session.terminal.writeOutput("host banner\r\n")],
+  ["a size change", (session: CodexSessionApi) => session.resize({ cols: 90, rows: 30 })],
+])("C-ATTN-12 %s ends update discovery for the life of the terminal", async (_, revoke) => {
   const { session, events, show, id } = await listed();
   await closing(session, async () => {
-    session.terminal.writeOutput("host banner\r\n");
+    await revoke(session);
     await expect
       .poll(() => summary(events))
       .toEqual([
@@ -100,7 +113,7 @@ test("C-ATTN-12 a new skip of the offer takes it back from the host", async () =
   const { session, events, show } = await openCodex();
   await closing(session, async () => {
     await show(noSafeChoice);
-    const [request] = await session.listDialogs();
+    const request = await firstListed(session);
     expect(request?.choices.map((choice) => choice.label)).toEqual([
       "Skip",
       "Update now (runs `npm install -g @openai/codex`)",
@@ -110,7 +123,7 @@ test("C-ATTN-12 a new skip of the offer takes it back from the host", async () =
     await expect
       .poll(() => summary(events))
       .toEqual([
-        ["raised", request!.id],
+        ["raised", request.id],
         ["closed", "unavailable"],
       ]);
   });
@@ -119,8 +132,10 @@ test("C-ATTN-12 a new skip of the offer takes it back from the host", async () =
 test("C-ATTN-12 answerDialog does not answer an update request", async () => {
   const { session } = await listed();
   await closing(session, async () => {
-    const [request] = await session.listDialogs();
-    await expect(session.answerDialog(request!.id, request!.choices[1]!.id)).rejects.toMatchObject({
+    const request = await firstListed(session);
+    await expect(
+      session.answerDialog(request.id, required(request.choices[1], "the Skip choice").id),
+    ).rejects.toMatchObject({
       code: "dialog_not_found",
     });
   });

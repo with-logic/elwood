@@ -1,6 +1,9 @@
 /**
  * Lists and announces the Codex update offer while no Elwood skip answers it
- * (PRD §5.13 "Codex update offers", C-ATTN-12).
+ * (PRD §5.13 "Codex update offers", C-ATTN-12). Its delivery is its own rather than the
+ * trust dialogs': a trust request is published only after its filesystem evidence is
+ * verified, with delivery revisions for the writer, while an offer is read from the
+ * settled frame alone. Both deliver through the session's one `observeNotifications`.
  */
 import type { ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -13,17 +16,34 @@ import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { CodexEventMap } from "../session/types.ts";
 import type { SettledCodexStartupOutcome } from "../startup-prompts.ts";
 import type { ElwoodDialogEvent } from "../workspace-trust/types.ts";
-import { createCodexUpdateDialogRequest, readCodexUpdateOffer } from "./dialog-request.ts";
+import {
+  type CodexUpdateOffer,
+  createCodexUpdateDialogRequest,
+  readCodexUpdateOffer,
+} from "./dialog-request.ts";
 import { updateScreenBanner } from "./layout.ts";
 
 type DialogListener = (event: ElwoodDialogEvent) => unknown;
 type CloseReason = Extract<ElwoodDialogEvent, { phase: "closed" }>["reason"];
 
+/**
+ * Why a listed request ends on `frame`. Codex took the offer away only when its banner is
+ * gone; a partial or ambiguous offer, or one a new skip answers, still shows it.
+ */
+function closeReason(offer: CodexUpdateOffer | undefined, frame: string): CloseReason {
+  if (offer) return "replaced";
+  if (updateScreenBanner.test(frame)) return "unavailable";
+  return "cleared";
+}
+
 export type CodexUpdateDialogsInput = {
   readonly elwoodSessionId: string;
   readonly emitter: TypedEmitter<CodexEventMap>;
   readonly terminal: () => ElwoodTerminal;
-  /** The session's dialog delivery, which reports one listener failure per session. */
+  /**
+   * The trust dialogs' delivery, shared by every session dialog: it reports one listener
+   * failure per session, and the trust writer resumes once any dialog's listeners have run.
+   */
   readonly observeNotifications: (deliver: () => void) => void;
 };
 
@@ -38,7 +58,7 @@ export class CodexUpdateDialogs {
   private readonly events: ElwoodDialogEvent[] = [];
   private readonly replays = new Set<DialogListener>();
   private delivering = false;
-  private ended = false;
+  private discoveryEnded = false;
 
   constructor(input: CodexUpdateDialogsInput) {
     this.input = input;
@@ -53,7 +73,9 @@ export class CodexUpdateDialogs {
   observe(outcomes: readonly SettledCodexStartupOutcome[]): void {
     for (const item of outcomes) {
       if (item.outcome.kind !== "attempted" || item.outcome.prompt !== "update") continue;
-      const skip = Promise.resolve(item.settled); // always set on an attempted outcome
+      // An attempted outcome always carries `settled`, but checking the nested `kind` does
+      // not narrow `item`, whose type still allows the pending outcome's `undefined`.
+      const skip = Promise.resolve(item.settled);
       this.skip = skip;
       const handOver = () => {
         if (this.skip === skip) this.skip = undefined;
@@ -71,16 +93,19 @@ export class CodexUpdateDialogs {
       "abort",
       () => {
         stop();
-        this.end();
+        this.endDiscovery();
       },
       { once: true },
     );
   }
 
-  /** Readiness or closure ends the startup window that Codex draws its offer in. */
-  end(): void {
+  /**
+   * Retires any listed request and stops discovery for good: readiness or closure ends the
+   * startup window that Codex draws its offer in.
+   */
+  endDiscovery(): void {
     this.retire("unavailable");
-    this.ended = true;
+    this.discoveryEnded = true;
   }
 
   /** A listener added after the announcement gets the current request; earlier ones share it. */
@@ -95,11 +120,11 @@ export class CodexUpdateDialogs {
   }
 
   readonly reconcile = (): void => {
-    if (this.ended) return;
+    if (this.discoveryEnded) return;
     const terminal = this.input.terminal();
     // Host output or a viewport change ends native evidence for the life of the terminal.
     if (!nativeRenderEvidenceIntact(terminal)) {
-      this.end();
+      this.endDiscovery();
       return;
     }
     const frame = settledLiveSnapshot(terminal)?.text;
@@ -107,9 +132,7 @@ export class CodexUpdateDialogs {
     const offer = this.skip ? undefined : readCodexUpdateOffer(frame);
     const key = offer && JSON.stringify(offer);
     if (key === this.current?.key) return;
-    // Codex took the offer away only when its banner is gone; a partial or ambiguous
-    // offer, or one a new skip answers, still shows it.
-    this.retire(offer ? "replaced" : updateScreenBanner.test(frame) ? "unavailable" : "cleared");
+    this.retire(closeReason(offer, frame));
     if (!(offer && key)) return;
     const request = createCodexUpdateDialogRequest(this.input.elwoodSessionId, offer);
     this.current = { request, key };

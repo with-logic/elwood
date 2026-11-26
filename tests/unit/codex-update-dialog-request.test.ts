@@ -46,7 +46,8 @@ test("C-ATTN-12 a banner without versions gives no versions", () => {
 
 test("C-ATTN-12 a request from a banner without versions has no versions field", () => {
   const offer = readCodexUpdateOffer(`A new version of Codex is available.\n${choices}`);
-  const request = createCodexUpdateDialogRequest("session-1", offer!);
+  if (offer === undefined) throw new Error("the banner without versions is not an offer");
+  const request = createCodexUpdateDialogRequest("session-1", offer);
   expect(request).toEqual({
     id: expect.any(String),
     elwoodSessionId: "session-1",

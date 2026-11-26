@@ -10,16 +10,16 @@ import { settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import { createTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu-frame.ts";
-import type { ElwoodDialogEvent, ElwoodDialogRequest } from "./types.ts";
+import type { CodexTrustDialogRequest, ElwoodDialogEvent } from "./types.ts";
 
 type WorkspaceTrustRequestMetadata = {
-  readonly request: ElwoodDialogRequest;
+  readonly request: CodexTrustDialogRequest;
   readonly declineOutcome: WorkspaceTrustFrame["menu"]["declineOutcome"];
 };
 type Retirement = Extract<ElwoodDialogEvent, { phase: "closed" }>["reason"];
 type DiscoveryObserver = {
   readonly onListDiscovery: () => void;
-  readonly onRetire: (request: ElwoodDialogRequest, reason: Retirement) => void;
+  readonly onRetire: (request: CodexTrustDialogRequest, reason: Retirement) => void;
 };
 export class CodexWorkspaceTrustDiscovery {
   private readonly polling = new WorkspaceTrustPolling<"codex", WorkspaceTrustFrame>();
@@ -64,7 +64,7 @@ export class CodexWorkspaceTrustDiscovery {
     return this.polling.currentRequest?.id;
   }
 
-  async list(): Promise<readonly ElwoodDialogRequest[]> {
+  async list(): Promise<readonly CodexTrustDialogRequest[]> {
     const prior = this.currentRequestId;
     const verified = await this.read();
     if (!(verified && this.isRequestFrameCurrent(verified))) return [];

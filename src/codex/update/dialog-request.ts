@@ -21,10 +21,10 @@ export function readCodexUpdateOffer(frame: string): CodexUpdateOffer | undefine
   const options = updateDialogOptions(frame);
   if (!(banner && options?.length)) return undefined;
   const text = frame.slice(banner.index).replace(choicesOnward, "").replace(/\s+/g, " ").trim();
-  const pair = versionPair.exec(banner[0]);
+  const [, installed, offered] = versionPair.exec(banner[0]) ?? [];
   return {
     text,
-    ...(pair ? { versions: { installed: String(pair[1]), offered: String(pair[2]) } } : {}),
+    ...(installed && offered ? { versions: { installed, offered } } : {}),
     labels: options.map(({ label }) => label),
   };
 }

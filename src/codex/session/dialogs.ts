@@ -1,6 +1,6 @@
 /**
  * A Codex session's native dialogs: its workspace trust question and its update offer
- * share `listDialogs`, `dialog` events, and `answerDialog` (PRD §5.13, C-ATTN-07/08/10).
+ * share `listDialogs`, `dialog` events, and `answerDialog` (PRD §5.13, C-ATTN-07, C-ATTN-08, C-ATTN-12).
  */
 import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
@@ -32,7 +32,7 @@ export class CodexSessionDialogs {
   /** The first readiness ends the startup window for both dialogs. */
   endStartup(): void {
     this.trust.discovery.endStartup();
-    this.update.end();
+    this.update.endDiscovery();
   }
 
   bind(terminal: ElwoodTerminal, closing: AbortSignal): void {

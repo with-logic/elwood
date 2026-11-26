@@ -6,7 +6,15 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { ElwoodDialogEvent, ElwoodWarningEvent } from "../../src/index.ts";
 import { resetFakes } from "./helpers.ts";
-import { closing, listed, newerOffer, offer, openCodex, summary } from "./update-dialog-fixture.ts";
+import {
+  closing,
+  firstListed,
+  listed,
+  newerOffer,
+  offer,
+  openCodex,
+  summary,
+} from "./update-dialog-fixture.ts";
 
 afterEach(resetFakes);
 
@@ -38,11 +46,12 @@ test("C-ATTN-12 a listener added while a raise waits for dispatch gets that disp
       });
     });
     await show(newerOffer);
-    const [next] = await session.listDialogs();
-    expect(next!.id).not.toBe(id);
-    await expect.poll(() => summary(nested)).toEqual([["raised", next!.id]]);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(summary(nested)).toEqual([["raised", next!.id]]);
+    const next = await firstListed(session);
+    expect(next.id).not.toBe(id);
+    await expect.poll(() => summary(nested)).toEqual([["raised", next.id]]);
+    // Deliveries and replays run in microtasks, which one macrotask turn drains.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(summary(nested)).toEqual([["raised", next.id]]);
   });
 });
 
@@ -58,8 +67,8 @@ test("C-ATTN-12 a listener added during the raised dispatch gets a replay", asyn
     });
     await show(offer);
     await session.sendKeys("\u001b[B");
-    const [request] = await session.listDialogs();
-    await expect.poll(() => summary(nested)).toEqual([["raised", request!.id]]);
+    const request = await firstListed(session);
+    await expect.poll(() => summary(nested)).toEqual([["raised", request.id]]);
     expect(nested[0]?.request).toBe(events[0]?.request);
   });
 });
