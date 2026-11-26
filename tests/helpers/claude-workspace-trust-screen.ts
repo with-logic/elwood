@@ -69,6 +69,8 @@ export const claudeLoadRowCaptures = (
 
 /** Claude 2.1.332's prompt for a new project MCP server, on "Continue without using this MCP server". */
 export const claudeMcpServerPrompt = capturedFrame("claude-2.1.332/trust/mcp-server-120");
+/** The same prompt at 100 columns, its body wrapped at another word. */
+export const claudeMcpServerPromptNarrow = capturedFrame("claude-2.1.332/trust/mcp-server-100");
 
 /** A captured frame replayed at `cwd`, the test's launch path. */
 export function atLaunchPath(screen: string, cwd: string): string {

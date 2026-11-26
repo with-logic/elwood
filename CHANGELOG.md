@@ -25,8 +25,13 @@ back each entry are listed in `prd/14-conformance.md`.
   `.claude/settings.local.json` and `.mcp.json`. Elwood treated that row, apart from the
   hooks rows, as unknown prose, so such a session stayed `blocked`. A load row with
   another annotation, such as ` (sets environment variables)`, is still never answered.
-  For an `.mcp.json` folder, Claude then shows its MCP server prompt, which Elwood does
-  not recognize, so the session stays `blocked` there, with the folder trusted.
+
+- `autotrust: true` now answers Claude's MCP server prompt, `New MCP server found in this
+  project: <name>`, with `Use this MCP server`. Claude shows it after the workspace answer
+  for a folder whose `.mcp.json` declares a new server. Elwood did not recognize its
+  native body or its `Esc to reject` footer, so such a session stayed `blocked` there,
+  with the folder trusted and the server not started. Claude's checklist for several new
+  servers at once is still never answered.
 
 - `listClaudeModels` now answers only the plain workspace prompt. It rejects with
   `claude_start_failed` for any load row and for Claude's MCP server, plugin and skill

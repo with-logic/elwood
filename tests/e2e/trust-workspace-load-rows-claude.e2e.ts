@@ -1,20 +1,21 @@
 /**
- * Claude's workspace load rows on the REAL Claude CLI (PRD §5.3, §5.4, C-E2E-29, C-CLAUDE-29),
- * each in a fresh, untrusted project on Claude 2.1.329 or later. For a folder whose `.mcp.json`
- * declares a server that writes a marker as it starts, `listClaudeModels` refuses the folder,
- * which stays untrusted, and the server never starts; `autotrust: true` answers the workspace
- * prompt and then stays `blocked` at Claude's MCP server prompt, which Elwood does not verify.
+ * Claude's workspace load rows and MCP server prompt on the REAL Claude CLI (PRD §5.3, §5.4,
+ * C-E2E-29, C-CLAUDE-28, C-CLAUDE-29), each in a fresh, untrusted project on Claude 2.1.329 or
+ * later. For a folder whose `.mcp.json` declares a server that writes a marker as it starts,
+ * `autotrust: true` answers the workspace prompt and then the MCP server prompt, reaches `ready`,
+ * and the server starts, while `listClaudeModels` refuses the folder and the server never starts.
  * For a folder whose `.claude/settings.json` only enables a plugin, from a marketplace in the
- * project, whose `SessionStart` hook writes a marker, the probe refuses the plain settings row,
- * the folder stays untrusted, and the hook never runs, while `autotrust: true` reaches `ready`
- * and the hook runs with no further prompt. For settings that set an environment variable
- * Claude does not consider safe, the probe rejects the prompt it cannot verify.
+ * project, whose `SessionStart` hook writes a marker, the probe refuses the plain settings row
+ * and the hook never runs, while `autotrust: true` reaches `ready` and the hook runs with no
+ * further prompt. For settings that set an environment variable Claude does not consider safe,
+ * the probe rejects the prompt it cannot verify.
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { isRecord } from "../../src/core/predicates.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import {
@@ -101,26 +102,30 @@ test("C-E2E-29 listClaudeModels refuses a folder whose .mcp.json declares a serv
   await assertStillUntrusted(project, marker, false);
 });
 
-test("C-E2E-29 autotrust trusts a folder whose .mcp.json declares a server, then blocks at Claude's MCP server prompt", {
+test("C-E2E-29 autotrust answers the workspace and MCP server prompts and the server starts", {
   skip,
-  timeout: testTimeoutMs,
+  // A second marker-length wait covers the MCP server prompt's answer.
+  timeout: testTimeoutMs + markerTimeoutMs,
 }, async () => {
   const { project, marker } = mcpProject();
   let session: ClaudeSessionApi | undefined;
   try {
     const started = await autotrusted(project);
-    const live = started.session;
-    session = live;
-    const mcpPromptBlocks = () =>
-      live.status === "blocked" &&
-      live.terminal.snapshot().text.includes("New MCP server found in this project")
-        ? true
-        : undefined;
+    session = started.session;
     // Claude shows its MCP server prompt only once the folder is trusted.
-    await waitFor(mcpPromptBlocks, "Claude's MCP server prompt blocks the session", readyTimeoutMs);
-    assert.equal(started.answers.includes("mcp_trust"), false, "that prompt is never answered");
-    assert.equal(existsSync(marker), false, "the MCP server never starts");
-    await live.stop();
+    await readyWithMarker(session, marker);
+    const both = () => (started.answers.length >= 2 ? true : undefined);
+    await waitFor(both, "both prompts answered", markerTimeoutMs);
+    assert.deepEqual(started.answers, ["workspace_trust", "mcp_trust"]);
+    // "Use this MCP server" approves this server alone; the all-future row would persist
+    // `enableAllProjectMcpServers` for every server the folder adds later.
+    const local: unknown = JSON.parse(
+      readFileSync(join(project.cwd, ".claude", "settings.local.json"), "utf8"),
+    );
+    assert.ok(isRecord(local), "settings.local.json holds an object");
+    assert.deepEqual(local["enabledMcpjsonServers"], ["probe"]);
+    assert.equal(local["enableAllProjectMcpServers"], undefined);
+    await session.stop();
   } finally {
     await cleanup(session);
   }

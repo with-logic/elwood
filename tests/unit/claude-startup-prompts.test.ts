@@ -75,7 +75,7 @@ describe("ClaudeStartupPromptResponder", () => {
     // has not rendered yet, so it is surfaced as a transient option_pending and
     // not answered — a later frame carrying the option would still answer it.
     const settled = responder.handle(
-      "New MCP server found in this project\n2. Continue without using this MCP server",
+      "New MCP server found in this project\nMCP servers may execute code or access system resources. All tool calls require approval. Learn more in the MCP documentation.\n2. Continue without using this MCP server",
       (input) => {
         writes.push(input);
       },
