@@ -10,7 +10,7 @@ import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../../src/index.ts"
 import { codexTty, tty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { becomeReady, render, resetFakes } from "./helpers.ts";
-import { closing, firstListed, offer, openCodex } from "./update-dialog-fixture.ts";
+import { closing, firstListed, newerOffer, offer, openCodex } from "./update-dialog-fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -114,6 +114,24 @@ test("C-ATTN-12 an offer still drawn after the skip's retries run out is handed 
     const request = await firstListed(session);
     expect(request).toMatchObject({ kind: "update", versions: expectedOffer.versions });
     expect(phases(events, request)).toEqual([["raised", undefined, true]]);
+  });
+});
+
+test("C-ATTN-12 an earlier skip that settles while a newer one is pending keeps the offer unlisted", async () => {
+  const { session, pty, events, paint, paintOffer } = await openOnFakeTimers();
+  await closing(session, async () => {
+    await paintOffer();
+    // A different offer is a new appearance: Elwood starts a second skip while the first
+    // waits for its key, and the first then settles without writing.
+    await paintOffer(newerOffer);
+    for (let elapsed = 0; elapsed < firstKeyDelayMs + 500; elapsed += 50) {
+      await vi.advanceTimersByTimeAsync(50);
+      expect(await session.listDialogs()).toEqual([]);
+    }
+    expect(pty.writes).toEqual(["2"]);
+    await paint(codexTty(composer));
+    expect(await session.listDialogs()).toEqual([]);
+    expect(events).toEqual([]);
   });
 });
 
