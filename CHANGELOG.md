@@ -80,8 +80,8 @@ back each entry are listed in `prd/14-conformance.md`.
   has ended.
 - The `initial_ready_backstop` `unrecognized_startup` activity now replaces
   `sk-` API-key-shaped tokens in its screen text with `sk-[REDACTED]`, including
-  a key wrapped across rows. The runs a wrapped key continues onto become
-  `[REDACTED]`, even when they are words. Codex's API-key sign-in page, for
+  a key wrapped across rows. Each continuing key run becomes `[REDACTED]`, even
+  when it is an ordinary word. Codex's API-key sign-in page, for
   example, shows the `OPENAI_API_KEY` from the login shell unmasked.
   `terminal:data`, `terminal.snapshot()` and `readScreen()` still show the screen
   as drawn.

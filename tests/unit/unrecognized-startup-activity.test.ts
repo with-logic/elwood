@@ -118,3 +118,12 @@ test("C-ATTN-06 a key the agent masked with dots does not continue onto the next
     "│ ANTHROPIC_API_KEY: sk-[REDACTED] │\n│ Do you want to use this API key? │",
   );
 });
+
+test("C-ATTN-06 a wide screen of sk- runs that do not wrap redacts without rescanning each run", () => {
+  // 50 rows of an 8,192-column terminal. Retrying every `sk-` in each run took seconds.
+  const row = `${"sk-".repeat(2_730)} x`;
+  const started = performance.now();
+  const redacted = text(new Array(50).fill(row).join("\n"));
+  expect(performance.now() - started).toBeLessThan(500);
+  expect(redacted.split("\n").at(-1)).toBe("sk-[REDACTED] x");
+});

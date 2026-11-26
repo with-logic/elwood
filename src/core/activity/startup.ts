@@ -15,24 +15,31 @@ const minKeyChars = 8;
  * and tokens of other shapes pass through unchanged. `\b` keeps `task-…` intact.
  */
 const skKeyShape = new RegExp(`\\bsk-[A-Za-z0-9._-]{${minKeyChars},}`, "g");
-/** A key character that can continue onto the next row; a dot ends a masked key. */
-const keyChar = "[A-Za-z0-9_-]";
+/**
+ * A character a wrapped key carries across rows. It is narrower than a whole token's:
+ * a dot ends a masked key, so masked text never continues onto the next row.
+ */
+const wrappedKeyChar = "[A-Za-z0-9_-]";
 /** Spaces and an optional `│` box border, within one row. */
 const border = "[^\\S\\n]*(?:│[^\\S\\n]*)?";
 const rowBreak = `${border}\\n${border}`;
 /**
- * A key wrapped across rows. A row ends in `sk-` and any key characters, or in only the
- * `s` or `sk` of the prefix, and the next row's leading run of key characters completes
- * `sk-` and a key character. Each following row's leading run continues the key while the
- * run before it was all its row held, apart from spaces and a border.
+ * A key wrapped across rows, captured. A row ends in `sk-` and any key characters, or in
+ * only the `s` or `sk` of the prefix, and the next row's leading run of key characters
+ * completes `sk-` and a key character. Each following row's leading run continues the key
+ * while the run before it was all its row held, apart from spaces and a border.
+ *
+ * An `sk-` run that does not wrap is matched uncaptured, so the scan resumes after it.
+ * Every later `sk-` in that run would fail for the same reason, and retrying each would
+ * make a wide row of them quadratic.
  */
-const wrappedKey = new RegExp(
-  `\\b(?:sk-${keyChar}*${rowBreak}${keyChar}|sk${rowBreak}-${keyChar}|s${rowBreak}k-${keyChar})` +
-    `${keyChar}*(?:${rowBreak}${keyChar}+)*`,
-  "g",
-);
-const wrappedKeyStart = new RegExp(`^(?:sk-${keyChar}*|sk?)`);
-const wrappedKeyRun = new RegExp(`(\\n${border})${keyChar}+`, "g");
+const wrapStart =
+  `sk-${wrappedKeyChar}*${rowBreak}${wrappedKeyChar}|` +
+  `sk${rowBreak}-${wrappedKeyChar}|s${rowBreak}k-${wrappedKeyChar}`;
+const wrapRest = `${wrappedKeyChar}*(?:${rowBreak}${wrappedKeyChar}+)*`;
+const wrappedKey = new RegExp(`\\b(?:((?:${wrapStart})${wrapRest})|sk-${wrappedKeyChar}*)`, "g");
+const wrappedKeyStart = new RegExp(`^(?:sk-${wrappedKeyChar}*|sk?)`);
+const wrappedKeyRun = new RegExp(`(\\n${border})${wrappedKeyChar}+`, "g");
 
 /**
  * Redact each `sk-` key-shaped token. The first part of a wrapped key becomes
@@ -40,8 +47,10 @@ const wrappedKeyRun = new RegExp(`(\\n${border})${keyChar}+`, "g");
  */
 function redactSkKeys(screen: string): string {
   return screen
-    .replace(wrappedKey, (key) =>
-      key.replace(wrappedKeyStart, "sk-[REDACTED]").replace(wrappedKeyRun, "$1[REDACTED]"),
+    .replace(wrappedKey, (run: string, key?: string) =>
+      key === undefined
+        ? run
+        : key.replace(wrappedKeyStart, "sk-[REDACTED]").replace(wrappedKeyRun, "$1[REDACTED]"),
     )
     .replace(skKeyShape, "sk-[REDACTED]");
 }
