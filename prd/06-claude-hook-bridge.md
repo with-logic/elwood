@@ -284,6 +284,9 @@ and from the `prompt_id` on Claude's hooks, never from the transcript:
 - A `UserPromptSubmit` is guidance when it names the running turn's prompt ID, or
   arrives while a `Stop` is held. The caller's handler decides it: blocked
   guidance never runs, and allowed guidance is queued.
+- A `Stop` that is not held, and any release of a held one, ends the turn. A later
+  `UserPromptSubmit` starts a new turn even under the ended turn's prompt ID,
+  which Claude reuses for a send made while a user `Stop` hook still runs.
 - A tool boundary delivers allowed guidance inside the running turn: a
   `PostToolUse`, `PostToolUseFailure`, or `PostToolBatch` hook after the answer.
 - A `Stop` is held when allowed guidance is still queued, a handler is still

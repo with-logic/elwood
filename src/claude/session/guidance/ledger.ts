@@ -94,10 +94,13 @@ export class ClaudeGuidanceLedger {
     this.clearTimers();
     this.pruneUnheard();
     const hold = this.disposed || promptId === undefined ? undefined : this.waitingOn();
-    this.held = hold !== undefined;
+    if (hold === undefined) {
+      this.reset();
+      return undefined;
+    }
+    this.held = true;
     this.queuedTurnAllowed = this.undelivered;
     this.undelivered = false;
-    if (hold === undefined) return undefined;
     this.hangTimer = this.clock.setTimer(() => this.end("hung"), queuedTurnHangLimitMs);
     this.expireUnheard();
     return hold;
@@ -148,7 +151,12 @@ export class ClaudeGuidanceLedger {
     this.release(cause);
   }
 
+  /**
+   * Ends the turn. Its prompt ID no longer names a running turn: Claude reuses it for a send made
+   * while a user `Stop` hook still runs, and that send starts a new turn.
+   */
   private reset(): void {
+    this.runningTurnPromptId = undefined;
     this.clearTimers();
     this.held = false;
     this.queuedTurnAllowed = false;

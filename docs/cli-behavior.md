@@ -2353,6 +2353,12 @@ turn's prompt id, and writes the user record when the hooks finish, about 2.2 s
 later. Codex 0.171.0 lost none of 10 sends of the same paste (4 at 0 ms, 3 at
 200 ms, 3 at 1.5 s) across two concurrent sessions at load 34–38.
 
+Re-measured on 2026-11-26 with a project `sleep 4` user `Stop` hook and a short
+reply. A send made right after Elwood's `ready` fired its `UserPromptSubmit` under
+the first turn's prompt id and ran as its own turn with its own `Stop`. So a
+reused prompt id after a turn has ended does not mean guidance for that turn;
+the guidance hold (§6.5) treats any submit after an unheld `Stop` as a new turn.
+
 ### An ergonomic send can finish before Claude draws its empty composer (2.1.332, 2026-11-26)
 
 Claude fires Elwood's `Stop` hook while it still draws the turn as working (`running Stop

@@ -140,6 +140,17 @@ describe("C-HOOK-24 Claude guidance ledger", () => {
     expect(pending()).toBe(0);
   });
 
+  test("a send after the turn ended starts a new turn, even under that turn's prompt ID", () => {
+    const { subject } = running();
+    expect(subject.holdStop("p1")).toBeUndefined();
+    expect(subject.heard("p1")).toBeUndefined();
+    subject.heard("p1")?.(false);
+    expect(subject.holdStop("p1")).toBe("queued");
+    expect(subject.holdRenderedEnd()).toBeUndefined();
+    expect(subject.heard("p1")).toBeUndefined();
+    expect(subject.holdStop("p1")).toBeUndefined();
+  });
+
   test("a stale write never fires, so it cannot take the hook of a later write", () => {
     const { subject, advance } = running();
     subject.written();
