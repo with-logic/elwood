@@ -2,7 +2,8 @@
 import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { validateQuestionAnswers } from "../../../src/core/questions/validate.ts";
-import { definitions, fixture, frame, registry } from "./helpers.ts";
+import { groupedTextAnswerFrames } from "./grouped-frame-helpers.ts";
+import { definitions, fixture, registry } from "./helpers.ts";
 import { scriptedQuestionIo as ioFor } from "./scripted-io-helpers.ts";
 
 test.each([
@@ -28,31 +29,7 @@ test.each([
     { questionId: features.id, optionIds: features.options.map((option) => option.id) },
   ]);
   expect(answers[0]!.optionIndexes).toEqual(optionIndexes);
-  const colorOther = frame(
-    fixture("questions")
-      .text.replace("❯ 1.", "  1.")
-      .replace("  3. Type something.", "❯ 3. Type something."),
-  );
-  const colorTyped = frame(colorOther.text.replace("Type something.", "custom"));
-  const logging = fixture("features-logging");
-  const metricsCursor = frame(logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"));
-  const otherCursor = frame(
-    fixture("features-both").text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
-  );
-  const review = frame(fixture("review").text.replace("→ Blue", "→ custom"));
-  const { io, writes } = ioFor(fixture("questions"), [
-    fixture("color-blue-highlight"),
-    colorOther,
-    colorTyped,
-    fixture("features-initial"),
-    logging,
-    metricsCursor,
-    fixture("features-both"),
-    otherCursor,
-    fixture("features-submit-highlight"),
-    review,
-    fixture("answered"),
-  ]);
+  const { io, writes } = ioFor(fixture("questions"), groupedTextAnswerFrames("custom", "custom"));
   const pending = answerClaudeQuestions(request, answers, io);
   if (optionIndexes.length > 0) {
     await expect(pending).rejects.toMatchObject({ code: "question_answer_failed" });

@@ -5,12 +5,20 @@ import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { controllerHarness, paintQuestionFrame } from "./controller-helpers.ts";
 import { groupedAnswerFrames } from "./grouped-frame-helpers.ts";
 import { fixture } from "./helpers.ts";
-import { composer, nativeHook } from "./lifecycle-helpers.ts";
+import { answeredHook, composer, nativeHook } from "./lifecycle-helpers.ts";
+
+/** What Claude reports for the scenario's answers: Blue, then both features. */
+export const orderAnswers = {
+  "Which test color?": "Blue",
+  "Which test features?": "Logging, Metrics",
+};
 
 export type SubmissionScenario = {
   readonly acknowledgementOrder: "composer-first" | "hook-first";
   readonly abortAfterFinalRender?: true;
   readonly failure?: "input" | "first-render" | "last-render";
+  /** What Claude's completion reports; `orderAnswers` unless a case needs a mismatch. */
+  readonly reported?: typeof orderAnswers;
 };
 export function submissionOrderDriver(scenario: SubmissionScenario) {
   const successors = [...groupedAnswerFrames(), composer()];
@@ -28,7 +36,7 @@ export function submissionOrderDriver(scenario: SubmissionScenario) {
     if (!next) throw new Error("Unexpected extra answer write");
     const isFinalInput = inputWriteCount === successors.length;
     if (isFinalInput && scenario.acknowledgementOrder === "hook-first")
-      h.events.emit("activity", nativeHook("PostToolUse"));
+      h.events.emit("activity", answeredHook(scenario.reported ?? orderAnswers));
     const rejectsRender =
       scenario.failure === "first-render" || (isFinalInput && scenario.failure === "last-render");
     rendered = rejectsRender

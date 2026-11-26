@@ -16,6 +16,7 @@ vi.mock("../../src/claude/attach-images.ts", async (original) => {
 });
 
 const { startClaude } = await import("../../src/index.ts");
+const { unsafeWriteRetryMs } = await import("../../src/core/input/constants.ts");
 const { installFakes, ptys, resetFakes, tempDir } = await import("./helpers.ts");
 
 import { claudeTty } from "../fixtures/trust-composer.ts";
@@ -52,10 +53,9 @@ test("C-API-44 image and text wait for a live model picker while history stays s
     await session.terminal.settled();
     const sent = session.sendMessage("caption", { images: [{ path: image }] });
     void sent.catch(() => undefined);
-    // The wrapper observes entry, then runs the real attachment implementation.
-    await expect.poll(() => attachment.entered).toBe(true);
-
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    // A held attach waits before the adapter attach runs, until the picker closes.
+    await new Promise<void>((resolve) => setTimeout(resolve, unsafeWriteRetryMs * 2));
+    expect(attachment.entered).toBe(false);
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData(
       `\u001b[2J\u001b[H${claudeTty(
@@ -64,6 +64,8 @@ test("C-API-44 image and text wait for a live model picker while history stays s
     );
     await session.terminal.settled();
     await expect.poll(() => ptys[0]!.writes).toEqual([paste(image)]);
+    // The wrapper observed entry, then ran the real attachment implementation.
+    expect(attachment.entered).toBe(true);
     ptys[0]!.emitData("\u001b[999;1H\u001b[K❯ [Image #1]");
     await sent;
     expect(session.terminal.snapshot().text).toContain("Historical output");

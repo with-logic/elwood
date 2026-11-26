@@ -34,6 +34,7 @@ export function claudeQuestionRounds(
     answer: (request: ElwoodQuestionRequest) => readonly ElwoodQuestionAnswer[],
     expectedAnswers: NonNullable<AskUserQuestionInput["answers"]>,
     final: string,
+    beforeAnswer?: () => Promise<void>,
   ): Promise<string> => {
     signal.throwIfAborted();
     next = Promise.withResolvers<ElwoodQuestionRequest>();
@@ -59,6 +60,7 @@ export function claudeQuestionRounds(
     context.assert.deepEqual(await facade.listQuestions(), [request]);
     context.assert.ok(Object.isFrozen(request));
     context.assert.equal(request.delivery, "blocking");
+    await beforeAnswer?.();
     signal.throwIfAborted();
     await facade.answerQuestions(request.id, answer(request), {
       timeoutMs: claudeAnswerTimeoutMs,

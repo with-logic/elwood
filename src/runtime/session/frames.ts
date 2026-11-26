@@ -117,7 +117,7 @@ export function bindStartupLifetime(
   trust: TrustState & { callerInput(): void },
   readiness: ReadinessGate,
 ): void {
-  session.bindInitialReadinessHold(readiness.isHeld);
+  session.bindInitialReadinessHold(readiness);
   const stopCallerInput = onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
     "abort",

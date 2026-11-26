@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -27,6 +27,7 @@ test("C-API-64 a late final reply retains the user turn after ready and its succ
     appendFileSync(transcript, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
   try {
     await hook({ hook_event_name: "SessionStart", source: "startup" });
+    showComposer();
     await session.sendPrompt("first");
     await hook({ hook_event_name: "UserPromptSubmit", prompt_id: "turn-a", prompt: "first" });
     append(

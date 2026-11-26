@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -20,6 +20,7 @@ describe("CodexSessionApi hook handling", () => {
     session.on("activity", (event) => {
       if (event.kind === "hook_result") results.push(event.raw);
     });
+    showComposer();
     await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
@@ -35,6 +36,7 @@ describe("CodexSessionApi hook handling", () => {
       cwd,
       hooks: { Stop: () => ({ decision: "block", reason: "Run tests again." }) },
     });
+    showComposer();
     await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(JSON.parse(result.stdout).decision).toBe("block");

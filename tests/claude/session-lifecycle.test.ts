@@ -13,7 +13,7 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
-import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, reapedGroups, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -85,6 +85,7 @@ describe("ClaudeSessionApi lifecycle", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
+    showComposer();
     await session.sendPrompt("SECRET_PROMPT");
     ptys[0]!.emitData("SECRET_TERMINAL");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {

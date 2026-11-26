@@ -181,13 +181,13 @@ test("C-API-28 backstop holds sendPrompt until authoritative readiness evidence"
   const callback = vi.fn();
   vi.useFakeTimers();
   const gate = createReadinessGate(callback, false, codex());
-  expect(gate.isHeld()).toBe(false);
+  expect(gate.holdsReadiness()).toBe(false);
   gate.observeReadinessFrame(idle, false, boot);
   gate.ready.armDeadline();
   vi.advanceTimersByTime(60_000);
   expect(callback).not.toHaveBeenCalled();
-  expect(gate.isHeld()).toBe(true);
+  expect(gate.holdsReadiness()).toBe(true);
   gate.ready.mark(); // an authoritative native hook remains sufficient
   expect(callback).toHaveBeenCalledOnce();
-  expect(gate.isHeld()).toBe(false);
+  expect(gate.holdsReadiness()).toBe(false);
 });

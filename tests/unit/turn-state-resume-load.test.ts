@@ -52,6 +52,38 @@ describe("C-TURN-03 resume settling through a CLI-announced load", () => {
     expect(watcher.observe(at(replayed))).toBe("ended");
   });
 
+  test("a placeholder and load seen before arming still end settling at the quiet composer", () => {
+    // Resume readiness arms the watcher on the configured composer, which paints after
+    // the placeholder and can follow the load. An idle Codex then repaints nothing.
+    const watcher = new TurnStateWatcher();
+    expect(edges(watcher, [at(loading), at(loading), at(replayed, spinner)])).toEqual(
+      repeat(3, undefined),
+    );
+    watcher.arm(true);
+    expect(watcher.observe(at(replayed))).toBeUndefined();
+    expect(watcher.observe(at(replayed, spinner))).toBe("started");
+  });
+
+  test("the quiet composer that released readiness ends settling when the load preceded it", () => {
+    // The watcher sees each frame before readiness arms it, so the releasing frame can be
+    // the first quiet composer after the load, and an idle Codex then repaints nothing.
+    const watcher = new TurnStateWatcher();
+    expect(edges(watcher, [at(loading), at(replayed, spinner), at(replayed)])).toEqual(
+      repeat(3, undefined),
+    );
+    watcher.arm(true);
+    expect(watcher.observe(at(replayed, spinner))).toBe("started");
+    expect(watcher.observe(at(replayed))).toBe("ended");
+  });
+
+  test("work seen before arming without a placeholder keeps the full quiet streak", () => {
+    const watcher = new TurnStateWatcher();
+    expect(watcher.observe(at(replayed, spinner))).toBeUndefined();
+    watcher.arm(true);
+    // No placeholder was seen, so one quiet composer does not end settling.
+    expect(edges(watcher, [at(replayed), at(replayed, spinner)])).toEqual([undefined, undefined]);
+  });
+
   test("a load that starts under the placeholder and replays an interrupt stays silent", () => {
     const watcher = new TurnStateWatcher();
     watcher.arm(true);

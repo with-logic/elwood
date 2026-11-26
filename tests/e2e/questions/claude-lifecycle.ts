@@ -1,12 +1,38 @@
 /** Join lazy startup on cancellation and always attempt private proof cleanup (PRD §12). */
 
+export type ClaudeProofLifecycle = ReturnType<typeof claudeProofLifecycle>;
+
+/**
+ * Runs isolated proof sessions one at a time. node:test starts the next test when one times out,
+ * so each session waits for the previous body's cleanup, and none starts after a session whose
+ * Claude shutdown was never confirmed.
+ */
+export function claudeProofQueue() {
+  let previous: Promise<void> = Promise.resolve();
+  let unconfirmed = false;
+  return (signal: AbortSignal, prove: (lifecycle: ClaudeProofLifecycle) => Promise<void>) => {
+    const lifecycle = claudeProofLifecycle(signal);
+    const run = previous.then(() => {
+      if (unconfirmed) throw new Error("An earlier Claude proof session did not confirm shutdown");
+      return prove(lifecycle);
+    });
+    previous = run.catch(() => {
+      unconfirmed ||= !lifecycle.closed;
+    });
+    return run;
+  };
+}
+
 export function claudeProofLifecycle(signal: AbortSignal) {
   let facade: { close(): Promise<void> } | undefined;
+  let closed = false;
   let closing: Promise<void> | undefined;
   let cancellationClose: Promise<void> | undefined;
   const close = (): Promise<void> => {
     if (!facade) return Promise.resolve();
-    closing ??= facade.close();
+    closing ??= facade.close().then(() => {
+      closed = true;
+    });
     const attempt = closing;
     void attempt.catch(() => {
       if (closing === attempt) closing = undefined;
@@ -18,6 +44,10 @@ export function claudeProofLifecycle(signal: AbortSignal) {
   };
   signal.addEventListener("abort", abort, { once: true });
   return {
+    /** Whether no Claude session was started, or its close has resolved. */
+    get closed() {
+      return facade === undefined || closed;
+    },
     async start<T>(active: { start(): Promise<T>; close(): Promise<void> }): Promise<T> {
       signal.throwIfAborted();
       facade = active;

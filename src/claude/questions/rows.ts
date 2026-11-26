@@ -1,10 +1,30 @@
-/** Parse exact Claude question rows and their native checkbox state (PRD §4). */
+/** Parse Claude question rows, their checkbox state and drawn text (PRD §5.10, C-QUESTION-03). */
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 
 export const claudeQuestionRow =
   /^(?<marker>❯| ) (?<number>\d+)\. (?:\[(?<checkbox>[ ✔])\] )?(?<label>.*)$/;
 export const OTHER_CONTINUATION_INDENT_COLUMNS = 5;
 export const normalizeClaudeQuestionText = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/**
+ * Matches LF-joined rows Claude drew against `text`, folded once for every redraw it checks.
+ * Claude wraps at a space, or inside a word too long for its row, and draws tabs as spaces:
+ * whitespace runs fold, and a row break stands for a space or for nothing. Only Claude's
+ * completion carries the exact text.
+ */
+export function claudeDrawnTextMatcher(text: string): (joinedRows: string) => boolean {
+  const expected = normalizeClaudeQuestionText(text);
+  return (joinedRows) => {
+    let offset = 0;
+    for (const row of joinedRows.split("\n")) {
+      if (expected[offset] === " ") offset += 1;
+      const drawn = normalizeClaudeQuestionText(row);
+      if (!expected.startsWith(drawn, offset)) return false;
+      offset += drawn.length;
+    }
+    return offset === expected.length;
+  };
+}
 export type ClaudeQuestionRows = {
   /** Zero-based selection-list index: options, Other, then Next or Submit when present. */
   readonly cursor: number;
@@ -73,7 +93,8 @@ function checkboxActionIndex(
   otherIndex: number,
   grouped: boolean,
 ): number {
-  const action = grouped ? /^(?:❯| ) {4}(?:Next|Submit)$/ : /^(?:❯| ) {4}Submit$/;
+  // A notice Claude replaced on this row leaves blank cells after the label.
+  const action = grouped ? /^(?:❯| ) {4}(?:Next|Submit) *$/ : /^(?:❯| ) {4}Submit *$/;
   return rows.findIndex((line, index) => index > otherIndex && action.test(line));
 }
 

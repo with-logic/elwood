@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
 import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
 import { fixture, frame, registry } from "./helpers.ts";
-import { nativeHook } from "./lifecycle-helpers.ts";
+import { answeredHook, nativeHook } from "./lifecycle-helpers.ts";
 import { scriptedQuestionIo } from "./scripted-io-helpers.ts";
 
 const questions = [
@@ -49,7 +49,8 @@ test("Claude final Enter retains its original request across changed metadata un
   expect(requests.find("native")).toBe(original);
   expect(requests.list()).toEqual([original]);
   expect(events.map((event) => event.phase)).toEqual(["raised"]);
-  expect(adapter.observe(hook(false, "PostToolUse"))).toBe(true);
+  const answered = answeredHook({ "Which test note?": "Brief (short)" }, { questions });
+  expect(adapter.observe(answered)).toBe(true);
   expect(events.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request: original });
   expect(requests.find("native")).toBeUndefined();
   await expect(

@@ -61,12 +61,12 @@ export function frame(text: string): QuestionFrame {
   return { text, lines, cursorRow, cursorY: cursorRow, cursorX: 0, rows: lines.length, cols: 140 };
 }
 
-export function nativeSnapshot(name: string): QuestionFrame {
+export function nativeSnapshot(name: string, version = "2.1.305"): QuestionFrame {
   return parseNativeSnapshot(
     JSON.parse(
       readFileSync(
         fileURLToPath(
-          new URL(`../../fixtures/claude-2.1.305/questions/${name}.json`, import.meta.url),
+          new URL(`../../fixtures/claude-${version}/questions/${name}.json`, import.meta.url),
         ),
         "utf8",
       ),
@@ -74,11 +74,18 @@ export function nativeSnapshot(name: string): QuestionFrame {
   );
 }
 
+/** A Claude 2.1.332 capture, the version of the notice-residue and named-session layouts. */
+export const nativeSnapshot332 = (name: string) => nativeSnapshot(name, "2.1.332");
+
 export function parseNativeSnapshot(value: unknown): QuestionFrame {
   if (!isSnapshotRecord(value)) throw invalidSnapshot();
   const lines = snapshotLines(value["lines"]);
   const cursorVisible = value["cursorVisible"];
   if (cursorVisible !== undefined && typeof cursorVisible !== "boolean") throw invalidSnapshot();
+  // xterm's text before a visible cursor, as native captures record it.
+  const cursorLineBefore = value["cursorLineBefore"];
+  if (cursorLineBefore !== undefined && typeof cursorLineBefore !== "string")
+    throw invalidSnapshot();
   const cursorY = snapshotNumber(value["cursorY"]);
   const baseY = optionalSnapshotNumber(value["baseY"]);
   const viewportY = optionalSnapshotNumber(value["viewportY"]);
@@ -92,6 +99,7 @@ export function parseNativeSnapshot(value: unknown): QuestionFrame {
     cursorY,
     cursorRow: cursorRow ?? cursorY + (baseY ?? 0) - (viewportY ?? 0),
     ...(cursorVisible === undefined ? {} : { cursorVisible }),
+    ...(cursorLineBefore === undefined ? {} : { cursorLineBefore }),
   };
 }
 

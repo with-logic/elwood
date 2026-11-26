@@ -8,8 +8,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -114,6 +115,7 @@ describe("CodexSessionApi startup and terminal control", () => {
     session.on("activity", (event) => activity.push(event.kind));
     ptys[0]!.emitData("screen");
     await flushTerminal();
+    showComposer();
     await session.sendPrompt("hello\nworld");
     const queued = session.sendMessage("again");
     expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~", "\r"]);
@@ -129,7 +131,7 @@ describe("CodexSessionApi startup and terminal control", () => {
       "x",
     ]);
     expect(ptys[0]!.size).toEqual({ cols: 88, rows: 33 });
-    expect(seen).toEqual(["early", "screen"]);
+    expect(seen).toEqual(["early", "screen", codexTty(codexComposer)]);
     expect(exits).toEqual([7]);
     expect(activity).toContain("terminal_exit");
     expect(session.status).toBe("exited");

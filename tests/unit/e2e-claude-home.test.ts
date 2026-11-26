@@ -3,9 +3,9 @@
  * C-E2E-23). Each case loads the module in a child process, the way the e2e runner does,
  * with a fake user config dir, and checks what the private dir held and what is left once
  * that process exits: a login without its refresh token, the global config without its
- * project entries, MCP servers, or bypass acceptance, the model catalog, no user settings,
- * and afterwards nothing but the user's own files, unchanged. No case reads the real
- * keychain: each child reads an empty fake one (`fake-keychain.ts`).
+ * project entries, MCP servers, bypass acceptance, or fullscreen crash tracking, the model
+ * catalog, no user settings, and afterwards nothing but the user's own files, unchanged. No
+ * case reads the real keychain: each child reads an empty fake one (`fake-keychain.ts`).
  */
 
 import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
