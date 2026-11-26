@@ -1,8 +1,8 @@
 /**
- * Runs the release npm publication step with the real npm client, offline,
- * for a version npm does not have yet: it publishes unless a newer release
- * overtook it, in which case npm would refuse to move `latest` back, or the
- * package's packument cannot be read or has no versions object.
+ * Runs the release npm lookup and publication steps with the real npm
+ * client, offline, for a version npm does not have yet: it publishes unless a
+ * newer release overtook it, in which case npm would refuse to move `latest`
+ * back, or the package's packument cannot be read or has no versions object.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -10,10 +10,10 @@ import { test } from "node:test";
 import {
   assertFailedWithoutPublishing,
   retrying,
-  usePublishStep,
+  usePublishFlow,
 } from "./release-publish-fixture.mjs";
 
-const { npmPublishDryRun, publish } = usePublishStep();
+const { npmPublishDryRun, publish } = usePublishFlow();
 
 // npm, publishing as a dry run, agrees that each can take `latest`.
 for (const [label, options] of [
@@ -35,8 +35,9 @@ for (const [label, options] of [
   ],
 ]) {
   test(`${label} publishes`, () => {
-    const { publishLog, result } = publish(options);
+    const { outputs, publishLog, result } = publish(options);
     assert.equal(result.status, 0, result.stderr);
+    assert.equal(outputs, "should_publish=true\n");
     assert.equal(publishLog, "publish --access public\n");
     assert.match(result.stdout, /: unpublished\n/u);
   });
