@@ -11,9 +11,11 @@ name: Release
 # release. The lightweight tag this workflow pushes on the release commit is
 # reused, and a version this workflow already published from that commit and a
 # published GitHub release are left as they are. Any other tag of that name
-# fails the run. A version older than one already on npm is never published,
-# because it cannot take `latest`: the publish step fails, naming the newer
-# version, and the newest GitHub release stays Latest.
+# fails the run. A version that a newer stable, undeprecated one on npm has
+# overtaken when the publish step looks is not published, because it cannot
+# take `latest`: the step fails, naming the newer version. npm's own check at
+# upload covers a newer release that lands meanwhile. The newest GitHub
+# release stays Latest.
 on:
   push:
     branches: [main]
@@ -261,17 +263,19 @@ jobs:
       # runs tokenlessly through this workflow. Once one has, set
       # NPM_TRUSTED_PUBLISHER_CONFIG_ID below from it.
       #
-      # One lookup reads this version's document from the registry directly,
+      # The step reads this version's document from the registry directly,
       # because `npm view` would redact the configuration ID, as it redacts
       # every UUID-shaped value. Each attempt has 30 seconds, body included,
-      # and reads at most 1 MiB, far more than a version document needs. Like
-      # npm, it retries a connection that fails, times out or is cut off, or
-      # HTTP 408, 429 or 5xx, `fetch-retries` times (2 by default), waiting
-      # `fetch-retry-mintimeout` milliseconds between attempts. The document
-      # records the commit a version was published from as `gitHead`, which
-      # any publisher can set, and, for trusted publishing, the configuration
-      # that published it as `_npmUser.trustedPublisher.oidcConfigId`. The log
-      # prints each of those only in its expected shape.
+      # and reads at most 16 MiB: a version document is a few kilobytes, and
+      # the abbreviated packument read below grows by about 1 KB a version.
+      # Like npm, it retries a connection that fails, times out or is cut
+      # off, or HTTP 408, 429 or 5xx, `fetch-retries` times (2 by default),
+      # waiting `fetch-retry-mintimeout` milliseconds between attempts. The
+      # version document records the commit a version was published from as
+      # `gitHead`, which any publisher can set, and, for trusted publishing,
+      # the configuration that published it as
+      # `_npmUser.trustedPublisher.oidcConfigId`. The log prints each of those
+      # only in its expected shape.
       #
       # NPM_TRUSTED_PUBLISHER_CONFIG_ID is this workflow's configuration, the
       # `oidcConfigId` recorded on every release since 0.2.0. After the trusted
@@ -282,8 +286,9 @@ jobs:
       # under this ID. A re-run runs this file as it was at the release commit,
       # so when that copy names another configuration, a re-run after a
       # successful publish fails here instead of skipping; publish the GitHub
-      # release by hand with `gh release create <tag> --generate-notes`. A
-      # first publish is unaffected.
+      # release by hand with `gh release create <tag> --generate-notes`,
+      # adding `--latest=false` if a newer release exists. A first publish is
+      # unaffected.
       # - Not on npm (404): publish, unless the package's abbreviated
       #   packument, read the same way, has a newer stable version that is not
       #   deprecated: npm refuses to move `latest` back from one. Then fail,
@@ -314,8 +319,8 @@ jobs:
             const packumentUrl = new URL(name.replace("/", "%2f"), registry);
             const versionUrl = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
             const attemptTimeoutMs = 30_000;
-            const maxDocumentBytes = 1024 * 1024;
-            const releasePattern = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+            const maxDocumentBytes = 16 * 1024 * 1024;
+            const semverPattern = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
             const shaped = (value, pattern) => typeof value === "string" && pattern.test(value);
             /** Reads one answer, body included; throws when the connection fails or times out. */
             async function attempt(url, headers) {
@@ -352,42 +357,52 @@ jobs:
               if (user instanceof Object) return "another account";
               return "an unrecorded publisher";
             }
-            /** Reads a registry document: `missing` for a 404, else the parsed JSON or the failure. */
+            /** Reads a registry document: `missing` for a 404, else the parsed JSON or why the read failed. */
             async function read(url, headers) {
-              const answer = await lookup(url, headers);
-              if (answer.status === 404) return { missing: true };
-              if (answer.status < 200 || answer.status > 299) return { failure: `lookup-failed HTTP ${answer.status}` };
-              if (answer.oversized) return { failure: `lookup-failed document over ${maxDocumentBytes} bytes` };
-              return { document: Object(JSON.parse(answer.text)) };
-            }
-            /** Orders parsed versions when at least one is stable: a stable version follows its prereleases. */
-            function compareVersions(a, b) {
-              for (const part of [1, 2, 3]) {
-                if (Number(a[part]) !== Number(b[part])) return Number(a[part]) - Number(b[part]);
+              try {
+                const answer = await lookup(url, headers);
+                if (answer.status === 404) return { missing: true };
+                if (answer.status < 200 || answer.status > 299) return { failure: `HTTP ${answer.status}` };
+                if (answer.oversized) return { failure: `document over ${maxDocumentBytes} bytes` };
+                return { document: Object(JSON.parse(answer.text)) };
+              } catch (error) {
+                return { failure: error.cause?.code ?? error.name };
               }
-              return Number(!a[4]) - Number(!b[4]);
             }
-            /** Returns the newest stable, undeprecated version above this one, which npm would not move `latest` back from. */
-            function newestVersionAbove(versions) {
-              const own = releasePattern.exec(version);
+            /**
+             * Orders two `semverPattern` matches (groups 1 to 3 are major, minor and
+             * patch, group 4 a prerelease), at least one of them stable: a stable
+             * version follows its own prereleases.
+             */
+            function compareParsedVersions(left, right) {
+              for (const part of [1, 2, 3]) {
+                if (Number(left[part]) !== Number(right[part])) return Number(left[part]) - Number(right[part]);
+              }
+              return Number(!left[4]) - Number(!right[4]);
+            }
+            /** Returns the newest stable, undeprecated version above the one this run releases: npm would not move `latest` back from it. */
+            function newestOvertakingVersion(versions) {
+              const own = semverPattern.exec(version);
               if (!own) return undefined;
               let newest;
               for (const [candidate, manifest] of Object.entries(versions)) {
-                const parts = releasePattern.exec(candidate);
+                const parts = semverPattern.exec(candidate);
                 if (!parts || parts[4] || manifest?.deprecated) continue;
-                if (compareVersions(parts, own) > 0 && (!newest || compareVersions(parts, newest) > 0)) newest = parts;
+                if (compareParsedVersions(parts, own) > 0 && (!newest || compareParsedVersions(parts, newest) > 0)) {
+                  newest = parts;
+                }
               }
               return newest?.[0];
             }
             async function classifyUnpublished() {
               const found = await read(packumentUrl, { accept: "application/vnd.npm.install-v1+json" });
-              if (found.failure) return found.failure;
-              const newer = found.missing ? undefined : newestVersionAbove(Object(found.document.versions));
+              if (found.failure) return `lookup-failed ${found.failure} reading the packument`;
+              const newer = found.missing ? undefined : newestOvertakingVersion(Object(found.document.versions));
               return newer ? `overtaken-by ${newer}` : "unpublished";
             }
             async function classify() {
               const found = await read(versionUrl);
-              if (found.failure) return found.failure;
+              if (found.failure) return `lookup-failed ${found.failure}`;
               if (found.missing) return classifyUnpublished();
               const manifest = found.document;
               const user = manifest._npmUser;

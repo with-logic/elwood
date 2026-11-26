@@ -14,9 +14,10 @@
  * keep `latest` on: deprecated ones and a prerelease.
  * @with-logic/elwood-flaky fails each path's first requests in the ways
  * `interruptions` lists, then answers as recorded.
- * @with-logic/registry-down answers 500, @with-logic/registry-garbled answers
- * 200 with a body that is not JSON, @with-logic/registry-oversized answers 200
- * with 2 MiB, and anything else 404.
+ * @with-logic/registry-down answers 500, @with-logic/packument-down answers
+ * 500 for its packument and 404 for its versions, @with-logic/registry-garbled
+ * answers 200 with a body that is not JSON, @with-logic/registry-oversized
+ * answers 200 with 17 MiB, and anything else 404.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -85,9 +86,10 @@ const server = createServer((request, response) => {
     response.writeHead(status, { "content-type": "application/json" }).end(body);
   const packageName = path.split("/", 2).join("/");
   if (packageName === "@with-logic/registry-down") return reply(500, '{"error":"fixture"}');
+  if (path === "@with-logic/packument-down") return reply(500, '{"error":"fixture"}');
   if (packageName === "@with-logic/registry-garbled") return reply(200, "<!doctype html>");
   if (packageName === "@with-logic/registry-oversized") {
-    return reply(200, `${" ".repeat(2 * 1024 * 1024)}{}`);
+    return reply(200, `${" ".repeat(17 * 1024 * 1024)}{}`);
   }
   if (packageName === "@with-logic/elwood-flaky") {
     const requests = requestsByPath.get(path) ?? 0;

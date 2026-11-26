@@ -1,68 +1,24 @@
-/** Re-runs the release npm publication step with the real npm client, offline. */
+/**
+ * Re-runs the release npm publication step with the real npm client, offline,
+ * for a version already on npm and for registry lookups that fail. The
+ * release-unpublished tests cover a version npm does not have yet.
+ */
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { test } from "node:test";
 
 import { startRegistry } from "./npm-registry-fixture.mjs";
-import { runStep } from "./release-fixture.mjs";
+import {
+  assertFailedWithoutPublishing,
+  commitOf,
+  retrying,
+  usePublishStep,
+} from "./release-publish-fixture.mjs";
 
-const scratch = mkdtempSync(join(tmpdir(), "elwood-release-publish-"));
-let registry;
-before(async () => {
-  registry = await startRegistry(scratch);
-});
-after(() => {
-  registry?.stop();
-  rmSync(scratch, { recursive: true, force: true });
-});
-
-// The recorded releases: this workflow's trusted publisher published 0.7.0 and
-// 0.8.0 (`latest`), and a maintainer published 0.1.0 by hand.
-const commitOf = {
-  "0.1.0": "d8b4e78e0d6979f6a081689fcbb42987a2c66d7f",
-  "0.7.0": "5ac725b514fe26d1ef71a837f029c8f6fd15c4d3",
-  "0.8.0": "86b962487b962a1c8ff628aee7ad45fc527a386e",
-};
-const otherCommit = "0".repeat(40);
-const handPublisher = "maintainer@example.test";
+const { publish, scratch } = usePublishStep();
 // Nothing listens here: no listen(0) picks a port below the ephemeral range,
 // and fetch, unlike for port 1, does not refuse to try it.
 const unreachable = "http://127.0.0.1:1023/";
-// npm's retry settings, with a 1 ms wait.
-const retrying = (retries) => ({
-  npm_config_fetch_retries: String(retries),
-  npm_config_fetch_retry_mintimeout: "1",
-});
-
-// Records each `npm publish` and runs it for real against the local registry
-// as a dry run, so npm's own version and dist-tag checks still apply.
-const dryRunPublish =
-  'npm() { if [ "$1" = publish ]; then echo "$*" >> "$PUBLISH_LOG"; command npm "$@" --dry-run; else command npm "$@"; fi; }';
-
-function publish({
-  name = "@with-logic/elwood",
-  version,
-  releaseCommit = otherCommit,
-  prelude = "",
-  env = {},
-}) {
-  const cwd = mkdtempSync(join(scratch, "package-"));
-  writeFileSync(join(cwd, "package.json"), JSON.stringify({ name, version }));
-  const log = join(cwd, "publish.log");
-  writeFileSync(log, "");
-  const result = runStep("name: Publish to npm", {
-    cwd,
-    env: { ...registry.env, ...env, PUBLISH_LOG: log },
-    expressions: {
-      "needs.resolve.outputs.version": version,
-      "needs.secret-scan.outputs.commit": releaseCommit,
-    },
-    prelude: `${dryRunPublish}\n${prelude}`,
-  });
-  return { publishes: readFileSync(log, "utf8"), result };
-}
 
 for (const version of ["0.8.0", "0.7.0"]) {
   test(`a re-run skips ${version}, which this workflow published from the release commit`, () => {
@@ -86,28 +42,7 @@ test("a lookup retries every transient failure, as often as fetch-retries allows
   assert.match(result.stdout, /: published-here\n/u);
 });
 
-// npm, publishing as a dry run, agrees that each can take `latest`.
-for (const [label, options] of [
-  ["a version newer than every one on npm", { version: "0.9.0" }],
-  ["the first version of a package", { name: "@with-logic/elwood-new", version: "1.0.0" }],
-  [
-    "a version newer than every stable, undeprecated one",
-    { name: "@with-logic/elwood-deprecated", version: "0.6.2" },
-  ],
-]) {
-  test(`${label} publishes`, () => {
-    const { publishes, result } = publish(options);
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(publishes, "publish --access public\n");
-    assert.match(result.stdout, /: unpublished\n/u);
-  });
-}
-
-const overtaken = (version) =>
-  `@with-logic/elwood@${version} is older than 0.8.0, which is already on npm, so it cannot take the latest dist-tag. To ship it anyway, publish it by hand with an explicit dist-tag: npm publish --access public --tag <tag>`;
 for (const [label, options, reason] of [
-  ["a version a newer release overtook", { version: "0.6.2" }, overtaken("0.6.2")],
-  ["a prerelease of a version on npm", { version: "0.8.0-rc.1" }, overtaken("0.8.0-rc.1")],
   [
     "a version a maintainer published by hand",
     { version: "0.1.0", releaseCommit: commitOf["0.1.0"] },
@@ -166,9 +101,9 @@ for (const [label, options, reason] of [
     "could not read @with-logic/registry-garbled@1.0.0 from the registry: lookup-failed SyntaxError",
   ],
   [
-    "a registry answer larger than any version document",
+    "a registry answer over 16 MiB",
     { name: "@with-logic/registry-oversized", version: "1.0.0" },
-    "could not read @with-logic/registry-oversized@1.0.0 from the registry: lookup-failed document over 1048576 bytes",
+    "could not read @with-logic/registry-oversized@1.0.0 from the registry: lookup-failed document over 16777216 bytes",
   ],
   [
     "a lookup that yields no answer",
@@ -182,13 +117,7 @@ for (const [label, options, reason] of [
   ],
 ]) {
   test(`${label} fails the step without publishing`, () => {
-    const { publishes, result } = publish(options);
-    assert.equal(result.status, 1);
-    assert.equal(publishes, "");
-    assert.ok(result.stdout.includes(`::error::`), result.stdout);
-    assert.ok(result.stdout.includes(`${reason}\n`), result.stdout);
-    // The registry's publisher email stays out of the log.
-    assert.ok(!`${result.stdout}${result.stderr}`.includes(handPublisher), result.stdout);
+    assertFailedWithoutPublishing(publish(options), reason);
   });
 }
 
