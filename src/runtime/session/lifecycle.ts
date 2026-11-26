@@ -152,12 +152,12 @@ export abstract class SessionLifecycle {
   bindInitialReadinessHold(hold: import("./readiness.ts").InitialReadinessHold): void {
     this.initialReadinessHold = hold;
   }
-  submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
+  submitEvidence(kind: StatusEvidenceKind, workingVisible = false, cause?: string): StatusDecision {
     const held =
       this.automationInputBlocking ||
       this.closing.signal.aborted ||
       (!this.everReady && this.initialReadinessHold?.holdsReadiness() === true);
-    return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
+    return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible, cause });
   }
   submitExit(): StatusDecision {
     this.closing.abort();

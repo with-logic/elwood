@@ -9,6 +9,7 @@
 import { runContained } from "../../core/contained.ts";
 import { readScreenFacts } from "../../core/screen-facts.ts";
 import { deadlineClock } from "../../core/timers.ts";
+import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { turnEndHoldExpiredWarning } from "../../core/warnings/turn-end-hold.ts";
 import type { StatusDecision, StatusEvidenceKind } from "../../runtime/status-evidence.ts";
 import { cachedLiveSnapshot } from "../../terminal/cursor.ts";
@@ -98,7 +99,11 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
     );
     return this.turnEndHold;
   }
-  override submitEvidence(kind: StatusEvidenceKind, workingVisible?: boolean): StatusDecision {
+  override submitEvidence(
+    kind: StatusEvidenceKind,
+    workingVisible?: boolean,
+    cause?: string,
+  ): StatusDecision {
     // Resumed work ends the last turn's hold, so input for the running turn is not held.
     if (kind === "rendered_turn_started" || (kind === "blocking_prompt_cleared" && workingVisible))
       this.turnEnd.release();
@@ -111,7 +116,7 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
       this.isAutoModeAtTurnEnd()
     )
       this.turnEnd.arm();
-    return super.submitEvidence(kind, workingVisible);
+    return super.submitEvidence(kind, workingVisible, cause);
   }
   /** Claude mounts the offer only in auto mode: as launched, or as its footer shows now. */
   private isAutoModeAtTurnEnd(): boolean {
@@ -124,7 +129,10 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
    * cannot follow a close.
    */
   private reportExpiredHold(): void {
-    const warning = turnEndHoldExpiredWarning(this.elwoodSessionId);
+    this.emitWarningLater(turnEndHoldExpiredWarning(this.elwoodSessionId));
+  }
+  /** Delivers a warning once the code that found it has returned, so no listener reenters it. */
+  protected emitWarningLater(warning: ElwoodWarningEvent): void {
     queueMicrotask(() => runContained(() => this.emitWarnings([warning])));
   }
   /** The hold reads every frame while input waits, even behind a dialog, so it knows why. */

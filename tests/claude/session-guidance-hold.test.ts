@@ -1,49 +1,22 @@
 /**
  * A Claude `Stop` held for guidance queued behind its turn, through a real session (PRD §6.5,
- * C-HOOK-24): the ignored decision it records, and what ends the hold.
+ * C-HOOK-24): the ignored decision it records, and what it waits on.
  */
 import { afterEach, expect, test, vi } from "vitest";
-import { queuedTurnHangLimitMs } from "../../src/claude/session/guidance-ledger.ts";
-import type { ClaudeHookEventFor, ClaudeHookResultForEvent } from "../../src/index.ts";
-import { startClaude } from "../../src/index.ts";
-import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
-import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
+import { queuedTurnHangLimitMs } from "../../src/claude/session/guidance/ledger.ts";
+import {
+  holdReasons,
+  lastDecision,
+  paintTurnEnd,
+  runningWithGuidance,
+  type SubmitResult,
+} from "./guidance-session-helpers.ts";
+import { resetFakes } from "./helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
   resetFakes();
 });
-
-type SubmitResult = ClaudeHookResultForEvent<ClaudeHookEventFor<"UserPromptSubmit">> | undefined;
-const frame = (text: string) => `\u001b[2J\u001b[H${text}`;
-const heldReason = "ignored: Claude runs the guidance queued at this Stop as a new turn";
-
-/** A session running prompt `p1`, with guidance `note` written into that turn. */
-async function runningWithGuidance(screen?: () => Promise<SubmitResult>) {
-  installFakes();
-  const cwd = tempDir();
-  const session = await startClaude({
-    cwd,
-    hooks: { UserPromptSubmit: (event) => (event.prompt === "note" ? screen?.() : undefined) },
-  });
-  const hook = (hook_event_name: string, fields: Record<string, unknown> = {}) =>
-    ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name,
-      session_id: "claude-1",
-      cwd,
-      ...fields,
-    });
-  const submit = (prompt: string) => hook("UserPromptSubmit", { prompt_id: "p1", prompt });
-  const stop = (promptId: string) => hook("Stop", { prompt_id: promptId, stop_hook_active: false });
-  showComposer();
-  await session.sendPrompt("busy");
-  await submit("busy");
-  await session.sendGuidance("note");
-  return { session, hook, submit, stop };
-}
-
-const lastDecision = (session: { statusDecisions(): readonly { reason: string }[] }) =>
-  session.statusDecisions().at(-1)?.reason;
 
 test("C-HOOK-24 a Stop with allowed guidance queued waits for the queued turn's Stop", async () => {
   const { session, submit, stop } = await runningWithGuidance();
@@ -51,7 +24,7 @@ test("C-HOOK-24 a Stop with allowed guidance queued waits for the queued turn's 
     await submit("note");
     await stop("p1");
     expect(session.status).toBe("running");
-    expect(lastDecision(session)).toBe(heldReason);
+    expect(lastDecision(session)).toBe(holdReasons.queued);
     await stop("q1");
     expect(session.status).toBe("ready");
   } finally {
@@ -72,24 +45,34 @@ test("C-HOOK-24 guidance a tool boundary delivered holds no Stop", async () => {
 });
 
 test("C-HOOK-24 the idle composer cannot end the turn while a handler screens guidance", async () => {
+  let entered: () => void = () => undefined;
+  const handlerEntered = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
   let answer: (result: SubmitResult) => void = () => undefined;
   const screening = new Promise<SubmitResult>((resolve) => {
     answer = resolve;
   });
-  const { session, submit, stop } = await runningWithGuidance(() => screening);
+  const { session, submit, stop } = await runningWithGuidance({
+    screen: () => {
+      entered();
+      return screening;
+    },
+  });
   try {
     const screened = submit("note");
-    await expect.poll(() => session.statusDecisions().length).toBeGreaterThan(0);
+    await handlerEntered;
     await stop("p1");
-    ptys[0]!.emitData(frame("esc to interrupt"));
-    await session.terminal.settled();
-    ptys[0]!.emitData(frame(claudeTty(claudeComposer)));
-    await session.terminal.settled();
+    expect(lastDecision(session)).toBe(holdReasons.screening);
+    await paintTurnEnd(session);
     expect(session.status).toBe("running");
-    expect(lastDecision(session)).toBe(heldReason);
+    expect(lastDecision(session)).toBe(holdReasons.screening);
     answer({ decision: "block", reason: "Not now." });
     await screened;
     expect(session.status).toBe("ready");
+    expect(lastDecision(session)).toBe(
+      "applied: running became ready; the guidance held at the Stop was blocked",
+    );
   } finally {
     await session.stop();
   }
@@ -107,6 +90,9 @@ test("C-HOOK-24 a held Stop with no queued turn ends at the hang limit with a wa
     vi.advanceTimersByTime(queuedTurnHangLimitMs);
     vi.useRealTimers();
     expect(session.status).toBe("ready");
+    expect(lastDecision(session)).toBe(
+      "applied: running became ready; no queued turn ended within the hang limit",
+    );
     await expect.poll(() => warnings).toEqual(["queued_turn_unconfirmed"]);
   } finally {
     await session.stop();

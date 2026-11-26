@@ -19,7 +19,6 @@ import type { InitialReady } from "../../runtime/readiness/initial-ready.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
-import { claudePromptId } from "../hooks/prompt-id.ts";
 import { claudeTurnFailureActivity } from "../hooks/stop-failure.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { claudePasteEnvelopeId, claudeSubmitPresentation } from "../pasted-content.ts";
@@ -110,8 +109,9 @@ export function buildClaudeHookHandler(
         ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
         : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
-    const answerGuidance = deps.getSession()?.guidanceHook(event);
     publish(event, observation);
+    // Only the dispatcher, which fails open rather than throw, runs before the answer is recorded.
+    const answerGuidance = deps.getSession()?.recordGuidanceHook(event);
     const outcome = await requestHook(
       {
         hasListeners: (name) => emitter.hasListeners(name),
@@ -125,9 +125,9 @@ export function buildClaudeHookHandler(
       options.hookTimeoutMs ?? 25_000,
       record.elwoodSessionId,
     );
-    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     const blocked = isBlock(outcome.result);
     observation.run("lifecycle", () => answerGuidance?.(blocked));
+    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
     // Claude can emit SessionStart before a conversation transcript exists.
     // Persist its native resume ID after an unblocked UserPromptSubmit (C-CLAUDE-08).
     if (event.hook_event_name === "UserPromptSubmit" && !blocked)
@@ -157,8 +157,7 @@ export function buildClaudeHookHandler(
       // Guidance may steer the current turn; every physical submission supersedes this Stop.
       const superseded = !(submissionGenerationUnchanged?.() ?? true);
       if (!superseded) deps.getTurnWatcher().arm();
-      const promptId = claudePromptId(event["prompt_id"]);
-      observation.run("lifecycle", () => deps.getSession()?.submitStop(promptId, superseded));
+      observation.run("lifecycle", () => deps.getSession()?.submitStop(superseded));
     }
     observation.report();
     return serialized;

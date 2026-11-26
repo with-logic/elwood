@@ -51,13 +51,15 @@ export type StatusEvidenceContext = {
   readonly inputBlocked?: boolean;
   readonly workingVisible?: boolean;
   /** Why an adapter holds this turn end; evidence that would mark ready is then ignored. */
-  readonly heldBy?: string;
+  readonly holdReason?: string;
+  /** What ended an adapter's hold on this evidence, named on the decision it applies. */
+  readonly cause?: string | undefined;
 };
 
 export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
-  { inputBlocked = false, workingVisible = false, heldBy }: StatusEvidenceContext = {},
+  { inputBlocked = false, workingVisible = false, holdReason, cause }: StatusEvidenceContext = {},
 ): StatusDecision {
   const target =
     evidence === "blocking_prompt_cleared" && workingVisible
@@ -66,7 +68,7 @@ export function decideStatus(
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
   if (inputBlocked && target === "ready")
     return ignored("ignored: a trust gate or closing session holds input");
-  if (heldBy !== undefined && target === "ready") return ignored(`ignored: ${heldBy}`);
+  if (holdReason !== undefined && target === "ready") return ignored(`ignored: ${holdReason}`);
   // Turn/blocking evidence describes in-session activity; before the session
   // is live (`starting`) it must not fabricate `ready`/`running`/`blocked`.
   if (requiresLiveSession.has(evidence) && !liveStatuses.has(from)) {
@@ -94,7 +96,13 @@ export function decideStatus(
   if (!canTransition(from, target)) {
     return ignored(`ignored: ${from} cannot become ${target}`);
   }
-  return { evidence, from, to: target, reason: `applied: ${from} became ${target}` };
+  const applied = `applied: ${from} became ${target}`;
+  return {
+    evidence,
+    from,
+    to: target,
+    reason: cause === undefined ? applied : `${applied}; ${cause}`,
+  };
 }
 
 /** Diagnostics stay bounded; the log is live-only and never persisted. */

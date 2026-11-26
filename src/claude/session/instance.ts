@@ -36,7 +36,7 @@ import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import type { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { type ClaudeRuntimeParts, stopClaudeRuntime } from "./cleanup.ts";
-import { ClaudeGuidanceSession } from "./guidance-session.ts";
+import { ClaudeGuidanceSession } from "./guidance/session.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 
 export class ClaudeSessionImpl extends ClaudeGuidanceSession implements ClaudeSessionApi {

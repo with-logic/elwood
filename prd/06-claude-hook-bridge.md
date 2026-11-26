@@ -279,7 +279,8 @@ An unblocked `Stop` does not mark the session ready while guidance is still
 queued behind the turn it ends (C-HOOK-24). Claude runs guidance still queued at
 a `Stop` at once, as a new turn under a new prompt ID with its own `Stop`, so the
 session stays `running` until that turn. Elwood decides this from state it owns
-and from the `prompt_id` on Claude's hooks, never from the transcript:
+and from the `prompt_id` on Claude's `UserPromptSubmit` hooks, never from the
+transcript:
 
 - A `UserPromptSubmit` is guidance when it names the running turn's prompt ID, or
   arrives while a `Stop` is held. The caller's handler decides it: blocked
@@ -290,18 +291,20 @@ and from the `prompt_id` on Claude's hooks, never from the transcript:
   screening guidance, or guidance Elwood wrote into the running turn less than
   2 s earlier has not fired its `UserPromptSubmit`.
 
-A held `Stop`'s `hook_turn_ended` is an ignored status decision. The hold ends
-when:
+A held `Stop`'s `hook_turn_ended` is an ignored status decision whose reason
+names what the hold waits on: queued guidance, a handler still screening, or
+written guidance not yet heard. The hold ends when:
 
-- a `Stop` under another prompt ID arrives: the queued turn's. It marks the
-  session ready unless guidance is queued behind that turn too.
+- the next unblocked `Stop` arrives: the queued turn's. It marks the session
+  ready unless guidance is queued behind that turn too.
 - all of the held guidance is blocked, or its unheard guidance passes 2 s. The
-  session becomes ready at once.
+  session becomes ready at once, and that decision's reason names the cause.
 - Claude's idle composer ends the rendered turn (`rendered_turn_ended`) while no
   handler is screening and no written guidance is unheard. Until then that
   evidence is ignored too.
 - 120 s pass with none of these. The session becomes ready with the
-  `queued_turn_unconfirmed` warning (§5.7).
+  `queued_turn_unconfirmed` warning (§5.7), and that decision's reason names the
+  hang limit.
 
 Guidance typed into the terminal whose `UserPromptSubmit` arrives after the
 `Stop`, and turns Claude starts on its own, are not held. Guidance allowed after a

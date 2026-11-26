@@ -169,7 +169,7 @@ test(
       assert.deepEqual(seen.readyAfterStops, [1]);
       const held = session
         .statusDecisions()
-        .filter((decision) => decision.reason.includes("queued"));
+        .filter((decision) => decision.evidence === "hook_turn_ended" && decision.to === undefined);
       assert.deepEqual(held, [], "the tool boundary delivered the note, so the Stop was not held");
       assert.deepEqual(seen.warnings, []);
     } finally {
