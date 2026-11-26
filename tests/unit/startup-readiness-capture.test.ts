@@ -1,6 +1,7 @@
 /**
- * Startup screen capture ends when the session cancels readiness (C-ATTN-06), and a frame
- * is completed only while no output has arrived since it rendered (C-ATTN-11).
+ * Startup screen capture ends when the session cancels readiness (C-ATTN-06), a frame
+ * is completed only while no output has arrived since it rendered (C-ATTN-11), and a re-read
+ * hands the frame listener the terminal's current frame, as the deadline does (C-API-28).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { createStartupReadinessGate } from "../../src/runtime/session/startup-readiness.ts";
@@ -61,6 +62,31 @@ test("C-ATTN-11 a frame the deadline re-reads after more output arrived is not u
     expect(readiness.unrecognizedStartup.classify(idle, false, frame)).toBe(false);
     const next = readiness.observeStartupFrame(terminal);
     expect(readiness.unrecognizedStartup.classify(idle, false, next)).toBe(true);
+  } finally {
+    readiness.ready.cancel();
+    terminal.dispose();
+  }
+});
+
+test("C-API-28 a re-read hands the frame listener the terminal's current settled frame", async () => {
+  const terminal = createHeadlessTerminal({ cols: 40, rows: 5 }, () => {});
+  const readiness = createStartupReadinessGate(() => {}, false, {
+    session: { agent: "codex", elwoodSessionId: "session" },
+    configured: () => false,
+    nativeStartupScreen: () => false,
+    warnings: { emitWarnings: () => {} },
+    events: { emit: () => {} },
+  });
+  const listener = vi.fn();
+  try {
+    await terminal.writeOutput("Footer screen");
+    readiness.observeStartupFrame(terminal);
+    readiness.setDeadlineListener(listener);
+    readiness.rereadFrame();
+    expect(listener).toHaveBeenCalledWith({
+      text: expect.stringContaining("Footer screen"),
+      cols: 40,
+    });
   } finally {
     readiness.ready.cancel();
     terminal.dispose();

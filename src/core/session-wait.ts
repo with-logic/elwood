@@ -21,7 +21,8 @@ export type ActivityWaitIo = {
   readonly onStatus: (handler: (status: ElwoodSessionStatus) => void) => Unsubscribe;
 };
 
-const defaultWaitTimeoutMs = 60_000;
+/** The `timeoutMs` `waitForStatus` and `waitForActivity` use when the caller passes none. */
+export const defaultWaitTimeoutMs = 60_000;
 
 /** A session view sufficient to build both wait helpers from `on`/`status`. */
 export type WaitableSession = {
