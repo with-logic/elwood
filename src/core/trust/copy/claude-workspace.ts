@@ -1,10 +1,12 @@
 /**
- * The copy of Claude's workspace trust prompt: its native explanation, which is required, since a
- * bare header never verifies, then the rows a folder's settings draw, which are the load row, its
- * hooks warning, and its permissions warning, whose rules are the folder's own opaque text. Any
- * other prose fails closed. Also reads what verified copy discloses. Implements PRD §5.3/§5.4/C-CLAUDE-26/C-CLAUDE-29/C-CLAUDE-30; captured in the
- * claude-workspace-trust-hooks, claude-workspace-load-rows, and claude-workspace-permissions
- * tests from `tests/fixtures/claude-2.1.329/trust/` and `tests/fixtures/claude-2.1.332/trust/`.
+ * The copy of Claude's workspace trust prompt: its native explanation, which is required, since
+ * a bare header never verifies, then the rows a folder's settings draw, which are the load row,
+ * its hooks warning, and its permissions warning, whose rules are the folder's own opaque text.
+ * Any other prose fails closed. Also reads what verified copy discloses.
+ * Implements PRD §5.3/§5.4/C-CLAUDE-26/C-CLAUDE-29/C-CLAUDE-30. The explanation is captured in
+ * the trust-responder-cursor tests; the rows in the claude-workspace-trust-hooks,
+ * claude-workspace-load-rows, and claude-workspace-permissions tests, from
+ * `tests/fixtures/claude-2.1.329/trust/` and `tests/fixtures/claude-2.1.332/trust/`.
  */
 
 // Whole sentences only, so a half-painted body never validates. Either sentence

@@ -2,8 +2,8 @@
  * Recognized native trust-dialog explanations with fixed copy, excluding arbitrary intervening
  * prose: Claude's skill, plugin, MCP server, and bypass prompts, and Codex's directory, hooks, and
  * folder access prompts. Implements PRD §5.4/C-TRUST-01/C-CLAUDE-28. Claude copy is captured in
- * trust-responder-cursor, trust-bypass-permissions and claude-mcp-server-prompt tests, the last
- * from `tests/fixtures/claude-2.1.332/trust/`; Codex directory/hooks were captured from 0.154.0.
+ * trust-bypass-permissions and claude-mcp-server-prompt tests, the last from
+ * `tests/fixtures/claude-2.1.332/trust/`; Codex directory/hooks were captured from 0.154.0.
  * Claude's workspace prompt, whose copy depends on the folder's settings, is in
  * `claude-workspace.ts`; this file does not re-export it, so importers use that path.
  *
