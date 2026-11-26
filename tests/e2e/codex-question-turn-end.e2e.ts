@@ -7,7 +7,7 @@ import {
   publicCodexOptionAnswer,
   publicCodexQuestionSandbox,
   publicCodexQuestionSession,
-  waitForPublicCodexQuestion,
+  waitForPublicCodexQuestionBefore,
 } from "./questions/codex-public-sandbox.ts";
 import { codexQuestionProofSkip } from "./questions/codex-sandbox.ts";
 
@@ -28,7 +28,8 @@ test("C-ATTN-02 a Codex turn that ends with its queued question on screen settle
     // If a step below fails, cleanup's close() rejects this send; handle that rejection here so
     // the runner reports the failed step.
     reply.catch(() => undefined);
-    await waitForPublicCodexQuestion(() => events.filter((e) => e.phase === "raised").length === 2);
+    const raised = () => events.filter((event) => event.phase === "raised").length === 2;
+    await waitForPublicCodexQuestionBefore(raised, reply);
     const [size, color] = await session.listQuestions();
     assert.ok(size && color);
     await session.answerQuestions(size.id, [publicCodexOptionAnswer(size, "Large")], {

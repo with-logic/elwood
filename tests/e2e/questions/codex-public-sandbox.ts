@@ -62,6 +62,30 @@ export async function waitForPublicCodexQuestion(
   }
 }
 
+/** A turn must raise its expected questions before it can finish or fail. */
+export async function waitForPublicCodexQuestionBefore(
+  check: () => boolean,
+  reply: Promise<string>,
+  signal?: AbortSignal,
+): Promise<void> {
+  const waiting = new AbortController();
+  const abort = () => waiting.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    signal?.throwIfAborted();
+    await Promise.race([
+      waitForPublicCodexQuestion(check, waiting.signal),
+      reply.then(() => {
+        if (!check()) throw new Error("Native turn finished before raising expected questions");
+      }),
+    ]);
+    signal?.throwIfAborted();
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    waiting.abort();
+  }
+}
+
 export async function publicCodexQuestionSandbox() {
   const files = await nativeCodexQuestionFiles();
   try {
