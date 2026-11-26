@@ -26,9 +26,17 @@ back each entry are listed in `prd/14-conformance.md`.
   `codex_effort_unconfirmed` warning, so a host waiting for `ready` with
   `waitForStatus`'s default 60-second timeout gets `ready` rather than `wait_timeout`
   when Codex drew its first frame within 40 seconds and no blocking startup dialog holds
-  readiness. With no `reasoningEffort`, or
-  `none`, `ready` can still come first, including when the effort comes from
-  `configOverrides`, a profile or config.toml.
+  readiness. An effort set by a `model_reasoning_effort` entry in `configOverrides` is
+  waited for the same way. If Elwood does not recognize that entry's effort, Codex still
+  receives it, but `ready` does not wait, and the session emits a new
+  `codex_effort_unrecognized` warning. With neither, or `none`, `ready` can still come
+  first, including when the effort comes from config.toml or a profile.
+
+- `startCodex` and `resumeCodex` now reject a `configOverrides` that is not an array of
+  strings with the new `codex_invalid_config_overrides` error before preflight runs or
+  anything is spawned. A sparse array is rejected too. A string was split into one
+  override per character.
+
 - A Claude session no longer reports `ready` while Claude runs guidance that was
   queued when its turn stopped. Claude runs that guidance at once as a new turn,
   and Elwood used to mark the session ready at the first `Stop` and stay ready

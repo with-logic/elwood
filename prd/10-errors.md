@@ -21,6 +21,7 @@ Initial required error names:
 | `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |
 | `codex_version_unsupported` | Installed Codex version lacks required features. |
 | `codex_invalid_reasoning_effort` | `reasoningEffort` was not one of the valid `CodexReasoningEffort` values; rejected before spawn (Codex would otherwise fail server-side at the first turn). |
+| `codex_invalid_config_overrides` | `configOverrides` was not an array of strings; rejected before preflight or spawn. |
 | `codex_high_trust_conflict` | `highTrust: true` was combined with an explicit `sandbox` or `approvalPolicy`; rejected before spawn. |
 | `state_not_found` | A requested Elwood session record does not exist. |
 | `state_corrupt` | A session record exists but cannot be parsed or validated. |

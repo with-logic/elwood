@@ -69,7 +69,8 @@ export function buildCodexShellCommand(
     parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
   // Reasoning effort is applied AFTER caller overrides so it wins over a hand-rolled
-  // `model_reasoning_effort` duplicate.
+  // `model_reasoning_effort` duplicate; readiness reads the effort in this order
+  // (`requestedCodexEffort`).
   parts.push(...launchShellWords(codexEffortArguments(options.reasoningEffort)));
   if (options.serviceTier !== undefined)
     parts.push("-c", shellQuote(`service_tier="${options.serviceTier}"`));
