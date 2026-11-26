@@ -262,13 +262,15 @@ jobs:
       #
       # One lookup reads this version's document from the registry directly,
       # because `npm view` would redact the configuration ID, as it redacts
-      # every UUID-shaped value. Like npm, it retries a timeout, a lost
-      # connection, or HTTP 408, 429 or 5xx `fetch-retries` times (2 by
-      # default), waiting `fetch-retry-mintimeout` between attempts. The
-      # document records the commit a version was published from as `gitHead`,
-      # which any publisher can set, and, for trusted publishing, the
-      # configuration that published it as
-      # `_npmUser.trustedPublisher.oidcConfigId`.
+      # every UUID-shaped value. Each attempt has 30 seconds, body included,
+      # and reads at most 1 MiB, far more than a version document needs. Like
+      # npm, it retries a connection that fails, times out or is cut off, or
+      # HTTP 408, 429 or 5xx, `fetch-retries` times (2 by default), waiting
+      # `fetch-retry-mintimeout` milliseconds between attempts. The document
+      # records the commit a version was published from as `gitHead`, which
+      # any publisher can set, and, for trusted publishing, the configuration
+      # that published it as `_npmUser.trustedPublisher.oidcConfigId`. The log
+      # prints each of those only in its expected shape.
       #
       # NPM_TRUSTED_PUBLISHER_CONFIG_ID is this workflow's configuration, the
       # `oidcConfigId` recorded on every release since 0.2.0. After the trusted
@@ -300,42 +302,63 @@ jobs:
           package="$name@$VERSION"
           registry="$(npm config get registry)"
           retries="$(npm config get fetch-retries)"
-          retry_delay="$(npm config get fetch-retry-mintimeout)"
+          retry_delay_ms="$(npm config get fetch-retry-mintimeout)"
           outcome="$(node --input-type=module -e '
             import { setTimeout as sleep } from "node:timers/promises";
-            const [registry, name, version, commit, expectedConfigId, retries, retryDelay] = process.argv.slice(1);
+            const [registry, name, version, commit, expectedConfigId, retries, retryDelayMs] = process.argv.slice(1);
             const url = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
+            const attemptTimeoutMs = 30_000;
+            const maxDocumentBytes = 1024 * 1024;
+            const shaped = (value, pattern) => typeof value === "string" && pattern.test(value);
+            /** Reads one answer, body included; throws when the connection fails or times out. */
+            async function attempt() {
+              const response = await fetch(url, { signal: AbortSignal.timeout(attemptTimeoutMs) });
+              const chunks = [];
+              let bytes = 0;
+              for await (const chunk of response.body) {
+                bytes += chunk.byteLength;
+                if (bytes > maxDocumentBytes) return { status: response.status, oversized: true };
+                chunks.push(chunk);
+              }
+              return { status: response.status, text: Buffer.concat(chunks).toString() };
+            }
             async function lookup() {
               for (let retry = 0; ; retry += 1) {
-                const response = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch((error) => error);
-                const transient = response instanceof Error || [408, 429].includes(response.status) || response.status >= 500;
-                if (!(transient && retry < Number(retries))) {
-                  if (response instanceof Error) throw response;
-                  return response;
+                const answer = await attempt().catch((error) => ({ error }));
+                const connectionFailed = "error" in answer;
+                const statusRetryable = [408, 429].includes(answer.status) || answer.status >= 500;
+                if (!((connectionFailed || statusRetryable) && retry < Number(retries))) {
+                  if (connectionFailed) throw answer.error;
+                  return answer;
                 }
-                await sleep(Number(retryDelay));
+                await sleep(Number(retryDelayMs));
               }
             }
+            /** Names who published a version, from its `_npmUser` and configuration ID. */
+            function describePublisher(user, configId) {
+              const trusted = user?.trustedPublisher instanceof Object;
+              if (configId === expectedConfigId) return "this workflow";
+              if (trusted && shaped(configId, /^[\w.:-]{1,64}$/u)) {
+                return `a trusted publisher with configuration ID ${configId}, not NPM_TRUSTED_PUBLISHER_CONFIG_ID`;
+              }
+              if (trusted) return "a trusted publisher without a readable configuration ID";
+              if (user instanceof Object) return "another account";
+              return "an unrecorded publisher";
+            }
             async function classify() {
-              const response = await lookup();
-              if (response.status === 404) return "unpublished";
-              if (!response.ok) return `lookup-failed HTTP ${response.status}`;
-              const manifest = Object(await response.json());
+              const answer = await lookup();
+              if (answer.status === 404) return "unpublished";
+              if (answer.status < 200 || answer.status > 299) return `lookup-failed HTTP ${answer.status}`;
+              if (answer.oversized) return `lookup-failed document over ${maxDocumentBytes} bytes`;
+              const manifest = Object(JSON.parse(answer.text));
               const user = manifest._npmUser;
-              const publisher = user?.trustedPublisher;
-              const configId = publisher?.oidcConfigId;
+              const configId = user?.trustedPublisher?.oidcConfigId;
               if (manifest.gitHead === commit && configId === expectedConfigId) return "published-here";
-              const from = typeof manifest.gitHead === "string" ? manifest.gitHead : "an unrecorded commit";
-              const by =
-                configId === expectedConfigId ? "this workflow"
-                : publisher instanceof Object
-                  ? `a trusted publisher with configuration ID ${JSON.stringify(configId ?? null)}, not NPM_TRUSTED_PUBLISHER_CONFIG_ID`
-                : user instanceof Object ? "another account"
-                : "an unrecorded publisher";
-              return `already-on-npm from ${from} by ${by}`;
+              const from = shaped(manifest.gitHead, /^[0-9a-f]{40}$/u) ? manifest.gitHead : "an unrecorded commit";
+              return `already-on-npm from ${from} by ${describePublisher(user, configId)}`;
             }
             console.log(await classify().catch((error) => `lookup-failed ${error.cause?.code ?? error.name}`));
-          ' "$registry" "$name" "$VERSION" "$RELEASE_COMMIT" "$NPM_TRUSTED_PUBLISHER_CONFIG_ID" "$retries" "$retry_delay")"
+          ' "$registry" "$name" "$VERSION" "$RELEASE_COMMIT" "$NPM_TRUSTED_PUBLISHER_CONFIG_ID" "$retries" "$retry_delay_ms")"
           echo "Registry lookup for $package: ${outcome:-no answer}"
           case "$outcome" in
             unpublished)

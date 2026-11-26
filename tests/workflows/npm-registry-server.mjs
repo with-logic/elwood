@@ -5,14 +5,16 @@
  * `/<name>` answers a packument, and `/<name>/<version>` the packument's entry
  * for that version or a 404 naming it, as registry.npmjs.org was checked to
  * answer for each recorded version and a missing one.
- * @with-logic/elwood is the recorded packument. Copies of it change one
- * recorded fact each: @with-logic/elwood-reconfigured has another
- * trusted-publisher configuration, and @with-logic/elwood-unrecorded has no
- * commit or publisher for 0.8.0 and no configuration ID for 0.7.0.
- * @with-logic/elwood-flaky answers 503, and @with-logic/elwood-dropped closes
- * the connection, the first time each path is requested.
+ * @with-logic/elwood is the recorded packument. Copies of it vary what is
+ * recorded or how it is served: @with-logic/elwood-reconfigured has another
+ * trusted-publisher configuration ID on every trusted release, and
+ * @with-logic/elwood-unrecorded has no `gitHead` or `_npmUser` for 0.8.0, no
+ * configuration ID for 0.7.0, and neither in its expected shape for 0.6.1.
+ * @with-logic/elwood-flaky fails each path's
+ * first requests in the ways `interruptions` lists, then answers as recorded.
  * @with-logic/registry-down answers 500, @with-logic/registry-garbled answers
- * 200 with a body that is not JSON, and anything else 404.
+ * 200 with a body that is not JSON, @with-logic/registry-oversized answers 200
+ * with 2 MiB, and anything else 404.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -32,15 +34,13 @@ const unrecorded = copy("@with-logic/elwood-unrecorded");
 delete unrecorded.versions["0.8.0"].gitHead;
 delete unrecorded.versions["0.8.0"]._npmUser;
 delete unrecorded.versions["0.7.0"]._npmUser.trustedPublisher.oidcConfigId;
+unrecorded.versions["0.6.1"].gitHead = "main\n::error::forged";
+unrecorded.versions["0.6.1"]._npmUser.trustedPublisher.oidcConfigId = "x".repeat(65);
 
 const packuments = new Map(
-  [
-    JSON.parse(recorded),
-    reconfigured,
-    unrecorded,
-    copy("@with-logic/elwood-flaky"),
-    copy("@with-logic/elwood-dropped"),
-  ].map((packument) => [packument.name, packument]),
+  [JSON.parse(recorded), reconfigured, unrecorded, copy("@with-logic/elwood-flaky")].map(
+    (packument) => [packument.name, packument],
+  ),
 );
 
 /** Returns the status and document registry.npmjs.org answers a path with. */
@@ -55,19 +55,36 @@ function documentAt(path) {
     : [404, `version not found: ${version}`];
 }
 
-const interrupted = new Set();
+// Each transient failure npm retries, in the order the flaky copy answers a
+// path with them: the connection closed before and during the answer, then
+// HTTP 408, 429 and 503.
+const interruptions = [
+  ({ request }) => request.socket.destroy(),
+  ({ request, response }) => {
+    response.writeHead(200, { "content-length": "4096", "content-type": "application/json" });
+    response.write('{"name":', () => request.socket.destroy());
+  },
+  ({ reply }) => reply(408, '{"error":"fixture"}'),
+  ({ reply }) => reply(429, '{"error":"fixture"}'),
+  ({ reply }) => reply(503, '{"error":"fixture"}'),
+];
+const requestsByPath = new Map();
 
 const server = createServer((request, response) => {
   const path = decodeURIComponent(new URL(request.url ?? "/", "http://registry").pathname.slice(1));
   const reply = (status, body) =>
     response.writeHead(status, { "content-type": "application/json" }).end(body);
-  const scope = path.split("/", 2).join("/");
-  if (scope === "@with-logic/registry-down") return reply(500, '{"error":"fixture"}');
-  if (scope === "@with-logic/registry-garbled") return reply(200, "<!doctype html>");
-  if (/^@with-logic\/elwood-(?:flaky|dropped)$/u.test(scope) && !interrupted.has(path)) {
-    interrupted.add(path);
-    if (scope.endsWith("dropped")) return request.socket.destroy();
-    return reply(503, '{"error":"fixture"}');
+  const packageName = path.split("/", 2).join("/");
+  if (packageName === "@with-logic/registry-down") return reply(500, '{"error":"fixture"}');
+  if (packageName === "@with-logic/registry-garbled") return reply(200, "<!doctype html>");
+  if (packageName === "@with-logic/registry-oversized") {
+    return reply(200, `${" ".repeat(2 * 1024 * 1024)}{}`);
+  }
+  if (packageName === "@with-logic/elwood-flaky") {
+    const requests = requestsByPath.get(path) ?? 0;
+    requestsByPath.set(path, requests + 1);
+    if (requests < interruptions.length)
+      return interruptions[requests]({ request, response, reply });
   }
   const [status, document] = documentAt(path);
   return reply(status, JSON.stringify(document));
