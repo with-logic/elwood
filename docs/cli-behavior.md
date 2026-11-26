@@ -3691,11 +3691,15 @@ there: the header, which a pane narrower than its 93 columns wraps onto indented
 then one or more `  ↳ ` items with their four-space-indented rows. Capture:
 `tests/fixtures/codex-0.172.0/questions/remaining-color-pending-literal.json`.
 
-**`gpt-6-luna` can reply before every queued answer arrives.** Asked to wait for all
-three answers, it sometimes sent its final reply about 1.4 s after the second, which
-ended the turn and withdrew the pending question (`question_answer_failed`,
-`unavailable`). In three probes that asked one or two choice questions, it replied at
-once without waiting. One C-E2E-19 run that paused before the color answer had `send()`
-return `ELWOOD_ASYNC_DONE` twice; its rollout was not kept, so whether a late answer
-joined the turn after an early reply is unconfirmed. Answer promptly in proofs: in five
-C-E2E-19 runs that answered without a pause, the model always waited.
+**`gpt-6-luna` can end its turn before every queued answer arrives.** Asked to wait for
+all three answers, it ended the turn 1.0 to 1.8 s after the second answer in 8 of 28
+C-E2E-19-shaped runs that paused 0.7 to 4 s before the color answer, once with an empty
+final answer. It waited in all 12 runs whose pause was 0.85 s or less, and in five runs
+that answered without a pause. The rollout records the final answer and `task_complete`,
+and Codex withdraws the open color question. An answer started at that moment fails:
+as `unavailable` once Elwood has closed the request, or as `adapter` when it reads the
+frame in the few milliseconds after the panel vanishes and before the close. In three
+probes that asked one or two choice questions, the model replied at once without
+waiting. One earlier run, which aborted the color answer after selecting Blue and then
+pressed Enter, had `send()` return `ELWOOD_ASYNC_DONE` twice; none of these 28 runs
+reproduced that.
