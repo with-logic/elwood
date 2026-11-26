@@ -13,6 +13,7 @@ import {
 } from "../../src/runtime/session/frames.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
+import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 afterEach(() => vi.useRealTimers());
@@ -32,7 +33,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   const active = {
     closing: new AbortController(),
     bindInitialReadinessHold: vi.fn(),
-    terminal: { xterm: {} },
+    terminal: createHeadlessTerminal({ cols: 80, rows: 24 }, () => {}),
     inputBlocking: false,
     automationInputBlocking: false,
     get status() {
@@ -89,6 +90,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   observe.refresh();
   expect(trust.dispose).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(0);
+  active.terminal.dispose();
 });
 
 test("C-TRUST-01 replays a consumed human clear edge when automation finally releases", () => {
