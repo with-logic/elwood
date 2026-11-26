@@ -5,6 +5,7 @@ import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { startClaude } from "../../src/index.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -20,7 +21,7 @@ test.each([
       ready = true;
     },
     true,
-    { configured: () => true, onBackstop: () => {} },
+    { ...noStartupScreens, configured: () => true, onBackstop: () => {} },
   );
   gate.observeReadinessFrame(
     readScreenFacts(claudeScreenFactTable, { text: menu(selected), title: "" }).facts,

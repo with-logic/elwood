@@ -3,6 +3,8 @@ import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 import type { ElwoodAgentKind } from "./index.ts";
 
 const maxStartupScreenCodeUnits = 8_192;
+/** An API key a CLI showed, such as one it prefilled from its environment. */
+const apiKeyShape = /\bsk-[A-Za-z0-9._-]{8,}/g;
 
 /** Reported from the readiness deadline (C-ATTN-09) or at the backstop (C-ATTN-06). */
 export type UnrecognizedStartupLabel =
@@ -18,7 +20,10 @@ export type UnrecognizedStartupActivity = {
   readonly text: string;
 };
 
-/** Trim trailing whitespace and retain up to 8,192 UTF-16 units without splitting a surrogate pair (C-ATTN-06). */
+/**
+ * Redact API-key-shaped tokens, trim trailing whitespace, and retain up to 8,192 UTF-16
+ * units without splitting a surrogate pair (C-ATTN-06).
+ */
 export function unrecognizedStartupActivity(
   agent: ElwoodAgentKind,
   elwoodSessionId: string,
@@ -26,6 +31,7 @@ export function unrecognizedStartupActivity(
   label: UnrecognizedStartupLabel = "initial_ready_backstop",
 ): UnrecognizedStartupActivity {
   const text = screen
+    .replace(apiKeyShape, "sk-[redacted]")
     .trimEnd()
     .slice(-maxStartupScreenCodeUnits)
     // Drop the low surrogate if the cut fell inside a character.

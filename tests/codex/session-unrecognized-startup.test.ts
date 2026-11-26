@@ -24,6 +24,8 @@ afterEach(async () => {
 const signIn = capturedFrame("codex-0.171.0/startup/sign-in").trimEnd();
 const signInRedrawn = signIn.replace("Welcome to Codex", "Welcome  to Codex");
 const boot = capturedFrame("codex-0.164.0/boot/boot-composer").trimEnd();
+/** Codex 0.172.0's header over its logo, drawn before its boot composer. */
+const header = capturedFrame("codex-0.172.0/update/start-boot-partial").trimEnd();
 const working = "• Working (3s • esc to interrupt)\n› ";
 
 async function start() {
@@ -128,6 +130,17 @@ test("C-ATTN-09 work on screen clears the block to running", async () => {
   await vi.advanceTimersByTimeAsync(10_000);
   await paint(codexTty(working));
   expect(statuses).toEqual(["blocked", "running"]);
+});
+
+test("C-ATTN-09 Codex's header drawn alone while it loads is no unrecognized screen", async () => {
+  const { statuses, paint, reports } = await start();
+  await paint(tty(header));
+  await vi.advanceTimersByTimeAsync(12_000);
+  expect(statuses).toEqual([]);
+  expect(reports()).toEqual([]);
+  await paint(codexTty(codexComposer));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(statuses).toEqual(["ready"]);
 });
 
 test("C-ATTN-09 after the first readiness no screen is an unrecognized startup screen", async () => {

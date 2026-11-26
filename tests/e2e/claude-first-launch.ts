@@ -9,11 +9,12 @@
  * they do not know. The terminal variables Claude detects it by are unset as well.
  */
 
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeSessionApi } from "../../src/index.ts";
+import { privateTempDir, removeOrReport } from "../helpers/private-temp.ts";
 import { parseGlobalConfig } from "./claude-global-config.ts";
+import { userConfigDir } from "./claude-home.ts";
 import { registerPrivateHome } from "./home-guard.ts";
 import { waitFor } from "./wait-for.ts";
 
@@ -33,11 +34,11 @@ export type FirstLaunch = {
 export function firstLaunch(): FirstLaunch {
   const suite = process.env["CLAUDE_CONFIG_DIR"];
   if (suite === undefined) throw new Error("claude-home.ts did not set CLAUDE_CONFIG_DIR");
-  const dir = mkdtempSync(join(tmpdir(), "elwood_e2e_claude_first_launch-"));
+  const dir = privateTempDir("elwood_e2e_claude_first_launch-", userConfigDir, "Claude config dir");
   const release = registerPrivateHome(dir);
   const dispose = () => {
     release();
-    rmSync(dir, { recursive: true, force: true });
+    removeOrReport(dir, "first-launch Claude config dir");
   };
   try {
     copyFileSync(join(suite, ".credentials.json"), join(dir, ".credentials.json"));
@@ -49,20 +50,29 @@ export function firstLaunch(): FirstLaunch {
     dispose();
     throw error;
   }
-  const terminals = ["TERM_PROGRAM", "ALACRITTY_SOCKET", "ALACRITTY_WINDOW_ID", "ALACRITTY_LOG"];
+  const terminalDetectionKeys = [
+    "TERM_PROGRAM",
+    "ALACRITTY_SOCKET",
+    "ALACRITTY_WINDOW_ID",
+    "ALACRITTY_LOG",
+  ];
   const env = {
     CLAUDE_CONFIG_DIR: dir,
-    ...Object.fromEntries(terminals.map((key) => [key, undefined])),
+    ...Object.fromEntries(terminalDetectionKeys.map((key) => [key, undefined])),
   };
   return { env, dispose };
 }
 
-/** Each first-launch screen a host answers, by its own text, and the key that answers it. */
+/**
+ * Each first-launch screen a host answers, by its own text, and the key that answers it.
+ * The terminal-setup offer comes first, so a frame that still shows an earlier screen's
+ * text with it gets Esc, never Enter.
+ */
 const answers: readonly { readonly screen: RegExp; readonly key: string }[] = [
-  { screen: /Choose the text style/u, key: "\r" },
-  { screen: /Security notes:[\s\S]*Press Enter to continue/u, key: "\r" },
   // Esc skips the offer to change the terminal's settings ("Esc to skip").
   { screen: /Use Claude Code's terminal setup\?/u, key: "\u001b" },
+  { screen: /Choose the text style/u, key: "\r" },
+  { screen: /Security notes:[\s\S]*Press Enter to continue/u, key: "\r" },
 ];
 
 const maxAnswers = 6;

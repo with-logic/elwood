@@ -1,6 +1,7 @@
 /** The readiness gate's deadline starts unrecognized startup screens (PRD §5.4, C-ATTN-09). */
 import { afterEach, expect, test, vi } from "vitest";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -10,11 +11,13 @@ const screen = { text: "Choose the text style" };
 function gate(onBackstop = vi.fn()) {
   const ready = vi.fn();
   const subject = createReadinessGate(ready, false, {
+    ...noStartupScreens,
+    nativeStartupScreen: (frame) => frame === "boot composer",
     configured: (frame) => frame === "configured composer",
     onBackstop,
   });
   const reread = vi.fn();
-  subject.onDeadline(reread);
+  subject.setDeadlineListener(reread);
   return { subject, ready, reread, onBackstop };
 }
 
@@ -56,7 +59,7 @@ test("C-ATTN-09 readiness after the deadline ends unrecognized startup screens",
 test("C-ATTN-09 a throwing re-read is contained and the backstop still runs", () => {
   vi.useFakeTimers();
   const { subject, onBackstop } = gate();
-  subject.onDeadline(() => {
+  subject.setDeadlineListener(() => {
     throw new Error("re-read failed");
   });
   subject.observeReadinessFrame(idle, false, screen.text);
@@ -65,30 +68,46 @@ test("C-ATTN-09 a throwing re-read is contained and the backstop still runs", ()
   expect(onBackstop).toHaveBeenCalledOnce();
 });
 
+const dialog = { ...idle, blocking_prompt_visible: true };
+
 test.each([
-  ["an unrecognized startup screen's block is no recognized dialog", true, false],
-  ["a recognized dialog is one", false, true],
-])("C-ATTN-06 C-ATTN-09 at the backstop %s", (_, unrecognized, dialogHeld) => {
+  ["an unrecognized startup screen's block is no recognized dialog", idle, true, false],
+  ["a recognized dialog is one", dialog, false, true],
+] as const)("C-ATTN-06 C-ATTN-09 at the backstop %s", (_, facts, unrecognized, dialogHeld) => {
   vi.useFakeTimers();
   const { subject, onBackstop } = gate();
   subject.observeReadinessFrame(idle, false, screen.text);
   subject.ready.armDeadline();
   vi.advanceTimersByTime(10_000);
+  expect(subject.unrecognizedStartup.classify(facts, false, screen)).toBe(unrecognized);
   // The frame observer makes an unrecognized screen blocking before the gate reads it.
-  const facts = { ...idle, blocking_prompt_visible: true };
-  expect(subject.unrecognizedStartup.classify(unrecognized ? idle : facts, false, screen)).toBe(
-    unrecognized,
-  );
-  subject.observeReadinessFrame(facts, false, screen.text);
+  subject.observeReadinessFrame(dialog, false, screen.text);
   vi.advanceTimersByTime(50_000);
   expect(onBackstop).toHaveBeenCalledWith(dialogHeld);
+});
+
+test.each([
+  ["a blank frame", " \n "],
+  ["a native startup frame", "boot composer"],
+])("C-ATTN-06 C-ATTN-09 %s inside the block leaves it no recognized dialog at the backstop", (_, text) => {
+  vi.useFakeTimers();
+  const { subject, onBackstop } = gate();
+  subject.observeReadinessFrame(idle, false, screen.text);
+  subject.ready.armDeadline();
+  vi.advanceTimersByTime(10_000);
+  expect(subject.unrecognizedStartup.classify(idle, false, screen)).toBe(true);
+  subject.observeReadinessFrame(dialog, false, screen.text);
+  expect(subject.unrecognizedStartup.classify(idle, false, { text })).toBe(false);
+  subject.observeReadinessFrame(idle, false, text);
+  vi.advanceTimersByTime(50_000);
+  expect(onBackstop).toHaveBeenCalledWith(false);
 });
 
 test("C-ATTN-09 a gate without adapter evidence classifies no frame and never re-reads", () => {
   vi.useFakeTimers();
   const subject = createReadinessGate(() => {}, false);
   const reread = vi.fn();
-  subject.onDeadline(reread);
+  subject.setDeadlineListener(reread);
   subject.ready.armDeadline();
   vi.advanceTimersByTime(60_000);
   expect(reread).not.toHaveBeenCalled();

@@ -27,7 +27,9 @@ back each entry are listed in `prd/14-conformance.md`.
   `initial_ready_deadline` carries the screen text. Answer it with `sendKeys`.
   Queued input is released once a verified composer follows. A Codex composer
   whose footer Elwood cannot verify is reported the same way, and `elwood run`
-  fails such a start as `blocked_prompt`.
+  fails such a start as `blocked_prompt`. The agent's own header drawn alone while
+  it loads is not reported, and the report replaces `sk-` API-key-shaped tokens
+  with `sk-[redacted]`.
 
 ## [0.8.0] - 2026-11-25
 

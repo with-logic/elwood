@@ -33,8 +33,13 @@ async function startAt(cols: number, capture: CapturedFooter, resizeTo?: number)
   if (pty === undefined) throw new Error("The session started no PTY.");
   const warnings: ElwoodWarningEvent[] = [];
   const statuses: ElwoodSessionStatus[] = [];
+  const reports: string[] = [];
   session.on("warning", (warning) => warnings.push(warning));
   session.on("status", ({ status }) => statuses.push(status));
+  session.on("activity", (event) => {
+    if (event.kind === "attention" || event.kind === "unrecognized_startup")
+      reports.push(`${event.kind} ${event.label}`);
+  });
   // The startup warning gate opens on a real timer before this test takes over the clock.
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.useFakeTimers();
@@ -54,7 +59,7 @@ async function startAt(cols: number, capture: CapturedFooter, resizeTo?: number)
     await session.resize({ cols: resizeTo, rows: 12 });
   }
   await settle(5_500);
-  return { pty, warnings, statuses, sent };
+  return { pty, warnings, statuses, reports, sent };
 }
 
 test.each(
@@ -70,12 +75,18 @@ test.each(
 test.each(
   wrapped,
 )("C-CODEX-26 C-ATTN-09 rows a wider terminal did not cut hold the prompt: $cols columns, $shape", async (capture) => {
-  const { pty, warnings, statuses } = await startAt(capture.cols * 4, capture);
+  const { pty, warnings, statuses, reports } = await startAt(capture.cols * 4, capture);
   // Past the deadline, a composer Elwood cannot verify is a startup screen it does not recognize.
   expect(statuses).toEqual(["blocked"]);
+  const deadline = [
+    "attention codex-unrecognized-startup",
+    "unrecognized_startup initial_ready_deadline",
+  ];
+  expect(reports).toEqual(deadline);
   expect(pty.writes).toEqual([]);
   await vi.advanceTimersByTimeAsync(60_000);
   expect(statuses).toEqual(["blocked"]);
+  expect(reports).toEqual([...deadline, "unrecognized_startup initial_ready_backstop"]);
   expect(pty.writes).toEqual([]);
   expect(warnings.map((warning) => warning.code)).toEqual(["initial_ready_backstop"]);
 });

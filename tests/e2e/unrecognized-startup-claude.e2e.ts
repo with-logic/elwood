@@ -10,12 +10,9 @@ import test from "node:test";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { answerFirstLaunch, firstLaunch } from "./claude-first-launch.ts";
-import { cleanup, makeProject, observeSession, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 import { recordPty } from "./pty-record.ts";
-import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
-
-/** The deadline is 10 s after the first frame; the rest is slack for a loaded host. */
-const reportWithinMs = 20_000;
+import { awaitStartupBlock } from "./unrecognized-startup.ts";
 
 test("C-E2E-28 Claude's first-launch screens block the session, and raw keys answer them", {
   skip: skipIf(skipReason("claude")),
@@ -33,41 +30,21 @@ test("C-E2E-28 Claude's first-launch screens block the session, and raw keys ans
       env: launch.env,
     });
     const active = session;
-    const observed = observeSession(active);
-    let firstFrameAt: number | undefined;
-    let blockedAt: number | undefined;
-    active.on("terminal:data", () => {
-      firstFrameAt ??= Date.now();
-    });
-    active.on("activity", (event) => {
-      if (event.kind === "attention" && event.label === "claude-unrecognized-startup")
-        blockedAt ??= Date.now();
-    });
     const sent = active.sendMessage("Reply with the single word PONG and nothing else.");
-    const settled = { done: false };
-    void sent.then(
-      () => {
-        settled.done = true;
-      },
-      () => {},
-    );
-    const report = await waitFor(
-      () => observed.activities.find((event) => event.kind === "unrecognized_startup"),
-      "the unrecognized startup report",
-      60_000,
-    );
-    assert.equal(active.status, "blocked");
-    assert.equal(report.label, "initial_ready_deadline");
-    assert.ok(report.text.includes("Choose the text style"), "the report holds the picker");
-    const startedAt = firstFrameAt ?? Date.now();
-    assert.ok(blockedAt !== undefined && blockedAt - startedAt <= reportWithinMs, "blocked late");
-    assert.ok(active.terminal.snapshot().text.includes("Choose the text style"));
-    assert.equal(settled.done, false);
-    const input = () => record.writes.filter(({ data }) => !isTerminalProtocolReply(data));
-    assert.deepEqual(input(), [], "nothing was written to the picker");
+    const { observed } = await awaitStartupBlock(active, record, sent, {
+      label: "claude-unrecognized-startup",
+      screen: "Choose the text style",
+    });
 
+    const reports = () =>
+      observed.activities.filter((event) => event.kind === "unrecognized_startup");
+    assert.equal(reports().length, 1, "the picker was reported once");
     const pressed = await answerFirstLaunch(active);
-    assert.ok(pressed.length >= 2, "the picker and the security notes were answered");
+    assert.deepEqual(
+      pressed.slice(0, 2),
+      ["\r", "\r"],
+      "the picker and the security notes were answered",
+    );
     await sent;
     await waitFor(
       () =>

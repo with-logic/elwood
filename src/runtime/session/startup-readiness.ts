@@ -15,7 +15,7 @@ type StartupDiagnostics = {
   readonly session: { readonly agent: ElwoodAgentKind; readonly elwoodSessionId: string };
   readonly configured: (frame: string, cols?: number) => boolean;
   /** The adapter's own screens before its configured composer (C-ATTN-09). */
-  readonly startupScreen?: (frame: string) => boolean;
+  readonly nativeStartupScreen: (frame: string) => boolean;
   readonly warnings: {
     emitWarnings(warnings: readonly InitialReadyBackstopWarning[]): void;
     duringDelivery?(deliver: () => void): void;
@@ -34,15 +34,27 @@ type StartupDiagnostics = {
 export function createStartupReadinessGate(
   onReady: () => void,
   resumed: boolean,
-  { session: { agent, elwoodSessionId }, configured, startupScreen, ...io }: StartupDiagnostics,
+  {
+    session: { agent, elwoodSessionId },
+    configured,
+    nativeStartupScreen,
+    warnings,
+    events,
+  }: StartupDiagnostics,
 ): ReadinessGate & { observeStartupFrame(terminal: ElwoodTerminal): TerminalSnapshot } {
-  const { warnings, events } = io;
   const duringDelivery = warnings.duringDelivery ?? ((deliver: () => void) => deliver());
   let screen = "";
   let capture = true;
-  // Whether the latest frame is a completed one, until readiness or cancellation.
+  // Frames are watched until readiness or cancellation.
   let watching = true;
-  let completed = false;
+  // The last completed frame, and the terminal that drew it.
+  let lastCompleted: { readonly terminal: ElwoodTerminal; readonly text: string } | undefined;
+  // Read when a frame is classified, which the deadline can do long after it rendered: output
+  // since then, or a repaint in progress, makes the frame stale rather than completed.
+  const frameCompleted = () =>
+    watching &&
+    lastCompleted !== undefined &&
+    settledLiveSnapshot(lastCompleted.terminal)?.text === lastCompleted.text;
   const stopCapture = () => {
     screen = "";
     capture = false;
@@ -59,8 +71,8 @@ export function createStartupReadinessGate(
     resumed,
     {
       configured,
-      startupScreen,
-      completed: () => completed,
+      nativeStartupScreen,
+      completed: frameCompleted,
       report: (text) =>
         runContained(() =>
           events.emit(
@@ -70,14 +82,14 @@ export function createStartupReadinessGate(
           ),
         ),
       onBackstop: (dialogHeld) => {
-        const completed = screen;
+        const backstopScreen = screen;
         stopCapture();
         duringDelivery(() => {
           try {
             if (!dialogHeld)
               events.emit(
                 "activity",
-                unrecognizedStartupActivity(agent, elwoodSessionId, completed),
+                unrecognizedStartupActivity(agent, elwoodSessionId, backstopScreen),
                 true,
               );
           } finally {
@@ -109,7 +121,7 @@ export function createStartupReadinessGate(
     observeStartupFrame(terminal) {
       // A synchronized repaint can span PTY writes. Keep the previous settled text.
       const settled = watching ? settledLiveSnapshot(terminal) : undefined;
-      completed = settled !== undefined;
+      lastCompleted = settled && { terminal, text: settled.text };
       if (!settled) return cachedLiveSnapshot(terminal);
       if (capture) screen = settled.text;
       return settled;

@@ -120,7 +120,7 @@ prompt. At the 60-second backstop, an unfamiliar screen stays held and appears
 in live-only `unrecognized_startup` activity. C-API-28, C-ATTN-06.
 
 **Unrecognized startup screens block from the readiness deadline (2026-11-25).** A
-host learned of a screen like that theme picker only at the 60-second backstop, with
+host learned of a screen like that text-style picker only at the 60-second backstop, with
 the session still `running`. From the 10-second deadline the session is now `blocked`
 with `<agent>-unrecognized-startup` attention and an `initial_ready_deadline` report of
 the screen (§5.4, C-ATTN-09). Two real screens do this, each reported 10 s after the
@@ -146,7 +146,27 @@ first frame (C-E2E-28, C-E2E-29):
   `3` leads to an API-key page that prefills `OPENAI_API_KEY` and shows it in full.
   An `OPENAI_API_KEY` that the session's `env` overrides still appears there when
   the launch shell's startup files export it. A report of that page would carry the
-  key, so C-E2E-29 stays on the first page and never prints the screen.
+  key, so C-E2E-29 stays on the first page and never prints the screen. Reports
+  replace `sk-` key-shaped tokens with `sk-[redacted]` (§5.4).
+
+Both CLIs also draw their own header alone while they load, and a slow boot can hold
+that frame past the deadline. It is a boot frame, not an unrecognized screen: the
+header (`Claude Code v<version>`, `>_ OpenAI Codex (v<version>)`) with no other row a
+person could answer (`nativeBootFrame`, `src/runtime/readiness/boot-frame.ts`).
+
+- Claude 2.1.310, on a loaded host, showed only its banner from 5.0 s after the first
+  frame, once trust was answered, until its composer at 9.0 s
+  (`tests/fixtures/claude-2.1.310/trust-slow-boot/`). In the 130 loaded launches
+  under "The five seconds count on-screen time only" below, the composer painted up
+  to 8.9 s after the dialog, so a slightly slower boot shows only that banner at the
+  deadline. A session test replays the boot with its composer 4 s later.
+- Claude 2.1.332, at load average 25, drew its composer about 0.1 s after the trust
+  answer. With no `CLAUDE.md`, `InstructionsLoaded` did not fire, and `ready` came at
+  about 12 s through the deadline, onto that composer.
+- Codex 0.172.0 draws its header over the braille logo, and then the notice box over
+  the header with a bare `›` and `? for shortcuts`, before its boot composer
+  (`tests/fixtures/codex-0.172.0/update/start-boot-partial.txt`,
+  `start-notice-partial.txt`).
 
 **Codex 0.164 paints a boot composer before its session is configured
 (2026-10-25).** About 0.6 s after its first output Codex draws `› Ask Codex to do

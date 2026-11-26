@@ -5,15 +5,15 @@ import { createUnrecognizedStartupWatch } from "../../src/runtime/readiness/unre
 const idle = { composer_visible: false, blocking_prompt_visible: false, working_visible: false };
 const screen = { text: "Choose the text style" };
 
-function watch(options: { completed?: () => boolean } = {}) {
+function watch(completed = () => true) {
   const report = vi.fn();
   const configured = vi.fn((frame: string) => frame === "configured");
-  const startupScreen = (frame: string) => frame === "boot composer";
+  const nativeStartupScreen = (frame: string) => frame === "boot composer";
   const subject = createUnrecognizedStartupWatch({
     configured,
-    startupScreen,
+    nativeStartupScreen,
     report,
-    completed: options.completed,
+    completed,
   });
   return { subject, report, configured };
 }
@@ -24,9 +24,9 @@ test("C-ATTN-09 no frame is unrecognized before the deadline or after readiness"
   subject.report(screen.text);
   subject.deadlinePassed();
   expect(subject.classify(idle, false, screen)).toBe(true);
-  expect(subject.current()).toBe(true);
+  expect(subject.blocking()).toBe(true);
   subject.end();
-  expect(subject.current()).toBe(false);
+  expect(subject.blocking()).toBe(false);
   expect(subject.classify(idle, false, screen)).toBe(false);
   subject.report(screen.text);
   expect(report).not.toHaveBeenCalled();
@@ -53,22 +53,21 @@ test.each([
 test("C-ATTN-09 a run of unrecognized frames reports once, with the cols the frame was drawn at", () => {
   const { subject, report, configured } = watch();
   subject.deadlinePassed();
-  for (const text of ["frame 1", "frame 2"]) {
-    expect(subject.classify(idle, false, { text, cols: 80 })).toBe(true);
-    subject.report(text);
-  }
+  expect(subject.classify(idle, false, { text: "frame 1", cols: 80 })).toBe(true);
+  subject.report("frame 1");
+  expect(subject.classify(idle, false, { text: "frame 2", cols: 80 })).toBe(true);
+  subject.report("frame 2");
   expect(report.mock.calls).toEqual([["frame 1"]]);
   expect(configured).toHaveBeenLastCalledWith("frame 2", 80);
 });
 
 test("C-ATTN-09 a blank or incomplete frame is not unrecognized and does not end a run", () => {
   let completed = true;
-  const { subject, report } = watch({ completed: () => completed });
+  const { subject, report } = watch(() => completed);
   subject.deadlinePassed();
   expect(subject.classify(idle, false, screen)).toBe(true);
   subject.report("first");
   expect(subject.classify(idle, false, { text: " \n " })).toBe(false);
-  expect(subject.current()).toBe(false);
   completed = false;
   expect(subject.classify(idle, false, screen)).toBe(false);
   subject.report("incomplete");
@@ -78,10 +77,15 @@ test("C-ATTN-09 a blank or incomplete frame is not unrecognized and does not end
   expect(report.mock.calls).toEqual([["first"]]);
 });
 
-test("C-ATTN-09 without adapter screens or a reporter only the configured composer is recognized", () => {
-  const subject = createUnrecognizedStartupWatch({ configured: () => false });
+test.each([
+  ["a blank frame", idle, { text: " \n " }, true],
+  ["the adapter's own startup screen", idle, { text: "boot composer" }, true],
+  ["a recognized dialog", { ...idle, blocking_prompt_visible: true }, screen, false],
+  ["the configured composer", idle, { text: "configured" }, false],
+] as const)("C-ATTN-09 after an unrecognized frame, %s keeps the block unless a hold recognizes it", (_, facts, frame, held) => {
+  const { subject } = watch();
   subject.deadlinePassed();
-  expect(subject.classify(idle, false, { text: "boot composer" })).toBe(true);
-  subject.report("boot composer");
-  expect(subject.current()).toBe(true);
+  expect(subject.classify(idle, false, screen)).toBe(true);
+  expect(subject.classify(facts, false, frame)).toBe(false);
+  expect(subject.blocking()).toBe(held);
 });

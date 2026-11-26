@@ -102,7 +102,7 @@ export function createSessionFrameObserver(
       );
     }
   };
-  readiness.onDeadline(refresh);
+  readiness.setDeadlineListener(refresh);
   return {
     refresh,
     observe: (current: RenderedFrame) => {

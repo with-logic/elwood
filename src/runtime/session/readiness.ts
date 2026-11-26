@@ -20,7 +20,7 @@ import {
 } from "../readiness/initial-ready.ts";
 import {
   createUnrecognizedStartupWatch,
-  type UnrecognizedStartupEvidence,
+  type StartupScreenEvidence,
   type UnrecognizedStartupWatch,
 } from "../readiness/unrecognized-startup.ts";
 
@@ -60,7 +60,13 @@ export type ReadinessGate = InitialReadinessHold & {
   /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-09). */
   readonly unrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report">;
   /** Re-read the current frame when the deadline passes: an idle CLI does not repaint. */
-  readonly onDeadline: (listener: () => void) => void;
+  readonly setDeadlineListener: (listener: () => void) => void;
+};
+
+/** Without adapter evidence no frame is an unrecognized startup screen. */
+const noUnrecognizedStartup: ReadinessGate["unrecognizedStartup"] = {
+  classify: () => false,
+  report: () => undefined,
 };
 
 /**
@@ -73,7 +79,7 @@ export type ReadinessGate = InitialReadinessHold & {
 export function createReadinessGate(
   onReady: () => void,
   resumed: boolean,
-  composer?: UnrecognizedStartupEvidence & {
+  composer?: StartupScreenEvidence & {
     readonly onBackstop: (dialogHeld: boolean) => void;
   },
 ): ReadinessGate {
@@ -97,9 +103,11 @@ export function createReadinessGate(
   // Claude verifies an idle composer. Codex can verify its configured composer
   // during background work such as an MCP server retry.
   let evidence: ConfiguredComposerEvidence | undefined;
-  const watch = createUnrecognizedStartupWatch(composer ?? { configured: () => false });
+  let watch: UnrecognizedStartupWatch | undefined;
   let deadlineListener: (() => void) | undefined;
   if (composer) {
+    const startup = createUnrecognizedStartupWatch(composer);
+    watch = startup;
     const shown = () =>
       latest?.facts.composer_visible === true &&
       !latest.facts.blocking_prompt_visible &&
@@ -108,11 +116,12 @@ export function createReadinessGate(
       shown,
       onBackstop: () => {
         backstopHold = () => !shown();
-        // An unrecognized startup screen holds readiness, but it is no recognized dialog.
-        composer.onBackstop(readinessHeld && !watch.current());
+        // An unrecognized startup screen's block holds readiness, but it is no recognized
+        // dialog, including on a blank, incomplete or native startup frame inside it.
+        composer.onBackstop(readinessHeld && !startup.blocking());
       },
       onDeadline: () => {
-        watch.deadlinePassed();
+        startup.deadlinePassed();
         deadlineListener?.();
       },
     };
@@ -124,7 +133,7 @@ export function createReadinessGate(
   const ready = initialReady(
     () => {
       backstopHold = undefined;
-      watch.end();
+      watch?.end();
       onReady();
       readyFired = true;
     },
@@ -147,8 +156,8 @@ export function createReadinessGate(
       if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
     },
-    unrecognizedStartup: watch,
-    onDeadline: (listener) => {
+    unrecognizedStartup: watch ?? noUnrecognizedStartup,
+    setDeadlineListener: (listener) => {
       deadlineListener = listener;
     },
   };
