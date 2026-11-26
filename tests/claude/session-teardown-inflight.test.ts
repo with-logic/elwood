@@ -1,7 +1,7 @@
 /**
- * C-LIFE-11: teardown reaps and completes even while rejecting an interrupted
+ * C-LIFE-14: teardown reaps and completes even while rejecting an interrupted
  * operation — a queued-before-ready message and each genuinely in-flight op the
- * PRD names (compact, setModel, listModels). Covers PRD §5.3/§9.4 (C-LIFE-10/11).
+ * PRD names (compact, setModel, listModels). Covers PRD §5.3/§9.4 (C-LIFE-10/14).
  */
 
 import { existsSync } from "node:fs";
@@ -13,7 +13,7 @@ import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers
 afterEach(resetFakes);
 
 describe("ClaudeSessionApi teardown with an interrupted operation", () => {
-  test("C-LIFE-11 teardown reaps and completes even when it rejects a QUEUED message", async () => {
+  test("C-LIFE-14 teardown reaps and completes even when it rejects a QUEUED message", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -35,7 +35,7 @@ describe("ClaudeSessionApi teardown with an interrupted operation", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  // C-LIFE-11 across the operations the PRD names as interruptible: each is
+  // C-LIFE-14 across the operations the PRD names as interruptible: each is
   // driven to be genuinely IN-FLIGHT (submitted after readiness, awaiting a hook
   // or picker that never arrives) before teardown rejects it — the distinct
   // ControlQueue.inFlight branch, not the queued-before-ready branch above.
@@ -43,7 +43,7 @@ describe("ClaudeSessionApi teardown with an interrupted operation", () => {
   // picker frame that never renders here, so both are genuinely in-flight (unlike
   // sendMessage, which resolves the instant it writes — see VALIDATION-DECISIONS.md).
   for (const op of ["compact", "setModel", "listModels"] as const) {
-    test(`C-LIFE-11 teardown reaps and completes even when it rejects an in-flight ${op}`, async () => {
+    test(`C-LIFE-14 teardown reaps and completes even when it rejects an in-flight ${op}`, async () => {
       const cwd = tempDir();
       installFakes();
       const session = await startClaude({ cwd });

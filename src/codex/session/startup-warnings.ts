@@ -1,18 +1,23 @@
-/** Deliver startup diagnostics with update retry lifetime checks (PRD §5.7, C-CODEX-12). */
+/**
+ * Deliver startup diagnostics with lifetime checks: update retries and frame failure reports
+ * end once the session starts closing (PRD §5.4, §5.7; C-CODEX-12, C-API-72).
+ */
 
-import type { FrameWarningSink } from "../../core/startup/frame.ts";
 import { createSessionStartupWarningGate } from "../../core/startup/warnings.ts";
+import type { SessionWarningSink } from "../../core/warnings/session.ts";
 import type { CodexPreflightWarning } from "../preflight.ts";
 
 export function createCodexStartupWarningGate(
-  session: () => FrameWarningSink | undefined,
+  session: () => SessionWarningSink | undefined,
   closing: () => boolean,
   duringDelivery: (deliver: () => void) => void,
 ): ReturnType<typeof createSessionStartupWarningGate> {
   return createSessionStartupWarningGate(
     session,
     (warning) =>
-      warning.code === "startup_prompt_write_failed" && warning.label === "update" && closing(),
+      closing() &&
+      ((warning.code === "startup_prompt_write_failed" && warning.label === "update") ||
+        warning.code === "frame_observer_failed"),
     duringDelivery,
   );
 }

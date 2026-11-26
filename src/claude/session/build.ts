@@ -107,7 +107,7 @@ export async function buildClaudeSession(
   const terminalReplay = new TerminalReplayBuffer(elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const frameObserver = createSessionFrameObserver(
-    observers,
+    { ...observers, warnings: warnGate },
     () => session,
     () => promptResponder,
     readiness,

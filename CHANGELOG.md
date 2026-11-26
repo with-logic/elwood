@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `frame_observer_failed` warning for a frame Elwood observed while a session was
+  still starting now reaches a `warning` listener attached once `startClaude()`,
+  `startCodex()` or a resume returns, as other startup warnings do. Before, Elwood
+  emitted it before the caller could subscribe, so no listener saw it.
+
 - A Codex session that requests a `reasoningEffort` other than `none` now reaches
   `ready` only once Codex's status footer shows an effort label other than `default`.
   Codex 0.172 paints the footer seconds before it applies the session's configuration,

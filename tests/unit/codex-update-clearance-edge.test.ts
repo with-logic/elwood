@@ -64,7 +64,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
       agent: "codex",
       elwoodSessionId: "edge",
       emitActivity() {},
-      warnings: { emit() {} },
+      warnings: { emitWarnings() {} },
     },
     () => active,
     () => responder,
