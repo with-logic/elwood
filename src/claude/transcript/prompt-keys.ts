@@ -11,8 +11,8 @@ export function textDigest(text: string): string {
   return createHash("sha256").update(text).digest("base64");
 }
 
-export function turnTextKey(turnId: string, text: string): string {
-  return JSON.stringify([turnId, textDigest(text)]);
+export function turnDigestKey(turnId: string, digest: string): string {
+  return JSON.stringify([turnId, digest]);
 }
 
 export function addBounded(set: Set<string>, value: string): void {

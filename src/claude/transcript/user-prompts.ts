@@ -1,52 +1,36 @@
 /**
- * Match blank authenticated Claude hooks to committed user records, and show each nonblank hook
- * unless transcript recovery already showed its prompt (PRD §5.4, C-API-62, C-API-63).
+ * Match blank authenticated Claude hooks to committed user records. Show each nonblank hook unless
+ * transcript recovery already showed its prompt, or it screens a still-queued message again
+ * (PRD §5.4, C-API-62, C-API-63).
  */
-import type { UserPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { claudePromptPresentation } from "../pasted-content.ts";
 import type { InitialUserPrompt } from "./initial-prompt.ts";
-import { addBounded, maxPromptEntries, promptLocation, turnTextKey } from "./prompt-keys.ts";
+import {
+  addBounded,
+  maxPromptEntries,
+  promptLocation,
+  textDigest,
+  turnDigestKey,
+} from "./prompt-keys.ts";
 import { ClaudeQueuedPrompts } from "./queued-prompts.ts";
 import { maxIdentifierBytes } from "./turn-identity.ts";
+import type {
+  PromptEvidence,
+  RecoveredUserPrompt,
+  UserPromptHookEvidence,
+} from "./user-prompt-types.ts";
 import { type UserPromptRecord, userPromptRecord } from "./user-record.ts";
 
 const maxRetainedBytes = 4 * 1024 * 1024;
-
-export type UserPromptHookEvidence = {
-  readonly path: string | undefined;
-  readonly turnId: string;
-  readonly pasteEnvelopeId?: string | undefined;
-} & (
-  | {
-      readonly hasText: true;
-      /** The native hook prompt, which tells a queued message from its running turn's prompt. */
-      readonly prompt: string;
-    }
-  | { readonly hasText: false; readonly prompt?: string | undefined }
-);
-
-export type RecoveredUserPrompt = {
-  readonly path: string;
-  readonly turnId: string;
-  readonly summary: UserPromptPresentation & {
-    readonly kind: "user_message";
-    readonly label: "user";
-  };
-};
-type RecordEvidence = UserPromptRecord & {
-  readonly kind: "record";
-  readonly retainedSizeBytes: number;
-};
-type HookEvidence = { readonly kind: "hook"; readonly pasteEnvelopeId: string | undefined };
-type PromptEvidence = { readonly path: string } & (RecordEvidence | HookEvidence);
 
 export class ClaudeUserPrompts {
   private readonly entries = new Map<string, PromptEvidence>();
   // A shown prompt ID is not a shown submission: Claude fires the hook for a message queued
   // during a running turn with that turn's ID. A nonblank hook is suppressed only when transcript
-  // recovery already showed that ID with the same text. Blank hooks carry no text to tell
-  // submissions apart, so transcript recovery still needs an unshown ID.
+  // recovery already showed that ID with the same text, or when it screens a still-queued message
+  // again under a new ID. Blank hooks carry no text to tell submissions apart, so transcript
+  // recovery still needs an unshown ID.
   private readonly shownTurnIds = new Set<string>();
   private readonly recoveredTextKeys = new Set<string>();
   private readonly queued = new ClaudeQueuedPrompts();
@@ -64,6 +48,10 @@ export class ClaudeUserPrompts {
     this.retainedBytes = 0;
   }
 
+  forgetQueued(): void {
+    this.queued.clear();
+  }
+
   forget(path: string): void {
     for (const [key, entry] of this.entries) {
       if (entry.path === path) this.remove(key);
@@ -75,23 +63,7 @@ export class ClaudeUserPrompts {
     const { path, turnId, pasteEnvelopeId } = evidence;
     if (Buffer.byteLength(turnId) > maxIdentifierBytes) return evidence.hasText;
     const identity = promptLocation(canRecover ? path : undefined, turnId);
-    if (evidence.hasText) {
-      const { prompt } = evidence;
-      if (this.recoveredTextKeys.has(turnTextKey(turnId, prompt))) return false;
-      const textlessPending = identity && this.entries.get(identity.key)?.kind === "hook";
-      // A reused ID is a message queued during that running turn. Under a new ID, an interrupt
-      // made Claude screen a still-queued message again as it runs it: it was already shown.
-      if (textlessPending || this.shownTurnIds.has(turnId)) this.queued.queued(prompt);
-      else if (this.queued.claim(prompt)) {
-        addBounded(this.shownTurnIds, turnId);
-        return false;
-      }
-      // A textless submission under this ID still waits for its record; queued input keeps it.
-      if (textlessPending) return true;
-      addBounded(this.shownTurnIds, turnId);
-      this.remove(identity?.key);
-      return true;
-    }
+    if (evidence.hasText) return this.showsTextHook(turnId, evidence.prompt, identity);
     if (this.shownTurnIds.has(turnId) || !identity) return false;
     const { key } = identity;
     const known = this.entries.get(key);
@@ -100,6 +72,32 @@ export class ClaudeUserPrompts {
     } else if (known === undefined)
       this.remember(key, { kind: "hook", path: identity.path, pasteEnvelopeId });
     return false;
+  }
+
+  private showsTextHook(
+    turnId: string,
+    prompt: string,
+    identity: ReturnType<typeof promptLocation>,
+  ) {
+    let digest: string | undefined;
+    const promptDigest = () => (digest ??= textDigest(prompt));
+    const recovered = this.recoveredTextKeys;
+    if (recovered.size > 0 && recovered.has(turnDigestKey(turnId, promptDigest()))) return false;
+    const textlessPending = identity && this.entries.get(identity.key)?.kind === "hook";
+    // Only transcript correlation can show a queued message delivered, so only it tracks one.
+    // A reused ID is a message queued during that running turn. Under a new ID, an interrupt
+    // made Claude screen a still-queued message again as it runs it: it was already shown.
+    if (identity && (textlessPending || this.shownTurnIds.has(turnId)))
+      this.queued.queued(promptDigest());
+    else if (identity && !this.queued.isEmpty && this.queued.claim(promptDigest())) {
+      addBounded(this.shownTurnIds, turnId);
+      return false;
+    }
+    // A textless submission under this ID still waits for its record; queued input keeps it.
+    if (textlessPending) return true;
+    addBounded(this.shownTurnIds, turnId);
+    this.remove(identity?.key);
+    return true;
   }
 
   /**
@@ -158,7 +156,7 @@ export class ClaudeUserPrompts {
     pasteEnvelopeId: string | undefined,
   ): void {
     addBounded(this.shownTurnIds, turnId);
-    addBounded(this.recoveredTextKeys, turnTextKey(turnId, prompt.text));
+    addBounded(this.recoveredTextKeys, turnDigestKey(turnId, textDigest(prompt.text)));
     this.remove(key);
     this.emit({
       path,
