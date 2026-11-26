@@ -104,14 +104,14 @@ test("C-API-48 timeout and a no-op raw interrupt retain the unresolved current o
     expect(pastes()).toHaveLength(1);
     const clears = () => pty.writes.filter((write) => write === composerClearKeys).length;
     const priorClears = clears();
+    // Cancellation retains cleanup too, until later output shows empty input after the
+    // cancelled draft's Enter. Codex took that draft, so cleanup releases it without keys.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(pastes()).toHaveLength(1);
     await stop("owned");
     pty.emitData(codexIdle);
-    // Cancellation retains physical cleanup too: its clear must be acknowledged by later output.
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(clears()).toBeGreaterThan(priorClears);
-    expect(pastes()).toHaveLength(1);
-    pty.emitData(codexIdle);
     await vi.advanceTimersByTimeAsync(3_000);
+    expect(clears()).toBe(priorClears);
     expect(pastes()).toHaveLength(2);
   } finally {
     vi.useRealTimers();
