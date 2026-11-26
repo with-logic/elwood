@@ -2144,8 +2144,11 @@ first sees the menu, past the guard, sends Esc, and repeats 750 ms apart until a
 settled frame no longer shows the menu; only then does it report
 `startup_prompt` with label `auto_mode_setup`. After four ignored Escapes it stops
 and reports nothing, so a CLI that changes the guard or the menu leaves the
-session `blocked` on the offer, as it was before Elwood declined it. It never touches the setup step
-that `Yes` opens, and it leaves the offer alone once raw input has reached it.
+session `blocked` on the offer, as it was before Elwood declined it. A session that
+stays `blocked` on `claude-auto-mode-offer` with no `startup_prompt` activity is
+the sign: either a human owns the offer, or Claude no longer honours the Esc.
+It never touches the setup step that `Yes` opens, and it leaves the offer alone
+once raw input has reached it.
 `tests/e2e/auto-mode-decline-claude.e2e.ts` covers this with a message held
 behind the offer. A human who presses Down on the menu before the decline owns
 the offer, so `tests/e2e/auto-mode-offer-claude.e2e.ts` still sees it held, with

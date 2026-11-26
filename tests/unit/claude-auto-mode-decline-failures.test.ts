@@ -3,32 +3,24 @@
  * appearance, never reopens an appearance, and lets a seen dismissal win (C-CLAUDE-27,
  * PRD §5.1).
  */
-import { expect, onTestFinished, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   ClaudeAutoModeOfferDecliner,
-  type OfferDeclineWriter,
+  type DeclineWriter,
 } from "../../src/claude/auto-mode/decline.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { fakeOfferSpacing } from "../helpers/offer-spacing.ts";
 
 const offer = capturedFrame("claude-2.1.332/auto-mode-offer");
 const idle = "❯ \n";
 const esc = "\u001b";
 const quickSpacingMs = 5;
 
-/** Fake timers at the real spacing, so a test can act between two attempts. */
-function fakeSpacing(): number {
-  vi.useFakeTimers();
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
-  return 750;
-}
-
 /** A writer that plays `script` (withheld, rejected or written) and then writes every key. */
 function scripted(script: readonly ("withheld" | "rejected" | "written")[]) {
   const keys: string[] = [];
   let calls = 0;
-  const write: OfferDeclineWriter = (input) => {
+  const write: DeclineWriter = (input) => {
     const step = script[calls++] ?? "written";
     if (step === "withheld") return Promise.resolve("withheld" as const);
     if (step === "rejected") return Promise.reject<void>(new Error("pty write failed"));
@@ -50,7 +42,7 @@ test("C-CLAUDE-27 a rejected Esc is retried within the appearance", async () => 
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, quickSpacingMs);
   let screen = offer;
   const { keys, write } = scripted(["rejected"]);
-  const closing: OfferDeclineWriter = (input, stillValid) => {
+  const closing: DeclineWriter = (input, stillValid) => {
     const result = write(input, stillValid);
     if (keys.length > 0) screen = idle;
     return result;
@@ -74,7 +66,7 @@ test("C-CLAUDE-27 three failed writes end the decline, report the rejection, and
 });
 
 test("C-CLAUDE-27 caller input after a rejected Esc keeps the appearance the human's", async () => {
-  const fakeSpacingMs = fakeSpacing();
+  const fakeSpacingMs = fakeOfferSpacing();
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
   const { keys, write, calls } = scripted(["rejected"]);
   const settled = decliner.handle(offer, write, () => offer)?.settled;
@@ -90,7 +82,7 @@ test("C-CLAUDE-27 caller input after a rejected Esc keeps the appearance the hum
 });
 
 test("C-CLAUDE-27 a dismissal a frame showed wins over an unreadable frame after the fourth Esc", async () => {
-  const fakeSpacingMs = fakeSpacing();
+  const fakeSpacingMs = fakeOfferSpacing();
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
   const { keys, write } = scripted([]);
   let settledFrame: string | undefined = offer;
@@ -105,14 +97,68 @@ test("C-CLAUDE-27 a dismissal a frame showed wins over an unreadable frame after
 });
 
 test("C-CLAUDE-27 a settled frame that stays unreadable after the fourth Esc ends the decline", async () => {
-  const fakeSpacingMs = fakeSpacing();
+  const fakeSpacingMs = fakeOfferSpacing();
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
   const { keys, write } = scripted([]);
   let settledFrame: string | undefined = offer;
   const settled = decliner.handle(offer, write, () => settledFrame)?.settled;
   await vi.advanceTimersByTimeAsync(fakeSpacingMs * 4);
   settledFrame = undefined;
-  await vi.advanceTimersByTimeAsync(fakeSpacingMs * 3);
+  // Three unreadable checks are the failures; the decline gives up at the next check.
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs * 4);
   expect(await settled).toBe("cancelled");
   expect(keys).toHaveLength(4);
+});
+
+test("C-CLAUDE-27 a dismissal seen while the last failed attempt waits still wins", async () => {
+  const fakeSpacingMs = fakeOfferSpacing();
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
+  let screen = offer;
+  let calls = 0;
+  // Two withheld attempts, one Esc that Claude takes, then a third withheld attempt during
+  // which the repaint without the menu lands.
+  const write: DeclineWriter = () => {
+    calls++;
+    if (calls === 3) return undefined;
+    if (calls === 4) {
+      screen = idle;
+      decliner.handle(idle, write, () => idle);
+    }
+    return Promise.resolve("withheld" as const);
+  };
+  const settled = decliner.handle(offer, write, () => (calls === 4 ? undefined : screen))?.settled;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs * 5);
+  expect(calls).toBe(4);
+  expect(await settled).toBe("answered");
+});
+
+test("C-CLAUDE-27 a settled frame with the menu back undoes a dismissal seen mid-repaint", async () => {
+  const fakeSpacingMs = fakeOfferSpacing();
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
+  const { keys, write } = scripted([]);
+  let settledFrame = offer;
+  const settled = decliner.handle(offer, write, () => settledFrame)?.settled;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  expect(keys).toEqual([esc]);
+  // One settled chunk of a repaint lacks the menu, then the repaint completes with it.
+  decliner.handle(idle, write, () => idle);
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  expect(keys).toEqual([esc, esc]);
+  settledFrame = idle;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  expect(await settled).toBe("answered");
+});
+
+test("C-CLAUDE-27 caller input during a dismissal the menu then undoes hands the offer to the human", async () => {
+  const fakeSpacingMs = fakeOfferSpacing();
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
+  const { keys, write } = scripted([]);
+  const settled = decliner.handle(offer, write, () => offer)?.settled;
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  decliner.handle(idle, write, () => idle);
+  // The human types while the offer is still up behind the partial repaint.
+  decliner.callerInput();
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs);
+  expect(await settled).toBe("cancelled");
+  expect(keys).toEqual([esc]);
 });

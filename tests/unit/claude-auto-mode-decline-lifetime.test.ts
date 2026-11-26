@@ -1,7 +1,8 @@
 /**
  * The auto-mode offer decline is bound to session disposal: an Escape parked on render
  * settlement when the session closes is never written, and the decline reports neither
- * activity nor a write-failure warning (PRD §5.1/§5.4, C-CLAUDE-22, C-CLAUDE-27).
+ * activity nor a write-failure warning. A live decline reports the rejected write that
+ * ends it (PRD §5.1/§5.4, C-CLAUDE-16, C-CLAUDE-22, C-CLAUDE-27).
  */
 import { expect, onTestFinished, test, vi } from "vitest";
 import {
@@ -12,6 +13,7 @@ import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import type { ElwoodWarningEvent } from "../../src/core/warnings/index.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { fakeOfferSpacing } from "../helpers/offer-spacing.ts";
 
 const offer = capturedFrame("claude-2.1.332/auto-mode-offer");
 
@@ -62,4 +64,32 @@ test("C-CLAUDE-22 C-CLAUDE-27 an auto-mode Escape parked on settlement at close 
   expect(writes).toEqual([]);
   expect(activities).toEqual([]);
   expect(warnings).toEqual([]);
+});
+
+test("C-CLAUDE-16 C-CLAUDE-27 a live decline ended by rejected writes warns once, promising no retry", async () => {
+  const fakeSpacingMs = fakeOfferSpacing();
+  const responder = new ClaudeStartupPromptResponder(true);
+  const rejecting = () => Promise.reject<void>(new Error("pty write failed"));
+  const outcomes = responder.handle(
+    offer,
+    () => undefined,
+    () => offer,
+    rejecting,
+    () => offer,
+  );
+  const warnings: ElwoodWarningEvent[] = [];
+  emitSettledStartupOutcomes({ emit: () => undefined }, "claude", "sess-1", outcomes, {
+    emitWarnings: (events: readonly ElwoodWarningEvent[]) => warnings.push(...events),
+  });
+  await vi.advanceTimersByTimeAsync(fakeSpacingMs * 4);
+  await expect(outcomes[0]?.settled).rejects.toThrow("pty write failed");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(warnings).toEqual([
+    expect.objectContaining({
+      code: "startup_prompt_write_failed",
+      label: "auto_mode_setup",
+      message: "Startup prompt auto_mode_setup could not be answered: PTY write was rejected.",
+    }),
+  ]);
+  responder.dispose();
 });

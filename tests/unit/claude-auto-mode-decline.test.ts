@@ -2,13 +2,14 @@
  * Claude's auto-mode setup offer is declined with Esc, spaced past the offer's input guard
  * and retried until a settled frame shows it gone (C-CLAUDE-27, PRD §5.1).
  */
-import { expect, onTestFinished, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   ClaudeAutoModeOfferDecliner,
-  type OfferDeclineWriter,
+  type DeclineWriter,
 } from "../../src/claude/auto-mode/decline.ts";
 import { isClaudeAutoModeOfferMenu } from "../../src/claude/auto-mode/offer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { fakeOfferSpacing } from "../helpers/offer-spacing.ts";
 
 const offer = capturedFrame("claude-2.1.332/auto-mode-offer");
 const setupStep = capturedFrame("claude-2.1.332/auto-mode-setup-step");
@@ -20,7 +21,7 @@ function screen(closesAfter: number) {
   let text = offer;
   const keys: string[] = [];
   // A plain PTY write settles with no result: only an explicit `withheld` held the key back.
-  const write: OfferDeclineWriter = (input, stillValid) => {
+  const write: DeclineWriter = (input, stillValid) => {
     if (!stillValid(text)) return Promise.resolve("withheld" as const);
     keys.push(input);
     if (keys.length >= closesAfter) text = idle;
@@ -56,7 +57,10 @@ test("C-CLAUDE-27 an offer that outlasts every attempt is left on screen, unclai
   expect(keys).toHaveLength(4);
   // Still the same appearance: no new decline until the offer has gone and come back.
   expect(decliner.handle(read(), write, read)).toBeUndefined();
+  // A frame without the menu is not proof while the settled frame still shows it.
   expect(decliner.handle(idle, write, read)).toBeUndefined();
+  expect(decliner.handle(offer, write, read)).toBeUndefined();
+  decliner.handle(idle, write, () => idle);
   const next = decliner.handle(offer, write, read);
   expect(next).toBeDefined();
   lifetime.abort();
@@ -71,8 +75,12 @@ test("C-CLAUDE-27 raw caller input on the offer hands it to the human", async ()
   decliner.callerInput();
   expect(await settled).toBe("cancelled");
   expect(keys).toEqual([]);
-  // Once the human's appearance has gone, the next one is declined again.
+  // Neither an unsettled frame without the menu nor the setup step `Yes` opens ends the
+  // human's appearance; a settled frame without the offer does, and the next is declined.
   decliner.handle(idle, write, read);
+  decliner.handle(setupStep, write, () => setupStep);
+  expect(decliner.handle(offer, write, read)).toBeUndefined();
+  decliner.handle(idle, write, () => idle);
   expect(await decliner.handle(offer, write, read)?.settled).toBe("answered");
 });
 
@@ -88,7 +96,7 @@ test("C-CLAUDE-27 a menu that closes or never settles before the first Esc claim
   // not one that went out: three such attempts end the decline without a claim.
   const later = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
   let attempts = 0;
-  const withheld: OfferDeclineWriter = () => {
+  const withheld: DeclineWriter = () => {
     attempts++;
     return Promise.resolve("withheld" as const);
   };
@@ -96,17 +104,8 @@ test("C-CLAUDE-27 a menu that closes or never settles before the first Esc claim
   expect(attempts).toBe(3);
 });
 
-/** Real spacing on fake timers, so a test can act between an Esc and the next check. */
-function fakeSpacing(): number {
-  vi.useFakeTimers();
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
-  return 750;
-}
-
 test("C-CLAUDE-27 caller input after a settled frame shows the dismissal leaves the decline Elwood's", async () => {
-  const fakeSpacingMs = fakeSpacing();
+  const fakeSpacingMs = fakeOfferSpacing();
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
   const { keys, write, read } = screen(1);
   const settled = decliner.handle(read(), write, read)?.settled;
@@ -121,7 +120,7 @@ test("C-CLAUDE-27 caller input after a settled frame shows the dismissal leaves 
 });
 
 test("C-CLAUDE-27 only a settled frame after an Esc, before caller input, shows Elwood's dismissal", async () => {
-  const fakeSpacingMs = fakeSpacing();
+  const fakeSpacingMs = fakeOfferSpacing();
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, fakeSpacingMs);
   const { keys, write, read } = screen(1);
   const settled = decliner.handle(read(), write, read)?.settled;

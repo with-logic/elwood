@@ -28,7 +28,8 @@ function offerRows(text: string): readonly string[] | undefined {
   if (!text.includes(offerTitle)) return undefined;
   const lines = text.split("\n");
   const title = lines.findLastIndex((line) => line.trim() === offerTitle);
-  if (title < 1 || !ruleRow.test(lines[title - 1] as string)) return undefined;
+  const above = lines[title - 1];
+  if (above === undefined || !ruleRow.test(above)) return undefined;
   const rows: string[] = [];
   for (const line of lines.slice(title + 1)) {
     if (cancelHint.test(line.trim())) return rows;

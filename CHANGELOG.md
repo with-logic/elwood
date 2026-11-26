@@ -82,7 +82,8 @@ back each entry are listed in `prd/14-conformance.md`.
   offer is gone it emits `startup_prompt` activity with label `auto_mode_setup`,
   and a message held behind the offer then submits. An offer that outlasts the
   fourth Esc leaves the session `blocked` for a human, and raw input on the
-  offer leaves it to the human at once.
+  offer leaves it to the human at once. The `startup_prompt_write_failed`
+  message no longer promises a retry, which the auto-mode decline does not make.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A

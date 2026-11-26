@@ -185,8 +185,8 @@ export type ElwoodWarningEvent =
  * A rejected startup-prompt PTY write, discriminated by agent so the LABEL is
  * agent-correlated: an impossible pairing like Claude + `update` or Codex +
  * `browser_tools` is unrepresentable (§5.4). The label is a bounded id from the
- * agent's fixed startup-prompt set only — never raw prompt/screen content — and
- * the prompt is left retryable so a later frame re-attempts the write.
+ * agent's fixed startup-prompt set only — never raw prompt/screen content. Whether the
+ * prompt is retried is the responder's (§5.7).
  */
 export type StartupPromptWriteFailed<A extends ElwoodAgentKind> = {
   readonly elwoodSessionId: string;

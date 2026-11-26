@@ -1,11 +1,15 @@
 /**
  * Claude's auto-mode offer decline through the real guarded writer, on fixed contract timing:
  * Esc 750 ms after the menu and 750 ms apart, at most four times, never after raw caller
- * input and never onto a screen that replaced the menu (C-CLAUDE-27, PRD §5.1).
+ * input and never onto a screen that replaced the menu. The browser-tools decline never
+ * writes onto a settled frame that shows the menu (C-CLAUDE-27, PRD §5.1).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeAutoModeOfferDecliner } from "../../src/claude/auto-mode/decline.ts";
-import { guardedClaudeAutomationWrite } from "../../src/claude/startup-prompts.ts";
+import {
+  ClaudeStartupPromptResponder,
+  guardedClaudeAutomationWrite,
+} from "../../src/claude/startup-prompts.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 
 afterEach(() => {
@@ -95,4 +99,27 @@ test("C-CLAUDE-27 an Esc is withheld when settlement replaces the menu, and clai
   expect(escapes()).toEqual([]);
   // Withheld, never written: a menu gone without Elwood's Esc is not reported as declined.
   expect(await settled).toBe("cancelled");
+});
+
+test("C-CLAUDE-27 a browser-tools Esc is withheld when the auto-mode menu paints during settlement", async () => {
+  const held = Promise.withResolvers<void>();
+  let screen = browserTools;
+  const writes: string[] = [];
+  const write = guardedClaudeAutomationWrite(
+    { sendInput: () => undefined, settled: () => held.promise, renderFailed: false },
+    (input) => void writes.push(input),
+    () => screen,
+  );
+  const responder = new ClaudeStartupPromptResponder(true);
+  const [browserDecline] = responder.handle(
+    screen,
+    () => undefined,
+    () => screen,
+    write,
+  );
+  // The browser-tools phrases stay in the transcript while the offer paints below them.
+  screen = `${browserTools}\n${offer}`;
+  held.resolve();
+  expect(await browserDecline?.settled).toBe("cancelled");
+  expect(writes).toEqual([]);
 });

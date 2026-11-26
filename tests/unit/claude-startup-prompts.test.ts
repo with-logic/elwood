@@ -148,3 +148,19 @@ test("C-CLAUDE-27 the browser-tools decline does not act on a frame that shows t
   await drain(settled);
   expect(writes).toEqual([]);
 });
+
+test("C-CLAUDE-27 a settled reader without the guarded writer starts no auto-mode decline", () => {
+  const offer = capturedFrame("claude-2.1.332/auto-mode-offer");
+  const responder = new ClaudeStartupPromptResponder(true);
+  // Only the guarded writer can withhold an Esc after caller input, so none is attempted.
+  expect(
+    responder.handle(
+      offer,
+      () => undefined,
+      () => offer,
+      undefined,
+      () => offer,
+    ),
+  ).toEqual([]);
+  responder.dispose();
+});
