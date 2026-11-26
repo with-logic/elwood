@@ -6,9 +6,17 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
-import type { ElwoodWarningEvent } from "../../src/index.ts";
-import { resetFakes } from "./helpers.ts";
-import { closing, listed, openOnFakeTimers, summary } from "./update-dialog-fixture.ts";
+import { type CodexSessionApi, type ElwoodWarningEvent, startCodex } from "../../src/index.ts";
+import { tty } from "../fixtures/trust-composer.ts";
+import { holdStartup } from "../helpers/startup-frame.ts";
+import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import {
+  closing,
+  listed,
+  noSafeChoice,
+  openOnFakeTimers,
+  summary,
+} from "./update-dialog-fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -104,4 +112,31 @@ test("C-API-72 C-ATTN-12 a discovery failure while replaying to a late listener 
     failing.now = false;
     expect(await session.listDialogs()).toEqual([]);
   });
+});
+
+test("C-API-14 C-API-72 C-ATTN-12 a discovery failure before startCodex returns warns after it returns", async () => {
+  const failing = failOfferKeys();
+  installFakes();
+  const held = await holdStartup<CodexSessionApi>(() =>
+    startCodex({ cwd: tempDir(), initialSize: { cols: 100, rows: 30 } }),
+  );
+  try {
+    failing.now = true;
+    // Elwood has no safe choice to type on this offer, so discovery reads it at once.
+    ptys[0]?.emitData(`\u001b[2J\u001b[H${tty(noSafeChoice)}\u001b[?25l`);
+    await expect.poll(held.renders).toBe(1);
+    await new Promise((resolve) => setImmediate(resolve));
+    held.release();
+    const session = await held.starting;
+    const warnings: ElwoodWarningEvent[] = [];
+    session.on("warning", (warning) => {
+      warnings.push(warning);
+    });
+    await expect.poll(() => warningCodes(warnings)).toEqual(["frame_observer_failed"]);
+    failing.now = false;
+    expect(await session.listDialogs()).toEqual([]);
+  } finally {
+    await held.settle();
+    await (await held.starting.catch(() => undefined))?.teardown();
+  }
 });

@@ -52,7 +52,7 @@ function harness(failing: StatusEvidenceKind, status: ElwoodSessionStatus) {
       elwoodSessionId: "test",
       emitActivity() {},
       warnings: {
-        emit: (name: string, event: unknown) => name === "warning" && warnings.push(event),
+        emitWarnings: (batch: readonly unknown[]) => warnings.push(...batch),
       },
     },
     () => active,

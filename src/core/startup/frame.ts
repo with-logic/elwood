@@ -10,11 +10,7 @@
  */
 
 import type { ElwoodWarningEvent } from "../types.ts";
-
-/** A session's live warning sink (emits a batch as `warning` + `activity`). */
-export type FrameWarningSink = {
-  readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
-};
+import type { SessionWarningSink } from "../warnings/session.ts";
 
 /**
  * Delivers `warnings` through `sink` but CONTAINS a throwing listener so frame
@@ -22,7 +18,7 @@ export type FrameWarningSink = {
  * (it is not retried), exactly as a human's terminal does not re-show a flashed banner.
  */
 export function deliverFrameWarnings(
-  sink: FrameWarningSink | undefined,
+  sink: SessionWarningSink | undefined,
   warnings: readonly ElwoodWarningEvent[],
 ): void {
   if (!sink || warnings.length === 0) return;
@@ -47,7 +43,7 @@ export function deliverFrameWarnings(
  * `version_unparseable` warning. A macrotask (not a microtask) is required: a microtask
  * runs before the caller's post-`await` continuation, so it would fire into no listener.
  */
-export function createStartupWarningGate(sink: FrameWarningSink): {
+export function createStartupWarningGate(sink: SessionWarningSink): {
   readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
   readonly openAfterReturn: () => void;
   /** Join a scheduled startup flush before contained terminal finalization. */

@@ -102,7 +102,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     cachedLiveSnapshot(terminal),
   );
   const frameObserver = createSessionFrameObserver(
-    observers,
+    { ...observers, warnings: warnGate },
     () => session,
     () => promptResponder,
     readiness,
