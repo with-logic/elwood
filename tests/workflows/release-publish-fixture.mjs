@@ -4,6 +4,8 @@
  * `npm publish` is recorded and run for real as a dry run, so npm's own
  * version and dist-tag checks still apply.
  */
+
+// biome-ignore-all lint/suspicious/noMisplacedAssertion: Failure tests call this check inside their test.
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
