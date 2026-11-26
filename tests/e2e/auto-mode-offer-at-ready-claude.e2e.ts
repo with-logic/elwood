@@ -1,17 +1,23 @@
 /**
  * A caller that sends the moment a Claude turn's `Stop` reports `ready` reaches Claude while
  * the auto-mode offer that turn's end mounted may not have painted yet. The message must not
- * answer the offer: it is submitted exactly once, after the offer is dismissed. One run holds
+ * answer the offer: it is submitted exactly once, after Elwood declines the offer. One run holds
  * Elwood's view of the CLI back from `Stop`, so the offer is mounted and, to Elwood,
  * unpainted; the other runs at live speed with a status observer that throws at that `ready`.
- * Implements C-ATTN-10 (PRD §5.3).
+ * Implements C-ATTN-10 (PRD §5.3) and C-CLAUDE-27 (PRD §5.1).
  */
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { offerSessionOptions, offerSetupState, offerShown, seedOffer } from "./auto-mode-offer.ts";
+import {
+  offerActions,
+  offerSessionOptions,
+  offerSetupState,
+  offerShown,
+  seedOffer,
+} from "./auto-mode-offer.ts";
 import {
   cleanup,
   hookNamed,
@@ -23,7 +29,7 @@ import {
   skipTurns,
   waitFor,
 } from "./helpers.ts";
-import { type HeldOutput, holdCliOutput, outputMatcher } from "./output-hold.ts";
+import { type HeldOutput, holdCliOutput } from "./output-hold.ts";
 
 /** How long Elwood's view trails the CLI after `Stop`: far past the offer's paint. */
 const lagMs = 1_500;
@@ -31,15 +37,11 @@ const lagMs = 1_500;
 const settleMs = 2_000;
 
 let held: HeldOutput | undefined;
-let answered = outputMatcher(/Yes✔/);
-let setupStep = outputMatcher(/Spacetotoggle/);
-let offerAnswered = false;
-let setupOpened = false;
+const actions = offerActions();
 holdCliOutput({
   output: (data, output) => {
     held = output;
-    offerAnswered ||= answered(data);
-    setupOpened ||= setupStep(data);
+    actions.observe(data);
   },
 });
 
@@ -54,10 +56,7 @@ for (const run of runs) {
     timeout: 240_000,
   }, async (t) => {
     seedOffer();
-    answered = outputMatcher(/Yes✔/);
-    setupStep = outputMatcher(/Spacetotoggle/);
-    offerAnswered = false;
-    setupOpened = false;
+    actions.reset();
     const project = makeProject("claude");
     let session: ClaudeSessionApi | undefined;
     try {
@@ -92,9 +91,6 @@ for (const run of runs) {
       }
       const hooksBefore = observed.hooks.length;
 
-      // Claude ignores a choice made within 500 ms of the offer's first render.
-      await delay(1_000);
-      await live.sendKeys("\u001b");
       const submissions = () =>
         observed.hooks.filter(
           (hook) => hook.hook_event_name === "UserPromptSubmit" && hook.prompt.includes(marker),
@@ -104,9 +100,13 @@ for (const run of runs) {
       await sending;
       await delay(settleMs);
       assert.equal(submissions(), 1, "the message is submitted exactly once");
-      assert.equal(offerAnswered, false, "the offer's Yes was never chosen");
-      assert.equal(setupOpened, false, "no setup step opened");
-      assert.equal(typeof offerSetupState()?.["dismissedAt"], "number", "Esc declined the offer");
+      assert.equal(actions.yesChosen, false, "the offer's Yes was never chosen");
+      assert.equal(actions.setupOpened, false, "no setup step opened");
+      assert.equal(
+        typeof offerSetupState()?.["dismissedAt"],
+        "number",
+        "Elwood's Esc declined the offer",
+      );
       observed.dispose();
     } finally {
       await cleanup(session);

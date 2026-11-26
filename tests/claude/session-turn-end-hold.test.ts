@@ -2,8 +2,8 @@
  * Claude mounts its auto-mode offer when a turn's query ends, before the frame that paints
  * it, while Elwood may already report `ready`. Input queued during the turn waits for a
  * stable end frame, however the turn ends and even when a status observer throws, so the
- * offer holds it instead of taking its Enter; and resumed work ends the hold
- * (C-ATTN-10, C-ATTN-09, C-API-37, PRD §5.3).
+ * offer holds it instead of taking its Enter while Elwood declines the offer; and resumed
+ * work ends the hold (C-ATTN-10, C-ATTN-09, C-CLAUDE-27, C-API-37, PRD §5.3).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { turnEndSettleMs } from "../../src/claude/session/turn-end-hold.ts";
@@ -63,21 +63,25 @@ const until = (ready: () => boolean, timeoutMs = 1_000) =>
     { timeout: timeoutMs },
   );
 
-/** What was written before the offer painted, behind it, and once it closed. */
+/**
+ * What was written before the offer painted, behind it until Elwood's own decline went out
+ * (C-CLAUDE-27), and once it closed.
+ */
 async function writesAroundOffer(live: ClaudeSessionApi, pty: FakePty) {
   await wait(turnEndSettleMs / 2);
   const before = [...pty.writes];
   pty.emitData(offerOnScreen);
   await until(() => live.status === "blocked");
-  await wait(turnEndSettleMs + 200);
+  await until(() => pty.writes.length > 0, 3_000);
+  await wait(100);
   const behind = [...pty.writes];
   pty.emitData(idleScreen);
-  await until(() => pty.writes.length >= 2, 3_000);
+  await until(() => pty.writes.length >= 3, 3_000);
   return { before, behind, after: [...pty.writes] };
 }
 
-/** Nothing goes out before or behind the offer; once it closes, the message submits once. */
-const heldBehindOffer = { before: [], behind: [], after: [paste, "\r"] };
+/** Only the decline goes out behind the offer; once it closes, the message submits once. */
+const heldBehindOffer = { before: [], behind: ["\u001b"], after: ["\u001b", paste, "\r"] };
 
 const throwing = () => {
   throw new Error("status observer failed");

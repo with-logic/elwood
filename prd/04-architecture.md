@@ -164,7 +164,12 @@ Concretely:
   variables (such as `ELWOOD_SESSION_ID`).
 - Elwood MUST NOT modify, move, or shadow user-owned configuration: user and
   project Claude settings, `CLAUDE.md`/`AGENTS.md`, skills, MCP configuration,
-  and Codex `config.toml` all load exactly as they would without Elwood.
+  and Codex `config.toml` all load exactly as they would without Elwood. The
+  one exception is state the CLI itself owns: when Elwood declines Claude's
+  auto-mode setup offer (§5.1), Claude records the 7-day `Not now` snooze
+  (`autoModeEnvSetup.dismissedAt` in `.claude.json`), exactly as it does when
+  a human presses Escape. A later standalone Claude session then also skips
+  the offer until the snooze lapses.
 - Elwood's hook wiring MUST be additive. User-configured hooks for the same
   events continue to run alongside Elwood's bridge hooks. For Claude this holds
   because `--settings` is a merged settings source; for Codex this holds

@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { claudeAutoModeOfferRuleId } from "../../src/claude/auto-mode-offer.ts";
+import { claudeAutoModeOfferRuleId } from "../../src/claude/auto-mode/offer.ts";
 import { composerClearKeys } from "../../src/core/input/constants.ts";
 import { ClaudeSession } from "../../src/index.ts";
 import { offerSetupState, seedSnoozedOffer } from "./auto-mode-offer.ts";
