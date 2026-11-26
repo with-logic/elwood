@@ -1,14 +1,14 @@
 /**
  * Real Claude and Codex TUI intervention coverage for state-aware guidance.
- * Implements C-API-37, C-E2E-02, and C-E2E-03. Consumption is asserted via the
+ * Implements C-API-37, C-API-62, C-E2E-02, and C-E2E-03. Consumption is asserted via the
  * signals the CLIs actually provide for MID-TURN steering — the guidance overtakes
  * readiness (no intervening `ready`), `sendGuidance` resolves after the submitting
  * Enter, the marker renders in the live TUI, AND the marker is no longer sitting on
  * the composer prompt line (proving it was SUBMITTED, not merely pasted — a
  * regression that omits the submitting Enter would leave it staged in the composer).
- * A `UserPromptSubmit` hook is NOT asserted: the real CLIs do not fire it for text
- * injected into an active turn (verified empirically), so requiring it made this
- * suite deterministically red.
+ * Claude Code 2.1.332 fires `UserPromptSubmit` when it queues the guidance, with the
+ * running turn's prompt ID, so the Claude case also requires the guidance's own
+ * `user_message`. The Codex case does not require a hook.
  */
 
 import assert from "node:assert/strict";
@@ -66,8 +66,8 @@ async function guidanceFlow(
   const offStatus = session.on("status", (event) => transitionsDuringGuidance.push(event.status));
   try {
     // `sendGuidance` resolves only after the submitting Enter is dispatched into the
-    // live TUI (the C-API-37 contract — the real signal that it was consumed, not a
-    // `UserPromptSubmit` hook, which the CLIs do NOT fire for mid-turn steering).
+    // live TUI (the C-API-37 contract, and the signal both CLIs share). Only the Claude
+    // case also requires a hook: Claude 2.1.332 fires `UserPromptSubmit` as it queues it.
     await session.sendGuidance(`Coordinator intervention: stop the essay. Marker: ${marker}`);
   } finally {
     offStatus();
@@ -97,9 +97,9 @@ async function guidanceFlow(
   return { transitionsDuringGuidance, status, screen };
 }
 
-test("C-API-37 real Claude receives guidance during an active turn", {
+test("C-API-37 C-API-62 real Claude receives guidance during an active turn and shows it once", {
   skip: skipIf(skipReason("claude"), skipTurns),
-  timeout: 120_000,
+  timeout: 240_000,
 }, async () => {
   const project = makeProject("claude");
   const session = await startClaude({
@@ -109,8 +109,36 @@ test("C-API-37 real Claude receives guidance during an active turn", {
     autotrust: true,
     hooks: {},
   });
+  const userMessages: string[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "user_message" && event.source === "hook") userMessages.push(event.text);
+  });
   try {
     const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CLAUDE_NOW", "❯");
+    const guidanceMessages = () =>
+      userMessages.filter((text) => text.includes("ELWOOD_GUIDANCE_CLAUDE_NOW")).length;
+    await waitFor(
+      () => guidanceMessages() > 0 || undefined,
+      "the guidance's own user_message, though Claude reuses the running turn's prompt ID",
+      30_000,
+    );
+    // Claude runs the queued guidance as a new turn after the essay's Stop. Wait until both
+    // turns are done, so a second hook at that point would be counted.
+    let idleSince: number | undefined;
+    await waitFor(
+      () => {
+        if (/esc to interrupt/i.test(session.terminal.snapshot().text)) idleSince = undefined;
+        else idleSince ??= Date.now();
+        return idleSince !== undefined && Date.now() - idleSince >= 3_000 ? true : undefined;
+      },
+      "Claude to finish the essay and the queued guidance",
+      180_000,
+    );
+    assert.equal(
+      guidanceMessages(),
+      1,
+      `one guidance, one message: ${JSON.stringify(userMessages)}`,
+    );
     assert.ok(
       !outcome.transitionsDuringGuidance.includes("ready"),
       "guidance settled into the live running turn without waiting for a ready transition",

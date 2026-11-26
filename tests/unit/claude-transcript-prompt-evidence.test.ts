@@ -45,9 +45,12 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   expect(prompts.observeHook({ path: undefined, turnId: "pathless", hasText: false }, true)).toBe(
     false,
   );
-  expect(prompts.observeHook({ path: undefined, turnId: "pathless", hasText: true }, true)).toBe(
-    true,
-  );
+  expect(
+    prompts.observeHook(
+      { path: undefined, turnId: "pathless", hasText: true, prompt: "live" },
+      true,
+    ),
+  ).toBe(true);
   const oversizedPath = `/${"p".repeat(4097)}`;
   const oversizedId = "t".repeat(1025);
   expect(
@@ -55,7 +58,9 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   ).toBe(false);
   commit(oversizedPath, "unbound");
   commit(path, oversizedId);
-  expect(prompts.observeHook({ path: path, turnId: oversizedId, hasText: true }, true)).toBe(true);
+  expect(
+    prompts.observeHook({ path: path, turnId: oversizedId, hasText: true, prompt: "live" }, true),
+  ).toBe(true);
 
   const padding = " ".repeat(900 * 1024);
   for (const id of ["evicted", "first", "second", "third", "retained"]) commit(path, id, padding);
@@ -65,15 +70,21 @@ test("bounds retained history and keeps live text when native metadata exceeds i
 
   for (let index = 0; index < 64; index++) {
     prompts.observeHook({ path: path, turnId: `hook-${index}`, hasText: false }, true);
-    expect(prompts.observeHook({ path: path, turnId: `shown-${index}`, hasText: true }, true)).toBe(
-      true,
-    );
+    const live = { path: path, turnId: `shown-${index}`, hasText: true, prompt: "live" } as const;
+    expect(prompts.observeHook(live, true)).toBe(true);
   }
   // Consume the oldest retained hook before recording new evidence for the evicted one.
   commit(path, "hook-0");
   commit(path, "evicted");
   expect(events).toMatchObject([{ turnId: "retained" }, { turnId: "hook-0" }]);
-  expect(prompts.observeHook({ path: path, turnId: "retained", hasText: true }, true)).toBe(true);
+  // The shown-ID history is bounded too: an evicted ID can be recovered again.
+  prompts.observeHook({ path: path, turnId: "retained", hasText: false }, true);
+  commit(path, "retained", padding);
+  expect(events).toMatchObject([
+    { turnId: "retained" },
+    { turnId: "hook-0" },
+    { turnId: "retained" },
+  ]);
 });
 
 test("requires user text and excludes transcript metadata and tool output", () => {
@@ -118,8 +129,17 @@ test("C-API-63 a malformed live identity stops transcript correlation without su
     appendFileSync(path, `${JSON.stringify(nativeUser("first", "must stay hidden"))}\n`);
     watcher.scan();
     expect(events).toHaveLength(1);
-    expect(watcher.observeUserPromptHook({ path, turnId: "shown", hasText: true })).toBe(false);
-    expect(watcher.observeUserPromptHook({ path, turnId: "first", hasText: true })).toBe(true);
+    expect(
+      watcher.observeUserPromptHook({
+        path,
+        turnId: "shown",
+        hasText: true,
+        prompt: "delivered once",
+      }),
+    ).toBe(false);
+    expect(
+      watcher.observeUserPromptHook({ path, turnId: "first", hasText: true, prompt: "live" }),
+    ).toBe(true);
   } finally {
     watcher.finish();
   }
