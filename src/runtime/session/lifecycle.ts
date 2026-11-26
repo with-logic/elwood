@@ -43,7 +43,7 @@ export abstract class SessionLifecycle {
   private readonly terminalReplay: TerminalReplayBuffer;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
-  private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
+  protected readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
   protected readonly pasteGuard: PasteGuard;
   /** Called during base construction. Return a normalizer without using adapter instance fields. */
   protected abstract promptNormalizer(): PromptNormalizer;
@@ -152,12 +152,12 @@ export abstract class SessionLifecycle {
   bindInitialReadinessHold(hold: import("./readiness.ts").InitialReadinessHold): void {
     this.initialReadinessHold = hold;
   }
-  submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
+  submitEvidence(kind: StatusEvidenceKind, workingVisible = false, cause?: string): StatusDecision {
     const held =
       this.automationInputBlocking ||
       this.closing.signal.aborted ||
       (!this.everReady && this.initialReadinessHold?.holdsReadiness() === true);
-    return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
+    return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible, cause });
   }
   submitExit(): StatusDecision {
     this.closing.abort();
