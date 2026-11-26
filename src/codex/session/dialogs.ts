@@ -9,12 +9,16 @@ import { CodexWorkspaceTrustDialogs } from "../workspace-trust/dialogs.ts";
 import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../workspace-trust/types.ts";
 
 type DialogListener = (event: ElwoodDialogEvent) => unknown;
+type CodexSessionDialogsInput = ConstructorParameters<typeof CodexWorkspaceTrustDialogs>[0] & {
+  /** The session's frame failure report, which update discovery uses (C-API-72). */
+  readonly reportFailure: () => void;
+};
 
 export class CodexSessionDialogs {
   readonly trust: CodexWorkspaceTrustDialogs;
   readonly update: CodexUpdateDialogs;
 
-  constructor(input: ConstructorParameters<typeof CodexWorkspaceTrustDialogs>[0]) {
+  constructor(input: CodexSessionDialogsInput) {
     this.trust = new CodexWorkspaceTrustDialogs(input);
     const { observeNotifications } = this.trust;
     this.update = new CodexUpdateDialogs({ ...input, observeNotifications });

@@ -12,7 +12,7 @@ import {
   type ElwoodDialogRequest,
   startCodex,
 } from "../../src/index.ts";
-import { tty } from "../fixtures/trust-composer.ts";
+import { codexTty, tty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { installFakes, ptys, render, tempDir } from "./helpers.ts";
 
@@ -46,6 +46,24 @@ export async function openCodex() {
   /** Codex hides the cursor on the offer. */
   const show = (text: string) => render(session, `${tty(text)}\u001b[?25l`);
   return { session, events, show, cwd, pty: required(ptys.at(-1), "the session's PTY") };
+}
+
+/** The configured composer Codex 0.172.0 draws once a skip of its offer lands. */
+export const skippedComposer = codexTty(
+  capturedFrame("codex-0.172.0/update/start-skipped-composer").trimEnd(),
+);
+
+/** A session on fake timers, so the skip's delays pass without waiting for them. */
+export async function openOnFakeTimers() {
+  const opened = await openCodex();
+  vi.useFakeTimers();
+  const paint = async (frame: string) => {
+    opened.pty.emitData(`\u001b[2J\u001b[H${frame}`);
+    await vi.advanceTimersByTimeAsync(50);
+  };
+  /** Codex hides the cursor on the offer. */
+  const paintOffer = (text = offer) => paint(`${tty(text)}\u001b[?25l`);
+  return { ...opened, paint, paintOffer };
 }
 
 /** A session whose offer raw caller input took over, listed and announced. */

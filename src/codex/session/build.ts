@@ -86,6 +86,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     manualTrust: !autotrust,
     write: send,
     isLive: () => session?.closing.signal.aborted === false,
+    reportFailure: () => frameObserver.reportFailure(),
   });
   let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);

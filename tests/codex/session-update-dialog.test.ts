@@ -7,17 +7,22 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
 import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../../src/index.ts";
-import { codexTty, tty } from "../fixtures/trust-composer.ts";
-import { capturedFrame } from "../helpers/captured-frames.ts";
 import { becomeReady, render, resetFakes } from "./helpers.ts";
-import { closing, firstListed, newerOffer, offer, openCodex } from "./update-dialog-fixture.ts";
+import {
+  closing,
+  firstListed,
+  newerOffer,
+  offer,
+  openCodex,
+  openOnFakeTimers,
+  skippedComposer,
+} from "./update-dialog-fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
   resetFakes();
 });
 
-const composer = capturedFrame("codex-0.172.0/update/start-skipped-composer").trimEnd();
 const down = "\u001b[B";
 /** The skip's first key waits 500 ms, and its retries run out 5 s after it. */
 const skipRetriesMs = firstKeyDelayMs + 5_000;
@@ -37,19 +42,6 @@ const expectedOffer = {
     { id: expect.any(String), label: "Skip until next version" },
   ],
 };
-
-/** A session on fake timers, so the skip's delays pass without waiting for them. */
-async function openOnFakeTimers() {
-  const opened = await openCodex();
-  vi.useFakeTimers();
-  const paint = async (frame: string) => {
-    opened.pty.emitData(`\u001b[2J\u001b[H${frame}`);
-    await vi.advanceTimersByTimeAsync(50);
-  };
-  /** Codex hides the cursor on the offer. */
-  const paintOffer = (text = offer) => paint(`${tty(text)}\u001b[?25l`);
-  return { ...opened, paint, paintOffer };
-}
 
 /** The phase and reason of each event, and whether it carries `request`. */
 const phases = (events: readonly ElwoodDialogEvent[], request: ElwoodDialogRequest) =>
@@ -80,7 +72,7 @@ test("C-ATTN-12 raw caller input on the offer hands it to the host, and Codex's 
     // Past the skip's first key and its retries, Elwood still writes nothing of its own.
     await vi.advanceTimersByTimeAsync(skipRetriesMs);
     expect(pty.writes).toEqual([down]);
-    await paint(codexTty(composer));
+    await paint(skippedComposer);
     expect(await session.listDialogs()).toEqual([]);
     await vi.advanceTimersByTimeAsync(0);
     expect(phases(events, request)).toEqual([
@@ -97,7 +89,7 @@ test("C-ATTN-12 an offer Elwood's skip answers is never listed or announced", as
     await vi.advanceTimersByTimeAsync(firstKeyDelayMs);
     expect(pty.writes).toEqual(["2"]);
     expect(await session.listDialogs()).toEqual([]);
-    await paint(codexTty(composer));
+    await paint(skippedComposer);
     expect(await session.listDialogs()).toEqual([]);
     expect(events).toEqual([]);
   });
@@ -129,7 +121,7 @@ test("C-ATTN-12 an earlier skip that settles while a newer one is pending keeps 
       expect(await session.listDialogs()).toEqual([]);
     }
     expect(pty.writes).toEqual(["2"]);
-    await paint(codexTty(composer));
+    await paint(skippedComposer);
     expect(await session.listDialogs()).toEqual([]);
     expect(events).toEqual([]);
   });
@@ -138,7 +130,7 @@ test("C-ATTN-12 an earlier skip that settles while a newer one is pending keeps 
 test("C-ATTN-12 the first readiness ends update discovery", async () => {
   const { session, events, show, cwd } = await openCodex();
   await closing(session, async () => {
-    await render(session, codexTty(composer));
+    await render(session, skippedComposer);
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     await show(offer);

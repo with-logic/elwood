@@ -36,7 +36,7 @@ function closeReason(offer: CodexUpdateOffer | undefined, frame: string): CloseR
   return "cleared";
 }
 
-export type CodexUpdateDialogsInput = {
+type CodexUpdateDialogsInput = {
   readonly elwoodSessionId: string;
   readonly emitter: TypedEmitter<CodexEventMap>;
   readonly terminal: () => ElwoodTerminal;
@@ -45,6 +45,8 @@ export type CodexUpdateDialogsInput = {
    * failure per session, and the trust writer resumes once any dialog's listeners have run.
    */
   readonly observeNotifications: (deliver: () => void) => void;
+  /** The session's one `frame_observer_failed` report (C-API-72). */
+  readonly reportFailure: () => void;
 };
 
 export class CodexUpdateDialogs {
@@ -119,8 +121,21 @@ export class CodexUpdateDialogs {
     this.replays.delete(handler);
   }
 
+  /**
+   * Every path into discovery runs here: a frame, a settled skip, lost evidence, a replay and
+   * a list call. A failure is reported once per session and ends discovery (C-API-72).
+   */
   readonly reconcile = (): void => {
     if (this.discoveryEnded) return;
+    try {
+      this.reconcileFrame();
+    } catch {
+      this.input.reportFailure();
+      this.endDiscovery();
+    }
+  };
+
+  private reconcileFrame(): void {
     const terminal = this.input.terminal();
     // Host output or a viewport change ends native evidence for the life of the terminal.
     if (!nativeRenderEvidenceIntact(terminal)) {
@@ -137,7 +152,7 @@ export class CodexUpdateDialogs {
     const request = createCodexUpdateDialogRequest(this.input.elwoodSessionId, offer);
     this.current = { request, key };
     this.queue({ phase: "raised", request });
-  };
+  }
 
   private retire(reason: CloseReason): void {
     const request = this.current?.request;
