@@ -73,8 +73,11 @@ back each entry are listed in `prd/14-conformance.md`.
   question's footer wraps in a pane narrower than about 90 columns, and a queued
   one's at about 60 columns or fewer. Elwood read the footer only on one row, so it
   missed the question: ordinary input was not held for it and `answerQuestions()`
-  failed. A modal question whose option descriptions also wrap holds input but is
-  not yet listed.
+  failed.
+- Codex modal questions whose option descriptions wrap in a narrow pane (about 60
+  columns or fewer for short descriptions) are listed and can be answered. Elwood
+  read each option from one row, so it held input for such a question but never
+  listed it.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A

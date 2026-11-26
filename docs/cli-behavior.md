@@ -3950,7 +3950,16 @@ joins up to four trailing rows with the footer's own separator. Captures in
 `tests/fixtures/codex-0.172.0/questions/`: `queued-footer-*.json` at 60 and 50 columns and
 `modal-footer-wrapped-{80,60,40}.json`. The 50-column modal split was seen in a probe, not
 captured, and the 40-column queued layout is synthesized in
-`tests/unit/codex-questions/narrow-footer.test.ts`. A narrow pane also wraps a modal
-option's description onto a continuation row (at 60 columns and below for the proofs'
-options), which Elwood does not yet match to the question, so such a modal question holds
-input but is not listed. C-ATTN-02, C-QUESTION-04.
+`tests/unit/codex-questions/narrow-footer.test.ts`. C-ATTN-02, C-QUESTION-04.
+
+**A narrow pane wraps modal option descriptions.** 0.172 pads option labels so their
+descriptions start in one column, and wraps a description too long for its row onto rows
+indented to that column: at 60 and 50 columns `3. None of the above  Optionally, add` is
+followed by `details in notes (tab)`, and at 40 the rest takes three rows. Elwood read each
+option from one row, so it found an unknown row after the options and never listed the
+question, while the wrapped footer still held input. Elwood now appends a row indented
+exactly to the description column of the option above, unless it reads as an option, to
+that option before matching and reading the selection. A narrow pane also elides the
+hint row's `Plan mode (shift+tab to cycle)` badge; the transcript's "Model changed to …
+for Plan mode" cell still shows the switch. Captures:
+`modal-footer-wrapped-{60,50,40}.json`. C-QUESTION-04.
