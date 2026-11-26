@@ -56,7 +56,7 @@ back each entry are listed in `prd/14-conformance.md`.
   child just before cleanup read the process table. Elwood could not verify the child's
   recent start time, so it refused to signal the group. A verified member of the same
   group, alive in that read, now vouches for it: `setpgid` only lets a process join a
-  group in its own session, and the live member keeps the group ID from being reused.
+  group in its own session, and the group keeps its ID while that member lives.
 
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed
