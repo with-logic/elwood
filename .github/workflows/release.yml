@@ -209,10 +209,12 @@ jobs:
           ref: ${{ needs.secret-scan.outputs.commit }}
           fetch-depth: 0
 
+      # No npm cache: on a miss, setup-node saves whatever its cache folder
+      # holds, so a re-run that skips `npm ci` would store a near-empty cache
+      # under the lockfile's key for every later run to restore.
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
-          cache: npm
           registry-url: https://registry.npmjs.org
 
       - name: Verify package version matches the release tag
@@ -272,7 +274,7 @@ jobs:
       #   or gives no answer: fail. A re-run retries.
       # Each failure stops the job here, before the build and the tag push.
       - name: Look up this version on npm
-        id: registry
+        id: npm_lookup
         env:
           NPM_TRUSTED_PUBLISHER_CONFIG_ID: 7e80842b-dceb-4e20-ac47-8dba36a3ae27
           RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
@@ -395,7 +397,7 @@ jobs:
           echo "Registry lookup for $package: ${outcome:-no answer}"
           case "$outcome" in
             unpublished)
-              echo "publish=true" >> "$GITHUB_OUTPUT"
+              echo "should_publish=true" >> "$GITHUB_OUTPUT"
               ;;
             "overtaken-by "*)
               echo "::error::$package is older than ${outcome#overtaken-by }, which is already on npm, so it cannot take the latest dist-tag. To ship it anyway, publish it by hand with an explicit dist-tag: npm publish --access public --tag <tag>"
@@ -403,7 +405,7 @@ jobs:
               ;;
             published-here)
               echo "This workflow already published $package from $RELEASE_COMMIT; skipping the build and the upload."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
               ;;
             "already-on-npm "*)
               echo "::error::$package is already on npm, ${outcome#already-on-npm }; npm never replaces a version"
@@ -416,17 +418,17 @@ jobs:
           esac
 
       - name: Install dependencies
-        if: steps.registry.outputs.publish == 'true'
+        if: steps.npm_lookup.outputs.should_publish == 'true'
         run: npm ci
 
       # Safety gate: never publish a build that cannot pass the full check.
       # This also produces `dist/`, which the published tarball ships.
       - name: Build, typecheck, lint, line cap, unit and conformance tests
-        if: steps.registry.outputs.publish == 'true'
+        if: steps.npm_lookup.outputs.should_publish == 'true'
         run: npm run check
 
       - name: Verify the packed tarball carries a runnable CLI
-        if: steps.registry.outputs.publish == 'true'
+        if: steps.npm_lookup.outputs.should_publish == 'true'
         run: |
           set -euo pipefail
           npm pack --pack-destination "$RUNNER_TEMP"
@@ -457,8 +459,8 @@ jobs:
       # filename (release.yml). Renaming this file breaks publishing until the
       # npmjs.com configuration is updated to match, and a reconfiguration
       # also needs NPM_TRUSTED_PUBLISHER_CONFIG_ID, in the lookup step above,
-      # updated. Provenance is
-      # implied by trusted publishing, so the flag is not passed.
+      # updated. Provenance is implied by trusted publishing, so the flag is
+      # not passed.
       # Requires npm >= 11.5.1 and Node >= 22.14.0 (Node 24.x ships npm 11.6+).
       #
       # BOOTSTRAP: a trusted publisher can only be attached to a package that
@@ -473,7 +475,7 @@ jobs:
       # runs tokenlessly through this workflow. Once one has, set
       # NPM_TRUSTED_PUBLISHER_CONFIG_ID in the lookup step from it.
       - name: Publish to npm
-        if: steps.registry.outputs.publish == 'true'
+        if: steps.npm_lookup.outputs.should_publish == 'true'
         run: |
           npm publish --access public
 

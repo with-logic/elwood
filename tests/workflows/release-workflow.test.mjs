@@ -59,12 +59,14 @@ test("publish jobs take turns, keeping every waiting job", () => {
 // The lookup decides before the build: a re-run with nothing left to publish
 // skips the install, check and tarball smoke, and a version that cannot be
 // published fails before its tag is pushed.
-test("the npm lookup runs before the build, which runs only with something to publish", () => {
-  const steps = job("publish")
-    .split(/^ {6}- /mu)
-    .slice(1);
-  const names = steps.map((step) => /^(?:name|uses): (.+)$/mu.exec(step)?.[1]);
-  assert.deepEqual(names, [
+const publishSteps = job("publish")
+  .split(/^ {6}- /mu)
+  .slice(1);
+const publishStepNames = publishSteps.map((step) => /^(?:name|uses): (.+)$/mu.exec(step)?.[1]);
+const publishStep = (name) => publishSteps[publishStepNames.indexOf(name)];
+
+test("the npm lookup runs before the build and the tag push", () => {
+  assert.deepEqual(publishStepNames, [
     "actions/checkout@v6",
     "actions/setup-node@v6",
     "Verify package version matches the release tag",
@@ -75,16 +77,27 @@ test("the npm lookup runs before the build, which runs only with something to pu
     "Create tag",
     "Publish to npm",
   ]);
-  const step = (name) => steps[names.indexOf(name)];
-  assert.match(step("Look up this version on npm"), /^ {8}id: registry$/mu);
-  for (const name of [
-    "Install dependencies",
-    "Build, typecheck, lint, line cap, unit and conformance tests",
-    "Verify the packed tarball carries a runnable CLI",
-    "Publish to npm",
-  ]) {
-    assert.match(step(name), /^ {8}if: steps\.registry\.outputs\.publish == 'true'$/mu, name);
-  }
+  assert.match(publishStep("Look up this version on npm"), /^ {8}id: npm_lookup$/mu);
+});
+
+for (const name of [
+  "Install dependencies",
+  "Build, typecheck, lint, line cap, unit and conformance tests",
+  "Verify the packed tarball carries a runnable CLI",
+  "Publish to npm",
+]) {
+  test(`${name} runs only when the lookup finds something to publish`, () => {
+    assert.match(
+      publishStep(name),
+      /^ {8}if: steps\.npm_lookup\.outputs\.should_publish == 'true'$/mu,
+    );
+  });
+}
+
+// On a miss, setup-node saves its cache folder as it is, so a re-run that
+// skips `npm ci` would store a near-empty cache under the lockfile's key.
+test("the publish job keeps no npm cache", () => {
+  assert.doesNotMatch(publishStep("actions/setup-node@v6"), /^ {10}cache:/mu);
 });
 
 // Replays real `gh api` answers for the exact lookup the step makes; any

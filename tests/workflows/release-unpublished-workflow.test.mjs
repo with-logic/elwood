@@ -37,7 +37,7 @@ for (const [label, options] of [
   test(`${label} publishes`, () => {
     const { outputs, publishLog, result } = publish(options);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(outputs, "publish=true\n");
+    assert.equal(outputs, "should_publish=true\n");
     assert.equal(publishLog, "publish --access public\n");
     assert.match(result.stdout, /: unpublished\n/u);
   });

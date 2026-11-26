@@ -1,6 +1,6 @@
 /**
  * Runs the release workflow's npm lookup step, then its Publish to npm step
- * when the lookup's `publish` output lets it, against the local npm registry
+ * when the lookup's `should_publish` output lets it, against the local npm registry
  * (npm-registry-fixture.mjs) for the release publish tests. Each
  * `npm publish` is recorded and run for real as a dry run, so npm's own
  * version and dist-tag checks still apply.
@@ -58,7 +58,7 @@ export function usePublishStep() {
     return cwd;
   }
   /**
-   * Runs the lookup, then the upload only on `publish=true`, as the upload's
+   * Runs the lookup, then the upload only on `should_publish=true`, as the upload's
    * `if:` does. `result` joins both steps' output and ends with the status of
    * the last one run; `outputs` is what the lookup wrote to GITHUB_OUTPUT.
    */
@@ -86,7 +86,7 @@ export function usePublishStep() {
     });
     const outputs = readFileSync(outputFile, "utf8");
     const upload =
-      lookup.status === 0 && /^publish=true$/mu.test(outputs)
+      lookup.status === 0 && /^should_publish=true$/mu.test(outputs)
         ? runStep("name: Publish to npm", { cwd, env: stepEnv, prelude: dryRunPublish })
         : undefined;
     const result = {

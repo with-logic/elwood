@@ -1,8 +1,7 @@
 /**
  * Re-runs the release npm lookup and publication steps with the real npm
  * client, offline, for a version already on npm and for registry lookups that
- * fail. The
- * release-unpublished tests cover a version npm does not have yet.
+ * fail. The release-unpublished tests cover a version npm does not have yet.
  */
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -29,8 +28,8 @@ for (const version of ["0.8.0", "0.7.0"]) {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(publishLog, "");
-    // The build steps and the upload run only on `publish=true`.
-    assert.equal(outputs, "publish=false\n");
+    // The build steps and the upload run only on `should_publish=true`.
+    assert.equal(outputs, "should_publish=false\n");
     assert.match(
       result.stdout,
       /This workflow already published .*; skipping the build and the upload\./u,
