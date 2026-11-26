@@ -31,7 +31,7 @@ test("C-ATTN-10 only a fresh idle composer frame, unchanged for the settle windo
     await paint(claudeIdle);
     // Nothing ended: nothing is held, even on an idle frame.
     expect(turnEnd.holds()).toBe(false);
-    expect(turnEnd.arm()).toBeUndefined();
+    turnEnd.arm();
     expect(turnEnd.armed).toBe(true);
     // The idle frame already on screen counts from when the hold first reads it.
     clock.now = 100;
@@ -63,7 +63,7 @@ test("C-ATTN-10 only a fresh idle composer frame, unchanged for the settle windo
   }
 });
 
-test("C-ATTN-10 a hold ends at its limit, and a tentative one can be undone", async () => {
+test("C-ATTN-10 a hold ends at its limit, or when released", async () => {
   const { terminal, clock, turnEnd, paint } = await hold();
   try {
     await paint(claudeWorking);
@@ -72,10 +72,9 @@ test("C-ATTN-10 a hold ends at its limit, and a tentative one can be undone", as
     expect(turnEnd.holds()).toBe(true);
     clock.now = turnEndPaintLimitMs;
     expect(turnEnd.holds()).toBe(false);
-    // An arm that replaces an active hold reports it, so that it can be put back.
     turnEnd.arm();
-    expect(turnEnd.arm()).toBe(turnEndPaintLimitMs);
-    turnEnd.restore(undefined);
+    expect(turnEnd.holds()).toBe(true);
+    expect(turnEnd.release()).toBe(false);
     expect(turnEnd.holds()).toBe(false);
   } finally {
     terminal.dispose();

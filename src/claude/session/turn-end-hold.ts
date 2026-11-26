@@ -28,18 +28,17 @@ export class ClaudeTurnEndHold {
     this.terminal = terminal;
     this.now = now;
   }
-  /** Starts a hold; returns the one it replaced, so that a tentative start can be undone. */
-  arm(): number | undefined {
-    const previous = this.armedAt;
-    this.restore(this.now());
-    return previous;
+  arm(): void {
+    this.armedAt = this.now();
+    this.frame = undefined;
   }
   get armed(): boolean {
     return this.armedAt !== undefined;
   }
-  restore(armedAt: number | undefined): void {
-    this.armedAt = armedAt;
-    this.frame = undefined;
+  /** Ends the hold; `false`, so that `holds()` can return it. */
+  release(): false {
+    this.armedAt = undefined;
+    return false;
   }
   holds(): boolean {
     if (this.armedAt === undefined) return false;
@@ -56,10 +55,6 @@ export class ClaudeTurnEndHold {
     const { facts } = readScreenFacts(claudeScreenFactTable, frame);
     const idle = facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
     return idle && now - this.changedAt >= turnEndSettleMs ? this.release() : true;
-  }
-  private release(): false {
-    this.restore(undefined);
-    return false;
   }
 }
 
@@ -82,32 +77,22 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
   override submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     // Resumed work ends the last turn's hold, so input for the running turn is not held.
     if (kind === "rendered_turn_started" || (kind === "blocking_prompt_cleared" && workingVisible))
-      this.turnEnd.restore(undefined);
-    // A turn end seen twice, by its `Stop` and by its rendered end, keeps the first hold.
-    if (
-      !turnEndEvidence.has(kind) ||
-      (this.reachedReady() && this.turnEnd.armed) ||
-      !this.autoModeOffered()
-    )
-      return super.submitEvidence(kind, workingVisible);
+      this.turnEnd.release();
     // Reaching `ready` reopens the queue even when a status observer throws, so the hold is
-    // in place first. A turn end that finds the session already `ready` still ends a turn,
-    // and one while `blocked` (a dismissed dialog that ended it) holds until that dialog's
-    // clearance reaches `ready`. Only a turn end that left the session elsewhere undoes it.
-    const previous = this.turnEnd.arm();
-    try {
-      return super.submitEvidence(kind, workingVisible);
-    } finally {
-      if (!this.reachedReady() && this.status !== "blocked") this.turnEnd.restore(previous);
-    }
+    // armed first. A turn end seen twice, by its `Stop` and by its rendered end, keeps the
+    // first hold. One while `blocked`, by a dismissed dialog, holds past that dialog.
+    else if (
+      turnEndEvidence.has(kind) &&
+      !(this.status === "ready" && this.turnEnd.armed) &&
+      this.autoModeOffered()
+    )
+      this.turnEnd.arm();
+    return super.submitEvidence(kind, workingVisible);
   }
   /** Claude mounts the offer only in auto mode: as launched, or as its footer shows now. */
   private autoModeOffered(): boolean {
     if (this.record.claude.launch?.permissionMode === "auto") return true;
     return autoModeFooter.test(cachedLiveSnapshot(this.terminal).text);
-  }
-  private reachedReady(): boolean {
-    return this.status === "ready";
   }
   protected override queuedInputBlocked(): boolean {
     return super.queuedInputBlocked() || this.turnEnd.holds();
