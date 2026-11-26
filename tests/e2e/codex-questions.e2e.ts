@@ -130,7 +130,7 @@ test("C-E2E-19 native Codex queued and grouped answers preserve the caller turn"
     );
     assertQuestionAnswerPrivacy(sandbox.stateDir, [...events, ...normalized], privateAnswers);
     t.diagnostic(
-      "Codex0.163.0: three independent queued answers and one three-question Plan set matched complete native records; send completed only on final.",
+      "Codex 0.172.0: three independent queued answers and one three-question Plan set matched complete native records; send completed only on final.",
     );
   } catch (error) {
     primaryFailure = true;

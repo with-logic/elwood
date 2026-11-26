@@ -3645,3 +3645,38 @@ both ends through `sendMessage`. Codex removed the outer spaces and kept
 both U+FEFF characters in its authenticated `UserPromptSubmit.prompt`.
 Use Rust's Unicode `White_Space` when comparing forwarded text with the
 hook. JavaScript `trim()` would remove U+FEFF and miss the match.
+
+## Codex 0.172.0 Plan mode and queued choices (2026-11-25)
+
+**The Plan-mode badge moved to the hint row.** Real `CodexSession`s with a private
+`CODEX_HOME` ran `/plan` at 140, 100, 80, 60, 50 and 40 columns. 0.172 draws the status
+row as the model and effort alone (`  GPT-6-Luna medium`). It draws `Plan mode (⇧tab to
+cycle)` on the hint row instead, right-aligned in front of the warnings badge and joined
+to it with ` · `. At 60 columns and below it shortens the badge to `Plan mode`, and the
+warnings badge shortens as before (`⚠ 3 · f2` at 50 and 40). At 80 columns and below the
+hint is `← for agents` alone. Earlier releases put the suffix at the end of the status
+row. Footer grammar that refuses the new row leaves a Plan-mode turn unsettled: the session
+reaches `ready`, but the idle composer that a `send()` needs at its native end never
+matches, so `send()` timed out after 90 s. The captures are
+`tests/fixtures/codex-footer-captures-172.ts`. The warnings badge is still on every
+Elwood session: F2 shows `Codex is ignoring 1 unrecognized configuration setting` for
+`session-flags: hookTrust`. C-CODEX-26, C-E2E-19.
+
+**The hidden cursor parks after the last working-row cell Codex changed.** With a queued
+choice panel open below a running turn, 0.172 redraws only the cells of the working row
+that changed and leaves the hidden cursor after the last one. In 3 s of 15 ms samples it
+was after the pulsing `•` (column 1), after the elapsed time's changed digit (column 12 in
+`• Working (7s • esc to interrupt)`), at the row's end, or at the end of the panel's
+footer row. 0.163 left it only at the row's end. Elwood accepted only the row's end, so an
+answer to the remaining color choice failed as `adapter` when the glyph or the time was
+the last cell drawn. Capture:
+`tests/fixtures/codex-0.172.0/questions/remaining-color-glyph-cursor.json`.
+
+**`gpt-6-luna` can reply before every queued answer arrives.** Asked to wait for all
+three answers, it sometimes sent its final reply about 1.4 s after the second, which
+ended the turn and withdrew the pending question (`question_answer_failed`,
+`unavailable`). In three probes that asked one or two choice questions, it replied at
+once without waiting. One C-E2E-19 run that paused before the color answer had `send()`
+return `ELWOOD_ASYNC_DONE` twice; its rollout was not kept, so whether a late answer
+joined the turn after an early reply is unconfirmed. Answer promptly in proofs: in five
+C-E2E-19 runs that answered without a pause, the model always waited.

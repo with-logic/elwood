@@ -29,6 +29,11 @@ back each entry are listed in `prd/14-conformance.md`.
   `Next` or `Submit`. A checkbox, alternative-text or grouped answer then
   stalled until it failed with `question_answer_failed` and closed the request
   as `unavailable`.
+- Codex 0.172 Plan-mode turns settle again. 0.172 draws `Plan mode (⇧tab to
+  cycle)` in front of the warnings badge instead of on the status row. Elwood
+  did not recognize that footer, so `send()` in Plan mode timed out after
+  90 s. Answering a queued Codex choice also no longer fails as `adapter` when
+  0.172 leaves its hidden cursor after the working row's glyph or elapsed time.
 
 ## [0.8.0] - 2026-11-25
 
