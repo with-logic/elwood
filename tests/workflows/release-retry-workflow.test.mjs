@@ -13,7 +13,7 @@ const origin = join(scratch, "origin.git");
 const seed = join(scratch, "seed");
 let earlier;
 let release;
-let annotated;
+let annotatedTagOid;
 
 before(() => {
   git(scratch, "init", "--bare", "--initial-branch=main", origin);
@@ -27,7 +27,7 @@ before(() => {
   git(seed, "push", origin, "main");
   // The workflow only creates lightweight tags; a hand-made annotated tag is not one of its own.
   git(seed, "tag", "-a", "-m", "Annotated by hand", "annotated", release);
-  annotated = git(seed, "rev-parse", "refs/tags/annotated");
+  annotatedTagOid = git(seed, "rev-parse", "refs/tags/annotated");
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -41,7 +41,8 @@ function checkout(name, tags = {}) {
   return directory;
 }
 
-function remoteTag(tag) {
+/** Returns the object ID origin's tag ref names: a commit, or an annotated tag's object. */
+function remoteTagRefOid(tag) {
   return git(seed, "ls-remote", origin, `refs/tags/${tag}`).split("\t")[0];
 }
 
@@ -55,25 +56,25 @@ function createTag(cwd, tag) {
 test("a first release attempt tags the release commit", () => {
   const result = createTag(checkout("first"), "v1.0.0");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(remoteTag("v1.0.0"), release);
+  assert.equal(remoteTagRefOid("v1.0.0"), release);
 });
 
 test("a re-run after a failed publish reuses the tag its first attempt pushed", () => {
   const result = createTag(checkout("rerun", { "v1.0.1": release }), "v1.0.1");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(remoteTag("v1.0.1"), release);
+  assert.equal(remoteTagRefOid("v1.0.1"), release);
 });
 
 // Tag targets are read inside each test because before() assigns them.
 for (const [label, tag, target] of [
   ["a tag on another commit", "v1.0.2", () => earlier],
-  ["an annotated tag on the release commit", "v1.0.3", () => annotated],
+  ["an annotated tag on the release commit", "v1.0.3", () => annotatedTagOid],
 ]) {
   test(`${label} rejects the tag push`, () => {
     const result = createTag(checkout(tag, { [tag]: target() }), tag);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /\[rejected\]/u);
-    assert.equal(remoteTag(tag), target());
+    assert.equal(remoteTagRefOid(tag), target());
   });
 }
 
@@ -82,7 +83,7 @@ test("a tag pushed on another commit after checkout rejects the push", () => {
   git(seed, "push", origin, `${earlier}:refs/tags/v1.0.4`);
   const result = createTag(cwd, "v1.0.4");
   assert.notEqual(result.status, 0);
-  assert.equal(remoteTag("v1.0.4"), earlier);
+  assert.equal(remoteTagRefOid("v1.0.4"), earlier);
 });
 
 function resolve(tagTarget) {
@@ -117,7 +118,7 @@ for (const [label, tagTarget] of [
 
 for (const [label, tagTarget] of [
   ["names another commit", () => earlier],
-  ["is annotated", () => annotated],
+  ["is annotated", () => annotatedTagOid],
 ]) {
   test(`a version bump whose tag ${label} is not released`, () => {
     const { result } = resolve(tagTarget());

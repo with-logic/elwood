@@ -89,10 +89,12 @@ jobs:
           fi
 
           candidate_tag="v$new_version"
-          # A re-run finds the lightweight tag its first attempt pushed on this
-          # commit. Any other tag would reject the publish job's tag push.
-          tagged="$(git rev-parse -q --verify "refs/tags/$candidate_tag" || true)"
-          if [ -n "$tagged" ] && [ "$tagged" != "$(git rev-parse HEAD)" ]; then
+          # A re-run finds the lightweight tag its first attempt pushed, whose
+          # ref names this commit. The ref of a tag on another commit, or of an
+          # annotated tag, names something else, and the publish job's tag push
+          # would reject it.
+          existing_tag_ref_oid="$(git rev-parse -q --verify "refs/tags/$candidate_tag" || true)"
+          if [ -n "$existing_tag_ref_oid" ] && [ "$existing_tag_ref_oid" != "$(git rev-parse HEAD)" ]; then
             echo "::error::version advanced to $new_version but tag $candidate_tag already exists and is not a lightweight tag on this commit; aborting"
             exit 1
           fi
@@ -259,14 +261,17 @@ jobs:
       # One lookup asks the registry for this version. The registry records the
       # commit a version was published from as `gitHead`, which any publisher
       # can set, and the publishing account as `_npmUser`, which only trusted
-      # publishing sets to GitHub Actions.
+      # publishing sets to GitHub Actions. `npm view` redacts the ID of the
+      # trusted-publisher configuration, so the step treats any trusted
+      # publisher as this workflow.
       # - Not on npm (E404): publish.
-      # - Published by this workflow from this commit: a re-run has nothing
-      #   left to publish.
+      # - Published from this commit through trusted publishing: a re-run has
+      #   nothing left to publish.
       # - Published any other way: fail, because npm never replaces a version.
-      #   The log names the commit and whether trusted publishing published
-      #   it, never the publishing account.
-      # - Anything else, including a failed lookup or no answer: fail.
+      #   The log names the commit and the kind of publisher, never the
+      #   publishing account.
+      # - Anything else, including a failed lookup, an answer without a commit
+      #   or publisher, or no answer: fail.
       - name: Publish to npm
         env:
           RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
@@ -278,16 +283,20 @@ jobs:
           found="$(npm view "$package" gitHead _npmUser.email --json 2>/dev/null)" || status=$?
           outcome="$(node -e '
             const [found, status, commit] = process.argv.slice(1);
-            const answer = found ? JSON.parse(found) : {};
-            const trusted = answer["_npmUser.email"] === "npm-oidc-no-reply@github.com";
+            const answer = Object(found ? JSON.parse(found) : {});
+            const head = answer.gitHead;
+            const email = answer["_npmUser.email"];
+            const trusted = email === "npm-oidc-no-reply@github.com";
             if (status !== "0") {
               const code = answer.error?.code ?? `npm-exit-${status}`;
               console.log(code === "E404" ? "unpublished" : `lookup-failed ${code}`);
-            } else if (answer.gitHead === commit && trusted) {
+            } else if (typeof head !== "string" || typeof email !== "string") {
+              console.log("lookup-incomplete");
+            } else if (head === commit && trusted) {
               console.log("published-here");
             } else {
               const publisher = trusted ? "trusted publishing" : "another account";
-              console.log(`published-elsewhere from ${answer.gitHead ?? "an unrecorded commit"} by ${publisher}`);
+              console.log(`published-elsewhere from ${head} by ${publisher}`);
             }
           ' "$found" "$status" "$RELEASE_COMMIT")"
           echo "Registry lookup for $package: ${outcome:-no answer}"
@@ -320,7 +329,8 @@ jobs:
       # published release, so a re-run leaves one as it is. This endpoint, the
       # one the action looks releases up with, answers 404 for a draft: a draft
       # left by an interrupted attempt still goes to the action, which
-      # publishes it. Any other lookup failure fails the job.
+      # publishes it. Any other lookup failure fails the job, logging only its
+      # HTTP status.
       - name: Check for a published GitHub release
         id: existing
         env:
@@ -328,12 +338,16 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if lookup="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .html_url 2>&1)"; then
-            echo "GitHub release $TAG is already published at $lookup; leaving it unchanged."
+          errors="$RUNNER_TEMP/release-lookup.err"
+          if url="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .html_url 2>"$errors")"; then
+            echo "GitHub release $TAG is already published at $url; leaving it unchanged."
             echo "published=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$lookup" != *"(HTTP 404)"* ]]; then
-            echo "::error::could not look up GitHub release $TAG: $lookup"
-            exit 1
+          else
+            http_status="$(grep -m1 -oE 'HTTP [0-9]{3}' "$errors" || true)"
+            if [ "$http_status" != "HTTP 404" ]; then
+              echo "::error::could not look up GitHub release $TAG: ${http_status:-no HTTP status}"
+              exit 1
+            fi
           fi
       - name: Create GitHub release
         if: steps.existing.outputs.published != 'true'

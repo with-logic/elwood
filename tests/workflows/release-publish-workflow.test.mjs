@@ -99,6 +99,12 @@ for (const [label, options, reason] of [
     "could not read @with-logic/registry-down@1.0.0 from the registry: lookup-failed E500",
   ],
   [
+    // npm prints nothing for it and exits 0.
+    "a version the registry records without a commit or publisher",
+    { name: "@with-logic/elwood-unrecorded", version: "0.8.0", releaseCommit: commitOf["0.8.0"] },
+    "could not read @with-logic/elwood-unrecorded@0.8.0 from the registry: lookup-incomplete",
+  ],
+  [
     "a lookup that yields no answer",
     // The decision step printing nothing, as when its output is lost.
     {
@@ -118,3 +124,10 @@ for (const [label, options, reason] of [
     assert.ok(!`${result.stdout}${result.stderr}`.includes(handPublisher), result.stdout);
   });
 }
+
+test("a registry that cannot finish its setup exits instead of running on", async () => {
+  await assert.rejects(
+    startRegistry(join(scratch, "missing")),
+    /The local npm registry exited before listening: [\s\S]*ENOENT/u,
+  );
+});

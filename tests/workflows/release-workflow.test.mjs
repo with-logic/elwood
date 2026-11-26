@@ -44,8 +44,9 @@ const releaseLookup = [
   '    200) echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/v1.2.3" ;;',
   '    404) echo \'{"message":"Not Found","status":"404"}\'',
   '      echo "gh: Not Found (HTTP 404)" >&2; return 1 ;;',
-  '    *) echo \'{"message":"Bad credentials","status":"401"}\'',
+  '    401) echo \'{"message":"Bad credentials","status":"401"}\'',
   '      echo "gh: Bad credentials (HTTP 401)" >&2; return 1 ;;',
+  '    *) echo "error connecting to api.github.com" >&2; return 1 ;;',
   "  esac",
   "}",
 ].join("\n");
@@ -56,7 +57,12 @@ function checkRelease(status) {
   writeFileSync(output, "");
   const result = runStep("name: Check for a published GitHub release", {
     cwd: scratch,
-    env: { FIXTURE_STATUS: status, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: "fixture/elwood" },
+    env: {
+      FIXTURE_STATUS: status,
+      GITHUB_OUTPUT: output,
+      GITHUB_REPOSITORY: "fixture/elwood",
+      RUNNER_TEMP: scratch,
+    },
     expressions: { "github.token": "fixture-token", "needs.resolve.outputs.tag": "v1.2.3" },
     prelude: releaseLookup,
   });
@@ -79,9 +85,14 @@ test("a draft or missing GitHub release goes to the release action", () => {
   assert.equal(output, "");
 });
 
-test("a failed GitHub release lookup fails the job", () => {
-  const { output, result } = checkRelease("401");
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /::error::could not look up GitHub release v1\.2\.3: .*HTTP 401/su);
-  assert.equal(output, "");
-});
+for (const [label, status, reason] of [
+  ["a failed GitHub release lookup", "401", "HTTP 401"],
+  ["a GitHub release lookup that never reaches GitHub", "offline", "no HTTP status"],
+]) {
+  test(`${label} fails the job, logging only its status`, () => {
+    const { output, result } = checkRelease(status);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, `::error::could not look up GitHub release v1.2.3: ${reason}\n`);
+    assert.equal(output, "");
+  });
+}
