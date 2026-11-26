@@ -2,8 +2,9 @@
  * Completion-aware settlement for automated startup-prompt PTY writes.
  * Implements PRD §5.1, §5.4, and §5.7: a startup prompt is marked answered (its
  * `startup_prompt` activity emitted) ONLY after its `sendInput` write actually
- * fulfills. A rejected write leaves the prompt retryable and surfaces a bounded,
- * content-free `startup_prompt_write_failed` warning instead of false telemetry
+ * fulfills. A rejected write surfaces a bounded, content-free
+ * `startup_prompt_write_failed` warning instead of false telemetry; whether the prompt
+ * is retried is the responder's (§5.7)
  * (C-CLAUDE-16, C-CODEX-17). Logical cancellation during trust navigation or Codex update retries
  * emits neither success activity nor a write-failure warning (C-TRUST-01, C-CODEX-12).
  */
@@ -120,7 +121,7 @@ function writeFailedWarning<A extends ElwoodAgentKind>(
     source: "terminal",
     code: "startup_prompt_write_failed",
     severity: "warning",
-    message: `Startup prompt ${label} could not be answered: PTY write was rejected; leaving it retryable.`,
+    message: `Startup prompt ${label} could not be answered: PTY write was rejected.`,
     label,
     raw: `startup_prompt_write_failed label=${label}`,
   };

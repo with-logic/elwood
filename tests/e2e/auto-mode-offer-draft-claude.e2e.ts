@@ -1,14 +1,14 @@
 /**
- * Claude's side of a paste that its auto-mode offer paints over: after Esc, the composer
- * still holds the draft in the shape Elwood's staged-composer clearance reads, and Enter
- * submits it. Elwood's held Enter is covered by
+ * Claude's side of a paste that its auto-mode offer paints over: after Elwood declines the
+ * offer, the composer still holds the draft in the shape Elwood's staged-composer clearance
+ * reads, and Enter submits it. Elwood's held Enter is covered by
  * `tests/claude/session-auto-mode-offer-staged.test.ts`, because the race that stages
  * Elwood's own paste under the offer cannot be timed on the real CLI.
- * Implements C-ATTN-09 (PRD §5.3).
+ * Implements C-ATTN-09 (PRD §5.3) and C-CLAUDE-27 (PRD §5.1).
  */
 
 import test from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
+import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode/offer.ts";
 import { claudeStagedComposerClearance } from "../../src/claude/composer/staged-input.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { offerSessionOptions, offerShown, seedOffer } from "./auto-mode-offer.ts";
@@ -23,9 +23,6 @@ import {
   skipTurns,
   waitFor,
 } from "./helpers.ts";
-
-/** Claude ignored an Esc sent the moment the offer painted, and took one sent 1.5 s later. */
-const escapeDelayMs = 1_500;
 
 test("C-ATTN-09 Claude keeps a draft the offer painted over in the composer shape Elwood clears on", {
   skip: skipIf(skipReason("claude"), skipTurns),
@@ -60,9 +57,12 @@ test("C-ATTN-09 Claude keeps a draft the offer painted over in the composer shap
       return;
     }
 
-    // Claude ignored an Esc sent as soon as the offer painted; see docs/cli-behavior.md.
-    await delay(escapeDelayMs);
-    await live.sendKeys("\u001b");
+    // The paste was typed before the offer appeared, so Elwood declines the offer.
+    await waitFor(
+      () => (isClaudeAutoModeOffer(screen()) ? undefined : true),
+      "Elwood's decline",
+      15_000,
+    );
     const staged = claudeStagedComposerClearance(() => live.terminal);
     await waitFor(() => (staged(screen()) ? true : undefined), "staged composer", 15_000).catch(
       (error: unknown) => {

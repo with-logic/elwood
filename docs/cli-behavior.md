@@ -2239,6 +2239,25 @@ sent as soon as the title appeared, below, did nothing. Its options: `Yes` clear
 Esc also selects, stamps `autoModeEnvSetup.dismissedAt` and suppresses the offer
 for 7 days; `Don't show again` sets `dismissed: true`.
 
+Declining is safe: `Not now` grants nothing and leaves auto mode as it was, so
+Elwood declines the first menu itself (C-CLAUDE-27). It waits 750 ms after it
+first sees the menu, past the guard, sends Esc, and repeats 750 ms apart until a
+settled frame no longer shows the menu; only then does it report
+`startup_prompt` with label `auto_mode_setup`. After four ignored Escapes it stops
+and reports nothing, so a CLI that changes the guard or the menu leaves the
+session `blocked` on the offer, as it was before Elwood declined it. A session that
+stays `blocked` on `claude-auto-mode-offer` with no `startup_prompt` activity is
+the sign. Either a human owns the offer, Claude no longer honours the Esc, or
+Elwood failed three times to verify a settled frame. Withheld writes and
+unreadable frames report nothing; only a rejected write among the failures
+reports a `startup_prompt_write_failed` warning.
+It never touches the setup step that `Yes` opens, and it leaves the offer alone
+once raw input has reached it.
+`tests/e2e/auto-mode-decline-claude.e2e.ts` covers this with a message held
+behind the offer. A human who presses Down on the menu before the decline owns
+the offer, so `tests/e2e/auto-mode-offer-claude.e2e.ts` still sees it held, with
+the caret on `2. Not now`, until its own Esc.
+
 A paste typed during the turn shows the same shape on demand
 (`tests/e2e/auto-mode-offer-draft-claude.e2e.ts`). Claude paints the offer
 above the composer that holds the pill, with the hardware cursor on the menu.
