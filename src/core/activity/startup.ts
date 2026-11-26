@@ -3,28 +3,37 @@ import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 import type { ElwoodAgentKind } from "./index.ts";
 
 const maxStartupScreenCodeUnits = 8_192;
+/** A whole API key has at least this many characters after `sk-`. */
+const minKeyChars = 8;
 /** An API key a CLI showed, such as one it prefilled from its environment. */
-const apiKeyShape = /\bsk-[A-Za-z0-9._-]{8,}/g;
-/** A row whose last text is such a key, inside an optional box border. */
-const keyAtRowEnd = /\bsk-[A-Za-z0-9._-]{8,}\s*│?\s*$/;
-/** The part of a key the terminal wrapped onto the next row. */
-const keyContinuation = /^(\s*│?\s*)([A-Za-z0-9._-]{8,})/;
-/** Key text holds digits; a following row's leading word or variable name does not. */
-const keyLike = /\d/;
+const apiKeyShape = new RegExp(`\\bsk-[A-Za-z0-9._-]{${minKeyChars},}`, "g");
+/**
+ * `sk-` and any key characters ending a row, inside an optional box border: however short,
+ * this part of a key can continue on the next row. A key masked with dots is complete.
+ */
+const keyAtRowEnd = /\bsk-[A-Za-z0-9_-]*(?=\s*│?\s*$)/;
+/** The key characters that start the next row, inside an optional box border. */
+const keyContinuation = /^(\s*│?\s*)[A-Za-z0-9_-]+/;
+const onlyBorder = /^\s*│?\s*$/;
 
-/** Redact each API-key-shaped token, and the rows a wrapped key continues onto. */
+/**
+ * Redact each API-key-shaped token. A key part that ends its row continues into the key
+ * characters starting the next row, which are redacted too, even when they are a word.
+ */
 function redactApiKeys(screen: string): string {
   let wrapping = false;
   return screen
     .split("\n")
-    .map((row) => {
-      const [run = "", border = "", key = ""] = (wrapping && keyContinuation.exec(row)) || [];
-      const continued = keyLike.test(key);
-      const rest = row.slice(continued ? run.length : 0);
+    .map((row, index, rows) => {
+      const continuation = wrapping ? keyContinuation.exec(row) : null;
+      const rest = continuation ? row.slice(continuation[0].length) : row;
+      const endsInKey = keyAtRowEnd.test(rest);
       // A continuation that fills its row can continue again.
-      wrapping = keyAtRowEnd.test(row) || (continued && /^\s*│?\s*$/.test(rest));
-      const redacted = rest.replace(apiKeyShape, "sk-[redacted]");
-      return continued ? `${border}[redacted]${redacted}` : redacted;
+      const fillsRow = continuation !== null && onlyBorder.test(rest);
+      wrapping = (endsInKey || fillsRow) && keyContinuation.test(rows[index + 1] ?? "");
+      const whole = rest.replace(apiKeyShape, "sk-[redacted]");
+      const redacted = wrapping && endsInKey ? whole.replace(keyAtRowEnd, "sk-[redacted]") : whole;
+      return continuation ? `${continuation[1]}[redacted]${redacted}` : redacted;
     })
     .join("\n");
 }
@@ -40,6 +49,11 @@ export type UnrecognizedStartupActivity = {
   readonly source: "terminal";
   readonly kind: "unrecognized_startup";
   readonly label: UnrecognizedStartupLabel;
+  /**
+   * The screen, trailing whitespace removed and limited to its last 8,192 UTF-16 units.
+   * Only `sk-` API-key-shaped tokens are redacted, including a key wrapped across rows:
+   * account details and other credentials the agent showed can remain.
+   */
   readonly text: string;
 };
 

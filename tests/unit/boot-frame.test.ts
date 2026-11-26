@@ -1,7 +1,7 @@
 /** A CLI's header drawn alone while it loads is a startup screen (PRD §5.4, C-ATTN-09). */
 import { expect, test } from "vitest";
-import { claudeBootFrame } from "../../src/claude/session/readiness.ts";
-import { codexBootFrame } from "../../src/codex/session/readiness.ts";
+import { isClaudeBootFrame } from "../../src/claude/session/readiness.ts";
+import { isCodexBootFrame } from "../../src/codex/session/readiness.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 
 test.each([
@@ -12,7 +12,7 @@ test.each([
   ],
   ["Claude 2.1.332's text-style picker", "claude-2.1.332/startup/theme-picker", false],
 ] as const)("C-ATTN-09 %s", (_, path, boot) => {
-  expect(claudeBootFrame(capturedFrame(path))).toBe(boot);
+  expect(isClaudeBootFrame(capturedFrame(path))).toBe(boot);
 });
 
 test.each([
@@ -21,7 +21,7 @@ test.each([
   ["a boot composer, with a placeholder", "codex-0.164.0/boot/boot-composer", false],
   ["Codex 0.171.0's sign-in screen", "codex-0.171.0/startup/sign-in", false],
 ] as const)("C-ATTN-09 %s", (_, path, boot) => {
-  expect(codexBootFrame(capturedFrame(path))).toBe(boot);
+  expect(isCodexBootFrame(capturedFrame(path))).toBe(boot);
 });
 
 test.each([
@@ -29,24 +29,24 @@ test.each([
   ["a key hint", "  Press Enter to continue"],
   ["a yes/no question", "  Continue? (y/n)"],
 ])("C-ATTN-09 a header with %s is not a boot frame", (_, row) => {
-  expect(claudeBootFrame(` ▐▛███▛█   Claude Code v2.1.332\n${row}`)).toBe(false);
+  expect(isClaudeBootFrame(` ▐▛███▛█   Claude Code v2.1.332\n${row}`)).toBe(false);
 });
 
 test("C-ATTN-09 a frame with nothing to answer but no header of the agent's is not a boot frame", () => {
-  expect(claudeBootFrame("  Loading your workspace\n  Please wait")).toBe(false);
-  expect(codexBootFrame("  Loading your workspace\n  Please wait")).toBe(false);
+  expect(isClaudeBootFrame("  Loading your workspace\n  Please wait")).toBe(false);
+  expect(isCodexBootFrame("  Loading your workspace\n  Please wait")).toBe(false);
 });
 
 test.each([
   [
     "Claude's banner",
-    claudeBootFrame,
+    isClaudeBootFrame,
     "claude-2.1.310/trust-slow-boot/banner-only",
     "/tmp/ELWOOD_CAPTURE/project",
   ],
   [
     "Codex's header",
-    codexBootFrame,
+    isCodexBootFrame,
     "codex-0.172.0/update/start-boot-partial",
     "/tmp/elwood-update-CAPTURE",
   ],
@@ -57,7 +57,7 @@ test.each([
 });
 
 test("C-ATTN-09 a header over a prompt that ends in a caret is not a boot frame", () => {
-  expect(claudeBootFrame(" ▐▛███▛█   Claude Code v2.1.332\n  Paste code here if prompted >")).toBe(
-    false,
-  );
+  expect(
+    isClaudeBootFrame(" ▐▛███▛█   Claude Code v2.1.332\n  Paste code here if prompted >"),
+  ).toBe(false);
 });

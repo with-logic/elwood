@@ -143,6 +143,33 @@ test("C-ATTN-09 Codex's header drawn alone while it loads is no unrecognized scr
   expect(statuses).toEqual(["ready"]);
 });
 
+test("C-ATTN-09 a resize before the deadline that Codex does not repaint still blocks on time", async () => {
+  const { session, statuses, activities, paint } = await start();
+  await paint(tty(signIn));
+  await vi.advanceTimersByTimeAsync(5_000);
+  await session.resize({ cols: 40, rows: 30 });
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(statuses).toEqual(["blocked"]);
+  // The report holds the screen as the resize reflowed it.
+  const reflowed = session.terminal.snapshot().text.trimEnd();
+  expect(reflowed).not.toBe(signIn);
+  expect(activities.find(({ kind }) => kind === "unrecognized_startup")).toMatchObject({
+    label: "initial_ready_deadline",
+    text: reflowed,
+  });
+});
+
+test("C-ATTN-09 a status listener that throws on the block does not stop the report", async () => {
+  const { session, statuses, reports, paint } = await start();
+  session.on("status", () => {
+    throw new Error("host listener failed");
+  });
+  await paint(tty(signIn));
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(statuses).toEqual(["blocked"]);
+  expect(reports()).toContain("unrecognized_startup initial_ready_deadline");
+});
+
 test("C-ATTN-09 after the first readiness no screen is an unrecognized startup screen", async () => {
   const { statuses, paint, reports } = await start();
   // The deadline passes on the boot composer, so readiness comes after it.

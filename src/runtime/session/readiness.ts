@@ -26,10 +26,13 @@ import {
 
 /** The holds a session applies before its first readiness (C-API-28). */
 export type InitialReadinessHold = {
-  /** Readiness evidence waits: a dialog, trust, or, after the backstop, no configured composer. */
+  /**
+   * Readiness evidence waits on a blocking hold (a recognized dialog, an unrecognized startup
+   * screen's block, or startup automation) or, after the backstop, no configured composer.
+   */
   readonly holdsReadiness: () => boolean;
   /**
-   * A physical write waits: a dialog, trust, or no configured composer seen yet. The
+   * A physical write waits: a blocking hold, or no configured composer seen yet. The
    * session consults it from launch until the first readiness, which an adapter's
    * readiness hook can also bring. Operations that bypass the readiness queue
    * (`sendPrompt`, picker commands, `login`) would otherwise write onto a startup screen
@@ -59,9 +62,15 @@ export type ReadinessGate = InitialReadinessHold & {
   ) => void;
   /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-09). */
   readonly unrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report">;
-  /** Re-read the current frame when the deadline passes: an idle CLI does not repaint. */
-  readonly setDeadlineListener: (listener: () => void) => void;
+  /**
+   * Re-read the current frame when the deadline passes: an idle CLI does not repaint. The
+   * listener gets the terminal's current settled frame when the gate can read one.
+   */
+  readonly setDeadlineListener: (listener: (current?: SettledFrame) => void) => void;
 };
+
+/** A terminal's current settled frame, which a resize can have reflowed since it painted. */
+export type SettledFrame = { readonly text: string; readonly cols: number };
 
 /** Without adapter evidence no frame is an unrecognized startup screen. */
 const noUnrecognizedStartup: ReadinessGate["unrecognizedStartup"] = {
@@ -80,7 +89,8 @@ export function createReadinessGate(
   onReady: () => void,
   resumed: boolean,
   composer?: StartupScreenEvidence & {
-    readonly onBackstop: (dialogHeld: boolean) => void;
+    /** `recognizedHold`: a recognized dialog or startup automation holds readiness. */
+    readonly onBackstop: (recognizedHold: boolean) => void;
   },
 ): ReadinessGate {
   let readinessHeld = false;
@@ -104,7 +114,7 @@ export function createReadinessGate(
   // during background work such as an MCP server retry.
   let evidence: ConfiguredComposerEvidence | undefined;
   let watch: UnrecognizedStartupWatch | undefined;
-  let deadlineListener: (() => void) | undefined;
+  let deadlineListener: ((current?: SettledFrame) => void) | undefined;
   if (composer) {
     const startup = createUnrecognizedStartupWatch(composer);
     watch = startup;

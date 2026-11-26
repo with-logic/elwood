@@ -89,11 +89,12 @@ export function createSessionFrameObserver(
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
-      readiness.unrecognizedStartup.report(frame.text);
       // Automation can consume the human clear edge. Retain its replay until a
       // positive frame shows either resumed work or an idle composer.
       replayAutomationClearance(active, reading.facts);
     } finally {
+      // Contained, and reported even when a status or attention listener throws.
+      readiness.unrecognizedStartup.report(frame.text);
       readiness.observeReadinessFrame(
         reading.facts,
         active.automationInputBlocking,
@@ -102,7 +103,10 @@ export function createSessionFrameObserver(
       );
     }
   };
-  readiness.setDeadlineListener(refresh);
+  readiness.setDeadlineListener((current) => {
+    if (frame !== undefined && current !== undefined) frame = { ...frame, ...current };
+    refresh();
+  });
   return {
     refresh,
     observe: (current: RenderedFrame) => {

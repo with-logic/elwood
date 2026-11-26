@@ -16,7 +16,7 @@ const answerableRow =
  * prompt on a loaded host, and Codex 0.172.0 drew its header over its logo before its
  * composer (docs/cli-behavior.md).
  */
-export function nativeBootFrame(header: RegExp): (frame: string) => boolean {
+export function createNativeBootFrameMatcher(header: RegExp): (frame: string) => boolean {
   return (frame) => {
     const rows = frame.split("\n");
     return (

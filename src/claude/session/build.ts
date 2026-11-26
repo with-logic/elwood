@@ -74,7 +74,7 @@ export async function buildClaudeSession(
       void session?.completeInitialReady();
     },
     resumed,
-    { session: observers, warnings: warnGate, events: emitter, configured: idleComposerClearance },
+    { elwoodSessionId, warnings: warnGate, events: emitter, configured: idleComposerClearance },
   );
   const bridge = await startClaudeHookBridge(
     runtime.socketPath,

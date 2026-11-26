@@ -21,12 +21,15 @@ export async function awaitStartupBlock(
   expected: { readonly label: string; readonly screen: string },
 ) {
   const observed = observeSession(session);
-  const settled = { done: false };
+  // A held send stays pending: neither submitted nor refused.
+  const outcome: { current: "pending" | "fulfilled" | "rejected" } = { current: "pending" };
   void sent.then(
     () => {
-      settled.done = true;
+      outcome.current = "fulfilled";
     },
-    () => {},
+    () => {
+      outcome.current = "rejected";
+    },
   );
   const report = await waitFor(
     () => observed.activities.find((event) => event.kind === "unrecognized_startup"),
@@ -46,8 +49,8 @@ export async function awaitStartupBlock(
   const firstOutputAt = record.firstOutputAt ?? reportedAt;
   assert.ok(reportedAt - firstOutputAt <= reportWithinMs, "the screen was reported late");
   assert.ok(session.terminal.snapshot().text.includes(expected.screen), "the screen is still up");
-  assert.equal(settled.done, false);
+  assert.equal(outcome.current, "pending", "the queued message is held");
   const input = () => record.writes.filter(({ data }) => !isTerminalProtocolReply(data));
   assert.deepEqual(input(), [], "nothing was written to the screen");
-  return { observed, settled, input };
+  return { observed, outcome, input };
 }

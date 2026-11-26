@@ -147,12 +147,15 @@ first frame (C-E2E-28, C-E2E-29):
   An `OPENAI_API_KEY` that the session's `env` overrides still appears there when
   the launch shell's startup files export it. A report of that page would carry the
   key, so C-E2E-29 stays on the first page and never prints the screen. Reports
-  replace `sk-` key-shaped tokens with `sk-[redacted]` (§5.4).
+  replace `sk-` key-shaped tokens with `sk-[redacted]` (§5.4). A probe on 2026-11-26,
+  with every character masked, showed that `3` opens a submenu whose first choice is
+  that page. The key sits in a one-row bordered field (`│sk-…│`), cut at the border at
+  80 and 120 columns rather than wrapped.
 
 Both CLIs also draw their own header alone while they load, and a slow boot can hold
 that frame past the deadline. It is a boot frame, not an unrecognized screen: the
 header (`Claude Code v<version>`, `>_ OpenAI Codex (v<version>)`) with no other row a
-person could answer (`nativeBootFrame`, `src/runtime/readiness/boot-frame.ts`).
+person could answer (`createNativeBootFrameMatcher`, `src/runtime/readiness/boot-frame.ts`).
 
 - Claude 2.1.310, on a loaded host, showed only its banner from 5.0 s after the first
   frame, once trust was answered, until its composer at 9.0 s

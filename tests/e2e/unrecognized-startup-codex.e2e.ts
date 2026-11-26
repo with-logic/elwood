@@ -32,7 +32,7 @@ test("C-E2E-29 Codex's sign-in screen blocks the session, and nothing is written
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
     const active = session;
     const sent = active.sendMessage("Reply with the single word PONG.");
-    const { observed, settled, input } = await awaitStartupBlock(active, record, sent, {
+    const { observed, outcome, input } = await awaitStartupBlock(active, record, sent, {
       label: "codex-unrecognized-startup",
       screen: "Sign in with ChatGPT",
     });
@@ -40,7 +40,7 @@ test("C-E2E-29 Codex's sign-in screen blocks the session, and nothing is written
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     assert.equal(active.status, "blocked");
     assert.ok(active.terminal.snapshot().text.includes("Sign in with ChatGPT"));
-    assert.equal(settled.done, false);
+    assert.equal(outcome.current, "pending", "the queued message is still held");
     assert.deepEqual(input(), [], "nothing was written to the sign-in screen");
     const reports = observed.activities.filter((event) => event.kind === "unrecognized_startup");
     assert.equal(reports.length, 1, "the animated screen was reported once");

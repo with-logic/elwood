@@ -73,7 +73,7 @@ const dialog = { ...idle, blocking_prompt_visible: true };
 test.each([
   ["an unrecognized startup screen's block is no recognized dialog", idle, true, false],
   ["a recognized dialog is one", dialog, false, true],
-] as const)("C-ATTN-06 C-ATTN-09 at the backstop %s", (_, facts, unrecognized, dialogHeld) => {
+] as const)("C-ATTN-06 C-ATTN-09 at the backstop %s", (_, facts, unrecognized, recognizedHold) => {
   vi.useFakeTimers();
   const { subject, onBackstop } = gate();
   subject.observeReadinessFrame(idle, false, screen.text);
@@ -83,7 +83,7 @@ test.each([
   // The frame observer makes an unrecognized screen blocking before the gate reads it.
   subject.observeReadinessFrame(dialog, false, screen.text);
   vi.advanceTimersByTime(50_000);
-  expect(onBackstop).toHaveBeenCalledWith(dialogHeld);
+  expect(onBackstop).toHaveBeenCalledWith(recognizedHold);
 });
 
 test.each([

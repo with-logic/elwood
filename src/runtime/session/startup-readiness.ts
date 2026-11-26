@@ -9,7 +9,7 @@ import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.
 import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import { initialBackstopMs } from "../readiness/initial-ready.ts";
-import { createReadinessGate, type ReadinessGate } from "./readiness.ts";
+import { createReadinessGate, type ReadinessGate, type SettledFrame } from "./readiness.ts";
 
 type StartupDiagnostics = {
   readonly session: { readonly agent: ElwoodAgentKind; readonly elwoodSessionId: string };
@@ -27,9 +27,10 @@ type StartupDiagnostics = {
 
 /**
  * Retain the last settled startup screen until readiness, cancellation, or the backstop.
- * The backstop emits a content-free warning. When no recognized dialog holds readiness
- * it also emits a bounded copy of the captured screen as activity. An unrecognized
- * startup screen's report is activity too, contained like the backstop's.
+ * The backstop emits a content-free warning. When no recognized dialog or startup
+ * automation holds readiness it also emits a bounded copy of the captured screen as
+ * activity. An unrecognized startup screen's report is activity too, contained like the
+ * backstop's. The deadline re-reads the terminal, which a resize can have reflowed.
  */
 export function createStartupReadinessGate(
   onReady: () => void,
@@ -47,14 +48,29 @@ export function createStartupReadinessGate(
   let capture = true;
   // Frames are watched until readiness or cancellation.
   let watching = true;
-  // The last completed frame, and the terminal that drew it.
-  let lastCompleted: { readonly terminal: ElwoodTerminal; readonly text: string } | undefined;
+  // The terminal frames come from, and the text of the last completed one.
+  let terminal: ElwoodTerminal | undefined;
+  let completedText: string | undefined;
   // Read when a frame is classified, which the deadline can do long after it rendered: output
   // since then, or a repaint in progress, makes the frame stale rather than completed.
   const frameCompleted = () =>
     watching &&
-    lastCompleted !== undefined &&
-    settledLiveSnapshot(lastCompleted.terminal)?.text === lastCompleted.text;
+    terminal !== undefined &&
+    completedText !== undefined &&
+    settledLiveSnapshot(terminal)?.text === completedText;
+  /** Settle on the terminal's current frame, or on no completed frame while it repaints. */
+  const settle = (from: ElwoodTerminal): TerminalSnapshot | undefined => {
+    terminal = from;
+    const settled = watching ? settledLiveSnapshot(from) : undefined;
+    completedText = settled?.text;
+    if (settled && capture) screen = settled.text;
+    return settled;
+  };
+  // At the deadline a resize can have reflowed the screen without the CLI repainting it.
+  const deadlineFrame = (): SettledFrame | undefined => {
+    const settled = terminal && settle(terminal);
+    return settled && { text: settled.text, cols: settled.cols };
+  };
   const stopCapture = () => {
     screen = "";
     capture = false;
@@ -81,12 +97,12 @@ export function createStartupReadinessGate(
             true,
           ),
         ),
-      onBackstop: (dialogHeld) => {
+      onBackstop: (recognizedHold) => {
         const backstopScreen = screen;
         stopCapture();
         duringDelivery(() => {
           try {
-            if (!dialogHeld)
+            if (!recognizedHold)
               events.emit(
                 "activity",
                 unrecognizedStartupActivity(agent, elwoodSessionId, backstopScreen),
@@ -111,6 +127,7 @@ export function createStartupReadinessGate(
   );
   return {
     ...gate,
+    setDeadlineListener: (listener) => gate.setDeadlineListener(() => listener(deadlineFrame())),
     ready: {
       ...gate.ready,
       cancel() {
@@ -118,13 +135,9 @@ export function createStartupReadinessGate(
         gate.ready.cancel();
       },
     },
-    observeStartupFrame(terminal) {
+    observeStartupFrame(rendered) {
       // A synchronized repaint can span PTY writes. Keep the previous settled text.
-      const settled = watching ? settledLiveSnapshot(terminal) : undefined;
-      lastCompleted = settled && { terminal, text: settled.text };
-      if (!settled) return cachedLiveSnapshot(terminal);
-      if (capture) screen = settled.text;
-      return settled;
+      return settle(rendered) ?? cachedLiveSnapshot(rendered);
     },
   };
 }

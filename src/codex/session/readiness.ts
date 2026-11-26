@@ -7,14 +7,14 @@
  */
 import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
-import { nativeBootFrame } from "../../runtime/readiness/boot-frame.ts";
+import { createNativeBootFrameMatcher } from "../../runtime/readiness/boot-frame.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 import { codexComposerConfigured } from "../screen/clearance.ts";
 import { codexUnconfiguredComposerVisible } from "../update/repaint.ts";
 import type { CodexEventMap } from "./types.ts";
 
 /** Codex's header drawn alone while it loads (C-ATTN-09). */
-export const codexBootFrame = nativeBootFrame(/>_ OpenAI Codex \(v\d+\.\d+\.\d+/);
+export const isCodexBootFrame = createNativeBootFrameMatcher(/>_ OpenAI Codex \(v\d+\.\d+\.\d+/);
 
 export function createCodexReadinessGate(
   onReady: () => void,
@@ -27,7 +27,7 @@ export function createCodexReadinessGate(
     session: { agent: "codex", elwoodSessionId },
     configured: codexComposerConfigured,
     nativeStartupScreen: (frame) =>
-      codexBootFrame(frame) || codexUnconfiguredComposerVisible(frame),
+      isCodexBootFrame(frame) || codexUnconfiguredComposerVisible(frame),
     warnings,
     events,
   });
