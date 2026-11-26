@@ -12,10 +12,10 @@ import {
   assertFailedWithoutPublishing,
   commitOf,
   retrying,
-  usePublishStep,
+  usePublishFlow,
 } from "./release-publish-fixture.mjs";
 
-const { publish, scratch } = usePublishStep();
+const { publish, scratch } = usePublishFlow();
 // Nothing listens here: no listen(0) picks a port below the ephemeral range,
 // and fetch, unlike for port 1, does not refuse to try it.
 const unreachable = "http://127.0.0.1:1023/";

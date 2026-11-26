@@ -38,11 +38,12 @@ const dryRunPublish =
 
 /**
  * Starts the local registry for the calling test file, and returns its
- * scratch directory, `publish()`, which runs the step for one package, and
+ * scratch directory, `publish()`, which runs the publish job's npm lookup step
+ * for one package and then, when the lookup allows it, its upload step, and
  * `npmPublishDryRun()`, which runs npm's own dry-run publish for one, without
- * the step.
+ * either step.
  */
-export function usePublishStep() {
+export function usePublishFlow() {
   const scratch = mkdtempSync(join(tmpdir(), "elwood-release-publish-"));
   let registry;
   before(async () => {

@@ -94,6 +94,16 @@ for (const name of [
   });
 }
 
+// A re-run with nothing left to publish still reuses the tag, so "Create tag"
+// carries no lookup gate: only the tag-push exclusion, with the implicit
+// `success()` that skips it after a failed lookup or build.
+test("Create tag runs after every successful lookup, except on a tag push", () => {
+  assert.match(
+    publishStep("Create tag"),
+    /^ {8}if: \$\{\{ !startsWith\(github\.ref, 'refs\/tags\/'\) \}\}$/mu,
+  );
+});
+
 // On a miss, setup-node saves its cache folder as it is, so a re-run that
 // skips `npm ci` would store a near-empty cache under the lockfile's key.
 test("the publish job keeps no npm cache", () => {

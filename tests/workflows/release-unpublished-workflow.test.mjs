@@ -10,10 +10,10 @@ import { test } from "node:test";
 import {
   assertFailedWithoutPublishing,
   retrying,
-  usePublishStep,
+  usePublishFlow,
 } from "./release-publish-fixture.mjs";
 
-const { npmPublishDryRun, publish } = usePublishStep();
+const { npmPublishDryRun, publish } = usePublishFlow();
 
 // npm, publishing as a dry run, agrees that each can take `latest`.
 for (const [label, options] of [
