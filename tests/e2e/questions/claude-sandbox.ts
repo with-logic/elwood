@@ -50,6 +50,9 @@ function credentials(): string {
   return login.trim();
 }
 
+/** The editor the fixtures were captured with: the footer hint reads `ctrl+g to edit in Nvim`. */
+const questionEditor = "nvim";
+
 /** Owns private credentials and process seams; dispose removes/resets them and checks parent drift:
  * the parent settings, hooks, and login are unchanged, and its global config names no private path.
  * Only the default Claude config dir is supported: a set `CLAUDE_CONFIG_DIR` fails setup.
@@ -128,7 +131,10 @@ export async function nativeClaudeQuestionSandbox() {
         HOME: home,
         CLAUDE_CONFIG_DIR: home,
         ZDOTDIR: home,
+        // Claude names this editor in its questionnaire footer, which a 60-column pane wraps.
+        EDITOR: questionEditor,
       };
+      delete env["VISUAL"];
       // Claude's temp root stays: `claude-home.ts` set it to a private directory.
       for (const key of Object.keys(env)) {
         if (isNestedClaudeVariable(key) || anthropicVariables.includes(key)) delete env[key];
