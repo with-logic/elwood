@@ -1,6 +1,6 @@
 /** How a Claude `Stop` ends its turn around a queued turn (PRD §6.5, C-HOOK-24, C-HOOK-22). */
 import { afterEach, expect, test, vi } from "vitest";
-import { endTurnUnlessQueued } from "../../src/claude/session/queued-turn.ts";
+import { arriveAtStop, endTurnUnlessQueued } from "../../src/claude/session/stop-turn.ts";
 import { SubmitScreening } from "../../src/claude/session/submit-screening.ts";
 import { textDigest } from "../../src/claude/transcript/prompt-keys.ts";
 import { ClaudeQueuedPrompts } from "../../src/claude/transcript/queued-prompts.ts";
@@ -21,6 +21,10 @@ type StopOptions = {
   readonly status?: ElwoodSessionStatus;
   readonly failReady?: boolean;
   readonly failEarly?: boolean;
+  /** The caller's handler allows a later submit after the `Stop` arrives, before its handler returns. */
+  readonly allowedBeforeEnd?: boolean;
+  /** A warning listener submits input. */
+  readonly submitOnWarning?: boolean;
 };
 
 const decision = (to: ElwoodSessionStatus | undefined): ElwoodStatusDecision => ({
@@ -45,15 +49,24 @@ function stop(options: StopOptions = {}) {
     });
   observation.report(); // the Stop's dispatch has finished before any poll runs
   let submissionUnchanged = true;
+  const supersede = () => {
+    submissionUnchanged = false;
+  };
   let decisions: ElwoodStatusDecision[] = [decision("running")];
   const screening = new SubmitScreening();
+  const submit = () => screening.begin(queued, queued.nextPosition, "later");
+  const generation = { captureSubmissionGeneration: () => () => submissionUnchanged };
+  const arrival = arriveAtStop({ stopCompletion: generation, terminal: { xterm: {} } }, screening);
+  if (options.allowedBeforeEnd) submit()(false);
   const session = {
     elwoodSessionId: "session",
-    terminal: { xterm: {} },
     status: options.status ?? "running",
     closing: new AbortController(),
     statusDecisions: () => decisions,
-    emitWarnings: (next: readonly ElwoodWarningEvent[]) => void warnings.push(...next),
+    emitWarnings: (next: readonly ElwoodWarningEvent[]) => {
+      warnings.push(...next);
+      if (options.submitOnWarning) supersede();
+    },
     submitEvidence(kind: StatusEvidenceKind) {
       if (options.failReady) throw new Error("private listener failure");
       evidence.push(kind);
@@ -62,21 +75,18 @@ function stop(options: StopOptions = {}) {
   };
   endTurnUnlessQueued({
     session,
-    transcriptWatcher: { scan: () => true, queuedPrompts: () => queued },
+    arrival,
+    transcriptWatcher: { scanPath: () => true, queuedPrompts: () => queued },
+    transcriptPath: "/claude/session.jsonl",
     observation,
-    submissionGenerationUnchanged: () => submissionUnchanged,
     screening,
   });
-  const supersede = () => {
-    submissionUnchanged = false;
-  };
   const record = (...next: ElwoodStatusDecision[]) => void decisions.push(...next);
   const evict = () => {
     decisions = [decision(undefined)];
   };
   /** Past C-HOOK-24's 2-second bound, stated independently of the implementation. */
   const pastBound = () => vi.advanceTimersByTimeAsync(2_100);
-  const submit = () => screening.begin(queued, queued.nextPosition, "later");
   return { evidence, warnings, session, supersede, record, evict, pastBound, submit };
 }
 
@@ -124,6 +134,17 @@ test("C-HOOK-11 C-HOOK-24 the bound ends no turn that already ended, changed, or
   newer.submit()(false);
   await newer.pastBound();
   expect([...newer.evidence, ...newer.warnings]).toEqual([]);
+  // So did one allowed after the Stop arrived, while the caller's Stop handler still ran.
+  const early = stop({ allowedBeforeEnd: true });
+  await early.pastBound();
+  expect([...early.evidence, ...early.warnings]).toEqual([]);
+});
+
+test("C-HOOK-24 input a warning listener submits at the bound keeps the Stop from marking readiness", async () => {
+  const { evidence, warnings, pastBound } = stop({ submitOnWarning: true });
+  await pastBound();
+  expect(warnings).toEqual([expect.objectContaining({ code: "queued_turn_unconfirmed" })]);
+  expect(evidence).toEqual([]);
 });
 
 test("C-HOOK-24 a submit still screening holds the bound, and a blocked one does not supersede", async () => {

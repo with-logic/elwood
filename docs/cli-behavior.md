@@ -1961,8 +1961,9 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   `Stop`, two user records with new IDs and `promptSource: "queued"`, one reply answering both,
   and one `Stop` under the second ID. Elwood used to mark the session `ready` at the first
   `Stop` and stayed `ready` while Claude worked, because the rendered turn watcher saw no new
-  start. A `Stop` with a message still queued now waits up to 2 s for a `dequeue` record and,
-  once one appears, leaves readiness to the queued turn's `Stop`. Guidance sent 2.8 s into a
+  start. A `Stop` with a message still queued now waits for a `dequeue` record and, once one
+  appears, leaves readiness to the queued turn's `Stop`. The 2 s window restarts after any
+  screening and stays open while the transcript cannot be read to its end (PRD §6.5). Guidance sent 2.8 s into a
   queued turn fired `UserPromptSubmit` under the queued turn's NEW prompt ID, the one its
   `queued` user record names. That turn's `Stop` was then followed by a third turn for that
   guidance. Elwood marks that ID as the running turn when it reads the record, so the guidance
@@ -1978,8 +1979,8 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   turn with its own `Stop` once the handler allowed it. Elwood had marked the session ready after
   the first `Stop`, because the 2 s bound expired during the screening. With a handler that
   blocked 0.5 s after the `Stop`, Claude ran nothing, and the hold waited until the screen's
-  idle composer ended the turn. The bound now starts once no handler is screening, and messages
-  all blocked after the `Stop` end the turn at once. Measured 2026-11-26 (C-HOOK-24,
+  idle composer ended the turn. The 2 s window now restarts once no handler is screening, and
+  messages all blocked after the `Stop` end the turn at once. Measured 2026-11-26 (C-HOOK-24,
   `tests/e2e/guidance-screening-claude.e2e.ts`).
 - An interrupt while Claude 2.1.332 is still screening the queued message, that is, before its
   `UserPromptSubmit` hook has returned, makes Claude fire the hook AGAIN as it runs the message as

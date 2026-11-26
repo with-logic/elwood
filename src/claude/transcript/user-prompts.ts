@@ -85,14 +85,15 @@ export class ClaudeUserPrompts {
     let digest: string | undefined;
     const promptDigest = () => (digest ??= textDigest(prompt));
     const recovered = this.recoveredTextKeys;
-    if (recovered.size > 0 && recovered.has(turnDigestKey(turnId, promptDigest()))) return false;
+    const hidden = recovered.size > 0 && recovered.has(turnDigestKey(turnId, promptDigest()));
     const textlessPending = identity && this.entries.get(identity.key)?.kind === "hook";
-    // Only transcript correlation can show a queued message delivered, so only it tracks one.
-    // A reused ID is a message queued during that running turn. Under a new ID, an interrupt
-    // made Claude screen a still-queued message again as it runs it: it was already shown.
-    if (identity && (textlessPending || this.shownTurnIds.has(turnId)))
-      this.queued.queued(promptDigest());
-    else if (identity && !this.queued.isEmpty && this.queued.claim(promptDigest())) {
+    // Only transcript correlation can show a queued message delivered, so only it tracks one. A
+    // reused ID is a message queued during that running turn, even a hidden repeat of a recovered
+    // prompt. Under a new ID, an interrupt made Claude screen a still-queued message again.
+    const queues = identity && (textlessPending || this.shownTurnIds.has(turnId));
+    if (queues) this.queued.queued(promptDigest(), !hidden);
+    if (hidden) return false;
+    if (!queues && identity && !this.queued.isEmpty && this.queued.claim(promptDigest())) {
       addBounded(this.shownTurnIds, turnId);
       return false;
     }

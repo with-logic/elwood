@@ -17,10 +17,11 @@ import type { ReadErrorReporter } from "./drops.ts";
  * is swallowed content-free instead.
  */
 export class TranscriptFsGuard {
-  private readonly readErrors: ReadErrorReporter;
+  private readonly readErrors: ReadErrorReporter | undefined;
   private readonly isFinished: () => boolean;
 
-  constructor(readErrors: ReadErrorReporter, isFinished: () => boolean) {
+  /** Without `readErrors`, failures are contained and left for another read to report. */
+  constructor(readErrors: ReadErrorReporter | undefined, isFinished: () => boolean) {
     this.readErrors = readErrors;
     this.isFinished = isFinished;
   }
@@ -31,7 +32,7 @@ export class TranscriptFsGuard {
     try {
       return read();
     } catch (error) {
-      this.readErrors.record(path, error);
+      this.readErrors?.record(path, error);
       return undefined;
     }
   }
@@ -43,7 +44,7 @@ export class TranscriptFsGuard {
     try {
       return await read();
     } catch (error) {
-      if (!this.isFinished()) this.readErrors.record(path, error);
+      if (!this.isFinished()) this.readErrors?.record(path, error);
       return false;
     }
   }

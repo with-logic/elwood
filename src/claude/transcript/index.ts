@@ -41,6 +41,7 @@ export class ClaudeTranscriptWatcher {
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
   private readonly drops: DropReporter;
   private readonly guard: TranscriptFsGuard;
+  private readonly unreportedGuard = new TranscriptFsGuard(undefined, () => this.finished);
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
@@ -93,7 +94,6 @@ export class ClaudeTranscriptWatcher {
   observeUserPromptHook(evidence: UserPromptHookEvidence): boolean {
     return this.lines.userPrompts.observeHook(evidence, this.correlationActive);
   }
-
   /** Messages queued during a running turn, while transcript correlation can see them. */
   queuedPrompts(): QueuedPromptsAccess | undefined {
     return this.correlationActive ? this.lines.userPrompts.queuedPrompts : undefined;
@@ -102,23 +102,25 @@ export class ClaudeTranscriptWatcher {
     return !(this.finished || this.lines.turns.correlationDisabled);
   }
 
-  /** Reads up to `chunks` chunks. Returns whether it reached every transcript's end: a cursor
-   * stops short only when the watcher-wide budget is spent, and the next scan resumes there. */
-  scan(chunks = scanChunksPerScan): boolean {
-    if (this.finished) return true;
-    const budget = { chunks };
-    const reachedEnd = [...this.cursors.values()].every((cursor) => {
-      if (budget.chunks <= 0) return false;
+  scan(): void {
+    if (this.finished) return;
+    const budget = { chunks: scanChunksPerScan };
+    for (const cursor of this.cursors.values()) {
+      if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
       cursor.runInitialRetry(budget);
-      return this.scanCursor(cursor, budget);
-    });
+      this.scanCursor(cursor, budget);
+    }
     this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
-    return reachedEnd;
   }
 
-  // Flush + retire a stopped subagent's transcript (one-shot): drained against the
-  // SHARED terminal budget (not a fresh full one) and a wall-clock slice — bounded,
-  // non-blocking; backlog past the bound drops content-free, then the cursor is gone.
+  /** Reads up to `chunks` chunks of one transcript; the poll reports its failures and drops (§6.5). */
+  scanPath(path: string | undefined, chunks: number): boolean {
+    const cursor = this.finished || path === undefined ? undefined : this.cursors.get(path);
+    return cursor !== undefined && this.scanCursor(cursor, { chunks }, this.unreportedGuard);
+  }
+
+  // Flush + retire a stopped subagent's transcript once, against the SHARED terminal budget and a
+  // wall-clock slice (bounded, non-blocking); backlog past it drops content-free, cursor gone.
   retire(path: string): void {
     const cursor = this.cursors.get(path);
     if (!cursor || this.finished) return;
@@ -183,18 +185,16 @@ export class ClaudeTranscriptWatcher {
     this.interval.unref?.();
   }
 
-  // Drain a cursor in bounded chunks against the SHARED per-scan budget; the read is contained,
-  // parse/emit run outside it. Reading nothing new is free, so idle cursors cannot starve others.
-  private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): boolean {
+  // Drain a cursor in bounded chunks against the SHARED per-scan budget (sync work bounded across
+  // ALL cursors); the read is contained, parse/emit run outside it. False unless `atRecordEnd`.
+  private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget, guard = this.guard): boolean {
     while (budget.chunks > 0) {
       budget.chunks -= 1;
-      const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
-      if (chunk === undefined) return true; // contained FS failure; keep last offset
+      const chunk = guard.read(cursor.path, () => cursor.readLiveChunk());
+      if (chunk === undefined) return false; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
-      if (chunk.canContinueNow) continue;
-      if (chunk.text.length === 0) budget.chunks += 1;
-      return true;
-    }
-    return false; // budget spent with more to read: the next scan resumes here
+      if (!chunk.canContinueNow) return cursor.atRecordEnd;
+    } // budget exhausted with more to read: the next poll tick resumes here.
+    return false;
   }
 }

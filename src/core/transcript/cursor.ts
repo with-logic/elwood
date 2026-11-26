@@ -56,9 +56,13 @@ export class BoundedTranscriptCursor {
   get lastReadWasReplay(): boolean {
     return this.lastReadRewound;
   }
-  // When the current un-terminated line overflowed, discard incoming bytes up to
-  // (and including) the next newline instead of buffering them.
+  /** Whether the last read reached the file's end and left no record partly written (§6.5). */
+  get atRecordEnd(): boolean {
+    return this.reachedEnd && this.pending === "" && !this.discarding;
+  }
+  // After an over-length un-terminated line, discard bytes through its next newline unbuffered.
   private discarding = false;
+  private reachedEnd = false;
   // A CLI can name its transcript before writing it, so until a stat has seen the file,
   // ENOENT means "not created yet" rather than a removal or rotation (§5.7).
   private created: boolean;
@@ -78,7 +82,9 @@ export class BoundedTranscriptCursor {
    * removal can never read as a truncation and reset the cursor.
    */
   readLiveChunk(): ChunkRead {
+    this.reachedEnd = false;
     const size = this.liveSize();
+    this.reachedEnd = size === undefined;
     return size === undefined ? { text: "", canContinueNow: false } : this.readChunk(size);
   }
 
@@ -127,6 +133,7 @@ export class BoundedTranscriptCursor {
     const from = size < this.offset ? 0 : this.offset;
     if (size <= from) {
       this.offset = from;
+      this.reachedEnd = true;
       return { text: "", canContinueNow: false };
     }
     // Keep the rewind snapshot and later appends in separate chunks so a live
@@ -146,6 +153,7 @@ export class BoundedTranscriptCursor {
     // A rewind can end inside a UTF-8 character. Start the later live read
     // at the last complete boundary so an append can finish that character.
     if (replaying && from + want === end && bytes < want) this.rewindEnd = this.offset;
+    this.reachedEnd = this.offset >= size; // an incomplete UTF-8 tail is unread
     return { text, canContinueNow: advanced && this.offset < size };
   }
 

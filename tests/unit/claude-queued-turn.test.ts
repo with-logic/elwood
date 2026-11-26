@@ -1,55 +1,25 @@
 /** A Claude `Stop` with queued messages waits for their turn, bounded (PRD §6.5, C-HOOK-24). */
 import { afterEach, expect, test, vi } from "vitest";
-import { holdForQueuedTurn, type QueuedTurnEnd } from "../../src/claude/session/queued-turn.ts";
+import { holdForQueuedTurn } from "../../src/claude/session/queued-turn.ts";
 import { textDigest } from "../../src/claude/transcript/prompt-keys.ts";
 import { ClaudeQueuedPrompts } from "../../src/claude/transcript/queued-prompts.ts";
 import { assertStopInput, withStopInput } from "../../src/core/stop-input.ts";
-import { nativeUser } from "./claude-transcript-helpers.ts";
+import {
+  boundMs,
+  dequeue,
+  evidence,
+  harness,
+  queuedRecord,
+  transcriptPath,
+  unreadLimitMs,
+} from "./claude-queued-turn-harness.ts";
 
 afterEach(() => void vi.useRealTimers());
-/** C-HOOK-24's bound, stated independently of the implementation. */
-const boundMs = 2_000;
-/** A `dequeue` record Claude stamped `offsetMs` from now. */
-const dequeue = (offsetMs = 100) => ({
-  type: "queue-operation",
-  operation: "dequeue",
-  timestamp: new Date(Date.now() + offsetMs).toISOString(),
-});
-const queuedRecord = (text: string) => ({ ...nativeUser("queued", text), promptSource: "queued" });
-
-function harness(ownsTurnEnd = true) {
-  vi.useFakeTimers();
-  const queued = new ClaudeQueuedPrompts();
-  queued.queued(textDigest("note"));
-  const records: unknown[] = [];
-  const log: string[] = [];
-  const closing = new AbortController();
-  const state = { screening: false, reachedEnd: true };
-  const end: QueuedTurnEnd = {
-    ownsTurnEnd: () => ownsTurnEnd,
-    screening: () => state.screening,
-    endTurn: (unconfirmed) => void log.push(unconfirmed ? "warn and end" : "end"),
-    release: () => void log.push("release"),
-    closing: closing.signal,
-    observation: { run: (_phase, operation) => operation() },
-  };
-  const scan = (chunks?: number) => {
-    log.push(`scan ${chunks}`);
-    for (const record of records.splice(0)) queued.observeRecord(record, true);
-    return state.reachedEnd;
-  };
-  const hold = () => holdForQueuedTurn({ scan, queuedPrompts: () => queued }, end);
-  const step = (ms = 50) => vi.advanceTimersByTime(ms);
-  const ends = () => log.filter((entry) => entry.endsWith("end"));
-  return { queued, records, log, closing, end, state, hold, step, ends, waiting: vi.getTimerCount };
-}
-
 test("C-HOOK-24 a Stop holds only for messages Claude may run that were queued since the last Stop", () => {
   const { end, log } = harness();
-  const scan = () => true;
   const empty = new ClaudeQueuedPrompts();
-  expect(holdForQueuedTurn({ scan, queuedPrompts: () => empty }, end)).toBe(false);
-  expect(holdForQueuedTurn({ scan, queuedPrompts: () => undefined }, end)).toBe(false);
+  expect(holdForQueuedTurn(evidence(empty), end)).toBe(false);
+  expect(holdForQueuedTurn(evidence(), end)).toBe(false);
   // The caller's handler blocked this message, which Claude never runs.
   const blocked = new ClaudeQueuedPrompts();
   blocked.queued(textDigest("other"));
@@ -57,15 +27,15 @@ test("C-HOOK-24 a Stop holds only for messages Claude may run that were queued s
   blocked.block(0, "note"); // not the message queued at that position
   blocked.block(1, "note");
   blocked.block(undefined, "other"); // the hook queued nothing
-  expect(blocked.hasPendingIn({ from: 0, to: 2 })).toBe(true);
+  expect(blocked.hasRunnableIn({ from: 0, to: 2 })).toBe(true);
   blocked.claim(textDigest("other"));
-  expect(holdForQueuedTurn({ scan, queuedPrompts: () => blocked }, end)).toBe(false);
+  expect(holdForQueuedTurn(evidence(blocked), end)).toBe(false);
   expect(blocked.claim(textDigest("note"))).toBe(false); // forgotten at the Stop
   // An earlier `Stop` owns what was queued before it.
   const earlier = new ClaudeQueuedPrompts();
   earlier.queued(textDigest("note"));
   earlier.takeStopWindow();
-  expect(holdForQueuedTurn({ scan, queuedPrompts: () => earlier }, end)).toBe(false);
+  expect(holdForQueuedTurn(evidence(earlier), end)).toBe(false);
   expect(log).toEqual([]);
 });
 
@@ -82,8 +52,9 @@ test("C-HOOK-24 the queued turn's dequeue and records end the wait without an en
   records.push(queuedRecord("note"));
   step();
   expect(waiting()).toBe(0);
-  // Each poll reads one chunk, so a backlog cannot block the event loop for long.
-  expect(log).toEqual(["scan 1", "scan 1", "scan 1", "release"]);
+  // Each poll reads one chunk of the Stop's transcript, so a backlog cannot block the loop for long.
+  const read = `read ${transcriptPath} 1`;
+  expect(log).toEqual([read, read, read, "release"]);
 });
 
 test("C-HOOK-24 the 2-second bound forgets messages queued before the Stop and ends only an unstarted turn", () => {
@@ -127,7 +98,7 @@ test("C-HOOK-24 a dequeue counts by its stamp, with an allowance before the Stop
   expect(allowed.ends()).toEqual([]);
 });
 
-test("C-HOOK-24 the bound starts once no handler screens, and waits for the transcript's end", () => {
+test("C-HOOK-24 the window restarts once no handler screens, and waits for the transcript's end", () => {
   const { hold, state, step, ends, log } = harness();
   state.screening = true;
   expect(hold()).toBe(true);
@@ -136,13 +107,23 @@ test("C-HOOK-24 the bound starts once no handler screens, and waits for the tran
   state.screening = false;
   step(boundMs - 50);
   expect(ends()).toEqual([]);
-  state.reachedEnd = false; // the dequeue may be behind a backlog
+  state.reachedEnd = false; // a failed read, a backlog, or a partly written record
   step(1_000);
   expect(ends()).toEqual([]);
   state.reachedEnd = true;
   step();
   expect(ends()).toEqual(["warn and end"]);
   expect(log.at(-1)).toBe("release");
+});
+
+test("C-HOOK-24 reads that never reach the transcript's end hold 10 seconds past the window", () => {
+  const { hold, state, step, ends } = harness();
+  state.reachedEnd = false;
+  expect(hold()).toBe(true);
+  step(boundMs + unreadLimitMs - 50);
+  expect(ends()).toEqual([]);
+  step();
+  expect(ends()).toEqual(["warn and end"]);
 });
 
 test("C-HOOK-24 messages all blocked after the Stop end its turn at once without a warning", () => {
@@ -176,7 +157,7 @@ test("C-HOOK-04 C-HOOK-24 hold polls do not inherit the finished Stop's input co
   const { end, closing } = harness();
   vi.useRealTimers();
   let accepted: boolean | undefined;
-  const scan = () => {
+  const scanPath = () => {
     try {
       assertStopInput(session);
       accepted = true;
@@ -187,7 +168,7 @@ test("C-HOOK-04 C-HOOK-24 hold polls do not inherit the finished Stop's input co
     return true;
   };
   await withStopInput({ hookName: "Stop", session }, () =>
-    Promise.resolve(holdForQueuedTurn({ scan, queuedPrompts: () => queued }, end)),
+    Promise.resolve(holdForQueuedTurn(evidence(queued, scanPath), end)),
   );
   await vi.waitFor(() => expect(accepted).toBe(true));
 });

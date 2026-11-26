@@ -310,24 +310,30 @@ readable stamp counts as stamped when Elwood read it. A record replayed after a
 rewind does not count, and neither does one in a subagent transcript. A
 `dequeue` record alone does not deliver a message.
 
-The 2 s bound starts at the `Stop`, and restarts each time the caller's handler
-finishes screening while no other screening remains. It expires only at a
-transcript read that reaches the end of every transcript. Each read during the
-hold covers at most 256 KiB, so a backlog drains without blocking the event loop
-for long. After a `dequeue`, a message queued before the `Stop` that still has no
-`queued` user record at the bound is forgotten, and the queued turn's own `Stop`
-marks readiness.
+The 2 s confirmation window starts at the `Stop`, and restarts each time the
+caller's handler finishes screening while no other screening remains. During the
+hold Elwood reads only the `Stop`'s own transcript, at most 256 KiB per read, so a
+backlog drains without blocking the event loop for long. The window closes only at
+a read that reached that transcript's end with no record partly written. A failed
+read, an unread backlog, or a record whose end is not yet written keeps it open
+for at most 10 s more, and then it closes. The hold's own reads report no
+`transcript_read_error`. The watcher's regular transcript poll reports a failed
+read at its usual cadence. After a `dequeue`, a message queued before the `Stop`
+that still has no `queued` user record when the window closes is forgotten, and
+the queued turn's own `Stop` marks readiness.
 
-If no `dequeue` record appears by the bound, Claude did not run the queued
-messages. Elwood then forgets the messages that were queued before that `Stop`,
+If no `dequeue` record appears by the time the window closes, Claude did not run
+the queued messages. Elwood then forgets the messages that were queued before that `Stop`,
 and keeps any queued later. That `Stop` then emits one
 `queued_turn_unconfirmed` warning and marks the session ready, unless another
 turn may have started or the turn already ended. That is the case when the
 session's status changed after that `Stop`, a newer caller submission
-superseded it, the caller wrote raw terminal input after it, or the handler
-allowed a `UserPromptSubmit` that arrived after it. A status change means other
-evidence already ended the turn, or a later turn started. In each of these
-cases, other evidence decides readiness. Without transcript correlation, a
+superseded it, the caller wrote raw terminal input after it arrived, or the
+handler allowed a `UserPromptSubmit` that arrived after it. Input and
+submissions count from the moment the `Stop` arrives, before any listener hears
+of it, and Elwood checks them again after emitting the warning. A status change
+means other evidence already ended the turn, or a later turn started. In each
+of these cases, other evidence decides readiness. Without transcript correlation, a
 `Stop` marks readiness immediately.
 
 The headless terminal screen model may be used for startup automation,

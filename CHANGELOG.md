@@ -47,9 +47,10 @@ back each entry are listed in `prd/14-conformance.md`.
   the session waits while a handler is still screening a queued message. If
   Claude does not start the queued turn within 2 s of the `Stop` and of that
   screening, the session emits a `queued_turn_unconfirmed` warning and becomes
-  `ready`. It does not if the screen has since shown a turn end, or if a
+  `ready`. A transcript that cannot be read to its end delays that by up to
+  10 s more. It does not if the screen has since shown a turn end, or if a
   newer submission, raw terminal input, or an allowed `UserPromptSubmit` may
-  have started another turn.
+  have started another turn since the `Stop` arrived.
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
   for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
   which records no dismissal in Codex's update state. It writes the key once the

@@ -4,24 +4,27 @@
  * `queue-operation` `dequeue` record per message 74 to 340 ms after the `Stop` (measured), then a
  * `queued` user record per message. Once both are read, the queued turn's prompt ID is known and
  * its own `Stop` marks readiness. Claude runs a message only once the caller's `UserPromptSubmit`
- * handler allows it, so the bound starts when no handler is screening, and a `Stop` whose messages
- * were all blocked ends the turn then. Messages that still lack a `queued` record at the bound,
- * after a `dequeue`, are forgotten and leave readiness to that turn's `Stop`. Without a `dequeue`
- * by the bound, read to the transcript's end, Claude did not run them: they are forgotten, and
- * this `Stop` warns and marks readiness unless something else ended its turn or started another.
+ * handler allows it, so the confirmation window restarts when screening ends, and a `Stop` whose
+ * messages were all blocked ends the turn then. Messages that still lack a `queued` record when the
+ * window closes, after a `dequeue`, are forgotten and leave readiness to that turn's `Stop`. Without
+ * a `dequeue` by then, Claude did not run them: they are forgotten, and this `Stop` warns and marks
+ * readiness unless something else ended its turn or started another. Only a read that reached the
+ * end of the `Stop`'s transcript can show that no `dequeue` was written, so while reads fail or fall
+ * behind, the window stays open up to a fallback.
  */
 import type { HookObservation } from "../../core/hook-observation.ts";
 import { outsideStopInput } from "../../core/stop-input.ts";
 import { deadlineClock } from "../../core/timers.ts";
-import type { TurnStateWatcher } from "../../core/turn-state.ts";
-import type { ClaudeQueuedTurnUnconfirmedWarning } from "../../core/warnings/lifecycle.ts";
-import { onCallerInput } from "../../runtime/session/session-input.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
-import type { ClaudeSessionImpl } from "./instance.ts";
-import type { SubmitScreening } from "./submit-screening.ts";
 
-/** Longest a `Stop` with queued messages waits for Claude to start their turn (C-HOOK-24). */
-export const queuedTurnStartLimitMs = 2_000;
+/**
+ * How long a held `Stop` waits for Claude to start the queued turn, from the `Stop` and again from
+ * the end of each screening. It closes only at a read that reached the end of the `Stop`'s
+ * transcript, or `unreadTranscriptLimitMs` later, so it does not cap the hold (C-HOOK-24).
+ */
+const confirmWindowMs = 2_000;
+/** How long past the window a failed read, a backlog, or a partly written record keeps it open. */
+const unreadTranscriptLimitMs = 10_000;
 /** Below the earliest measured `dequeue`, so the queued turn's records are read promptly. */
 const pollIntervalMs = 50;
 /** One 256 KiB chunk per poll, so a transcript backlog drains without long event-loop blocks. */
@@ -32,7 +35,12 @@ const pollScanChunks = 1;
  */
 const dequeueStampAllowanceMs = 1_000;
 
-type QueuedTurnEvidence = Pick<ClaudeTranscriptWatcher, "scan" | "queuedPrompts">;
+/** Where a held `Stop` looks for the queued turn's records. */
+export type QueuedTurnEvidence = {
+  readonly transcriptWatcher: Pick<ClaudeTranscriptWatcher, "scanPath" | "queuedPrompts">;
+  /** The `Stop`'s own transcript, the only one Claude writes the queued turn's records to. */
+  readonly transcriptPath: string | undefined;
+};
 
 export type QueuedTurnEnd = {
   /** Nothing ended this turn since its `Stop`, and nothing newer started another. */
@@ -50,16 +58,16 @@ export type QueuedTurnEnd = {
 
 /** Returns whether this `Stop` waits for the queued turn instead of marking readiness now. */
 export function holdForQueuedTurn(evidence: QueuedTurnEvidence, end: QueuedTurnEnd): boolean {
-  const queued = evidence.queuedPrompts();
+  const queued = evidence.transcriptWatcher.queuedPrompts();
   if (queued === undefined) return false;
   const window = queued.takeStopWindow();
-  if (!queued.hasPendingIn(window)) {
+  if (!queued.hasRunnableIn(window)) {
     // Blocked messages never run, and earlier messages belong to an earlier `Stop`.
     queued.forgetBefore(window.to);
     return false;
   }
-  const stoppedAt = Date.now() - dequeueStampAllowanceMs;
-  let deadlineAt = deadlineClock.now() + queuedTurnStartLimitMs;
+  const dequeueCutoffAtMs = Date.now() - dequeueStampAllowanceMs;
+  let windowEndsAtMs = deadlineClock.now() + confirmWindowMs;
   // Polls outlive the `Stop` callback, so they must not inherit its closed input context (C-HOOK-04).
   const schedule = () => void outsideStopInput(() => setTimeout(poll, pollIntervalMs)).unref();
   const finish = (unconfirmed: boolean | undefined): void => {
@@ -73,24 +81,27 @@ export function holdForQueuedTurn(evidence: QueuedTurnEvidence, end: QueuedTurnE
       end.release();
       return;
     }
-    let behind = false;
+    let readToEnd = false;
     end.observation.run("transcript", () => {
-      behind = !evidence.scan(pollScanChunks);
+      readToEnd = evidence.transcriptWatcher.scanPath(evidence.transcriptPath, pollScanChunks);
     });
-    const started = queued.dequeuedSince(stoppedAt);
-    const pending = queued.hasPendingIn(window);
+    const started = queued.dequeuedSince(dequeueCutoffAtMs);
+    const runnable = queued.hasRunnableIn(window);
     // Claude started the queued turn, and its `queued` records named its prompt ID.
-    if (started && !pending) {
+    if (started && !runnable) {
       end.release();
       return;
     }
-    if (end.screening()) deadlineAt = deadlineClock.now() + queuedTurnStartLimitMs;
+    const nowMs = deadlineClock.now();
+    if (end.screening()) windowEndsAtMs = nowMs + confirmWindowMs;
     // Claude runs none of the messages: every one was blocked.
-    else if (!(started || pending)) {
+    else if (!(started || runnable)) {
       finish(false);
       return;
     }
-    if (behind || deadlineClock.now() < deadlineAt) {
+    // Records the last read did not reach may show the queued turn starting.
+    const unread = !readToEnd && nowMs < windowEndsAtMs + unreadTranscriptLimitMs;
+    if (nowMs < windowEndsAtMs || unread) {
       schedule();
       return;
     }
@@ -99,96 +110,4 @@ export function holdForQueuedTurn(evidence: QueuedTurnEvidence, end: QueuedTurnE
   };
   schedule();
   return true;
-}
-
-export type ClaudeStopTurn = {
-  readonly session: Pick<
-    ClaudeSessionImpl,
-    "elwoodSessionId" | "submitEvidence" | "status" | "statusDecisions" | "closing" | "emitWarnings"
-  > & { readonly terminal: Parameters<typeof onCallerInput>[0] };
-  readonly transcriptWatcher: QueuedTurnEvidence;
-  readonly observation: Pick<HookObservation, "run">;
-  readonly submissionGenerationUnchanged: () => boolean;
-  readonly screening: Pick<SubmitScreening, "active" | "mark" | "allowedSince">;
-};
-
-/**
- * Ends the turn an unblocked, unsuperseded `Stop` reports, unless Claude may run queued messages.
- * Returns whether the `Stop` holds for them.
- */
-export function endTurnUnlessQueued(stop: ClaudeStopTurn): boolean {
-  const { session, observation, screening } = stop;
-  const submitHookTurnEnded = () => void session.submitEvidence("hook_turn_ended");
-  const statusUnchanged = statusUnchangedSinceNow(session);
-  const submitsAtStop = screening.mark();
-  let callerTyped = false;
-  const stopWatchingInput = onCallerInput(session.terminal, () => {
-    callerTyped = true;
-  });
-  const held = holdForQueuedTurn(stop.transcriptWatcher, {
-    // Ending a turn the screen already ended would warn falsely and re-arm a released turn-end
-    // hold. A turn started since, by raw input, a later caller submission, or a submit the
-    // handler allowed, is not this `Stop`'s turn.
-    ownsTurnEnd: () =>
-      stop.submissionGenerationUnchanged() &&
-      !callerTyped &&
-      !screening.allowedSince(submitsAtStop) &&
-      session.status === "running" &&
-      statusUnchanged(),
-    screening: () => screening.active,
-    endTurn: (unconfirmed) => {
-      if (unconfirmed)
-        session.emitWarnings([queuedTurnUnconfirmedWarning(session.elwoodSessionId)]);
-      submitHookTurnEnded();
-    },
-    release: stopWatchingInput,
-    closing: session.closing.signal,
-    observation,
-  });
-  if (held) return true;
-  stopWatchingInput();
-  observation.run("lifecycle", submitHookTurnEnded);
-  return false;
-}
-
-/** After an unblocked `Stop`: ends its turn unless a newer submission or a queued turn supersedes it. */
-export function endUnblockedStop(
-  stop: Omit<ClaudeStopTurn, "session" | "observation"> & {
-    readonly observation: HookObservation;
-    readonly getSession: () => ClaudeStopTurn["session"] | undefined;
-    readonly getTurnWatcher: () => Pick<TurnStateWatcher, "arm" | "endedByHook">;
-  },
-): void {
-  stop.observation.run("transcript", () => stop.transcriptWatcher.scan());
-  // Diagnostic callbacks may submit input; report before comparing physical generations.
-  stop.observation.report();
-  // Guidance may steer the current turn; every physical submission supersedes this Stop.
-  const session = stop.getSession();
-  if (!stop.submissionGenerationUnchanged()) return;
-  const turnWatcher = stop.getTurnWatcher();
-  turnWatcher.arm();
-  // Claude's composer idles while a handler screens a held message: that is not a turn's end.
-  if (session && endTurnUnlessQueued({ ...stop, session })) turnWatcher.endedByHook();
-}
-
-/** Whether no status transition was applied after now. An evicted entry counts as a change. */
-function statusUnchangedSinceNow(session: Pick<ClaudeSessionImpl, "statusDecisions">) {
-  const latest = session.statusDecisions().at(-1);
-  return (): boolean => {
-    const decisions = session.statusDecisions();
-    const index = decisions.findLastIndex((decision) => decision === latest);
-    return index >= 0 && decisions.slice(index + 1).every((decision) => decision.to === undefined);
-  };
-}
-
-function queuedTurnUnconfirmedWarning(elwoodSessionId: string): ClaudeQueuedTurnUnconfirmedWarning {
-  return {
-    elwoodSessionId,
-    agent: "claude",
-    source: "lifecycle",
-    code: "queued_turn_unconfirmed",
-    severity: "warning",
-    message: `Elwood saw no sign, ${queuedTurnStartLimitMs / 1000} seconds after Claude's Stop and any screening of queued messages, that Claude started a turn for them, so it is ending the turn.`,
-    raw: "queued_turn_unconfirmed",
-  };
 }

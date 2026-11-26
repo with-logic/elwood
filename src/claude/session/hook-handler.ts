@@ -25,7 +25,7 @@ import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 import { associateClaudePrompt } from "./prompt-activity.ts";
-import { endUnblockedStop } from "./queued-turn.ts";
+import { arriveAtStop, endUnblockedStop } from "./stop-turn.ts";
 import { SubmitScreening } from "./submit-screening.ts";
 
 /** The live pieces the Claude hook handler drives; `session`/`turnWatcher` are read
@@ -36,7 +36,7 @@ export type ClaudeHookHandlerDeps = {
   readonly emitter: TypedEmitter<ClaudeEventMap>;
   readonly transcriptWatcher: Pick<
     ClaudeTranscriptWatcher,
-    "scan" | "observeUserPromptHook" | "queuedPrompts"
+    "scan" | "scanPath" | "observeUserPromptHook" | "queuedPrompts"
   >;
   readonly ready: InitialReady;
   readonly getSession: () => ClaudeSessionImpl | undefined;
@@ -109,10 +109,9 @@ export function buildClaudeHookHandler(
   }
 
   async function observeAndRequest(event: ClaudeHookEvent): Promise<BridgeProcessResult> {
-    const submissionGenerationUnchanged =
-      event.hook_event_name === "Stop"
-        ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
-        : undefined;
+    // What may start another turn counts from here, before any listener hears of the `Stop`.
+    const stop =
+      event.hook_event_name === "Stop" ? arriveAtStop(deps.getSession(), screening) : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
     const queued = transcriptWatcher.queuedPrompts();
     const queuedPromptPosition = queued?.nextPosition;
@@ -160,15 +159,17 @@ export function buildClaudeHookHandler(
     observation.run("activity", () => deps.onHookOutcome?.(event, outcome.result));
     if (event.hook_event_name === "InstructionsLoaded")
       observation.run("lifecycle", () => ready.mark());
-    if (event.hook_event_name === "Stop" && !blocked)
+    if (stop && !blocked)
       endUnblockedStop({
+        arrival: stop,
         transcriptWatcher,
+        transcriptPath: event.transcript_path,
         observation,
         screening,
-        submissionGenerationUnchanged: submissionGenerationUnchanged ?? (() => true),
         getSession: deps.getSession,
         getTurnWatcher: deps.getTurnWatcher,
       });
+    else stop?.release();
     observation.report();
     return serialized;
   }

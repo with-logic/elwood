@@ -134,6 +134,20 @@ test("C-API-62 a transcript rewind leaves no queued message pending", () => {
   }
 });
 
+test("C-API-62 C-HOOK-24 a hidden repeat of a recovered prompt still queues, and shows once re-screened", () => {
+  const prompts = new ClaudeUserPrompts(() => undefined);
+  const hook = (turnId: string, prompt: string) =>
+    prompts.observeHook({ path, turnId, hasText: true, prompt }, true);
+  prompts.observeHook({ path, turnId: "recovered", hasText: false }, true);
+  prompts.observeForwardRecord(path, "recovered", nativeUser("recovered", "Repeat me."), true);
+  // A repeat under the recovered ID reads as that submission, but Claude may run it as queued.
+  expect(hook("recovered", "Repeat me.")).toBe(false);
+  expect(prompts.queuedPrompts.hasRunnableIn({ from: 0, to: 1 })).toBe(true);
+  // Screened again under a new ID after an interrupt, it shows, since its first hook was hidden.
+  expect(hook("rescreen", "Repeat me.")).toBe(true);
+  expect(prompts.queuedPrompts.hasRunnableIn({ from: 0, to: 1 })).toBe(false);
+});
+
 test("C-HOOK-24 only live dequeue records of the main transcript count as a started queued turn", () => {
   const [live, agent] = [tmpFile(), tmpFile()];
   const watcher = new ClaudeTranscriptWatcher("s", () => undefined);
@@ -145,7 +159,7 @@ test("C-HOOK-24 only live dequeue records of the main transcript count as a star
   });
   const queued = () => watcher.queuedPrompts();
   const dequeuedAfterEarlier = () => queued()?.dequeuedSince(earlier + 1);
-  const anyPending = () => queued()?.hasPendingIn({ from: 0, to: Number.MAX_SAFE_INTEGER });
+  const anyPending = () => queued()?.hasRunnableIn({ from: 0, to: Number.MAX_SAFE_INTEGER });
   writeRecords(live);
   writeRecords(agent);
   try {

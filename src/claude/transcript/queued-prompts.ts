@@ -4,7 +4,8 @@
  * that screening, Claude fires it again under a new prompt ID as it runs the message as its own turn.
  * A queued message stays pending until that second hook claims it or the transcript shows its
  * delivery: a `remove` queue operation inside the turn, or a `queued` user record as Claude starts
- * a new turn for it, with or without a second hook. Entries are prompt text digests at increasing
+ * a new turn for it, with or without a second hook. A queued repeat of a prompt transcript recovery
+ * showed is hidden at its first hook, so its second hook shows it. Entries are prompt text digests at increasing
  * positions, so a `Stop` holds only for messages queued since the previous `Stop`, and forgets only
  * those queued before it. A message the caller's handler blocked stays claimable by a second hook,
  * but Claude never runs it, so it holds no `Stop`. The newest live `dequeue` record's timestamp,
@@ -24,24 +25,31 @@ export type QueuedPromptsWindow = { readonly from: number; readonly to: number }
 /** The operations a `Stop` and the hook handler use while Claude may start a queued turn. */
 export type QueuedPromptsAccess = Pick<
   ClaudeQueuedPrompts,
-  "dequeuedSince" | "nextPosition" | "takeStopWindow" | "hasPendingIn" | "forgetBefore" | "block"
+  "dequeuedSince" | "nextPosition" | "takeStopWindow" | "hasRunnableIn" | "forgetBefore" | "block"
 >;
 
-type Pending = { readonly digest: string; readonly position: number; readonly blocked: boolean };
+type Pending = {
+  readonly digest: string;
+  readonly position: number;
+  readonly blocked: boolean;
+  /** Whether its hook showed it. A hidden repeat of a recovered prompt is shown when re-screened. */
+  readonly shown: boolean;
+};
 
 export class ClaudeQueuedPrompts {
   private readonly pending: Pending[] = [];
   private positions = 0;
   private lastStop = 0;
-  private newestDequeueAt = Number.NEGATIVE_INFINITY;
+  private newestDequeueAtMs = Number.NEGATIVE_INFINITY;
 
   get isEmpty(): boolean {
     return this.pending.length === 0;
   }
 
-  /** Whether Claude stamped a live `dequeue` record, as it started a queued turn, at or after `at`. */
-  dequeuedSince(at: number): boolean {
-    return this.newestDequeueAt >= at;
+  /** Whether Claude stamped a live `dequeue` record, as it started a queued turn, at or after the
+   * cutoff, in epoch milliseconds. */
+  dequeuedSince(cutoffAtMs: number): boolean {
+    return this.newestDequeueAtMs >= cutoffAtMs;
   }
 
   /** The position the next queued message takes. */
@@ -56,8 +64,8 @@ export class ClaudeQueuedPrompts {
     return window;
   }
 
-  /** Whether a message in the window that Claude may still run is pending. */
-  hasPendingIn(window: QueuedPromptsWindow): boolean {
+  /** Whether the window holds a pending message Claude may still run: one the handler did not block. */
+  hasRunnableIn(window: QueuedPromptsWindow): boolean {
     return this.pending.some(
       (entry) => !entry.blocked && entry.position >= window.from && entry.position < window.to,
     );
@@ -77,8 +85,8 @@ export class ClaudeQueuedPrompts {
     if (entry) this.pending[index] = { ...entry, blocked: true };
   }
 
-  queued(digest: string): void {
-    this.pending.push({ digest, position: this.positions++, blocked: false });
+  queued(digest: string, shown = true): void {
+    this.pending.push({ digest, position: this.positions++, blocked: false, shown });
     if (this.pending.length > maxQueuedPrompts) this.pending.shift();
   }
 
@@ -90,7 +98,10 @@ export class ClaudeQueuedPrompts {
       item["type"] === "queue-operation" &&
       item["operation"] === "dequeue"
     )
-      this.newestDequeueAt = Math.max(this.newestDequeueAt, recordTime(item["timestamp"]));
+      this.newestDequeueAtMs = Math.max(
+        this.newestDequeueAtMs,
+        recordTimestampMs(item["timestamp"]),
+      );
     if (this.isEmpty) return;
     const delivered =
       item["type"] === "queue-operation"
@@ -103,16 +114,18 @@ export class ClaudeQueuedPrompts {
     this.pending.length = 0;
   }
 
-  /** Whether a message with this text digest is pending, which this claims. */
+  /** Claims a pending message with this text digest. Returns whether one was, and its hook showed it. */
   claim(digest: string): boolean {
     const index = this.pending.findIndex((entry) => entry.digest === digest);
-    if (index >= 0) this.pending.splice(index, 1);
-    return index >= 0;
+    const claimed = this.pending[index];
+    if (claimed === undefined) return false;
+    this.pending.splice(index, 1);
+    return claimed.shown;
   }
 }
 
-/** An unparseable stamp counts as the time Elwood read the record, the latest it can be. */
-function recordTime(timestamp: unknown): number {
+/** A record's stamp in epoch milliseconds. An unparseable one counts as the time Elwood read it. */
+function recordTimestampMs(timestamp: unknown): number {
   const at = typeof timestamp === "string" ? Date.parse(timestamp) : Number.NaN;
   return Number.isNaN(at) ? Date.now() : at;
 }
