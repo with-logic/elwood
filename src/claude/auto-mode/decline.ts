@@ -28,7 +28,7 @@ export class ClaudeAutoModeOfferDecliner implements OfferAppearanceState {
    * Raw caller input arrived since the last frame without the menu outside an appearance, so
    * it may have reached the offer: Claude can show the menu before Elwood sees it.
    */
-  private callerOwned = false;
+  #humanOwned = false;
   private readonly signal: AbortSignal;
   private readonly spacingMs: number;
   constructor(signal: AbortSignal, spacingMs = offerDeclineSpacingMs) {
@@ -37,7 +37,7 @@ export class ClaudeAutoModeOfferDecliner implements OfferAppearanceState {
   }
 
   get humanOwned(): boolean {
-    return this.callerOwned;
+    return this.#humanOwned;
   }
 
   /**
@@ -47,7 +47,7 @@ export class ClaudeAutoModeOfferDecliner implements OfferAppearanceState {
    * went to what replaced the offer.
    */
   callerInput(): void {
-    this.callerOwned = true;
+    this.#humanOwned = true;
   }
 
   /** Starts declining when `frameText` first shows the offer's menu. */
@@ -63,7 +63,7 @@ export class ClaudeAutoModeOfferDecliner implements OfferAppearanceState {
       const settled = this.appearance === "spent" ? readSettled() : undefined;
       if (settled !== undefined && !isClaudeAutoModeOffer(settled)) this.appearance = "none";
       // Input before a frame without the menu went to what that frame shows.
-      if (this.appearance === "none") this.callerOwned = false;
+      if (this.appearance === "none") this.#humanOwned = false;
       return undefined;
     }
     if (this.appearance !== "none" || this.signal.aborted) return undefined;
