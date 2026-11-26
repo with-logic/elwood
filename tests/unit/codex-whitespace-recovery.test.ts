@@ -98,13 +98,12 @@ test("C-API-56 captured whitespace exhausts two retries and retains successor cl
     expect(session.status).toBe("blocked");
     expect(pty.writes.filter((value) => value === "\r")).toHaveLength(3);
     expect(pty.writes.some((value) => value.includes("successor"))).toBe(false);
-    await paint(`\u001b[2J\u001b[H${codexTty(codexSmallComposer)}`);
-    await vi.advanceTimersByTimeAsync(100);
-    expect(clears).toBe(2);
-    expect(pty.writes.some((value) => value.includes("successor"))).toBe(false);
+    // The dialog interrupted the first clear's confirmation, so the successor still cleans up.
+    // Empty input after the replay's last Enter shows nothing is left, so it sends no keys.
     await paint(`\u001b[2J\u001b[H${codexTty(codexSmallComposer)}`);
     await vi.advanceTimersByTimeAsync(250);
     await next;
+    expect(clears).toBe(1);
     expect(pty.writes).toContain("\u001b[200~successor\u001b[201~");
   } finally {
     abort.abort();

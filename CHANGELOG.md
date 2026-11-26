@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
+  ("Could not clear the staged composer draft.") when the previous turn completed
+  before Elwood saw the empty composer. This was most likely in auto mode. Elwood
+  sent clear keys to a composer that was already empty, and Claude repaints nothing
+  for them. When the frames after the earlier send's Enter show that Claude took
+  its input, Elwood now releases that draft without sending keys.
+
 - `autotrust: true` now approves Claude's workspace trust prompt for a folder with
   project settings or MCP servers. Claude Code 2.1.326 and later add a load row to the
   workspace prompt, `Trusting this folder loads <items>.`, naming `.claude/settings.json`,
