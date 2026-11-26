@@ -1,6 +1,6 @@
 /**
- * Seeds, starts and waits for Claude's auto-mode setup offer for the real-CLI tests of
- * C-ATTN-09, C-ATTN-10 and C-CLI-05 (PRD §5.3, §12A.2).
+ * Seeds, snoozes, starts and waits for Claude's auto-mode setup offer for the real-CLI tests
+ * of C-ATTN-09, C-ATTN-10, C-API-56 and C-CLI-05 (PRD §5.3, §12A.2).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,6 +27,18 @@ export function seedOffer(): void {
   const numStartups = Math.max(typeof prior === "number" ? prior : 0, 5);
   const seeded = { ...config, numStartups, autoModeEnvSetup: { denials: 5 } };
   writeFileSync(path, JSON.stringify(seeded), { mode: 0o600 });
+}
+
+/**
+ * The same seed, then the state Claude's `Not now` records (`dismissedAt`, which Esc also
+ * stamps), so that an auto-mode test can run its turns without the offer.
+ */
+export function snoozeOffer(): number {
+  seedOffer();
+  const dismissedAt = Date.now();
+  const config = { ...readConfig(), autoModeEnvSetup: { denials: 5, dismissedAt } };
+  writeFileSync(configPath(), JSON.stringify(config), { mode: 0o600 });
+  return dismissedAt;
 }
 
 const configPath = () => join(defaultClaudeConfigDir, ".claude.json");

@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
+  ("Could not clear the staged composer draft.") when the previous turn completed
+  before Elwood saw the empty composer. This was most likely in auto mode. Elwood
+  sent clear keys to a composer that was already empty, and Claude repaints nothing
+  for them. When the frames after the earlier send's Enter show that Claude took
+  its input, Elwood now releases that draft without sending keys.
+
 - Claude guidance sent during a running turn now produces its `user_message`
   activity. Claude Code 2.1.332 fires the guidance's `UserPromptSubmit` with the
   running turn's prompt ID, which Elwood had treated as a duplicate. That
