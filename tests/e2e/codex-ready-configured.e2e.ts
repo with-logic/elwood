@@ -72,10 +72,6 @@ test("C-E2E-34 Codex reaches ready only once it shows the effort it applied, so 
     clearInterval(polling);
     const failures = proxy.failures().join("; ") || "none";
     const network = `${proxy.openedTunnelCount()} tunnels opened, failures: ${failures}`;
-    assert.ok(
-      proxy.openedTunnelCount() > 0,
-      `Codex connected through the delaying proxy (${network})`,
-    );
     const applied = footer(screen());
     assert.ok(
       applied?.startsWith(`${questionCodexModel} ${effort}`),
@@ -92,5 +88,10 @@ test("C-E2E-34 Codex reaches ready only once it shows the effort it applied, so 
     // proxy; 13 s outlasts any configuration still in flight.
     await delay(connectionHoldMs + 1_000);
     assert.ok(planMode(screen()), `Plan mode survives Codex's configuration:\n${screen()}`);
+    // Checked last: the held tunnels open only after a ready that comes too early.
+    assert.ok(
+      proxy.openedTunnelCount() > 0,
+      `Codex connected through the delaying proxy (${proxy.openedTunnelCount()} tunnels opened)`,
+    );
   });
 });
