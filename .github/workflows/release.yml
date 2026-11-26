@@ -11,8 +11,9 @@ name: Release
 # release. The lightweight tag this workflow pushes on the release commit is
 # reused, and a version this workflow already published from that commit and a
 # published GitHub release are left as they are. Any other tag of that name
-# fails the run. A re-run cannot publish a version older than one already on
-# npm: npm refuses to move `latest` back, so the publish step fails.
+# fails the run. A version older than one already on npm is never published,
+# because it cannot take `latest`: the publish step fails, naming the newer
+# version, and the newest GitHub release stays Latest.
 on:
   push:
     branches: [main]
@@ -283,7 +284,11 @@ jobs:
       # successful publish fails here instead of skipping; publish the GitHub
       # release by hand with `gh release create <tag> --generate-notes`. A
       # first publish is unaffected.
-      # - Not on npm (404): publish.
+      # - Not on npm (404): publish, unless the package's abbreviated
+      #   packument, read the same way, has a newer stable version that is not
+      #   deprecated: npm refuses to move `latest` back from one. Then fail,
+      #   naming that version. Elwood ships no backports, so a version a newer
+      #   release overtook is published only by hand, under an explicit `--tag`.
       # - Published by this workflow's trusted publisher from this commit: a
       #   re-run has nothing left to publish.
       # - On npm any other way, including without a recorded commit or
@@ -306,13 +311,15 @@ jobs:
           outcome="$(node --input-type=module -e '
             import { setTimeout as sleep } from "node:timers/promises";
             const [registry, name, version, commit, expectedConfigId, retries, retryDelayMs] = process.argv.slice(1);
-            const url = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
+            const packumentUrl = new URL(name.replace("/", "%2f"), registry);
+            const versionUrl = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
             const attemptTimeoutMs = 30_000;
             const maxDocumentBytes = 1024 * 1024;
+            const releasePattern = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
             const shaped = (value, pattern) => typeof value === "string" && pattern.test(value);
             /** Reads one answer, body included; throws when the connection fails or times out. */
-            async function attempt() {
-              const response = await fetch(url, { signal: AbortSignal.timeout(attemptTimeoutMs) });
+            async function attempt(url, headers) {
+              const response = await fetch(url, { headers, signal: AbortSignal.timeout(attemptTimeoutMs) });
               const chunks = [];
               let bytes = 0;
               for await (const chunk of response.body) {
@@ -322,9 +329,9 @@ jobs:
               }
               return { status: response.status, text: Buffer.concat(chunks).toString() };
             }
-            async function lookup() {
+            async function lookup(url, headers = {}) {
               for (let retry = 0; ; retry += 1) {
-                const answer = await attempt().catch((error) => ({ error }));
+                const answer = await attempt(url, headers).catch((error) => ({ error }));
                 const connectionFailed = "error" in answer;
                 const statusRetryable = [408, 429].includes(answer.status) || answer.status >= 500;
                 if (!((connectionFailed || statusRetryable) && retry < Number(retries))) {
@@ -345,12 +352,44 @@ jobs:
               if (user instanceof Object) return "another account";
               return "an unrecorded publisher";
             }
+            /** Reads a registry document: `missing` for a 404, else the parsed JSON or the failure. */
+            async function read(url, headers) {
+              const answer = await lookup(url, headers);
+              if (answer.status === 404) return { missing: true };
+              if (answer.status < 200 || answer.status > 299) return { failure: `lookup-failed HTTP ${answer.status}` };
+              if (answer.oversized) return { failure: `lookup-failed document over ${maxDocumentBytes} bytes` };
+              return { document: Object(JSON.parse(answer.text)) };
+            }
+            /** Orders parsed versions when at least one is stable: a stable version follows its prereleases. */
+            function compareVersions(a, b) {
+              for (const part of [1, 2, 3]) {
+                if (Number(a[part]) !== Number(b[part])) return Number(a[part]) - Number(b[part]);
+              }
+              return Number(!a[4]) - Number(!b[4]);
+            }
+            /** Returns the newest stable, undeprecated version above this one, which npm would not move `latest` back from. */
+            function newestVersionAbove(versions) {
+              const own = releasePattern.exec(version);
+              if (!own) return undefined;
+              let newest;
+              for (const [candidate, manifest] of Object.entries(versions)) {
+                const parts = releasePattern.exec(candidate);
+                if (!parts || parts[4] || manifest?.deprecated) continue;
+                if (compareVersions(parts, own) > 0 && (!newest || compareVersions(parts, newest) > 0)) newest = parts;
+              }
+              return newest?.[0];
+            }
+            async function classifyUnpublished() {
+              const found = await read(packumentUrl, { accept: "application/vnd.npm.install-v1+json" });
+              if (found.failure) return found.failure;
+              const newer = found.missing ? undefined : newestVersionAbove(Object(found.document.versions));
+              return newer ? `overtaken-by ${newer}` : "unpublished";
+            }
             async function classify() {
-              const answer = await lookup();
-              if (answer.status === 404) return "unpublished";
-              if (answer.status < 200 || answer.status > 299) return `lookup-failed HTTP ${answer.status}`;
-              if (answer.oversized) return `lookup-failed document over ${maxDocumentBytes} bytes`;
-              const manifest = Object(JSON.parse(answer.text));
+              const found = await read(versionUrl);
+              if (found.failure) return found.failure;
+              if (found.missing) return classifyUnpublished();
+              const manifest = found.document;
               const user = manifest._npmUser;
               const configId = user?.trustedPublisher?.oidcConfigId;
               if (manifest.gitHead === commit && configId === expectedConfigId) return "published-here";
@@ -363,6 +402,10 @@ jobs:
           case "$outcome" in
             unpublished)
               npm publish --access public
+              ;;
+            "overtaken-by "*)
+              echo "::error::$package is older than ${outcome#overtaken-by }, which is already on npm, so it cannot take the latest dist-tag. To ship it anyway, publish it by hand with an explicit dist-tag: npm publish --access public --tag <tag>"
+              exit 1
               ;;
             published-here)
               echo "This workflow already published $package from $RELEASE_COMMIT; skipping."
@@ -409,6 +452,10 @@ jobs:
               exit 1
             fi
           fi
+      # `legacy` leaves Latest to GitHub, which orders releases by the date of
+      # their commit, then by version. A re-run of this job after a newer
+      # release then leaves that newer release Latest; the default would move
+      # Latest to whichever release this job creates.
       - name: Create GitHub release
         if: steps.existing.outputs.published != 'true'
         uses: softprops/action-gh-release@v2
@@ -416,3 +463,4 @@ jobs:
           tag_name: ${{ needs.resolve.outputs.tag }}
           name: ${{ needs.resolve.outputs.tag }}
           generate_release_notes: true
+          make_latest: legacy

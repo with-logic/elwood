@@ -10,8 +10,10 @@
  * trusted-publisher configuration ID on every trusted release, and
  * @with-logic/elwood-unrecorded has no `gitHead` or `_npmUser` for 0.8.0, no
  * configuration ID for 0.7.0, and neither in its expected shape for 0.6.1.
- * @with-logic/elwood-flaky fails each path's
- * first requests in the ways `interruptions` lists, then answers as recorded.
+ * Above 0.6.1, @with-logic/elwood-deprecated has only versions npm would not
+ * keep `latest` on: deprecated ones and a prerelease.
+ * @with-logic/elwood-flaky fails each path's first requests in the ways
+ * `interruptions` lists, then answers as recorded.
  * @with-logic/registry-down answers 500, @with-logic/registry-garbled answers
  * 200 with a body that is not JSON, @with-logic/registry-oversized answers 200
  * with 2 MiB, and anything else 404.
@@ -36,11 +38,18 @@ delete unrecorded.versions["0.8.0"]._npmUser;
 delete unrecorded.versions["0.7.0"]._npmUser.trustedPublisher.oidcConfigId;
 unrecorded.versions["0.6.1"].gitHead = "main\n::error::forged";
 unrecorded.versions["0.6.1"]._npmUser.trustedPublisher.oidcConfigId = "x".repeat(65);
+const deprecated = copy("@with-logic/elwood-deprecated");
+deprecated.versions["0.9.0-rc.1"] = { ...deprecated.versions["0.8.0"], version: "0.9.0-rc.1" };
+for (const version of ["0.7.0", "0.8.0"]) deprecated.versions[version].deprecated = "fixture";
 
 const packuments = new Map(
-  [JSON.parse(recorded), reconfigured, unrecorded, copy("@with-logic/elwood-flaky")].map(
-    (packument) => [packument.name, packument],
-  ),
+  [
+    JSON.parse(recorded),
+    reconfigured,
+    unrecorded,
+    deprecated,
+    copy("@with-logic/elwood-flaky"),
+  ].map((packument) => [packument.name, packument]),
 );
 
 /** Returns the status and document registry.npmjs.org answers a path with. */

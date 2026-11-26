@@ -86,25 +86,28 @@ test("a lookup retries every transient failure, as often as fetch-retries allows
   assert.match(result.stdout, /: published-here\n/u);
 });
 
-test("a version not on npm publishes", () => {
-  const { publishes, result } = publish({ version: "0.9.0" });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(publishes, "publish --access public\n");
-  assert.match(result.stdout, /: unpublished\n/u);
-});
+// npm, publishing as a dry run, agrees that each can take `latest`.
+for (const [label, options] of [
+  ["a version newer than every one on npm", { version: "0.9.0" }],
+  ["the first version of a package", { name: "@with-logic/elwood-new", version: "1.0.0" }],
+  [
+    "a version newer than every stable, undeprecated one",
+    { name: "@with-logic/elwood-deprecated", version: "0.6.2" },
+  ],
+]) {
+  test(`${label} publishes`, () => {
+    const { publishes, result } = publish(options);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(publishes, "publish --access public\n");
+    assert.match(result.stdout, /: unpublished\n/u);
+  });
+}
 
-// Out of scope for re-runs: npm refuses to move `latest` back.
-test("a version older than the newest one on npm stops at npm's refusal", () => {
-  const { publishes, result } = publish({ version: "0.6.2" });
-  assert.equal(result.status, 1);
-  assert.equal(publishes, "publish --access public\n");
-  assert.match(
-    result.stderr,
-    /Cannot implicitly apply the "latest" tag because .* 0\.8\.0 is higher/u,
-  );
-});
-
+const overtaken = (version) =>
+  `@with-logic/elwood@${version} is older than 0.8.0, which is already on npm, so it cannot take the latest dist-tag. To ship it anyway, publish it by hand with an explicit dist-tag: npm publish --access public --tag <tag>`;
 for (const [label, options, reason] of [
+  ["a version a newer release overtook", { version: "0.6.2" }, overtaken("0.6.2")],
+  ["a prerelease of a version on npm", { version: "0.8.0-rc.1" }, overtaken("0.8.0-rc.1")],
   [
     "a version a maintainer published by hand",
     { version: "0.1.0", releaseCommit: commitOf["0.1.0"] },

@@ -22,6 +22,15 @@ test("GitHub release creation retries independently of npm publication", () => {
   assert.doesNotMatch(githubRelease, /npm publish/);
 });
 
+// GitHub orders `legacy` releases by commit date, so re-running an older
+// release's job leaves the newest release Latest.
+test("the GitHub release leaves Latest to GitHub's commit-date order", () => {
+  assert.match(
+    job("github-release"),
+    /uses: softprops\/action-gh-release@v2\n[\s\S]*?\n {10}make_latest: legacy\n/u,
+  );
+});
+
 // The re-run notes sit directly above `on:`; an edit to them must keep every release path.
 test("the release workflow keeps its push, tag and manual triggers", () => {
   const workflow = readFileSync(
