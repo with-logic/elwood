@@ -1,7 +1,7 @@
 /** Promise observer failures cannot escape Claude hook delivery (C-HOOK-22). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, showComposer, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -48,6 +48,7 @@ test.each([
   installFakes();
   const cwd = tempDir();
   const session = await startClaude({ cwd });
+  showComposer();
   await session.sendPrompt("busy");
   const warnings: unknown[] = [];
   const activities: unknown[] = [];

@@ -5,7 +5,11 @@ import type { QuestionAdapter, QuestionFrame, QuestionIo } from "../../core/ques
 import { questionAnswerFailed } from "../../core/questions/errors.ts";
 import { QuestionNotificationErrors } from "../../core/questions/notification-errors.ts";
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
-import type { ElwoodQuestionRequest, QuestionDefinition } from "../../core/questions/types.ts";
+import type {
+  ElwoodQuestionRequest,
+  QuestionCloseReason,
+  QuestionDefinition,
+} from "../../core/questions/types.ts";
 import type { ValidatedQuestionAnswer } from "../../core/questions/validate.ts";
 import { claudeComposerInputColumn } from "../composer/cursor.ts";
 import { claudeEmptyInputRows } from "../composer/empty-input.ts";
@@ -13,7 +17,9 @@ import { claudeDialogInputGraceMs } from "../dialog-input-grace.ts";
 import { isBlock } from "../hooks/dispatch.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { isQuestions } from "../validate/tool-values.ts";
-import { answerClaudeQuestions } from "./answer.ts";
+import { claudeCloseReason, claudeExpectedAnswers } from "./acceptance.ts";
+import { driveClaudeQuestions } from "./answer.ts";
+import { bindClaudeQuestionAnswers } from "./bind-answers.ts";
 import { type Candidate, candidatePanel, createCandidate, hasPendingHook } from "./candidate.ts";
 import { matchesCandidateHook, matchesNativeQuestions } from "./correlation.ts";
 import { waitForClaudeQuestionInput } from "./input-grace.ts";
@@ -71,7 +77,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
   ): boolean {
     const existing = this.candidates.get(nativeKey);
     // Metadata mirrors cannot release an uncertain native answer reservation.
-    if (existing && (existing.awaitingNativeHookClosure || this.registry.isRetired(nativeKey)))
+    if (existing && (existing.expectedAnswers !== undefined || this.registry.isRetired(nativeKey)))
       return false;
     const previous = this.registry.find(nativeKey);
     this.candidates.set(nativeKey, createCandidate(nativeKey, questions, this.lastNativeQuestions));
@@ -106,10 +112,11 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
         : matchesNativeQuestions(questions, candidate.questions),
     );
     if (matches.length !== 1) return false;
-    this.close(matches[0]!, closeReason(hookEventName, hook));
+    const match = matches[0]!;
+    this.close(match, claudeCloseReason(hookEventName, hook, match.expectedAnswers));
     return true;
   }
-  private close(candidate: Candidate, reason: "answered" | "cancelled" | "unavailable"): void {
+  private close(candidate: Candidate, reason: QuestionCloseReason): void {
     const request = this.registry.find(candidate.nativeKey);
     this.candidates.delete(candidate.nativeKey);
     if (request) this.notifications.capture(() => this.registry.close(request.id, reason));
@@ -146,7 +153,7 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
         this.lastNativeQuestions = candidate.questions;
         candidate.inputReadyAtMs ??= performance.now() + claudeDialogInputGraceMs;
       }
-      if (!candidate.awaitingNativeHookClosure && candidate.seenChrome && hasLiveEmptyComposer) {
+      if (candidate.expectedAnswers === undefined && candidate.seenChrome && hasLiveEmptyComposer) {
         this.close(candidate, "unavailable");
         continue;
       }
@@ -178,18 +185,15 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       this.registry.get(request.id) !== request
     )
       throw questionAnswerFailed();
-    // Composer repaints cannot release native ownership after a guarded write.
-    return await answerClaudeQuestions(request, answers, {
+    const bound = bindClaudeQuestionAnswers(request, answers);
+    const expected = claudeExpectedAnswers(bound);
+    // Elwood owns the questionnaire from its first guarded write.
+    return driveClaudeQuestions(request, bound, {
       ...io,
       write: (input, matches) =>
         io.write(input, matches, () => {
-          candidate.awaitingNativeHookClosure = true;
+          candidate.expectedAnswers = expected;
         }),
     });
   }
-}
-
-function closeReason(hookEventName: unknown, hook: Readonly<Record<string, unknown>>) {
-  if (hookEventName === "PostToolUse") return "answered";
-  return hook["is_interrupt"] === true ? "cancelled" : "unavailable";
 }

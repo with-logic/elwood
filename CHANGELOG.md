@@ -12,6 +12,38 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,
+  for the service's `insufficient_quota` (Codex records it as
+  `usage_limit_exceeded` with `Quota exceeded. Check your plan and billing
+  details.`). It reports `quota_or_credit`, not `network_or_api`, for an HTTP
+  402, and `rate_limited`, not `network_or_api`, when Codex gives up retrying an
+  HTTP 429.
+
+- Require Claude's completion of an Elwood answer to report exactly the
+  submitted values. A completion with other values closes the request as
+  `unavailable`, and the answer fails with `question_answer_failed`. A person's
+  native answer before Elwood writes anything still closes it as answered.
+  Because Claude reports checked labels in check order, Elwood rechecks a box a
+  person checked ahead of the answer's first option, so the completion reports
+  native order. A request whose prompts repeat now fails before any write.
+
+- Confirm Claude alternative-text answers that Claude's editor or review wraps
+  across rows, including a URL or other run with no spaces, and answers that
+  contain tabs or CRLF or CR line endings. Such an answer used to fail with
+  `question_answer_failed` and close the request as `unavailable`. Elwood now
+  pastes every line ending as LF, since Claude would store a CRLF pair as CR.
+- Read a grouped Claude question whose footer keeps a notice's blank cells. A
+  shorter question after a taller one could draw its footer on the notice row,
+  and answering then failed with `question_answer_failed`.
+
+- Confirm Claude alternative-text answers when a native notice left blank cells
+  on the `Type something.` row. On Claude Code 2.1.332 such an answer closed the
+  request as `unavailable` and left the questionnaire open.
+
+- Raise Claude checkbox questions when a native notice left blank cells on the
+  `Submit` or `Next` row. On Claude Code 2.1.332 such a question was never
+  published and ordinary input stayed held.
+
 - A matched Claude low-level text submission can include the original API text,
   the exact native hook prompt, API paste provenance, and a caller `sendId`.
 
@@ -58,10 +90,25 @@ back each entry are listed in `prd/14-conformance.md`.
 - Reject a pending Codex workspace trust answer when a different complete
   workspace menu is observed during synchronized native output.
 
+- Hold a resumed session's queued messages until its configured composer
+  appears. A resume no longer reports `ready` on a composer marker alone, so a
+  `sendMessage` queued at resume cannot land on Codex's loading placeholder or on
+  a startup screen Elwood does not recognize, such as the update offer of Codex
+  0.171. A resumed session now reaches `ready` when the configured composer
+  paints, in about two seconds rather than one.
+
+- Hold `sendPrompt`, `listModels`, `setModel` and Claude's `login` before a
+  session's first readiness until its configured composer appears or a readiness
+  hook marks the session ready. They bypass the readiness queue, and until now
+  only the 60-second backstop held them, so a prompt sent at start could land on a
+  startup screen Elwood does not recognize, such as the update offer of Codex
+  0.171, and its Enter could choose `Update now`.
+
 - Read a session's live screen as text with `readScreen()` on the low-level
   Claude and Codex sessions, with optional scrollback, a cell cursor and the
   active buffer. It returns the live rows even when the host scrolled the
-  terminal handle back.
+  terminal handle back, and the final screen from memory after the session
+  ends.
 
 ## [0.7.0] - 2026-11-24
 

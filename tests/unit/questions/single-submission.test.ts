@@ -34,7 +34,7 @@ test("a single final Enter stays pending until its native completion", async () 
     expect(h.writes).toEqual(["\r"]);
     expect(h.questions.list()).toEqual([request]);
     expect(finished).toBe(false);
-    h.hook("PostToolUse");
+    h.answered({ "Which test note?": "Brief (short)" });
     expect(await pending).toBe("resolved");
     expect(h.observed.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request });
   } finally {

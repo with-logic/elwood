@@ -41,6 +41,7 @@ for (const agent of ["claude", "codex"] as const) {
       if (event.kind === "hook_error") capture();
     });
     try {
+      helper.showComposer(pty);
       const reply = await pty.dispatchHook(session.elwoodSessionId, { hook_event_name: hookName });
       expect(reply.exitCode).toBe(0);
       expect(results).toHaveLength(2);

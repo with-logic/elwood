@@ -5,6 +5,7 @@ import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import type { AskUserQuestionInput } from "../hooks/tool-types.ts";
 import { isQuestions } from "../validate/tool-values.ts";
+import type { ClaudeExpectedAnswers } from "./acceptance.ts";
 import { matchesCandidateHook, matchesNativeQuestions } from "./correlation.ts";
 import { normalizeClaudeQuestionText } from "./rows.ts";
 import { parseClaudeQuestionScreen, readClaudeQuestionPanel } from "./screen.ts";
@@ -12,7 +13,11 @@ import { parseClaudeQuestionScreen, readClaudeQuestionPanel } from "./screen.ts"
 export type Candidate = {
   readonly nativeKey: string;
   readonly questions: readonly QuestionDefinition[];
-  awaitingNativeHookClosure: boolean;
+  /**
+   * Set at Elwood's first guarded write and kept until native closure. From then on composer
+   * repaints cannot release the questionnaire, and its completion must report these values.
+   */
+  expectedAnswers: ClaudeExpectedAnswers | undefined;
   publishable: boolean;
   seenChrome: boolean;
   /** Absolute monotonic milliseconds from `performance.now()` when input becomes ready. */
@@ -26,7 +31,7 @@ export function createCandidate(
 ): Candidate {
   return {
     nativeKey,
-    awaitingNativeHookClosure: false,
+    expectedAnswers: undefined,
     publishable: true,
     seenChrome: false,
     inputReadyAtMs: undefined,

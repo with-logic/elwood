@@ -5,6 +5,7 @@
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { toError } from "../../core/errors.ts";
+import { waitUntilAttachSafe } from "../../core/images/chip-wait.ts";
 import { sessionImageBudget } from "../../core/images/queued-budget.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import { writeQueuedInput } from "../../core/input/index.ts";
@@ -26,13 +27,7 @@ import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { ElwoodScreen, ReadScreenOptions } from "../../terminal/screen.ts";
 import { readTerminalScreen } from "../../terminal/screen.ts";
 import { CommandSurface } from "./commands.ts";
-import {
-  type AttachDriver,
-  type AttachTask,
-  enqueueSubmission,
-  type SubmitKind,
-} from "./image-attach.ts";
-import { notRunningError } from "./not-running.ts";
+import { type AttachTask, enqueueSubmission, type SubmitKind } from "./image-attach.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import { SessionInputOwnership } from "./session-input.ts";
@@ -145,10 +140,9 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
   ): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options, around));
   }
-  async readScreen(options?: ReadScreenOptions): Promise<ElwoodScreen> {
-    const screen = await readTerminalScreen(this.terminal, options);
-    if (screen === undefined) throw notRunningError(this.record.adapter);
-    return screen;
+  /** No status guard: after exit it reads the emulator, then the final screen (C-SCREEN-03). */
+  readScreen(options?: ReadScreenOptions): Promise<ElwoodScreen> {
+    return readTerminalScreen(this.terminal, options);
   }
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     return this.inSession(() => this.loops.create(request));
@@ -188,12 +182,15 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
       ? (ledger?.captureCaller(input, options, attempt) ?? attempt)
       : attempt;
     const control = { ...submissionControlOptions(options), ...(beforeEnter && { beforeEnter }) };
-    const driver: AttachDriver = (paths, signal) => {
+    const driver = (paths: readonly string[], signal: AbortSignal) => {
       ledger?.revoke();
       return this.attachImages(paths, signal);
     };
     const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach, control);
     const budget = sessionImageBudget(this);
-    return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget));
+    // Byte images reach the disk only once the attach could write (C-API-28/44).
+    const writable = (signal: AbortSignal) =>
+      waitUntilAttachSafe(this.automatedTerminal, () => this.queuedInputBlocked(), signal);
+    return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget, writable));
   }
 }
