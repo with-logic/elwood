@@ -20,8 +20,10 @@ const statusFooter = new RegExp(
 // Beside a warnings badge that leaves no room, Codex drops `? for shortcuts` from the hint.
 const hintFooter = /^(?: {2})?(?:← for agents(?: · \? for shortcuts)?|\? for shortcuts)$/;
 // Native Codex right-aligns this badge, and shortens it to `⚠ 3 · f2` when it does not fit;
-// a wrapped status row that ends full has one space before it.
-const warningsBadge = / +⚠ [1-9]\d*(?: warnings? · f2 to view| · f2)\s*$/;
+// a wrapped status row that ends full has one space before it. In Plan mode 0.172 draws
+// `Plan mode (⇧tab to cycle)`, or `Plan mode` when that does not fit, in front of it.
+const warningsBadge =
+  / +(?:Plan mode(?: \(⇧tab to cycle\))? · )?⚠ [1-9]\d*(?: warnings? · f2 to view| · f2)\s*$/;
 // The rest of a wrapped status footer: indented text that is not a caret, bullet or warning row.
 const continuation = /^ {2}[^\s›»❯>•⚠]/;
 // A badge of another shape or count is not the native one: it is not clearance.
