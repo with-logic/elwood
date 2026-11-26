@@ -13,8 +13,8 @@ const queuedSecond = at("queued-footer-wrapped-50-second.json");
 // The last queued editor at 60 columns, whose shorter footer fits on one row.
 const queuedLast = at("queued-footer-60-third.json");
 // The first of three modal questions: its footer puts its last hint on a row of its own at 80
-// columns, splits after the second hint at 60, and takes a row per hint at 40.
-const modalFrames = [80, 60, 40].map(
+// columns, splits after the second hint at 60 and 50, and takes a row per hint at 40.
+const modalFrames = [80, 60, 50, 40].map(
   (cols) => [cols, at(`modal-footer-wrapped-${cols}.json`)] as const,
 );
 const [, modal80] = modalFrames[0]!;
