@@ -38,8 +38,9 @@ npm run check
 5. `vitest run --coverage` with 100% line, branch, function, and statement
    coverage.
 
-CI also runs `node --test tests/workflows/*.test.mjs` to check review triggers
-and secret-scan ranges. Run it after changing either workflow. `npm run check`
+CI also runs `node --test tests/workflows/*.test.mjs` to check review triggers,
+secret-scan ranges, and release re-runs. Run it after changing any of those
+workflows. The release checks read the public npm registry. `npm run check`
 does not include these tests.
 
 Useful narrower commands:

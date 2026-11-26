@@ -6,6 +6,11 @@ name: Release
 #      npm, and creates the GitHub release. (Primary path.)
 #   2. Pushing a tag `vX.Y.Z` directly skips the PR flow and ships.
 #   3. `workflow_dispatch` from the Actions tab with a version input.
+#
+# Re-running a run, whether its failed jobs or all of them, finishes the
+# release. A tag already on the release commit is reused, and a version npm
+# already published from that commit and a published GitHub release are left
+# as they are. A tag on any other commit fails the run.
 on:
   push:
     branches: [main]
@@ -82,9 +87,13 @@ jobs:
           fi
 
           candidate_tag="v$new_version"
-          if git rev-parse -q --verify "refs/tags/$candidate_tag" >/dev/null 2>&1; then
-            echo "::error::version advanced to $new_version but tag $candidate_tag already exists; aborting"
-            exit 1
+          # A re-run finds the tag its first attempt pushed on this commit.
+          if git rev-parse -q --verify "refs/tags/$candidate_tag" >/dev/null; then
+            tagged="$(git rev-parse -q --verify "refs/tags/$candidate_tag^{commit}" || true)"
+            if [ "$tagged" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::version advanced to $new_version but tag $candidate_tag already exists on another commit; aborting"
+              exit 1
+            fi
           fi
 
           echo "Version advanced $old_version -> $new_version; releasing as $candidate_tag."
@@ -217,12 +226,26 @@ jobs:
 
       - name: Create tag
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
+          TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ needs.resolve.outputs.tag }}"
-          git push origin "${{ needs.resolve.outputs.tag }}"
+          # A re-run after a failed publish checks out the tag its first
+          # attempt pushed. Reuse it on the release commit, never elsewhere.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            if [ "$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)" != "$RELEASE_COMMIT" ]; then
+              echo "::error::tag $TAG already exists on another commit"
+              exit 1
+            fi
+            echo "Tag $TAG already names $RELEASE_COMMIT; reusing it."
+          else
+            git tag "$TAG" "$RELEASE_COMMIT"
+          fi
+          # Re-pushing an identical tag succeeds; a different remote tag rejects it.
+          git push origin "refs/tags/$TAG"
 
       # Publishes via npm trusted publishing (OIDC) — no NPM_TOKEN required.
       # This relies on a trusted publisher configured at npmjs.com for
@@ -242,8 +265,22 @@ jobs:
       # configure the trusted publisher at
       # npmjs.com/package/@with-logic/elwood/access and every later release
       # runs tokenlessly through this workflow.
+      #
+      # npm records the commit it published from as `gitHead`. A re-run after
+      # this version reached the registry from this commit has nothing left to
+      # publish. Any other answer publishes, and npm refuses to replace a version.
       - name: Publish to npm
-        run: npm publish --access public
+        env:
+          RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          package="$(node -p 'require("./package.json").name')@$VERSION"
+          if [ "$(npm view "$package" gitHead 2>/dev/null || true)" = "$RELEASE_COMMIT" ]; then
+            echo "$package is already published from $RELEASE_COMMIT; skipping."
+          else
+            npm publish --access public
+          fi
 
   github-release:
     # Re-run the failed job without attempting to publish the npm version again.
@@ -253,7 +290,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The action would append a second copy of the generated notes to a
+      # published release, so a re-run leaves one as it is. A draft left by an
+      # interrupted attempt still goes to the action, which publishes it.
+      - name: Check for a published GitHub release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true)" = false ]; then
+            echo "GitHub release $TAG is already published; leaving it unchanged."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Create GitHub release
+        if: steps.existing.outputs.published != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve.outputs.tag }}
