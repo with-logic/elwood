@@ -2,7 +2,8 @@
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
 real authenticated CLI processes. The Claude entrypoint uses eight valid-model
-turns in three isolated sessions, and each Codex entrypoint uses two.
+turns in three isolated sessions. Each Codex entrypoint uses two, except the
+narrow-pane proof, which uses one.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -97,3 +98,15 @@ session to have been `blocked`, the two requests to close as answered and
 unavailable, and the prompt to be followed by the `? ` question cells Codex
 0.172 draws. The session must then settle at `ready`, and its composer must take
 a second prompt.
+
+## Codex: queued questions in a narrow pane (C-QUESTION-04)
+
+```sh
+ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-narrow.e2e.ts
+```
+
+On the same pinned Codex and model, a 50-column session asks a choice and a
+free-text question in one asynchronous call. At that width Codex 0.172 wraps the
+queued panel's footer hints onto a second row. The proof answers both through
+the public API, and requires both requests to close as answered and `send()` to
+return the final reply.
