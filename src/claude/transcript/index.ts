@@ -183,17 +183,17 @@ export class ClaudeTranscriptWatcher {
     this.interval.unref?.();
   }
 
-  // Drain a cursor in bounded chunks against the SHARED per-scan budget (sync work
-  // bounded across ALL cursors); the read is contained, parse/emit run outside it.
+  // Drain a cursor in bounded chunks against the SHARED per-scan budget; the read is contained,
+  // parse/emit run outside it. Reading nothing new is free, so idle cursors cannot starve others.
   private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): boolean {
     while (budget.chunks > 0) {
       budget.chunks -= 1;
       const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
       if (chunk === undefined) return true; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
-      // At the end. Reading nothing new spends no budget, so idle transcripts cannot starve others.
-      else if (!chunk.canContinueNow) budget.chunks += 1;
-      if (!chunk.canContinueNow) return true;
+      if (chunk.canContinueNow) continue;
+      if (chunk.text.length === 0) budget.chunks += 1;
+      return true;
     }
     return false; // budget spent with more to read: the next scan resumes here
   }
