@@ -6,8 +6,8 @@
 import { expect, test } from "vitest";
 import { buildCodexShellCommand } from "../../src/codex/command.ts";
 import {
-  requestedCodexEffort,
   hasUnrecognizedDecidingCodexEffortOverride,
+  requestedCodexEffort,
 } from "../../src/codex/config/effort.ts";
 import type { StartCodexOptions } from "../../src/index.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
