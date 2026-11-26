@@ -5,7 +5,7 @@
  * Implements PRD §12A.2/§12A.10 and C-CLI-05/C-CLI-09/C-CLI-26.
  */
 
-import { claudeAutoModeOfferRuleId } from "../../claude/auto-mode-offer.ts";
+import { claudeAutoModeOfferRuleId } from "../../claude/auto-mode/offer.ts";
 import {
   blockingTrustSpecs,
   type TrustPromptSpec,

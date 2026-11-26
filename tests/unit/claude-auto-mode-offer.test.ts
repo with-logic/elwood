@@ -1,6 +1,9 @@
 /** Claude's captured auto-mode setup offer is a blocking dialog (PRD §5.3, C-ATTN-09). */
-import { expect, test } from "vitest";
-import { isClaudeAutoModeOffer } from "../../src/claude/auto-mode-offer.ts";
+import { expect, onTestFinished, test, vi } from "vitest";
+import {
+  isClaudeAutoModeOffer,
+  isClaudeAutoModeOfferMenu,
+} from "../../src/claude/auto-mode/offer.ts";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
@@ -74,4 +77,18 @@ test.each([
   ],
 ])("C-ATTN-09 an incomplete offer shape is not recognized: %s", (_name, text) => {
   expect(isClaudeAutoModeOffer(text)).toBe(false);
+});
+
+/** Counts `String.prototype.split` calls for the rest of the test. */
+function countSplits() {
+  const split = vi.spyOn(String.prototype, "split");
+  onTestFinished(() => split.mockRestore());
+  return split;
+}
+
+test("C-ATTN-09 a frame without the offer's title is not split", () => {
+  const split = countSplits();
+  expect(isClaudeAutoModeOffer(composer)).toBe(false);
+  expect(isClaudeAutoModeOfferMenu(composer)).toBe(false);
+  expect(split).not.toHaveBeenCalled();
 });

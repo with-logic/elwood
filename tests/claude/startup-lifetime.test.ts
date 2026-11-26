@@ -96,7 +96,7 @@ test("C-CLAUDE-22 disposal drops a write-failure warning buffered before start r
   }
 });
 
-test("C-CLAUDE-22 reentrant stop suppresses later browser failures but preserves trust diagnostics", async () => {
+test("C-CLAUDE-22 reentrant stop suppresses later non-trust decline failures but preserves trust diagnostics", async () => {
   installFakes();
   let deliver: startupFrame.FrameWarningSink["emitWarnings"] = () => {};
   const createGate = startupFrame.createStartupWarningGate;
@@ -128,6 +128,7 @@ test("C-CLAUDE-22 reentrant stop suppresses later browser failures but preserves
     deliver([
       { ...failure, label: "workspace_trust" },
       { ...failure, label: "browser_tools" },
+      { ...failure, label: "auto_mode_setup" },
       { ...failure, label: "workspace_trust" },
     ]);
     await stopping;
