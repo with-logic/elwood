@@ -808,6 +808,47 @@ across physical rows** on a narrow terminal. Its option format is version-couple
   dialog waiting. From 2.1.310 evidence, never do that with a relative arrow and a
   separate Enter (see "Claude trust selection reset" below).
 
+**Claude 2.1.329 and later disclose a folder's hooks on the workspace prompt.** When
+the project's `.claude/settings.json` declares hooks, the prompt shows
+`⚠ This folder configures hooks that can run commands without asking, declared in
+.claude/settings.json` and `Trusting this folder loads .claude/settings.json (runs
+commands).` between `Claude Code'll be able to read, edit, and execute files here.` and
+`Security guide`, with the cursor on `No, exit`. At Elwood's 100-column startup minimum
+the first row wraps before `.claude/settings.json`; at 120 columns it fits on one row
+(`tests/fixtures/claude-2.1.332/trust/workspace-hooks-*.txt`). Hooks in
+`.claude/settings.local.json` draw the same rows naming that file. Hooks in both files
+draw `declared in .claude/settings.json and .claude/settings.local.json` and `loads
+.claude/settings.json (runs commands) and .claude/settings.local.json (runs
+commands).` A status line command alone, with no hooks, draws the `.claude/settings.json`
+rows too, and trusting the folder runs it. Hooks in a Git repository root's
+`.claude/settings.json` draw no rows for a launch from a subdirectory, and they do not
+run there once that launch is trusted: Claude reads project settings from the launch
+directory only. Earlier versions do not disclose hooks (2026-11-26, a `SessionStart`
+hook in untrusted scratch projects in a private config dir). For hooks in
+`.claude/settings.json`, 2.1.144, 2.1.231, 2.1.290, 2.1.310 and 2.1.322 through
+2.1.325 draw the plain prompt; 2.1.326 through 2.1.328 draw the load row alone, which
+Elwood does not verify, so it holds that prompt; 2.1.329 through 2.1.332 draw both
+rows. Hooks in `.claude/settings.local.json` drew the same on 2.1.325, 2.1.326,
+2.1.328, 2.1.329 and 2.1.330, and a status line command alone drew both rows on
+2.1.329 and 2.1.330. A plain prompt from a Claude before 2.1.329 is therefore no
+evidence that nothing runs, which is why the model probe refuses every workspace
+prompt from such a Claude (§5.3). Accepting runs the project's hooks: a `SessionStart`
+hook ran as the trusted session started. C-E2E-28 runs the real prompt for each settings file under
+`autotrust` and through `answerDialog()`, checks that `listClaudeModels` refuses it,
+and checks that the probe refuses the plain prompt of an installed 2.1.325 (§5.3). Claude does not wait for a project `SessionStart`
+hook before it shows the composer: with a hook that slept 20 s, `answerDialog()`
+resolved and the session reached `ready` about 2.3 s after the answer, and the hook
+finished at about 22 s. A slow hook therefore cannot push an answer that trusted the
+folder past `answerDialog()`'s 12 s default.
+
+**Claude 2.1.332 draws other load rows that Elwood does not verify.** A folder with
+only `.mcp.json` draws `Trusting this folder loads .mcp.json here or above (MCP
+servers).` in the hooks rows' place, with no warning row. A folder whose
+`.claude/settings.json` enables a plugin from a project marketplace, and declares no
+hooks, draws `Trusting this folder loads .claude/settings.json.` Either row alone is
+unknown prose, so `autotrust: true` stays `blocked` on such a folder and the model
+probe fails when readiness runs out, without trusting it or starting the MCP server.
+
 **Claude 2.1.331 displayed a launch subdirectory but persisted trust at the
 repository root.** The discovery matcher verifies the full path in the native
 `Accessing workspace:` prelude and derives the scope from local Git metadata.
