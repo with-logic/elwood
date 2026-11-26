@@ -12,6 +12,7 @@
 import { describe, expect, test } from "vitest";
 import { initialReady } from "../../src/runtime/readiness/initial-ready.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
+import { noStartupScreens } from "../helpers/startup-screens.ts";
 
 describe("C-API-28 readiness blocking gate + deadline", () => {
   test("a dialog held PAST the deadline does not release readiness until it clears", async () => {
@@ -51,7 +52,7 @@ const facts = (composer_visible: boolean, blocking_prompt_visible = false) => ({
 });
 
 /** An adapter whose configured-composer check accepts every frame. */
-const configured = { configured: () => true, onBackstop: () => {} };
+const configured = { ...noStartupScreens, configured: () => true, onBackstop: () => {} };
 
 describe("C-API-28 createReadinessGate per-frame", () => {
   test("on RESUME the configured composer marks ready — but NOT while a dialog is up", () => {
@@ -66,6 +67,7 @@ describe("C-API-28 createReadinessGate per-frame", () => {
   test("before readiness writes wait until a configured composer is seen; readiness does not", () => {
     let shown = false;
     const gate = createReadinessGate(() => {}, false, {
+      ...noStartupScreens,
       configured: () => shown,
       onBackstop: () => {},
     });

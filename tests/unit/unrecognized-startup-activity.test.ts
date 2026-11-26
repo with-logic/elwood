@@ -1,4 +1,7 @@
-/** Unknown startup snapshots preserve the bound and Unicode text and redact API keys (C-ATTN-06). */
+/**
+ * Unknown startup snapshots preserve the bound and Unicode text and redact API keys, at the
+ * backstop and from the readiness deadline (C-ATTN-06, C-ATTN-11).
+ */
 import { expect, test } from "vitest";
 import { unrecognizedStartupActivity } from "../../src/core/activity/startup.ts";
 
@@ -126,4 +129,15 @@ test("C-ATTN-06 a wide screen of sk- runs that do not wrap redacts without resca
   const redacted = text(new Array(50).fill(row).join("\n"));
   expect(performance.now() - started).toBeLessThan(500);
   expect(redacted.split("\n").at(-1)).toBe("sk-[REDACTED] x");
+});
+
+test("C-ATTN-11 the readiness deadline's report carries its label and the same redaction", () => {
+  const activity = unrecognizedStartupActivity(
+    "claude",
+    "session",
+    `  ${key}\n\n  Choose a text style`,
+    "initial_ready_deadline",
+  );
+  expect(activity).toMatchObject({ label: "initial_ready_deadline", kind: "unrecognized_startup" });
+  expect(activity.text).toBe("  sk-[REDACTED]\n\n  Choose a text style");
 });

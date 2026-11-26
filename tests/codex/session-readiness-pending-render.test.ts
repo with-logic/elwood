@@ -63,10 +63,11 @@ test("C-API-28 the deadline does not mark on a composer that a repaint in progre
   await vi.advanceTimersByTimeAsync(2_000);
   expect(writes).toEqual([]);
   expect(statuses).toEqual([]);
-  // Rendered, the screen shows no configured composer, so nothing marks or writes.
+  // Rendered, the screen is one Elwood does not recognize: it blocks (C-ATTN-11), and
+  // nothing marks or writes.
   await paint(endSync);
   await vi.advanceTimersByTimeAsync(2_000);
-  expect(statuses).toEqual([]);
+  expect(statuses).toEqual(["blocked"]);
   expect(writes).toEqual([]);
 });
 

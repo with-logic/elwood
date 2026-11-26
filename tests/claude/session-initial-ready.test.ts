@@ -1,7 +1,8 @@
 /**
  * Conformance for Claude bounded initial-readiness (PRD §5.3, C-API-19, C-API-28):
- * readiness is hook-backed. The fallback deadline requires the verified composer,
- * and the backstop diagnoses an unfamiliar screen while holding queued input.
+ * readiness is hook-backed. The fallback deadline requires the verified composer. From
+ * the deadline an unfamiliar screen blocks the session (C-ATTN-11), and the backstop
+ * diagnoses it, while queued input is held.
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -57,14 +58,8 @@ describe("ClaudeSessionApi bounded initial readiness", () => {
   });
 });
 
-const themePicker = [
-  "Choose the text style that looks best with your terminal",
-  "To change this later, run /theme",
-  "",
-  "❯ ✔ Auto (match terminal)",
-  "    Light mode",
-  "    Dark mode",
-].join("\n");
+/** Claude 2.1.332's text-style picker on a first launch. */
+const themePicker = capturedFrame("claude-2.1.332/startup/theme-picker").trimEnd();
 
 async function startObservedSession() {
   installFakes();
@@ -86,19 +81,39 @@ async function paint(session: ClaudeSessionApi, bytes: string): Promise<void> {
   await settled;
 }
 
+/** No readiness hook arrives before the verified composer. */
+const noHook = async (_session: ClaudeSessionApi) => undefined;
+
 test.each([
-  ["sendMessage", "verified composer"],
-  ["sendPrompt", "verified composer"],
-  ["sendMessage", "InstructionsLoaded"],
-  ["sendPrompt", "InstructionsLoaded"],
-] as const)("C-API-28 C-ATTN-06 Claude holds %s at the backstop until %s", async (method, evidence) => {
+  ["sendMessage", "verified composer", noHook],
+  ["sendPrompt", "verified composer", noHook],
+  ["sendMessage", "InstructionsLoaded", instructionsLoaded],
+  ["sendPrompt", "InstructionsLoaded", instructionsLoaded],
+] as const)("C-API-28 C-ATTN-06 C-ATTN-11 Claude holds %s on an unrecognized screen until %s", async (method, _, hook) => {
   const { session, warnings, activities } = await startObservedSession();
   await paint(session, tty(themePicker));
-  await vi.advanceTimersByTimeAsync(10_000);
+  await vi.advanceTimersByTimeAsync(9_999);
   expect(session.status).toBe("running");
+  expect(activities.filter(({ kind }) => kind === "attention")).toEqual([]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(session.status).toBe("blocked");
   expect(warnings).toEqual([]);
+  const report = {
+    elwoodSessionId: session.elwoodSessionId,
+    agent: "claude",
+    source: "terminal",
+    kind: "unrecognized_startup",
+    label: "initial_ready_deadline",
+    text: themePicker,
+  };
+  expect(
+    activities.filter(({ kind }) => kind === "attention" || kind === "unrecognized_startup"),
+  ).toEqual([
+    expect.objectContaining({ kind: "attention", label: "claude-unrecognized-startup" }),
+    report,
+  ]);
   await vi.advanceTimersByTimeAsync(50_000);
-  expect(session.status).toBe("running");
+  expect(session.status).toBe("blocked");
   const warning = {
     elwoodSessionId: session.elwoodSessionId,
     agent: "claude",
@@ -122,29 +137,24 @@ test.each([
     },
   ]);
   expect(activities.filter(({ kind }) => kind === "unrecognized_startup")).toEqual([
-    {
-      elwoodSessionId: session.elwoodSessionId,
-      agent: "claude",
-      source: "terminal",
-      kind: "unrecognized_startup",
-      label: "initial_ready_backstop",
-      text: themePicker,
-    },
+    report,
+    { ...report, label: "initial_ready_backstop" },
   ]);
   const sent = session[method]("hello");
   void sent.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(1_000);
   expect(ptys[0]!.writes).toEqual([]);
 
-  if (evidence === "InstructionsLoaded") {
-    await instructionsLoaded(session);
-  } else {
-    await paint(session, claudeTty(claudeComposer, false));
-    await vi.advanceTimersByTimeAsync(500);
-    expect(session.status).toBe("running");
-    expect(ptys[0]!.writes).toEqual([]);
-    await paint(session, claudeTty(claudeComposer));
-  }
+  // A readiness hook waits for the verified composer, as during a recognized dialog.
+  await hook(session);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(session.status).toBe("blocked");
+  expect(ptys[0]!.writes).toEqual([]);
+  await paint(session, claudeTty(claudeComposer, false));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(session.status).toBe("blocked");
+  expect(ptys[0]!.writes).toEqual([]);
+  await paint(session, claudeTty(claudeComposer));
   await vi.advanceTimersByTimeAsync(500);
   expect(activities).toContainEqual(expect.objectContaining({ kind: "status", status: "ready" }));
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
@@ -168,14 +178,16 @@ test("C-ATTN-06 Claude delivers startup diagnostics before listener-initiated ex
   const { session } = await startObservedSession();
   const order: string[] = [];
   let stopped: Promise<void> | undefined;
+  const backstop = (event: ElwoodActivityEvent) =>
+    event.kind === "unrecognized_startup" && event.label === "initial_ready_backstop";
   session.on("activity", (event) => {
-    if (event.kind === "unrecognized_startup") {
+    if (backstop(event)) {
       order.push("first screen listener");
       stopped = session.stop();
     }
   });
   session.on("activity", (event) => {
-    if (event.kind === "unrecognized_startup") order.push("second screen listener");
+    if (backstop(event)) order.push("second screen listener");
   });
   session.on("warning", (event) => {
     if (event.code === "initial_ready_backstop") order.push("warning");

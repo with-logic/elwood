@@ -8,7 +8,6 @@ import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
 import { stagedInputPending, withAutomatedInput } from "../../runtime/session/session-input.ts";
-import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -25,6 +24,7 @@ import { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
+import { createClaudeReadinessGate } from "./readiness.ts";
 import {
   type BuildClaudeSessionInput,
   buildClaudeObservers,
@@ -67,14 +67,14 @@ export async function buildClaudeSession(
     isLive: () => session?.closing.signal.aborted === false,
     manualTrust: !autotrust,
   });
-  const readiness = createStartupReadinessGate(
+  const readiness = createClaudeReadinessGate(
     () => {
       dialogs.discovery.endStartup();
       observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
       void session?.completeInitialReady();
     },
     resumed,
-    { session: observers, warnings: warnGate, events: emitter, configured: idleComposerClearance },
+    { elwoodSessionId, warnings: warnGate, events: emitter, configured: idleComposerClearance },
   );
   const bridge = await startClaudeHookBridge(
     runtime.socketPath,

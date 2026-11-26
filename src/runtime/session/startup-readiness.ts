@@ -1,15 +1,20 @@
-/** Publish the initial-readiness backstop and its last settled screen (PRD §5.4, C-ATTN-06). */
+/**
+ * Publish an unrecognized startup screen from the readiness deadline, and the
+ * initial-readiness backstop with its last settled screen (PRD §5.4, C-ATTN-06, C-ATTN-11).
+ */
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { unrecognizedStartupActivity } from "../../core/activity/startup.ts";
 import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.ts";
 import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import { initialBackstopMs } from "../readiness/initial-ready.ts";
-import { createReadinessGate, type ReadinessGate } from "./readiness.ts";
+import { createReadinessGate, type ReadinessGate, type SettledFrame } from "./readiness.ts";
 
 type StartupDiagnostics = {
   readonly session: { readonly agent: ElwoodAgentKind; readonly elwoodSessionId: string };
   readonly configured: (frame: string, cols?: number) => boolean;
+  /** The adapter's own screens before its configured composer (C-ATTN-11). */
+  readonly nativeStartupScreen: (frame: string) => boolean;
   readonly warnings: {
     emitWarnings(warnings: readonly InitialReadyBackstopWarning[]): void;
     duringDelivery?(deliver: () => void): void;
@@ -21,38 +26,84 @@ type StartupDiagnostics = {
 
 /**
  * Retain the last settled startup screen until readiness, cancellation, or the backstop.
- * The backstop emits a content-free warning. When no recognized dialog holds readiness
- * it also emits a bounded copy of the captured screen as activity.
+ * The backstop emits a content-free warning. When no recognized dialog or startup
+ * automation holds readiness it also emits a bounded copy of the captured screen as
+ * activity. An unrecognized startup screen's report is activity too, emitted while a frame
+ * is observed. The deadline re-reads the terminal, which a resize can have reflowed.
  */
 export function createStartupReadinessGate(
   onReady: () => void,
   resumed: boolean,
-  { session: { agent, elwoodSessionId }, configured, warnings, events }: StartupDiagnostics,
+  {
+    session: { agent, elwoodSessionId },
+    configured,
+    nativeStartupScreen,
+    warnings,
+    events,
+  }: StartupDiagnostics,
 ): ReadinessGate & { observeStartupFrame(terminal: ElwoodTerminal): TerminalSnapshot } {
   const duringDelivery = warnings.duringDelivery ?? ((deliver: () => void) => deliver());
   let screen = "";
   let capture = true;
+  // Frames are watched until readiness or cancellation.
+  let watching = true;
+  // The live terminal and its last settled text, kept to reject a stale frame at the deadline.
+  let terminal: ElwoodTerminal | undefined;
+  let completedText: string | undefined;
+  // Read when a frame is classified, which the deadline can do long after it rendered: output
+  // since then, or a repaint in progress, makes the frame stale rather than completed.
+  const frameCompleted = () =>
+    watching &&
+    terminal !== undefined &&
+    completedText !== undefined &&
+    settledLiveSnapshot(terminal)?.text === completedText;
+  /** Settle on the terminal's current frame, or on no completed frame while it repaints. */
+  const settle = (from: ElwoodTerminal): TerminalSnapshot | undefined => {
+    terminal = from;
+    const settled = watching ? settledLiveSnapshot(from) : undefined;
+    completedText = settled?.text;
+    if (settled && capture) screen = settled.text;
+    return settled;
+  };
+  // At the deadline a resize can have reflowed the screen without the CLI repainting it.
+  const deadlineFrame = (): SettledFrame | undefined => {
+    const settled = terminal && settle(terminal);
+    return settled && { text: settled.text, cols: settled.cols };
+  };
   const stopCapture = () => {
     screen = "";
     capture = false;
   };
+  const stopWatching = () => {
+    stopCapture();
+    watching = false;
+  };
   const gate = createReadinessGate(
     () => {
       onReady();
-      stopCapture();
+      stopWatching();
     },
     resumed,
     {
       configured,
-      onBackstop: (dialogHeld) => {
-        const completed = screen;
+      nativeStartupScreen,
+      completed: frameCompleted,
+      // A listener that throws reaches the frame observer, which reports it (C-API-72).
+      report: (text) =>
+        events.emit(
+          "activity",
+          unrecognizedStartupActivity(agent, elwoodSessionId, text, "initial_ready_deadline"),
+          true,
+        ),
+      onBackstop: (recognizedHold) => {
+        const backstopScreen = screen;
         stopCapture();
         duringDelivery(() => {
           try {
-            if (!dialogHeld)
+            if (!recognizedHold)
               events.emit(
                 "activity",
-                unrecognizedStartupActivity(agent, elwoodSessionId, completed),
+                unrecognizedStartupActivity(agent, elwoodSessionId, backstopScreen),
                 true,
               );
           } finally {
@@ -74,19 +125,17 @@ export function createStartupReadinessGate(
   );
   return {
     ...gate,
+    setDeadlineListener: (listener) => gate.setDeadlineListener(() => listener(deadlineFrame())),
     ready: {
       ...gate.ready,
       cancel() {
-        stopCapture();
+        stopWatching();
         gate.ready.cancel();
       },
     },
-    observeStartupFrame(terminal) {
+    observeStartupFrame(rendered) {
       // A synchronized repaint can span PTY writes. Keep the previous settled text.
-      const settled = capture ? settledLiveSnapshot(terminal) : undefined;
-      if (!settled) return cachedLiveSnapshot(terminal);
-      screen = settled.text;
-      return settled;
+      return settle(rendered) ?? cachedLiveSnapshot(rendered);
     },
   };
 }
