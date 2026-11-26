@@ -120,7 +120,7 @@ async function writePastedPrompt(
     else nudges?.start();
   } catch (error) {
     if (awaitInputConsumption || signal?.aborted)
-      await requestComposerCleanup(terminal, guard?.blocked);
+      await requestComposerCleanup(terminal, guard?.blocked, nudges?.enteredInputConsumed);
     throw awaitInputConsumption ? submissionError(error) : error;
   }
 }

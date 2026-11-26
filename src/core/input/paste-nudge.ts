@@ -36,6 +36,11 @@ export function preparePasteNudges(
     retryAt = Date.now() + delayMs;
   };
   const hasRenderedAfterEnter = (requireProof: boolean) => hasFreshFrame?.() ?? !requireProof;
+  /** A fresh post-Enter frame shows input that is empty and not the frame from before it. */
+  const consumed = (requireProof: boolean): boolean => {
+    const empty = guard.emptyFrame?.();
+    return hasRenderedAfterEnter(requireProof) && !!empty && empty !== priorEmptyFrame;
+  };
   let attempts = 0;
   let observations = 0;
   const retry = async (awaitInputConsumption: boolean): Promise<Observation> => {
@@ -53,11 +58,10 @@ export function preparePasteNudges(
     const recoveryRevoked = revoked?.();
     if (!awaitInputConsumption && recoveryRevoked) return "revoked";
     if (unsafe) return "pending";
-    const fresh = hasRenderedAfterEnter(awaitInputConsumption);
-    const empty = guard.emptyFrame?.();
     // A geometry-only token change cannot replace post-Enter rendered output.
-    if (fresh && empty && empty !== priorEmptyFrame) return "accepted";
+    if (consumed(awaitInputConsumption)) return "accepted";
     if (recoveryRevoked) return "revoked";
+    const fresh = hasRenderedAfterEnter(awaitInputConsumption);
     if (!(fresh && staged())) return guard.emptyFrame ? "pending" : "legacy_done";
     return retry(awaitInputConsumption);
   };
@@ -90,7 +94,9 @@ export function preparePasteNudges(
       wakeup.dispose();
     }
   };
-  return { beforeEnter, start: schedule, awaitEmptyInput };
+  /** The same proof, for cleanup after the wait ends: it never retires unentered input. */
+  const enteredInputConsumed = () => consumed(true);
+  return { beforeEnter, start: schedule, awaitEmptyInput, enteredInputConsumed };
 }
 
 async function tryRecoveryEnter(writeEnter: () => void | Promise<void>): Promise<void> {
