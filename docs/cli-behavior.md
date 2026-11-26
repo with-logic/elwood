@@ -2066,6 +2066,25 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   `queued` user record shows the message delivered. Measured in three sessions on 2026-11-25:
   an interrupt about 100 ms after the hook and one during a 3 s caller hold both re-fired, the late
   one did not (C-API-62, `tests/e2e/guidance-interrupt-claude.e2e.ts`).
+- A tool-free turn with guidance still queued is followed at once by the queued turn, and
+  Claude 2.1.332's hooks name both. Its `Stop` hook carries the turn's `prompt_id`: the essay's
+  `Stop` named the essay's ID, and the queued turn's `Stop` named the new one. The screen kept its
+  working footer from the first turn into the queued one. Elwood's rendered turn watcher saw no
+  end in the 11.3 s between the two `Stop`s and reported the end 18 ms after the second. With a
+  caller handler that allowed the guidance 3.6 s after the first `Stop`, the idle composer
+  painted 27 ms after that `Stop`, while the handler was still screening. The `enqueue` record
+  followed the allow by 16 ms, and the rendered turn restarted 63 ms after it. In a turn with
+  tools, guidance allowed during the first of two `sleep` calls was delivered at that call's end:
+  `PostToolUse`, `PostToolBatch` 78 ms later, then the `remove` record 21 ms after that, before
+  the next model request, with one `Stop` for the turn. Elwood used to mark the session ready at
+  the first `Stop` and stay ready while Claude ran the queued turn; it now holds that `Stop`
+  (PRD §6.5). Measured in five private-config sessions on 2026-11-26 (C-HOOK-24,
+  `tests/e2e/guidance-queued-turn-claude.e2e.ts`).
+- In one run, a caller `UserPromptSubmit` handler held queued guidance past Elwood's 25 s hook
+  timeout: the essay took 48 s under load, and the handler waited for its `Stop`. Claude 2.1.332
+  then ran nothing for that guidance, and no queued turn followed the `Stop` within 150 s. A `Stop`
+  held for such guidance ends at the 120 s hang limit with `queued_turn_unconfirmed`. The e2e
+  raises `hookTimeoutMs` so its handler can answer after the `Stop`.
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

@@ -30,9 +30,14 @@ type Seen = {
   readonly firstStop: Promise<void>;
 };
 
-/** A session writing a tool-free essay, with guidance queued behind it once Claude runs it. */
-async function essayWithGuidance(
+const essay = "Write a detailed 400-word essay about the history of terminals. Do not use tools.";
+const sleeps =
+  "Use the Bash tool to run `sleep 6`. When it finishes, use the Bash tool again to run `sleep 3`. Then reply with one short sentence.";
+
+/** A running turn with guidance written into it: after its prompt's hook, or its first tool. */
+async function turnWithGuidance(
   screen?: (seen: Seen) => Screen,
+  prompt = essay,
 ): Promise<{ session: ClaudeSessionApi; seen: Seen }> {
   const project = makeProject("claude");
   const isGuidance = (prompt: string) => prompt.includes("Coordinator note");
@@ -59,13 +64,13 @@ async function essayWithGuidance(
         handler && isGuidance(event.prompt) ? handler(event) : undefined,
     },
   });
-  let promptHeard = false;
+  let started = false;
+  const startHook = prompt === essay ? "UserPromptSubmit" : "PreToolUse";
   try {
     session.on("hook", (event) => {
-      if (event.hook_event_name === "UserPromptSubmit") {
-        if (isGuidance(event.prompt)) seen.guidanceAfterStops.push(seen.stops);
-        else promptHeard = true;
-      }
+      if (event.hook_event_name === "UserPromptSubmit" && isGuidance(event.prompt))
+        seen.guidanceAfterStops.push(seen.stops);
+      else if (event.hook_event_name === startHook) started = true;
       if (event.hook_event_name !== "Stop") return;
       seen.stops += 1;
       stopped();
@@ -75,14 +80,11 @@ async function essayWithGuidance(
     session.on("status", (event) => {
       if (event.status === "ready") seen.readyAfterStops.push(seen.stops);
     });
-    await session.sendMessage(
-      "Write a detailed 400-word essay about the history of terminals. Do not use tools.",
-    );
-    // Claude is running the essay once its own prompt fires UserPromptSubmit.
-    await waitFor(() => (promptHeard ? true : undefined), "essay prompt hook", 60_000);
+    await session.sendMessage(prompt);
+    await waitFor(() => (started ? true : undefined), startHook, 90_000);
     await sleep(1_000);
     await session.sendGuidance(
-      "Coordinator note: after the essay, write a 200-word poem about keyboards. Do not use tools.",
+      "Coordinator note: after that, write a 200-word poem about keyboards. Do not use tools.",
     );
     return { session, seen };
   } catch (error) {
@@ -102,7 +104,7 @@ test(
   "C-HOOK-24 real Claude stays running through the turn that runs queued guidance",
   options,
   async () => {
-    const { session, seen } = await essayWithGuidance();
+    const { session, seen } = await turnWithGuidance();
     try {
       await finalReady(session, seen, 2);
       assert.deepEqual(seen.guidanceAfterStops, [0], "the note queued behind the essay");
@@ -117,7 +119,7 @@ test(
 
 test("C-HOOK-24 real Claude blocked guidance holds no Stop", options, async () => {
   const block: Screen = async () => ({ decision: "block", reason: "Not now." });
-  const { session, seen } = await essayWithGuidance(() => block);
+  const { session, seen } = await turnWithGuidance(() => block);
   try {
     await finalReady(session, seen, 1);
     assert.deepEqual(seen.guidanceAfterStops, [0]);
@@ -142,12 +144,33 @@ test(
         screened.push(seen.stops);
         return undefined;
       };
-    const { session, seen } = await essayWithGuidance(allowLate);
+    const { session, seen } = await turnWithGuidance(allowLate);
     try {
       await finalReady(session, seen, 2);
       assert.deepEqual(screened, [1], "the handler answered after the essay's Stop");
       assert.equal(seen.stops, 2);
       assert.deepEqual(seen.readyAfterStops, [2], "no ready while the handler screened");
+      assert.deepEqual(seen.warnings, []);
+    } finally {
+      await cleanup(session);
+    }
+  },
+);
+
+test(
+  "C-HOOK-24 real Claude guidance delivered at a tool boundary holds no Stop",
+  options,
+  async () => {
+    const { session, seen } = await turnWithGuidance(undefined, sleeps);
+    try {
+      await finalReady(session, seen, 1);
+      assert.deepEqual(seen.guidanceAfterStops, [0], "the note arrived during the first sleep");
+      assert.equal(seen.stops, 1, "Claude answers the note inside the same turn");
+      assert.deepEqual(seen.readyAfterStops, [1]);
+      const held = session
+        .statusDecisions()
+        .filter((decision) => decision.reason.includes("queued"));
+      assert.deepEqual(held, [], "the tool boundary delivered the note, so the Stop was not held");
       assert.deepEqual(seen.warnings, []);
     } finally {
       await cleanup(session);

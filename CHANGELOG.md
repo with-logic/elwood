@@ -20,7 +20,15 @@ back each entry are listed in `prd/14-conformance.md`.
   counts the footer at the 60-second backstop and emits a new `codex_effort_unconfirmed`
   warning. With no `reasoningEffort`, or `none`, `ready` can still come first, including
   when the effort comes from `configOverrides`, a profile or config.toml.
-
+- A Claude session no longer reports `ready` while Claude runs guidance that was
+  queued when its turn stopped. Claude runs that guidance at once as a new turn,
+  and Elwood used to mark the session ready at the first `Stop` and stay ready
+  through the new turn. The session now stays `running` until the new turn's
+  `Stop`, including while a `UserPromptSubmit` handler is still screening the
+  guidance. Guidance the handler blocks, or that a tool call delivered inside the
+  turn, holds nothing. If neither the new turn's `Stop` nor Claude's idle composer
+  arrives within 120 s, the session becomes ready with a new content-free
+  `queued_turn_unconfirmed` warning.
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed
   before Elwood saw the empty composer. This was most likely in auto mode. Elwood

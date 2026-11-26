@@ -275,6 +275,39 @@ The `Stop` hook is the canonical signal that a Claude turn completed and the
 session is ready for the next prompt. If a `Stop` handler blocks stopping and
 returns feedback to Claude, Elwood must not mark the session ready.
 
+An unblocked `Stop` does not mark the session ready while guidance is still
+queued behind the turn it ends (C-HOOK-24). Claude runs guidance still queued at
+a `Stop` at once, as a new turn under a new prompt ID with its own `Stop`, so the
+session stays `running` until that turn. Elwood decides this from state it owns
+and from the `prompt_id` on Claude's hooks, never from the transcript:
+
+- A `UserPromptSubmit` is guidance when it names the running turn's prompt ID, or
+  arrives while a `Stop` is held. The caller's handler decides it: blocked
+  guidance never runs, and allowed guidance is queued.
+- A tool boundary delivers allowed guidance inside the running turn: a
+  `PostToolUse`, `PostToolUseFailure`, or `PostToolBatch` hook after the answer.
+- A `Stop` is held when allowed guidance is still queued, a handler is still
+  screening guidance, or guidance Elwood wrote into the running turn less than
+  2 s earlier has not fired its `UserPromptSubmit`.
+
+A held `Stop`'s `hook_turn_ended` is an ignored status decision. The hold ends
+when:
+
+- a `Stop` under another prompt ID arrives: the queued turn's. It marks the
+  session ready unless guidance is queued behind that turn too.
+- all of the held guidance is blocked, or its unheard guidance passes 2 s. The
+  session becomes ready at once.
+- Claude's idle composer ends the rendered turn (`rendered_turn_ended`) while no
+  handler is screening and no written guidance is unheard. Until then that
+  evidence is ignored too.
+- 120 s pass with none of these. The session becomes ready with the
+  `queued_turn_unconfirmed` warning (§5.7).
+
+Guidance typed into the terminal whose `UserPromptSubmit` arrives after the
+`Stop`, and turns Claude starts on its own, are not held. Guidance allowed after a
+tool's last hook can be delivered inside the turn with no later tool hook. Its
+`Stop` is held until the idle composer, so readiness comes late, never early.
+
 The headless terminal screen model may be used for startup automation,
 environment warnings, diagnostics, or UI hints. On a **cold start** it is not the
 source of truth for readiness — a rendered composer there is only a placeholder
