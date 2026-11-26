@@ -142,16 +142,18 @@ function optionalPermissionsWarning({ settingsLoads }: LoadDisclosure): string {
 
 /**
  * Whether a Claude workspace prompt's permissions warning, when it has one, ends at Claude's own
- * closing sentence (C-CLAUDE-30): a whole row, followed by a blank row, a warning, or nothing.
- * The folder's rules can draw neither a blank row nor `⚠`, and Claude cuts each rule at about 57
- * characters and joins them with `, ` and ` and `, so no rules row is ever the whole sentence:
- * a rule that quotes it never stands in for the row Claude draws.
+ * closing sentence (C-CLAUDE-30): a whole row, followed by a blank row or a warning. Claude
+ * always draws one of those after it, since a load row follows the warning. The folder's rules
+ * can draw neither a blank row nor `⚠`, and Claude cuts each rule at about 57 characters and
+ * joins them with `, ` and ` and `, so no rules row is ever the whole sentence: a rule that
+ * quotes it never stands in for the row Claude draws.
  */
 export function claudePermissionsCloseIsNative(rows: readonly string[]): boolean {
   const start = rows.findIndex((row) => row.startsWith(permissionsHeader));
   if (start < 0) return true;
   const end = rows.findIndex((row, index) => index > start && (row === "" || row.startsWith("⚠")));
-  return rows[(end < 0 ? rows.length : end) - 1] === closingSentence;
+  // With no row after the block, `end` is -1 and `rows[-2]` is undefined: not Claude's layout.
+  return rows[end - 1] === closingSentence;
 }
 
 /** Claude's list join: `a`, `a and b`, `a, b, and c`. */
