@@ -62,7 +62,8 @@ back each entry are listed in `prd/14-conformance.md`.
   (`nativeLimitType`), and reset time (`resetsAtUnixSeconds`) when available.
 - Emit the same `usage_limit_reached` `warning` when a live Codex usage snapshot
   reports a quota or credit rejection, with the native reason
-  (`nativeLimitType`) and each supplied window reset
+  (`nativeLimitType`), the limit identity (`limitId`, `limitName`) when
+  supplied, and each supplied window reset
   (`primaryResetsAtUnixSeconds`, `secondaryResetsAtUnixSeconds`).
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
