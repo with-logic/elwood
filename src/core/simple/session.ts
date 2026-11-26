@@ -151,7 +151,7 @@ export abstract class SessionBase<
   async waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
     return (await this.start()).waitForActivity(match, timeoutMs);
   }
-  /** Start the session if needed, then list any verified workspace trust prompt. */
+  /** Start the session if needed, then list its dialogs, Codex's update offer included. */
   async listDialogs(): Promise<readonly ElwoodDialogRequest<Agent>[]> {
     return (await this.start()).listDialogs();
   }
