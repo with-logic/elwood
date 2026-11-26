@@ -6,21 +6,12 @@
  * C-CLAUDE-22, C-CLAUDE-26, C-CLAUDE-27 and C-CLAUDE-29.
  */
 
-import type { InputTerminal } from "../core/input/abort.ts";
-import {
-  type AutomationWriteResult,
-  guardedNonTrustAutomationWrite,
-  type NonTrustAutomationWriter,
-} from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
-import {
-  ClaudeAutoModeOfferDecliner,
-  type DeclineWriter,
-  declineKey,
-} from "./auto-mode/decline.ts";
+import { type DeclineWriter, declineKey } from "./auto-mode/appearance.ts";
+import { ClaudeAutoModeOfferDecliner } from "./auto-mode/decline.ts";
 import { isClaudeAutoModeOfferMenu } from "./auto-mode/offer.ts";
 import { type ProbeTrustOptions, probeTrustPolicy } from "./probe-trust.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
@@ -161,30 +152,6 @@ export class ClaudeStartupPromptResponder {
     if (offer) settled.push(offer);
     return settled;
   }
-}
-
-/**
- * The Claude non-trust automation barrier. A decline is only correct while its own
- * prompt is still on screen: if the prompt cleared during settlement, an Escape would
- * land in whatever replaced it (a composer, clearing staged text), so it is withheld.
- * A writer may narrow that to one prompt for a single write.
- */
-export function guardedClaudeAutomationWrite(
-  terminal: InputTerminal,
-  write: NonTrustAutomationWriter,
-  readFrame: () => string,
-  cancelled: () => boolean = () => false,
-  signal?: AbortSignal,
-): (input: string, stillValid?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
-  return guardedNonTrustAutomationWrite(
-    terminal,
-    write,
-    readFrame,
-    "claude",
-    (frameText) => browserToolsPromptVisible(frameText) || isClaudeAutoModeOfferMenu(frameText),
-    cancelled,
-    signal,
-  );
 }
 
 export function browserToolsPromptVisible(text: string): boolean {
