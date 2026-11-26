@@ -4,7 +4,9 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
 import { isRecord } from "../../src/core/predicates.ts";
+import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import type { ClaudeSessionApi, StartClaudeOptions } from "../../src/index.ts";
 import { defaultClaudeConfigDir } from "./claude-home.ts";
 import type { E2eProject } from "./scratch.ts";
@@ -59,8 +61,9 @@ export function offerSessionOptions(project: E2eProject, name: string): StartCla
 const offerLabel = "offer";
 
 /**
- * Whether the offer painted in time. Only a timeout on a live, rendering session reads as
- * "Claude did not offer it"; an exited session, a failed render or any other error fails.
+ * Whether the offer painted in time. Only a timeout that leaves a `ready` session on an idle
+ * composer reads as "Claude did not offer it"; an exited session, a failed render, another
+ * dialog, a turn still working or any other error fails.
  */
 export async function offerShown(session: ClaudeSessionApi, timeoutMs = 15_000): Promise<boolean> {
   const screen = () => session.terminal.snapshot().text;
@@ -72,6 +75,11 @@ export async function offerShown(session: ClaudeSessionApi, timeoutMs = 15_000):
       throw error;
     if (session.status === "exited") throw new Error(`Claude exited instead:\n${screen()}`);
     if (session.terminal.renderFailed) throw new Error("The terminal stopped rendering.");
+    const frame = { text: screen(), title: session.terminal.title };
+    const { facts } = readScreenFacts(claudeScreenFactTable, frame);
+    const idle = facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
+    if (session.status !== "ready" || !idle)
+      throw new Error(`No offer, and no idle composer either (${session.status}):\n${frame.text}`);
     return false;
   }
 }

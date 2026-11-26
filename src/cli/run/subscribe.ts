@@ -35,7 +35,7 @@ export function subscribeRunEvents(
   updateAttention: CodexUpdateAttentionGuard | undefined,
 ): readonly (() => void)[] {
   let promptRunning = false;
-  let promptTurnEnded = false;
+  let promptReachedReadyAfterRunning = false;
   const common = [
     session.on("activity", (event) => {
       if (event.kind === "attention" && event.label === "codex-update-prompt") {
@@ -44,9 +44,10 @@ export function subscribeRunEvents(
       } else if (
         event.kind === "attention" &&
         attentionNeedsHuman(request, event.label) &&
-        // Claude can paint its auto-mode setup offer right after a turn ends (C-ATTN-09). After
-        // the prompt's own turn, the answer is complete, so the offer does not fail the run.
-        !(promptTurnEnded && event.label === claudeAutoModeOfferRuleId)
+        // Claude mounts its auto-mode setup offer only when a query ends (C-ATTN-09). Once the
+        // prompt's session has gone from `running` to `ready`, by its Stop or by a cleared
+        // dialog, an offer comes from the end of the prompt's own turn and does not fail the run.
+        !(promptReachedReadyAfterRunning && event.label === claudeAutoModeOfferRuleId)
       ) {
         lifecycle.block(event.label);
       }
@@ -57,7 +58,7 @@ export function subscribeRunEvents(
     session.on("status", ({ status }) => {
       if (observer.promptPhaseStarted()) {
         if (status === "running") promptRunning = true;
-        else if (status === "ready" && promptRunning) promptTurnEnded = true;
+        else if (status === "ready" && promptRunning) promptReachedReadyAfterRunning = true;
       }
       updateAttention?.status(status);
       observer.status(status);

@@ -108,6 +108,31 @@ test("C-ATTN-10 a status observer that throws at the turn's ready does not skip 
   }
 });
 
+test("C-ATTN-10 a turn that ends on screen before its Stop holds input, even when an observer throws", async () => {
+  const { facade, pty, live, sending } = await queuedBehindTurn(() => {
+    throw new Error("status observer failed");
+  });
+  try {
+    // No Stop yet: the rendered end alone reaches `ready`, and its observer throws. The
+    // queued send then starts, so the session reads `running` while its writes wait.
+    pty.emitData(screen(idle, "\u001b[38;3H\u001b[?25h"));
+    await expect
+      .poll(() => live.statusDecisions().map(({ evidence, to }) => `${evidence}:${to}`))
+      .toContain("rendered_turn_ended:ready");
+    await wait(turnEndSettleMs / 2);
+    expect(pty.writes).toEqual([]);
+    pty.emitData(screen(offer, "\u001b[32;3H"));
+    await expect.poll(() => live.status).toBe("blocked");
+    await wait(turnEndSettleMs + 200);
+    expect(pty.writes).toEqual([]);
+    pty.emitData(screen(idle, "\u001b[38;3H\u001b[?25h"));
+    await expect.poll(() => pty.writes, { timeout: 3_000 }).toEqual([paste, "\r"]);
+    await sending;
+  } finally {
+    await facade.teardown();
+  }
+});
+
 test("C-ATTN-10 C-API-37 the next rendered turn ends the last turn's hold", async () => {
   const fixture = createFacadeFixture("claude", { initialSize: { cols: 140, rows: 40 } });
   const live = await fixture.facade.start();

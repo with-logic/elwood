@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import type { CliJsonlRecord } from "../../src/cli/output/types.ts";
+import { isRecord } from "../../src/core/predicates.ts";
+import { allStatusList } from "../../src/core/status-categories.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { offerSessionOptions, offerShown, seedOffer } from "./auto-mode-offer.ts";
 import { invoke } from "./cli-commands-helpers.ts";
@@ -107,6 +108,19 @@ test("C-ATTN-09 a sendMessage made while Claude's auto-mode offer shows is held,
   }
 });
 
+const knownStatuses: ReadonlySet<unknown> = new Set(allStatusList);
+
+/** One `--output=jsonl` line, checked, so that a malformed record fails rather than skips. */
+function jsonlRecord(line: string): { readonly type: string; readonly status: unknown } {
+  const record: unknown = JSON.parse(line);
+  const type = isRecord(record) ? record["type"] : undefined;
+  if (!isRecord(record) || typeof type !== "string") throw new Error(`Not a JSONL record: ${line}`);
+  const status = record["status"];
+  if (type === "status" && !knownStatuses.has(status))
+    throw new Error(`Not a session status: ${line}`);
+  return { type, status };
+}
+
 test("C-CLI-05 elwood run succeeds when Claude's auto-mode offer follows its prompt's turn", {
   skip: skipIf(skipReason("claude"), skipTurns),
   timeout: runAttempts * (e2eTimeoutMs + 30_000),
@@ -127,10 +141,7 @@ test("C-CLI-05 elwood run succeeds when Claude's auto-mode offer follows its pro
         ],
         project.cwd,
       );
-      const records = result.stdout
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line) as CliJsonlRecord);
+      const records = result.stdout.trim().split("\n").map(jsonlRecord);
       const last = records.at(-1);
       assert.equal(last?.type, "result", `the run failed:\n${result.stdout}\n${result.stderr}`);
       assert.equal(result.status, 0);
