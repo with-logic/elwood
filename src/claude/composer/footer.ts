@@ -28,6 +28,10 @@ const effortLevel = String.raw`[○◐●◉◈] (?:low|medium|high|xhigh|max) �
 /** One footer row, as a single-line fragment with no anchors. */
 export const claudeComposerFooterRow = String.raw`[ \t]*(?:-- INSERT -- )?${mode}${hints}(?: +(?:${claudeTokenCount}|${effortLevel}))?[ \t]*`;
 export const claudeComposerFooter = new RegExp(`^${claudeComposerFooterRow}$`);
+/** The footer row while a turn runs, as Claude 2.1.332 draws it: `· esc to interrupt` last. */
+export const claudeWorkingFooter = new RegExp(
+  String.raw`^[ \t]*(?:-- INSERT -- )?${mode}${hints} · esc to interrupt[ \t]*$`,
+);
 
 /** A footer item on its own row: effort below a token count, or the count when narrow. */
 export const claudeFooterOverflow = new RegExp(

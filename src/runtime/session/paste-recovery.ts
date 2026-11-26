@@ -29,6 +29,7 @@ export class PasteRecoveryRevocation {
       captureRenderProgress: () => captureRenderProgress(terminal, "pty"),
       prepareStaged: (payload) => composer().prepareStaged(payload),
       emptyFrame: () => composer().emptyFrame(),
+      workingEmptyFrame: () => composer().workingEmptyFrame?.(),
       blocked,
     };
   }

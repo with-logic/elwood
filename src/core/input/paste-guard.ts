@@ -11,6 +11,8 @@ export type PasteDispatch = (
 export type RecoveryComposer = {
   readonly prepareStaged: (payload: string) => () => boolean;
   readonly emptyFrame: EmptyComposerObserver;
+  /** Empty input while a turn runs, when `emptyFrame` cannot see it; read by association only. */
+  readonly workingEmptyFrame?: EmptyComposerObserver;
 };
 
 /** Adapter view of "the paste is still staged in the composer". */
@@ -25,6 +27,8 @@ export type PasteGuard = {
   readonly captureRecovery?: () => { readonly revoked: () => boolean };
   /** Reuse a token per completed empty frame; only a later frame gets a new identity. */
   readonly emptyFrame?: EmptyComposerObserver;
+  /** Prompt association's other proof of empty input, while a turn runs (PRD §5.4, C-API-71). */
+  readonly workingEmptyFrame?: EmptyComposerObserver;
   readonly observePaste?: (payload: string, empty: object | undefined) => PasteDispatch | undefined;
   readonly beforeCommand?: () => void;
   /**

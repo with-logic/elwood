@@ -2121,6 +2121,26 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   a hold. Elwood's rendered turn watcher reports each turn end once, so an allow that no queued
   turn follows after the idle composer leaves the hold to the 120 s limit. Measured on
   2026-11-26; the e2e raises `hookTimeoutMs` so its handler can answer after the `Stop`.
+- While a Claude 2.1.332 turn runs, its composer is empty under a working footer:
+  `❯` and a no-break space (U+00A0) between the composer's rules, over
+  `⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt`. Once guidance is queued, the
+  same row reads `❯` U+00A0 `Press up to edit queued messages`, with the hardware cursor still at
+  column 2. Elwood's empty-input proof (`claudeEmptyInputFrame`) accepted neither: the working
+  footer is not the idle one, and its version-banner path needs a blank footer row. So guidance
+  never had an empty-composer proof, and its hook under the running turn's prompt ID could not
+  carry its `sendId`. Prompt association now also reads these two frames
+  (`claudeWorkingEmptyInputFrame`, `tests/fixtures/claude-2.1.332/working-composer/`); paste
+  recovery keeps the idle proof. Each guidance's hook carried its exact text, 40 to 60 ms after
+  `sendGuidance` resolved. Measured in nine private-config sessions on 2026-11-26 (C-API-71,
+  `tests/e2e/guidance-send-id.e2e.ts`).
+- Codex 0.172.0 steers a running turn with guidance at once. Its `UserPromptSubmit` carried the
+  running turn's `turn_id` and the exact guidance text, 40 to 360 ms after `sendGuidance`
+  resolved. The rollout then gets a user `response_item` whose
+  `internal_chat_message_metadata_passthrough.turn_id` is that turn, and an `item_completed`
+  `UserMessage` event under it. The turn answers both prompts and ends with one `Stop`.
+  Codex's empty-input proof already sees its working composer, so the hook could carry the
+  `sendId` once a hook under an existing ID could claim pending guidance.
+  Measured in six sessions on 2026-11-26 (C-API-70, `tests/e2e/guidance-send-id.e2e.ts`).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

@@ -10,7 +10,11 @@ import {
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { claudeScreenFactTable } from "../screen-table.ts";
-import { claudeEmptyInputFrame, claudeEmptyInputRows } from "./empty-input.ts";
+import {
+  claudeEmptyInputFrame,
+  claudeEmptyInputRows,
+  claudeWorkingEmptyInputFrame,
+} from "./empty-input.ts";
 import { claudeTokenCount } from "./footer.ts";
 
 // Captured Claude 2.1.281 staged-only hints; these do not establish empty input.
@@ -47,5 +51,6 @@ export function createClaudeRecoveryComposer(terminal: ElwoodTerminal) {
   return {
     prepareStaged: () => () => claudeInputStaged(terminal),
     emptyFrame: () => claudeEmptyInputFrame(terminal),
+    workingEmptyFrame: () => claudeWorkingEmptyInputFrame(terminal),
   };
 }

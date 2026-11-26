@@ -1,4 +1,7 @@
-/** Track one unambiguous live API prompt at a time (PRD §5.4, C-API-70). */
+/**
+ * Track one unambiguous live API prompt at a time (PRD §5.4, C-API-70, C-API-71). Its hook
+ * starts a new native turn, except guidance, whose hook reuses the running turn's ID.
+ */
 import type { ApiPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { hasPromptText } from "../../core/activity/prompt-text.ts";
 import type { SendOptions } from "../../core/images/types.ts";
@@ -10,6 +13,7 @@ import {
 } from "../../terminal/cursor.ts";
 import { observeInputWrite } from "../../terminal/forwarded-input.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import type { SubmitKind } from "./image-attach.ts";
 import { onCallerInput } from "./session-input.ts";
 
 const maxCorrelatedPromptCodeUnits = 65_536;
@@ -26,6 +30,8 @@ type Submission = {
   pasted: boolean;
   entered: boolean;
   api?: { readonly text: string; readonly sendId?: string };
+  /** Claude and Codex fire guidance's hook under the running turn's existing native ID. */
+  guidance?: boolean;
 };
 
 export class PromptSubmissions {
@@ -54,8 +60,14 @@ export class PromptSubmissions {
   guard(guard: PasteGuard): PasteGuard {
     return {
       ...guard,
+      // Claude's working composer is empty to every send; only guidance can claim a reused ID.
       observePaste: (payload, empty) =>
-        this.prepare(payload, nativeRenderEvidenceIntact(this.terminal) ? empty : undefined),
+        this.prepare(
+          payload,
+          nativeRenderEvidenceIntact(this.terminal)
+            ? (empty ?? guard.workingEmptyFrame?.())
+            : undefined,
+        ),
       beforeCommand: () => {
         if (this.draft?.pasted) this.revoke();
       },
@@ -96,6 +108,7 @@ export class PromptSubmissions {
     text: string,
     options: SendOptions | undefined,
     beforeEnter: ((payload: string) => void) | undefined,
+    kind: SubmitKind,
   ): (payload: string) => void {
     const sendId = readSendId(options);
     return (payload) => {
@@ -103,8 +116,10 @@ export class PromptSubmissions {
       if (
         draft?.expectedNormalizedPrompt !== undefined &&
         text.length <= maxCorrelatedPromptCodeUnits
-      )
+      ) {
         draft.api = { text, ...(sendId === undefined ? {} : { sendId }) };
+        draft.guidance = kind === "guidance";
+      }
       beforeEnter?.(payload);
     };
   }
@@ -125,7 +140,12 @@ export class PromptSubmissions {
     readonly nativePrompt: string | undefined;
     readonly displayedNativeText?: string | undefined;
   }): ApiPromptPresentation | undefined {
-    if (!this.track || this.nativeTurnIds.has(turnId)) return undefined;
+    if (!this.track) return undefined;
+    // An existing ID can name only pending guidance, never another submission.
+    if (this.nativeTurnIds.has(turnId))
+      return this.draft?.guidance
+        ? this.claim(turnId, nativePrompt, displayedNativeText)
+        : undefined;
     const validId = turnId.length > 0 && turnId.length <= maxNativeTurnIdCodeUnits;
     const hasHistoryRoom = this.nativeTurnIds.size < maxNativeTurnIds;
     // Losing the bounded identity history makes later matches ambiguous for this session.
@@ -134,6 +154,15 @@ export class PromptSubmissions {
       return undefined;
     }
     this.nativeTurnIds.add(turnId);
+    return this.claim(turnId, nativePrompt, displayedNativeText);
+  }
+
+  /** The pending submission's hook: an exact match claims it once, and a mismatch ends tracking. */
+  private claim(
+    turnId: string,
+    nativePrompt: string | undefined,
+    displayedNativeText: string | undefined,
+  ): ApiPromptPresentation | undefined {
     const draft = this.draft;
     if (!draft?.entered) return undefined;
     if (

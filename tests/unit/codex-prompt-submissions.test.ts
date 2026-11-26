@@ -2,6 +2,7 @@
 import { expect, onTestFinished, test, vi } from "vitest";
 import { normalizeCodexPastedPayload } from "../../src/codex/input-text.ts";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
+import type { SubmitKind } from "../../src/runtime/session/image-attach.ts";
 import { PromptSubmissions } from "../../src/runtime/session/prompt-submissions.ts";
 import { SessionInputOwnership } from "../../src/runtime/session/session-input.ts";
 import { setupTerminalPty } from "../helpers/terminal-pty.ts";
@@ -21,12 +22,16 @@ function fixture() {
     closing.abort();
     terminal.dispose();
   });
-  const paste = async (text: string, options?: { readonly sendId: string }) => {
+  const paste = async (
+    text: string,
+    options?: { readonly sendId: string },
+    kind: SubmitKind = "message",
+  ) => {
     const scope = guard.observePaste?.(text, empty);
     if (!scope) throw new Error("Expected an eligible paste.");
     const framed = `\x1b[200~${text}\x1b[201~`;
     await scope(framed, () => input.automated.sendInput(framed));
-    if (options) prompts.captureCaller(text, options, undefined)(text);
+    if (options) prompts.captureCaller(text, options, undefined, kind)(text);
     await scope("\r", () => input.automated.sendInput("\r"));
   };
   return { input, prompts, terminal, writes, guard, empty, paste, emit };
@@ -46,7 +51,7 @@ test("C-API-70 a forwarded recovery Enter can match when the first Enter was sup
     undefined,
     undefined,
     undefined,
-    prompts.captureCaller(" text ", { sendId: "recovery" }, undefined),
+    prompts.captureCaller(" text ", { sendId: "recovery" }, undefined, "message"),
   );
   await vi.advanceTimersByTimeAsync(0);
   expect(writes).toEqual(["\x1b[200~ text \x1b[201~"]);
@@ -127,7 +132,7 @@ test("C-API-70 a mismatched forwarding inside the scope cannot stand in for Ente
   await scope?.("\x1b[200~text\x1b[201~", () =>
     input.automated.sendInput("\x1b[200~text\x1b[201~"),
   );
-  prompts.captureCaller("text", { sendId: "candidate" }, undefined)("text");
+  prompts.captureCaller("text", { sendId: "candidate" }, undefined, "message")("text");
   await scope?.("\r", () => input.automated.sendInput("unrelated input"));
   expect(prompts.observeNativeSubmit({ turnId: "native", nativePrompt: "text" })).toBeUndefined();
 });

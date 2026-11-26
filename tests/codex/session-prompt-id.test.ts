@@ -149,11 +149,13 @@ test("C-API-70 a reused caller ID and duplicated native hook have separate ident
   await trySubmit("second", "first-turn");
   await trySubmit("second", "second-turn");
   expect(messages).toMatchObject([
-    { text: " \uFEFFfirst\uFEFF ", sendId: "reused" },
-    { text: "second" },
-    { text: " second ", sendId: "reused" },
+    { text: " \uFEFFfirst\uFEFF ", sendId: "reused", turnId: "first-turn" },
+    { text: " second ", sendId: "reused", turnId: "first-turn" },
+    { text: "second", turnId: "second-turn" },
   ]);
-  expect(messages[1]).not.toHaveProperty("promptProvenance");
+  // Guidance claims the hook under the running turn's ID once; the duplicate stays native.
+  expect(messages[2]).not.toHaveProperty("sendId");
+  expect(messages[2]).not.toHaveProperty("promptProvenance");
 });
 
 test("C-API-70 two unresolved sends with the same text stay native", async () => {

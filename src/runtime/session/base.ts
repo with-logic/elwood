@@ -179,7 +179,7 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
     const ledger = this.promptSubmissions;
     const attempt = submissionAttempt(this)?.beforeEnter;
     const beforeEnter = this.shouldCaptureApiPrompt(options)
-      ? (ledger?.captureCaller(input, options, attempt) ?? attempt)
+      ? (ledger?.captureCaller(input, options, attempt, kind) ?? attempt)
       : attempt;
     const control = { ...submissionControlOptions(options), ...(beforeEnter && { beforeEnter }) };
     const driver = (paths: readonly string[], signal: AbortSignal) => {
