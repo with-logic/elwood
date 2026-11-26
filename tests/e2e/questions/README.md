@@ -20,7 +20,10 @@ not prove that the input loop accepted a command.
 
 The returned capture contains native screens, physical writes and committed
 records for comparison with the 0.163.0 captures in
-`tests/fixtures/codex-0.163.0/questions/`. These are
+`tests/fixtures/codex-0.163.0/questions/` and the 0.172.0 ones in
+`tests/fixtures/codex-0.172.0/questions/`. 0.172.0 parks its hidden cursor and
+shows pending answers differently; see "Codex 0.172.0 Plan mode and queued
+choices" in `docs/cli-behavior.md`. These are
 maintainer characterization tools; they do not prove the public answer API.
 The owned dependent public proof is `tests/e2e/codex-questions.e2e.ts`
 (C-E2E-19), documented in the consumer proof guide above. Run that entrypoint

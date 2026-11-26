@@ -32,9 +32,10 @@ back each entry are listed in `prd/14-conformance.md`.
 - Codex 0.172 Plan-mode turns settle again. 0.172 draws `Plan mode (⇧tab to
   cycle)` in front of the warnings badge instead of on the status row. Elwood
   did not recognize that footer, so `send()` in Plan mode timed out after
-  90 s. Answering a queued Codex choice also no longer fails as `adapter` when
-  0.172 leaves its hidden cursor after the working row's glyph or elapsed time,
-  or while it still shows the previous answer as waiting to be submitted.
+  90 s. Answering a queued Codex choice also no longer fails with
+  `question_answer_failed` (`details.category: "adapter"`) when 0.172 leaves its
+  hidden cursor after the working row's glyph or elapsed time, or while it still
+  shows the previous answer as waiting to be submitted, at any terminal width.
 
 ## [0.8.0] - 2026-11-25
 

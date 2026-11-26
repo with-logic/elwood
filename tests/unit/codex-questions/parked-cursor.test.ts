@@ -25,6 +25,14 @@ test.each([
     selected: 0,
   });
 });
+test("a hidden cursor at the end of a working row with wide characters keeps the choices", () => {
+  // `cursorX` counts terminal cells; each of these characters takes two.
+  const lines = [...glyph.lines];
+  lines[glyph.cursorRow] = "• 回答を計画中 (5s • esc to interrupt)";
+  const wide = { ...glyph, lines, text: lines.join("\n") };
+  expect(questionView({ ...wide, cursorX: 38 })).toMatchObject({ kind: "queued", index: 0 });
+  expect(questionView({ ...wide, cursorX: 39 })).toBeUndefined();
+});
 test("working-row cursor evidence still rejects unrelated or visible cursors", () => {
   expect(questionView({ ...native, cursorVisible: true })).toBeUndefined();
   expect(questionView({ ...native, cursorX: 0 })).toBeUndefined();

@@ -1,10 +1,14 @@
-/** Read live queue submission evidence without retaining answer text (PRD §4). */
+/** Read live queue submission evidence without retaining answer text (PRD §4, §5.10). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import { composerInputPrefix, questionHeader, queuedPanelHeader } from "./chrome.ts";
 
 const pendingHeader = "• Messages to be submitted after next tool call";
+// The whole header, which a pane narrower than it wraps onto indented rows.
+const pendingHeaderText = `${pendingHeader} (press esc to interrupt and send immediately)`;
 const pendingPromptPrefix = "  ↳ > ";
+// A pending message's first row starts with `↳`; its later rows are indented four spaces.
+const pendingMessageRow = /^(?: {2}↳ | {4})/;
 
 /** Read pending titles only after the latest working row, stopping at queue/composer chrome. */
 export function nativePendingPrompts(frame: QuestionFrame): readonly string[] {
@@ -39,4 +43,21 @@ export function nativeQuestionFragment(frame: QuestionFrame): boolean {
     if (line.trim() === queuedPanelHeader || questionHeader.test(line)) return true;
   }
   return false;
+}
+
+/**
+ * Whether the rows between the working row and a queued panel are blank or Codex's block of
+ * messages it has not submitted yet. Codex 0.172 draws that block right after a queued answer,
+ * until it submits the answer, with the hidden cursor still parked on the working row above.
+ */
+export function blankOrPendingMessages(rows: readonly string[]): boolean {
+  const content = rows.filter((row) => row.trim() !== "");
+  if (content.length === 0) return true;
+  const item = content.findIndex((row) => row.startsWith("  ↳ "));
+  if (item < 1) return false;
+  const header = content.slice(0, item).map((row) => row.trim());
+  return (
+    header.join(" ") === pendingHeaderText &&
+    content.slice(item).every((row) => pendingMessageRow.test(row))
+  );
 }

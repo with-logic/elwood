@@ -1,6 +1,7 @@
 /** Recognize captured Codex question layouts without matching transcript prose (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { displayColumns } from "../screen/display-columns.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
@@ -10,7 +11,7 @@ import {
   queuedPanelHeader,
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
-import { workingRowToPanel } from "./pending-messages.ts";
+import { blankOrPendingMessages } from "./native-pending.ts";
 import { nativeSelection } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
@@ -134,9 +135,9 @@ function questionCursor(
     kind === "queued" &&
     frame.cursorVisible === false &&
     frame.cursorX > 0 &&
-    frame.cursorX <= row.length &&
+    frame.cursorX <= displayColumns(row) &&
     codexWorkingScreen.test(row) &&
-    workingRowToPanel(lines.slice(frame.cursorRow + 1, start))
+    blankOrPendingMessages(lines.slice(frame.cursorRow + 1, start))
   );
 }
 /** Correlate the prompt and complete ordered native options with a known definition. */

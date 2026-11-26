@@ -6,17 +6,14 @@
  * ignoring the `hookTrust` flag), and 0.172 draws the Plan-mode badge in front of it, in its
  * short form at 60 columns and below and, at times, at 140.
  */
-export type PlanModeFooter = {
-  readonly shape: string;
-  /** The terminal's width when Codex drew the rows. */
-  readonly cols: number;
-  readonly rows: readonly string[];
-};
+import type { CapturedFooter } from "./codex-footer-captures-170.ts";
 
-export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
+/** None of these status footers wrapped: 0.172 shows only the model and effort. */
+export const codexPlanModeFooters172: readonly CapturedFooter[] = [
   {
     shape: "after `/plan`, three warnings",
     cols: 140,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -27,6 +24,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after `/plan`, three warnings",
     cols: 100,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -37,6 +35,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after `/plan`, three warnings",
     cols: 80,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -47,6 +46,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after `/plan`, three warnings",
     cols: 60,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -57,6 +57,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after `/plan`, three warnings",
     cols: 50,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -67,6 +68,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after `/plan`, three warnings",
     cols: 40,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -77,6 +79,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after a Plan-mode turn, one warning",
     cols: 140,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",
@@ -87,6 +90,7 @@ export const codexPlanModeFooters172: readonly PlanModeFooter[] = [
   {
     shape: "after a Plan-mode turn, one warning, short badge",
     cols: 140,
+    wrapped: false,
     rows: [
       "› Ask Codex to do anything",
       " ",

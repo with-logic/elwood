@@ -6,6 +6,7 @@
 
 import { codexReasoningEfforts } from "../../core/reasoning-effort.ts";
 import { codexServiceTierChoices } from "../../core/speed/types.ts";
+import { displayColumns } from "./display-columns.ts";
 
 const tierBadges = codexServiceTierChoices
   .filter((tier) => tier !== "default")
@@ -19,21 +20,16 @@ const statusFooter = new RegExp(
 );
 // Beside a warnings badge that leaves no room, Codex drops `? for shortcuts` from the hint.
 const hintFooter = /^(?: {2})?(?:← for agents(?: · \? for shortcuts)?|\? for shortcuts)$/;
-// Native Codex right-aligns this badge, and shortens it to `⚠ 3 · f2` when it does not fit;
-// a wrapped status row that ends full has one space before it. In Plan mode 0.172 draws
-// `Plan mode (⇧tab to cycle)`, or `Plan mode` when that does not fit, in front of it.
-const warningsBadge =
+// Native Codex right-aligns its warnings badge, and shortens it to `⚠ 3 · f2` when it does not
+// fit; a wrapped status row that ends full has one space before it. In Plan mode 0.172 draws
+// `Plan mode (⇧tab to cycle)` in front of it, or `Plan mode` (at 60 columns and below, and at
+// times when the long form fits).
+const trailingBadges =
   / +(?:Plan mode(?: \(⇧tab to cycle\))? · )?⚠ [1-9]\d*(?: warnings? · f2 to view| · f2)\s*$/;
 // The rest of a wrapped status footer: indented text that is not a caret, bullet or warning row.
 const continuation = /^ {2}[^\s›»❯>•⚠]/;
 // A badge of another shape or count is not the native one: it is not clearance.
 const unknownBadge = /⚠ .*f2(?: to view)?\s*$/;
-// Code points a terminal draws two columns wide: East Asian wide and fullwidth forms, emoji.
-// The ranges approximate the East Asian Width table; a missed range counts one column short.
-const wideCodePoint =
-  /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/gu;
-// Doubling each wide code point makes the code-point count equal the column count.
-const displayColumns = (text: string): number => [...text.replace(wideCodePoint, "$&$&")].length;
 
 /** A terminal of unknown width: no row can be proven cut, so no continuation is evidence. */
 export const unknownCols = Number.POSITIVE_INFINITY;
@@ -60,7 +56,7 @@ export function classifyCodexFooter(
   rowsBelow: readonly string[],
   cols: number,
 ): { readonly hasStatus: boolean } | undefined {
-  const below = rowsBelow.map((row) => row.replace(warningsBadge, "").trimEnd());
+  const below = rowsBelow.map((row) => row.replace(trailingBadges, "").trimEnd());
   let hasStatus = false;
   // The status row, or continuation, that the current row would continue.
   let open: string | undefined;

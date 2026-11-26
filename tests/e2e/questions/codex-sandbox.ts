@@ -59,7 +59,9 @@ export async function nativeCodexQuestionFiles() {
       "--version",
     ]);
     if (version.status !== 0 || version.error || version.stdout.trim() !== questionCodexVersion)
-      throw new Error("Pinned Codex question version unavailable");
+      throw new Error(
+        `Pinned Codex question version unavailable: expected ${questionCodexVersion}, found ${version.stdout.trim() || "no version"}`,
+      );
     return {
       root,
       home,
