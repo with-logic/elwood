@@ -108,7 +108,8 @@ async function writePastedPrompt(
     beforeEnter?.(payload);
     await writeEnter();
     // Physical submission is observable in both modes; only ordinary sends release here.
-    (awaitInputConsumption ? enteredComposer : submittedComposer)(terminal);
+    if (awaitInputConsumption) enteredComposer(terminal, nudges?.enteredInputConsumed);
+    else submittedComposer(terminal);
     onSubmitted?.();
     if (awaitInputConsumption) {
       if (!(await nudges?.awaitEmptyInput()))
