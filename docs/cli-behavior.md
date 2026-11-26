@@ -2081,10 +2081,14 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   (PRD §6.5). Measured in five private-config sessions on 2026-11-26 (C-HOOK-24,
   `tests/e2e/guidance-queued-turn-claude.e2e.ts`).
 - In one run, a caller `UserPromptSubmit` handler held queued guidance past Elwood's 25 s hook
-  timeout: the essay took 48 s under load, and the handler waited for its `Stop`. Claude 2.1.332
-  then ran nothing for that guidance, and no queued turn followed the `Stop` within 150 s. A `Stop`
-  held for such guidance ends at the 120 s hang limit with `queued_turn_unconfirmed`. The e2e
-  raises `hookTimeoutMs` so its handler can answer after the `Stop`.
+  timeout: under load, the essay's `Stop` came 47 s after the guidance's hook, and the handler
+  waited for that `Stop`. Elwood failed the hook open 22 s before the `Stop`, and Claude 2.1.332
+  ran nothing for that guidance: no queued turn followed the `Stop` within 150 s, and the idle
+  composer painted 25 ms after it. Elwood counts a timed-out answer as an allow, so that idle
+  composer ends the `Stop`'s hold. A timeout that falls after the idle composer has nothing left
+  to end the hold but the 120 s hang limit, with `queued_turn_unconfirmed`: Elwood's rendered
+  turn watcher reports each turn end once. The e2e raises `hookTimeoutMs` so its handler can
+  answer after the `Stop`.
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

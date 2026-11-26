@@ -98,7 +98,7 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
     );
     return this.turnEndHold;
   }
-  override submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
+  override submitEvidence(kind: StatusEvidenceKind, workingVisible?: boolean): StatusDecision {
     // Resumed work ends the last turn's hold, so input for the running turn is not held.
     if (kind === "rendered_turn_started" || (kind === "blocking_prompt_cleared" && workingVisible))
       this.turnEnd.release();

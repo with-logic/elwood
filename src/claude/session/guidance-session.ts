@@ -41,8 +41,8 @@ export abstract class ClaudeGuidanceSession extends ClaudeTurnEndSession {
     return this.guidance.heard(claudePromptId(event["prompt_id"]));
   }
 
-  /** `StopCompletion` reports each physical submission Elwood makes while Claude runs a turn. */
-  noteRunningSubmission(): void {
+  /** `StopCompletion` reports each physical submission Elwood makes inside a Claude turn. */
+  noteMidTurnSubmission(): void {
     this.guidance.written();
   }
 
@@ -54,7 +54,7 @@ export abstract class ClaudeGuidanceSession extends ClaudeTurnEndSession {
     else this.submitEvidence("hook_turn_ended");
   }
 
-  override submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
+  override submitEvidence(kind: StatusEvidenceKind, workingVisible?: boolean): StatusDecision {
     if (kind === "rendered_turn_ended" && !this.guidance.renderedEndReleases())
       return this.statusEngine.submit(kind, { heldBy });
     return super.submitEvidence(kind, workingVisible);

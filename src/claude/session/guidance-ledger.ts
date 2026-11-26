@@ -1,6 +1,6 @@
 /**
  * Claude guidance queued behind a running turn, tracked only from what Elwood owns or already
- * receives: the guidance it writes while the session runs, the caller handler's answer to each
+ * receives: the guidance it writes into a turn, the caller handler's answer to each
  * queued `UserPromptSubmit`, and the prompt ID on Claude's hooks, never the transcript (PRD §6.5,
  * C-HOOK-24). A tool boundary delivers allowed guidance inside the running turn. Guidance still
  * queued at a `Stop` runs at once as a new turn under a new prompt ID, so that `Stop` is held
@@ -36,7 +36,7 @@ export class ClaudeGuidanceLedger {
     this.clock = clock;
   }
 
-  /** Elwood wrote guidance while the session was running. */
+  /** Elwood wrote guidance into a Claude turn: the session was not ready. */
   written(): void {
     this.unheard.push(this.clock.now());
   }
