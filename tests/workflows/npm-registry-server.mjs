@@ -12,7 +12,9 @@
  * configuration ID for 0.7.0, and neither in its expected shape for 0.6.1.
  * Above 0.6.1, @with-logic/elwood-deprecated has only versions npm would not
  * keep `latest` on: deprecated ones and a prerelease.
- * @with-logic/elwood-major adds 0.10.0 and 1.0.0.
+ * @with-logic/elwood-major adds 0.10.0 and 1.0.0, and
+ * @with-logic/elwood-patch adds 0.8.2. @with-logic/elwood-cut-404 answers each
+ * version with a 404 whose body the connection cuts off.
  * @with-logic/elwood-flaky fails each path's first requests in the ways
  * `interruptions` lists, then answers as recorded.
  * @with-logic/registry-down answers 500, @with-logic/packument-down answers
@@ -51,6 +53,8 @@ const major = copy("@with-logic/elwood-major");
 for (const version of ["0.10.0", "1.0.0"]) {
   major.versions[version] = { ...major.versions["0.8.0"], version };
 }
+const patch = copy("@with-logic/elwood-patch");
+patch.versions["0.8.2"] = { ...patch.versions["0.8.0"], version: "0.8.2" };
 const malformedPackuments = new Map([
   ["@with-logic/packument-null", "null"],
   ["@with-logic/packument-unversioned", "{}"],
@@ -64,6 +68,8 @@ const packuments = new Map(
     unrecorded,
     deprecated,
     major,
+    patch,
+    copy("@with-logic/elwood-cut-404"),
     copy("@with-logic/elwood-flaky"),
   ].map((packument) => [packument.name, packument]),
 );
@@ -105,6 +111,10 @@ const server = createServer((request, response) => {
     return reply(406, '{"error":"fixture serves only the abbreviated packument"}');
   }
   if (malformedPackuments.has(path)) return reply(200, malformedPackuments.get(path));
+  if (packageName === "@with-logic/elwood-cut-404" && path !== packageName) {
+    response.writeHead(404, { "content-length": "4096", "content-type": "application/json" });
+    return response.write('"version not', () => request.socket.destroy());
+  }
   if (packageName === "@with-logic/registry-down") return reply(500, '{"error":"fixture"}');
   if (path === "@with-logic/packument-down") return reply(500, '{"error":"fixture"}');
   if (packageName === "@with-logic/registry-garbled") return reply(200, "<!doctype html>");

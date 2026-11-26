@@ -29,6 +29,10 @@ for (const [label, options] of [
     "a version whose lookup and packument read each need every retry",
     { name: "@with-logic/elwood-flaky", version: "0.9.0", env: retrying(5) },
   ],
+  [
+    "a version whose lookup answers 404 with a body cut off",
+    { name: "@with-logic/elwood-cut-404", version: "0.9.0" },
+  ],
 ]) {
   test(`${label} publishes`, () => {
     const { publishLog, result } = publish(options);
@@ -38,37 +42,35 @@ for (const [label, options] of [
   });
 }
 
-const implicitLatest = (newer, version) =>
-  `Cannot implicitly apply the "latest" tag because previously published version ${newer} is higher than the new version ${version}.`;
-// Each row: the newer version the step names, and the refusal npm gives.
+// Each row: the newer version the step names, and whether npm names it too.
+// npm refuses any prerelease that names no dist-tag before it compares.
 const overtaken = [
-  [
-    "a version a newer release overtook",
-    { version: "0.6.2" },
-    "0.8.0",
-    implicitLatest("0.8.0", "0.6.2"),
-  ],
-  [
-    // npm refuses any prerelease that names no dist-tag, before it compares.
-    "a prerelease of a version on npm",
-    { version: "0.8.0-rc.1" },
-    "0.8.0",
-    "You must specify a tag using --tag when publishing a prerelease version.",
-  ],
+  ["a version a newer release overtook", { version: "0.6.2" }, "0.8.0", true],
+  ["a prerelease of a version on npm", { version: "0.8.0-rc.1" }, "0.8.0", false],
   [
     "a version a newer major version overtook, named over a higher minor version",
     { name: "@with-logic/elwood-major", version: "0.9.0" },
     "1.0.0",
-    implicitLatest("1.0.0", "0.9.0"),
+    true,
+  ],
+  [
+    "a version only a newer patch overtook",
+    { name: "@with-logic/elwood-patch", version: "0.8.1" },
+    "0.8.2",
+    true,
   ],
 ];
 
-// The step stops each before npm would, so this pins npm's own refusal.
-for (const [label, options, , refusal] of overtaken) {
-  test(`npm itself refuses to publish ${label} as latest`, () => {
+// The step stops each before npm would, so this pins npm's own refusal: it
+// fails, publishes nothing and asks for `--tag`, matched loosely enough to
+// outlast a rewording.
+for (const [label, options, newer, npmNamesNewer] of overtaken) {
+  test(`npm itself refuses to publish ${label} without an explicit dist-tag`, () => {
     const result = npmPublishDryRun(options);
     assert.equal(result.status, 1, result.stdout);
-    assert.ok(result.stderr.includes(refusal), result.stderr);
+    assert.ok(!result.stdout.includes(`@${options.version}`), result.stdout);
+    assert.ok(result.stderr.includes("--tag"), result.stderr);
+    if (npmNamesNewer) assert.ok(result.stderr.includes(` ${newer} `), result.stderr);
   });
 }
 

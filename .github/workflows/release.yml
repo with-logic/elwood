@@ -13,12 +13,13 @@ name: Release
 # published GitHub release are left as they are. Any other tag of that name
 # fails the run. A version that a newer stable, undeprecated one on npm has
 # overtaken when the publish step looks is not published, because it cannot
-# take `latest`: the step fails, naming the newer version. Release runs take
-# turns, but a tag push, dispatch or re-run runs this file as it is at its
-# commit, and a revision without `concurrency` does not wait: release only
-# from commits that have it. A run of such a revision, like a version
-# published by hand, can land between that look and the upload. The newest
-# GitHub release stays Latest.
+# take `latest`: the step fails, naming the newer version. Publish jobs take
+# turns, and the newest GitHub release stays Latest. A tag push, dispatch or
+# re-run runs this file as it is at its commit, and a revision without the
+# publish job's `concurrency` neither waits nor keeps Latest on the newest
+# release: do not run or re-run one. Create a GitHub release it left missing
+# by hand, as the publish step's notes describe. A run of such a revision, like
+# a version published by hand, can land between that look and the upload.
 on:
   push:
     branches: [main]
@@ -33,17 +34,6 @@ on:
 permissions:
   contents: write # Create releases and push tags.
   id-token: write # npm trusted publishing (OIDC); no long-lived token.
-
-# One run at a time, in the order they queued. npm moves `latest` to whatever
-# version an upload names, and both the publish step's overtaken check and
-# npm's own read the registry before the upload, so two overlapping runs
-# could leave `latest` on the older version. `queue: max` keeps every waiting
-# run, up to 100; by default a newly queued run cancels the one waiting, which
-# would drop that release.
-concurrency:
-  group: release-${{ github.repository }}
-  cancel-in-progress: false
-  queue: max
 
 jobs:
   resolve:
@@ -198,6 +188,16 @@ jobs:
   publish:
     needs: [resolve, secret-scan]
     if: needs.resolve.outputs.should_release == 'true' && needs.secret-scan.result == 'success'
+    # One publish job at a time, so a run that releases nothing never waits.
+    # npm moves `latest` to whatever version an upload names, and both the
+    # overtaken check and npm's own read the registry before the upload, so
+    # two overlapping jobs could leave `latest` on the older version.
+    # `queue: max` keeps every waiting job, up to 100; by default a newly
+    # queued job cancels the one waiting, which would drop that release.
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
     # macOS: the full check runs the PTY-backed suite, and both adapters
     # reject other platforms at startup.
     runs-on: macos-latest
@@ -337,9 +337,13 @@ jobs:
             const maxDocumentBytes = 16 * 1024 * 1024;
             const semverPattern = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
             const shaped = (value, pattern) => typeof value === "string" && pattern.test(value);
-            /** Reads one answer, body included; throws when the connection fails or times out. */
+            /** Reads one answer, with its body only on success; throws when the connection fails or times out. */
             async function attempt(url, headers) {
               const response = await fetch(url, { headers, signal: AbortSignal.timeout(attemptTimeoutMs) });
+              if (!response.ok) {
+                await response.body?.cancel().catch(() => undefined);
+                return { status: response.status };
+              }
               const chunks = [];
               let bytes = 0;
               for await (const chunk of response.body) {

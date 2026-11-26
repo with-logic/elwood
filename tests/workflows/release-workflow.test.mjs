@@ -45,13 +45,15 @@ test("the release workflow keeps its push, tag and manual triggers", () => {
 });
 
 // npm moves `latest` to whatever version an upload names, after checks that
-// read the registry first, so overlapping runs could leave it on the older
-// version; GitHub's default queue would cancel a waiting release.
-test("release runs take turns, keeping every waiting run", () => {
+// read the registry first, so overlapping publish jobs could leave it on the
+// older version; GitHub's default queue would cancel a waiting release. Only
+// the publish job queues, so a run that releases nothing never waits.
+test("publish jobs take turns, keeping every waiting job", () => {
   assert.match(
-    workflow,
-    /^concurrency:\n {2}group: release-\$\{\{ github\.repository \}\}\n {2}cancel-in-progress: false\n {2}queue: max\n\njobs:\n/mu,
+    job("publish"),
+    /^ {4}concurrency:\n {6}group: release-\$\{\{ github\.repository \}\}\n {6}cancel-in-progress: false\n {6}queue: max\n/mu,
   );
+  assert.doesNotMatch(workflow, /^concurrency:/mu);
 });
 
 // Replays real `gh api` answers for the exact lookup the step makes; any
