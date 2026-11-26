@@ -10,11 +10,10 @@
  */
 
 import type { ElwoodWarningEvent } from "../types.ts";
+import type { SessionWarningSink } from "../warnings/session.ts";
 
 /** The session-side sink that emits a batch as live `warning` + `activity` events. */
-export type TranscriptWarningSink = {
-  readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
-};
+export type TranscriptWarningSink = SessionWarningSink;
 
 /** The router: route a live diagnostic and flush any pre-sink buffered diagnostics. */
 export type TranscriptWarningRouter = {

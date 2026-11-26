@@ -64,7 +64,6 @@ export function buildClaudeObservers(
     agent: "claude" as const,
     elwoodSessionId,
     emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
-    warnings: emitter,
   };
 }
 

@@ -1,19 +1,23 @@
-/** Deliver startup diagnostics with non-trust decline lifetime checks (PRD §5.7, C-CLAUDE-22). */
+/**
+ * Deliver startup diagnostics with lifetime checks: non-trust decline retries and frame
+ * failure reports end once the session starts closing (PRD §5.4, §5.7; C-CLAUDE-22, C-API-72).
+ */
 import { isNonTrustStartupLabel } from "../../core/startup/automation.ts";
-import type { FrameWarningSink } from "../../core/startup/frame.ts";
 import { createSessionStartupWarningGate } from "../../core/startup/warnings.ts";
+import type { SessionWarningSink } from "../../core/warnings/session.ts";
 
 export function createClaudeStartupWarningGate(
-  session: () => FrameWarningSink | undefined,
+  session: () => SessionWarningSink | undefined,
   closing: () => boolean,
   duringDelivery: (deliver: () => void) => void,
 ) {
   const warnings = createSessionStartupWarningGate(
     session,
     (warning) =>
-      warning.code === "startup_prompt_write_failed" &&
-      isNonTrustStartupLabel("claude", warning.label) &&
-      closing(),
+      closing() &&
+      ((warning.code === "startup_prompt_write_failed" &&
+        isNonTrustStartupLabel("claude", warning.label)) ||
+        warning.code === "frame_observer_failed"),
     duringDelivery,
   );
   return { ...warnings, duringDelivery };

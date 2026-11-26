@@ -1,9 +1,10 @@
 /** Shared reentrant startup-warning delivery and filtering (PRD §5.7, C-API-14). */
 import type { ElwoodWarningEvent } from "../types.ts";
-import { createStartupWarningGate, deliverFrameWarnings, type FrameWarningSink } from "./frame.ts";
+import type { SessionWarningSink } from "../warnings/session.ts";
+import { createStartupWarningGate, deliverFrameWarnings } from "./frame.ts";
 
 export function createSessionStartupWarningGate(
-  session: () => FrameWarningSink | undefined,
+  session: () => SessionWarningSink | undefined,
   suppress: (warning: ElwoodWarningEvent) => boolean,
   duringDelivery: (deliver: () => void) => void,
 ): ReturnType<typeof createStartupWarningGate> {
