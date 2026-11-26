@@ -1,7 +1,7 @@
 /**
  * Claude's workspace load row (PRD §5.4, C-CLAUDE-29): every captured load row verifies and
  * says what trusting the folder loads, autotrust answers it, and a changed row or annotation
- * fails closed, as does Claude's MCP server prompt with its native body.
+ * fails closed.
  */
 import { expect, test } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
@@ -9,51 +9,17 @@ import {
   claudeWorkspaceDisclosesHooks,
   claudeWorkspaceStrongestDisclosure,
 } from "../../src/core/trust/copy.ts";
-import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { trustView } from "../../src/core/trust/view.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { autotrustAnswer, autotrustView, failedClosed } from "../helpers/claude-autotrust.ts";
 import {
   claudeLoadRowCaptures,
-  claudeMcpServerPrompt,
   claudeSettingsEnvPrompt,
   selectClaudeHooksYes,
 } from "../helpers/claude-workspace-trust-screen.ts";
 
 const mcpOnly = capturedFrame("claude-2.1.332/trust/workspace-mcp-120");
 const mcpRow = "Trusting this folder loads .mcp.json here or above (MCP servers).";
-
-/** Autotrust's answer to `frame`, re-rendered by `select` after its selection and cleared after Enter. */
-async function autotrustAnswer(frame: string, select: (screen: string) => string) {
-  const writes: string[] = [];
-  let rendered = frame;
-  const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
-    frame,
-    (input) => {
-      writes.push(input);
-      rendered = input.endsWith("\r") ? claudeComposer : select(frame);
-    },
-    () => rendered,
-  );
-  const completion = result?.kind === "attempted" ? await result.settled : undefined;
-  return { result, completion, writes };
-}
-
-/** How autotrust treats `frame`: its view's kind and validity, its outcome, and its writes. */
-function autotrustView(frame: string) {
-  const view = trustView(frame, "claude", claudeTrustClearance);
-  const writes: string[] = [];
-  const outcome = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
-    frame,
-    (input) => {
-      writes.push(input);
-    },
-  );
-  return { kind: view.kind, valid: view.kind === "candidate" && view.valid, outcome, writes };
-}
-
-/** A recognized prompt that is held, never verified, and never written to. */
-const failedClosed = { kind: "candidate", valid: false, outcome: undefined, writes: [] };
 
 test.each(
   claudeLoadRowCaptures,
@@ -151,8 +117,4 @@ test("C-CLAUDE-29 another warning before the load row fails closed", () => {
     `⚠ This folder pre-approves 3 tool permissions\n\n ${mcpRow}`,
   );
   expect(autotrustView(frame)).toEqual(failedClosed);
-});
-
-test("C-CLAUDE-29 Claude's MCP server prompt with its native body fails closed", () => {
-  expect(autotrustView(claudeMcpServerPrompt)).toEqual(failedClosed);
 });

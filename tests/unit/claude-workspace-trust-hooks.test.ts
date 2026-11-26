@@ -10,7 +10,7 @@ import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { claudeWorkspaceDisclosesHooks } from "../../src/core/trust/copy.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { trustView } from "../../src/core/trust/view.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { autotrustAnswer } from "../helpers/claude-autotrust.ts";
 import { probeOutcome, refusedOutcome } from "../helpers/claude-probe-responder.ts";
 import {
   claudeHooksPrompt,
@@ -31,22 +31,6 @@ const local = ".claude/settings.local.json";
 const localLoad = load.replace("settings.json", "settings.local.json");
 const moveToYes = "\u001b[H\u001b[B";
 
-/** Autotrust's answer to `frame` and its writes, re-rendered as Claude would after each. */
-async function autotrustAnswer(frame: string) {
-  const writes: string[] = [];
-  let rendered = frame;
-  const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
-    frame,
-    (input) => {
-      writes.push(input);
-      rendered = input === moveToYes ? selectClaudeHooksYes(frame) : claudeComposer;
-    },
-    () => rendered,
-  );
-  const completion = result?.kind === "attempted" ? await result.settled : undefined;
-  return { result, completion, writes };
-}
-
 const answered = {
   result: {
     kind: "attempted",
@@ -60,7 +44,7 @@ test.each([
   ["unwrapped", wide],
   ["wrapped at 100 columns", wrapped],
 ])("C-CLAUDE-26 autotrust answers the hooks prompt (%s)", async (_, frame) => {
-  expect(await autotrustAnswer(frame)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
 });
 
 test.each(
@@ -69,13 +53,13 @@ test.each(
   const view = trustView(frame, "claude", claudeTrustClearance);
   expect(view).toMatchObject({ kind: "candidate", valid: true });
   expect(view.kind === "candidate" && claudeWorkspaceDisclosesHooks(view.dialog.header)).toBe(true);
-  expect(await autotrustAnswer(frame)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
 });
 
 test("C-CLAUDE-26 autotrust answers the hooks prompt with only the closing explanation", async () => {
   const frame = wide.replace(likeYourOwn, "");
   expect(frame).not.toContain("Like your own code");
-  expect(await autotrustAnswer(frame)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
 });
 
 test.each([

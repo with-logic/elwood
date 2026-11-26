@@ -2,11 +2,12 @@
  * The allowlisted startup trust prompts and the affirmative option each one
  * accepts, kept apart from the matching logic in `prompts.ts` so the wording
  * table can grow without crowding it.
- * Implements PRD §5.1/§5.4/§5.5 (C-CLAUDE-10, C-CLAUDE-14, C-CLAUDE-21, C-CODEX-15).
+ * Implements PRD §5.1/§5.4/§5.5 (C-CLAUDE-10, C-CLAUDE-14, C-CLAUDE-21, C-CLAUDE-28, C-CODEX-15).
  */
 
 import {
   claudeBypassDescription,
+  claudeMcpDescription,
   claudeWorkspaceDescription,
   codexFolderAccessDescription,
   codexHooksDescription,
@@ -16,6 +17,8 @@ import {
 import {
   claudeBypassOptions,
   claudeExtensionOptions,
+  claudeMcpAccept,
+  claudeMcpFooter,
   claudeMcpOptions,
   claudeWorkspaceOptions,
   codexFolderAccessAccept,
@@ -35,7 +38,6 @@ export const codexFolderAccessHeader = /^Trust this folder\?(?:\s|$)/;
 // be selected for them.
 const notDecline = "(?!.*\\b(no|without|not|quit|cancel|deny|don't)\\b)";
 const yesOption = new RegExp(`^${notDecline}.*\\b(yes|trust|continue|proceed)\\b`, "i");
-const useMcpOption = new RegExp(`^${notDecline}.*\\buse this(?:.*\\bMCP)? server`, "i");
 const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all)\\b`, "i");
 const acceptOption = new RegExp(`^${notDecline}.*\\byes\\b.*\\baccept\\b`, "i");
 
@@ -102,17 +104,19 @@ export const trustPromptAllowlist = [
     answerPolicy: "autotrust",
   },
   {
-    // Header "New MCP server found in this project"; the affirmative option is
-    // "Use this MCP server" (no yes/trust/continue word), needing a per-prompt
-    // accept — the generic yes-matcher would leave it wedged.
+    // Header "New MCP server found in this project: <name>", then its native body; the
+    // affirmative option is "Use this MCP server" (no yes/trust/continue word), needing a
+    // per-prompt accept — the generic yes-matcher would leave it wedged. Its footer says
+    // "Esc to reject" and ends no other dialog.
     id: "mcp_trust",
     agent: "claude",
     headerPattern:
       /^(?:New MCP server found in this project(?:: [\w.:-]+)?|do you trust (?:this|the) MCP server\?)(?:\s|$)/i,
-    descriptionPattern: noTrustDescription,
+    descriptionPattern: claudeMcpDescription,
     optionPattern: claudeMcpOptions,
-    accept: useMcpOption,
+    accept: claudeMcpAccept,
     answerPolicy: "autotrust",
+    footer: claudeMcpFooter,
   },
   {
     // Claude's one-time bypassPermissions disclaimer: "WARNING: Claude Code
