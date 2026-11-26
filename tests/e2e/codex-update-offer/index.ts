@@ -1,7 +1,7 @@
 /**
  * Forces Codex's own in-TUI update offer in a private `CODEX_HOME`, and lets only the
- * offer's `Skip` digit reach it (PRD §5.3, §5.5, §12, C-API-28, C-CODEX-27, C-E2E-26,
- * C-E2E-27). The offer's default choice is "Update now", which runs a global installer on
+ * offer's `Skip` digit reach it (PRD §5.3, §5.5, §5.13, §12, C-API-28, C-CODEX-27,
+ * C-E2E-26, C-E2E-27, C-E2E-30). The offer's default choice is "Update now", which runs a global installer on
  * the host, so a test that opens a session on the offer must be able to prove what reached
  * the CLI, and must never let an Enter through. Each write is judged against the CLI's own
  * screen, drawn from its output by a terminal of the harness, never against Elwood's
@@ -48,6 +48,8 @@ export type CodexUpdateOffer = {
   readonly writeErrors: readonly unknown[];
   /** Each `Skip` digit written while the offer was on screen, in order. */
   readonly skips: readonly string[];
+  /** Each `Skip` digit kept from the offer by `withholdSkips`, in order. */
+  readonly withheld: readonly string[];
   /**
    * Why the Codex that sessions in `cwd` run cannot take part, or undefined. It runs
    * through the same pin as the sessions, since the install can differ per directory.
@@ -67,6 +69,8 @@ export type CodexUpdateOffer = {
 export type CodexUpdateOfferOptions = {
   /** Once a `Skip` digit is written, Elwood reads the CLI's output this much later. */
   readonly lagAfterSkipMs?: number;
+  /** While true, a `Skip` digit never reaches the offer, as when Codex drops a key. */
+  readonly withholdSkips?: () => boolean;
 };
 
 /**
@@ -97,13 +101,14 @@ function cloneManagedRelease(home: string): string | undefined {
  */
 export function codexUpdateOffer(
   home: string,
-  { lagAfterSkipMs = 0 }: CodexUpdateOfferOptions = {},
+  { lagAfterSkipMs = 0, withholdSkips = () => false }: CodexUpdateOfferOptions = {},
 ): CodexUpdateOffer {
   const pin = cloneManagedRelease(home);
   const pinned = (args: readonly string[]) => (pin ? prefixShellArgument(args, pin) : [...args]);
   const refused: RefusedInput[] = [];
   const writeErrors: unknown[] = [];
   const skips: string[] = [];
+  const withheld: string[] = [];
   const mirrors: ReturnType<typeof screenMirror>[] = [];
   let armed = false;
   setCommandRunnerForTests((command, args, options) => runProbe(command, pinned(args), options));
@@ -148,7 +153,12 @@ export function codexUpdateOffer(
         const pendingScreen = mirror.read();
         writeQueue = writeQueue.then(async () => {
           const firstSkip = skips.length === 0;
-          if (!(isTerminalProtocolReply(input) || admit(input, await pendingScreen))) return;
+          const screen = await pendingScreen;
+          if (withholdSkips() && input === offerSkipDigit(screen)) {
+            withheld.push(input);
+            return;
+          }
+          if (!(isTerminalProtocolReply(input) || admit(input, screen))) return;
           try {
             pty.write(data);
           } catch (error) {
@@ -166,6 +176,7 @@ export function codexUpdateOffer(
     refused,
     writeErrors,
     skips,
+    withheld,
     async unsupported(cwd) {
       const probe = probeShellCommand("codex --version", "codex");
       const result = await currentCommandRunner()(userShell(), probe, { cwd });
