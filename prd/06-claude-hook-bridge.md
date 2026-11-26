@@ -291,25 +291,41 @@ shows it delivered. Delivery is either a `queue-operation` `remove` record,
 which Claude writes when it delivers the message at a tool boundary inside the
 running turn, or a user record with `promptSource: "queued"`. Claude never runs
 a message whose `UserPromptSubmit` the caller's handler blocked, so that message
-holds no `Stop`. A `Stop` holds only for messages queued since the previous
-`Stop`; earlier ones belong to that earlier `Stop`. A `Stop` that holds for none
-forgets every message queued before it and marks readiness immediately.
+holds no `Stop`. Claude can fire a turn's `Stop` while the handler still screens
+a message queued during that turn, and runs the message only once the handler
+allows it. A `Stop` holds only for messages queued since the previous `Stop`;
+earlier ones belong to that earlier `Stop`. A `Stop` that holds for none
+forgets every message queued before it and marks readiness immediately. A held
+`Stop` whose messages the handler all blocks after it marks readiness, without
+a warning, once no handler is screening.
 
-Only a live `dequeue` record in the session's own transcript shows that Claude
-started the queued turn. A record replayed after a rewind does not, and neither
-does one in a subagent transcript. A `dequeue` record alone does not deliver a
-message. After a `dequeue`, a message queued before the `Stop` that still has no
-`queued` user record 2 s after the `Stop` is forgotten, and the queued turn's own
-`Stop` marks readiness.
+Only a live `dequeue` record in the session's own transcript, stamped no
+earlier than 1 s before the `Stop` arrived, shows that Claude started the queued
+turn. Claude stamps it after it receives the `Stop`'s response, so an earlier
+record read late behind a transcript backlog does not count. A record with no
+readable stamp counts as stamped when Elwood read it. A record replayed after a
+rewind does not count, and neither does one in a subagent transcript. A
+`dequeue` record alone does not deliver a message.
 
-If no `dequeue` record appears within 2 s of the `Stop`, Claude did not run the
-queued messages. Elwood then forgets the messages that were queued before that
-`Stop`, and keeps any queued later. That `Stop` then emits one
-`queued_turn_unconfirmed` warning and marks the session ready, unless the
-session's status changed after that `Stop` or a newer caller submission
-superseded it. A status change means other evidence already ended the turn, or
-a later turn started, for example from raw input. Without transcript
-correlation, a `Stop` marks readiness immediately.
+The 2 s bound starts at the `Stop`, and restarts each time the caller's handler
+finishes screening while no other screening remains. It expires only at a
+transcript read that reaches the end of every transcript. Each read during the
+hold covers at most 256 KiB, so a backlog drains without blocking the event loop
+for long. After a `dequeue`, a message queued before the `Stop` that still has no
+`queued` user record at the bound is forgotten, and the queued turn's own `Stop`
+marks readiness.
+
+If no `dequeue` record appears by the bound, Claude did not run the queued
+messages. Elwood then forgets the messages that were queued before that `Stop`,
+and keeps any queued later. That `Stop` then emits one
+`queued_turn_unconfirmed` warning and marks the session ready, unless another
+turn may have started or the turn already ended. That is the case when the
+session's status changed after that `Stop`, a newer caller submission
+superseded it, the caller wrote raw terminal input after it, or the handler
+allowed a `UserPromptSubmit` that arrived after it. A status change means other
+evidence already ended the turn, or a later turn started. In each of these
+cases, other evidence decides readiness. Without transcript correlation, a
+`Stop` marks readiness immediately.
 
 The headless terminal screen model may be used for startup automation,
 environment warnings, diagnostics, or UI hints. On a **cold start** it is not the

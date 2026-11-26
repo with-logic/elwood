@@ -22,10 +22,13 @@ back each entry are listed in `prd/14-conformance.md`.
   messages that were queued during a turn without tools. Claude runs them as a
   new turn right after the first turn's `Stop`, and the session now stays
   `running` until that turn stops, including for messages sent during that turn.
-  Messages that a `UserPromptSubmit` handler blocks do not hold readiness. If
-  Claude does not start the queued turn within 2 s, the session emits a
-  `queued_turn_unconfirmed` warning and becomes `ready`, unless the screen has
-  already shown the turn end or a newer turn has started.
+  Messages that a `UserPromptSubmit` handler blocks do not hold readiness, and
+  the session waits while a handler is still screening a queued message. If
+  Claude does not start the queued turn within 2 s of the `Stop` and of that
+  screening, the session emits a `queued_turn_unconfirmed` warning and becomes
+  `ready`. It does not if the screen has already shown the turn end, or if a
+  newer submission, raw terminal input, or an allowed `UserPromptSubmit` may
+  have started another turn.
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
   for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
   which records no dismissal in Codex's update state. It writes the key once the

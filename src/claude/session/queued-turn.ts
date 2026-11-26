@@ -182,7 +182,7 @@ function queuedTurnUnconfirmedWarning(elwoodSessionId: string): ClaudeQueuedTurn
     source: "lifecycle",
     code: "queued_turn_unconfirmed",
     severity: "warning",
-    message: `Elwood saw no sign within ${queuedTurnStartLimitMs / 1000} seconds of Claude's Stop that Claude started a turn for the messages queued during that turn, so it is ending the turn.`,
+    message: `Elwood saw no sign, ${queuedTurnStartLimitMs / 1000} seconds after Claude's Stop and any screening of queued messages, that Claude started a turn for them, so it is ending the turn.`,
     raw: "queued_turn_unconfirmed",
   };
 }

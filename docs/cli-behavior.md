@@ -1931,6 +1931,15 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   evidence (the idle composer) then marked the session ready 15 and 18 ms after the `Stop`.
   Elwood now marks a blocked message so that it holds no `Stop`, and that `Stop` marks readiness
   itself. Measured 2026-11-26 (C-HOOK-24, `tests/e2e/guidance-queued-turn-claude.e2e.ts`).
+- Claude 2.1.332 does not wait for a queued message's `UserPromptSubmit` handler before it ends
+  the running turn. With a caller handler that answered 3.5 s after the essay's `Stop`, Claude
+  fired that `Stop` while the guidance was still being screened, and ran the guidance as a new
+  turn with its own `Stop` once the handler allowed it. Elwood had marked the session ready after
+  the first `Stop`, because the 2 s bound expired during the screening. With a handler that
+  blocked 0.5 s after the `Stop`, Claude ran nothing, and the hold waited until the screen's
+  idle composer ended the turn. The bound now starts once no handler is screening, and messages
+  all blocked after the `Stop` end the turn at once. Measured 2026-11-26 (C-HOOK-24,
+  `tests/e2e/guidance-screening-claude.e2e.ts`).
 - An interrupt while Claude 2.1.332 is still screening the queued message, that is, before its
   `UserPromptSubmit` hook has returned, makes Claude fire the hook AGAIN as it runs the message as
   its own turn. The second hook has a NEW `prompt_id` and the same `prompt`. The transcript then

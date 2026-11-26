@@ -37,7 +37,7 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
     // After finish, nothing may emit past terminal:exit — observe/scan/poll no-op.
     appendRecords(path, [], assistant("after-finish"));
     watcher.observe(path);
-    watcher.scan();
+    expect(watcher.scan()).toBe(true); // nothing is left to read
     await watcher.pollOnceForTests();
     expect(events).toEqual([]);
   });
@@ -58,11 +58,12 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
     const filler = "q".repeat(300 * 1024); // one record > one chunk
     appendRecords(big, [], ...Array.from({ length: 20 }, () => assistant(filler)));
     appendRecords(small, [], assistant("second-cursor"));
-    watcher.scan();
+    expect(watcher.scan()).toBe(false); // the hold's bound waits for a scan that reaches the end
     // The shared budget was spent on `big`, so `small` has not been read yet.
     expect(texts(events)).not.toContain("second-cursor");
-    // A later scan (fresh budget) picks up the deferred cursor.
-    watcher.scan();
+    // Later scans (fresh budgets) pick up the deferred cursor: one chunk, then the rest.
+    expect(watcher.scan(1)).toBe(false);
+    expect(watcher.scan()).toBe(true);
     watcher.finish();
     expect(texts(events)).toContain("second-cursor");
   });
