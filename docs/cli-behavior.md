@@ -3545,6 +3545,18 @@ real CLI for 80 numbered rows on a 100x30 terminal and reads the screen afterwar
 - Codex wraps its repaints in synchronized output (`CSI ? 2026 h`); Claude sent
   none in these runs. Neither CLI left a soft-wrapped row on the idle live screen:
   both break long lines themselves.
+- **What `stop()` leaves for the final screen (C-SCREEN-03).** `stop()` sends
+  SIGTERM. Claude then prints `Resume this session with:` and
+  `claude --resume <id>` on the normal buffer. Under the fullscreen renderer it
+  leaves the alternate screen first, so its final screen held only those rows,
+  with 0 scrollback rows and the cursor at column 0 below them. Under the inline
+  renderer they followed the last frame, two or three rows further into
+  scrollback than on the idle screen. Codex 0.171.0 exits without redrawing and
+  prints no resume hint, so its final screen is its last idle frame, with the
+  same buffer, cursor and scrollback count as the idle read: the alternate
+  screen with 0 scrollback rows by default, or the normal buffer under the
+  inline renderer. Nothing was undrawn at disposal
+  in any run (`outputLost` false).
 
 ## Codex preserves U+FEFF at the edges of submitted text (0.171.0 and 0.172.0)
 

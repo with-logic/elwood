@@ -1,11 +1,10 @@
-/** Both adapters read the live screen until their terminal is disposed (PRD §5.14, C-SCREEN-01/03). */
+/** Both adapters read the live screen, then their final screen (PRD §5.14, C-SCREEN-01/03). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 
 const numbered = Array.from({ length: 10 }, (_, index) => `row ${index}`).join("\r\n");
-const notRunning = { code: "session_not_running" };
 
 afterEach(() => {
   claude.resetFakes();
@@ -41,15 +40,17 @@ for (const agent of ["claude", "codex"] as const) {
     }
   });
 
-  test(`C-SCREEN-03 a ${agent} session reads the screen its CLI left after exit, then rejects once disposed`, async () => {
+  test(`C-SCREEN-03 a ${agent} session reads the screen its CLI left after exit, then its final screen`, async () => {
     fake.installFakes();
     const session = await start({ cwd: fake.tempDir(), initialSize: { cols: 100, rows: 4 } });
-    fake.ptys[0]!.emitData("last words");
+    fake.ptys[0]!.emitData(numbered);
     fake.ptys[0]!.emitExit({ exitCode: 0 });
     expect(session.status).toBe("exited");
-    const afterExit = session.readScreen();
+    const afterExit = session.readScreen({ scrollback: 2 });
     await session.stop(); // Joins the cleanup that disposes the terminal.
-    expect((await afterExit).lines[0]).toBe("last words");
-    await expect(session.readScreen()).rejects.toMatchObject(notRunning);
+    const live = await afterExit;
+    expect(live).toMatchObject({ lines: ["row 6", "row 7", "row 8", "row 9"], outputLost: false });
+    expect(await session.readScreen({ scrollback: 2 })).toEqual(live);
+    expect(live.cursor).toEqual({ x: 5, y: 3, visible: true });
   });
 }
