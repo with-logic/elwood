@@ -1,9 +1,7 @@
 /** Disposing Claude startup automation interrupts a stalled render wait (C-API-56/CLAUDE-22). */
 import { expect, test, vi } from "vitest";
-import {
-  ClaudeStartupPromptResponder,
-  guardedClaudeAutomationWrite,
-} from "../../src/claude/startup-prompts.ts";
+import { guardedClaudeAutomationWrite } from "../../src/claude/session/prompt-writers.ts";
+import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 
 const prompt =
   "Claude Code running in a browser?\n❯ 1. Yes, use my browser\n  2. No, keep browser tools off";

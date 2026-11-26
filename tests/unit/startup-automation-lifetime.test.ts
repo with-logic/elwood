@@ -3,10 +3,8 @@
  * Claude browser-tools decline neither writes nor reports (PRD §5.1/§5.4, C-CLAUDE-22).
  */
 import { expect, test } from "vitest";
-import {
-  ClaudeStartupPromptResponder,
-  guardedClaudeAutomationWrite,
-} from "../../src/claude/startup-prompts.ts";
+import { guardedClaudeAutomationWrite } from "../../src/claude/session/prompt-writers.ts";
+import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { AutomationWriteResult } from "../../src/core/startup/barrier.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
