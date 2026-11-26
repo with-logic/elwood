@@ -4,7 +4,11 @@
  */
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
-import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
+import type {
+  ElwoodDialogAnswerOptions,
+  ElwoodDialogEvent,
+  ElwoodDialogRequest,
+} from "../../core/dialogs/types.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { LoopControls } from "../../core/loops/loop-controls.ts";
 import type { CodexModelOption } from "../../core/models/rows.ts";
@@ -32,7 +36,6 @@ import type {
   CodexHookHandlers,
 } from "../hooks/index.ts";
 import type { CodexTranscriptEvent } from "../transcript/index.ts";
-import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../workspace-trust/types.ts";
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
@@ -114,9 +117,12 @@ export interface CodexSessionApi
   statusDecisions(): readonly ElwoodStatusDecision[];
   waitForStatus(match: StatusMatch, timeoutMs?: number): Promise<ElwoodSessionStatus>;
   waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent>;
-  /** List the current verified workspace trust prompt, if one is available. */
+  /** List the verified workspace trust prompt and the update offer Elwood does not skip. */
   listDialogs(): Promise<readonly ElwoodDialogRequest[]>;
-  /** Match the native choice outcome with `autotrust: false`. Raw startup input revokes the answer. */
+  /**
+   * Answer trust with `autotrust: false`; raw startup input revokes the answer. An update
+   * request ID rejects with `dialog_not_found`: answer the offer at the terminal.
+   */
   answerDialog(
     requestId: string,
     choiceId: string,

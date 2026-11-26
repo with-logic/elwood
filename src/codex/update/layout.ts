@@ -3,10 +3,11 @@ import { type NumberedOption, numberedOptions } from "../../core/terminal-option
 
 /**
  * Versioned and alternate native banners; a version pair, when present, identifies an
- * appearance. Codex 0.155 draws `Update available! X -> Y`, 0.171 `Update available · X → Y`.
+ * appearance, and its groups are the installed and offered versions. Codex 0.155 draws
+ * `Update available! X -> Y`, 0.171 `Update available · X → Y`.
  */
 export const updateScreenBanner =
-  /^[^\S\r\n]*(?:✨[^\S\r\n]*)?(?:Update available(?:!|[^\S\r\n]+·)\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
+  /^[^\S\r\n]*(?:✨[^\S\r\n]*)?(?:Update available(?:!|[^\S\r\n]+·)\s+(\d+\.\d+\.\d+)\s*(?:->|→)\s*(\d+\.\d+\.\d+)|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
 
 /** Unknown content after choices, or numbered scrollback before the banner, is ambiguous. */
 export function updateDialogOptions(frame: string): readonly NumberedOption[] | undefined {
