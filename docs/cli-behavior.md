@@ -3904,3 +3904,14 @@ probes that asked one or two choice questions, the model replied at once without
 waiting. One earlier run, which aborted the color answer after selecting Blue and then
 pressed Enter, had `send()` return `ELWOOD_ASYNC_DONE` twice; none of these 28 runs
 reproduced that.
+
+**Codex draws a question it asks as a `? ` transcript cell.** 0.163 drew the titles of a
+`request_user_input_async` call as a `• ` transcript cell under the prompt; 0.172 draws
+`? ELWOOD_ASYNC_COLOR: Which color?` with its options indented below. Elwood reads a
+wrapped prompt above the composer as finished history only when a transcript cell follows
+it, and accepted only `• `. In the 8 early endings above, the Stop hook arrived while the
+queued panel still blocked the session, so Elwood held `blocked`. The idle composer that
+should then clear it was refused, because the prompt with the `? ` cells under it read as
+an unfinished menu, and `send()` timed out with the session still `blocked`. Elwood now
+accepts `? ` as the start of a transcript cell. Capture:
+`tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.

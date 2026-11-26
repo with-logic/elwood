@@ -2,7 +2,7 @@
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
 real authenticated CLI processes. The Claude entrypoint uses eight valid-model
-turns in three isolated sessions and the Codex entrypoint uses two.
+turns in three isolated sessions, and each Codex entrypoint uses two.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -83,3 +83,17 @@ arrays, requires four answered request closures and final-only ergonomic
 replies, and applies the same telemetry/state privacy and parent-state checks
 as the Claude proof. Native transcripts and diagnostic captures stay inside
 private sandbox directories that teardown removes.
+
+## Codex: a turn that ends with a queued question open (C-ATTN-02)
+
+```sh
+ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-turn-end.e2e.ts
+```
+
+On the same pinned Codex and model, one session asks two queued choices in one
+asynchronous call, and the proof answers only the first. The model ends its turn
+at that answer, so Codex withdraws the second choice. The proof requires the
+session to have been `blocked`, the two requests to close as answered and
+unavailable, and the prompt to be followed by the `? ` question cells Codex
+0.172 draws. The session must then settle at `ready`, and its composer must take
+a second prompt.
