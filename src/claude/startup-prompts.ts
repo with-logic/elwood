@@ -3,7 +3,7 @@
  * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder), the
  * browser-tools prompt, and the auto-mode setup offer that can follow a turn.
  * Implements PRD §5.1, §5.3, C-CLAUDE-10, C-CLAUDE-11, C-CLAUDE-14, C-CLAUDE-16,
- * C-CLAUDE-22, C-CLAUDE-26 and C-CLAUDE-27.
+ * C-CLAUDE-22, C-CLAUDE-26, C-CLAUDE-27 and C-CLAUDE-29.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";
@@ -22,7 +22,7 @@ import {
   declineKey,
 } from "./auto-mode/decline.ts";
 import { isClaudeAutoModeOfferMenu } from "./auto-mode/offer.ts";
-import { type ProbeWorkspaceTrust, refuseProbeTrust } from "./probe-trust.ts";
+import { type ProbeTrustOptions, probeTrustPolicy } from "./probe-trust.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
 export class ClaudeStartupPromptResponder {
@@ -37,12 +37,16 @@ export class ClaudeStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
     onWorkspaceTrustTakeover?: () => void,
-    probeTrust?: ProbeWorkspaceTrust,
+    probeTrust?: ProbeTrustOptions,
   ) {
     this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
+    const policy = probeTrust && probeTrustPolicy(probeTrust);
     this.trust = new TrustPromptResponder("claude", clearance, autotrust, {
-      onStateChange,
-      claimCallerOwnership: probeTrust && refuseProbeTrust(probeTrust),
+      onStateChange: () => {
+        policy?.onStateChange(this.trust.blockedPrompt);
+        onStateChange?.();
+      },
+      claimCallerOwnership: policy?.claim,
     });
   }
 
@@ -93,14 +97,14 @@ export class ClaudeStartupPromptResponder {
   }
 
   /**
-   * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
-   * where a trust gate must withhold unrelated automated keys.
-   * Live adapters must supply `readSettledFrame` from `settledLiveSnapshot`, returning
-   * undefined for pending rendering, synchronized output, or render failure. Trust reads
-   * it. The auto-mode offer's decline runs only when both it and `writeAutomation` are
-   * supplied, since only the guarded writer can withhold an Esc after caller input.
-   * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
-   * reader must not replace the settlement-aware reader in a live session.
+   * `write` answers trust; `writeAutomation` (default `write`) handles other prompts, where a
+   * trust gate must withhold unrelated automated keys. Live adapters must supply
+   * `readSettledFrame` from `settledLiveSnapshot`, returning undefined for pending rendering,
+   * synchronized output, or render failure. Trust reads it. The auto-mode offer's decline runs
+   * only when both it and `writeAutomation` are supplied, since only the guarded writer can
+   * withhold an Esc after caller input. The fallback to `readFrame` preserves static/direct
+   * callers; a snapshot-only reader must not replace the settlement-aware reader in a live
+   * session.
    */
   handle(
     screenText: string,
@@ -122,20 +126,18 @@ export class ClaudeStartupPromptResponder {
       browserToolsDeclinable(screenText) &&
       !trustGateVisible(screenText, "claude") // a trust gate is never declined blind (C-TRUST-01)
     ) {
-      // Escape is the prompt's documented decline path and needs no option
-      // number, so it stays correct if the option ordering changes. Latch the
-      // attempt before writing; a rejected live-session write stays retryable on a
-      // later frame. Disposal permanently cancels retries and diagnostics.
+      // Escape is the documented decline and needs no option number, so option order cannot
+      // break it. Latch before writing; a rejected live write stays retryable on a later
+      // frame, and disposal cancels retries and diagnostics for good.
       this.browserDeclineLatched = true;
-      // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
-      // so the decline must not claim success: un-latch it and settle as `cancelled`,
-      // which emits no activity; a later frame retries only while still live.
+      // A WITHHELD write never reached the PTY, so it claims nothing: un-latch and settle as
+      // `cancelled`, with no activity, so a later frame retries only while still live.
       const writeSettled = Promise.resolve(
         (writeAutomation ?? write)(declineKey, browserToolsDeclinable),
       )
         .then((result): StartupWriteCompletion => {
-          // Disposal DURING the write wins: the session is gone, so report neither a
-          // success activity nor a write-failure warning for it (C-CLAUDE-22).
+          // Disposal DURING the write wins: the session is gone, so report neither a success
+          // activity nor a write-failure warning for it (C-CLAUDE-22).
           if (this.closing) return "cancelled";
           if (result !== "withheld") return "answered";
           this.browserDeclineLatched = false;
