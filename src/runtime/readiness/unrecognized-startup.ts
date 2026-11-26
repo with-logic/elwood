@@ -11,9 +11,10 @@ export type StartupScreenEvidence = {
   readonly configured: (frame: string, cols?: number) => boolean;
   /**
    * The screens the adapter draws before that composer: its boot frames, and Codex's boot
-   * composer and resume placeholder.
+   * composer, resume placeholder and footer still waiting for the requested effort. A wrapped
+   * footer reads only with the width of the terminal that drew it.
    */
-  readonly nativeStartupScreen: (frame: string) => boolean;
+  readonly nativeStartupScreen: (frame: string, cols?: number) => boolean;
   /** Whether the latest frame is completed; a synchronized repaint can span PTY writes. */
   readonly completed: () => boolean;
   readonly report: (text: string) => void;
@@ -79,7 +80,11 @@ export function createUnrecognizedStartupWatch(
       const pending = frame.text.trim() === "" || !evidence.completed();
       const recognizedEvidence =
         !pending && hasRecognizedStartupEvidence(facts, automationInputBlocking, frame);
-      current = !(pending || recognizedEvidence || evidence.nativeStartupScreen(frame.text));
+      current = !(
+        pending ||
+        recognizedEvidence ||
+        evidence.nativeStartupScreen(frame.text, frame.cols)
+      );
       blocking = current || (blocking && !recognizedEvidence);
       // A recognized frame ends the run, so the next unrecognized one is reported again.
       const endsRun = !(pending || current);

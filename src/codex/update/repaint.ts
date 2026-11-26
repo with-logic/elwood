@@ -29,10 +29,10 @@ export function codexDialogVisible(frame: string): boolean {
 }
 
 /**
- * Codex's boot composer or resume placeholder, the composer before Codex is configured: its
- * last composer row holds a native placeholder over the shortcuts hint, with no status row,
- * and no dialog is drawn. With a status row it would be the configured composer, which only
- * live clearance confirms (C-CODEX-12).
+ * Codex's boot composer or resume placeholder, the composer before Codex paints its status
+ * footer: its last composer row holds a native placeholder over the shortcuts hint, with no
+ * status row, and no dialog is drawn. With a status row it would be the configured composer,
+ * which only live clearance confirms (C-CODEX-12).
  */
 export function codexUnconfiguredComposerVisible(frame: string): boolean {
   if (codexDialogVisible(frame)) return false;

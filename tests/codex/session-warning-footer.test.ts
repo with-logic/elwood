@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import {
   codexComposerClearance,
-  codexComposerConfigured,
+  codexReadinessEvidence,
 } from "../../src/codex/screen/clearance.ts";
 import { startCodex } from "../../src/index.ts";
 import { codexTty } from "../fixtures/trust-composer.ts";
@@ -54,7 +54,7 @@ test.each([
   { label: "warning counter", frame: agents },
   { label: "no warning counter", frame: agents.replace(/ +⚠ 3 warnings · f2 to view/, "") },
 ])("C-API-28 C-TRUST-01 accepts the captured agents hint with $label", ({ frame }) => {
-  expect(codexComposerConfigured(frame)).toBe(true);
+  expect(codexReadinessEvidence(frame)).toBe(true);
   expect(codexComposerClearance(frame)).toBe(true);
 });
 
@@ -65,7 +65,7 @@ test.each([
   "← for agents · extra",
 ])("C-API-28 C-TRUST-01 rejects malformed agents hint %s", (hint) => {
   const frame = agents.replace("← for agents ·", hint);
-  expect(codexComposerConfigured(frame)).toBe(false);
+  expect(codexReadinessEvidence(frame)).toBe(false);
   expect(codexComposerClearance(frame)).toBe(false);
 });
 

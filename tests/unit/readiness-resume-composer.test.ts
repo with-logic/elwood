@@ -6,7 +6,7 @@
  */
 
 import { expect, test, vi } from "vitest";
-import { codexComposerConfigured } from "../../src/codex/screen/clearance.ts";
+import { codexReadinessEvidence } from "../../src/codex/screen/clearance.ts";
 import { codexScreenFactTable } from "../../src/codex/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
@@ -17,7 +17,7 @@ import { noStartupScreens } from "../helpers/startup-screens.ts";
 const placeholder = capturedFrame("codex-0.171.0/update/resume-placeholder");
 const skipped = capturedFrame("codex-0.171.0/update/resume-skipped-composer");
 const facts = (text: string) => readScreenFacts(codexScreenFactTable, { text, title: "" }).facts;
-const codex = (configured = codexComposerConfigured) => ({
+const codex = (configured = codexReadinessEvidence) => ({
   ...noStartupScreens,
   configured,
   onBackstop: () => {},
@@ -28,11 +28,11 @@ test.each([
   ["unrecognized startup screen", unrecognized],
 ])("C-API-28 the %s carries the composer marker, unconfigured", (_name, frame) => {
   expect(facts(frame)).toMatchObject({ composer_visible: true, blocking_prompt_visible: false });
-  expect(codexComposerConfigured(frame, 100)).toBe(false);
+  expect(codexReadinessEvidence(frame, 100)).toBe(false);
 });
 
 test("C-API-28 the captured composer after the skip is configured", () => {
-  expect(codexComposerConfigured(skipped, 100)).toBe(true);
+  expect(codexReadinessEvidence(skipped, 100)).toBe(true);
 });
 
 test("C-API-28 a resume marks ready on the configured composer, not the marker", () => {
@@ -67,7 +67,7 @@ test("C-API-28 a resume's deadline also waits out an unrecognized screen for the
 });
 
 test("C-API-28 a resume checks the configured composer only on unblocked composer frames", () => {
-  const configured = vi.fn(codexComposerConfigured);
+  const configured = vi.fn(codexReadinessEvidence);
   const gate = createReadinessGate(() => {}, true, codex(configured));
   const dialog = { ...facts(unrecognized), blocking_prompt_visible: true };
   gate.observeReadinessFrame(dialog, false, unrecognized, 100);

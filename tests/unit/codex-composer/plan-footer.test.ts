@@ -2,10 +2,10 @@
 import { expect, test } from "vitest";
 import {
   codexComposerClearance,
-  codexComposerConfigured,
   codexComposerRow,
   codexComposerRowsClearance,
   codexComposerRowsEmpty,
+  codexReadinessEvidence,
 } from "../../../src/codex/screen/clearance.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
@@ -71,7 +71,7 @@ test.each([
 ])("C-CODEX-26 a Codex 0.172 hint row refuses %s", (_, hint) => {
   const frame = [composer, blank, status, hint].join("\n");
   expect([
-    codexComposerConfigured(frame, 140),
+    codexReadinessEvidence(frame, 140),
     codexComposerClearance(frame, { cols: 140 }),
   ]).toEqual([false, false]);
 });

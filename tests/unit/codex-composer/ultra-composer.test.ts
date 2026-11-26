@@ -1,8 +1,8 @@
 /** Native ultra-mode composer recognition and draft recovery (C-API-28/31/56, C-TRUST-01). */
 import { expect, test } from "vitest";
 import {
-  codexComposerConfigured,
   codexComposerRowsClearance,
+  codexReadinessEvidence,
 } from "../../../src/codex/screen/clearance.ts";
 import { codexEmptyInputFrame } from "../../../src/codex/screen/empty-input.ts";
 import { codexInputStaged } from "../../../src/codex/screen/staged-input.ts";
@@ -16,7 +16,7 @@ const footer =
   "\n\n  GPT-6.2-Sol ultra · /tmp/elwood-ultra-CAPTURE\n  ← for agents · ? for shortcuts";
 
 test("C-API-28 C-TRUST-01 captured ultra composer is configured and clear", () => {
-  expect(codexComposerConfigured(captured)).toBe(true);
+  expect(codexReadinessEvidence(captured)).toBe(true);
   expect(codexComposerRowsClearance(captured.split("\n"))).toBe(true);
   expect(
     readScreenFacts(codexScreenFactTable, { text: captured, title: "workspace" }).facts

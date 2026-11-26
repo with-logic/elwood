@@ -234,6 +234,10 @@ text is redacted. `terminal:data`, `terminal.snapshot()` and `readScreen()` are 
 redacted: they show the screen as drawn, keys included. Even redacted, the activity text
 can include whatever else the agent showed, such as account or workspace details or
 other credentials.
+On Codex, `codex_effort_unconfirmed` means the status footer never showed the
+reasoning effort the session requested, so readiness counted the footer at the
+backstop: a mode or model picked right after `ready` can then be discarded when
+Codex applies its configuration.
 Recognized update menus are safely skipped or reported as `blocked` with
 `codex-update-prompt` attention. Elwood never chooses `Update now` in the TUI.
 

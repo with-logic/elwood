@@ -2,7 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
   codexComposerClearance,
-  codexComposerConfigured,
+  codexReadinessEvidence,
 } from "../../src/codex/screen/clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
@@ -53,7 +53,7 @@ function fixture(write: () => TrustWriteResult | Promise<AutomationWriteResult>)
   });
   const readiness = createReadinessGate(queuedInput, true, {
     ...noStartupScreens,
-    configured: codexComposerConfigured,
+    configured: codexReadinessEvidence,
     onBackstop: () => {},
   });
   const observer = createSessionFrameObserver(
