@@ -5,10 +5,11 @@
  * lookup as `security` does when the item does not exist: exit 44.
  */
 
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import { tempDir } from "./tmp.ts";
+import { writeWarmExecutable } from "./warm-executable.ts";
 
 /** One keychain item: a login stored under `service`, or a lookup that fails with `status`. */
 type Item = { readonly service: string } & (
@@ -32,8 +33,10 @@ export function fakeKeychain(item?: Item): { bin: string; lookups: () => readonl
   const log = join(dir, "lookups");
   const answer = answerFor(item);
   // `keychainLogin` runs `security find-generic-password -s <service> -w`.
-  writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$3" >> ${shellQuote(log)}\n${answer}\nexit 44\n`);
-  chmodSync(bin, 0o700);
+  writeWarmExecutable(
+    bin,
+    `#!/bin/sh\nprintf '%s\\n' "$3" >> ${shellQuote(log)}\n${answer}\nexit 44\n`,
+  );
   const lookups = () =>
     existsSync(log)
       ? readFileSync(log, "utf8")
