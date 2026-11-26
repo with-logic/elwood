@@ -55,9 +55,8 @@ const skip = skipIf(
   !disclosing && `requires Claude ${claudeHooksDisclosureVersion}+, which discloses hooks`,
 );
 /**
- * Claude 2.1.326 through 2.1.328 draw the load row alone, which Elwood never answers, and
- * earlier versions the plain prompt (`docs/cli-behavior.md`). The older-Claude proof needs
- * the plain prompt, so it runs on the newest supported Claude before 2.1.326 the user has.
+ * Claude 2.1.326 through 2.1.328 draw the load row alone, which Elwood never answers. The
+ * older-Claude proof needs the plain prompt, so it runs on the newest one before 2.1.326.
  */
 const loadRowAloneFrom = "2.1.326";
 const older = installedClaudeBefore(loadRowAloneFrom, minimumClaudeVersion);
