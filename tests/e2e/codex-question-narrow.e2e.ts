@@ -43,6 +43,8 @@ test("C-QUESTION-04 queued Codex questions are answered in a 50-column pane", {
     const live = await session.start();
     await live.waitForStatus((status) => status === "ready", 45_000);
     const reply = session.send(prompt, { timeoutMs: 90_000 });
+    // Report the first failure, not the turn this test's cleanup ends.
+    reply.catch(() => undefined);
     await waitForPublicCodexQuestion(() => events.filter((e) => e.phase === "raised").length === 2);
     const [color, note] = await session.listQuestions();
     assert.ok(color && note);
