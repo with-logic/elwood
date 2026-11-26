@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
+  ("Could not clear the staged composer draft.") when the previous turn completed
+  before Elwood saw the empty composer. This was most likely in auto mode. Elwood
+  sent clear keys to a composer that was already empty, and Claude repaints nothing
+  for them. When the frames after the earlier send's Enter show that Claude took
+  its input, Elwood now releases that draft without sending keys.
+
 - `autotrust: true` now approves Claude's workspace trust prompt when it discloses the
   folder's hooks, and Claude then runs those hooks. Claude Code 2.1.329 and later add two
   hooks rows to that prompt, naming `.claude/settings.json`, `.claude/settings.local.json`
@@ -85,6 +92,12 @@ back each entry are listed in `prd/14-conformance.md`.
   then released queued input onto the screen that replaced it. A hook, deadline
   or backstop that meets undrawn output now judges the frame it draws, or the
   last frame if that render fails.
+- A `status` or `activity` listener that throws while Elwood observes a
+  rendered frame, such as one handling a dialog that blocks the session, no
+  longer drops that frame's `terminal:data`, its status and attention
+  activities, or readiness's view of it. A new content-free
+  `frame_observer_failed` warning reports the first such failure in a session.
+  A throwing `status` listener also no longer skips that status's `activity`.
 - The `initial_ready_backstop` `unrecognized_startup` activity now replaces
   `sk-` API-key-shaped tokens in its screen text with `sk-[REDACTED]`, including
   a key wrapped across rows. Each continuing key run becomes `[REDACTED]`, even

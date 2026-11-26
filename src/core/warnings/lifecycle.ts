@@ -88,6 +88,17 @@ export type InitialReadyBackstopWarning = {
   readonly raw: string;
 };
 
+/** One content-free diagnostic for a failed rendered-frame notification (§5.4, C-API-72). */
+export type FrameObserverFailedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: ElwoodAgentKind;
+  readonly source: "lifecycle";
+  readonly code: "frame_observer_failed";
+  readonly severity: "warning";
+  readonly message: "A rendered-frame notification failed.";
+  readonly raw: "frame_observer_failed";
+};
+
 export type ObserverFailureWarning = HookObserverFailedWarning | InitialReadyObserverFailedWarning;
 
 /**
