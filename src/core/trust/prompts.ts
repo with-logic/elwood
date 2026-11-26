@@ -28,6 +28,8 @@ type TrustPromptBase = {
   readonly accept: RegExp;
   /** The gate-bound footer (`gateFooters`) this gate may end in; no other gate accepts it. */
   readonly footer?: GateFooter;
+  /** Structure the folded copy cannot show, checked on the header's rows (`TrustDialog.rows`). */
+  readonly nativeRows?: (rows: readonly string[]) => boolean;
 };
 
 /** The Claude trust-prompt ids: folder trust plus the CLI's first-run skill/plugin/MCP gates. */
@@ -82,7 +84,8 @@ export function activeTrustDialogVisible(
     header !== null &&
     spec.descriptionPattern.test(dialog.header.slice(header[0].length).trim()) &&
     dialog.options.every((option) => spec.optionPattern.test(option.label)) &&
-    (dialog.gateFooter === undefined || dialog.gateFooter === spec.footer)
+    (dialog.gateFooter === undefined || dialog.gateFooter === spec.footer) &&
+    (spec.nativeRows === undefined || spec.nativeRows(dialog.rows))
   );
 }
 

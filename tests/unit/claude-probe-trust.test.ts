@@ -1,9 +1,9 @@
 /**
- * The model probe's trust policy over load rows and other prompts (PRD §5.3, C-CLAUDE-29): it
- * refuses each captured load row and Claude's MCP server, plugin, and skill prompts with their
- * reasons, still accepts the bypass-permissions disclaimer, and refuses a painted workspace
- * prompt that never verified when its five-second trust budget runs out, but not one that
- * verified or was still painting.
+ * The model probe's trust policy over load rows and other prompts (PRD §5.3, C-CLAUDE-29,
+ * C-CLAUDE-30): it refuses each captured load row, with or without the permissions warning, and
+ * Claude's MCP server, plugin, and skill prompts with their reasons, still accepts the
+ * bypass-permissions disclaimer, and refuses a painted workspace prompt that never verified
+ * when its five-second trust budget runs out, but not one that verified or was still painting.
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { gateBudgetMs } from "../../src/core/trust/deadline.ts";
@@ -12,6 +12,7 @@ import { probeOutcome, probeResponder, refusedOutcome } from "../helpers/claude-
 import {
   claudeLoadRowCaptures,
   claudeMcpServerPrompt,
+  claudePermissionsCaptures,
   claudeSettingsEnvPrompt,
   claudeWorkspaceTrustScreen,
 } from "../helpers/claude-workspace-trust-screen.ts";
@@ -35,6 +36,12 @@ const midPaint = (options: boolean) =>
 test.each(
   claudeLoadRowCaptures,
 )("C-CLAUDE-29 the probe refuses the captured load row %s", (_, frame, disclosure) => {
+  expect(probeOutcome(frame)).toEqual(refusedOutcome(disclosureRefusals[disclosure]));
+});
+
+test.each(
+  claudePermissionsCaptures,
+)("C-CLAUDE-30 the probe refuses the captured permissions warning %s with its load row's reason", (_, frame, disclosure) => {
   expect(probeOutcome(frame)).toEqual(refusedOutcome(disclosureRefusals[disclosure]));
 });
 
