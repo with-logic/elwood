@@ -16,7 +16,8 @@ back each entry are listed in `prd/14-conformance.md`.
   activity. Claude Code 2.1.332 fires the guidance's `UserPromptSubmit` with the
   running turn's prompt ID, which Elwood had treated as a duplicate. That
   `user_message` carries the running turn's `turnId`, so one Claude turn can
-  have more than one `user_message`.
+  have more than one `user_message`. Guidance appears once even when an
+  interrupt makes Claude screen it again under a new prompt ID.
 
 ## [0.8.0] - 2026-11-25
 

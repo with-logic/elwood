@@ -122,8 +122,7 @@ export class LineEmitter {
     }
     const turnId = this.turns.observe(path, item);
     if (this.turns.correlationDisabled) this.userPrompts.clearUnpaired();
-    if (source !== "history" && turnId !== undefined)
-      this.userPrompts.observeForwardRecord(path, turnId, item);
+    if (source !== "history") this.userPrompts.observeForwardRecord(path, turnId, item);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
     if (summaries.length === 0) {

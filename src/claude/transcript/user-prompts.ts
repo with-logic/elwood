@@ -2,16 +2,15 @@
  * Match blank authenticated Claude hooks to committed user records, and show each nonblank hook
  * unless transcript recovery already showed its prompt (PRD §5.4, C-API-62, C-API-63).
  */
-import { createHash } from "node:crypto";
-import { isAbsolute } from "node:path";
 import type { UserPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { isRecord } from "../../core/predicates.ts";
 import { claudePromptPresentation } from "../pasted-content.ts";
 import type { InitialUserPrompt } from "./initial-prompt.ts";
-import { maxIdentifierBytes, maxPathBytes } from "./turn-identity.ts";
+import { addBounded, maxPromptEntries, promptLocation, turnTextKey } from "./prompt-keys.ts";
+import { ClaudeQueuedPrompts } from "./queued-prompts.ts";
+import { maxIdentifierBytes } from "./turn-identity.ts";
 import { type UserPromptRecord, userPromptRecord } from "./user-record.ts";
 
-const maxEntries = 64;
 const maxRetainedBytes = 4 * 1024 * 1024;
 
 export type UserPromptHookEvidence = {
@@ -50,6 +49,7 @@ export class ClaudeUserPrompts {
   // submissions apart, so transcript recovery still needs an unshown ID.
   private readonly shownTurnIds = new Set<string>();
   private readonly recoveredTextKeys = new Set<string>();
+  private readonly queued = new ClaudeQueuedPrompts();
   private retainedBytes = 0;
   private readonly emit: (prompt: RecoveredUserPrompt) => void;
 
@@ -57,8 +57,10 @@ export class ClaudeUserPrompts {
     this.emit = emit;
   }
 
+  /** Without transcript evidence a queued message cannot be seen delivered, so none stays pending. */
   clearUnpaired(): void {
     this.entries.clear();
+    this.queued.clear();
     this.retainedBytes = 0;
   }
 
@@ -74,9 +76,18 @@ export class ClaudeUserPrompts {
     if (Buffer.byteLength(turnId) > maxIdentifierBytes) return evidence.hasText;
     const identity = promptLocation(canRecover ? path : undefined, turnId);
     if (evidence.hasText) {
-      if (this.recoveredTextKeys.has(turnTextKey(turnId, evidence.prompt))) return false;
+      const { prompt } = evidence;
+      if (this.recoveredTextKeys.has(turnTextKey(turnId, prompt))) return false;
+      const textlessPending = identity && this.entries.get(identity.key)?.kind === "hook";
+      // A reused ID is a message queued during that running turn. Under a new ID, an interrupt
+      // made Claude screen a still-queued message again as it runs it: it was already shown.
+      if (textlessPending || this.shownTurnIds.has(turnId)) this.queued.queued(prompt);
+      else if (this.queued.claim(prompt)) {
+        addBounded(this.shownTurnIds, turnId);
+        return false;
+      }
       // A textless submission under this ID still waits for its record; queued input keeps it.
-      if (identity && this.entries.get(identity.key)?.kind === "hook") return true;
+      if (textlessPending) return true;
       addBounded(this.shownTurnIds, turnId);
       this.remove(identity?.key);
       return true;
@@ -110,8 +121,10 @@ export class ClaudeUserPrompts {
   }
 
   /** Publish an exact pending path/ID match or retain text for a hook that arrives later. */
-  observeForwardRecord(path: string, turnId: string, item: unknown): void {
+  observeForwardRecord(path: string, turnId: string | undefined, item: unknown): void {
+    this.queued.observeRecord(item);
     if (
+      turnId === undefined ||
       !isRecord(item) ||
       item["type"] !== "user" ||
       item["promptId"] !== turnId ||
@@ -164,7 +177,7 @@ export class ClaudeUserPrompts {
   private remember(key: string, evidence: PromptEvidence): void {
     this.entries.set(key, evidence);
     if (evidence.kind === "record") this.retainedBytes += evidence.retainedSizeBytes;
-    while (this.entries.size > maxEntries || this.retainedBytes > maxRetainedBytes) {
+    while (this.entries.size > maxPromptEntries || this.retainedBytes > maxRetainedBytes) {
       this.remove(this.entries.keys().next().value);
     }
   }
@@ -175,23 +188,4 @@ export class ClaudeUserPrompts {
     if (evidence?.kind === "record") this.retainedBytes -= evidence.retainedSizeBytes;
     this.entries.delete(key);
   }
-}
-
-function addBounded(set: Set<string>, value: string): void {
-  set.add(value);
-  if (set.size > maxEntries) set.delete(set.values().next().value!);
-}
-
-/** A fixed-size digest keeps the recovered history bounded however large a prompt is. */
-function turnTextKey(turnId: string, text: string): string {
-  return JSON.stringify([turnId, createHash("sha256").update(text).digest("base64")]);
-}
-
-function promptLocation(path: string | undefined, turnId: string) {
-  return path !== undefined &&
-    isAbsolute(path) &&
-    Buffer.byteLength(path) <= maxPathBytes &&
-    Buffer.byteLength(turnId) <= maxIdentifierBytes
-    ? { path, key: JSON.stringify([path, turnId]) }
-    : undefined;
 }

@@ -1914,6 +1914,16 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   shown prompt ID now suppresses only transcript recovery, never a nonblank hook. Measured with
   `sendGuidance` in three private-config sessions, two without tools and one with, 2026-11-25
   (C-API-62).
+- An interrupt while Claude 2.1.332 is still screening the queued message, that is, before its
+  `UserPromptSubmit` hook has returned, makes Claude fire the hook AGAIN as it runs the message as
+  its own turn. The second hook has a NEW `prompt_id` and the same `prompt`. The transcript then
+  gets `[Request interrupted by user]`, an `enqueue` and a `dequeue` record on either side of that
+  hook, and the user record with `promptSource: "queued"` only after it. An interrupt 3 s after
+  the hook returned fired no second hook. Elwood shows the re-screened message once: a hook under
+  a new ID with the text of a message still queued is suppressed, until the `remove` record or the
+  `queued` user record shows the message delivered. Measured in three sessions on 2026-11-25:
+  an interrupt about 100 ms after the hook and one during a 3 s caller hold both re-fired, the late
+  one did not (C-API-62, `tests/e2e/guidance-interrupt-claude.e2e.ts`).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

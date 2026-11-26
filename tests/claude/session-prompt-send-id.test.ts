@@ -99,13 +99,13 @@ test("C-API-62 C-API-71 a reused Claude prompt ID is shown but cannot claim a ca
   await paint();
   await session.sendGuidance(" next ", { sendId: "two" });
   await submit(" next", "reused");
-  await submit(" next", "distinct");
   // Claude reuses the running turn's ID for a queued message: it is shown, without caller evidence.
-  // The distinct-ID hook models a later fresh submission; real Claude fires no second hook.
+  // The same text under a new ID while it is still queued is Claude screening it again after an
+  // interrupt, which shows nothing new and so cannot claim the caller ID either.
+  await submit(" next", "distinct");
   expect(messages()).toMatchObject([
     { text: " first ", sendId: "one" },
     { text: " next", turnId: "reused" },
-    { text: " next ", sendId: "two" },
   ]);
   expect(messages()[1]).not.toHaveProperty("sendId");
   expect(messages()[1]).not.toHaveProperty("promptProvenance");
