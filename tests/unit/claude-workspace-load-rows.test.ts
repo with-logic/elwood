@@ -15,7 +15,7 @@ import { autotrustAnswer, autotrustView, failedClosed } from "../helpers/claude-
 import {
   claudeLoadRowCaptures,
   claudeSettingsEnvPrompt,
-  selectClaudeHooksYes,
+  selectClaudeWorkspaceTrustYes,
 } from "../helpers/claude-workspace-trust-screen.ts";
 
 const mcpOnly = capturedFrame("claude-2.1.332/trust/workspace-mcp-120");
@@ -29,7 +29,7 @@ test.each(
   const header = view.kind === "candidate" ? view.dialog.header : "";
   expect(claudeWorkspaceStrongestDisclosure(header)).toBe(disclosure);
   expect(claudeWorkspaceDisclosesHooks(header)).toBe(disclosure === "hooks");
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject({
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject({
     result: { automation: { prompt: "workspace_trust", input: "home+down+enter" } },
     completion: "answered",
   });

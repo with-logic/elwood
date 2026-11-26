@@ -46,8 +46,11 @@ type SettingsLoads = EachOf<typeof settingsFiles, FileLoad>;
 type LoadDisclosure = { readonly settingsLoads: SettingsLoads; readonly mcpServers: boolean };
 const mcpServersItem = String.raw`\.mcp\.json here or above \(MCP servers\)`;
 // Claude closes its permissions, added-directories, and headers-helper warnings with this one
-// sentence; only the permissions warning is recognized.
-const warningsClose = String.raw`These will apply without asking\. Only proceed if you trust this configuration\.`;
+// sentence on its own row; only the permissions warning is recognized.
+const closingSentence =
+  "These will apply without asking. Only proceed if you trust this configuration.";
+const permissionsHeader = "⚠ This folder pre-approves ";
+type SettingsFilePattern = (typeof settingsFiles)[number];
 const loadDisclosures: readonly LoadDisclosure[] = fileLoads
   .flatMap((settings) => fileLoads.map((local): SettingsLoads => [settings, local]))
   .flatMap((settingsLoads) => [false, true].map((mcpServers) => ({ settingsLoads, mcpServers })))
@@ -127,14 +130,28 @@ function optionalPermissionsWarning({ settingsLoads }: LoadDisclosure): string {
   const loaded = settingsFiles.filter((_, index) => settingsLoads[index] !== "absent");
   if (loaded.length === 0) return "";
   // Every non-empty subset of `loaded`, in its order.
-  const namedFileLists: (readonly string[])[] = [];
+  const namedFileLists: (readonly SettingsFilePattern[])[] = [];
   for (const file of loaded) {
     for (const subset of [...namedFileLists]) namedFileLists.push([...subset, file]);
     namedFileLists.push([file]);
   }
   const count = String.raw`(?:1 tool permission|(?:[2-9]|[1-9]\d+) tool permissions)`;
   const files = namedFileLists.map((subset) => joinAsClaudeList(subset)).join("|");
-  return `(?:⚠ This folder pre-approves ${count} in (?:${files}):\\s*[^\\s⚠][^⚠]*?\\s*${warningsClose}\\s*)?`;
+  return `(?:${permissionsHeader}${count} in (?:${files}):\\s*[^\\s⚠][^⚠]*?\\s*${RegExp.escape(closingSentence)}\\s*)?`;
+}
+
+/**
+ * Whether a Claude workspace prompt's permissions warning, when it has one, ends at Claude's own
+ * closing sentence (C-CLAUDE-30): a whole row, followed by a blank row, a warning, or nothing.
+ * The folder's rules can draw neither a blank row nor `⚠`, and Claude cuts each rule at about 57
+ * characters and joins them with `, ` and ` and `, so no rules row is ever the whole sentence:
+ * a rule that quotes it never stands in for the row Claude draws.
+ */
+export function claudePermissionsCloseIsNative(rows: readonly string[]): boolean {
+  const start = rows.findIndex((row) => row.startsWith(permissionsHeader));
+  if (start < 0) return true;
+  const end = rows.findIndex((row, index) => index > start && (row === "" || row.startsWith("⚠")));
+  return rows[(end < 0 ? rows.length : end) - 1] === closingSentence;
 }
 
 /** Claude's list join: `a`, `a and b`, `a, b, and c`. */

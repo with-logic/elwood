@@ -28,8 +28,8 @@ export const claudeHooksPromptCaptures = (["local", "both"] as const).flatMap((f
   ),
 );
 
-/** Moves a hooks prompt's caret to "Yes": only its "No, exit" frame was captured. */
-export function selectClaudeHooksYes(screen: string): string {
+/** Moves a captured workspace prompt's caret to "Yes": only its "No, exit" frame was captured. */
+export function selectClaudeWorkspaceTrustYes(screen: string): string {
   return screen.replace(" ❯ No, exit\n   Yes", "   No, exit\n ❯ Yes");
 }
 
@@ -48,7 +48,7 @@ export function claudeWorkspaceTrustScreen(
 
 function hooksScreen(selected: "yes" | "no"): string {
   const screen = claudeHooksPrompt.wrapped;
-  return selected === "no" ? screen : selectClaudeHooksYes(screen);
+  return selected === "no" ? screen : selectClaudeWorkspaceTrustYes(screen);
 }
 
 /**

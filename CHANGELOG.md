@@ -39,7 +39,8 @@ back each entry are listed in `prd/14-conformance.md`.
   will apply without asking.` Elwood treated that warning as unknown prose, so such a session
   stayed `blocked`, and `listClaudeModels` waited five seconds to reject it with
   `"workspace_unverified"`. It now rejects at once with the category of the load row,
-  usually `"workspace_settings"`. Claude's warnings that the folder adds workspace
+  usually `"workspace_settings"`. A listed request's `text` now includes the folder's
+  rules as Claude draws them. Claude's warnings that the folder adds workspace
   directories or runs a headers helper share that closing sentence and are still not
   recognized, so those prompts stay `blocked`.
 

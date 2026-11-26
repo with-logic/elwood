@@ -938,8 +938,14 @@ the one closing sentence, which also follows the directories warning alone. 2.1.
 2.1.330, and 2.1.331 draw the permissions and directories warnings byte for byte as
 2.1.332 does (2026-11-26). Elwood verifies only the permissions warning, so a rule
 may not contain `⚠` and any other warning between the rules and the closing sentence
-fails closed. The rules are joined like a list, at most eight then `, and <k> more`;
-one longer than about 60 characters is cut with `…`; the list wraps onto rows
+fails closed. The closing sentence is always a whole row of its own, followed by a
+blank row or the hooks warning. A rule that quotes it is cut, at about 57 characters
+with `…`, and rules that split it are joined with ` and ` or `, `, so no rules row
+is ever the whole sentence, and Elwood requires that row (`-quote-close-`,
+`-quote-split-`). A rule shaped like a numbered option fails closed
+(`-numbered-rule-`); one shaped like a dialog footer is read as a rule
+(`-footer-rule-`). The rules are joined like a list, at most eight then `, and <k>
+more`; one longer than about 60 characters is cut with `…`; the list wraps onto rows
 indented one column; a zero-width character in a rule does not reach the screen.
 `deny` and `ask` rules draw no warning. Because the rules are the folder's own text,
 Elwood checks only the rows around them, and reads what the prompt discloses only

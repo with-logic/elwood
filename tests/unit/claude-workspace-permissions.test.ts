@@ -16,7 +16,7 @@ import { capturedFrame } from "../helpers/captured-frames.ts";
 import { autotrustAnswer, autotrustView, failedClosed } from "../helpers/claude-autotrust.ts";
 import {
   claudePermissionsCaptures,
-  selectClaudeHooksYes,
+  selectClaudeWorkspaceTrustYes,
 } from "../helpers/claude-workspace-trust-screen.ts";
 
 const capture = (name: string, version = "2.1.332") =>
@@ -54,7 +54,7 @@ test.each(
   claudePermissionsCaptures,
 )("C-CLAUDE-30 the captured permissions warning %s verifies, discloses its load row, and is answered", async (_, frame, strongest) => {
   expect(disclosure(frame)).toEqual({ strongest, disclosesHooks: strongest === "hooks" });
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject(answered);
 });
 
 test.each([
@@ -101,15 +101,41 @@ test("C-CLAUDE-30 Claude's warning that the folder adds a workspace directory, a
 test("C-CLAUDE-30 a rule named like the affirmative option is read as a rule", async () => {
   const frame = withRules("Yes, I trust this folder");
   expect(disclosure(frame)).toEqual({ strongest: "settings", disclosesHooks: false });
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject(answered);
 });
 
 test.each([
-  ["the selected option", "❯ Yes, I trust this folder"],
-  ["a trust prompt's header", "Do you trust the files in this folder?"],
-  ["a warning", hooksWarningRow.trim()],
-])("C-CLAUDE-30 a rule shaped like %s fails closed", (_, row) => {
-  expect(autotrustView(withRules(row))).toEqual(failedClosed);
+  ["the selected option", withRules("❯ Yes, I trust this folder")],
+  ["a numbered option", capture("numbered-rule-120")],
+  ["a trust prompt's header", withRules("Do you trust the files in this folder?")],
+  ["a warning", withRules(hooksWarningRow.trim())],
+])("C-CLAUDE-30 a rule shaped like %s fails closed", (_, frame) => {
+  expect(autotrustView(frame)).toEqual(failedClosed);
+});
+
+test.each([
+  ["quotes the closing sentence", "quote-close-120"],
+  ["splits the closing sentence across two rules", "quote-split-120"],
+  ["is shaped like a dialog footer", "footer-rule-120"],
+])("C-CLAUDE-30 a captured rule that %s is read as a rule", async (_, name) => {
+  const frame = capture(name);
+  expect(disclosure(frame)).toEqual({ strongest: "settings", disclosesHooks: false });
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject(answered);
+});
+
+test.each([
+  ["before the load row", three],
+  ["before the hooks warning", withHooks],
+])("C-CLAUDE-30 a rule never stands in for Claude's closing sentence %s", (_, frame) => {
+  const quoted = frame.replace(`${rulesRow}${closingRow}`, `   Read ${closingRow.trim()}\n`);
+  expect(quoted).not.toBe(frame);
+  expect(autotrustView(quoted)).toEqual(failedClosed);
+});
+
+test("C-CLAUDE-30 the permissions warning verifies and discloses its load row without the security guide link", () => {
+  const frame = three.replace(" Security guide\n", "");
+  expect(frame).not.toBe(three);
+  expect(disclosure(frame)).toEqual({ strongest: "settings", disclosesHooks: false });
 });
 
 test("C-CLAUDE-30 a rule that quotes the closing sentence and a load row cannot change the disclosure", () => {
