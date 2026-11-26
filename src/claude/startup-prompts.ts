@@ -10,11 +10,8 @@ import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/star
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
-import {
-  ClaudeAutoModeOfferDecliner,
-  type DeclineWriter,
-  declineKey,
-} from "./auto-mode/decline.ts";
+import { type DeclineWriter, declineKey } from "./auto-mode/appearance.ts";
+import { ClaudeAutoModeOfferDecliner } from "./auto-mode/decline.ts";
 import { isClaudeAutoModeOfferMenu } from "./auto-mode/offer.ts";
 import { type ProbeTrustOptions, probeTrustPolicy } from "./probe-trust.ts";
 import { claudeTrustClearance } from "./screen-table.ts";

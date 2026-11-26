@@ -4,10 +4,8 @@
  * PRD §5.1).
  */
 import { expect, test, vi } from "vitest";
-import {
-  ClaudeAutoModeOfferDecliner,
-  type DeclineWriter,
-} from "../../src/claude/auto-mode/decline.ts";
+import type { DeclineWriter } from "../../src/claude/auto-mode/appearance.ts";
+import { ClaudeAutoModeOfferDecliner } from "../../src/claude/auto-mode/decline.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { fakeOfferSpacing } from "../helpers/offer-spacing.ts";
 
