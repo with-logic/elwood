@@ -104,7 +104,9 @@ for (const { cols, footer } of modalPanes) {
         /^›\s*\/plan\s*$/m.test(live.terminal.snapshot().text),
       );
       await live.sendKeys("\r");
-      await waitForPublicCodexQuestion(() => live.terminal.snapshot().text.includes("Plan mode ("));
+      // A narrow pane elides the hint row's `Plan mode (shift+tab to cycle)` badge; the transcript
+      // still says the model changed for Plan mode.
+      await waitForPublicCodexQuestion(() => live.terminal.snapshot().text.includes("Plan mode"));
       const reply = session.send(modalPrompt, { timeoutMs: 90_000 });
       reply.catch(() => undefined);
       await waitForPublicCodexQuestionBefore(() => events.length === 1, reply);
