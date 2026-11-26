@@ -76,6 +76,7 @@ export function buildClaudeHookHandler(
             path: event.transcript_path,
             turnId,
             hasText,
+            prompt: event.prompt,
             pasteEnvelopeId,
           });
           if (hasText) show = emitHookMessage;
