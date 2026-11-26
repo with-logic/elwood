@@ -8,12 +8,14 @@ import { deadlineClock } from "../../src/core/timers.ts";
 import {
   type ElwoodActivityEvent,
   type ElwoodWarningEvent,
+  type ResumeCodexOptions,
+  resumeCodex,
   type StartCodexOptions,
   startCodex,
 } from "../../src/index.ts";
 import { codexTty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
-import { installFakes, ptys, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, tempDir } from "./helpers.ts";
 
 export const effortDefault = capturedFrame("codex-0.172.0/boot/effort-default");
 export const effortLow = capturedFrame("codex-0.172.0/boot/effort-low");
@@ -67,4 +69,34 @@ export async function deadlineOnDefaultFooter(
   ptys[0]!.emitData(paint(effortDefault.replace("elwood-boot-CAPTURE", sentinel)));
   await vi.advanceTimersByTimeAsync(afterFrameMs);
   return { session, warnings, activities, queued, waited, pty: ptys[0]! };
+}
+
+/**
+ * Start a session, make it ready and stop it, then resume it with `options` and queue "after
+ * configuration". `render` paints a frame on the resumed PTY and lets it settle; `ready`
+ * settles once the resumed session reaches `ready`. Callers tear the session down.
+ */
+export async function resumeWithQueuedMessage(
+  options: Pick<ResumeCodexOptions, "reasoningEffort" | "configOverrides">,
+) {
+  const cwd = tempDir();
+  installFakes();
+  const first = await startCodex({ cwd });
+  await becomeReady(first.elwoodSessionId, cwd);
+  await first.stop();
+  const elwoodSessionId = first.elwoodSessionId;
+  const resumed = await resumeCodex({ cwd, elwoodSessionId, initialSize, ...options });
+  const warnings: ElwoodWarningEvent[] = [];
+  resumed.on("warning", (warning) => warnings.push(warning));
+  const queued = resumed.sendMessage("after configuration");
+  void queued.catch(() => undefined);
+  const ready = resumed.waitForStatus((status) => status === "ready");
+  void ready.catch(() => undefined);
+  const pty = ptys[1]!;
+  const render = async (frame: string) => {
+    pty.emitData(paint(frame));
+    await resumed.terminal.settled();
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  return { resumed, warnings, queued, ready, render, pty };
 }

@@ -4156,6 +4156,15 @@ the configuration (§5.3), including when the effort comes from config.toml or a
   `"minimal" # note` or `"""minimal"""`, and `-c "model_reasoning_effort = minimal"`, with
   spaces around the `=`, each read `gpt-6-luna minimal`. With two
   entries, `"high"` then `"minimal"`, it read `minimal`: the last entry wins.
+  `'''minimal'''` applies as `minimal` too. That was measured later the same day with
+  `codex exec`, whose header prints `reasoning effort: <value>` before any network call. It
+  needs no login, so an empty `CODEX_HOME` checks a spelling without quota. Every spelling
+  above read the same there, and with no effort set the header read `none`. Two more results
+  from the same check:
+  - `"low"` read `low`. Codex decodes TOML escapes, which Elwood does not read.
+  - `"extreme"` read `extreme`. Codex launches with an effort it does not know.
+
+  Elwood waits for neither and warns `codex_effort_unrecognized`.
 - **Profile file.** `--profile deep` layers `$CODEX_HOME/deep.config.toml`. With
   `model_reasoning_effort = "high"` there, the footer read `high`. A root
   `-c model_reasoning_effort="low"`, whether from `reasoningEffort` or `configOverrides`,

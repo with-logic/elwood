@@ -55,7 +55,7 @@ export function requestedCodexEffort(options: EffortOptions): CodexReasoningEffo
 }
 
 /** Whether the deciding `configOverrides` entry sets an effort Elwood does not recognize. */
-export function unrecognizedCodexEffortOverride(options: EffortOptions): boolean {
+export function hasUnrecognizedDecidingCodexEffortOverride(options: EffortOptions): boolean {
   return (
     options.reasoningEffort === undefined &&
     lastRootEffortValue(options) !== undefined &&

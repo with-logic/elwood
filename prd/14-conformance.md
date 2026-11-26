@@ -197,7 +197,7 @@ Each criterion has:
 |---|---:|---|
 | C-CODEX-01 | §4.4 | Elwood does not mutate `.codex/config.toml`, `.codex/hooks.json`, or user Codex config during normal startup. |
 | C-CODEX-02 | §4.4 | Elwood launches Codex with session-scoped hook config passed through `--config` overrides. |
-| C-CODEX-03 | §5.5 | `model`, `profile`, `sandbox`, `approvalPolicy`, and `configOverrides` options are reflected in Codex launch policy. A `configOverrides` that is not an array of strings rejects `startCodex` and `resumeCodex` with `codex_invalid_config_overrides` before spawn, and no process is spawned. |
+| C-CODEX-03 | §5.5 | `model`, `profile`, `sandbox`, `approvalPolicy`, and `configOverrides` options are reflected in Codex launch policy. A `configOverrides` that is not an array of strings, a sparse array included, rejects `startCodex` and `resumeCodex` with `codex_invalid_config_overrides` before preflight runs, and no process or hook bridge is started. |
 | C-CODEX-04 | §9.2 | Startup checks Codex CLI version and fails with `codex_version_unsupported` when below the configured minimum. |
 | C-CODEX-05 | §10 | Missing `codex` fails with `codex_not_found` and a useful message. |
 | C-CODEX-06 | §4.4 | Codex hooks are trusted by `hookTrust="trust-all"`, the bypass flag when supported, or by answering the allowlisted `Hooks need review` TUI prompt once regardless of `autotrust` (the bypass trusts all configured hooks, including third-party hooks; see C-CODEX-15). |

@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 import { buildCodexShellCommand } from "../../src/codex/command.ts";
 import {
   requestedCodexEffort,
-  unrecognizedCodexEffortOverride,
+  hasUnrecognizedDecidingCodexEffortOverride,
 } from "../../src/codex/config/effort.ts";
 import type { StartCodexOptions } from "../../src/index.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
@@ -57,7 +57,7 @@ test.each([
   [{ configOverrides: ['profiles.fast.model_reasoning_effort="extreme"'] }, false],
   [{}, false],
 ] as const)("C-API-28 the launch's `-c` arguments %j set an unrecognized effort: %s", (options, unrecognized) => {
-  expect(unrecognizedCodexEffortOverride(options)).toBe(unrecognized);
+  expect(hasUnrecognizedDecidingCodexEffortOverride(options)).toBe(unrecognized);
 });
 
 test.each<Partial<StartCodexOptions>>([

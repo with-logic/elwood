@@ -19,7 +19,10 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import { createNativeBootFrameMatcher } from "../../runtime/readiness/boot-frame.ts";
 import { initialDeadlineMs } from "../../runtime/readiness/initial-ready.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
-import { requestedCodexEffort, unrecognizedCodexEffortOverride } from "../config/effort.ts";
+import {
+  hasUnrecognizedDecidingCodexEffortOverride,
+  requestedCodexEffort,
+} from "../config/effort.ts";
 import { codexReadinessEvidence } from "../screen/clearance.ts";
 import { codexFooterShowsEffort } from "../screen/footer.ts";
 import { codexUnconfiguredComposerVisible } from "../update/repaint.ts";
@@ -134,7 +137,7 @@ export function createCodexReadinessGate(
     onUnconfirmed: emitEffortUnconfirmed,
     onWaitEnded: () => gate.rereadFrame(),
   });
-  if (unrecognizedCodexEffortOverride(options))
+  if (hasUnrecognizedDecidingCodexEffortOverride(options))
     warnings.emitWarnings([
       {
         elwoodSessionId,

@@ -65,6 +65,7 @@ export async function startCodexWithId(
     }),
   );
   checkedInputBytes(options.persona ?? "");
+  validateConfigOverrides(options.configOverrides);
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
   const { directory, assertCwdUnchanged } = await prepareLaunchDirectory(
@@ -115,15 +116,13 @@ export function startCodexFromRecord(
 ) {
   // Validate the effort enum before any spawn (C-CODEX-21): both start and resume funnel
   // through here. Codex validates server-side (a bad value fails at the first turn), so
-  // this turns a deferred provider error into a fast, clear start-time rejection. Readiness
-  // reads `configOverrides` after the PTY spawns, so its shape is checked here too (C-CODEX-03).
+  // this turns a deferred provider error into a fast, clear start-time rejection.
   validateSpeed("codex", options.serviceTier);
   validateReasoningEffort(
     options.reasoningEffort,
     codexReasoningEfforts,
     "codex_invalid_reasoning_effort",
   );
-  validateConfigOverrides(options.configOverrides);
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
   // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure
