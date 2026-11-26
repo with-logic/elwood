@@ -21,6 +21,11 @@ const conversationRow =
 
 export type TrustDialog = {
   readonly header: string;
+  /**
+   * The header's rows, trimmed, blank rows kept as `""`: the structure `header` folds away,
+   * which a prompt can check where text the folder chose shares its copy.
+   */
+  readonly rows: readonly string[];
   readonly options: readonly SelectableOption[];
   /**
    * The gate-bound footer ending the dialog (`gateFooters`), which only the allowlisted
@@ -108,6 +113,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     headerRow: start,
     dialog: {
       header: header.trim().replace(/\s+/g, " "),
+      rows: (optionStart < 0 ? tail : tail.slice(0, optionStart)).map((line) => line.trim()),
       options,
       ...(gateFooter === undefined ? {} : { gateFooter }),
     },
