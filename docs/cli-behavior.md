@@ -1900,10 +1900,20 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   config dir, 2026-10-26 (C-API-37).
 - Claude 2.1.332 fires `UserPromptSubmit` for that queued message when it queues it, about
   130 ms after the Enter. The hook's `prompt_id` is the RUNNING turn's, and its `prompt` is
-  the guidance text. The committed transcript gets a `queue-operation` `enqueue` record at the
-  same time. Elwood used to treat the reused ID as a duplicate and drop the guidance's
-  `user_message`; it now dedupes on ID and exact text. Measured with `sendGuidance` in two
-  private-config sessions, 2026-11-25 (C-API-62).
+  the guidance text. The transcript gets a `queue-operation` `enqueue` record about 180 ms
+  later. Claude then delivers the message in one of two ways, and neither fires a second
+  `UserPromptSubmit`:
+  - In a turn that uses tools, at the next tool boundary, inside the same turn. The transcript
+    gets a `queue-operation` `remove` record and a `queued_command` attachment, both under the
+    running turn's prompt ID, and the reply answers both prompts.
+  - In a turn without tools, as a new turn after the running turn's `Stop`. A `dequeue` record
+    lands about 340 ms after that `Stop`, followed by a user record with a NEW `promptId` and
+    `promptSource: "queued"`.
+
+  Elwood used to treat the reused ID as a duplicate and drop the guidance's `user_message`. A
+  shown prompt ID now suppresses only transcript recovery, never a nonblank hook. Measured with
+  `sendGuidance` in three private-config sessions, two without tools and one with, 2026-11-25
+  (C-API-62).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

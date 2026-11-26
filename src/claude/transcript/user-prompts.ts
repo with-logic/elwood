@@ -1,4 +1,7 @@
-/** Match blank authenticated Claude hooks to committed user records (PRD §5.4). */
+/**
+ * Match blank authenticated Claude hooks to committed user records, and show each nonblank hook
+ * unless transcript recovery already showed its prompt (PRD §5.4, C-API-62, C-API-63).
+ */
 import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
 import type { UserPromptPresentation } from "../../core/activity/prompt-presentation.ts";
@@ -14,11 +17,15 @@ const maxRetainedBytes = 4 * 1024 * 1024;
 export type UserPromptHookEvidence = {
   readonly path: string | undefined;
   readonly turnId: string;
-  readonly hasText: boolean;
-  /** The native hook prompt, which tells a queued message from its running turn's prompt. */
-  readonly prompt?: string | undefined;
   readonly pasteEnvelopeId?: string | undefined;
-};
+} & (
+  | {
+      readonly hasText: true;
+      /** The native hook prompt, which tells a queued message from its running turn's prompt. */
+      readonly prompt: string;
+    }
+  | { readonly hasText: false; readonly prompt?: string | undefined }
+);
 
 export type RecoveredUserPrompt = {
   readonly path: string;
@@ -37,10 +44,12 @@ type PromptEvidence = { readonly path: string } & (RecordEvidence | HookEvidence
 
 export class ClaudeUserPrompts {
   private readonly entries = new Map<string, PromptEvidence>();
-  private readonly shown = new Set<string>();
-  // A prompt ID can name two submissions: Claude fires the hook for a message queued during a
-  // running turn with that turn's ID. The text tells them apart.
-  private readonly shownPrompts = new Set<string>();
+  // A shown prompt ID is not a shown submission: Claude fires the hook for a message queued
+  // during a running turn with that turn's ID. A nonblank hook is suppressed only when transcript
+  // recovery already showed that ID with the same text. Blank hooks carry no text to tell
+  // submissions apart, so transcript recovery still needs an unshown ID.
+  private readonly shownTurnIds = new Set<string>();
+  private readonly recoveredTextKeys = new Set<string>();
   private retainedBytes = 0;
   private readonly emit: (prompt: RecoveredUserPrompt) => void;
 
@@ -60,20 +69,19 @@ export class ClaudeUserPrompts {
   }
 
   /** Returns whether a nonblank hook still needs user activity, even without a path. */
-  observeHook(
-    { path, turnId, hasText, prompt, pasteEnvelopeId }: UserPromptHookEvidence,
-    canRecover: boolean,
-  ): boolean {
-    if (Buffer.byteLength(turnId) > maxIdentifierBytes) return hasText;
+  observeHook(evidence: UserPromptHookEvidence, canRecover: boolean): boolean {
+    const { path, turnId, pasteEnvelopeId } = evidence;
+    if (Buffer.byteLength(turnId) > maxIdentifierBytes) return evidence.hasText;
     const identity = promptLocation(canRecover ? path : undefined, turnId);
-    if (hasText) {
-      const shownPrompt = promptKey(turnId, prompt ?? "");
-      if (this.shownPrompts.has(shownPrompt)) return false;
-      this.rememberShown(turnId, shownPrompt);
+    if (evidence.hasText) {
+      if (this.recoveredTextKeys.has(turnTextKey(turnId, evidence.prompt))) return false;
+      // A textless submission under this ID still waits for its record; queued input keeps it.
+      if (identity && this.entries.get(identity.key)?.kind === "hook") return true;
+      addBounded(this.shownTurnIds, turnId);
       this.remove(identity?.key);
       return true;
     }
-    if (this.shown.has(turnId) || !identity) return false;
+    if (this.shownTurnIds.has(turnId) || !identity) return false;
     const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") {
@@ -93,7 +101,7 @@ export class ClaudeUserPrompts {
     read: (pendingToken: object) => InitialUserPrompt | undefined,
   ): void {
     const identity = promptLocation(path, turnId);
-    if (!identity || this.shown.has(turnId)) return;
+    if (!identity || this.shownTurnIds.has(turnId)) return;
     const pending = this.entries.get(identity.key);
     if (pending?.kind !== "hook") return;
     const prompt = read(pending);
@@ -107,7 +115,7 @@ export class ClaudeUserPrompts {
       !isRecord(item) ||
       item["type"] !== "user" ||
       item["promptId"] !== turnId ||
-      this.shown.has(turnId)
+      this.shownTurnIds.has(turnId)
     )
       return;
     const identity = promptLocation(path, turnId);
@@ -136,7 +144,8 @@ export class ClaudeUserPrompts {
     prompt: UserPromptRecord,
     pasteEnvelopeId: string | undefined,
   ): void {
-    this.rememberShown(turnId, promptKey(turnId, prompt.text));
+    addBounded(this.shownTurnIds, turnId);
+    addBounded(this.recoveredTextKeys, turnTextKey(turnId, prompt.text));
     this.remove(key);
     this.emit({
       path,
@@ -150,14 +159,6 @@ export class ClaudeUserPrompts {
         ),
       },
     });
-  }
-
-  private rememberShown(turnId: string, shownPrompt: string): void {
-    this.shown.add(turnId);
-    this.shownPrompts.add(shownPrompt);
-    if (this.shown.size > maxEntries) this.shown.delete(this.shown.values().next().value!);
-    if (this.shownPrompts.size > maxEntries)
-      this.shownPrompts.delete(this.shownPrompts.values().next().value!);
   }
 
   private remember(key: string, evidence: PromptEvidence): void {
@@ -176,8 +177,14 @@ export class ClaudeUserPrompts {
   }
 }
 
-function promptKey(turnId: string, prompt: string): string {
-  return JSON.stringify([turnId, createHash("sha256").update(prompt).digest("base64")]);
+function addBounded(set: Set<string>, value: string): void {
+  set.add(value);
+  if (set.size > maxEntries) set.delete(set.values().next().value!);
+}
+
+/** A fixed-size digest keeps the recovered history bounded however large a prompt is. */
+function turnTextKey(turnId: string, text: string): string {
+  return JSON.stringify([turnId, createHash("sha256").update(text).digest("base64")]);
 }
 
 function promptLocation(path: string | undefined, turnId: string) {

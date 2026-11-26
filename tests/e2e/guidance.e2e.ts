@@ -66,8 +66,8 @@ async function guidanceFlow(
   const offStatus = session.on("status", (event) => transitionsDuringGuidance.push(event.status));
   try {
     // `sendGuidance` resolves only after the submitting Enter is dispatched into the
-    // live TUI (the C-API-37 contract — the real signal that it was consumed, not a
-    // `UserPromptSubmit` hook, which the CLIs do NOT fire for mid-turn steering).
+    // live TUI (the C-API-37 contract, and the signal both CLIs share). Only the Claude
+    // case also requires a hook: Claude 2.1.332 fires `UserPromptSubmit` as it queues it.
     await session.sendGuidance(`Coordinator intervention: stop the essay. Marker: ${marker}`);
   } finally {
     offStatus();
@@ -97,9 +97,9 @@ async function guidanceFlow(
   return { transitionsDuringGuidance, status, screen };
 }
 
-test("C-API-37 real Claude receives guidance during an active turn", {
+test("C-API-37 C-API-62 real Claude receives guidance during an active turn and shows it once", {
   skip: skipIf(skipReason("claude"), skipTurns),
-  timeout: 120_000,
+  timeout: 240_000,
 }, async () => {
   const project = makeProject("claude");
   const session = await startClaude({
@@ -115,10 +115,29 @@ test("C-API-37 real Claude receives guidance during an active turn", {
   });
   try {
     const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CLAUDE_NOW", "❯");
+    const guidanceMessages = () =>
+      userMessages.filter((text) => text.includes("ELWOOD_GUIDANCE_CLAUDE_NOW")).length;
     await waitFor(
-      () => userMessages.some((text) => text.includes("ELWOOD_GUIDANCE_CLAUDE_NOW")) || undefined,
+      () => guidanceMessages() > 0 || undefined,
       "the guidance's own user_message, though Claude reuses the running turn's prompt ID",
       30_000,
+    );
+    // Claude runs the queued guidance as a new turn after the essay's Stop. Wait until both
+    // turns are done, so a second hook at that point would be counted.
+    let idleSince: number | undefined;
+    await waitFor(
+      () => {
+        if (/esc to interrupt/i.test(session.terminal.snapshot().text)) idleSince = undefined;
+        else idleSince ??= Date.now();
+        return idleSince !== undefined && Date.now() - idleSince >= 3_000 ? true : undefined;
+      },
+      "Claude to finish the essay and the queued guidance",
+      180_000,
+    );
+    assert.equal(
+      guidanceMessages(),
+      1,
+      `one guidance, one message: ${JSON.stringify(userMessages)}`,
     );
     assert.ok(
       !outcome.transitionsDuringGuidance.includes("ready"),

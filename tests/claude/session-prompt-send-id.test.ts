@@ -92,7 +92,7 @@ test("C-API-71 overlapping low-level writes cannot claim either caller ID", asyn
   expect(messages()[0]).not.toHaveProperty("sendId");
 });
 
-test("C-API-71 a reused Claude prompt ID cannot claim a second caller ID", async () => {
+test("C-API-62 C-API-71 a reused Claude prompt ID is shown but cannot claim a caller ID", async () => {
   const { session, paint, submit, messages } = await setup();
   await session.sendMessage(" first ", { sendId: "one" });
   await submit(" first", "reused");
@@ -101,6 +101,7 @@ test("C-API-71 a reused Claude prompt ID cannot claim a second caller ID", async
   await submit(" next", "reused");
   await submit(" next", "distinct");
   // Claude reuses the running turn's ID for a queued message: it is shown, without caller evidence.
+  // The distinct-ID hook models a later fresh submission; real Claude fires no second hook.
   expect(messages()).toMatchObject([
     { text: " first ", sendId: "one" },
     { text: " next", turnId: "reused" },
