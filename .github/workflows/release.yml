@@ -258,47 +258,53 @@ jobs:
       # npmjs.com/package/@with-logic/elwood/access and every later release
       # runs tokenlessly through this workflow.
       #
-      # One lookup asks the registry for this version. The registry records the
-      # commit a version was published from as `gitHead`, which any publisher
-      # can set, and the publishing account as `_npmUser`, which only trusted
-      # publishing sets to GitHub Actions. `npm view` redacts the ID of the
-      # trusted-publisher configuration, so the step treats any trusted
-      # publisher as this workflow.
-      # - Not on npm (E404): publish.
-      # - Published from this commit through trusted publishing: a re-run has
-      #   nothing left to publish.
+      # One lookup reads this version's document from the registry directly:
+      # `npm view` would redact the trusted-publisher configuration ID, as it
+      # redacts every UUID-shaped value. The document records the commit a
+      # version was published from as `gitHead`, which any publisher can set,
+      # and, for trusted publishing, the configuration that published it as
+      # `_npmUser.trustedPublisher.oidcConfigId`. NPM_TRUSTED_PUBLISHER is this
+      # workflow's configuration, recorded on every release since 0.6.0. After
+      # reconfiguring the trusted publisher at npmjs.com, update it. Until
+      # then, a re-run after a successful publish fails instead of skipping;
+      # a first publish is unaffected.
+      # - Not on npm (404): publish.
+      # - Published by this workflow's trusted publisher from this commit: a
+      #   re-run has nothing left to publish.
       # - Published any other way: fail, because npm never replaces a version.
       #   The log names the commit and the kind of publisher, never the
       #   publishing account.
-      # - Anything else, including a failed lookup, an answer without a commit
-      #   or publisher, or no answer: fail.
+      # - Anything else, including a failed or timed-out lookup, a document
+      #   without a commit or publisher, or no answer: fail. A re-run retries.
       - name: Publish to npm
         env:
+          NPM_TRUSTED_PUBLISHER: 7e80842b-dceb-4e20-ac47-8dba36a3ae27
           RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
-          package="$(node -p 'require("./package.json").name')@$VERSION"
-          status=0
-          found="$(npm view "$package" gitHead _npmUser.email --json 2>/dev/null)" || status=$?
-          outcome="$(node -e '
-            const [found, status, commit] = process.argv.slice(1);
-            const answer = Object(found ? JSON.parse(found) : {});
-            const head = answer.gitHead;
-            const email = answer["_npmUser.email"];
-            const trusted = email === "npm-oidc-no-reply@github.com";
-            if (status !== "0") {
-              const code = answer.error?.code ?? `npm-exit-${status}`;
-              console.log(code === "E404" ? "unpublished" : `lookup-failed ${code}`);
-            } else if (typeof head !== "string" || typeof email !== "string") {
-              console.log("lookup-incomplete");
-            } else if (head === commit && trusted) {
-              console.log("published-here");
-            } else {
-              const publisher = trusted ? "trusted publishing" : "another account";
-              console.log(`published-elsewhere from ${head} by ${publisher}`);
+          name="$(node -p 'require("./package.json").name')"
+          package="$name@$VERSION"
+          registry="$(npm config get registry)"
+          outcome="$(node --input-type=module -e '
+            const [registry, name, version, commit, trustedPublisher] = process.argv.slice(1);
+            async function classify() {
+              const base = registry.endsWith("/") ? registry : `${registry}/`;
+              const url = new URL(`${name.replace("/", "%2f")}/${version}`, base);
+              const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+              if (response.status === 404) return "unpublished";
+              if (!response.ok) return `lookup-failed HTTP ${response.status}`;
+              const manifest = Object(await response.json());
+              const head = manifest.gitHead;
+              const user = manifest._npmUser;
+              if (typeof head !== "string" || !(user instanceof Object)) return "lookup-incomplete";
+              const config = user.trustedPublisher?.oidcConfigId;
+              if (head === commit && config === trustedPublisher) return "published-here";
+              const by = config === trustedPublisher ? "this workflow" : config ? "another trusted publisher" : "another account";
+              return `published-elsewhere from ${head} by ${by}`;
             }
-          ' "$found" "$status" "$RELEASE_COMMIT")"
+            console.log(await classify().catch((error) => `lookup-failed ${error.cause?.code ?? error.name}`));
+          ' "$registry" "$name" "$VERSION" "$RELEASE_COMMIT" "$NPM_TRUSTED_PUBLISHER")"
           echo "Registry lookup for $package: ${outcome:-no answer}"
           case "$outcome" in
             unpublished)
