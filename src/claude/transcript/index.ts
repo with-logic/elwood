@@ -19,7 +19,7 @@ import {
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
 import { observeTranscriptBaseline } from "./observe-initial.ts";
-import type { UserPromptHookEvidence } from "./user-prompts.ts";
+import type { UserPromptHookEvidence } from "./user-prompt-types.ts";
 import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
 export type { TranscriptNoticeHandlers } from "./watcher-config.ts";

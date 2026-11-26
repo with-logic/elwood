@@ -1,22 +1,9 @@
 /** Claude checkbox captures: notice blank cells, Submit, review, named (PRD §5.10, C-QUESTION-03). */
 import { expect, test } from "vitest";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
-import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { claudeNoticeResidue } from "../../e2e/questions/claude-notice.ts";
-import { definitions, fixture, frame, nativeSnapshot332 as native } from "./helpers.ts";
+import { definitions, fixture, frame, fruits, nativeSnapshot332 as native } from "./helpers.ts";
 
-const fruits: QuestionDefinition = {
-  prompt: "Which test fruits?",
-  header: "Fruits",
-  options: [
-    { label: "Apple", description: "Red" },
-    { label: "Banana", description: "Yellow" },
-    { label: "Cherry", description: "Dark" },
-  ],
-  selection: "multiple",
-  textMode: "none",
-  supportsSecretInput: false,
-};
 const standalone = native("standalone-checkbox-notice-native");
 const submitRow = /^ {5}Submit {20,}$/;
 const withSubmitRow = (row: string) => {

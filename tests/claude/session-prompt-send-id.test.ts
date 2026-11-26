@@ -92,18 +92,23 @@ test("C-API-71 overlapping low-level writes cannot claim either caller ID", asyn
   expect(messages()[0]).not.toHaveProperty("sendId");
 });
 
-test("C-API-71 a reused Claude prompt ID cannot claim a second caller ID", async () => {
+test("C-API-62 C-API-71 a reused Claude prompt ID is shown but cannot claim a caller ID", async () => {
   const { session, paint, submit, messages } = await setup();
   await session.sendMessage(" first ", { sendId: "one" });
   await submit(" first", "reused");
   await paint();
   await session.sendGuidance(" next ", { sendId: "two" });
   await submit(" next", "reused");
+  // Claude reuses the running turn's ID for a queued message: it is shown, without caller evidence.
+  // The same text under a new ID while it is still queued is Claude screening it again after an
+  // interrupt, which shows nothing new and so cannot claim the caller ID either.
   await submit(" next", "distinct");
   expect(messages()).toMatchObject([
     { text: " first ", sendId: "one" },
-    { text: " next ", sendId: "two" },
+    { text: " next", turnId: "reused" },
   ]);
+  expect(messages()[1]).not.toHaveProperty("sendId");
+  expect(messages()[1]).not.toHaveProperty("promptProvenance");
 });
 
 test("C-API-71 a transcript warning cannot revoke an already matched API prompt", async () => {

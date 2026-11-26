@@ -1,5 +1,6 @@
 /** Post the transient notice Claude draws above its composer (PRD §12, C-E2E-18). */
 import { waitFor } from "../wait-for.ts";
+import type { ClaudeRoundKind } from "./claude-round-kinds.ts";
 
 /** Alt+T. Haiku cannot turn thinking off, so Claude changes nothing and posts a three-second notice. */
 const thinkingToggle = "\x1bt";
@@ -17,6 +18,29 @@ const noticeRow = /^ {20,}Thinking can't be turned off/m;
 export const claudeNoticeResidue = /^(?: {2}3\. Type something\.| {5}(?:Next|Submit)) {20,}$/m;
 /** A shorter grouped question's footer drawn on the notice row keeps the blank cells too. */
 const footerOnNoticeRow = /^Enter to select · .+ · Esc to cancel {20,}$/m;
+/** A footer that starts on one row and ends one or two rows below it. */
+const wrappedFooter = /^Enter to select · (?!.*Esc to cancel *$).*\n(?:.*\n)?.*Esc to cancel *$/m;
+
+/**
+ * A proof session's pane. At 140 columns a notice is posted before each question, and `blankCells`
+ * says whether its questionnaires keep the notice's blank cells. At 60 columns Claude wraps the
+ * footer once the cursor reaches Other, `Next` or `Submit`. A 60-cell row cannot hold the notice's
+ * 42 characters after the 20-cell indent `noticeRow` requires, so none is posted.
+ */
+export type ClaudeProofPane =
+  | { readonly cols: 140; readonly blankCells: boolean }
+  | { readonly cols: 60 };
+
+/** The paint evidence `pane` must record for `kinds`: only long text draws a footer on the notice. */
+export function expectedPaintEvidence(pane: ClaudeProofPane, kinds: readonly ClaudeRoundKind[]) {
+  const posted = pane.cols === 140;
+  return {
+    drawnAtQuestion: kinds.map(() => posted),
+    residueWhenRaised: kinds.map(() => pane.cols === 140 && pane.blankCells),
+    footerKeptCells: posted && kinds.includes("long-text"),
+    footerWrapped: !posted,
+  };
+}
 
 type PostedClaudeNotice = {
   /** Stops reposting the notice. */
@@ -51,6 +75,10 @@ export type ClaudeNoticeProof = {
   readonly residueWhenRaised: readonly boolean[];
   /** Whether any painted questionnaire footer sat on the notice row, keeping its blank cells. */
   readonly footerKeptCells: boolean;
+  /** The first painted questionnaire footer that wrapped over rows, if any. */
+  readonly wrappedFooter: string | undefined;
+  /** This proof's evidence, in the shape `expectedPaintEvidence` returns. */
+  evidence(): ReturnType<typeof expectedPaintEvidence>;
   /** On each terminal paint. */
   painted(): void;
   /** At the idle composer, before each prompt. */
@@ -62,8 +90,10 @@ export type ClaudeNoticeProof = {
 };
 
 /**
- * Posts the notice before each question and records the evidence for each one. Cancellation closes
- * the session, so `signal` stops reposting before any Alt+T can reach a PTY that is shutting down.
+ * Records each question's notice and footer-paint evidence. The 140-column cases call `post()`
+ * before each prompt; the 60-column case posts no notice and checks the wrapped footer it records.
+ * Cancellation closes the session, so `signal` stops reposting before any Alt+T can reach a PTY
+ * that is shutting down.
  */
 export function claudeNoticeProof(
   press: (input: string) => void,
@@ -74,6 +104,7 @@ export function claudeNoticeProof(
   const drawnAtQuestion: boolean[] = [];
   const residueWhenRaised: boolean[] = [];
   let footerKeptCells = false;
+  let wrapped: string | undefined;
   const stop = () => notice?.stop();
   signal.addEventListener("abort", stop, { once: true });
   return {
@@ -82,8 +113,19 @@ export function claudeNoticeProof(
     get footerKeptCells() {
       return footerKeptCells;
     },
+    get wrappedFooter() {
+      return wrapped;
+    },
+    evidence: () => ({
+      drawnAtQuestion,
+      residueWhenRaised,
+      footerKeptCells,
+      footerWrapped: wrapped !== undefined,
+    }),
     painted() {
-      footerKeptCells ||= footerOnNoticeRow.test(screen() ?? "");
+      const text = screen() ?? "";
+      footerKeptCells ||= footerOnNoticeRow.test(text);
+      wrapped ??= wrappedFooter.exec(text)?.[0];
     },
     async post() {
       signal.throwIfAborted();

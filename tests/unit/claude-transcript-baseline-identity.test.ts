@@ -132,9 +132,14 @@ test("C-CLAUDE-15 a baseline identity overflow prevents later blank-hook recover
       }),
     ).toBe(false);
     expect(events).toEqual([]);
-    expect(watcher.observeUserPromptHook({ path: first, turnId: "known", hasText: true })).toBe(
-      true,
-    );
+    expect(
+      watcher.observeUserPromptHook({
+        path: first,
+        turnId: "known",
+        hasText: true,
+        prompt: "live",
+      }),
+    ).toBe(true);
   } finally {
     watcher.stop();
   }

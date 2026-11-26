@@ -1,40 +1,39 @@
-/** Match blank authenticated Claude hooks to committed user records (PRD §5.4). */
-import { isAbsolute } from "node:path";
-import type { UserPromptPresentation } from "../../core/activity/prompt-presentation.ts";
+/**
+ * Match blank authenticated Claude hooks to committed user records. Show each nonblank hook unless
+ * transcript recovery already showed its prompt, or it screens a still-queued message again
+ * (PRD §5.4, C-API-62, C-API-63).
+ */
 import { isRecord } from "../../core/predicates.ts";
 import { claudePromptPresentation } from "../pasted-content.ts";
 import type { InitialUserPrompt } from "./initial-prompt.ts";
-import { maxIdentifierBytes, maxPathBytes } from "./turn-identity.ts";
+import {
+  addBounded,
+  maxPromptEntries,
+  promptLocation,
+  textDigest,
+  turnDigestKey,
+} from "./prompt-keys.ts";
+import { ClaudeQueuedPrompts } from "./queued-prompts.ts";
+import { maxIdentifierBytes } from "./turn-identity.ts";
+import type {
+  PromptEvidence,
+  RecoveredUserPrompt,
+  UserPromptHookEvidence,
+} from "./user-prompt-types.ts";
 import { type UserPromptRecord, userPromptRecord } from "./user-record.ts";
 
-const maxEntries = 64;
 const maxRetainedBytes = 4 * 1024 * 1024;
-
-export type UserPromptHookEvidence = {
-  readonly path: string | undefined;
-  readonly turnId: string;
-  readonly hasText: boolean;
-  readonly pasteEnvelopeId?: string | undefined;
-};
-
-export type RecoveredUserPrompt = {
-  readonly path: string;
-  readonly turnId: string;
-  readonly summary: UserPromptPresentation & {
-    readonly kind: "user_message";
-    readonly label: "user";
-  };
-};
-type RecordEvidence = UserPromptRecord & {
-  readonly kind: "record";
-  readonly retainedSizeBytes: number;
-};
-type HookEvidence = { readonly kind: "hook"; readonly pasteEnvelopeId: string | undefined };
-type PromptEvidence = { readonly path: string } & (RecordEvidence | HookEvidence);
 
 export class ClaudeUserPrompts {
   private readonly entries = new Map<string, PromptEvidence>();
-  private readonly shown = new Set<string>();
+  // A shown prompt ID is not a shown submission: Claude fires the hook for a message queued
+  // during a running turn with that turn's ID. A nonblank hook is suppressed only when transcript
+  // recovery already showed that ID with the same text, or when it screens a still-queued message
+  // again under a new ID. Blank hooks carry no text to tell submissions apart, so transcript
+  // recovery still needs an unshown ID.
+  private readonly shownTurnIds = new Set<string>();
+  private readonly recoveredTextKeys = new Set<string>();
+  private readonly queued = new ClaudeQueuedPrompts();
   private retainedBytes = 0;
   private readonly emit: (prompt: RecoveredUserPrompt) => void;
 
@@ -42,9 +41,15 @@ export class ClaudeUserPrompts {
     this.emit = emit;
   }
 
+  /** Without transcript evidence a queued message cannot be seen delivered, so none stays pending. */
   clearUnpaired(): void {
     this.entries.clear();
+    this.queued.clear();
     this.retainedBytes = 0;
+  }
+
+  forgetQueued(): void {
+    this.queued.clear();
   }
 
   forget(path: string): void {
@@ -54,19 +59,12 @@ export class ClaudeUserPrompts {
   }
 
   /** Returns whether a nonblank hook still needs user activity, even without a path. */
-  observeHook(
-    { path, turnId, hasText, pasteEnvelopeId }: UserPromptHookEvidence,
-    canRecover: boolean,
-  ): boolean {
-    if (Buffer.byteLength(turnId) > maxIdentifierBytes) return hasText;
-    if (this.shown.has(turnId)) return false;
+  observeHook(evidence: UserPromptHookEvidence, canRecover: boolean): boolean {
+    const { path, turnId, pasteEnvelopeId } = evidence;
+    if (Buffer.byteLength(turnId) > maxIdentifierBytes) return evidence.hasText;
     const identity = promptLocation(canRecover ? path : undefined, turnId);
-    if (hasText) {
-      this.rememberShown(turnId);
-      this.remove(identity?.key);
-      return true;
-    }
-    if (!identity) return false;
+    if (evidence.hasText) return this.showsTextHook(turnId, evidence.prompt, identity);
+    if (this.shownTurnIds.has(turnId) || !identity) return false;
     const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") {
@@ -74,6 +72,32 @@ export class ClaudeUserPrompts {
     } else if (known === undefined)
       this.remember(key, { kind: "hook", path: identity.path, pasteEnvelopeId });
     return false;
+  }
+
+  private showsTextHook(
+    turnId: string,
+    prompt: string,
+    identity: ReturnType<typeof promptLocation>,
+  ) {
+    let digest: string | undefined;
+    const promptDigest = () => (digest ??= textDigest(prompt));
+    const recovered = this.recoveredTextKeys;
+    if (recovered.size > 0 && recovered.has(turnDigestKey(turnId, promptDigest()))) return false;
+    const textlessPending = identity && this.entries.get(identity.key)?.kind === "hook";
+    // Only transcript correlation can show a queued message delivered, so only it tracks one.
+    // A reused ID is a message queued during that running turn. Under a new ID, an interrupt
+    // made Claude screen a still-queued message again as it runs it: it was already shown.
+    if (identity && (textlessPending || this.shownTurnIds.has(turnId)))
+      this.queued.queued(promptDigest());
+    else if (identity && !this.queued.isEmpty && this.queued.claim(promptDigest())) {
+      addBounded(this.shownTurnIds, turnId);
+      return false;
+    }
+    // A textless submission under this ID still waits for its record; queued input keeps it.
+    if (textlessPending) return true;
+    addBounded(this.shownTurnIds, turnId);
+    this.remove(identity?.key);
+    return true;
   }
 
   /**
@@ -86,7 +110,7 @@ export class ClaudeUserPrompts {
     read: (pendingToken: object) => InitialUserPrompt | undefined,
   ): void {
     const identity = promptLocation(path, turnId);
-    if (!identity || this.shown.has(turnId)) return;
+    if (!identity || this.shownTurnIds.has(turnId)) return;
     const pending = this.entries.get(identity.key);
     if (pending?.kind !== "hook") return;
     const prompt = read(pending);
@@ -95,12 +119,14 @@ export class ClaudeUserPrompts {
   }
 
   /** Publish an exact pending path/ID match or retain text for a hook that arrives later. */
-  observeForwardRecord(path: string, turnId: string, item: unknown): void {
+  observeForwardRecord(path: string, turnId: string | undefined, item: unknown): void {
+    this.queued.observeRecord(item);
     if (
+      turnId === undefined ||
       !isRecord(item) ||
       item["type"] !== "user" ||
       item["promptId"] !== turnId ||
-      this.shown.has(turnId)
+      this.shownTurnIds.has(turnId)
     )
       return;
     const identity = promptLocation(path, turnId);
@@ -129,7 +155,8 @@ export class ClaudeUserPrompts {
     prompt: UserPromptRecord,
     pasteEnvelopeId: string | undefined,
   ): void {
-    this.rememberShown(turnId);
+    addBounded(this.shownTurnIds, turnId);
+    addBounded(this.recoveredTextKeys, turnDigestKey(turnId, textDigest(prompt.text)));
     this.remove(key);
     this.emit({
       path,
@@ -145,15 +172,10 @@ export class ClaudeUserPrompts {
     });
   }
 
-  private rememberShown(turnId: string): void {
-    this.shown.add(turnId);
-    if (this.shown.size > maxEntries) this.shown.delete(this.shown.values().next().value!);
-  }
-
   private remember(key: string, evidence: PromptEvidence): void {
     this.entries.set(key, evidence);
     if (evidence.kind === "record") this.retainedBytes += evidence.retainedSizeBytes;
-    while (this.entries.size > maxEntries || this.retainedBytes > maxRetainedBytes) {
+    while (this.entries.size > maxPromptEntries || this.retainedBytes > maxRetainedBytes) {
       this.remove(this.entries.keys().next().value);
     }
   }
@@ -164,13 +186,4 @@ export class ClaudeUserPrompts {
     if (evidence?.kind === "record") this.retainedBytes -= evidence.retainedSizeBytes;
     this.entries.delete(key);
   }
-}
-
-function promptLocation(path: string | undefined, turnId: string) {
-  return path !== undefined &&
-    isAbsolute(path) &&
-    Buffer.byteLength(path) <= maxPathBytes &&
-    Buffer.byteLength(turnId) <= maxIdentifierBytes
-    ? { path, key: JSON.stringify([path, turnId]) }
-    : undefined;
 }

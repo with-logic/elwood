@@ -30,12 +30,24 @@ back each entry are listed in `prd/14-conformance.md`.
   is now a union, so narrowing `agent` to `"claude"` exposes the field. With automatic
   trust off, `listDialogs()` now lists that prompt and `answerDialog()` answers it.
 
+- Claude guidance sent during a running turn now produces its `user_message`
+  activity. Claude Code 2.1.332 fires the guidance's `UserPromptSubmit` with the
+  running turn's prompt ID, which Elwood had treated as a duplicate. That
+  `user_message` carries the running turn's `turnId`, so one Claude turn can
+  have more than one `user_message`. Guidance appears once even when an
+  interrupt makes Claude screen it again under a new prompt ID.
+
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
   for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
   which records no dismissal in Codex's update state. It writes the key once the
   offer has been on screen for 500 ms, never types it again onto the screen Codex
   draws next, and holds input through that screen without reporting it as
   `codex-unidentified-dialog`.
+- Answer Claude questions in a narrow pane. At 60 columns Claude wraps the
+  questionnaire footer over two rows once the cursor reaches the Other row,
+  `Next` or `Submit`. A checkbox, alternative-text or grouped answer then
+  stalled until it failed with `question_answer_failed` and closed the request
+  as `unavailable`.
 
 ## [0.8.0] - 2026-11-25
 
