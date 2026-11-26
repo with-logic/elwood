@@ -100,20 +100,30 @@ export async function assertProbeRefuses(
     assert.equal(existsSync(marker), false, "the probe never ran the folder's code");
 }
 
+/** What a later session's workspace prompt must show, and the code that must not have run. */
+type UntrustedExpectation = {
+  /** The listed request's `disclosesHooks`. */
+  readonly disclosesHooks: boolean;
+  /** A file the folder's code writes, when the folder has code. */
+  readonly marker?: string;
+  /** Copy the prompt's text must contain, proving which prompt Claude drew. */
+  readonly shows?: RegExp;
+};
+
 /**
  * A later session in the project is shown the workspace prompt again: it is still untrusted,
  * and the code that writes `marker`, when the folder has any, has not run.
  */
 export async function assertStillUntrusted(
   project: E2eProject,
-  marker: string | undefined,
-  disclosesHooks: boolean,
+  { disclosesHooks, marker, shows }: UntrustedExpectation,
 ): Promise<void> {
   let session: ClaudeSessionApi | undefined;
   try {
     session = await startClaude({ cwd: project.cwd, stateDir: project.stateDir, autotrust: false });
     const request = await listedRequest(session);
     assert.equal(request.disclosesHooks, disclosesHooks, "the folder is still untrusted");
+    if (shows !== undefined) assert.match(request.text, shows);
     if (marker !== undefined)
       assert.equal(existsSync(marker), false, "none of the folder's code has run");
   } finally {

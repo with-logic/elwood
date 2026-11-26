@@ -1,9 +1,10 @@
 /**
  * Claude's workspace prompt for a folder whose settings pre-approve tool permissions, against
  * the REAL Claude CLI (PRD §5.3, §5.4, C-E2E-29, C-CLAUDE-30), each in a fresh, untrusted
- * project on Claude 2.1.329 or later. For one pre-approved permission, the probe refuses the
- * folder with the load row's category and leaves it untrusted, and autotrust answers the
- * workspace prompt once and reaches `ready`. When the settings also add a workspace directory,
+ * project on Claude 2.1.329 or later, which all draw the warning. For one pre-approved
+ * permission, the probe refuses the folder with the load row's category and leaves it untrusted
+ * with the warning on its prompt, and autotrust answers the workspace prompt once and reaches
+ * `ready`. When the settings also add a workspace directory,
  * whose warning Claude closes with the same sentence, the probe rejects the prompt it cannot
  * verify.
  */
@@ -27,14 +28,22 @@ import { cleanup, type E2eProject, makeProject, waitFor } from "./helpers.ts";
 
 const testTimeoutMs = preflightTimeoutMs + readyTimeoutMs + cleanupTimeoutMs;
 
+/** The `permissions` settings these proofs write; a misspelled key would draw no warning. */
+type PermissionsSettings = {
+  readonly allow?: readonly string[];
+  readonly additionalDirectories?: readonly string[];
+};
+
 /** A project whose `.claude/settings.json` sets `permissions`. */
-function permissionsProject(permissions: object): E2eProject {
+function permissionsProject(permissions: PermissionsSettings): E2eProject {
   const project = makeProject("claude");
   writeJson(join(project.cwd, ".claude", "settings.json"), { permissions });
   return project;
 }
 
-const oneRule = { allow: ["Bash(ls:*)"] };
+const oneRule = { allow: ["Bash(ls:*)"] } satisfies PermissionsSettings;
+const oneRuleWarning =
+  /⚠ This folder pre-approves 1 tool permission in \.claude\/settings\.json: Bash\(ls:\*\)/;
 
 test("C-E2E-29 listClaudeModels refuses a folder whose settings pre-approve a tool permission", {
   skip,
@@ -42,7 +51,7 @@ test("C-E2E-29 listClaudeModels refuses a folder whose settings pre-approve a to
 }, async () => {
   const project = permissionsProject(oneRule);
   await assertProbeRefuses(project, "workspace_settings");
-  await assertStillUntrusted(project, undefined, false);
+  await assertStillUntrusted(project, { disclosesHooks: false, shows: oneRuleWarning });
 });
 
 test("C-E2E-29 autotrust trusts a folder whose settings pre-approve a tool permission", {

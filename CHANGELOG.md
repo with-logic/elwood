@@ -34,9 +34,9 @@ back each entry are listed in `prd/14-conformance.md`.
   servers at once is still never answered.
 
 - `autotrust: true` now approves Claude's workspace trust prompt for a folder whose
-  settings pre-approve tool permissions. Claude Code 2.1.332 warns `⚠ This folder
-  pre-approves <N> tool permissions in <files>:`, lists the rules, and adds `These will
-  apply without asking.` Elwood treated that warning as unknown prose, so such a session
+  settings pre-approve tool permissions. Claude Code 2.1.329 and later warn `⚠ This
+  folder pre-approves <N> tool permissions in <files>:`, list the rules, and add `These
+  will apply without asking.` Elwood treated that warning as unknown prose, so such a session
   stayed `blocked`, and `listClaudeModels` waited five seconds to reject it with
   `"workspace_unverified"`. It now rejects at once with the category of the load row,
   usually `"workspace_settings"`. Claude's warnings that the folder adds workspace

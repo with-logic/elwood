@@ -52,43 +52,43 @@ function hooksScreen(selected: "yes" | "no"): string {
 }
 
 /**
- * Captured prompts with Claude 2.1.332's permissions warning (C-CLAUDE-30), on "No, exit",
- * and what each load row discloses: one rule, three, both settings files, a list cut to
- * `and <k> more`, a truncated rule, the hooks warning after it, a warning naming one of two
- * loaded files, and an `.mcp.json` row.
+ * Captured load-row prompts, on "No, exit", and what each row discloses. The 2.1.329 captures
+ * match 2.1.332's byte for byte; they are the evidence for the probe's 2.1.329 gate.
+ */
+export const claudeLoadRowCaptures = (
+  [
+    ["claude-2.1.332/trust/workspace-mcp-120", "mcp_servers"],
+    ["claude-2.1.332/trust/workspace-settings-120", "settings"],
+    ["claude-2.1.332/trust/workspace-settings-local-mcp-100", "mcp_servers"],
+    ["claude-2.1.332/trust/workspace-hooks-mcp-120", "hooks"],
+    ["claude-2.1.332/trust/workspace-hooks-plus-local-settings-120", "hooks"],
+    ["claude-2.1.332/trust/workspace-hooks-both-mcp-100", "hooks"],
+    ["claude-2.1.329/trust/workspace-mcp-120", "mcp_servers"],
+    ["claude-2.1.329/trust/workspace-settings-120", "settings"],
+  ] as const
+).map(([path, disclosure]) => [path, capturedFrame(path), disclosure] as const);
+
+/**
+ * Captured prompts with the permissions warning (C-CLAUDE-30), on "No, exit", and what each
+ * load row discloses: one rule, three, both settings files with the header unwrapped and
+ * wrapped, a list cut to `and <k> more`, a truncated rule, the hooks warning after it, a
+ * warning naming one of two loaded files, and an `.mcp.json` row. The 2.1.329 capture matches
+ * 2.1.332's byte for byte.
  */
 export const claudePermissionsCaptures = (
   [
     ["claude-2.1.332/trust/workspace-permissions-one-120", "settings"],
     ["claude-2.1.332/trust/workspace-permissions-three-120", "settings"],
     ["claude-2.1.332/trust/workspace-permissions-both-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-both-100", "settings"],
     ["claude-2.1.332/trust/workspace-permissions-many-100", "settings"],
     ["claude-2.1.332/trust/workspace-permissions-long-100", "settings"],
     ["claude-2.1.332/trust/workspace-permissions-hooks-120", "hooks"],
     ["claude-2.1.332/trust/workspace-permissions-subset-120", "settings"],
     ["claude-2.1.332/trust/workspace-permissions-mcp-120", "mcp_servers"],
+    ["claude-2.1.329/trust/workspace-permissions-one-120", "settings"],
   ] as const
 ).map(([path, disclosure]) => [path, capturedFrame(path), disclosure] as const);
-
-/**
- * Captured load-row prompts, on "No, exit", and what each row discloses. The 2.1.329 captures
- * match 2.1.332's byte for byte; they are the evidence for the probe's 2.1.329 gate.
- */
-export const claudeLoadRowCaptures = [
-  ...(
-    [
-      ["claude-2.1.332/trust/workspace-mcp-120", "mcp_servers"],
-      ["claude-2.1.332/trust/workspace-settings-120", "settings"],
-      ["claude-2.1.332/trust/workspace-settings-local-mcp-100", "mcp_servers"],
-      ["claude-2.1.332/trust/workspace-hooks-mcp-120", "hooks"],
-      ["claude-2.1.332/trust/workspace-hooks-plus-local-settings-120", "hooks"],
-      ["claude-2.1.332/trust/workspace-hooks-both-mcp-100", "hooks"],
-      ["claude-2.1.329/trust/workspace-mcp-120", "mcp_servers"],
-      ["claude-2.1.329/trust/workspace-settings-120", "settings"],
-    ] as const
-  ).map(([path, disclosure]) => [path, capturedFrame(path), disclosure] as const),
-  ...claudePermissionsCaptures,
-];
 
 /** Claude 2.1.332's prompt for a new project MCP server, on "Continue without using this MCP server". */
 export const claudeMcpServerPrompt = capturedFrame("claude-2.1.332/trust/mcp-server-120");

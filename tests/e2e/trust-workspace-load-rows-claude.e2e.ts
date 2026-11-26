@@ -82,7 +82,7 @@ test("C-E2E-29 listClaudeModels refuses a folder whose .mcp.json declares a serv
 }, async () => {
   const { project, marker } = mcpProject();
   await assertProbeRefuses(project, "workspace_mcp_servers", marker);
-  await assertStillUntrusted(project, marker, false);
+  await assertStillUntrusted(project, { marker, disclosesHooks: false });
 });
 
 test("C-E2E-29 autotrust answers the workspace and MCP server prompts and the server starts", {
@@ -120,7 +120,7 @@ test("C-E2E-29 listClaudeModels refuses a folder whose settings only enable a pl
 }, async () => {
   const { project, marker } = pluginProject();
   await assertProbeRefuses(project, "workspace_settings", marker);
-  await assertStillUntrusted(project, marker, false);
+  await assertStillUntrusted(project, { marker, disclosesHooks: false });
 });
 
 test("C-E2E-29 trusting a folder whose settings only enable a plugin runs the plugin's hook", {
