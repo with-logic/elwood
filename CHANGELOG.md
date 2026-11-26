@@ -16,8 +16,9 @@ back each entry are listed in `prd/14-conformance.md`.
   Claude 2.1.332 shows one or two items per window below about 22 rows, and both calls
   timed out there with the picker left open and queued input held. Below that, where
   the picker's hint row falls off the pane, they still fail with
-  `model_automation_failed`, but the failed operation now closes its own picker,
-  releases queued input, and says the layout could not be parsed.
+  `model_automation_failed`, but the failed operation now sends its own picker an
+  Escape, releases queued input once the picker closes, and says the layout could not
+  be parsed.
 - A `frame_observer_failed` warning for a frame Elwood observed while a session was
   still starting now reaches a `warning` listener attached once `startClaude()`,
   `startCodex()` or a resume returns, as other startup warnings do. Before, Elwood

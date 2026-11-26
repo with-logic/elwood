@@ -31,3 +31,14 @@ export function readViewport(text: string, grammar: ViewportGrammar, prefix = fa
   };
   return { parsed, block, footer: body.footer, modern, offset, selectedDisclosureExpanded };
 }
+
+export type ViewportRead = NonNullable<ReturnType<typeof readViewport>>;
+
+/**
+ * Two model rows, or a counted marker beside a short pane's one-item window (Claude 2.1.332
+ * below about 22 rows), vouch for a window. Codex's bare arrows count nothing, so never vouch.
+ */
+export function windowVouched(read: ViewportRead, grammar: ViewportGrammar): boolean {
+  const { above, below } = read.block;
+  return read.parsed.rows.length >= 2 || (grammar.countedMarkers && (above || below));
+}

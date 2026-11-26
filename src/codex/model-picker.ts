@@ -15,7 +15,10 @@ import {
   parseCodexModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
-import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
+import {
+  isModelViewportCandidate,
+  isVouchedModelViewportCandidate,
+} from "../core/models/viewport/candidate.ts";
 import { parseModelViewport } from "../core/models/viewport/parse.ts";
 import { codexViewportGrammar as pickerGrammar } from "./models/grammar.ts";
 
@@ -37,8 +40,8 @@ export const codexModelPicker: ModelPickerSpec = {
     bottomDialogCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, reasoningGrammar),
   // The reasoning screen is the follow-up stage, never the picker's window.
-  isPickerWindow: (text, authority) =>
-    authority.opened && isModelViewportCandidate(text, pickerGrammar),
+  isOwnPickerWindow: (text, authority) =>
+    authority.opened && isVouchedModelViewportCandidate(text, pickerGrammar),
   hasPickerHeader: (text) => codexModelPickerHeader.test(text),
   // Codex's switch has no dialog of the caller's own to replace the picker.
   isCallerDialog: () => false,

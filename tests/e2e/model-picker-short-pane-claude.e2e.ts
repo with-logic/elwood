@@ -8,7 +8,13 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ClaudeSessionApi, ElwoodError, startClaude } from "../../src/index.ts";
+import {
+  type AgentModelOption,
+  type ClaudeSessionApi,
+  ElwoodError,
+  startClaude,
+} from "../../src/index.ts";
+import { rejectCompiledClaudeFallback } from "./claude-compiled-fallback.ts";
 import {
   bogusClaudeModel,
   cleanup,
@@ -39,9 +45,9 @@ async function startTall(
   return session;
 }
 
-/** Every listed row in picker order, unknown labels (null ids) included (C-API-23). */
-const listing = (models: readonly { readonly id: string | null; readonly label: string }[]) =>
-  models.map(({ id, label }) => ({ id, label }));
+/** Every listed row in picker order, null ids and the current model included (C-API-23). */
+const listing = (models: readonly Pick<AgentModelOption, "id" | "label" | "isCurrent">[]) =>
+  models.map(({ id, label, isCurrent }) => ({ id, label, isCurrent }));
 
 test("C-API-23 C-API-24 listModels and setModel walk Claude's one-item windows in short panes", {
   skip: skipIf(skipReason("claude")),
@@ -52,8 +58,11 @@ test("C-API-23 C-API-24 listModels and setModel walk Claude's one-item windows i
     const live = await startTall((started) => {
       session = started;
     });
+    // The served catalog, not the compiled five-row fallback, and more than a window shows.
+    const baseline = rejectCompiledClaudeFallback(await live.listModels());
+    assert.ok(baseline.length > 2, "more models than a short pane's window holds");
     // The last rows sit behind `More models`, so reaching them walks every window.
-    const [first, second] = (await live.listModels()).flatMap((model) => model.id ?? []).slice(-2);
+    const [first, second] = baseline.flatMap((model) => model.id ?? []).slice(-2);
     assert.ok(first !== undefined && second !== undefined, "two models behind the disclosure");
     for (const [rows, target] of [
       [21, first],
@@ -63,6 +72,8 @@ test("C-API-23 C-API-24 listModels and setModel walk Claude's one-item windows i
       const tall = listing(await live.listModels());
       await live.resize({ cols: 100, rows });
       assert.deepEqual(listing(await live.listModels()), tall, `listModels at 100x${rows}`);
+      // The walk changed nothing: listing again still finds the same current model.
+      assert.deepEqual(listing(await live.listModels()), tall, `relisting at 100x${rows}`);
       await live.setModel(target);
       const current = (await live.listModels()).find((model) => model.isCurrent);
       assert.equal(current?.id, target, `setModel at 100x${rows}`);

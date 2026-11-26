@@ -3768,9 +3768,10 @@ queued input stayed held until a human pressed Escape.
 At 10 rows the picker's hint row (`s to use this session only · Enter to save · Esc
 to cancel`) falls below the pane. No grammar parses that frame, so `listModels` still
 fails there. Cleanup now closes the picker by ownership instead of recognition, and
-queued input is released. The frame still shows the picker's own window, rows and counted
-markers under its title, which tells it from a follow-up stage or a human's prompt under a
-stale title; the rejection names the unparsed layout. A walk at 100x12 finishes inside
+queued input is released once the picker closes. The frame still shows the picker's own
+window, vouched for by a model row and its counted marker under its title, which tells it
+from a follow-up stage or a human's prompt under a stale title; the rejection names the
+unparsed layout. A walk at 100x12 finishes inside
 the default 20 s timeout, which the short-pane e2e uses. The captures are in
 `tests/fixtures/claude-2.1.332/model-picker/`. C-API-23, C-API-24, C-API-55.
 

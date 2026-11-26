@@ -40,9 +40,9 @@ function claudeHarness(onEscape: (screen: Screen) => void) {
 
 test("C-API-55 the footer-cut picker shows its own window, which no grammar parses", () => {
   expect(claudeModelPicker.activeDialog(footerCut, { opened: true })).toBeUndefined();
-  expect(claudeModelPicker.isPickerWindow(footerCut, { opened: true })).toBe(true);
+  expect(claudeModelPicker.isOwnPickerWindow(footerCut, { opened: true })).toBe(true);
   // Without the transaction's authority, nothing on screen is our picker.
-  expect(claudeModelPicker.isPickerWindow(footerCut, { opened: false })).toBe(false);
+  expect(claudeModelPicker.isOwnPickerWindow(footerCut, { opened: false })).toBe(false);
 });
 
 test("C-API-55 cleanup closes its own unparsed picker, then queued input is delivered", async () => {
@@ -90,16 +90,34 @@ test("C-API-55 the rejection names the unparsed layout and keeps its code", asyn
   expect((error as Error).message).toMatch(
     /^Timed out waiting for the picker\. The claude model picker was open in a layout Elwood could not parse/,
   );
+  // The original's stack still says where the failure arose.
+  expect((error as Error).stack).toBe(timedOut.stack);
 });
 
-const permission = (
-  JSON.parse(
-    readFileSync(
-      new URL("../fixtures/claude-2.1.310/permission-declined/dialog.json", import.meta.url),
-      "utf8",
-    ),
-  ) as { readonly text: string }
-).text;
+test("C-API-55 any other typed error from an unparsed picker passes through unchanged", async () => {
+  const other = elwoodError("wait_timeout", "Raw input replaced the staged turn input.");
+  const { failWith } = claudeHarness((screen) => {
+    screen.text = claudeClosedPickerViewport;
+  });
+  const failed = expect(failWith(footerCut, other)).rejects.toBe(other);
+  await vi.advanceTimersByTimeAsync(2000);
+  await failed;
+});
+
+const capture: unknown = JSON.parse(
+  readFileSync(
+    new URL("../fixtures/claude-2.1.310/permission-declined/dialog.json", import.meta.url),
+    "utf8",
+  ),
+);
+if (typeof capture !== "object" || capture === null || !("text" in capture))
+  throw new Error("permission-declined/dialog.json has no `text`");
+const { text: permission } = capture;
+if (typeof permission !== "string") throw new Error("permission-declined/dialog.json `text`");
+const unvouched = (fixture: string, marker: RegExp) => {
+  const text = capturedFrame(fixture).replace(marker, "");
+  return text.replace(/\n[^\n]*(?:Esc to cancel|esc back)[^\n]*\n*$/u, "\n");
+};
 
 test.each([
   ["a partial trust prompt", "   Select model\n\nDo you trust the files in this folder?"],
@@ -113,10 +131,29 @@ test.each([
       .replace("Create elwood.txt containing hello", "Find the Select model header in src")
       .replace(" Esc to cancel · Tab to amend", ""),
   ],
-] as const)("C-API-55 %s under a stale picker title gets no Escape", async (_description, prompt) => {
+  [
+    "a lone row with no marker to vouch for it, its footer cut",
+    unvouched("claude-2.1.332/model-picker/one-row", /\n {4}↓ 5 more/u),
+  ],
+] as const)("C-API-55 %s gets no Escape", async (_description, prompt) => {
   expect(claudeModelPicker.isCandidate(prompt)).toBe(true);
   const { writes, failWith } = claudeHarness(() => {});
   const failed = expect(failWith(prompt)).rejects.toBe(failure);
+  await vi.advanceTimersByTimeAsync(2000);
+  await failed;
+  expect(writes).toEqual(["/model"]);
+});
+
+test("C-API-55 a Codex row between bare arrows, its footer cut, is unvouched and gets no Escape", async () => {
+  const oneRow = unvouched("codex-0.169.0/model-picker/middle", /(?<=↑\n)(?: {2}\d\..*\n)+/u);
+  expect(oneRow).toMatch(/↑\n› 9\..*\n↓\n$/u);
+  expect(codexModelPicker.isCandidate(oneRow)).toBe(true);
+  const { writes, failWith } = guardedPickerHarness(
+    codexClosedPickerViewport,
+    () => {},
+    codexModelPicker,
+  );
+  const failed = expect(failWith(oneRow)).rejects.toBe(failure);
   await vi.advanceTimersByTimeAsync(2000);
   await failed;
   expect(writes).toEqual(["/model"]);

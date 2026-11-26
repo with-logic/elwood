@@ -73,15 +73,15 @@ export async function cleanUpDialog(
   const terminal = behindReceivedOutputBarrier(source, abortable(source, closed));
   // Our own picker in a layout no grammar parses, such as one whose hint row falls below a
   // short pane, is still the picker stage: the transaction submitted `/model` in its slot,
-  // so ownership makes it ours, and its own window tells it from a follow-up stage or a
-  // human's prompt under a stale title. A parse failure then never strands it (C-API-55).
+  // so ownership makes it ours, and its own vouched window tells it from a follow-up stage
+  // or a human's prompt under a stale title. A parse failure alone then does not strand it;
+  // a picker that ignores the Escape survives like any other (C-API-55).
   const stageOf = (text: string): ModelDialogStage | undefined => {
     const stage = spec.activeDialog(text, ours);
-    if (stage !== undefined || !spec.isPickerWindow(text, ours)) return stage;
+    if (stage !== undefined || !spec.isOwnPickerWindow(text, ours)) return stage;
     progress.unparsedPicker = true;
     return "picker";
   };
-  const isActive = (text: string) => stageOf(text) !== undefined;
   let escaped = progress.escapeSentTo;
   let clearStreak = 0;
   /** Whether a dialog of ours was ever on screen here; only then can a clear reading lie. */
@@ -113,7 +113,6 @@ export async function cleanUpDialog(
       lateDialogPossible = false;
       // A `painting` shell may turn out to be a hook confirmation: wait, never write.
       if (stage === "painting" || stage === escaped) continue;
-      escaped = stage;
       // Decide the WRITE on everything received, not the last rendered frame: a permission
       // or hook dialog can already be in the PTY buffer while the observed screen still
       // shows the picker, and an Escape chosen from that stale frame would dismiss it.
@@ -121,7 +120,12 @@ export async function cleanUpDialog(
       // render never recovers, and an observation that timed out has outlived this
       // one-second bound. The dialog is then left to the survivor hold (C-API-56).
       if (await writeUnsafe(source, undefined, closed)) continue;
-      await sendPickerInput({ terminal }, escapeKey, isActive, true);
+      // Received output can change the stage, to a `painting` shell or to a follow-up that
+      // returns to the picker: the Escape goes only to the stage it was decided for, and only
+      // the stage it reached is recorded as escaped. A changed stage is re-decided next poll.
+      if (stageOf(terminal.snapshot().text) !== stage) continue;
+      escaped = stage;
+      await sendPickerInput({ terminal }, escapeKey, (text) => stageOf(text) === stage, true);
     }
   } catch {
     // A terminated session has no input left to hold; a failed write leaves the dialog.
@@ -134,12 +138,15 @@ export async function cleanUpDialog(
 }
 /**
  * The operation's rejection once cleanup found its picker unparsed: the layout is the likely
- * cause, which a bare timeout would hide. Only the message changes; the code stays.
+ * cause, which a bare timeout would hide. Only the message changes; the code, details and
+ * stack stay, and any other error passes through unchanged.
  */
 export function unparsedPickerFailure(spec: ModelPickerSpec, error: unknown): unknown {
   if (!(error instanceof ElwoodError) || error.code !== "model_automation_failed") return error;
   const cause = `The ${spec.agent} model picker was open in a layout Elwood could not parse, such as a pane too short for its hint row.`;
-  return elwoodError("model_automation_failed", `${error.message} ${cause}`, error.details);
+  const named = elwoodError("model_automation_failed", `${error.message} ${cause}`, error.details);
+  // Keeps where the failure arose, as startup cleanup's enriched errors do.
+  return Object.assign(named, { stack: error.stack });
 }
 
 /** Reads and writes throw once `signal` aborts, so nothing reaches a terminated PTY. */
