@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
+  ("Could not clear the staged composer draft.") when the previous turn completed
+  before Elwood saw the empty composer. This was most likely in auto mode. Elwood
+  sent clear keys to a composer that was already empty, and Claude repaints nothing
+  for them. When the frames after the earlier send's Enter show that Claude took
+  its input, Elwood now releases that draft without sending keys.
+
 - `autotrust: true` now approves Claude's workspace trust prompt when it discloses the
   folder's hooks, and Claude then runs those hooks. Claude Code 2.1.329 and later add two
   hooks rows to that prompt, naming `.claude/settings.json`, `.claude/settings.local.json`
@@ -85,6 +92,12 @@ back each entry are listed in `prd/14-conformance.md`.
   then released queued input onto the screen that replaced it. A hook, deadline
   or backstop that meets undrawn output now judges the frame it draws, or the
   last frame if that render fails.
+- A `status` or `activity` listener that throws while Elwood observes a
+  rendered frame, such as one handling a dialog that blocks the session, no
+  longer drops that frame's `terminal:data`, its status and attention
+  activities, or readiness's view of it. A new content-free
+  `frame_observer_failed` warning reports the first such failure in a session.
+  A throwing `status` listener also no longer skips that status's `activity`.
 - Report a startup screen Elwood does not recognize as `blocked` from the
   10-second readiness deadline instead of only at the 60-second backstop. Claude's
   first-launch text-style picker and Codex's sign-in screen are examples. The
@@ -96,8 +109,6 @@ back each entry are listed in `prd/14-conformance.md`.
   way, and `elwood run` fails such a start as `blocked_prompt`. The agent's own
   header drawn alone while it loads is not reported, and the report redacts `sk-`
   API-key-shaped tokens, including a key wrapped across rows.
-- A `status` or `attention` listener that throws when a frame blocks the
-  session no longer drops that frame's `terminal:data`.
 
 ## [0.8.0] - 2026-11-25
 

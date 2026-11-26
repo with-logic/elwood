@@ -14,6 +14,29 @@ type Observation =
   | "legacy_done"
   | "paced";
 
+/** The render probe captured just before the latest Enter, initial or recovery. */
+type EnterRender = { probe?: (() => boolean) | undefined };
+
+/**
+ * Checks that a fresh frame after the latest Enter shows empty input other than the frame
+ * from before the paste. Cleanup keeps the entered check as long as its draft, so these
+ * closures are built here, apart from the payload that a staged predicate may hold.
+ */
+function consumptionChecks(
+  guard: PasteGuard,
+  enter: EnterRender,
+  priorEmptyFrame: ReturnType<EmptyComposerObserver>,
+) {
+  const rendered = (requireProof: boolean) => enter.probe?.() ?? !requireProof;
+  const consumed = (requireProof: boolean): boolean => {
+    const empty = guard.emptyFrame?.();
+    return rendered(requireProof) && !!empty && empty !== priorEmptyFrame;
+  };
+  /** Requires render proof, so input whose Enter was never captured is never consumed. */
+  const entered = () => consumed(true);
+  return { rendered, consumed, entered };
+}
+
 export function preparePasteNudges(
   terminal: InputTerminal,
   guard: PasteGuard | undefined,
@@ -30,12 +53,12 @@ export function preparePasteNudges(
       ? guard.prepareStaged(payload)
       : () => guard.staged(guard.snapshot(), payload);
   let retryAt = 0;
-  let hasFreshFrame: (() => boolean) | undefined;
+  const enter: EnterRender = {};
+  const checks = consumptionChecks(guard, enter, priorEmptyFrame);
   const beforeEnter = () => {
-    hasFreshFrame = guard.captureRenderProgress?.();
+    enter.probe = guard.captureRenderProgress?.();
     retryAt = Date.now() + delayMs;
   };
-  const hasRenderedAfterEnter = (requireProof: boolean) => hasFreshFrame?.() ?? !requireProof;
   let attempts = 0;
   let observations = 0;
   const retry = async (awaitInputConsumption: boolean): Promise<Observation> => {
@@ -53,11 +76,10 @@ export function preparePasteNudges(
     const recoveryRevoked = revoked?.();
     if (!awaitInputConsumption && recoveryRevoked) return "revoked";
     if (unsafe) return "pending";
-    const fresh = hasRenderedAfterEnter(awaitInputConsumption);
-    const empty = guard.emptyFrame?.();
     // A geometry-only token change cannot replace post-Enter rendered output.
-    if (fresh && empty && empty !== priorEmptyFrame) return "accepted";
+    if (checks.consumed(awaitInputConsumption)) return "accepted";
     if (recoveryRevoked) return "revoked";
+    const fresh = checks.rendered(awaitInputConsumption);
     if (!(fresh && staged())) return guard.emptyFrame ? "pending" : "legacy_done";
     return retry(awaitInputConsumption);
   };
@@ -90,7 +112,8 @@ export function preparePasteNudges(
       wakeup.dispose();
     }
   };
-  return { beforeEnter, start: schedule, awaitEmptyInput };
+  // Cleanup reads the same evidence after the wait ends.
+  return { beforeEnter, start: schedule, awaitEmptyInput, enteredInputConsumed: checks.entered };
 }
 
 async function tryRecoveryEnter(writeEnter: () => void | Promise<void>): Promise<void> {

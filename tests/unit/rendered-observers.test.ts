@@ -12,6 +12,7 @@ import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { observeRenderedFrame, readRenderedFrame } from "../../src/core/rendered-observers.ts";
 import type { RenderedFrame } from "../../src/core/screen-facts.ts";
+import { type NativeBoundary, onNativeBoundary } from "../../src/core/simple/native-boundary.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import type { ElwoodSessionStatus } from "../../src/core/types.ts";
 import type { StatusEvidenceKind } from "../../src/runtime/status-evidence.ts";
@@ -51,6 +52,26 @@ describe("observeRenderedFrame", () => {
     observeRenderedFrame(observers, screen(claudeWorking), session);
     observeRenderedFrame(observers, screen(claudeIdle), session);
     expect(submitted).toEqual(["rendered_turn_started", "rendered_turn_ended"]);
+  });
+
+  test("C-API-72 a throwing turn-end listener still confirms the rendered boundary, then rethrows", () => {
+    const { observers, session, submitted } = harness(true);
+    const failing = {
+      status: session.status,
+      submitEvidence(kind: StatusEvidenceKind) {
+        const decision = session.submitEvidence(kind);
+        if (kind === "rendered_turn_ended") throw new Error("listener failure");
+        return decision;
+      },
+    };
+    const boundaries: NativeBoundary[] = [];
+    onNativeBoundary(failing, (boundary) => boundaries.push(boundary));
+    observeRenderedFrame(observers, screen(claudeWorking), failing);
+    expect(() => observeRenderedFrame(observers, screen(claudeIdle), failing)).toThrow(
+      "listener failure",
+    );
+    expect(submitted).toEqual(["rendered_turn_started", "rendered_turn_ended"]);
+    expect(boundaries).toEqual([{ kind: "rendered" }]);
   });
 
   test("C-ATTN-01 emits attention activity when the block is accepted", () => {

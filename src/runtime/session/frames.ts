@@ -1,9 +1,9 @@
 /**
  * Session-owned frame and trust-deadline observation, and the block on an unrecognized
- * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-ATTN-11).
+ * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-API-72, C-ATTN-11).
  */
 import { activityFromAttention, blockingRuleIds } from "../../core/attention.ts";
-import { runContained } from "../../core/contained.ts";
+import { runEach } from "../../core/contained.ts";
 import {
   observeRenderedReading,
   type RenderedObservers,
@@ -12,6 +12,8 @@ import {
 } from "../../core/rendered-observers.ts";
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
+import { createFrameObserverFailureReporter } from "../../core/warnings/frames.ts";
+import type { SessionWarningEmitter } from "../../core/warnings/session.ts";
 import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
@@ -30,14 +32,22 @@ type StartupAutomationState = {
   observeClearance?(frame: string): void;
 };
 
-/** Timers and PTY frames use the same guards, facts, and attention edge owner. */
+/**
+ * Timers and PTY frames use the same guards, facts, and attention edge owner. A frame whose
+ * notifications failed is reported to `observers.warnings` (C-API-72).
+ */
 export function createSessionFrameObserver(
-  observers: RenderedObservers,
+  observers: RenderedObservers & { readonly warnings: SessionWarningEmitter },
   session: () => FrameSession | undefined,
   trust: () => StartupAutomationState,
   readiness: ReadinessGate,
   isIdleComposer: TrustClearance,
 ) {
+  const reportFailure = createFrameObserverFailureReporter(
+    observers.warnings,
+    observers,
+    () => session()?.closing.signal.aborted === false,
+  );
   const attentionClearance = createAttentionClearance(isIdleComposer);
   let frame: RenderedFrame | undefined;
   let ruleIds: readonly string[] = [];
@@ -55,70 +65,74 @@ export function createSessionFrameObserver(
     }
     if (active.status !== "blocked") pendingAutomationClearance = false;
   };
-  const refreshFrame = () => {
+  const refreshUncontained = () => {
     const active = session();
-    if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
+    const current = frame;
+    if (active === undefined || active.closing.signal.aborted || current === undefined) return;
     const state = trust();
-    const baseReading = readRenderedFrame(
+    const rendered = readRenderedFrame(
       observers,
-      frame,
+      current,
       state.blockedPrompt,
       state.inputBlocking,
     );
     const unrecognized = readiness.unrecognizedStartup.classify(
-      baseReading.facts,
+      rendered.facts,
       state.inputBlocking,
-      frame,
+      current,
     );
-    // The rendered facts, then those facts after attention clearance.
-    const clearedReading = attentionClearance(
+    const reading = attentionClearance(
       unrecognized
-        ? withBlockingRule(baseReading, `${observers.agent}-unrecognized-startup`)
-        : baseReading,
-      frame.text,
+        ? withBlockingRule(rendered, `${observers.agent}-unrecognized-startup`)
+        : rendered,
+      current.text,
       state.inputBlocking,
     );
     const released = active.automationInputBlocking && !state.inputBlocking;
     active.automationInputBlocking = state.inputBlocking;
     active.inputBlocking =
-      clearedReading.facts.blocking_prompt_visible ||
-      (active.inputBlocking &&
-        !clearedReading.facts.working_visible &&
-        !clearedReading.facts.composer_visible);
-    const currentRuleIds = blockingRuleIds(clearedReading);
+      reading.facts.blocking_prompt_visible ||
+      (active.inputBlocking && !reading.facts.working_visible && !reading.facts.composer_visible);
+    const currentRuleIds = blockingRuleIds(reading);
     if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
     if (released && active.status === "blocked") pendingAutomationClearance = true;
     // Settle automation against this frame before evidence/readiness releases input.
-    state.observeClearance?.(frame.text);
+    state.observeClearance?.(current.text);
     // Publish this frame's hold before evidence listeners can submit readiness.
     readiness.observeFrameHold(
-      clearedReading.facts,
+      reading.facts,
       active.automationInputBlocking,
-      frame.text,
-      frame.cols,
+      current.text,
+      current.cols,
     );
     readiness.ready.armDeadline();
-    try {
-      observeRenderedReading(observers, clearedReading, active);
+    runEach(
+      () => observeRenderedReading(observers, reading, active),
       // Automation can consume the human clear edge. Retain its replay until a
       // positive frame shows either resumed work or an idle composer.
-      replayAutomationClearance(active, clearedReading.facts);
-    } finally {
-      // Reported even when a status or attention listener throws.
-      readiness.unrecognizedStartup.report(frame.text);
-      readiness.observeReadinessFrame(
-        clearedReading.facts,
-        active.automationInputBlocking,
-        frame.text,
-        frame.cols,
-      );
+      () => replayAutomationClearance(active, reading.facts),
+      () => readiness.unrecognizedStartup.report(current.text),
+      () =>
+        readiness.observeReadinessFrame(
+          reading.facts,
+          active.automationInputBlocking,
+          current.text,
+          current.cols,
+        ),
+    );
+  };
+  // A throwing listener cannot escape into the render loop or a timer, and cannot drop the
+  // frame's other notifications or its `terminal:data`. Its failure is reported (C-API-72).
+  const refresh = () => {
+    try {
+      refreshUncontained();
+    } catch {
+      reportFailure();
     }
   };
-  // A throwing status, attention or readiness listener cannot drop the frame: the session
-  // finishes processing it, and its terminal data is still delivered (C-ATTN-11).
-  const refresh = () => runContained(refreshFrame);
-  readiness.setDeadlineListener((current) => {
-    if (frame !== undefined && current !== undefined) frame = { ...frame, ...current };
+  // At the deadline an idle CLI does not repaint, so its current frame is classified again.
+  readiness.setDeadlineListener((settled) => {
+    if (frame !== undefined && settled !== undefined) frame = { ...frame, ...settled };
     refresh();
   });
   return {

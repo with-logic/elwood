@@ -1,82 +1,134 @@
 /**
- * A throwing status listener cannot drop a startup frame: a screen that blocks the session
- * after the readiness deadline, recognized or not, still reaches `terminal:data`, on both
- * adapters (PRD §5.4, C-ATTN-11).
+ * A listener that throws while Elwood observes a rendered frame cannot drop that frame's
+ * other notifications or its `terminal:data`. One content-free `frame_observer_failed`
+ * warning reports it, on both adapters (PRD §5.4, C-API-72).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import {
+  type ElwoodActivityEvent,
   type ElwoodAgentSession,
   type ElwoodSessionStatus,
+  type ElwoodWarningEvent,
   startClaude,
   startCodex,
 } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
-import { tty } from "../fixtures/trust-composer.ts";
-import { capturedFrame } from "../helpers/captured-frames.ts";
+import { claudeComposer, claudeTty, codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 
-const stops: (() => Promise<void>)[] = [];
+const teardowns: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.useRealTimers();
-  await Promise.all(stops.splice(0).map((stop) => stop()));
+  await Promise.all(teardowns.splice(0).map((teardown) => teardown()));
   claude.resetFakes();
   codex.resetFakes();
 });
 
-const approval =
-  "Would you like to run the following command?\r\n› 1. Yes\r\n  2. No\r\nPress enter to confirm or esc to cancel";
-// Each adapter's header drawn alone is a native boot frame, so nothing blocks at the deadline.
-const screens = {
+const clear = "\u001b[2J\u001b[H";
+const adapters = {
   codex: {
-    boot: "  >_ OpenAI Codex (v0.172.0)",
-    recognized: approval,
-    unrecognized: capturedFrame("codex-0.171.0/startup/sign-in").trimEnd(),
+    fakes: codex,
+    start: startCodex,
+    dialog:
+      "Would you like to run the following command?\r\n› 1. Yes\r\n  2. No\r\nPress enter to confirm or esc to cancel",
+    composer: codexTty(codexComposer),
   },
   claude: {
-    boot: " ▐▛███▜▌   Claude Code v2.1.332",
-    recognized: "Do you want to proceed?\r\n❯ 1. Yes\r\n  2. No\r\n\r\nEsc to cancel",
-    unrecognized: capturedFrame("claude-2.1.332/startup/theme-picker").trimEnd(),
+    fakes: claude,
+    start: startClaude,
+    dialog: "Do you want to proceed?\r\n❯ 1. Yes\r\n  2. No\r\n\r\nEsc to cancel",
+    composer: claudeTty(claudeComposer),
   },
-};
+} as const;
 
-async function open(agent: "claude" | "codex") {
-  const fakes = agent === "claude" ? claude : codex;
+async function started(agent: keyof typeof adapters) {
+  const { fakes, start } = adapters[agent];
   fakes.installFakes();
-  const options = { cwd: fakes.tempDir() };
-  const session: ElwoodAgentSession = await (agent === "claude"
-    ? startClaude(options)
-    : startCodex(options));
-  stops.push(() => session.teardown());
-  session.on("status", () => {
-    throw new Error("listener failure");
-  });
+  const session: ElwoodAgentSession = await start({ cwd: fakes.tempDir() });
+  teardowns.push(() => session.teardown());
   const statuses: ElwoodSessionStatus[] = [];
+  const activities: ElwoodActivityEvent[] = [];
+  const chunks: string[] = [];
+  const warnings: ElwoodWarningEvent[] = [];
   session.on("status", ({ status }) => statuses.push(status));
-  const data: string[] = [];
-  session.on("terminal:data", ({ data: chunk }) => data.push(chunk));
+  session.on("activity", (event) => activities.push(event));
+  session.on("terminal:data", ({ data }) => chunks.push(data));
+  session.on("warning", (event) => warnings.push(event));
+  // The startup warning gate opens on a real timer before the test takes over the clock.
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.useFakeTimers();
   const paint = async (frame: string) => {
-    fakes.ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(frame)}`);
+    fakes.ptys[0]!.emitData(`${clear}${frame}`);
     const settled = session.terminal.settled();
     await vi.advanceTimersByTimeAsync(0);
     await settled;
   };
-  return { statuses, data, paint };
+  return { session, statuses, activities, chunks, warnings, paint };
+}
+
+const sentinel = "listener failure 7f3c9e";
+
+type Run = Awaited<ReturnType<typeof started>>;
+
+/** The warnings and warning activities delivered, and any error or frame text they carry. */
+function delivered({ warnings, activities }: Run, agent: keyof typeof adapters) {
+  const activity = activities.filter(({ kind }) => kind === "warning");
+  const text = JSON.stringify([warnings, activity]);
+  const frameText = adapters[agent].dialog.split("\r\n")[0] ?? "";
+  return { warnings, activity, leaked: [sentinel, frameText].filter((t) => text.includes(t)) };
+}
+
+/** One content-free `frame_observer_failed` warning and its activity. */
+function oneWarning({ session }: Run, agent: keyof typeof adapters) {
+  const warning = {
+    elwoodSessionId: session.elwoodSessionId,
+    agent,
+    source: "lifecycle",
+    code: "frame_observer_failed",
+    severity: "warning",
+    message: "A rendered-frame notification failed.",
+    raw: "frame_observer_failed",
+  };
+  const { elwoodSessionId, source } = warning;
+  const text = warning.message;
+  const activity = { elwoodSessionId, agent, source, kind: "warning", label: warning.code, text };
+  return { warnings: [warning], activity: [{ ...activity, raw: warning }], leaked: [] };
 }
 
 test.each([
-  ["codex", "recognized"],
-  ["codex", "unrecognized"],
-  ["claude", "recognized"],
-  ["claude", "unrecognized"],
-] as const)("C-ATTN-11 %s delivers a blocking %s frame after the deadline despite a throwing listener", async (agent, kind) => {
-  const { statuses, data, paint } = await open(agent);
-  await paint(screens[agent].boot);
-  await vi.advanceTimersByTimeAsync(10_500);
-  expect(statuses).toEqual([]);
-  const frame = screens[agent][kind];
-  await paint(frame);
+  "codex",
+  "claude",
+] as const)("C-API-72 %s delivers a blocking frame's notifications despite a throwing status listener", async (agent) => {
+  const run = await started(agent);
+  const { session, statuses, activities, chunks, paint } = run;
+  session.on("status", () => {
+    throw new Error(sentinel);
+  });
+  const { dialog } = adapters[agent];
+  await paint(dialog);
   expect(statuses).toEqual(["blocked"]);
-  expect(data.at(-1)).toContain(tty(frame).slice(0, 20));
+  // The warning is delivered after the frame, as its own activity.
+  expect(activities.map(({ kind }) => kind)).toEqual(["status", "attention", "warning"]);
+  expect(chunks.at(-1)).toContain(dialog);
+  expect(delivered(run, agent)).toEqual(oneWarning(run, agent));
+  // A later failure is not reported again.
+  await paint(adapters[agent].composer);
+  await paint(dialog);
+  expect(delivered(run, agent)).toEqual(oneWarning(run, agent));
+});
+
+test.each([
+  "codex",
+  "claude",
+] as const)("C-API-72 %s delivers a blocking frame despite a throwing attention listener", async (agent) => {
+  const run = await started(agent);
+  const { session, statuses, chunks, paint } = run;
+  session.on("activity", ({ kind }) => {
+    if (kind === "attention") throw new Error(sentinel);
+  });
+  const { dialog } = adapters[agent];
+  await paint(dialog);
+  expect(statuses).toEqual(["blocked"]);
+  expect(chunks.at(-1)).toContain(dialog);
+  expect(delivered(run, agent)).toEqual(oneWarning(run, agent));
 });
