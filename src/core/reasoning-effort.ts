@@ -1,6 +1,7 @@
 /**
- * Per-adapter reasoning-effort enums and a shared before-spawn validator.
- * Implements PRD §5.1/§5.2 (C-CLAUDE-20) and §5.5/§5.6 (C-CODEX-21).
+ * Per-adapter reasoning-effort enums, a shared before-spawn validator, and a non-throwing
+ * narrowing for values Elwood reads but does not own. Implements PRD §5.1/§5.2 (C-CLAUDE-20),
+ * §5.5/§5.6 (C-CODEX-21), and the narrowing for §12A.9 (C-CLI-25) and §5.3 (C-API-28).
  *
  * The two CLIs accept DIFFERENT effort sets (Codex adds `none`/`minimal`/`ultra`; both
  * share `low`..`max`), and both are version-coupled to the installed CLI, so the
@@ -12,6 +13,7 @@
 
 import type { ClaudeEffortLevel } from "../claude/hooks/names.ts";
 import { type ElwoodErrorName, elwoodError } from "./errors.ts";
+import { isOneOf } from "./predicates.ts";
 
 /**
  * Claude's `--effort` levels (claude 2.1.245: `low, medium, high, xhigh, max`).
@@ -47,6 +49,19 @@ export const codexReasoningEfforts = Object.freeze([
   "ultra",
 ] as const);
 export type CodexReasoningEffort = (typeof codexReasoningEfforts)[number];
+
+/**
+ * `value` when it is one of `valid`'s efforts, else undefined, whether it is absent or a value
+ * the adapter does not know. It silently drops an unknown value, so use it only for values
+ * Elwood reads but does not own; a caller's option takes `validateReasoningEffort`, which
+ * rejects one.
+ */
+export function knownReasoningEffort<T extends string>(
+  value: string | undefined,
+  valid: readonly T[],
+): T | undefined {
+  return isOneOf(value, valid) ? value : undefined;
+}
 
 /**
  * Narrows a caller-supplied `reasoningEffort` to the adapter's enum, throwing the

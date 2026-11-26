@@ -102,8 +102,25 @@ export type CodexEffortUnconfirmedWarning = {
   readonly raw: "codex_effort_unconfirmed";
 };
 
+/**
+ * The deciding `model_reasoning_effort` entry in `configOverrides` sets an effort Elwood does not
+ * recognize, so readiness does not wait for Codex to apply it. Content-free (§5.3, C-API-28).
+ */
+export type CodexEffortUnrecognizedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "codex_effort_unrecognized";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: "codex_effort_unrecognized";
+};
+
 /** The warnings the initial-readiness gate emits. */
-export type InitialReadinessWarning = InitialReadyBackstopWarning | CodexEffortUnconfirmedWarning;
+export type InitialReadinessWarning =
+  | InitialReadyBackstopWarning
+  | CodexEffortUnconfirmedWarning
+  | CodexEffortUnrecognizedWarning;
 
 /** One content-free diagnostic for a failed rendered-frame notification (§5.4, C-API-72). */
 export type FrameObserverFailedWarning = {
@@ -131,4 +148,19 @@ export type TurnCommitWaitExpiredWarning = {
   readonly severity: "warning";
   readonly message: string;
   readonly raw: string;
+};
+
+/**
+ * Content-free: a Claude `Stop` held for queued guidance reached its hang limit with neither the
+ * queued turn's `Stop` nor an idle composer, so Elwood released it. That marks the session ready
+ * unless a prompt has blocked it (§6.5, C-HOOK-24).
+ */
+export type ClaudeQueuedTurnUnconfirmedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "claude";
+  readonly source: "lifecycle";
+  readonly code: "queued_turn_unconfirmed";
+  readonly severity: "warning";
+  readonly message: "Claude did not finish the guidance queued at its Stop within the limit, so Elwood released that Stop.";
+  readonly raw: "queued_turn_unconfirmed";
 };

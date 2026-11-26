@@ -24,6 +24,7 @@ import { sessionRuntime } from "../../state/runtime-paths.ts";
 import { releaseLaunchSocket } from "../../state/socket-home.ts";
 import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import { createSessionRecord, defaultStateDir, type SessionRecord } from "../../state/store.ts";
+import { validateConfigOverrides } from "../config/overrides.ts";
 import * as preflight from "../preflight.ts";
 import { type CodexLaunchOptions, codexHomeReportPath, explainCodexStartFailure } from "../pty.ts";
 import { buildCodexSession } from "./build.ts";
@@ -64,6 +65,7 @@ export async function startCodexWithId(
     }),
   );
   checkedInputBytes(options.persona ?? "");
+  validateConfigOverrides(options.configOverrides);
   const stateDirPath = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   // Before the default state path, which is under `cwd`, is inspected: a bad `cwd` is the error.
   const { directory, assertCwdUnchanged } = await prepareLaunchDirectory(

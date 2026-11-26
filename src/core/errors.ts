@@ -17,6 +17,7 @@ export type ElwoodErrorName =
   | "codex_not_authenticated"
   | "codex_version_unsupported"
   | "codex_invalid_reasoning_effort"
+  | "codex_invalid_config_overrides"
   | "codex_high_trust_conflict"
   | "state_not_found"
   | "state_corrupt"

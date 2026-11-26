@@ -4,6 +4,8 @@ import type { ElwoodSessionStatus } from "../../core/types.ts";
 type SubmissionSession = {
   readonly status: ElwoodSessionStatus;
   submitEvidence(kind: "caller_submitted"): unknown;
+  /** An adapter that tracks input submitted inside a turn, running or blocked (Claude, C-HOOK-24). */
+  noteMidTurnSubmission?(): void;
 };
 
 export class StopCompletion {
@@ -23,6 +25,7 @@ export class StopCompletion {
     this.pendingReset = undefined;
     reset?.();
     if (this.session.status === "ready") this.session.submitEvidence("caller_submitted");
+    else this.session.noteMidTurnSubmission?.();
   };
 
   /** Capture before Enter; failed writes never commit this reset or generation. */
