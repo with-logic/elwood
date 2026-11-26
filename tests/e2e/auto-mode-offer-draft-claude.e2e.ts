@@ -41,7 +41,15 @@ test("C-ATTN-09 Claude keeps a draft the offer painted over in the composer shap
     const screen = () => live.terminal.snapshot().text;
     await waitFor(() => (live.status === "ready" ? true : undefined), "initial ready", 120_000);
     await live.sendMessage("Count from 1 to 40, one number per line. No tools.");
-    await waitFor(() => (live.status === "running" ? true : undefined), "turn running", 30_000);
+    // `sendMessage` resolves once its Enter is written, while Claude can still show the prompt
+    // in its composer. A paste typed then was once gone by the time the offer closed, so wait
+    // until Claude has taken the prompt and shows the turn working.
+    await waitFor(() => hookNamed(observed.hooks, "UserPromptSubmit"), "prompt submitted", 30_000);
+    await waitFor(
+      () => (screen().includes("esc to interrupt") ? true : undefined),
+      "turn working",
+      30_000,
+    );
     // A multi-line paste typed during the turn: Claude shows it as a pill and keeps it staged.
     const marker = `zq${Date.now().toString(36)}`;
     const draft = [`Check ${marker}: line one.`, "Line two.", "Line three.", "Reply with OK."];
