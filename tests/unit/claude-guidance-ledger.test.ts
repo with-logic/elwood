@@ -4,50 +4,11 @@
  */
 import { describe, expect, test } from "vitest";
 import {
-  ClaudeGuidanceLedger,
-  type GuidanceRelease,
+  openGuidanceLedger,
   queuedTurnHangLimitMs,
-  unheardGuidanceLimitMs,
+  unheardInputLimitMs,
 } from "../../src/claude/session/guidance/ledger.ts";
-import type { DeadlineClock } from "../../src/core/timers.ts";
-
-function fakeClock() {
-  let now = 0;
-  const timers = new Map<number, { at: number; run: () => void }>();
-  let next = 0;
-  const clock: DeadlineClock = {
-    now: () => now,
-    setTimer: (run, delayMs) => {
-      next += 1;
-      timers.set(next, { at: now + delayMs, run });
-      return next;
-    },
-    clearTimer: (timer) => void timers.delete(timer as number),
-  };
-  const advance = (ms: number) => {
-    now += ms;
-    for (const [id, timer] of [...timers].sort((a, b) => a[1].at - b[1].at)) {
-      if (timer.at > now || !timers.has(id)) continue;
-      timers.delete(id);
-      timer.run();
-    }
-  };
-  return { clock, advance, pending: () => timers.size };
-}
-
-function ledger() {
-  const releases: GuidanceRelease[] = [];
-  const time = fakeClock();
-  const subject = new ClaudeGuidanceLedger((cause) => void releases.push(cause), time.clock);
-  return { subject, releases, ...time };
-}
-
-/** A turn `p1` whose own prompt Claude submitted. */
-function running() {
-  const fixture = ledger();
-  fixture.subject.heard("p1");
-  return fixture;
-}
+import { fakeClock, ledger, running } from "../helpers/guidance-ledger.ts";
 
 describe("C-HOOK-24 Claude guidance ledger", () => {
   test("a turn's own prompt is not guidance, and its Stop with nothing queued is not held", () => {
@@ -126,7 +87,7 @@ describe("C-HOOK-24 Claude guidance ledger", () => {
     subject.written();
     expect(subject.holdStop("p1")).toBe("unheard");
     expect(subject.holdRenderedEnd()).toBe("unheard");
-    advance(unheardGuidanceLimitMs - 500);
+    advance(unheardInputLimitMs - 500);
     expect(releases).toEqual([]);
     advance(500);
     expect(releases).toEqual(["unheard"]);
@@ -139,7 +100,7 @@ describe("C-HOOK-24 Claude guidance ledger", () => {
     subject.toolBoundary();
     expect(subject.holdStop("p1")).toBeUndefined();
     subject.written();
-    advance(unheardGuidanceLimitMs);
+    advance(unheardInputLimitMs);
     expect(subject.holdStop("p1")).toBeUndefined();
   });
 
@@ -174,6 +135,26 @@ describe("C-HOOK-24 Claude guidance ledger", () => {
     subject.dispose();
     expect(pending()).toBe(0);
     subject.heard("p1")?.(false);
+    subject.written();
+    expect(subject.holdStop("p1")).toBeUndefined();
+    expect(pending()).toBe(0);
+  });
+
+  test("a stale write never fires, so it cannot take the hook of a later write", () => {
+    const { subject, advance } = running();
+    subject.written();
+    advance(unheardInputLimitMs);
+    subject.written();
+    subject.heard("p2");
+    expect(subject.holdStop("p2")).toBeUndefined();
+  });
+
+  test("a ledger opened after the session closed holds nothing and starts no timer", () => {
+    const { clock, pending } = fakeClock();
+    const closing = new AbortController();
+    closing.abort();
+    const subject = openGuidanceLedger(closing.signal, () => undefined, clock);
+    subject.heard("p1");
     subject.written();
     expect(subject.holdStop("p1")).toBeUndefined();
     expect(pending()).toBe(0);

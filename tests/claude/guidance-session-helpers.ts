@@ -22,6 +22,7 @@ type GuidanceHandlers = {
   /** Answers the `UserPromptSubmit` for guidance; the turn's own prompt is always allowed. */
   readonly screen?: (prompt: string) => Promise<SubmitResult>;
   readonly stop?: () => Promise<StopResult>;
+  readonly hookTimeoutMs?: number;
 };
 
 /** A session running prompt `p1`, with guidance `note` written into that turn. */
@@ -30,6 +31,7 @@ export async function runningWithGuidance(handlers: GuidanceHandlers = {}) {
   const cwd = tempDir();
   const session = await startClaude({
     cwd,
+    ...(handlers.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: handlers.hookTimeoutMs }),
     hooks: {
       UserPromptSubmit: (event) =>
         event.prompt === "busy" ? undefined : handlers.screen?.(event.prompt),
@@ -52,6 +54,18 @@ export async function runningWithGuidance(handlers: GuidanceHandlers = {}) {
   return { session, hook, submit, stop };
 }
 
+/** The full `queued_turn_unconfirmed` warning a session reports at the hang limit. */
+export const queuedTurnUnconfirmed = (elwoodSessionId: string) => ({
+  elwoodSessionId,
+  agent: "claude",
+  source: "lifecycle",
+  code: "queued_turn_unconfirmed",
+  severity: "warning",
+  message:
+    "Claude did not finish the guidance queued at its Stop within the limit, so Elwood released that Stop.",
+  raw: "queued_turn_unconfirmed",
+});
+
 const frame = (text: string) => `\u001b[2J\u001b[H${text}`;
 
 /** Claude paints its working footer, then the idle composer: one rendered turn end. */
@@ -62,5 +76,5 @@ export async function paintTurnEnd(session: { terminal: { settled(): Promise<voi
   await session.terminal.settled();
 }
 
-export const lastDecision = (session: { statusDecisions(): readonly { reason: string }[] }) =>
+export const lastDecisionReason = (session: { statusDecisions(): readonly { reason: string }[] }) =>
   session.statusDecisions().at(-1)?.reason;

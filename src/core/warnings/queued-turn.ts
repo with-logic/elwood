@@ -14,7 +14,7 @@ export function queuedTurnUnconfirmedWarning(
     code: "queued_turn_unconfirmed",
     severity: "warning",
     message:
-      "Claude did not finish the guidance queued at its Stop within the limit, so the session was marked ready.",
+      "Claude did not finish the guidance queued at its Stop within the limit, so Elwood released that Stop.",
     raw: "queued_turn_unconfirmed",
   });
 }

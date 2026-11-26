@@ -1,19 +1,24 @@
 /**
  * What ends a Claude `Stop` held for queued guidance, through a real session (PRD §6.5,
- * C-HOOK-24): Claude's idle composer, written guidance that never fires its hook, and the turn
- * a superseded `Stop` leaves running.
+ * C-HOOK-24): Claude's idle composer, written guidance that never fires its hook, the turn a
+ * superseded `Stop` leaves running, and a hang limit that cannot reopen a blocked session.
  */
-import { afterEach, expect, test } from "vitest";
-import { unheardGuidanceLimitMs } from "../../src/claude/session/guidance/ledger.ts";
+import { afterEach, expect, test, vi } from "vitest";
+import {
+  queuedTurnHangLimitMs,
+  unheardInputLimitMs,
+} from "../../src/claude/session/guidance/ledger.ts";
 import {
   holdReasons,
-  lastDecision,
+  lastDecisionReason,
   paintTurnEnd,
+  queuedTurnUnconfirmed,
   runningWithGuidance,
 } from "./guidance-session-helpers.ts";
-import { resetFakes } from "./helpers.ts";
+import { ptys, resetFakes } from "./helpers.ts";
 
 afterEach(() => {
+  vi.useRealTimers();
   resetFakes();
 });
 
@@ -24,7 +29,7 @@ test("C-HOOK-24 Claude's idle composer ends a held Stop whose queued turn never 
   try {
     await submit("note");
     await stop("p1");
-    expect(lastDecision(session)).toBe(holdReasons.queued);
+    expect(lastDecisionReason(session)).toBe(holdReasons.queued);
     await paintTurnEnd(session);
     expect(session.status).toBe("ready");
     expect(session.statusDecisions().at(-1)).toMatchObject({
@@ -44,11 +49,11 @@ test("C-HOOK-24 written guidance that never fires its hook holds the Stop for it
   try {
     await stop("p1");
     expect(session.status).toBe("running");
-    expect(lastDecision(session)).toBe(holdReasons.unheard);
+    expect(lastDecisionReason(session)).toBe(holdReasons.unheard);
     await expect
-      .poll(() => session.status, { timeout: unheardGuidanceLimitMs * 3, interval: 50 })
+      .poll(() => session.status, { timeout: unheardInputLimitMs * 3, interval: 50 })
       .toBe("ready");
-    expect(lastDecision(session)).toBe(
+    expect(lastDecisionReason(session)).toBe(
       "applied: running became ready; input written into the turn never fired its UserPromptSubmit",
     );
     expect(warnings).toEqual([]);
@@ -85,9 +90,35 @@ test("C-HOOK-24 a superseded Stop records nothing, and the turn it leaves still 
     await submit("more");
     await stop("q1");
     expect(session.status).toBe("running");
-    expect(lastDecision(session)).toBe(holdReasons.queued);
+    expect(lastDecisionReason(session)).toBe(holdReasons.queued);
     await stop("q2");
     expect(session.status).toBe("ready");
+  } finally {
+    await session.stop();
+  }
+});
+
+test("C-HOOK-24 the hang limit releases a held Stop without reopening a blocked session", async () => {
+  const { session, submit, stop } = await runningWithGuidance();
+  const warnings: unknown[] = [];
+  session.on("warning", (warning) => void warnings.push(warning));
+  try {
+    await submit("note");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    await stop("p1");
+    ptys[0]!.emitData(
+      "Do you want to create elwood.txt?\r\n ❯ 1. Yes\r\n   3. No\r\n Esc to cancel\r\n",
+    );
+    for (let step = 0; step < 40 && session.status !== "blocked"; step += 1)
+      await vi.advanceTimersByTimeAsync(50);
+    expect(session.status).toBe("blocked");
+    vi.advanceTimersByTime(queuedTurnHangLimitMs);
+    vi.useRealTimers();
+    expect(session.status).toBe("blocked");
+    expect(lastDecisionReason(session)).toBe(
+      "ignored: hook_turn_ended must not reopen a blocked session",
+    );
+    await expect.poll(() => warnings).toEqual([queuedTurnUnconfirmed(session.elwoodSessionId)]);
   } finally {
     await session.stop();
   }

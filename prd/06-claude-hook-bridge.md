@@ -287,9 +287,9 @@ and from the `prompt_id` on Claude's hooks, never from the transcript:
 - A tool boundary delivers allowed guidance inside the running turn: a
   `PostToolUse`, `PostToolUseFailure`, or `PostToolBatch` hook after the answer.
 - A `Stop` is held when allowed guidance is still queued, a handler is still
-  screening guidance, or input Elwood submitted inside the turn less than 2 s
-  earlier, its prompt or guidance, has not fired its `UserPromptSubmit`. A `Stop`
-  without a `prompt_id` is never held.
+  screening guidance, or a prompt or guidance Elwood submitted inside the turn
+  less than 2 s before the `Stop` has not yet fired its `UserPromptSubmit`. A
+  `Stop` without a `prompt_id` is never held.
 
 A held `Stop`'s `hook_turn_ended` is an ignored status decision whose reason
 names what the hold waits on: queued guidance, a handler still screening, or
@@ -302,9 +302,12 @@ written input not yet heard. The hold ends when:
 - Claude's idle composer ends the rendered turn (`rendered_turn_ended`) while no
   handler is screening and no written input is unheard. Until then that
   evidence is ignored too.
-- 120 s pass with none of these. The session becomes ready with the
-  `queued_turn_unconfirmed` warning (§5.7), and that decision's reason names the
-  hang limit.
+- 120 s pass with none of these. Elwood releases the `Stop` with the
+  `queued_turn_unconfirmed` warning (§5.7). The session becomes ready, and that
+  decision's reason names the hang limit.
+
+No release reopens a session that a prompt has blocked. It stays `blocked` until
+the prompt clears.
 
 Guidance typed into the terminal whose `UserPromptSubmit` arrives after the
 `Stop`, and turns Claude starts on its own, are not held. Guidance allowed after a

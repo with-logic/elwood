@@ -4,7 +4,8 @@
  * composer while guidance is still being screened or unheard; each names what it waits on. The
  * next `Stop`, the idle composer once nothing is undecided, guidance that is all blocked or
  * unheard, or the hang limit ends the turn. The last two name their cause on the decision that
- * marks the session ready, and the hang limit also reports `queued_turn_unconfirmed`.
+ * marks the session ready, unless a prompt has blocked it, and the hang limit also reports
+ * `queued_turn_unconfirmed`.
  */
 import { runContained } from "../../../core/contained.ts";
 import { queuedTurnUnconfirmedWarning } from "../../../core/warnings/queued-turn.ts";
@@ -14,10 +15,11 @@ import type { ClaudeHookEventName } from "../../hooks/names.ts";
 import { claudePromptId } from "../../hooks/prompt-id.ts";
 import { ClaudeTurnEndSession } from "../turn-end-hold.ts";
 import {
-  ClaudeGuidanceLedger,
+  type ClaudeGuidanceLedger,
   type GuidanceAnswer,
   type GuidanceHold,
   type GuidanceRelease,
+  openGuidanceLedger,
 } from "./ledger.ts";
 
 /** Why a hold ignores evidence that would mark the session ready. */
@@ -47,11 +49,7 @@ export abstract class ClaudeGuidanceSession extends ClaudeTurnEndSession {
    * overrides before this class's fields are initialized.
    */
   private get guidance(): ClaudeGuidanceLedger {
-    if (this.ledger === undefined) {
-      const ledger = new ClaudeGuidanceLedger((cause) => this.releaseHeldStop(cause));
-      this.closing.signal.addEventListener("abort", () => ledger.dispose(), { once: true });
-      this.ledger = ledger;
-    }
+    this.ledger ??= openGuidanceLedger(this.closing.signal, (cause) => this.releaseHeldStop(cause));
     return this.ledger;
   }
 
