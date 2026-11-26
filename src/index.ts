@@ -106,6 +106,8 @@ export type {
   ElwoodDialogChoice,
   ElwoodDialogEvent,
   ElwoodDialogRequest,
+  ElwoodTrustDialogRequest,
+  ElwoodUpdateDialogRequest,
 } from "./core/dialogs/types.ts";
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";

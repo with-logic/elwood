@@ -21,6 +21,7 @@ import {
   skippedOnce,
 } from "./codex-update-offer/checks.ts";
 import { codexUpdateOffer } from "./codex-update-offer/index.ts";
+import { firstLaunchOfferMs, testEndReserveMs } from "./codex-update-offer/timing.ts";
 import {
   codexAuthMissing,
   makeProject,
@@ -38,10 +39,8 @@ const CODEX_CONFIG =
 
 const READY_MS = 45_000;
 const TURN_MS = 45_000;
-// A first launch in a fresh home paints the offer later than a resume does.
-const OFFER_MS = 30_000;
 const LAUNCHES_MS = probeLaunchTimeoutMs + probeCommandTimeoutMs;
-const TEST_TIMEOUT_MS = OFFER_MS + READY_MS + TURN_MS + LAUNCHES_MS + 30_000;
+const TEST_TIMEOUT_MS = firstLaunchOfferMs + READY_MS + TURN_MS + LAUNCHES_MS + testEndReserveMs;
 
 const ONE = "Reply exactly: ONE. Do not use tools.";
 
@@ -89,7 +88,12 @@ for (const lagAfterSkipMs of [0, 2_000]) {
       });
       // A failed run tears the session down with this prompt still waiting.
       prompt.catch(() => {});
-      await waitForCondition(active, () => input.skips.length > 0, "Elwood's skip", OFFER_MS);
+      await waitForCondition(
+        active,
+        () => input.skips.length > 0,
+        "Elwood's skip",
+        firstLaunchOfferMs,
+      );
       // Checked as the run goes, so a failure names the step that let input through.
       assert.deepEqual(inputProblems(input), noInputProblems);
       await waitForCondition(active, () => settled, "ONE submitted", READY_MS);

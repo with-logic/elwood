@@ -12,7 +12,7 @@ export async function setupWorkspaceAnswer() {
   const { cwd, session, pty, render } = await setup();
   await render(menu(cwd));
   const [request] = await session.listDialogs();
-  if (!request) {
+  if (request?.kind !== "trust") {
     await session.teardown();
     throw new Error("Expected a verified workspace trust request");
   }

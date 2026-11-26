@@ -138,6 +138,8 @@ export function createSessionFrameObserver(
   });
   return {
     refresh,
+    /** Frame processing outside `refresh`, such as update discovery after a skip, reports here. */
+    reportFailure,
     observe: (current: RenderedFrame) => {
       frame = current;
       refresh();
