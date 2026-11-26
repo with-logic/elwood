@@ -15,7 +15,7 @@ import { claudeIdle, claudeWorking } from "../fixtures/owned-turn/composer.ts";
 const dialog = `${claudeIdle}\r\n Do you want to proceed?\r\n ❯ 1. Yes\r\n   2. No\r\n Esc to cancel`;
 const blank = "\x1b[2J\x1b[H";
 
-async function hold() {
+function hold() {
   const terminal = createHeadlessTerminal({ cols: 80, rows: 10 }, () => {});
   const clock = { now: 0 };
   const turnEnd = new ClaudeTurnEndHold(
@@ -26,7 +26,7 @@ async function hold() {
 }
 
 test("C-ATTN-10 only a fresh idle composer frame, unchanged for the settle window, releases", async () => {
-  const { terminal, clock, turnEnd, paint } = await hold();
+  const { terminal, clock, turnEnd, paint } = hold();
   try {
     await paint(claudeIdle);
     // Nothing ended: nothing is held, even on an idle frame.
@@ -64,7 +64,7 @@ test("C-ATTN-10 only a fresh idle composer frame, unchanged for the settle windo
 });
 
 test("C-ATTN-10 a hold ends at its limit, or when released", async () => {
-  const { terminal, clock, turnEnd, paint } = await hold();
+  const { terminal, clock, turnEnd, paint } = hold();
   try {
     await paint(claudeWorking);
     turnEnd.arm();
