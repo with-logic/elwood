@@ -1,26 +1,27 @@
 /**
  * Claude's workspace load rows and MCP server prompt on the REAL Claude CLI (PRD §5.3, §5.4,
- * C-E2E-29, C-CLAUDE-28, C-CLAUDE-29), each in a fresh, untrusted project on Claude 2.1.329 or
- * later. For a folder whose `.mcp.json` declares a server that writes a marker as it starts,
- * `autotrust: true` answers the workspace prompt and then the MCP server prompt, reaches `ready`,
- * and the server starts, while `listClaudeModels` refuses the folder and the server never starts.
- * For a folder whose `.claude/settings.json` only enables a plugin, from a marketplace in the
- * project, whose `SessionStart` hook writes a marker, the probe refuses the plain settings row
- * and the hook never runs, while `autotrust: true` reaches `ready` and the hook runs with no
- * further prompt. For settings that set an environment variable Claude does not consider safe,
- * the probe rejects the prompt it cannot verify.
+ * C-E2E-29, C-CLAUDE-28, C-CLAUDE-29), each in a fresh, untrusted project on Claude
+ * 2.1.329 or later. For a folder whose `.mcp.json` declares a server that writes a marker as it
+ * starts, `autotrust: true` answers the workspace prompt and then the MCP server prompt, reaches
+ * `ready`, and the server starts, while `listClaudeModels` refuses the folder and the server
+ * never starts. For a folder whose `.claude/settings.json` only enables a plugin, from a
+ * marketplace in the project, whose `SessionStart` hook writes a marker, the probe refuses the
+ * plain settings row and the hook never runs, while `autotrust: true` reaches `ready` and the
+ * hook runs with no further prompt. For settings that set an environment variable Claude does
+ * not consider safe, the probe rejects the prompt it cannot verify.
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { isRecord } from "../../src/core/predicates.ts";
-import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
+import type { ClaudeSessionApi } from "../../src/index.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import {
   assertProbeRefuses,
   assertStillUntrusted,
+  autotrusted,
   cleanupTimeoutMs,
   markerTimeoutMs,
   preflightTimeoutMs,
@@ -28,15 +29,11 @@ import {
   readyWithMarker,
   refusalTestTimeoutMs,
   disclosingSkip as skip,
+  writeJson,
 } from "./claude-workspace-probe.ts";
 import { cleanup, type E2eProject, makeProject, waitFor } from "./helpers.ts";
 
 const testTimeoutMs = preflightTimeoutMs + readyTimeoutMs + markerTimeoutMs + cleanupTimeoutMs;
-
-function writeJson(path: string, body: object): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(body));
-}
 
 type MarkedProject = { readonly project: E2eProject; readonly marker: string };
 
@@ -79,27 +76,13 @@ function pluginProject(): MarkedProject {
   return { project, marker };
 }
 
-/** Starts an autotrust session and returns it with the trust prompts it answers, in order. */
-async function autotrusted(project: E2eProject) {
-  const session = await startClaude({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    autotrust: true,
-  });
-  const answers: string[] = [];
-  session.on("activity", (event) => {
-    if (event.kind === "startup_prompt") answers.push(String(event.label));
-  });
-  return { session, answers };
-}
-
 test("C-E2E-29 listClaudeModels refuses a folder whose .mcp.json declares a server", {
   skip,
   timeout: refusalTestTimeoutMs,
 }, async () => {
   const { project, marker } = mcpProject();
   await assertProbeRefuses(project, "workspace_mcp_servers", marker);
-  await assertStillUntrusted(project, marker, false);
+  await assertStillUntrusted(project, { marker, disclosesHooks: false });
 });
 
 test("C-E2E-29 autotrust answers the workspace and MCP server prompts and the server starts", {
@@ -137,7 +120,7 @@ test("C-E2E-29 listClaudeModels refuses a folder whose settings only enable a pl
 }, async () => {
   const { project, marker } = pluginProject();
   await assertProbeRefuses(project, "workspace_settings", marker);
-  await assertStillUntrusted(project, marker, false);
+  await assertStillUntrusted(project, { marker, disclosesHooks: false });
 });
 
 test("C-E2E-29 trusting a folder whose settings only enable a plugin runs the plugin's hook", {

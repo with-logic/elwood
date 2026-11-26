@@ -15,7 +15,7 @@ import { autotrustAnswer, autotrustView, failedClosed } from "../helpers/claude-
 import {
   claudeLoadRowCaptures,
   claudeSettingsEnvPrompt,
-  selectClaudeHooksYes,
+  selectClaudeWorkspaceTrustYes,
 } from "../helpers/claude-workspace-trust-screen.ts";
 
 const mcpOnly = capturedFrame("claude-2.1.332/trust/workspace-mcp-120");
@@ -29,7 +29,7 @@ test.each(
   const header = view.kind === "candidate" ? view.dialog.header : "";
   expect(claudeWorkspaceStrongestDisclosure(header)).toBe(disclosure);
   expect(claudeWorkspaceDisclosesHooks(header)).toBe(disclosure === "hooks");
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject({
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject({
     result: { automation: { prompt: "workspace_trust", input: "home+down+enter" } },
     completion: "answered",
   });
@@ -114,7 +114,7 @@ test.each([
 test("C-CLAUDE-29 another warning before the load row fails closed", () => {
   const frame = mcpOnly.replace(
     mcpRow,
-    `⚠ This folder pre-approves 3 tool permissions\n\n ${mcpRow}`,
+    `⚠ This folder adds 1 directory to the workspace in .claude/settings.json\n\n ${mcpRow}`,
   );
   expect(autotrustView(frame)).toEqual(failedClosed);
 });

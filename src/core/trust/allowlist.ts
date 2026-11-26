@@ -8,6 +8,7 @@
 import {
   claudeBypassDescription,
   claudeMcpDescription,
+  claudePermissionsCloseIsNative,
   claudeWorkspaceDescription,
   codexFolderAccessDescription,
   codexHooksDescription,
@@ -83,6 +84,7 @@ export const trustPromptAllowlist = [
     optionPattern: claudeWorkspaceOptions,
     accept: yesOption,
     answerPolicy: "autotrust",
+    nativeRows: claudePermissionsCloseIsNative,
   },
   {
     id: "skill_trust",
