@@ -12,7 +12,7 @@ import {
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
 import { blankOrPendingMessages } from "./native-pending.ts";
-import { nativeSelection } from "./selection.ts";
+import { foldOptionRows, nativeSelection, readsAsWrapped } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
 export type QuestionView = {
@@ -135,8 +135,11 @@ function questionCursor(
   return hiddenQueuedCursor && cursorWithinWorkingRow && interveningRowsAllowed;
 }
 /** Correlate the prompt and complete ordered native options with a known definition. */
+// An option row, trimmed: its number, then its label and any description, folded across rows.
+const numberedOption = /^(?:› )?(\d+)\. ([\s\S]*)$/;
 export function matchesQuestion(view: QuestionView, question: QuestionDefinition): boolean {
-  const content = view.body.filter((line) => line.length > 0);
+  const body = view.body;
+  const content = body.filter((line) => line.length > 0);
   if (
     view.kind === "queued" &&
     view.count > 1 &&
@@ -146,19 +149,22 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
   if (content[0] !== question.prompt) return false;
   if (question.options.length === 0) return view.selected === undefined;
   const expected = expectedOptions(view.kind, question);
-  const afterPrompt = view.body.slice(view.body.indexOf(question.prompt) + 1);
+  const promptRow = body.indexOf(question.prompt);
+  const afterPrompt = body.slice(promptRow + 1);
   const start = afterPrompt.findIndex((line) => line.length > 0);
   const block = afterPrompt.slice(start);
   const end = block.findIndex((line) => line.length === 0);
-  const rows = (end < 0 ? block : block.slice(0, end)).map((line) =>
-    /^(?:› )?(\d+)\. (.*)$/.exec(line),
-  );
+  const optionBlockStart = promptRow + 1 + start;
+  const optionBlockEnd = optionBlockStart + (end < 0 ? block.length : end);
+  // Read the option rows as drawn: a wrapped option description is known by its indentation.
+  const optionBlock = view.rawBody.slice(optionBlockStart, optionBlockEnd);
+  const rows = foldOptionRows(optionBlock).map((line) => numberedOption.exec(line.trim()));
   const editingOther =
     view.kind === "queued" &&
     view.selected === question.options.length &&
     view.cursor.visible === true &&
     view.cursor.before !== undefined &&
-    view.cursor.row >= view.body.indexOf(question.prompt) + 1 + start + question.options.length &&
+    view.cursor.row >= optionBlockStart + question.options.length &&
     view.cursor.row < view.rawBody.length;
   const tooFewOptionRows = rows.length < expected.length;
   const extraRowsOutsideOtherEditor = !editingOther && rows.length > expected.length;
@@ -171,7 +177,7 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
     if (displayed === option.label) return !option.description;
     return (
       displayed.startsWith(`${option.label}  `) &&
-      displayed.slice(option.label.length).trim() === option.description
+      readsAsWrapped(displayed.slice(option.label.length).trim(), option.description ?? "")
     );
   });
 }
