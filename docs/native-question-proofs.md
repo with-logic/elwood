@@ -118,6 +118,8 @@ second row.
 - An 80-column and a 50-column session in Plan mode each ask the three modal
   questions of C-E2E-19. At 80 columns the footer's last hint is on a row of its
   own; at 50 the footer splits in two and the description of "None of the above"
-  wraps too. The session must be `blocked`. The proof gives the C-E2E-19 modal
-  answers, which select "None of the above" and add notes, and requires the
-  request to close as answered and `send()` to return the final reply.
+  wraps too. The proof requires that layout on screen and the session to be
+  `blocked`, then runs the C-E2E-19 modal phase: its answers select "None of the
+  above" and add notes, and it requires the committed native answers, the final
+  reply, no remaining question and `ready`, and the request to close as
+  answered.

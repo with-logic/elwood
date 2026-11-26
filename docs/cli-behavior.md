@@ -3948,18 +3948,22 @@ Elwood read a footer only on one row, so whenever one wrapped it did not recogni
 question: it did not hold ordinary input for it, and `answerQuestions()` failed. Elwood now
 joins up to four trailing rows with the footer's own separator. Captures in
 `tests/fixtures/codex-0.172.0/questions/`: `queued-footer-*.json` at 60 and 50 columns and
-`modal-footer-wrapped-{80,60,40}.json`. The 50-column modal split was seen in a probe, not
-captured, and the 40-column queued layout is synthesized in
+`modal-footer-wrapped-{80,60,50,40}.json`. The 40-column queued layout is synthesized in
 `tests/unit/codex-questions/narrow-footer.test.ts`. C-ATTN-02, C-QUESTION-04.
 
-**A narrow pane wraps modal option descriptions.** 0.172 pads option labels so their
-descriptions start in one column, and wraps a description too long for its row onto rows
-indented to that column: at 60 and 50 columns `3. None of the above  Optionally, add` is
-followed by `details in notes (tab)`, and at 40 the rest takes three rows. Elwood read each
-option from one row, so it found an unknown row after the options and never listed the
-question, while the wrapped footer still held input. Elwood now appends a row indented
-exactly to the description column of the option above, unless it reads as an option, to
-that option before matching and reading the selection. A narrow pane also elides the
-hint row's `Plan mode (shift+tab to cycle)` badge; the transcript's "Model changed to …
-for Plan mode" cell still shows the switch. Captures:
-`modal-footer-wrapped-{60,50,40}.json`. C-QUESTION-04.
+**A narrow pane wraps modal option descriptions.** 0.172 pads option labels to the longest
+one, so every description starts in one column, and wraps a description too long for its
+row onto rows indented to that column. At 60 columns only `(tab)` moves to a row of its
+own under `3. None of the above  Optionally, add details in notes`; at 50 columns
+`Optionally, add` is followed by `details in notes (tab)`; at 40 the rest takes three rows.
+A terminal wraps at a space, or inside a word too long for the row (the 0.172 update offer
+breaks a URL mid-word at 40 columns). Elwood read each option from one row, so it found an
+unknown row after the options and never listed the question, while the wrapped footer
+still held input. Elwood now takes the description column as the gap end every described
+option shares, joins each row indented exactly to it to the described option above, and
+reads each row break as one space or nothing, before matching and reading the selection.
+In the same pane the transcript's "Model changed to … for Plan" cell wraps before `mode.`,
+the hint-row badge reads `Plan mode` (see "The Plan-mode badge moved to the hint row"),
+and the `/plan` menu row reads "switch to Plan mode", so a proof waits for the badge in
+front of the warnings badge. Captures: `modal-footer-wrapped-{60,50,40}.json`.
+C-QUESTION-04.

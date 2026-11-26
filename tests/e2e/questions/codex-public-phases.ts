@@ -89,7 +89,15 @@ export async function publicCodexQueuedPhase(
   return [requests[1]!.id, requests[2]!.id, requests[0]!.id];
 }
 
-export async function publicCodexModalPhase(input: Phase): Promise<string> {
+type Live = Awaited<ReturnType<CodexSession["start"]>>;
+// 0.172's hint-row Plan-mode badge, shortened to `Plan mode` at 60 columns and below, in front of
+// the warnings badge. The `/plan` menu row reads "switch to Plan mode", so match the badge.
+const planModeBadge = /Plan mode(?: \(⇧tab to cycle\))? · ⚠/;
+
+/** A Plan-mode turn's modal questions; `whileRaised` checks the session before they are answered. */
+export async function publicCodexModalPhase(
+  input: Phase & { readonly whileRaised?: (live: Live) => Promise<void> },
+): Promise<string> {
   const { facade, sandbox, events, signal, note } = input;
   signal.throwIfAborted();
   const live = await facade.start();
@@ -99,7 +107,7 @@ export async function publicCodexModalPhase(input: Phase): Promise<string> {
   await live.sendKeys("/plan");
   await waitFor(() => /^›\s*\/plan\s*$/m.test(live.terminal.snapshot().text), signal);
   await live.sendKeys("\r");
-  await waitFor(() => live.terminal.snapshot().text.includes("Plan mode ("), signal);
+  await waitFor(() => planModeBadge.test(live.terminal.snapshot().text), signal);
   signal.throwIfAborted();
   const before = events.length;
   const reply = facade.send(modalPrompt, { timeoutMs: 90_000 });
@@ -108,6 +116,7 @@ export async function publicCodexModalPhase(input: Phase): Promise<string> {
     reply,
     signal,
   );
+  await input.whileRaised?.(live);
   const [request] = await facade.listQuestions();
   assert.ok(request);
   assert.equal(request.delivery, "blocking");
